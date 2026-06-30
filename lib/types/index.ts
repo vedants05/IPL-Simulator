@@ -76,6 +76,10 @@ export interface Player {
   currentTeamId: string | null;
   starRating: number;
   potential: Potential;
+  currentBatting: number;
+  potentialBatting: number;
+  currentBowling: number;
+  potentialBowling: number;
 }
 
 export interface BoardObjective {

@@ -227,8 +227,10 @@ const players = dataLines
         bowling: genBowlStats(curBowl, age, isCapped),
       },
       iplHistory: [{ teamId, season: "2025", price: Math.round(salary * 100) }],
-      // raw CSV values for Supabase extra columns
-      _curBat: curBat, _potBat: potBat, _curBowl: curBowl, _potBowl: potBowl,
+      currentBatting: curBat,
+      potentialBatting: potBat,
+      currentBowling: curBowl,
+      potentialBowling: potBowl,
     };
   });
 
@@ -254,7 +256,7 @@ for (const p of players) {
   const bw = p.careerStats.bowling;
   const h  = p.iplHistory[0];
   lines.push(
-    `  { id: ${q(p.id)}, name: ${q(p.name)}, age: ${p.age}, nationality: ${q(p.nationality)}, role: ${q(p.role)}, battingStyle: ${q(p.battingStyle)}, bowlingStyle: ${q(p.bowlingStyle)}, starRating: ${p.starRating}, basePrice: ${p.basePrice}, isCapped: ${p.isCapped}, isRetained: false, retainedByTeamId: null, currentTeamId: ${q(p.currentTeamId)}, potential: ${q(p.potential)}, attributes: { technique: ${a.technique}, power: ${a.power}, timing: ${a.timing}, placement: ${a.placement}, running: ${a.running}, pace: ${a.pace}, swing: ${a.swing}, seam: ${a.seam}, spin: ${a.spin}, flight: ${a.flight}, accuracy: ${a.accuracy}, variation: ${a.variation}, catching: ${a.catching}, throwing: ${a.throwing}, agility: ${a.agility}, composure: ${a.composure}, leadership: ${a.leadership}, determination: ${a.determination} }, careerStats: { batting: { matches: ${bs.matches}, innings: ${bs.innings}, runs: ${bs.runs}, average: ${bs.average}, strikeRate: ${bs.strikeRate}, fifties: ${bs.fifties}, hundreds: ${bs.hundreds} }, bowling: { matches: ${bw.matches}, wickets: ${bw.wickets}, economy: ${bw.economy}, average: ${bw.average}, bestFigures: ${q(bw.bestFigures)} } }, iplHistory: [{ teamId: ${q(h.teamId)}, season: ${q(h.season)}, price: ${h.price} }] },`
+    `  { id: ${q(p.id)}, name: ${q(p.name)}, age: ${p.age}, nationality: ${q(p.nationality)}, role: ${q(p.role)}, battingStyle: ${q(p.battingStyle)}, bowlingStyle: ${q(p.bowlingStyle)}, starRating: ${p.starRating}, basePrice: ${p.basePrice}, isCapped: ${p.isCapped}, isRetained: false, retainedByTeamId: null, currentTeamId: ${q(p.currentTeamId)}, potential: ${q(p.potential)}, currentBatting: ${p.currentBatting}, potentialBatting: ${p.potentialBatting}, currentBowling: ${p.currentBowling}, potentialBowling: ${p.potentialBowling}, attributes: { technique: ${a.technique}, power: ${a.power}, timing: ${a.timing}, placement: ${a.placement}, running: ${a.running}, pace: ${a.pace}, swing: ${a.swing}, seam: ${a.seam}, spin: ${a.spin}, flight: ${a.flight}, accuracy: ${a.accuracy}, variation: ${a.variation}, catching: ${a.catching}, throwing: ${a.throwing}, agility: ${a.agility}, composure: ${a.composure}, leadership: ${a.leadership}, determination: ${a.determination} }, careerStats: { batting: { matches: ${bs.matches}, innings: ${bs.innings}, runs: ${bs.runs}, average: ${bs.average}, strikeRate: ${bs.strikeRate}, fifties: ${bs.fifties}, hundreds: ${bs.hundreds} }, bowling: { matches: ${bw.matches}, wickets: ${bw.wickets}, economy: ${bw.economy}, average: ${bw.average}, bestFigures: ${q(bw.bestFigures)} } }, iplHistory: [{ teamId: ${q(h.teamId)}, season: ${q(h.season)}, price: ${h.price} }] },`
   );
 }
 

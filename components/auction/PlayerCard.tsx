@@ -1,7 +1,6 @@
 "use client";
 import { Player } from "@/lib/types";
 import StarRating from "@/components/shared/StarRating";
-import AttributeBar from "@/components/shared/AttributeBar";
 import { formatPrice } from "@/lib/logic/auctionRules";
 
 interface Props {
@@ -17,39 +16,34 @@ const ROLE_COLORS: Record<string, string> = {
   "Spin Bowler": "bg-orange-900 text-orange-300 border-orange-700",
 };
 
-function getTopAttributes(player: Player): { label: string; value: number }[] {
-  const a = player.attributes;
-  switch (player.role) {
-    case "Batsman":
-    case "WK-Batsman":
-      return [
-        { label: "Technique", value: a.technique },
-        { label: "Power", value: a.power },
-        { label: "Timing", value: a.timing },
-        { label: "Composure", value: a.composure },
-      ];
-    case "Pace Bowler":
-      return [
-        { label: "Pace", value: a.pace },
-        { label: "Swing", value: a.swing },
-        { label: "Seam", value: a.seam },
-        { label: "Accuracy", value: a.accuracy },
-      ];
-    case "Spin Bowler":
-      return [
-        { label: "Spin", value: a.spin },
-        { label: "Flight", value: a.flight },
-        { label: "Variation", value: a.variation },
-        { label: "Accuracy", value: a.accuracy },
-      ];
-    case "All-Rounder":
-      return [
-        { label: "Technique", value: a.technique },
-        { label: "Power", value: a.power },
-        { label: "Accuracy", value: a.accuracy },
-        { label: "Variation", value: a.variation },
-      ];
-  }
+function RatingBar({ label, current, potential, color }: { label: string; current: number; potential: number; color: string }) {
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-xs text-text-secondary uppercase tracking-wider">{label}</span>
+        <span className="text-sm font-bold text-text-primary">
+          {current}
+          {potential > current && (
+            <span className="text-text-secondary font-normal text-xs ml-1">→ {potential}</span>
+          )}
+        </span>
+      </div>
+      <div className="relative h-2 bg-surface rounded-full overflow-hidden">
+        {/* Potential bar (behind) */}
+        {potential > current && (
+          <div
+            className="absolute inset-y-0 left-0 rounded-full opacity-25"
+            style={{ width: `${potential}%`, backgroundColor: color }}
+          />
+        )}
+        {/* Current bar */}
+        <div
+          className="absolute inset-y-0 left-0 rounded-full"
+          style={{ width: `${current}%`, backgroundColor: color }}
+        />
+      </div>
+    </div>
+  );
 }
 
 function getInitials(name: string): string {
@@ -57,14 +51,14 @@ function getInitials(name: string): string {
 }
 
 export default function PlayerCard({ player, teamColor }: Props) {
-  const attrs = getTopAttributes(player);
   const stats = player.careerStats;
+  const hasBat  = (player.currentBatting  ?? 0) > 0;
+  const hasBowl = (player.currentBowling  ?? 0) > 0;
 
   return (
     <div className="bg-surface2 rounded-lg border border-border p-5 flex flex-col gap-4">
-      {/* Header row */}
+      {/* Header */}
       <div className="flex items-start gap-4">
-        {/* Avatar */}
         <div
           className="w-16 h-16 rounded-full flex items-center justify-center text-xl font-bold shrink-0"
           style={{ backgroundColor: teamColor ?? "#7c5cbf", color: "#fff" }}
@@ -72,17 +66,20 @@ export default function PlayerCard({ player, teamColor }: Props) {
           {getInitials(player.name)}
         </div>
 
-        {/* Name & meta */}
         <div className="flex-1 min-w-0">
           <h2 className="text-[22px] font-bold text-text-primary leading-tight truncate">{player.name}</h2>
           <div className="flex flex-wrap items-center gap-2 mt-1">
             <span className={`text-xs px-2 py-0.5 rounded border font-medium ${ROLE_COLORS[player.role]}`}>
               {player.role}
             </span>
-            <span className={`text-xs px-2 py-0.5 rounded font-medium ${player.nationality === "Overseas" ? "bg-amber-900 text-amber-300 border border-amber-700" : "bg-green-900 text-green-300 border border-green-700"}`}>
+            <span className={`text-xs px-2 py-0.5 rounded font-medium ${
+              player.nationality === "Overseas"
+                ? "bg-amber-900 text-amber-300 border border-amber-700"
+                : "bg-green-900 text-green-300 border border-green-700"
+            }`}>
               {player.nationality === "Overseas" ? "🌍 Overseas" : "🇮🇳 Indian"}
             </span>
-            <span className={`text-xs px-2 py-0.5 rounded font-medium ${player.isCapped ? "bg-surface text-text-secondary border border-border" : "bg-surface text-text-secondary border border-border"}`}>
+            <span className="text-xs px-2 py-0.5 rounded font-medium bg-surface text-text-secondary border border-border">
               {player.isCapped ? "Capped" : "Uncapped"}
             </span>
           </div>
@@ -96,11 +93,24 @@ export default function PlayerCard({ player, teamColor }: Props) {
         </div>
       </div>
 
-      {/* Attribute bars */}
-      <div className="flex flex-col gap-2">
-        {attrs.map((a) => (
-          <AttributeBar key={a.label} label={a.label} value={a.value} />
-        ))}
+      {/* Ratings from CSV */}
+      <div className="flex flex-col gap-3">
+        {hasBat && (
+          <RatingBar
+            label="Batting"
+            current={player.currentBatting}
+            potential={player.potentialBatting}
+            color="#3b82f6"
+          />
+        )}
+        {hasBowl && (
+          <RatingBar
+            label="Bowling"
+            current={player.currentBowling}
+            potential={player.potentialBowling}
+            color="#ef4444"
+          />
+        )}
       </div>
 
       {/* Career Stats */}

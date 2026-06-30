@@ -25,6 +25,7 @@ import {
   pickBiddingTeam,
   nextAIBidDelay,
   resetLotCache,
+  AuctionContext,
 } from "@/lib/logic/auctionEngine";
 
 // ---------------------------------------------------------------------------
@@ -732,17 +733,28 @@ function scheduleAIBids(player: Player) {
 
     const nextBid = getNextBidAmount(a.currentBid);
 
+    // Build auction context for AI engine
+    const totalLots = a.sets.reduce((sum, s) => sum + s.playerIds.length, 0);
+    const ctx: AuctionContext = {
+      remainingPlayerIds: a.allPlayerIds.filter(
+        id => !a.soldPlayerIds.includes(id) && id !== player.id
+      ),
+      soldPlayerIds: a.soldPlayerIds,
+      currentLotIndex: a.currentLotIndex,
+      totalLots,
+    };
+
     // Collect AI teams that both CAN and WANT to bid
     const interested = Object.values(teams).filter((t) => {
       if (t.id === userTeamId) return false;
       if (t.id === a.currentHighBidderTeamId) return false; // already highest bidder
-      return canAIBidAtAmount(t, player, nextBid, lotId, allPlayers, difficulty);
+      return canAIBidAtAmount(t, player, nextBid, lotId, allPlayers, difficulty, ctx);
     });
 
     if (interested.length === 0) return; // nobody wants to bid — let timer run
 
     // Pick ONE team to bid this round
-    const biddingTeam = pickBiddingTeam(interested, player, lotId, allPlayers, difficulty);
+    const biddingTeam = pickBiddingTeam(interested, player, lotId, allPlayers, difficulty, ctx);
     if (!biddingTeam) return;
 
     useGameStore.getState().placeBid(biddingTeam.id, nextBid);
