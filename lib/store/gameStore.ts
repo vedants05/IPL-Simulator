@@ -332,7 +332,7 @@ export const useGameStore = create<Store>()(
       },
 
       passBid: () => {
-        // User passes — nothing to do (timer continues)
+        hammerFall();
       },
 
       useRTM: () => {

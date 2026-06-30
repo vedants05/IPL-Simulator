@@ -9,6 +9,7 @@ export default function BidPanel() {
   const teams = useGameStore((s) => s.teams);
   const userTeamId = useGameStore((s) => s.userTeamId);
   const placeBid = useGameStore((s) => s.placeBid);
+  const passBid = useGameStore((s) => s.passBid);
   const tickTimer = useGameStore((s) => s.tickTimer);
   const tickRTMTimer = useGameStore((s) => s.tickRTMTimer);
 
@@ -130,6 +131,7 @@ export default function BidPanel() {
           BID {formatPrice(nextBid)} ↑
         </button>
         <button
+          onClick={passBid}
           className="px-5 bg-surface2 hover:bg-border text-text-secondary font-medium py-3 rounded-lg text-sm transition-colors border border-border"
         >
           PASS

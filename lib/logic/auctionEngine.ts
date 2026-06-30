@@ -290,6 +290,41 @@ function getPersonalityMult(player: Player, team: Team, comp: SquadComp): number
 }
 
 // ---------------------------------------------------------------------------
+// Participation check — not every team bids on every player even if they
+// need that role. Models teams "saving" for their own targets.
+// ---------------------------------------------------------------------------
+function getRoleExcess(role: string, comp: SquadComp): number {
+  if (role === "WK-Batsman")  return comp.wks         - TARGETS.wks;
+  if (role === "Batsman")     return comp.batters      - TARGETS.batters;
+  if (role === "Pace Bowler") return comp.pacers       - TARGETS.pacers;
+  if (role === "Spin Bowler") return comp.spinners     - TARGETS.spinners;
+  if (role === "All-Rounder") return comp.allrounders  - TARGETS.allrounders;
+  return 0;
+}
+
+function shouldParticipate(player: Player, team: Team, comp: SquadComp, fsm: FSMState): boolean {
+  if (fsm === "Panic") return true; // Always in panic
+  const excess = getRoleExcess(player.role, comp);
+
+  // Base participation chance by role saturation
+  let chance = excess < 0  ? 0.82  // Role is missing
+    : excess === 0          ? 0.65  // Role at target
+    : excess === 1          ? 0.42  // Slight excess
+    : excess === 2          ? 0.22  // Too many
+    :                         0.08; // Way over-staffed
+
+  // WK: if no keeper at all, always participate (regardless of role)
+  if (player.role === "WK-Batsman" && comp.wks === 0) return true;
+
+  // Team personality modifiers
+  if (team.id === "RR") chance *= 0.70;  // Value hunters — very selective
+  if (team.id === "RCB" && player.starRating >= 4.5) chance = Math.min(0.95, chance * 1.4);
+  if (team.id === "MI" && player.starRating >= 4.5) chance = Math.min(0.90, chance * 1.2);
+
+  return Math.random() < Math.min(0.95, chance);
+}
+
+// ---------------------------------------------------------------------------
 // Core valuation
 // ---------------------------------------------------------------------------
 export function computeTeamValuation(
@@ -306,13 +341,21 @@ export function computeTeamValuation(
   // Snoozing: only bid at base price
   if (fsm === "Snoozing") return player.basePrice;
 
+  // Participation check: team might sit this lot out
+  if (!shouldParticipate(player, team, comp, fsm)) return 0;
+
+  // Base market rate from star rating
   const base = starToBaseLakhs(player.starRating);
+
+  // Form factor: current batting/bowling rating shifts valuation vs star tier
+  const relevantRating = Math.max(player.currentBatting ?? 0, player.currentBowling ?? 0);
+  const formMult = relevantRating > 0 ? 0.80 + (relevantRating / 100) * 0.40 : 1.0;
 
   const roleNeed    = getRoleNeedMult(player, comp, fsm);
   if (roleNeed === 0) return 0;
 
   const natMult     = getNatMult(player, comp);
-  if (natMult === 0) return 0; // Overseas hard block
+  if (natMult === 0) return 0;
 
   const loyalty     = getLoyaltyMult(player, team);
   const personality = getPersonalityMult(player, team, comp);
@@ -320,17 +363,20 @@ export function computeTeamValuation(
   const scarcity    = getScarcityMult(player, allPlayers, ctx);
   const urgency     = getUrgencyMult(comp, ctx);
   const diffMult    = difficulty === "Hard" ? 1.10 : difficulty === "Easy" ? 0.88 : 1.0;
-  const variance    = 0.90 + Math.random() * 0.20;
 
-  const raw = base * roleNeed * natMult * loyalty * personality * budget * scarcity * urgency * diffMult * variance;
+  // Wider variance (±20%) so identical-star players sell at different prices
+  const variance = 0.80 + Math.random() * 0.40;
 
-  // Purse cap: never value more than 22% of remaining purse
-  const purseCap = team.remainingPurse * 0.22;
+  const raw = base * formMult * roleNeed * natMult * loyalty * personality * budget * scarcity * urgency * diffMult * variance;
 
-  // Panic FSM: ignore the normal star-band ceiling
+  // Purse safety net: 40% of remaining purse — generous enough to not dominate
+  // but stops reckless over-spending late in auction
+  const purseCap = team.remainingPurse * 0.40;
+
+  // Star-band ceiling: max 2× the base market rate for this tier
   const starCap = fsm === "Panic"
-    ? player.basePrice * 12
-    : starToBaseLakhs(player.starRating) * 1.65;
+    ? player.basePrice * 15
+    : starToBaseLakhs(player.starRating) * 2.0;
 
   return Math.round(Math.min(raw, purseCap, starCap));
 }
