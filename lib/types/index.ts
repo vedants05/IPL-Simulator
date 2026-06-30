@@ -4,7 +4,6 @@ export type BattingStyle = "Right-hand" | "Left-hand";
 export type Potential = "Established" | "Promising" | "World Class" | "Wonderkid";
 export type AuctionType = "mini" | "mega";
 export type AuctionPhase = "pre-auction" | "retention" | "live" | "completed";
-export type Difficulty = "Easy" | "Normal" | "Hard";
 export type AIPersonality = "Conservative" | "Aggressive" | "Balanced";
 export type FanBase = "Small" | "Medium" | "Large" | "Massive";
 
@@ -162,7 +161,6 @@ export interface GameState {
   players: Record<string, Player>;
   teams: Record<string, Team>;
   userTeamId: string;
-  difficulty: Difficulty;
   auction: AuctionState | null;
   isSetupComplete: boolean;
 }

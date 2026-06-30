@@ -3,24 +3,16 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useGameStore } from "@/lib/store/gameStore";
 import { TEAMS_SEED } from "@/lib/data/teams";
-import { Difficulty } from "@/lib/types";
-
-const DIFFICULTY_OPTIONS: { value: Difficulty; label: string; desc: string }[] = [
-  { value: "Easy", label: "Easy", desc: "AI bids less aggressively. More room to build your squad." },
-  { value: "Normal", label: "Normal", desc: "Balanced competition. Realistic auction dynamics." },
-  { value: "Hard", label: "Hard", desc: "AI bids aggressively and fights for every star player." },
-];
 
 export default function SetupPage() {
   const router = useRouter();
   const initNewGame = useGameStore((s) => s.initNewGame);
-  const [step, setStep] = useState<"team" | "difficulty" | "confirm">("team");
+  const [step, setStep] = useState<"team" | "confirm">("team");
   const [selectedTeam, setSelectedTeam] = useState<string | null>(null);
-  const [difficulty, setDifficulty] = useState<Difficulty>("Normal");
 
   function handleStart() {
     if (!selectedTeam) return;
-    initNewGame(selectedTeam, difficulty);
+    initNewGame(selectedTeam);
     router.push("/game/auction");
   }
 
@@ -83,46 +75,9 @@ export default function SetupPage() {
             </div>
             <div className="flex justify-end mt-6">
               <button
-                onClick={() => selectedTeam && setStep("difficulty")}
+                onClick={() => selectedTeam && setStep("confirm")}
                 disabled={!selectedTeam}
                 className="bg-accent hover:bg-accent-hover disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold px-8 py-3 rounded-lg transition-colors"
-              >
-                Next: Difficulty →
-              </button>
-            </div>
-          </div>
-        )}
-
-        {step === "difficulty" && (
-          <div className="max-w-lg mx-auto">
-            <h2 className="text-xl font-bold text-text-primary mb-2">Select Difficulty</h2>
-            <p className="text-text-secondary text-sm mb-6">How aggressively will AI teams bid?</p>
-            <div className="flex flex-col gap-3 mb-8">
-              {DIFFICULTY_OPTIONS.map((opt) => (
-                <button
-                  key={opt.value}
-                  onClick={() => setDifficulty(opt.value)}
-                  className={`text-left rounded-lg border p-4 transition-all
-                    ${difficulty === opt.value
-                      ? "border-accent bg-accent/10 ring-1 ring-accent"
-                      : "border-border bg-surface hover:border-accent/50"
-                    }`}
-                >
-                  <div className="font-bold text-text-primary mb-1">{opt.label}</div>
-                  <div className="text-sm text-text-secondary">{opt.desc}</div>
-                </button>
-              ))}
-            </div>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setStep("team")}
-                className="flex-1 bg-surface2 hover:bg-border text-text-secondary font-medium py-3 rounded-lg border border-border transition-colors"
-              >
-                ← Back
-              </button>
-              <button
-                onClick={() => setStep("confirm")}
-                className="flex-1 bg-accent hover:bg-accent-hover text-white font-bold py-3 rounded-lg transition-colors"
               >
                 Next: Confirm →
               </button>
@@ -147,15 +102,9 @@ export default function SetupPage() {
                 </div>
               </div>
               <p className="text-text-secondary text-sm mb-4">{chosenTeam.description}</p>
-              <div className="flex gap-4 text-sm">
-                <div>
-                  <span className="text-text-secondary">Difficulty: </span>
-                  <span className="text-text-primary font-semibold">{difficulty}</span>
-                </div>
-                <div>
-                  <span className="text-text-secondary">Starting Purse: </span>
-                  <span className="text-success font-semibold">₹120 Cr</span>
-                </div>
+              <div className="text-sm">
+                <span className="text-text-secondary">Starting Purse: </span>
+                <span className="text-success font-semibold">₹120 Cr</span>
               </div>
             </div>
             <div className="bg-surface2 rounded border border-border p-4 mb-6">
@@ -169,7 +118,7 @@ export default function SetupPage() {
             </div>
             <div className="flex gap-3">
               <button
-                onClick={() => setStep("difficulty")}
+                onClick={() => setStep("team")}
                 className="flex-1 bg-surface2 hover:bg-border text-text-secondary font-medium py-3 rounded-lg border border-border transition-colors"
               >
                 ← Back

@@ -1,4 +1,4 @@
-import { Player, Team, Difficulty } from "@/lib/types";
+import { Player, Team } from "@/lib/types";
 import { getNextBidAmount, canTeamBidOnPlayer, canTeamAffordBid } from "./auctionRules";
 
 // ---------------------------------------------------------------------------
@@ -343,7 +343,6 @@ export function computeTeamValuation(
   player: Player,
   team: Team,
   allPlayers: Record<string, Player>,
-  difficulty: Difficulty,
   ctx: AuctionContext
 ): number {
   const squad = team.squad.map(id => allPlayers[id]).filter(Boolean);
@@ -373,13 +372,11 @@ export function computeTeamValuation(
   const budget      = getBudgetMult(team);
   const scarcity    = getScarcityMult(player, allPlayers, ctx);
   const urgency     = getUrgencyMult(comp, ctx);
-  const diffMult    = difficulty === "Hard" ? 1.10 : difficulty === "Easy" ? 0.88 : 1.0;
-
   // Lognormal private valuation: σ=0.28 gives 90th-pct spread of 0.63×–1.59×
   // Cached per lot, so each team has a consistent but unique "read" on the player
   const lnVar = sampleLognormal(0.28);
 
-  const raw = base * formMult * roleNeed * natMult * loyalty * personality * budget * scarcity * urgency * diffMult * lnVar;
+  const raw = base * formMult * roleNeed * natMult * loyalty * personality * budget * scarcity * urgency * lnVar;
 
   // Per-team variable commitment (26–44% of purse) — baked into the cache so
   // teams have different stopping points even when their logic factors are similar
@@ -404,7 +401,6 @@ export function getLotValuation(
   team: Team,
   player: Player,
   allPlayers: Record<string, Player>,
-  difficulty: Difficulty,
   ctx: AuctionContext
 ): number {
   if (lotId !== _cachedLotId) {
@@ -412,7 +408,7 @@ export function getLotValuation(
     _cachedLotId = lotId;
   }
   if (_valuationCache[team.id] === undefined) {
-    _valuationCache[team.id] = computeTeamValuation(player, team, allPlayers, difficulty, ctx);
+    _valuationCache[team.id] = computeTeamValuation(player, team, allPlayers, ctx);
   }
   return _valuationCache[team.id];
 }
@@ -435,7 +431,6 @@ export function canAIBidAtAmount(
   nextBid: number,
   lotId: string,
   allPlayers: Record<string, Player>,
-  difficulty: Difficulty,
   ctx: AuctionContext
 ): boolean {
   // Basic eligibility (role, already in squad, etc.)
@@ -461,7 +456,7 @@ export function canAIBidAtAmount(
   if (team.remainingPurse - nextBid < reserve) return false;
 
   // Soft valuation gate
-  const valuation = getLotValuation(lotId, team, player, allPlayers, difficulty, ctx);
+  const valuation = getLotValuation(lotId, team, player, allPlayers, ctx);
   if (valuation === 0) return false;
   if (nextBid > valuation) return false;
 
@@ -476,13 +471,12 @@ export function pickBiddingTeam(
   player: Player,
   lotId: string,
   allPlayers: Record<string, Player>,
-  difficulty: Difficulty,
   ctx: AuctionContext
 ): Team | null {
   if (interestedTeams.length === 0) return null;
 
   const weights = interestedTeams.map(t =>
-    Math.max(1, getLotValuation(lotId, t, player, allPlayers, difficulty, ctx))
+    Math.max(1, getLotValuation(lotId, t, player, allPlayers, ctx))
   );
   const total = weights.reduce((a, b) => a + b, 0);
   let r = Math.random() * total;

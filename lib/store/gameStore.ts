@@ -7,7 +7,6 @@ import {
   Player,
   Team,
   AuctionSet,
-  Difficulty,
 } from "@/lib/types";
 import { PLAYERS_SEED } from "@/lib/data/players";
 import { TEAMS_SEED } from "@/lib/data/teams";
@@ -32,7 +31,7 @@ import {
 // Store actions interface
 // ---------------------------------------------------------------------------
 interface GameActions {
-  initNewGame: (userTeamId: string, difficulty: Difficulty) => void;
+  initNewGame: (userTeamId: string) => void;
   retainPlayer: (playerId: string, slot: number) => void;
   releaseRetention: (playerId: string) => void;
   confirmRetentions: () => void;
@@ -86,12 +85,11 @@ export const useGameStore = create<Store>()(
       players: {},
       teams: {},
       userTeamId: "",
-      difficulty: "Normal",
       auction: null,
       isSetupComplete: false,
 
       // ----- Actions -----
-      initNewGame: (userTeamId, difficulty) => {
+      initNewGame: (userTeamId) => {
         const playersMap: Record<string, Player> = {};
         PLAYERS_SEED.forEach((p) => {
           playersMap[p.id] = { ...p };
@@ -117,7 +115,6 @@ export const useGameStore = create<Store>()(
           players: playersMap,
           teams: teamsMap,
           userTeamId,
-          difficulty,
           auction: {
             type: "mega",
             season: 2025,
@@ -472,7 +469,6 @@ export const useGameStore = create<Store>()(
           players: {},
           teams: {},
           userTeamId: "",
-          difficulty: "Normal",
           auction: null,
           isSetupComplete: false,
         });
@@ -490,7 +486,6 @@ export const useGameStore = create<Store>()(
         players: state.players,
         teams: state.teams,
         userTeamId: state.userTeamId,
-        difficulty: state.difficulty,
         auction: state.auction,
         isSetupComplete: state.isSetupComplete,
       }),
@@ -510,7 +505,7 @@ function getRetentionCostForSlot(slot: number): number {
  */
 function simulateRemainingBids(player: Player) {
   const state = useGameStore.getState();
-  const { auction, teams, players: allPlayers, userTeamId, difficulty } = state;
+  const { auction, teams, players: allPlayers, userTeamId } = state;
   if (!auction || !auction.currentPlayer || auction.currentPlayer.id !== player.id) return;
 
   const lotId = player.id;
@@ -538,12 +533,12 @@ function simulateRemainingBids(player: Player) {
     const interested = Object.values(teams).filter(t => {
       if (t.id === userTeamId) return false;           // user decides for themselves
       if (t.id === highBidderTeamId) return false;     // can't outbid yourself
-      return canAIBidAtAmount(t, player, nextBid, lotId, allPlayers, difficulty, ctx);
+      return canAIBidAtAmount(t, player, nextBid, lotId, allPlayers, ctx);
     });
 
     if (interested.length === 0) break;
 
-    const bidder = pickBiddingTeam(interested, player, lotId, allPlayers, difficulty, ctx);
+    const bidder = pickBiddingTeam(interested, player, lotId, allPlayers, ctx);
     if (!bidder) break;
 
     currentBid = nextBid;
@@ -563,7 +558,7 @@ function simulateRemainingBids(player: Player) {
 
 function hammerFall() {
   const state = useGameStore.getState();
-  const { auction, teams, players, userTeamId, difficulty } = state;
+  const { auction, teams, players, userTeamId } = state;
   if (!auction || !auction.currentPlayer) return;
 
   const player = auction.currentPlayer;
@@ -663,7 +658,7 @@ function hammerFall() {
 
 function advanceToNextLot() {
   const state = useGameStore.getState();
-  const { auction, players, teams, userTeamId, difficulty } = state;
+  const { auction, players, teams, userTeamId } = state;
   if (!auction) return;
 
   // Clear sold flash
@@ -784,7 +779,7 @@ function scheduleAIBids(player: Player) {
 
   setTimeout(() => {
     const s = useGameStore.getState();
-    const { auction: a, teams, players: allPlayers, userTeamId, difficulty } = s;
+    const { auction: a, teams, players: allPlayers, userTeamId } = s;
 
     // Guard: lot must still be the same player and auction active
     if (!a || !a.currentPlayer || a.currentPlayer.id !== player.id) return;
@@ -808,13 +803,13 @@ function scheduleAIBids(player: Player) {
     const interested = Object.values(teams).filter((t) => {
       if (t.id === userTeamId) return false;
       if (t.id === a.currentHighBidderTeamId) return false; // already highest bidder
-      return canAIBidAtAmount(t, player, nextBid, lotId, allPlayers, difficulty, ctx);
+      return canAIBidAtAmount(t, player, nextBid, lotId, allPlayers, ctx);
     });
 
     if (interested.length === 0) return; // nobody wants to bid — let timer run
 
     // Pick ONE team to bid this round
-    const biddingTeam = pickBiddingTeam(interested, player, lotId, allPlayers, difficulty, ctx);
+    const biddingTeam = pickBiddingTeam(interested, player, lotId, allPlayers, ctx);
     if (!biddingTeam) return;
 
     useGameStore.getState().placeBid(biddingTeam.id, nextBid);
