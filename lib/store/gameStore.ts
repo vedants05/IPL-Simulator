@@ -332,7 +332,9 @@ export const useGameStore = create<Store>()(
       },
 
       passBid: () => {
-        hammerFall();
+        const { auction, players } = get();
+        if (!auction?.currentPlayer) return;
+        simulateRemainingBids(auction.currentPlayer);
       },
 
       useRTM: () => {
@@ -499,6 +501,64 @@ export const useGameStore = create<Store>()(
 function getRetentionCostForSlot(slot: number): number {
   const costs = [1800, 1400, 1100, 1800, 1400, 1100];
   return costs[slot - 1] ?? 0;
+}
+
+/**
+ * Fast-forward the AI bidding for the current lot synchronously.
+ * Called when the user presses PASS — runs all remaining AI bids instantly,
+ * then hands off to hammerFall so the player sells (or goes unsold) normally.
+ */
+function simulateRemainingBids(player: Player) {
+  const state = useGameStore.getState();
+  const { auction, teams, players: allPlayers, userTeamId, difficulty } = state;
+  if (!auction || !auction.currentPlayer || auction.currentPlayer.id !== player.id) return;
+
+  const lotId = player.id;
+  let currentBid = auction.currentBid;
+  let highBidderTeamId = auction.currentHighBidderTeamId;
+  let biddingHistory = [...auction.biddingHistory];
+
+  const totalLots = auction.sets.reduce((sum, s) => sum + s.playerIds.length, 0);
+  const ctx: AuctionContext = {
+    remainingPlayerIds: auction.allPlayerIds.filter(
+      id => !auction.soldPlayerIds.includes(id) && id !== player.id,
+    ),
+    soldPlayerIds: auction.soldPlayerIds,
+    currentLotIndex: auction.currentLotIndex,
+    totalLots,
+  };
+
+  let iterations = 0;
+  const MAX_ITER = 300;
+
+  while (iterations < MAX_ITER) {
+    iterations++;
+    const nextBid = getNextBidAmount(currentBid);
+
+    const interested = Object.values(teams).filter(t => {
+      if (t.id === userTeamId) return false;           // user decides for themselves
+      if (t.id === highBidderTeamId) return false;     // can't outbid yourself
+      return canAIBidAtAmount(t, player, nextBid, lotId, allPlayers, difficulty, ctx);
+    });
+
+    if (interested.length === 0) break;
+
+    const bidder = pickBiddingTeam(interested, player, lotId, allPlayers, difficulty, ctx);
+    if (!bidder) break;
+
+    currentBid = nextBid;
+    highBidderTeamId = bidder.id;
+    biddingHistory = [{ teamId: bidder.id, amount: nextBid, timestamp: Date.now() }, ...biddingHistory];
+  }
+
+  // Commit the simulated result to the store, then trigger hammer
+  useGameStore.setState(s => ({
+    auction: s.auction
+      ? { ...s.auction, currentBid, currentHighBidderTeamId: highBidderTeamId, biddingHistory }
+      : null,
+  }));
+
+  hammerFall();
 }
 
 function hammerFall() {

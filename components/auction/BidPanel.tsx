@@ -132,7 +132,9 @@ export default function BidPanel() {
         </button>
         <button
           onClick={passBid}
-          className="px-5 bg-surface2 hover:bg-border text-text-secondary font-medium py-3 rounded-lg text-sm transition-colors border border-border"
+          disabled={isUserHighBidder}
+          title={isUserHighBidder ? "You're the highest bidder — you can't pass" : "Skip to auction result"}
+          className="px-5 bg-surface2 hover:bg-border disabled:opacity-40 disabled:cursor-not-allowed text-text-secondary font-medium py-3 rounded-lg text-sm transition-colors border border-border"
         >
           PASS
         </button>

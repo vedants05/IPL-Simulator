@@ -95,6 +95,18 @@ function getFSMState(team: Team, comp: SquadComp, ctx: AuctionContext): FSMState
 }
 
 // ---------------------------------------------------------------------------
+// Lognormal sampler — gives realistic price distributions with a peak near
+// the expected value but a right-skewed tail for bidding wars.
+// σ=0 → always returns 1.0; higher σ → wider spread.
+// ---------------------------------------------------------------------------
+function sampleLognormal(sigma: number): number {
+  const u1 = Math.max(1e-10, Math.random());
+  const u2 = Math.random();
+  const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2); // Box-Muller normal
+  return Math.exp(sigma * z); // lognormal centred at 1 (log-mean = 0)
+}
+
+// ---------------------------------------------------------------------------
 // Base star → lakhs scale (real IPL anchors)
 // ---------------------------------------------------------------------------
 function starToBaseLakhs(star: number): number {
@@ -344,12 +356,11 @@ export function computeTeamValuation(
   // Participation check: team might sit this lot out
   if (!shouldParticipate(player, team, comp, fsm)) return 0;
 
-  // Base market rate from star rating
   const base = starToBaseLakhs(player.starRating);
 
-  // Form factor: current batting/bowling rating shifts valuation vs star tier
+  // Form: narrower range so it influences without dominating
   const relevantRating = Math.max(player.currentBatting ?? 0, player.currentBowling ?? 0);
-  const formMult = relevantRating > 0 ? 0.80 + (relevantRating / 100) * 0.40 : 1.0;
+  const formMult = relevantRating > 0 ? 0.90 + (relevantRating / 100) * 0.20 : 1.0;
 
   const roleNeed    = getRoleNeedMult(player, comp, fsm);
   if (roleNeed === 0) return 0;
@@ -364,21 +375,25 @@ export function computeTeamValuation(
   const urgency     = getUrgencyMult(comp, ctx);
   const diffMult    = difficulty === "Hard" ? 1.10 : difficulty === "Easy" ? 0.88 : 1.0;
 
-  // Wider variance (±20%) so identical-star players sell at different prices
-  const variance = 0.80 + Math.random() * 0.40;
+  // Lognormal private valuation: σ=0.28 gives 90th-pct spread of 0.63×–1.59×
+  // Cached per lot, so each team has a consistent but unique "read" on the player
+  const lnVar = sampleLognormal(0.28);
 
-  const raw = base * formMult * roleNeed * natMult * loyalty * personality * budget * scarcity * urgency * diffMult * variance;
+  const raw = base * formMult * roleNeed * natMult * loyalty * personality * budget * scarcity * urgency * diffMult * lnVar;
 
-  // Purse safety net: 40% of remaining purse — generous enough to not dominate
-  // but stops reckless over-spending late in auction
-  const purseCap = team.remainingPurse * 0.40;
+  // Per-team variable commitment (26–44% of purse) — baked into the cache so
+  // teams have different stopping points even when their logic factors are similar
+  const commitPct = 0.26 + Math.random() * 0.18;
+  const purseCap = team.remainingPurse * commitPct;
 
-  // Star-band ceiling: max 2× the base market rate for this tier
-  const starCap = fsm === "Panic"
-    ? player.basePrice * 15
-    : starToBaseLakhs(player.starRating) * 2.0;
+  // Soft ceiling: above 2.2× market rate, each extra lakh has diminishing returns
+  // (18% carry-through). Prevents absurd bids; rare bidding wars can still breach it.
+  const softCeil = base * 2.2;
+  const cappedRaw = raw > softCeil
+    ? softCeil + (raw - softCeil) * 0.18
+    : raw;
 
-  return Math.round(Math.min(raw, purseCap, starCap));
+  return Math.round(Math.min(cappedRaw, purseCap));
 }
 
 // ---------------------------------------------------------------------------
