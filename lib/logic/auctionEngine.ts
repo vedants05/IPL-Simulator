@@ -315,25 +315,41 @@ function getRoleExcess(role: string, comp: SquadComp): number {
 }
 
 function shouldParticipate(player: Player, team: Team, comp: SquadComp, fsm: FSMState): boolean {
-  if (fsm === "Panic") return true; // Always in panic
-  const excess = getRoleExcess(player.role, comp);
+  // Panic: always bid if the role is genuinely needed, otherwise low chance
+  if (fsm === "Panic") {
+    return getRoleNeedMult(player, comp, fsm) > 1.5 || Math.random() < 0.20;
+  }
 
-  // Base participation chance by role saturation
-  let chance = excess < 0  ? 0.82  // Role is missing
-    : excess === 0          ? 0.65  // Role at target
-    : excess === 1          ? 0.42  // Slight excess
-    : excess === 2          ? 0.22  // Too many
-    :                         0.08; // Way over-staffed
-
-  // WK: if no keeper at all, always participate (regardless of role)
+  // WK emergency: always participate when squad has zero keepers
   if (player.role === "WK-Batsman" && comp.wks === 0) return true;
 
-  // Team personality modifiers
-  if (team.id === "RR") chance *= 0.70;  // Value hunters — very selective
-  if (team.id === "RCB" && player.starRating >= 4.5) chance = Math.min(0.95, chance * 1.4);
-  if (team.id === "MI" && player.starRating >= 4.5) chance = Math.min(0.90, chance * 1.2);
+  const excess = getRoleExcess(player.role, comp);
+  const star = player.starRating;
 
-  return Math.random() < Math.min(0.95, chance);
+  // Each team independently decides whether this specific player is on their
+  // watchlist. Low base rates mean only 2–3 teams typically compete per lot.
+  let chance: number;
+  if (excess < 0) {
+    // Role is missing — teams are scouting, but not everyone targets same player
+    chance = star >= 4.5 ? 0.35 : star >= 4.0 ? 0.28 : 0.18;
+  } else if (excess === 0) {
+    // At target — some opportunistic interest in elite players
+    chance = star >= 4.5 ? 0.16 : 0.09;
+  } else if (excess === 1) {
+    chance = 0.05;
+  } else {
+    chance = 0.02;
+  }
+
+  // Team personality tweaks
+  if (team.id === "RCB" && star >= 4.5)                chance += 0.18;
+  if (team.id === "MI"  && star >= 4.5)                chance += 0.10;
+  if (team.id === "CSK" && player.age >= 33)           chance += 0.10;
+  if (team.id === "KKR" && player.role === "All-Rounder") chance += 0.10;
+  if (team.id === "SRH" && player.nationality === "Overseas") chance += 0.10;
+  if (team.id === "RR")                                chance *= 0.60;
+
+  return Math.random() < Math.min(0.75, chance);
 }
 
 // ---------------------------------------------------------------------------
@@ -378,9 +394,12 @@ export function computeTeamValuation(
 
   const raw = base * formMult * roleNeed * natMult * loyalty * personality * budget * scarcity * urgency * lnVar;
 
-  // Per-team variable commitment (26–44% of purse) — baked into the cache so
-  // teams have different stopping points even when their logic factors are similar
-  const commitPct = 0.26 + Math.random() * 0.18;
+  // Per-team variable commitment (16–36% of purse) — baked into the cache so
+  // teams have different stopping points even when their logic factors are similar.
+  // Wider spread (vs old 26-44%) creates natural price variance: the same 5★ player
+  // can sell for ₹16 Cr if two conservative teams bid, or ₹28 Cr if two aggressive
+  // teams happen to both target it.
+  const commitPct = 0.16 + Math.random() * 0.20;
   const purseCap = team.remainingPurse * commitPct;
 
   // Soft ceiling: above 2.2× market rate, each extra lakh has diminishing returns
@@ -488,13 +507,27 @@ export function pickBiddingTeam(
 }
 
 // ---------------------------------------------------------------------------
-// Bid timing — realistic pacing based on bid size
+// Bid timing — mixture distribution for realistic deliberation pacing
+//
+// Three zones (sampled by probability):
+//   28% → quick counter   0.6–2.0 s  (team has already decided)
+//   44% → normal think    2.0–5.0 s  (standard deliberation)
+//   28% → long pause      5.5–10.0 s (team is unsure / conference with scouts)
+//
+// Higher bids get a ×1.25 stretch; early low bids get ×0.75 (faster pace).
 // ---------------------------------------------------------------------------
 export function nextAIBidDelay(currentBid: number): number {
-  if (currentBid < 100)  return 1200 + Math.random() * 800;
-  if (currentBid < 500)  return 1500 + Math.random() * 1000;
-  if (currentBid < 1000) return 1800 + Math.random() * 1200;
-  return 2000 + Math.random() * 1500;
+  const r = Math.random();
+  let base: number;
+  if (r < 0.28) {
+    base = 600  + Math.random() * 1400;  // 0.6–2.0 s
+  } else if (r < 0.72) {
+    base = 2000 + Math.random() * 3000;  // 2.0–5.0 s
+  } else {
+    base = 5500 + Math.random() * 4500;  // 5.5–10.0 s
+  }
+  const stretch = currentBid >= 1500 ? 1.25 : currentBid >= 500 ? 1.0 : 0.75;
+  return Math.round(base * stretch);
 }
 
 export function buildInitialTeamPurses(
