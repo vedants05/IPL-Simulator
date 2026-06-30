@@ -315,41 +315,37 @@ function getRoleExcess(role: string, comp: SquadComp): number {
 }
 
 function shouldParticipate(player: Player, team: Team, comp: SquadComp, fsm: FSMState): boolean {
-  // Panic: always bid if the role is genuinely needed, otherwise low chance
   if (fsm === "Panic") {
-    return getRoleNeedMult(player, comp, fsm) > 1.5 || Math.random() < 0.20;
+    return getRoleNeedMult(player, comp, fsm) > 1.5 || Math.random() < 0.30;
   }
-
-  // WK emergency: always participate when squad has zero keepers
   if (player.role === "WK-Batsman" && comp.wks === 0) return true;
 
   const excess = getRoleExcess(player.role, comp);
   const star = player.starRating;
 
-  // Each team independently decides whether this specific player is on their
-  // watchlist. Low base rates mean only 2–3 teams typically compete per lot.
+  // High initial participation creates an opening bidding war with 4-5 teams.
+  // The variable commitPct inside computeTeamValuation then acts as natural
+  // attrition: low-commitment teams hit their ceiling quickly and drop out,
+  // leaving 2-3 focused teams fighting at the top end.
   let chance: number;
   if (excess < 0) {
-    // Role is missing — teams are scouting, but not everyone targets same player
-    chance = star >= 4.5 ? 0.35 : star >= 4.0 ? 0.28 : 0.18;
+    chance = star >= 4.5 ? 0.62 : star >= 4.0 ? 0.48 : 0.30;
   } else if (excess === 0) {
-    // At target — some opportunistic interest in elite players
-    chance = star >= 4.5 ? 0.16 : 0.09;
+    chance = star >= 4.5 ? 0.28 : 0.14;
   } else if (excess === 1) {
-    chance = 0.05;
+    chance = star >= 4.5 ? 0.10 : 0.05;
   } else {
     chance = 0.02;
   }
 
-  // Team personality tweaks
-  if (team.id === "RCB" && star >= 4.5)                chance += 0.18;
-  if (team.id === "MI"  && star >= 4.5)                chance += 0.10;
-  if (team.id === "CSK" && player.age >= 33)           chance += 0.10;
-  if (team.id === "KKR" && player.role === "All-Rounder") chance += 0.10;
+  if (team.id === "RCB" && star >= 4.5)                    chance += 0.15;
+  if (team.id === "MI"  && star >= 4.5)                    chance += 0.10;
+  if (team.id === "CSK" && player.age >= 33)               chance += 0.08;
+  if (team.id === "KKR" && player.role === "All-Rounder")  chance += 0.10;
   if (team.id === "SRH" && player.nationality === "Overseas") chance += 0.10;
-  if (team.id === "RR")                                chance *= 0.60;
+  if (team.id === "RR")                                    chance *= 0.55;
 
-  return Math.random() < Math.min(0.75, chance);
+  return Math.random() < Math.min(0.85, chance);
 }
 
 // ---------------------------------------------------------------------------
@@ -507,27 +503,36 @@ export function pickBiddingTeam(
 }
 
 // ---------------------------------------------------------------------------
-// Bid timing — mixture distribution for realistic deliberation pacing
+// Bid timing — price-aware deliberation
 //
-// Three zones (sampled by probability):
-//   28% → quick counter   0.6–2.0 s  (team has already decided)
-//   44% → normal think    2.0–5.0 s  (standard deliberation)
-//   28% → long pause      5.5–10.0 s (team is unsure / conference with scouts)
+// At low prices teams fire fast (they know they want the player).
+// As the price climbs into serious money, deliberation kicks in.
 //
-// Higher bids get a ×1.25 stretch; early low bids get ×0.75 (faster pace).
+//  < 200 L  (base price zone):  0.3–1.0 s  — rapid opening salvos
+//  200–600 L:                   0.5–1.8 s  — still confident
+//  600–1500 L:                  mix 1–5 s  — getting serious
+//  > 1500 L  (₹15 Cr+):        mix 2–10 s — real deliberation, can stall 8-9 s
 // ---------------------------------------------------------------------------
 export function nextAIBidDelay(currentBid: number): number {
-  const r = Math.random();
-  let base: number;
-  if (r < 0.28) {
-    base = 600  + Math.random() * 1400;  // 0.6–2.0 s
-  } else if (r < 0.72) {
-    base = 2000 + Math.random() * 3000;  // 2.0–5.0 s
-  } else {
-    base = 5500 + Math.random() * 4500;  // 5.5–10.0 s
+  if (currentBid < 200) {
+    return 300 + Math.random() * 700;    // 0.3–1.0 s
   }
-  const stretch = currentBid >= 1500 ? 1.25 : currentBid >= 500 ? 1.0 : 0.75;
-  return Math.round(base * stretch);
+  if (currentBid < 600) {
+    return 500 + Math.random() * 1300;   // 0.5–1.8 s
+  }
+
+  const r = Math.random();
+  if (currentBid < 1500) {
+    // Mid-range: mostly quick with occasional pauses
+    if (r < 0.45) return 800  + Math.random() * 1200;  // 0.8–2.0 s
+    if (r < 0.80) return 2200 + Math.random() * 2800;  // 2.2–5.0 s
+    return 5000 + Math.random() * 3000;                  // 5.0–8.0 s
+  }
+
+  // High money — weighted towards longer deliberation
+  if (r < 0.22) return 1000 + Math.random() * 1500;   // 1.0–2.5 s (quick counter)
+  if (r < 0.62) return 3000 + Math.random() * 3000;   // 3.0–6.0 s (normal)
+  return 6000 + Math.random() * 4000;                   // 6.0–10.0 s (long think)
 }
 
 export function buildInitialTeamPurses(
