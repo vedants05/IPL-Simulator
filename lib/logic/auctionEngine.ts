@@ -323,17 +323,18 @@ function shouldParticipate(player: Player, team: Team, comp: SquadComp, fsm: FSM
   const excess = getRoleExcess(player.role, comp);
   const star = player.starRating;
 
-  // High initial participation creates an opening bidding war with 4-5 teams.
-  // The variable commitPct inside computeTeamValuation then acts as natural
-  // attrition: low-commitment teams hit their ceiling quickly and drop out,
-  // leaving 2-3 focused teams fighting at the top end.
+  // Per-team participation probability — not a fixed count.
+  // Each team independently rolls against their chance, so the number of
+  // bidders on any given lot is itself a random variable. For a 5★ needed
+  // player with 9 teams all short on that role, the expected bidder count is
+  // ~4.5 but the actual draw might be 2 or 7 on any specific lot.
   let chance: number;
   if (excess < 0) {
-    chance = star >= 4.5 ? 0.62 : star >= 4.0 ? 0.48 : 0.30;
+    chance = star >= 4.5 ? 0.50 : star >= 4.0 ? 0.38 : 0.24;
   } else if (excess === 0) {
-    chance = star >= 4.5 ? 0.28 : 0.14;
+    chance = star >= 4.5 ? 0.22 : 0.11;
   } else if (excess === 1) {
-    chance = star >= 4.5 ? 0.10 : 0.05;
+    chance = star >= 4.5 ? 0.08 : 0.04;
   } else {
     chance = 0.02;
   }
@@ -503,36 +504,34 @@ export function pickBiddingTeam(
 }
 
 // ---------------------------------------------------------------------------
-// Bid timing — price-aware deliberation
+// Bid timing — three-zone mixture, weights shift as price rises.
 //
-// At low prices teams fire fast (they know they want the player).
-// As the price climbs into serious money, deliberation kicks in.
-//
-//  < 200 L  (base price zone):  0.3–1.0 s  — rapid opening salvos
-//  200–600 L:                   0.5–1.8 s  — still confident
-//  600–1500 L:                  mix 1–5 s  — getting serious
-//  > 1500 L  (₹15 Cr+):        mix 2–10 s — real deliberation, can stall 8-9 s
+// Every price band has all three zones (quick / normal / long); only the
+// probabilities change. At low prices most bids are fast but ~12% can still
+// take 3-5s. At high prices most bids are slow but ~18% are quick counters.
+// This means the pacing is never fully predictable.
 // ---------------------------------------------------------------------------
 export function nextAIBidDelay(currentBid: number): number {
-  if (currentBid < 200) {
-    return 300 + Math.random() * 700;    // 0.3–1.0 s
-  }
-  if (currentBid < 600) {
-    return 500 + Math.random() * 1300;   // 0.5–1.8 s
-  }
-
   const r = Math.random();
-  if (currentBid < 1500) {
-    // Mid-range: mostly quick with occasional pauses
-    if (r < 0.45) return 800  + Math.random() * 1200;  // 0.8–2.0 s
-    if (r < 0.80) return 2200 + Math.random() * 2800;  // 2.2–5.0 s
-    return 5000 + Math.random() * 3000;                  // 5.0–8.0 s
+
+  if (currentBid < 300) {
+    // Opening bids — mostly rapid, teams know they want the player
+    if (r < 0.62) return 300  + Math.random() * 800;   // 0.3–1.1 s  (62%)
+    if (r < 0.88) return 1200 + Math.random() * 1300;  // 1.2–2.5 s  (26%)
+    return 3000 + Math.random() * 2000;                  // 3.0–5.0 s  (12%)
   }
 
-  // High money — weighted towards longer deliberation
-  if (r < 0.22) return 1000 + Math.random() * 1500;   // 1.0–2.5 s (quick counter)
-  if (r < 0.62) return 3000 + Math.random() * 3000;   // 3.0–6.0 s (normal)
-  return 6000 + Math.random() * 4000;                   // 6.0–10.0 s (long think)
+  if (currentBid < 1200) {
+    // Building phase — more evenly spread
+    if (r < 0.35) return 500  + Math.random() * 1000;  // 0.5–1.5 s  (35%)
+    if (r < 0.72) return 2000 + Math.random() * 2500;  // 2.0–4.5 s  (37%)
+    return 5000 + Math.random() * 3500;                  // 5.0–8.5 s  (28%)
+  }
+
+  // High money (₹12 Cr+) — deliberation dominates, quick counters are rare
+  if (r < 0.18) return 800  + Math.random() * 1200;   // 0.8–2.0 s  (18%)
+  if (r < 0.58) return 3000 + Math.random() * 3000;   // 3.0–6.0 s  (40%)
+  return 6500 + Math.random() * 3500;                   // 6.5–10.0 s (42%)
 }
 
 export function buildInitialTeamPurses(
