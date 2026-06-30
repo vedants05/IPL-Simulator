@@ -18,7 +18,14 @@ import {
   canTeamAffordBid,
   TOTAL_PURSE_LAKHS,
 } from "@/lib/logic/auctionRules";
-import { buildInitialTeamPurses, processBid, shouldAIBid } from "@/lib/logic/auctionEngine";
+import {
+  buildInitialTeamPurses,
+  processBid,
+  canAIBidAtAmount,
+  pickBiddingTeam,
+  nextAIBidDelay,
+  resetLotCache,
+} from "@/lib/logic/auctionEngine";
 
 // ---------------------------------------------------------------------------
 // Store actions interface
@@ -299,6 +306,10 @@ export const useGameStore = create<Store>()(
               }
             : null,
         }));
+
+        // Fresh lot — reset AI valuation cache and kick off first round
+        resetLotCache();
+        scheduleAIBids(player);
       },
 
       placeBid: (teamId, amount) => {
@@ -312,7 +323,7 @@ export const useGameStore = create<Store>()(
         if (!canBid) return;
         if (!canTeamAffordBid(team, amount)) return;
 
-        const updates = processBid(auction, teamId, amount);
+        const updates = processBid(amount, teamId, auction.biddingHistory);
 
         set((state) => ({
           auction: state.auction ? { ...state.auction, ...updates } : null,
@@ -683,41 +694,62 @@ function advanceToNextLot() {
       : null,
   }));
 
-  // Schedule AI bids
+  // Reset per-lot AI valuation cache so each player gets fresh valuations
+  resetLotCache();
+
+  // Schedule first AI bid round
   scheduleAIBids(player);
 }
 
+/**
+ * AI bidding — one team bids per round, then schedules the next round.
+ * This prevents the previous cascade where all 9 teams fired simultaneously
+ * and re-fired each other, causing bids to shoot to ₹49Cr in seconds.
+ *
+ * Flow:
+ *   1. Wait a realistic delay (based on current bid size)
+ *   2. Find all AI teams that still want to bid (under their cached valuation)
+ *   3. Pick one team (weighted by remaining headroom)
+ *   4. That team bids once
+ *   5. Schedule the next round — stops naturally when no team wants to bid
+ */
 function scheduleAIBids(player: Player) {
   const state = useGameStore.getState();
-  const { teams, userTeamId, difficulty, auction } = state;
-  if (!auction) return;
+  const { auction } = state;
+  if (!auction?.currentPlayer) return;
 
-  // All AI teams consider bidding
-  const aiTeams = Object.values(teams).filter((t) => t.id !== userTeamId);
+  const delay = nextAIBidDelay(auction.currentBid);
+  const lotId = player.id; // stable ID for the valuation cache
 
-  // Stagger their "thinking"
-  aiTeams.forEach((team) => {
-    const delay = 800 + Math.random() * 1500;
-    setTimeout(() => {
-      const currentState = useGameStore.getState();
-      const { auction: currentAuction, teams: currentTeams, players: currentPlayers } = currentState;
-      if (!currentAuction || !currentAuction.currentPlayer) return;
-      if (currentAuction.currentPlayer.id !== player.id) return;
-      if (currentAuction.rtmWindowOpen || currentAuction.soldFlash) return;
+  setTimeout(() => {
+    const s = useGameStore.getState();
+    const { auction: a, teams, players: allPlayers, userTeamId, difficulty } = s;
 
-      const currentTeam = currentTeams[team.id];
-      if (!currentTeam) return;
+    // Guard: lot must still be the same player and auction active
+    if (!a || !a.currentPlayer || a.currentPlayer.id !== player.id) return;
+    if (a.phase !== "live") return;
+    if (a.rtmWindowOpen || a.soldFlash) return;
 
-      const nextBid = getNextBidAmount(currentAuction.currentBid);
+    const nextBid = getNextBidAmount(a.currentBid);
 
-      if (shouldAIBid(currentTeam, player, currentAuction.currentBid, currentPlayers, difficulty)) {
-        useGameStore.getState().placeBid(team.id, nextBid);
+    // Collect AI teams that both CAN and WANT to bid
+    const interested = Object.values(teams).filter((t) => {
+      if (t.id === userTeamId) return false;
+      if (t.id === a.currentHighBidderTeamId) return false; // already highest bidder
+      return canAIBidAtAmount(t, player, nextBid, lotId, allPlayers, difficulty);
+    });
 
-        // Re-schedule another round of AI consideration with updated bid
-        setTimeout(() => scheduleAIBids(player), 1000 + Math.random() * 1000);
-      }
-    }, delay);
-  });
+    if (interested.length === 0) return; // nobody wants to bid — let timer run
+
+    // Pick ONE team to bid this round
+    const biddingTeam = pickBiddingTeam(interested, player, lotId, allPlayers, difficulty);
+    if (!biddingTeam) return;
+
+    useGameStore.getState().placeBid(biddingTeam.id, nextBid);
+
+    // Schedule next round — the chain continues until no one bids
+    scheduleAIBids(player);
+  }, delay);
 }
 
 export { hammerFall, advanceToNextLot, scheduleAIBids };
