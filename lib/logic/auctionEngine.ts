@@ -2,8 +2,7 @@ import { Player, Team } from "@/lib/types";
 import { getNextBidAmount, canTeamBidOnPlayer, canTeamAffordBid } from "./auctionRules";
 
 // ---------------------------------------------------------------------------
-// Per-lot valuation cache — each team gets ONE valuation per player lot,
-// computed once and locked in. Prevents mid-lot mind changes.
+// Per-lot valuation cache — computed once per team per player lot
 // ---------------------------------------------------------------------------
 let _cachedLotId: string | null = null;
 const _valuationCache: Record<string, number> = {};
@@ -13,41 +12,23 @@ export function resetLotCache() {
   Object.keys(_valuationCache).forEach((k) => delete _valuationCache[k]);
 }
 
-// ---------------------------------------------------------------------------
-// Auction context passed from the store each round
-// ---------------------------------------------------------------------------
 export interface AuctionContext {
-  remainingPlayerIds: string[]; // IDs not yet sold (excluding current lot)
+  remainingPlayerIds: string[];
   soldPlayerIds: string[];
   currentLotIndex: number;
   totalLots: number;
 }
 
-// ---------------------------------------------------------------------------
-// Squad composition types
-// ---------------------------------------------------------------------------
 interface SquadComp {
-  batters: number;
-  wks: number;
-  allrounders: number;
-  spinners: number;
-  pacers: number;
-  overseas: number;
-  indians: number;
-  total: number;
+  batters: number; wks: number; allrounders: number;
+  spinners: number; pacers: number;
+  overseas: number; indians: number; total: number;
 }
 
-// Minimum composition every team should reach
-const TARGETS = {
-  batters:     5,
-  wks:         2,
-  allrounders: 2,
-  spinners:    2,
-  pacers:      3,
-  minTotal:    18,
-  maxTotal:    25,
-  maxOverseas: 8,
-  minSalaryPerSlot: 20, // ₹20L floor per remaining slot
+// IPL structural rules — these are fixed (league rules, not preferences)
+const RULES = {
+  batters: 5, wks: 2, allrounders: 2, spinners: 2, pacers: 3,
+  minTotal: 18, maxTotal: 25, maxOverseas: 8, minSalaryPerSlot: 20,
 };
 
 function getSquadComp(squad: Player[]): SquadComp {
@@ -65,49 +46,50 @@ function getSquadComp(squad: Player[]): SquadComp {
 
 function totalMissingSlots(comp: SquadComp): number {
   return (
-    Math.max(0, TARGETS.batters     - comp.batters)     +
-    Math.max(0, TARGETS.wks         - comp.wks)         +
-    Math.max(0, TARGETS.allrounders - comp.allrounders) +
-    Math.max(0, TARGETS.spinners    - comp.spinners)     +
-    Math.max(0, TARGETS.pacers      - comp.pacers)
+    Math.max(0, RULES.batters     - comp.batters)     +
+    Math.max(0, RULES.wks         - comp.wks)         +
+    Math.max(0, RULES.allrounders - comp.allrounders) +
+    Math.max(0, RULES.spinners    - comp.spinners)     +
+    Math.max(0, RULES.pacers      - comp.pacers)
   );
 }
 
 // ---------------------------------------------------------------------------
-// FSM — three bidding modes
+// Core samplers — every random value flows through one of these two
+// ---------------------------------------------------------------------------
+
+function u(min: number, max: number): number {
+  return min + Math.random() * (max - min);
+}
+
+function lognormal(sigma: number): number {
+  const u1 = Math.max(1e-10, Math.random());
+  const u2 = Math.random();
+  const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+  return Math.exp(sigma * z);
+}
+
+// ---------------------------------------------------------------------------
+// FSM — each team samples its own panic/snooze thresholds, not a global step
 // ---------------------------------------------------------------------------
 type FSMState = "Snoozing" | "Hunting" | "Panic";
 
 function getFSMState(team: Team, comp: SquadComp, ctx: AuctionContext): FSMState {
-  const slotsToMin = Math.max(0, TARGETS.minTotal - comp.total);
+  const slotsToMin = Math.max(0, RULES.minTotal - comp.total);
   const prog = ctx.totalLots > 0 ? ctx.currentLotIndex / ctx.totalLots : 0;
 
-  // Panic: not at minimum squad, auction is >70% done
-  if (slotsToMin > 0 && prog > 0.7) return "Panic";
-  // Panic: no wicketkeeper at all and >60% of auction done
-  if (comp.wks === 0 && prog > 0.6) return "Panic";
+  // Thresholds are sampled — Team A may panic earlier than Team B
+  if (slotsToMin > 0 && prog > u(0.63, 0.78)) return "Panic";
+  if (comp.wks === 0  && prog > u(0.54, 0.67)) return "Panic";
 
-  // Snoozing: composition targets met and nearly out of budget
   const satisfied = totalMissingSlots(comp) === 0;
-  if (satisfied && team.remainingPurse < team.totalPurse * 0.15) return "Snoozing";
+  if (satisfied && team.remainingPurse < team.totalPurse * u(0.11, 0.19)) return "Snoozing";
 
   return "Hunting";
 }
 
 // ---------------------------------------------------------------------------
-// Lognormal sampler — gives realistic price distributions with a peak near
-// the expected value but a right-skewed tail for bidding wars.
-// σ=0 → always returns 1.0; higher σ → wider spread.
-// ---------------------------------------------------------------------------
-function sampleLognormal(sigma: number): number {
-  const u1 = Math.max(1e-10, Math.random());
-  const u2 = Math.random();
-  const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2); // Box-Muller normal
-  return Math.exp(sigma * z); // lognormal centred at 1 (log-mean = 0)
-}
-
-// ---------------------------------------------------------------------------
-// Base star → lakhs scale (real IPL anchors)
+// Market-rate anchors (IPL salary-calibrated, not changed)
 // ---------------------------------------------------------------------------
 function starToBaseLakhs(star: number): number {
   const anchors: [number, number][] = [
@@ -117,109 +99,102 @@ function starToBaseLakhs(star: number): number {
   for (let i = 0; i < anchors.length - 1; i++) {
     const [s0, v0] = anchors[i];
     const [s1, v1] = anchors[i + 1];
-    if (star >= s0 && star <= s1) {
-      return v0 + ((star - s0) / (s1 - s0)) * (v1 - v0);
-    }
+    if (star >= s0 && star <= s1) return v0 + ((star - s0) / (s1 - s0)) * (v1 - v0);
   }
   return anchors[anchors.length - 1][1];
 }
 
 // ---------------------------------------------------------------------------
-// Multiplier: role need + squad composition matrix + FSM
+// Role need — every return is a sampled range, not a hardcoded point
 // ---------------------------------------------------------------------------
 function getRoleNeedMult(player: Player, comp: SquadComp, fsm: FSMState): number {
   const r = player.role;
 
   if (fsm === "Panic") {
-    if (r === "WK-Batsman"  && comp.wks         < TARGETS.wks)         return 3.0;
-    if (r === "Batsman"     && comp.batters      < TARGETS.batters)     return 2.5;
-    if (r === "Pace Bowler" && comp.pacers       < TARGETS.pacers)      return 2.5;
-    if (r === "Spin Bowler" && comp.spinners     < TARGETS.spinners)    return 2.5;
-    if (r === "All-Rounder" && comp.allrounders  < TARGETS.allrounders) return 2.0;
-    if (comp.total < TARGETS.minTotal) return 1.8; // Any player helps fill the squad
-    return 0.5; // Role already covered — skip in panic
+    if (r === "WK-Batsman"  && comp.wks         < RULES.wks)         return u(2.5, 3.6);
+    if (r === "Batsman"     && comp.batters      < RULES.batters)     return u(1.9, 3.1);
+    if (r === "Pace Bowler" && comp.pacers       < RULES.pacers)      return u(1.9, 3.1);
+    if (r === "Spin Bowler" && comp.spinners     < RULES.spinners)    return u(1.9, 3.1);
+    if (r === "All-Rounder" && comp.allrounders  < RULES.allrounders) return u(1.5, 2.5);
+    if (comp.total < RULES.minTotal)                                   return u(1.3, 2.1);
+    return u(0.30, 0.65); // Role covered in panic — mostly skipped
   }
 
-  // Wicketkeeper priority (hardcoded because WK scarcity is critical)
   if (r === "WK-Batsman") {
-    if (comp.wks === 0) return 2.0;
-    if (comp.wks === 1) return 1.4;
-    return 0.65; // Already have 2+ WKs
+    if (comp.wks === 0) return u(1.6, 2.5);
+    if (comp.wks === 1) return u(1.1, 1.7);
+    return u(0.45, 0.80);
   }
 
-  // Role balance: more bowlers → value batters more, and vice versa
   const bowlers = comp.pacers + comp.spinners;
   const hitters = comp.batters + comp.wks;
   if (bowlers > hitters + 2) {
-    if (r === "Batsman")     return 1.3;
-    if (r === "All-Rounder") return 1.15;
-    if (r === "Pace Bowler" || r === "Spin Bowler") return 0.65;
+    if (r === "Batsman")                              return u(1.15, 1.50);
+    if (r === "All-Rounder")                          return u(1.05, 1.28);
+    if (r === "Pace Bowler" || r === "Spin Bowler")   return u(0.45, 0.80);
   }
   if (hitters > bowlers + 3) {
-    if (r === "Pace Bowler" || r === "Spin Bowler") return 1.3;
-    if (r === "All-Rounder") return 1.15;
-    if (r === "Batsman") return 0.7;
+    if (r === "Pace Bowler" || r === "Spin Bowler")   return u(1.15, 1.50);
+    if (r === "All-Rounder")                          return u(1.05, 1.28);
+    if (r === "Batsman")                              return u(0.50, 0.85);
   }
 
-  // Unfilled required slots
-  if (r === "Batsman"     && comp.batters      < TARGETS.batters)     return 1.25;
-  if (r === "Pace Bowler" && comp.pacers       < TARGETS.pacers)      return 1.25;
-  if (r === "Spin Bowler" && comp.spinners     < TARGETS.spinners)    return 1.25;
-  if (r === "All-Rounder" && comp.allrounders  < TARGETS.allrounders) return 1.2;
+  if (r === "Batsman"     && comp.batters      < RULES.batters)      return u(1.08, 1.42);
+  if (r === "Pace Bowler" && comp.pacers       < RULES.pacers)       return u(1.08, 1.42);
+  if (r === "Spin Bowler" && comp.spinners     < RULES.spinners)     return u(1.08, 1.42);
+  if (r === "All-Rounder" && comp.allrounders  < RULES.allrounders)  return u(1.05, 1.38);
 
-  // Diminishing returns for excess of this role
-  let filled = 0;
-  if (r === "Batsman")     filled = comp.batters      - TARGETS.batters;
-  if (r === "Pace Bowler") filled = comp.pacers        - TARGETS.pacers;
-  if (r === "Spin Bowler") filled = comp.spinners      - TARGETS.spinners;
-  if (r === "All-Rounder") filled = comp.allrounders   - TARGETS.allrounders;
-  if (filled >= 4) return 0.45;
-  if (filled >= 3) return 0.6;
-  if (filled >= 2) return 0.75;
-  if (filled >= 1) return 0.9;
+  let excess = 0;
+  if (r === "Batsman")     excess = comp.batters      - RULES.batters;
+  if (r === "Pace Bowler") excess = comp.pacers        - RULES.pacers;
+  if (r === "Spin Bowler") excess = comp.spinners      - RULES.spinners;
+  if (r === "All-Rounder") excess = comp.allrounders   - RULES.allrounders;
+  if (excess >= 4) return u(0.28, 0.58);
+  if (excess >= 3) return u(0.42, 0.72);
+  if (excess >= 2) return u(0.58, 0.88);
+  if (excess >= 1) return u(0.74, 1.04);
 
-  return 1.0;
+  return u(0.88, 1.12); // At exactly target — slight noise either side
 }
 
 // ---------------------------------------------------------------------------
-// Multiplier: nationality (Indians valued more; overseas limit enforced)
+// Nationality — values are ranges around IPL-calibrated anchors
 // ---------------------------------------------------------------------------
 function getNatMult(player: Player, comp: SquadComp): number {
   if (player.nationality === "Overseas") {
-    if (comp.overseas >= TARGETS.maxOverseas) return 0; // Hard block
-    if (comp.overseas >= 6) return 0.68;
-    if (comp.overseas >= 4) return 0.80;
-    return 0.88; // Base overseas discount vs equivalent Indian
+    if (comp.overseas >= RULES.maxOverseas) return 0; // Hard IPL rule
+    if (comp.overseas >= 6) return u(0.56, 0.80);
+    if (comp.overseas >= 4) return u(0.68, 0.92);
+    return u(0.76, 1.00);
   }
-  // Indian: slight premium if team is overseas-heavy
-  const overseasHeavy = comp.overseas > comp.indians;
-  return overseasHeavy ? 1.15 : 1.0;
+  return comp.overseas > comp.indians ? u(1.04, 1.26) : u(0.94, 1.06);
 }
 
 // ---------------------------------------------------------------------------
-// Multiplier: loyalty (previously owned player — not guaranteed)
+// Loyalty — probability of premium AND size of premium both sampled
 // ---------------------------------------------------------------------------
 function getLoyaltyMult(player: Player, team: Team): number {
   const wasMine = player.iplHistory.some(h => h.teamId === team.id);
-  if (!wasMine) return 1.0;
-  return Math.random() < 0.65 ? 1.18 : 1.0; // 65% chance of loyalty premium
+  if (!wasMine) return u(0.96, 1.04);
+  return Math.random() < u(0.50, 0.78)
+    ? u(1.06, 1.30)   // loyalty premium — size varies per team
+    : u(0.96, 1.06);  // no premium this time
 }
 
 // ---------------------------------------------------------------------------
-// Multiplier: budget pressure (less money → more conservative)
+// Budget — continuous concave curve + per-team noise, no step thresholds
 // ---------------------------------------------------------------------------
 function getBudgetMult(team: Team): number {
   const pct = team.remainingPurse / team.totalPurse;
-  if (pct > 0.70) return 1.08;
-  if (pct > 0.50) return 1.00;
-  if (pct > 0.35) return 0.88;
-  if (pct > 0.20) return 0.74;
-  if (pct > 0.10) return 0.58;
-  return 0.42;
+  // Smooth curve: ~0.40 when nearly broke, ~1.10 when flush
+  // Exponent sampled so teams have different budget sensitivity curves
+  const exponent = u(0.70, 1.00);
+  const base = 0.40 + Math.pow(Math.max(0, pct), exponent) * 0.72;
+  return base * lognormal(u(0.04, 0.09));
 }
 
 // ---------------------------------------------------------------------------
-// Multiplier: market scarcity (fewer quality players left → pay more)
+// Scarcity — ranges not fixed points; baseline noise even when plentiful
 // ---------------------------------------------------------------------------
 function getScarcityMult(
   player: Player,
@@ -231,70 +206,68 @@ function getScarcityMult(
     const p = allPlayers[id];
     return p && p.role === player.role && p.starRating >= minStar;
   }).length;
-  if (remaining <= 1) return 1.4;
-  if (remaining <= 3) return 1.2;
-  if (remaining <= 6) return 1.1;
-  return 1.0;
+
+  if (remaining <= 1) return u(1.22, 1.58);
+  if (remaining <= 3) return u(1.08, 1.32);
+  if (remaining <= 6) return u(1.00, 1.20);
+  return u(0.93, 1.07); // Noise even when plenty of alternatives
 }
 
 // ---------------------------------------------------------------------------
-// Multiplier: squad urgency (empty required slots near end of auction)
+// Urgency — both the trigger thresholds and the response magnitudes are sampled
 // ---------------------------------------------------------------------------
 function getUrgencyMult(comp: SquadComp, ctx: AuctionContext): number {
-  const prog  = ctx.totalLots > 0 ? ctx.currentLotIndex / ctx.totalLots : 0;
+  const prog    = ctx.totalLots > 0 ? ctx.currentLotIndex / ctx.totalLots : 0;
   const missing = totalMissingSlots(comp);
-  if (missing > 0 && prog > 0.8) return 1.25;
-  if (missing > 0 && prog > 0.6) return 1.12;
-  return 1.0;
+  if (missing > 0 && prog > u(0.73, 0.88)) return u(1.10, 1.40);
+  if (missing > 0 && prog > u(0.52, 0.68)) return u(1.02, 1.22);
+  return u(0.96, 1.04);
 }
 
 // ---------------------------------------------------------------------------
-// Multiplier: team behavioral personality
+// Personality — every bonus and threshold is a sampled range
 // ---------------------------------------------------------------------------
-function getPersonalityMult(player: Player, team: Team, comp: SquadComp): number {
-  const curBat  = player.currentBatting  ?? 0;
-  const curBowl = player.currentBowling  ?? 0;
+function getPersonalityMult(player: Player, team: Team): number {
+  const curBat = player.currentBatting ?? 0;
   let m = 1.0;
 
   switch (team.id) {
     case "MI":
-      // Elite assets + youth prospects
-      if (player.starRating >= 4.5) m *= 1.15;
-      if (player.age <= 22 && player.potential === "Wonderkid") m *= 1.2;
+      if (player.starRating >= 4.5)                                 m *= u(1.07, 1.23);
+      if (player.age <= 22 && player.potential === "Wonderkid")     m *= u(1.10, 1.30);
       break;
 
     case "CSK":
-      // Veterans + all-rounders + spin
-      if (player.age >= 33) m *= 1.15;
-      if (player.role === "All-Rounder") m *= 1.2;
-      if (player.role === "Spin Bowler") m *= 1.12;
+      if (player.age >= 33)                                         m *= u(1.07, 1.23);
+      if (player.role === "All-Rounder")                            m *= u(1.10, 1.30);
+      if (player.role === "Spin Bowler")                            m *= u(1.04, 1.20);
       break;
 
     case "RCB":
-      // Marquee stars + explosive top-order; reckless early
-      if (player.starRating >= 5.0) m *= 1.3;
-      if ((player.role === "Batsman" || player.role === "WK-Batsman") && curBat >= 85) m *= 1.2;
-      if (team.remainingPurse > team.totalPurse * 0.6) m *= 1.12; // Reckless with flush purse
+      if (player.starRating >= 5.0)                                 m *= u(1.16, 1.44);
+      if ((player.role === "Batsman" || player.role === "WK-Batsman") && curBat >= 85)
+                                                                    m *= u(1.10, 1.30);
+      if (team.remainingPurse > team.totalPurse * u(0.48, 0.72))   m *= u(1.05, 1.19);
       break;
 
     case "KKR":
-      // All-rounders + adaptable middle order
-      if (player.role === "All-Rounder") m *= 1.25;
-      if ((player.role === "Batsman" || player.role === "WK-Batsman") && player.starRating >= 3.5) m *= 1.1;
+      if (player.role === "All-Rounder")                            m *= u(1.13, 1.37);
+      if ((player.role === "Batsman" || player.role === "WK-Batsman") && player.starRating >= 3.5)
+                                                                    m *= u(1.03, 1.17);
       break;
 
     case "RR":
-      // Value hunting: never overpay; loves specialist spin + undervalued gems
-      m *= 0.85;
-      if (player.role === "Spin Bowler") m *= 1.2;
-      if (player.starRating <= 2.5 && player.potential === "Promising") m *= 1.15;
+      m *= u(0.76, 0.94);
+      if (player.role === "Spin Bowler")                            m *= u(1.10, 1.30);
+      if (player.starRating <= 2.5 && player.potential === "Promising")
+                                                                    m *= u(1.08, 1.24);
       break;
 
     case "SRH":
-      // High-impact overseas talent + aggressive batters + pace
-      if (player.nationality === "Overseas") m *= 1.15;
-      if (player.role === "Pace Bowler") m *= 1.12;
-      if ((player.role === "Batsman" || player.role === "WK-Batsman") && curBat >= 82) m *= 1.15;
+      if (player.nationality === "Overseas")                        m *= u(1.07, 1.23);
+      if (player.role === "Pace Bowler")                            m *= u(1.04, 1.20);
+      if ((player.role === "Batsman" || player.role === "WK-Batsman") && curBat >= 82)
+                                                                    m *= u(1.07, 1.23);
       break;
   }
 
@@ -302,55 +275,52 @@ function getPersonalityMult(player: Player, team: Team, comp: SquadComp): number
 }
 
 // ---------------------------------------------------------------------------
-// Participation check — not every team bids on every player even if they
-// need that role. Models teams "saving" for their own targets.
+// Participation — base rates AND personality modifiers are ranges
 // ---------------------------------------------------------------------------
 function getRoleExcess(role: string, comp: SquadComp): number {
-  if (role === "WK-Batsman")  return comp.wks         - TARGETS.wks;
-  if (role === "Batsman")     return comp.batters      - TARGETS.batters;
-  if (role === "Pace Bowler") return comp.pacers       - TARGETS.pacers;
-  if (role === "Spin Bowler") return comp.spinners     - TARGETS.spinners;
-  if (role === "All-Rounder") return comp.allrounders  - TARGETS.allrounders;
+  if (role === "WK-Batsman")  return comp.wks         - RULES.wks;
+  if (role === "Batsman")     return comp.batters      - RULES.batters;
+  if (role === "Pace Bowler") return comp.pacers       - RULES.pacers;
+  if (role === "Spin Bowler") return comp.spinners     - RULES.spinners;
+  if (role === "All-Rounder") return comp.allrounders  - RULES.allrounders;
   return 0;
 }
 
 function shouldParticipate(player: Player, team: Team, comp: SquadComp, fsm: FSMState): boolean {
   if (fsm === "Panic") {
-    return getRoleNeedMult(player, comp, fsm) > 1.5 || Math.random() < 0.30;
+    // In panic: always bid if the role is genuinely needed
+    return getRoleNeedMult(player, comp, fsm) > 1.5 || Math.random() < u(0.18, 0.40);
   }
   if (player.role === "WK-Batsman" && comp.wks === 0) return true;
 
   const excess = getRoleExcess(player.role, comp);
-  const star = player.starRating;
+  const star   = player.starRating;
 
-  // Per-team participation probability — not a fixed count.
-  // Each team independently rolls against their chance, so the number of
-  // bidders on any given lot is itself a random variable. For a 5★ needed
-  // player with 9 teams all short on that role, the expected bidder count is
-  // ~4.5 but the actual draw might be 2 or 7 on any specific lot.
+  // Base chance is itself a range — so even two teams with the same squad
+  // composition independently draw different participation thresholds
   let chance: number;
   if (excess < 0) {
-    chance = star >= 4.5 ? 0.50 : star >= 4.0 ? 0.38 : 0.24;
+    chance = star >= 4.5 ? u(0.38, 0.64) : star >= 4.0 ? u(0.26, 0.50) : u(0.14, 0.34);
   } else if (excess === 0) {
-    chance = star >= 4.5 ? 0.22 : 0.11;
+    chance = star >= 4.5 ? u(0.12, 0.30) : u(0.05, 0.17);
   } else if (excess === 1) {
-    chance = star >= 4.5 ? 0.08 : 0.04;
+    chance = star >= 4.5 ? u(0.03, 0.13) : u(0.01, 0.07);
   } else {
-    chance = 0.02;
+    chance = u(0.005, 0.025);
   }
 
-  if (team.id === "RCB" && star >= 4.5)                    chance += 0.15;
-  if (team.id === "MI"  && star >= 4.5)                    chance += 0.10;
-  if (team.id === "CSK" && player.age >= 33)               chance += 0.08;
-  if (team.id === "KKR" && player.role === "All-Rounder")  chance += 0.10;
-  if (team.id === "SRH" && player.nationality === "Overseas") chance += 0.10;
-  if (team.id === "RR")                                    chance *= 0.55;
+  if (team.id === "RCB" && star >= 4.5)                    chance += u(0.07, 0.23);
+  if (team.id === "MI"  && star >= 4.5)                    chance += u(0.04, 0.16);
+  if (team.id === "CSK" && player.age >= 33)               chance += u(0.03, 0.13);
+  if (team.id === "KKR" && player.role === "All-Rounder")  chance += u(0.04, 0.16);
+  if (team.id === "SRH" && player.nationality === "Overseas") chance += u(0.04, 0.16);
+  if (team.id === "RR")                                    chance *= u(0.40, 0.65);
 
   return Math.random() < Math.min(0.85, chance);
 }
 
 // ---------------------------------------------------------------------------
-// Core valuation
+// Core valuation — everything stochastic, locked in once via the cache
 // ---------------------------------------------------------------------------
 export function computeTeamValuation(
   player: Player,
@@ -362,55 +332,62 @@ export function computeTeamValuation(
   const comp  = getSquadComp(squad);
   const fsm   = getFSMState(team, comp, ctx);
 
-  // Snoozing: only bid at base price
-  if (fsm === "Snoozing") return player.basePrice;
+  if (fsm === "Snoozing") {
+    // Snoozing teams bid at roughly base price but with noise (might sneak a value bid)
+    return Math.round(player.basePrice * lognormal(u(0.08, 0.18)));
+  }
 
-  // Participation check: team might sit this lot out
   if (!shouldParticipate(player, team, comp, fsm)) return 0;
 
   const base = starToBaseLakhs(player.starRating);
 
-  // Form: narrower range so it influences without dominating
+  // Form: range of both the floor and the rating sensitivity
   const relevantRating = Math.max(player.currentBatting ?? 0, player.currentBowling ?? 0);
-  const formMult = relevantRating > 0 ? 0.90 + (relevantRating / 100) * 0.20 : 1.0;
+  const formMult = relevantRating > 0
+    ? u(0.86, 0.94) + (relevantRating / 100) * u(0.14, 0.26)
+    : u(0.94, 1.06);
 
   const roleNeed    = getRoleNeedMult(player, comp, fsm);
-  if (roleNeed === 0) return 0;
+  if (roleNeed < 0.1) return 0;
 
   const natMult     = getNatMult(player, comp);
   if (natMult === 0) return 0;
 
   const loyalty     = getLoyaltyMult(player, team);
-  const personality = getPersonalityMult(player, team, comp);
+  const personality = getPersonalityMult(player, team);
   const budget      = getBudgetMult(team);
   const scarcity    = getScarcityMult(player, allPlayers, ctx);
   const urgency     = getUrgencyMult(comp, ctx);
-  // Lognormal private valuation: σ=0.28 gives 90th-pct spread of 0.63×–1.59×
-  // Cached per lot, so each team has a consistent but unique "read" on the player
-  const lnVar = sampleLognormal(0.28);
+
+  // Private market read: sigma is itself sampled so some lots are "consensus"
+  // (teams agree on value, σ≈0.18) and some are "contested" (teams wildly
+  // disagree, σ≈0.38), creating unpredictable bidding wars
+  const lnSigma = u(0.18, 0.38);
+  const lnVar   = lognormal(lnSigma);
 
   const raw = base * formMult * roleNeed * natMult * loyalty * personality * budget * scarcity * urgency * lnVar;
 
-  // Per-team variable commitment (16–36% of purse) — baked into the cache so
-  // teams have different stopping points even when their logic factors are similar.
-  // Wider spread (vs old 26-44%) creates natural price variance: the same 5★ player
-  // can sell for ₹16 Cr if two conservative teams bid, or ₹28 Cr if two aggressive
-  // teams happen to both target it.
-  const commitPct = 0.16 + Math.random() * 0.20;
-  const purseCap = team.remainingPurse * commitPct;
+  // Commitment: fraction of purse this team will risk on a single player.
+  // Mean is sampled, then a lognormal stretch is applied — so distribution
+  // has a realistic long tail (occasional team goes all-in)
+  const commitMean = u(0.16, 0.32);
+  const commitPct  = Math.max(0.08, Math.min(0.48, commitMean * lognormal(u(0.15, 0.28))));
+  const purseCap   = team.remainingPurse * commitPct;
 
-  // Soft ceiling: above 2.2× market rate, each extra lakh has diminishing returns
-  // (18% carry-through). Prevents absurd bids; rare bidding wars can still breach it.
-  const softCeil = base * 2.2;
+  // Soft ceiling: the market-rate multiplier is sampled so sometimes
+  // teams are willing to pay 2× base, sometimes 2.8× (perceived scarcity)
+  const ceilMult = u(1.70, 2.90);
+  const softCeil = base * ceilMult;
+  const carryPct = u(0.08, 0.28); // how much of over-ceiling raw carries through
   const cappedRaw = raw > softCeil
-    ? softCeil + (raw - softCeil) * 0.18
+    ? softCeil + (raw - softCeil) * carryPct
     : raw;
 
   return Math.round(Math.min(cappedRaw, purseCap));
 }
 
 // ---------------------------------------------------------------------------
-// Cached lot valuation (computed once per team per player lot)
+// Cached lot valuation
 // ---------------------------------------------------------------------------
 export function getLotValuation(
   lotId: string,
@@ -430,16 +407,16 @@ export function getLotValuation(
 }
 
 // ---------------------------------------------------------------------------
-// Purse reserve: keep enough for remaining minimum squad slots
+// Purse reserve safety check
 // ---------------------------------------------------------------------------
 export function minimumReserveLakhs(team: Team, allPlayers: Record<string, Player>): number {
   const squad = team.squad.map(id => allPlayers[id]).filter(Boolean);
-  const slotsNeeded = Math.max(0, TARGETS.minTotal - squad.length - 1);
-  return slotsNeeded * TARGETS.minSalaryPerSlot;
+  const slotsNeeded = Math.max(0, RULES.minTotal - squad.length - 1);
+  return slotsNeeded * RULES.minSalaryPerSlot;
 }
 
 // ---------------------------------------------------------------------------
-// Hard eligibility check — must pass all hard rules before soft valuation
+// Hard eligibility gate (IPL rules — not probabilistic)
 // ---------------------------------------------------------------------------
 export function canAIBidAtAmount(
   team: Team,
@@ -449,29 +426,21 @@ export function canAIBidAtAmount(
   allPlayers: Record<string, Player>,
   ctx: AuctionContext
 ): boolean {
-  // Basic eligibility (role, already in squad, etc.)
   const { canBid } = canTeamBidOnPlayer(team, player);
   if (!canBid) return false;
-
-  // Can afford
   if (!canTeamAffordBid(team, nextBid)) return false;
 
   const squad = team.squad.map(id => allPlayers[id]).filter(Boolean);
 
-  // Hard overseas cap
   if (player.nationality === "Overseas") {
     const overseas = squad.filter(p => p.nationality === "Overseas").length;
-    if (overseas >= TARGETS.maxOverseas) return false;
+    if (overseas >= RULES.maxOverseas) return false;
   }
+  if (squad.length >= RULES.maxTotal) return false;
 
-  // Squad full
-  if (squad.length >= TARGETS.maxTotal) return false;
-
-  // Purse-to-slot safety: after this bid, still afford remaining minimum slots
   const reserve = minimumReserveLakhs(team, allPlayers);
   if (team.remainingPurse - nextBid < reserve) return false;
 
-  // Soft valuation gate
   const valuation = getLotValuation(lotId, team, player, allPlayers, ctx);
   if (valuation === 0) return false;
   if (nextBid > valuation) return false;
@@ -505,33 +474,27 @@ export function pickBiddingTeam(
 
 // ---------------------------------------------------------------------------
 // Bid timing — three-zone mixture, weights shift as price rises.
-//
-// Every price band has all three zones (quick / normal / long); only the
-// probabilities change. At low prices most bids are fast but ~12% can still
-// take 3-5s. At high prices most bids are slow but ~18% are quick counters.
-// This means the pacing is never fully predictable.
+// Every band has all three zones; only the probabilities change.
+// At low prices most bids are fast but ~12% can still take 3-5s.
+// At high prices most bids are slow but ~18% are instant counters.
 // ---------------------------------------------------------------------------
 export function nextAIBidDelay(currentBid: number): number {
   const r = Math.random();
 
   if (currentBid < 300) {
-    // Opening bids — mostly rapid, teams know they want the player
-    if (r < 0.62) return 300  + Math.random() * 800;   // 0.3–1.1 s  (62%)
-    if (r < 0.88) return 1200 + Math.random() * 1300;  // 1.2–2.5 s  (26%)
-    return 3000 + Math.random() * 2000;                  // 3.0–5.0 s  (12%)
+    if (r < 0.62) return u(300,  1100);   // 62% quick
+    if (r < 0.88) return u(1200, 2500);   // 26% normal
+    return              u(3000, 5000);     // 12% slow
   }
-
   if (currentBid < 1200) {
-    // Building phase — more evenly spread
-    if (r < 0.35) return 500  + Math.random() * 1000;  // 0.5–1.5 s  (35%)
-    if (r < 0.72) return 2000 + Math.random() * 2500;  // 2.0–4.5 s  (37%)
-    return 5000 + Math.random() * 3500;                  // 5.0–8.5 s  (28%)
+    if (r < 0.35) return u(500,  1500);   // 35% quick
+    if (r < 0.72) return u(2000, 4500);   // 37% normal
+    return              u(5000, 8500);     // 28% slow
   }
-
-  // High money (₹12 Cr+) — deliberation dominates, quick counters are rare
-  if (r < 0.18) return 800  + Math.random() * 1200;   // 0.8–2.0 s  (18%)
-  if (r < 0.58) return 3000 + Math.random() * 3000;   // 3.0–6.0 s  (40%)
-  return 6500 + Math.random() * 3500;                   // 6.5–10.0 s (42%)
+  // High money — deliberation heavy
+  if (r < 0.18) return u(800,  2000);    // 18% quick counter
+  if (r < 0.58) return u(3000, 6000);    // 40% normal
+  return              u(6500, 10000);     // 42% long think
 }
 
 export function buildInitialTeamPurses(
