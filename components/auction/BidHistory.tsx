@@ -90,13 +90,13 @@ export default function BidHistory() {
       </div>
 
       {/* Footer: PASS button */}
-      <div className="shrink-0" style={{ borderTop: "2px solid #16130f" }}>
+      <div className="shrink-0 h-[52px] flex items-center" style={{ borderTop: "2px solid #16130f" }}>
         <button
           onClick={passBid}
           disabled={passDisabled}
           title={passDisabled ? "You're the highest bidder" : "Skip to auction result"}
-          className="w-full font-space-mono font-bold text-[12px] tracking-widest text-text-primary bg-bg
-            py-4 hover:bg-surface disabled:opacity-30 disabled:cursor-not-allowed transition-colors uppercase"
+          className="w-full h-full font-space-mono font-bold text-[12px] tracking-widest text-text-primary bg-bg
+            hover:bg-surface disabled:opacity-30 disabled:cursor-not-allowed transition-colors uppercase"
         >
           {passDisabled ? "You're Winning — Wait" : "Pass"}
         </button>

@@ -1,4 +1,5 @@
 "use client";
+import { useState } from "react";
 import { useGameStore } from "@/lib/store/gameStore";
 import RetentionPhase from "./retention";
 import PlayerCard from "@/components/auction/PlayerCard";
@@ -9,10 +10,14 @@ import UserSquad from "@/components/auction/UserSquad";
 import MiniSoldLog from "@/components/auction/MiniSoldLog";
 import RTMModal from "@/components/auction/RTMModal";
 import SoldAnimation from "@/components/auction/SoldAnimation";
+import PlayerListPopup from "@/components/auction/PlayerListPopup";
+
+type PopupTab = "sold" | "unsold" | "left" | null;
 
 export default function AuctionPage() {
   const { auction, teams, userTeamId } = useGameStore();
   const startAuction = useGameStore((s) => s.startAuction);
+  const [activePopup, setActivePopup] = useState<PopupTab>(null);
 
   if (!auction || auction.phase === "retention") {
     return <RetentionPhase />;
@@ -51,21 +56,32 @@ export default function AuctionPage() {
         </div>
 
         <div className="flex overflow-hidden" style={{ border: "1.5px solid #16130f", borderRadius: "5px" }}>
-          <div className="bg-success px-[11px] py-[7px]">
+          <button
+            onClick={() => setActivePopup(activePopup === "sold" ? null : "sold")}
+            className="bg-success px-[11px] py-[7px] hover:brightness-90 transition-all"
+          >
             <span className="font-space-mono font-bold text-[10px] tracking-wider text-white">
               SOLD {auction.soldPlayerIds.length}
             </span>
-          </div>
-          <div className="bg-danger px-[11px] py-[7px]" style={{ borderLeft: "1.5px solid #16130f" }}>
+          </button>
+          <button
+            onClick={() => setActivePopup(activePopup === "unsold" ? null : "unsold")}
+            className="bg-danger px-[11px] py-[7px] hover:brightness-90 transition-all"
+            style={{ borderLeft: "1.5px solid #16130f" }}
+          >
             <span className="font-space-mono font-bold text-[10px] tracking-wider text-white">
               UNSOLD {auction.unsoldPlayerIds.length}
             </span>
-          </div>
-          <div className="bg-bg px-[11px] py-[7px]" style={{ borderLeft: "1.5px solid #16130f" }}>
+          </button>
+          <button
+            onClick={() => setActivePopup(activePopup === "left" ? null : "left")}
+            className="bg-bg px-[11px] py-[7px] hover:bg-surface transition-all"
+            style={{ borderLeft: "1.5px solid #16130f" }}
+          >
             <span className="font-space-mono font-bold text-[10px] tracking-wider text-text-primary">
               LEFT {totalLeft}
             </span>
-          </div>
+          </button>
         </div>
       </div>
 
@@ -135,6 +151,11 @@ export default function AuctionPage() {
           <UserSquad />
         </div>
       </div>
+
+      {/* Player list popup */}
+      {activePopup && (
+        <PlayerListPopup type={activePopup} onClose={() => setActivePopup(null)} />
+      )}
     </div>
   );
 }

@@ -62,14 +62,14 @@ function BidHistoryPopup({ sale, onClose }: { sale: SaleEntry; onClose: () => vo
 
       {/* Bid history */}
       <div className="flex-1 overflow-y-auto">
-        {sale.bids.length === 0 ? (
+        {(sale.bids ?? []).length === 0 ? (
           <div className="flex items-center justify-center py-4">
             <span className="font-space-mono text-[9px] text-text-secondary tracking-wider">
               No bid history recorded
             </span>
           </div>
         ) : (
-          sale.bids.map((bid, i) => {
+          (sale.bids ?? []).map((bid, i) => {
             const team = teams[bid.teamId];
             return (
               <div
@@ -109,7 +109,7 @@ export default function MiniSoldLog() {
   return (
     <div
       className="shrink-0 flex flex-col relative"
-      style={{ borderTop: "2px solid #16130f", height: "220px" }}
+      style={{ borderTop: "2px solid #16130f", height: "252px", borderBottom: "2px solid #16130f" }}
     >
       {/* Header */}
       <div

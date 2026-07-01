@@ -121,7 +121,7 @@ export default function UserSquad() {
 
       {/* Purse footer */}
       <div
-        className="shrink-0 px-4 py-3 bg-bg flex justify-between items-center"
+        className="shrink-0 h-[52px] px-4 bg-bg flex justify-between items-center"
         style={{ borderTop: "2px solid #16130f" }}
       >
         <span className="font-space-mono text-[9px] tracking-widest text-text-secondary uppercase">Remaining</span>
