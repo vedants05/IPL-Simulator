@@ -11,6 +11,58 @@ function crore(lakhs: number) {
   return `₹${(lakhs / 100).toFixed(2)} Cr`;
 }
 
+function groupIplHistory(history: { teamId: string; season: string; price: number }[]) {
+  const sorted = [...history].sort((a, b) => parseInt(a.season) - parseInt(b.season));
+  
+  const batches = [
+    { start: 2019, end: 2021 },
+    { start: 2022, end: 2024 },
+    { start: 2025, end: 9999 }
+  ];
+
+  const groups: { teamId: string; startYear: string; endYear: string; price: number }[] = [];
+
+  for (const batch of batches) {
+    const batchEntries = sorted.filter(e => {
+      const year = parseInt(e.season);
+      return year >= batch.start && year <= batch.end;
+    });
+
+    if (batchEntries.length === 0) continue;
+
+    let currentGroup: { teamId: string; startYear: string; endYear: string; price: number } | null = null;
+    for (const entry of batchEntries) {
+      if (!currentGroup) {
+        currentGroup = {
+          teamId: entry.teamId,
+          startYear: entry.season,
+          endYear: entry.season,
+          price: entry.price
+        };
+      } else if (
+        currentGroup.teamId === entry.teamId &&
+        currentGroup.price === entry.price &&
+        parseInt(entry.season) === parseInt(currentGroup.endYear) + 1
+      ) {
+        currentGroup.endYear = entry.season;
+      } else {
+        groups.push(currentGroup);
+        currentGroup = {
+          teamId: entry.teamId,
+          startYear: entry.season,
+          endYear: entry.season,
+          price: entry.price
+        };
+      }
+    }
+    if (currentGroup) {
+      groups.push(currentGroup);
+    }
+  }
+
+  return groups;
+}
+
 function RatingBar({
   label,
   current,
@@ -99,14 +151,9 @@ export default function PlayerCard({ player }: Props) {
     <div className="flex flex-col" style={{ borderBottom: "2px solid #16130f" }}>
       {/* Identity band */}
       <div className="px-6 py-4" style={{ borderBottom: "2px solid #16130f" }}>
-        {/* Kicker */}
-        <div className="font-space-mono font-bold text-[10px] tracking-[.16em] text-danger mb-2 uppercase">
-          ■ ON THE BLOCK · LOT {lotIndex + 1}
-        </div>
-
         {/* Name + base price */}
-        <div className="flex items-baseline justify-between gap-3 mb-3">
-          <h2 className="font-anton text-[40px] leading-none uppercase text-text-primary truncate flex-1 min-w-0">
+        <div className="flex items-end justify-between gap-3 mb-1.5">
+          <h2 className="font-anton text-[36px] leading-none uppercase text-text-primary truncate flex-1 min-w-0">
             {player.name}
           </h2>
           <div className="text-right shrink-0">
@@ -211,14 +258,20 @@ export default function PlayerCard({ player }: Props) {
                 IPL History
               </div>
               <div className="flex flex-col gap-2">
-                {[...player.iplHistory].reverse().map((h, i) => (
+                {groupIplHistory(player.iplHistory).reverse().map((g, i) => (
                   <div key={i} className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <span className="font-space-mono text-[9px] text-muted w-[32px]">{h.season}</span>
-                      <span className="font-barlow font-semibold text-[12px] text-text-primary">{h.teamId}</span>
+                      <span className="font-space-mono text-[9px] text-text-secondary w-[68px]">
+                        {parseInt(g.startYear) >= 2025
+                          ? `${g.startYear}–present`
+                          : g.startYear === g.endYear
+                            ? g.startYear
+                            : `${g.startYear}–${g.endYear}`}
+                      </span>
+                      <span className="font-barlow font-semibold text-[12px] text-text-primary">{g.teamId}</span>
                     </div>
                     <span className="font-barlow-condensed font-bold text-[13px] text-danger">
-                      {crore(h.price)}
+                      {crore(g.price)}
                     </span>
                   </div>
                 ))}

@@ -40,7 +40,7 @@ export default function RetentionPhase() {
       {/* Header */}
       <div className="border-b-2 border-border px-8 py-6">
         <div className="font-space-mono font-bold text-[10px] tracking-[.16em] text-text-secondary mb-2 uppercase">
-          Mega Auction 2025 · Pre-Season
+          Mega Auction 2026 · Pre-Season
         </div>
         <h1 className="font-anton text-[44px] leading-none text-text-primary uppercase">
           Select Retentions

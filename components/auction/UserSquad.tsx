@@ -27,7 +27,7 @@ export default function UserSquad() {
   return (
     <div className="flex flex-col h-full bg-surface">
       {/* Header */}
-      <div className="px-4 py-2 shrink-0" style={{ borderBottom: "2px solid #16130f" }}>
+      <div className="px-4 h-[36px] flex items-center shrink-0" style={{ borderBottom: "2px solid #16130f" }}>
         <div className="flex items-center gap-2">
           <div
             className="w-5 h-5 rounded-full flex items-center justify-center text-[8px] font-bold shrink-0"

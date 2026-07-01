@@ -97,7 +97,7 @@ function getFSMState(team: Team, comp: SquadComp, ctx: AuctionContext): FSMState
 // Market-rate anchors (IPL salary-calibrated, not changed)
 // ---------------------------------------------------------------------------
 function starToBaseLakhs(star: number): number {
-  // Anchors calibrated to IPL 2025 mega auction prices.
+  // Anchors calibrated to IPL 2026 mega auction prices.
   // Mid-tier (2.5–3.5★) boosted so 70-80-rated players reach realistic hammer prices.
   const anchors: [number, number][] = [
     [1.0, 25], [1.5, 45], [2.0, 80], [2.5, 230],
@@ -167,14 +167,73 @@ function getRoleNeedMult(player: Player, comp: SquadComp, fsm: FSMState): number
 // ---------------------------------------------------------------------------
 // Nationality — values are ranges around IPL-calibrated anchors
 // ---------------------------------------------------------------------------
-function getNatMult(player: Player, comp: SquadComp): number {
+function getPlayerCost(
+  player: Player,
+  team: Team,
+  allPlayers: Record<string, Player>
+): number {
+  if (player.isRetained) {
+    const retainedList = team.retainedPlayers || [];
+    let cappedCount = 0;
+    for (const id of retainedList) {
+      if (id === player.id) {
+        if (player.isCapped || player.nationality === "Overseas") {
+          const CAPPED_RETENTION_COSTS = [1800, 1400, 1100, 1800, 1400];
+          return CAPPED_RETENTION_COSTS[cappedCount] ?? 0;
+        } else {
+          return 400; // Uncapped
+        }
+      }
+      const p = allPlayers[id];
+      if (p && (p.isCapped || p.nationality === "Overseas")) {
+        cappedCount++;
+      }
+    }
+    return player.basePrice;
+  } else {
+    const entry = player.iplHistory.find(h => h.season === "2026");
+    return entry ? entry.price : player.basePrice;
+  }
+}
+
+function getNatMult(
+  player: Player,
+  comp: SquadComp,
+  team: Team,
+  allPlayers: Record<string, Player>
+): number {
   if (player.nationality === "Overseas") {
     if (comp.overseas >= RULES.maxOverseas) return 0; // Hard IPL rule
-    // Overseas premium declines only as team fills slots (IPL reality: first 4 slots are coveted)
-    if (comp.overseas >= 6) return u(0.68, 0.88);
-    if (comp.overseas >= 4) return u(0.80, 1.02);
-    if (comp.overseas >= 2) return u(0.90, 1.12);
-    return u(0.96, 1.18); // First 2 overseas slots get a premium
+
+    // Calculate spent on overseas players so far
+    const squad = team.squad.map(id => allPlayers[id]).filter(Boolean);
+    const overseasSpent = squad
+      .filter(p => p.nationality === "Overseas")
+      .reduce((sum, p) => sum + getPlayerCost(p, team, allPlayers), 0);
+
+    // Base slots premium
+    let m = 1.0;
+    if (comp.overseas >= 6) m = u(0.68, 0.88);
+    else if (comp.overseas >= 4) m = u(0.80, 1.02);
+    else if (comp.overseas >= 2) m = u(0.90, 1.12);
+    else m = u(0.96, 1.18);
+
+    // Dynamic budget constraint to target 32% - 36% (mean 34%) of total budget
+    const targetOverseas = 7;
+    const targetOverseasBudget = 12000 * 0.34;
+    if (comp.overseas > 0) {
+      const expectedSpent = (comp.overseas / targetOverseas) * targetOverseasBudget;
+      const ratio = overseasSpent / expectedSpent;
+      if (ratio > 1.0) {
+        // Overspent relative to slots filled -> scale down valuation
+        m *= Math.max(0.15, 1.0 - (ratio - 1.0) * 0.7);
+      } else {
+        // Underspent relative to slots filled -> allow slightly more aggressive bidding
+        m *= Math.min(1.25, 1.0 + (1.0 - ratio) * 0.15);
+      }
+    }
+
+    return m;
   }
   return comp.overseas > comp.indians ? u(1.04, 1.26) : u(0.94, 1.06);
 }
@@ -378,7 +437,7 @@ export function computeTeamValuation(
   const roleNeed    = getRoleNeedMult(player, comp, fsm);
   if (roleNeed < 0.1) return 0;
 
-  const natMult     = getNatMult(player, comp);
+  const natMult     = getNatMult(player, comp, team, allPlayers);
   if (natMult === 0) return 0;
 
   const loyalty     = getLoyaltyMult(player, team);

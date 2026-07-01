@@ -24,9 +24,9 @@ export default function TeamPurseList() {
 
   return (
     <div className="flex-1 overflow-y-auto">
-      <div className="px-4 py-2 shrink-0" style={{ borderBottom: "2px solid #16130f" }}>
-        <span className="font-space-mono font-bold text-[10px] tracking-[.14em] text-text-secondary uppercase">
-          Purse / ₹Cr
+      <div className="px-4 h-[36px] flex items-center shrink-0" style={{ borderBottom: "2px solid #16130f" }}>
+        <span className="font-space-mono font-bold text-[10px] tracking-[.14em] text-text-primary uppercase">
+          Purse / <span className="text-[12px] font-sans font-bold">₹</span>Cr
         </span>
       </div>
 

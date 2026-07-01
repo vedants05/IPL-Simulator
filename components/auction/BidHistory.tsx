@@ -26,7 +26,7 @@ export default function BidHistory() {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="px-4 py-2 flex items-center justify-between shrink-0" style={{ borderBottom: "2px solid #16130f" }}>
+      <div className="px-4 h-[36px] flex items-center justify-between shrink-0" style={{ borderBottom: "2px solid #16130f" }}>
         <div className="flex items-center gap-2">
           <div
             className="w-2 h-2 rounded-full bg-danger shrink-0"
@@ -99,7 +99,12 @@ export default function BidHistory() {
           className="w-full h-full font-space-mono font-bold text-[12px] tracking-widest text-text-primary bg-bg
             hover:bg-surface disabled:opacity-30 disabled:cursor-not-allowed transition-colors uppercase"
         >
-          {passDisabled ? "You're Winning — Wait" : "Pass"}
+          {isUserHighBidder
+            ? "You're Winning"
+            : passDisabled
+              ? "Please Wait..."
+              : "Pass"
+          }
         </button>
       </div>
     </div>

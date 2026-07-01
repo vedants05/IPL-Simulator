@@ -39,6 +39,11 @@ import {
 // ---------------------------------------------------------------------------
 // Store actions interface
 // ---------------------------------------------------------------------------
+interface GameStateAdditions {
+  isPaused: boolean;
+  speed: number;
+}
+
 interface GameActions {
   initNewGame: (userTeamId: string) => void;
   retainPlayer: (playerId: string) => void;
@@ -60,12 +65,16 @@ interface GameActions {
   tickRTMTimer: () => void;
   dismissSoldFlash: () => void;
   resetGame: () => void;
+  setPaused: (paused: boolean) => void;
+  togglePaused: () => void;
+  increaseSpeed: () => void;
+  decreaseSpeed: () => void;
 }
 
 // ---------------------------------------------------------------------------
 // Full store type
 // ---------------------------------------------------------------------------
-type Store = GameState & GameActions;
+type Store = GameState & GameStateAdditions & GameActions;
 
 // ---------------------------------------------------------------------------
 // Helper: pick next player in sets
@@ -95,14 +104,16 @@ export const useGameStore = create<Store>()(
       // ----- State -----
       saveId: "",
       saveCreatedAt: "",
-      currentDate: "2025-01-10",
-      currentSeason: 2025,
+      currentDate: "2026-10-01",
+      currentSeason: 2026,
       auctionCycle: 1,
       players: {},
       teams: {},
       userTeamId: "",
       auction: null,
       isSetupComplete: false,
+      isPaused: false,
+      speed: 1,
 
       // ----- Actions -----
       initNewGame: (userTeamId) => {
@@ -125,15 +136,15 @@ export const useGameStore = create<Store>()(
         set({
           saveId: uuidv4(),
           saveCreatedAt: new Date().toISOString(),
-          currentDate: "2025-01-10",
-          currentSeason: 2025,
+          currentDate: "2026-10-01",
+          currentSeason: 2026,
           auctionCycle: 1,
           players: playersMap,
           teams: teamsMap,
           userTeamId,
           auction: {
             type: "mega",
-            season: 2025,
+            season: 2026,
             phase: "retention",
             allPlayerIds: [],
             soldPlayerIds: [],
@@ -475,7 +486,8 @@ export const useGameStore = create<Store>()(
       },
 
       tickTimer: () => {
-        const { auction } = get();
+        const { auction, isPaused } = get();
+        if (isPaused) return;
         if (!auction || auction.phase !== "live" || !auction.currentPlayer) return;
         if (auction.rtm) return;
         if (auction.soldFlash) return;
@@ -494,7 +506,8 @@ export const useGameStore = create<Store>()(
       },
 
       tickRTMTimer: () => {
-        const { auction } = get();
+        const { auction, isPaused } = get();
+        if (isPaused) return;
         if (!auction?.rtm) return;
 
         if (auction.rtm.timerSeconds <= 0) {
@@ -520,6 +533,34 @@ export const useGameStore = create<Store>()(
         }));
       },
 
+      setPaused: (paused: boolean) => {
+        set({ isPaused: paused });
+      },
+
+      togglePaused: () => {
+        set((state) => ({ isPaused: !state.isPaused }));
+      },
+
+      increaseSpeed: () => {
+        set((state) => {
+          let nextSpeed = state.speed;
+          if (state.speed === 1) nextSpeed = 2;
+          else if (state.speed === 2) nextSpeed = 4;
+          else if (state.speed === 4) nextSpeed = 8;
+          return { speed: nextSpeed };
+        });
+      },
+
+      decreaseSpeed: () => {
+        set((state) => {
+          let nextSpeed = state.speed;
+          if (state.speed === 8) nextSpeed = 4;
+          else if (state.speed === 4) nextSpeed = 2;
+          else if (state.speed === 2) nextSpeed = 1;
+          return { speed: nextSpeed };
+        });
+      },
+
       resetGame: () => {
         set({
           saveId: "",
@@ -529,11 +570,13 @@ export const useGameStore = create<Store>()(
           userTeamId: "",
           auction: null,
           isSetupComplete: false,
+          isPaused: false,
+          speed: 1,
         });
       },
     }),
     {
-      name: "ipl-simulator-save",
+      name: "ipl-simulator-save-v3",
       storage: createJSONStorage(() => localStorage),
       partialize: (state) => ({
         saveId: state.saveId,
@@ -546,6 +589,8 @@ export const useGameStore = create<Store>()(
         userTeamId: state.userTeamId,
         auction: state.auction,
         isSetupComplete: state.isSetupComplete,
+        isPaused: state.isPaused,
+        speed: state.speed,
       }),
       merge: (persisted, current) => {
         const p = persisted as Partial<Store>;
@@ -605,7 +650,11 @@ function doRTMTransfer(
           : newTeams[originalTeamId].overseasPlayersCurrent,
     };
 
-    const newPlayers = { ...s.players, [player.id]: { ...player, currentTeamId: originalTeamId } };
+    const updatedHistory = [
+      ...player.iplHistory.filter(h => h.season !== "2026"),
+      { teamId: originalTeamId, season: "2026", price: transferPrice }
+    ];
+    const newPlayers = { ...s.players, [player.id]: { ...player, currentTeamId: originalTeamId, iplHistory: updatedHistory } };
     const newPurses = {
       ...(s.auction?.teamPurses ?? {}),
       [originalTeamId]: { remaining: newTeams[originalTeamId].remainingPurse, squadCount: newTeams[originalTeamId].squad.length },
@@ -780,7 +829,11 @@ function hammerFall() {
           ? newTeams[highBidder].overseasPlayersCurrent + 1
           : newTeams[highBidder].overseasPlayersCurrent,
     };
-    const newPlayers = { ...s.players, [player.id]: { ...player, currentTeamId: highBidder } };
+    const updatedHistory = [
+      ...player.iplHistory.filter(h => h.season !== "2026"),
+      { teamId: highBidder, season: "2026", price: soldAmount }
+    ];
+    const newPlayers = { ...s.players, [player.id]: { ...player, currentTeamId: highBidder, iplHistory: updatedHistory } };
     const newPurses = {
       ...(s.auction?.teamPurses ?? {}),
       [highBidder]: { remaining: newTeams[highBidder].remainingPurse, squadCount: newTeams[highBidder].squad.length },
@@ -1014,6 +1067,8 @@ function scheduleAIBids(player: Player) {
 
   const delay = nextAIBidDelay(auction.currentBid);
   const lotId = player.id; // stable ID for the valuation cache
+  const speed = state.speed;
+  const speedAdjustedDelay = delay / speed;
 
   setTimeout(() => {
     const s = useGameStore.getState();
@@ -1023,6 +1078,11 @@ function scheduleAIBids(player: Player) {
     if (!a || !a.currentPlayer || a.currentPlayer.id !== player.id) return;
     if (a.phase !== "live") return;
     if (a.rtm || a.soldFlash || a.unsoldFlash) return;
+
+    if (s.isPaused) {
+      setTimeout(() => scheduleAIBids(player), 500);
+      return;
+    }
 
     const nextBid = getNextBidAmount(a.currentBid);
 
@@ -1054,7 +1114,7 @@ function scheduleAIBids(player: Player) {
 
     // Schedule next round — the chain continues until no one bids
     scheduleAIBids(player);
-  }, delay);
+  }, speedAdjustedDelay);
 }
 
 // ---------------------------------------------------------------------------

@@ -2,7 +2,7 @@ import { Player, Team, AuctionSet } from "@/lib/types";
 
 export const TOTAL_PURSE_LAKHS = 12000; // ₹120 crore in lakhs
 
-// IPL 2025 mega-auction retention costs
+// IPL 2026 mega-auction retention costs
 // Capped slots 1-5: 18, 14, 11, 18, 14 Cr (in lakhs)
 export const CAPPED_RETENTION_COSTS = [1800, 1400, 1100, 1800, 1400];
 export const UNCAPPED_RETENTION_COST = 400; // ₹4 Cr per uncapped player
@@ -179,14 +179,14 @@ export function findRTMEligibleTeam(
   teams: Record<string, Team>,
   winnerTeamId: string
 ): string | null {
-  const h2024 = player.iplHistory.find(
-    (h) => h.season === "2024" && h.teamId !== winnerTeamId
+  const h2025 = player.iplHistory.find(
+    (h) => h.season === "2025" && h.teamId !== winnerTeamId
   );
-  if (!h2024) return null;
-  const team = teams[h2024.teamId];
+  if (!h2025) return null;
+  const team = teams[h2025.teamId];
   if (!team) return null;
   if (team.rtmCardsUsed >= team.rtmCardsTotal) return null;
   if (player.nationality === "Overseas" && team.overseasPlayersCurrent >= team.overseasPlayersMax) return null;
   if (team.squad.length >= team.maxSquadSize) return null;
-  return h2024.teamId;
+  return h2025.teamId;
 }

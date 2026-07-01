@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useGameStore } from "@/lib/store/gameStore";
 import RetentionPhase from "./retention";
 import PlayerCard from "@/components/auction/PlayerCard";
@@ -19,6 +19,28 @@ export default function AuctionPage() {
   const { auction, teams, userTeamId } = useGameStore();
   const startAuction = useGameStore((s) => s.startAuction);
   const [activePopup, setActivePopup] = useState<PopupTab>(null);
+  const setPaused = useGameStore((s) => s.setPaused);
+
+  useEffect(() => {
+    if (activePopup) {
+      setPaused(true);
+    } else {
+      setPaused(false);
+    }
+  }, [activePopup, setPaused]);
+
+  const userTeam = teams[userTeamId];
+
+  if (!userTeam) {
+    return (
+      <div className="flex-1 flex items-center justify-center min-h-[400px]">
+        <div className="font-barlow text-text-secondary text-center">
+          No active game.{" "}
+          <a href="/setup" className="text-text-primary underline font-semibold">Start a new game</a>
+        </div>
+      </div>
+    );
+  }
 
   if (!auction || auction.phase === "retention") {
     return <RetentionPhase />;
@@ -56,30 +78,31 @@ export default function AuctionPage() {
           </span>
         </div>
 
-        <div className="flex overflow-hidden" style={{ border: "1.5px solid #16130f", borderRadius: "5px" }}>
+        <div className="flex gap-[6px]">
           <button
             onClick={() => setActivePopup(activePopup === "sold" ? null : "sold")}
-            className="bg-success px-[11px] py-[7px] hover:brightness-90 transition-all"
+            className="bg-success px-[11px] py-[7px] hover:brightness-90 transition-all flex items-center justify-center rounded-[5px]"
+            style={{ border: "1.5px solid #16130f" }}
           >
-            <span className="font-space-mono font-bold text-[10px] tracking-wider text-white">
+            <span className="font-space-mono font-bold text-[10px] tracking-wider text-white leading-none">
               SOLD {auction.soldPlayerIds.length}
             </span>
           </button>
           <button
             onClick={() => setActivePopup(activePopup === "unsold" ? null : "unsold")}
-            className="bg-danger px-[11px] py-[7px] hover:brightness-90 transition-all"
-            style={{ borderLeft: "1.5px solid #16130f" }}
+            className="bg-danger px-[11px] py-[7px] hover:brightness-90 transition-all flex items-center justify-center rounded-[5px]"
+            style={{ border: "1.5px solid #16130f" }}
           >
-            <span className="font-space-mono font-bold text-[10px] tracking-wider text-white">
+            <span className="font-space-mono font-bold text-[10px] tracking-wider text-white leading-none">
               UNSOLD {auction.unsoldPlayerIds.length}
             </span>
           </button>
           <button
             onClick={() => setActivePopup(activePopup === "left" ? null : "left")}
-            className="bg-bg px-[11px] py-[7px] hover:bg-surface transition-all"
-            style={{ borderLeft: "1.5px solid #16130f" }}
+            className="bg-bg px-[11px] py-[7px] hover:bg-surface transition-all flex items-center justify-center rounded-[5px]"
+            style={{ border: "1.5px solid #16130f" }}
           >
-            <span className="font-space-mono font-bold text-[10px] tracking-wider text-text-primary">
+            <span className="font-space-mono font-bold text-[10px] tracking-wider text-text-primary leading-none">
               LEFT {totalLeft}
             </span>
           </button>
@@ -91,10 +114,11 @@ export default function AuctionPage() {
 
         {/* Zone 1: Team Purse (top) + Sold Log (bottom) — 220px */}
         <div
-          className="w-[220px] shrink-0 flex flex-col overflow-hidden relative"
+          className="w-[220px] shrink-0 flex flex-col relative"
           style={{ borderRight: "2px solid #16130f" }}
         >
           <TeamPurseList />
+          <div className="h-[252px] shrink-0" />
           <MiniSoldLog />
         </div>
 

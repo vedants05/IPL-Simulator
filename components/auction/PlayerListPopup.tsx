@@ -1,4 +1,5 @@
 "use client";
+import { useState, useEffect } from "react";
 import { useGameStore } from "@/lib/store/gameStore";
 import { Player } from "@/lib/types";
 
@@ -118,7 +119,7 @@ export default function PlayerListPopup({
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div
-        className="w-full bg-bg flex flex-col overflow-hidden"
+        className="w-full bg-[#f4f1ea] flex flex-col rounded-[8px] overflow-hidden"
         style={{
           maxWidth: "640px",
           border: "2px solid #16130f",
@@ -140,7 +141,7 @@ export default function PlayerListPopup({
           </div>
           <button
             onClick={onClose}
-            className="font-space-mono text-[15px] text-accent hover:text-white transition-colors ml-4"
+            className="w-7 h-7 flex items-center justify-center border border-white/10 bg-white/5 text-accent hover:bg-accent hover:text-[#16130f] hover:border-accent transition-all duration-150 rounded shrink-0 text-[14px] font-bold"
           >
             ✕
           </button>

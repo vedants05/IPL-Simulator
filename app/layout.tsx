@@ -28,7 +28,7 @@ const spaceMono = Space_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "IPL Manager 2025",
+  title: "IPL Manager 2026",
   description: "IPL franchise management simulator",
 };
 

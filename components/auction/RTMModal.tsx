@@ -34,7 +34,7 @@ export default function RTMModal() {
   if (phase === "offer" && isUserOriginal) {
     return (
       <div className="absolute inset-0 z-40 flex items-center justify-center bg-border/80 backdrop-blur-sm">
-        <div className="bg-bg border-2 border-border w-full max-w-md mx-4 shadow-2xl">
+        <div className="bg-[#f4f1ea] border-2 border-border w-full max-w-md mx-4 shadow-2xl rounded-[8px] overflow-hidden">
           <div className="bg-accent px-6 py-4">
             <div className="font-space-mono font-bold text-[10px] tracking-[.16em] text-border mb-1 uppercase">
               Right to Match · Your Decision
@@ -98,7 +98,7 @@ export default function RTMModal() {
     const currentCounter = counterInput ?? minRaise;
     return (
       <div className="absolute inset-0 z-40 flex items-center justify-center bg-border/80 backdrop-blur-sm">
-        <div className="bg-bg border-2 border-border w-full max-w-md mx-4 shadow-2xl">
+        <div className="bg-[#f4f1ea] border-2 border-border w-full max-w-md mx-4 shadow-2xl rounded-[8px] overflow-hidden">
           <div className="bg-danger px-6 py-4">
             <div className="font-space-mono font-bold text-[10px] tracking-[.16em] text-white mb-1 uppercase">
               RTM Alert · {originalTeam?.shortName} Exercised RTM
@@ -170,7 +170,7 @@ export default function RTMModal() {
   if (phase === "original_match" && isUserOriginal) {
     return (
       <div className="absolute inset-0 z-40 flex items-center justify-center bg-border/80 backdrop-blur-sm">
-        <div className="bg-bg border-2 border-border w-full max-w-md mx-4 shadow-2xl">
+        <div className="bg-[#f4f1ea] border-2 border-border w-full max-w-md mx-4 shadow-2xl rounded-[8px] overflow-hidden">
           <div className="bg-accent px-6 py-4">
             <div className="font-space-mono font-bold text-[10px] tracking-[.16em] text-border mb-1 uppercase">
               RTM Counter · Your Final Decision

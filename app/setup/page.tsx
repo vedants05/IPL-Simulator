@@ -26,7 +26,7 @@ export default function SetupPage() {
           IPL Manager
         </span>
         <span className="font-space-mono font-bold text-[10px] tracking-[.14em] text-text-secondary uppercase">
-          2025 Season
+          2026 Season
         </span>
       </div>
 

@@ -12,8 +12,9 @@ const NAV_ITEMS = [
 
 export default function NavBar() {
   const pathname = usePathname();
-  const { teams, userTeamId, currentDate } = useGameStore();
+  const { teams, userTeamId, currentDate, auction, isPaused, togglePaused, speed, increaseSpeed, decreaseSpeed } = useGameStore();
   const userTeam = teams[userTeamId];
+  const isAuctionPage = pathname.startsWith("/game/auction");
 
   return (
     <nav className="h-12 bg-bg border-b-2 border-border flex items-center px-5 gap-0 shrink-0 z-50">
@@ -47,12 +48,46 @@ export default function NavBar() {
 
       <div className="flex-1" />
 
-      <div className="flex items-center gap-5 font-space-mono text-[10px]">
-        <span className="text-text-secondary tracking-wider">{currentDate}</span>
-        {userTeam && (
-          <span className="text-success font-bold tracking-wider">
-            {formatPrice(userTeam.remainingPurse)} left
-          </span>
+      <div className="flex items-center gap-4 font-space-mono text-[10px]">
+        {!isAuctionPage && (
+          <span className="text-text-secondary tracking-wider">{currentDate}</span>
+        )}
+        {isAuctionPage && auction && auction.phase === "live" && (
+          <>
+            {/* Speed Controls */}
+            <div className="flex items-center gap-0 border border-border rounded bg-border text-white select-none h-[28px] overflow-hidden">
+              <button
+                disabled={speed === 1}
+                onClick={decreaseSpeed}
+                className="hover:text-accent hover:bg-white/10 disabled:opacity-20 disabled:hover:bg-transparent disabled:hover:text-white transition-all w-7 h-full flex items-center justify-center font-bold text-[10px] cursor-pointer"
+                title="Decrease Speed"
+              >
+                &lt;&lt;
+              </button>
+              <span className="font-space-mono font-bold text-[9px] min-w-[26px] text-center text-accent flex items-center justify-center h-full border-x border-white/5 bg-black/10 select-none">
+                {speed}x
+              </span>
+              <button
+                disabled={speed === 8}
+                onClick={increaseSpeed}
+                className="hover:text-accent hover:bg-white/10 disabled:opacity-20 disabled:hover:bg-transparent disabled:hover:text-white transition-all w-7 h-full flex items-center justify-center font-bold text-[10px] cursor-pointer"
+                title="Increase Speed"
+              >
+                &gt;&gt;
+              </button>
+            </div>
+
+            <button
+              onClick={togglePaused}
+              className={`px-3 border border-border rounded font-space-mono font-bold text-[9px] tracking-wider uppercase transition-all duration-150 flex items-center justify-center h-[28px]
+                ${isPaused
+                  ? "bg-danger text-white hover:brightness-95 animate-pulse"
+                  : "bg-border text-accent hover:bg-border/90"
+                }`}
+            >
+              {isPaused ? "▶ Resume" : "❚❚ Pause"}
+            </button>
+          </>
         )}
       </div>
     </nav>

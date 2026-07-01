@@ -16,7 +16,7 @@ function BidHistoryPopup({ sale, onClose }: { sale: SaleEntry; onClose: () => vo
 
   return (
     <div
-      className="absolute bottom-0 left-0 right-0 z-50 flex flex-col bg-bg"
+      className="absolute bottom-0 left-0 right-0 z-50 flex flex-col bg-[#f4f1ea] rounded-t-[8px] overflow-hidden"
       style={{ border: "2px solid #16130f", maxHeight: "320px" }}
     >
       {/* Popup header */}
@@ -34,7 +34,7 @@ function BidHistoryPopup({ sale, onClose }: { sale: SaleEntry; onClose: () => vo
         </div>
         <button
           onClick={onClose}
-          className="font-space-mono text-[11px] text-accent hover:text-white ml-3 shrink-0"
+          className="w-7 h-7 flex items-center justify-center border border-white/10 bg-white/5 text-accent hover:bg-accent hover:text-[#16130f] hover:border-accent transition-all duration-150 rounded shrink-0 text-[14px] font-bold"
         >
           ✕
         </button>
@@ -101,23 +101,59 @@ function BidHistoryPopup({ sale, onClose }: { sale: SaleEntry; onClose: () => vo
 export default function MiniSoldLog() {
   const { auction, players, teams } = useGameStore();
   const [selectedSale, setSelectedSale] = useState<SaleEntry | null>(null);
+  const [isClicked, setIsClicked] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
 
   if (!auction) return null;
 
   const history = [...(auction.saleHistory ?? [])].reverse();
 
+  let width = 218;
+  let height = 252;
+  let zIndex = 30;
+
+  if (isClicked) {
+    width = 380;
+    height = 520;
+    zIndex = 45;
+  } else if (isHovered) {
+    width = 300;
+    height = 400;
+    zIndex = 35;
+  }
+
   return (
     <div
-      className="shrink-0 flex flex-col relative"
-      style={{ borderTop: "2px solid #16130f", height: "252px", borderBottom: "2px solid #16130f" }}
+      className="absolute bottom-0 left-0 flex flex-col bg-[#f4f1ea] transition-all duration-300 ease-in-out rounded-t-[8px] overflow-hidden"
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => {
+        setIsHovered(false);
+        if (!isClicked) {
+          setSelectedSale(null);
+        }
+      }}
+      style={{
+        width: `${width}px`,
+        height: `${height}px`,
+        zIndex: zIndex,
+        border: "2px solid #16130f",
+        boxShadow: isClicked || isHovered ? "0 20px 40px rgba(0, 0, 0, 0.7)" : "none",
+      }}
     >
       {/* Header */}
       <div
-        className="flex items-center justify-between px-4 py-2 shrink-0"
+        className="flex items-center justify-between px-4 py-2 shrink-0 cursor-pointer hover:bg-white/5 select-none"
         style={{ borderBottom: "2px solid #16130f" }}
+        onClick={() => {
+          const nextClicked = !isClicked;
+          setIsClicked(nextClicked);
+          if (!nextClicked && !isHovered) {
+            setSelectedSale(null);
+          }
+        }}
       >
-        <span className="font-space-mono font-bold text-[10px] tracking-widest text-text-primary uppercase">
-          Sold Log
+        <span className="font-space-mono font-bold text-[10px] tracking-widest text-text-primary uppercase flex items-center gap-1.5">
+          Sold Log {isClicked ? "▼" : "▲"}
         </span>
         <span className="font-space-mono text-[9px] text-text-secondary">
           {history.length}

@@ -15,6 +15,8 @@ export default function BidPanel() {
   const tickTimer = useGameStore((s) => s.tickTimer);
   const tickRTMTimer = useGameStore((s) => s.tickRTMTimer);
 
+  const speed = useGameStore((s) => s.speed);
+
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const rtmTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -39,19 +41,19 @@ export default function BidPanel() {
       } else {
         s.tickTimer();
       }
-    }, 1000);
+    }, 1000 / speed);
 
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [playerId, hasRtm, hasSoldFlash, hasUnsoldFlash]);
+  }, [playerId, hasRtm, hasSoldFlash, hasUnsoldFlash, speed]);
 
   useEffect(() => {
     if (rtmTimerRef.current) clearInterval(rtmTimerRef.current);
     if (!hasRtm) return;
     rtmTimerRef.current = setInterval(() => {
       useGameStore.getState().tickRTMTimer();
-    }, 1000);
+    }, 1000 / speed);
     return () => { if (rtmTimerRef.current) clearInterval(rtmTimerRef.current); };
-  }, [hasRtm]);
+  }, [hasRtm, speed]);
 
   if (!auction || !auction.currentPlayer) return null;
 
