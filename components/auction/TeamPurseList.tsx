@@ -34,6 +34,7 @@ export default function TeamPurseList() {
         const purseInfo = auction?.teamPurses[team.id];
         const remaining = purseInfo?.remaining ?? team.remainingPurse;
         const squadCount = purseInfo?.squadCount ?? team.squad.length;
+        const rtmLeft = team.rtmCardsTotal - team.rtmCardsUsed;
         const isUser = team.id === userTeamId;
         const isOpen = expanded === team.id;
         const squadPlayers = team.squad.map((id) => players[id]).filter(Boolean);
@@ -62,6 +63,14 @@ export default function TeamPurseList() {
               <span className="font-barlow-condensed font-bold text-[13px] text-text-secondary shrink-0">
                 {squadCount}p
               </span>
+              {rtmLeft > 0 && (
+                <span
+                  className="font-space-mono font-bold text-[8px] tracking-wider shrink-0 px-1.5 py-0.5 rounded-[2px]"
+                  style={{ backgroundColor: "rgba(22,19,15,.12)", color: "#5a5348" }}
+                >
+                  {rtmLeft}RTM
+                </span>
+              )}
               <span
                 className="font-barlow-condensed font-bold text-[15px] leading-none shrink-0"
                 style={{ color: remaining > 3000 ? "#1f9d57" : "#d6492f" }}
@@ -76,6 +85,17 @@ export default function TeamPurseList() {
             {/* Squad dropdown */}
             {isOpen && (
               <div className="bg-surface" style={{ borderBottom: "1px solid rgba(22,19,15,.2)" }}>
+                {/* RTM info row */}
+                <div
+                  className="flex items-center justify-between px-5 py-2"
+                  style={{ borderBottom: "1px solid rgba(22,19,15,.14)", backgroundColor: "rgba(22,19,15,.04)" }}
+                >
+                  <span className="font-space-mono text-[9px] tracking-wider text-text-secondary uppercase">RTM Cards</span>
+                  <span className="font-barlow-condensed font-bold text-[14px]" style={{ color: rtmLeft > 0 ? "#1f9d57" : "#5a5348" }}>
+                    {rtmLeft} / {team.rtmCardsTotal}
+                  </span>
+                </div>
+
                 {squadPlayers.length === 0 ? (
                   <div className="px-5 py-3 font-space-mono text-[9px] text-text-secondary tracking-wider">
                     No players yet

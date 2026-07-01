@@ -2,15 +2,52 @@ import { Player, Team, AuctionSet } from "@/lib/types";
 
 export const TOTAL_PURSE_LAKHS = 12000; // ₹120 crore in lakhs
 
-export const RETENTION_COSTS = [1800, 1400, 1100, 1800, 1400, 1100]; // slots 1-6
+// IPL 2025 mega-auction retention costs
+// Capped slots 1-5: 18, 14, 11, 18, 14 Cr (in lakhs)
+export const CAPPED_RETENTION_COSTS = [1800, 1400, 1100, 1800, 1400];
+export const UNCAPPED_RETENTION_COST = 400; // ₹4 Cr per uncapped player
+export const MAX_CAPPED_RETENTIONS = 5;
+export const MAX_UNCAPPED_RETENTIONS = 2;
+export const MAX_TOTAL_RETENTIONS = 6;
 
-export function getRetentionCost(slot: number): number {
-  return RETENTION_COSTS[slot - 1] ?? 0;
+function isPlayerCapped(player: Player): boolean {
+  return player.isCapped || player.nationality === "Overseas";
 }
 
-export function calculatePurseAfterRetentions(retainedSlots: number[]): number {
-  const totalDeducted = retainedSlots.reduce((sum, slot) => sum + getRetentionCost(slot), 0);
-  return TOTAL_PURSE_LAKHS - totalDeducted;
+/** Cost to retain a specific player given which players are already retained (in order). */
+export function getPlayerRetentionCost(
+  playerId: string,
+  alreadyRetained: string[],
+  players: Record<string, Player>
+): number {
+  const player = players[playerId];
+  if (!player) return 0;
+  if (!isPlayerCapped(player)) return UNCAPPED_RETENTION_COST;
+  const cappedBefore = alreadyRetained.filter((id) => {
+    const p = players[id];
+    return p && isPlayerCapped(p);
+  }).length;
+  return CAPPED_RETENTION_COSTS[cappedBefore] ?? 0;
+}
+
+/** Total purse cost for an ordered retention list. */
+export function calculateTotalRetentionCost(
+  retainedIds: string[],
+  players: Record<string, Player>
+): number {
+  let cappedCount = 0;
+  let total = 0;
+  for (const id of retainedIds) {
+    const p = players[id];
+    if (!p) continue;
+    if (isPlayerCapped(p)) {
+      total += CAPPED_RETENTION_COSTS[cappedCount] ?? 0;
+      cappedCount++;
+    } else {
+      total += UNCAPPED_RETENTION_COST;
+    }
+  }
+  return total;
 }
 
 export function getNextBidAmount(currentBid: number): number {
@@ -136,13 +173,20 @@ export function getSquadConstraintWarnings(team: Team, players: Record<string, P
   return warnings;
 }
 
-export function getRTMEligibility(
-  userTeam: Team,
-  player: Player
-): boolean {
-  if (userTeam.rtmCardsUsed >= userTeam.rtmCardsTotal) return false;
-  const wasInSquad = player.iplHistory.some(
-    (h) => h.teamId === userTeam.id && h.season === "2024"
+/** Returns the teamId that has RTM rights on this player (if any), excluding the winner. */
+export function findRTMEligibleTeam(
+  player: Player,
+  teams: Record<string, Team>,
+  winnerTeamId: string
+): string | null {
+  const h2024 = player.iplHistory.find(
+    (h) => h.season === "2024" && h.teamId !== winnerTeamId
   );
-  return wasInSquad;
+  if (!h2024) return null;
+  const team = teams[h2024.teamId];
+  if (!team) return null;
+  if (team.rtmCardsUsed >= team.rtmCardsTotal) return null;
+  if (player.nationality === "Overseas" && team.overseasPlayersCurrent >= team.overseasPlayersMax) return null;
+  if (team.squad.length >= team.maxSquadSize) return null;
+  return h2024.teamId;
 }

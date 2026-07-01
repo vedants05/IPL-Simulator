@@ -12,6 +12,11 @@ export function resetLotCache() {
   Object.keys(_valuationCache).forEach((k) => delete _valuationCache[k]);
 }
 
+/** Read a team's cached valuation for the current lot (0 if not yet computed). */
+export function getCachedValuation(teamId: string): number {
+  return _valuationCache[teamId] ?? 0;
+}
+
 export interface AuctionContext {
   remainingPlayerIds: string[];
   soldPlayerIds: string[];
@@ -175,14 +180,20 @@ function getNatMult(player: Player, comp: SquadComp): number {
 }
 
 // ---------------------------------------------------------------------------
-// Loyalty — probability of premium AND size of premium both sampled
+// Loyalty — scales with team.dna.loyalty (0-100)
+// CSK (93) almost always pays a premium for ex-players; LSG (20) barely cares
 // ---------------------------------------------------------------------------
 function getLoyaltyMult(player: Player, team: Team): number {
   const wasMine = player.iplHistory.some(h => h.teamId === team.id);
   if (!wasMine) return u(0.96, 1.04);
-  return Math.random() < u(0.50, 0.78)
-    ? u(1.06, 1.30)   // loyalty premium — size varies per team
-    : u(0.96, 1.06);  // no premium this time
+  const loyaltyFactor = team.dna.loyalty / 100; // 0→1
+  // Premium probability: 10% for the least loyal team, ~85% for the most loyal
+  const premiumProb = 0.10 + loyaltyFactor * 0.75;
+  if (Math.random() < premiumProb) {
+    // Premium size also scales with loyalty: +6% for low loyalty, +35% for extreme loyalty
+    return u(1.06, 1.08 + loyaltyFactor * 0.27);
+  }
+  return u(0.96, 1.06);
 }
 
 // ---------------------------------------------------------------------------
@@ -230,50 +241,46 @@ function getUrgencyMult(comp: SquadComp, ctx: AuctionContext): number {
 }
 
 // ---------------------------------------------------------------------------
-// Personality — every bonus and threshold is a sampled range
+// Personality — fully data-driven from team.dna (no hardcoded team IDs)
 // ---------------------------------------------------------------------------
 function getPersonalityMult(player: Player, team: Team): number {
-  const curBat = player.currentBatting ?? 0;
+  const dna = team.dna;
   let m = 1.0;
 
-  switch (team.id) {
-    case "MI":
-      if (player.starRating >= 4.5)                                 m *= u(1.07, 1.23);
-      if (player.age <= 22 && player.potential === "Wonderkid")     m *= u(1.10, 1.30);
-      break;
+  // ── Role valuation ───────────────────────────────────────────────────────
+  // batValue / bowlValue / alrValue range 30-95 → multiplier 0.84-1.18
+  const batRoles = ["Batsman", "WK-Batsman"];
+  const bowlRoles = ["Pace Bowler", "Spin Bowler"];
+  const roleVal = batRoles.includes(player.role) ? dna.batValue
+    : bowlRoles.includes(player.role) ? dna.bowlValue
+    : dna.alrValue;
+  const roleNorm = (roleVal - 30) / 65; // 0 → 1
+  m *= 0.84 + roleNorm * 0.34;          // 0.84 (low val) → 1.18 (high val)
 
-    case "CSK":
-      if (player.age >= 33)                                         m *= u(1.07, 1.23);
-      if (player.role === "All-Rounder")                            m *= u(1.10, 1.30);
-      if (player.role === "Spin Bowler")                            m *= u(1.04, 1.20);
-      break;
+  // ── Big names ─────────────────────────────────────────────────────────────
+  // High bigNamesPref teams pay significantly more for elite players
+  if (player.starRating >= 4.5) {
+    const bigNorm = Math.max(0, (dna.bigNamesPref - 40) / 60); // 0-1 above threshold
+    m *= 1.0 + bigNorm * u(0.14, 0.28);
+  } else if (player.starRating >= 4.0) {
+    const bigNorm = Math.max(0, (dna.bigNamesPref - 50) / 50);
+    m *= 1.0 + bigNorm * u(0.05, 0.14);
+  }
 
-    case "RCB":
-      if (player.starRating >= 5.0)                                 m *= u(1.16, 1.44);
-      if ((player.role === "Batsman" || player.role === "WK-Batsman") && curBat >= 85)
-                                                                    m *= u(1.10, 1.30);
-      if (team.remainingPurse > team.totalPurse * u(0.48, 0.72))   m *= u(1.05, 1.19);
-      break;
+  // ── Youngster preference ──────────────────────────────────────────────────
+  if (player.age <= 23 && (player.potential === "Wonderkid" || player.potential === "Promising")) {
+    const youthNorm = Math.max(0, (dna.prefYoungsters - 20) / 80);
+    m *= 1.0 + youthNorm * u(0.08, 0.22);
+  }
 
-    case "KKR":
-      if (player.role === "All-Rounder")                            m *= u(1.13, 1.37);
-      if ((player.role === "Batsman" || player.role === "WK-Batsman") && player.starRating >= 3.5)
-                                                                    m *= u(1.03, 1.17);
-      break;
-
-    case "RR":
-      m *= u(0.76, 0.94);
-      if (player.role === "Spin Bowler")                            m *= u(1.10, 1.30);
-      if (player.starRating <= 2.5 && player.potential === "Promising")
-                                                                    m *= u(1.08, 1.24);
-      break;
-
-    case "SRH":
-      if (player.nationality === "Overseas")                        m *= u(1.07, 1.23);
-      if (player.role === "Pace Bowler")                            m *= u(1.04, 1.20);
-      if ((player.role === "Batsman" || player.role === "WK-Batsman") && curBat >= 82)
-                                                                    m *= u(1.07, 1.23);
-      break;
+  // ── Experience focus ──────────────────────────────────────────────────────
+  if (player.age >= 31 && player.isCapped) {
+    const expNorm = Math.max(0, (dna.experienceFocus - 20) / 80);
+    m *= 1.0 + expNorm * u(0.06, 0.18);
+  } else if (player.age <= 22 && dna.experienceFocus >= 80) {
+    // Very experience-focused teams slightly discount raw youngsters
+    const penalty = (dna.experienceFocus - 80) / 20;
+    m *= 1.0 - penalty * u(0.02, 0.07);
   }
 
   return m;
@@ -303,28 +310,41 @@ function shouldParticipate(player: Player, team: Team, comp: SquadComp, fsm: FSM
 
   // Base chance is itself a range — so even two teams with the same squad
   // composition independently draw different participation thresholds
+  const dna = team.dna;
   let chance: number;
   if (excess < 0) {
     // Role needed — significantly more interest, especially for mid-tier players
     chance = star >= 4.5 ? u(0.60, 0.85) : star >= 4.0 ? u(0.46, 0.70) : u(0.30, 0.54);
   } else if (excess === 0) {
-    // At target — roughly doubled vs before so bidding wars happen
+    // At target — doubled vs before so bidding wars happen more often
     chance = star >= 4.5 ? u(0.28, 0.52) : star >= 3.5 ? u(0.18, 0.36) : u(0.10, 0.24);
   } else if (excess === 1) {
-    // Slight overshoot — some opportunistic bidding
+    // Slight overshoot — opportunistic bidding from depth-minded teams
     chance = star >= 4.5 ? u(0.10, 0.24) : u(0.04, 0.14);
   } else {
     chance = u(0.008, 0.030);
   }
 
-  if (team.id === "RCB" && star >= 4.5)                       chance += u(0.07, 0.23);
-  if (team.id === "MI"  && star >= 4.5)                       chance += u(0.04, 0.16);
-  if (team.id === "CSK" && player.age >= 33)                  chance += u(0.03, 0.13);
-  if (team.id === "KKR" && player.role === "All-Rounder")     chance += u(0.04, 0.16);
-  if (team.id === "SRH" && player.nationality === "Overseas") chance += u(0.05, 0.18);
-  if (team.id === "RR")                                       chance *= u(0.50, 0.75);
+  // ── Depth bonus: teams that value depth stay interested even with excess ──
+  // Only activates for quality players (3.0★+) and teams meaningfully above 50
+  if (excess >= 1 && star >= 3.0) {
+    const depthFactor = Math.max(0, (dna.looksForDepth - 50) / 50); // 0-1
+    chance += depthFactor * u(0.04, 0.16) * (star / 5.0);
+  }
 
-  return Math.random() < Math.min(0.90, chance);
+  // ── Big-name magnetism: high bigNamesPref teams always consider elites ───
+  if (star >= 4.5) {
+    const bigFactor = Math.max(0, (dna.bigNamesPref - 50) / 50);
+    chance += bigFactor * u(0.04, 0.18);
+  }
+
+  // ── Youngster seekers stay in for high-potential youth ───────────────────
+  if (player.age <= 23 && player.potential === "Wonderkid") {
+    const youthFactor = Math.max(0, (dna.prefYoungsters - 40) / 60);
+    chance += youthFactor * u(0.04, 0.14);
+  }
+
+  return Math.random() < Math.min(0.92, chance);
 }
 
 // ---------------------------------------------------------------------------
@@ -375,10 +395,11 @@ export function computeTeamValuation(
 
   const raw = base * formMult * roleNeed * natMult * loyalty * personality * budget * scarcity * urgency * lnVar;
 
-  // Commitment: fraction of purse this team will risk on a single player.
-  // Raised mean so teams don't hoard purse — realistic IPL spending patterns.
-  const commitMean = u(0.22, 0.42);
-  const commitPct  = Math.max(0.10, Math.min(0.58, commitMean * lognormal(u(0.15, 0.28))));
+  // Commitment: per-team fraction of purse risked on a single player.
+  // commitmentToTargets 30 (PBKS) → base ~0.21, 87 (CSK) → base ~0.46, 80 (MI) → base ~0.43
+  const commitBase = 0.10 + (team.dna.commitmentToTargets / 100) * 0.45;
+  const commitMean = u(commitBase * 0.85, commitBase * 1.20);
+  const commitPct  = Math.max(0.08, Math.min(0.65, commitMean * lognormal(u(0.15, 0.28))));
   const purseCap   = team.remainingPurse * commitPct;
 
   // Soft ceiling: the market-rate multiplier is sampled so sometimes

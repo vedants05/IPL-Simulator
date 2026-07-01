@@ -1,6 +1,14 @@
 "use client";
 import { useGameStore } from "@/lib/store/gameStore";
-import { formatPrice, getRetentionCost, TOTAL_PURSE_LAKHS } from "@/lib/logic/auctionRules";
+import {
+  formatPrice,
+  TOTAL_PURSE_LAKHS,
+  MAX_CAPPED_RETENTIONS,
+  MAX_UNCAPPED_RETENTIONS,
+  MAX_TOTAL_RETENTIONS,
+  getPlayerRetentionCost,
+  calculateTotalRetentionCost,
+} from "@/lib/logic/auctionRules";
 
 export default function RetentionPhase() {
   const { teams, players, userTeamId } = useGameStore();
@@ -17,18 +25,15 @@ export default function RetentionPhase() {
     .sort((a, b) => b.starRating - a.starRating);
 
   const retainedIds = userTeam.retainedPlayers;
-  const totalCost = retainedIds.reduce((sum, _, idx) => sum + getRetentionCost(idx + 1), 0);
+  const totalCost = calculateTotalRetentionCost(retainedIds, players);
   const purseAfter = TOTAL_PURSE_LAKHS - totalCost;
+  const rtmCards = Math.max(0, MAX_TOTAL_RETENTIONS - retainedIds.length);
 
-  const cappedSlotsFull = retainedIds.filter((id) => {
+  const cappedCount = retainedIds.filter((id) => {
     const p = players[id];
     return p?.isCapped || p?.nationality === "Overseas";
-  }).length >= 3;
-
-  const uncappedSlotsFull = retainedIds.filter((id) => {
-    const p = players[id];
-    return !p?.isCapped && p?.nationality === "Indian";
-  }).length >= 3;
+  }).length;
+  const uncappedCount = retainedIds.length - cappedCount;
 
   return (
     <div className="min-h-screen bg-bg text-text-primary">
@@ -41,7 +46,7 @@ export default function RetentionPhase() {
           Select Retentions
         </h1>
         <p className="font-barlow text-[13px] text-text-secondary mt-2">
-          Up to 6 players (max 3 capped/overseas · max 3 uncapped Indian). Each retention deducts from your ₹120 Cr purse.
+          Up to {MAX_TOTAL_RETENTIONS} players (max {MAX_CAPPED_RETENTIONS} capped/overseas · max {MAX_UNCAPPED_RETENTIONS} uncapped Indian). Each retention deducts from your ₹120 Cr purse.
         </p>
       </div>
 
@@ -58,13 +63,15 @@ export default function RetentionPhase() {
             const retainedIdx = retainedIds.indexOf(player.id);
             const isRetained = retainedIdx !== -1;
             const slot = isRetained ? retainedIdx + 1 : null;
-            const cost = isRetained ? getRetentionCost(retainedIdx + 1) : null;
+            const cost = isRetained
+              ? getPlayerRetentionCost(player.id, retainedIds.slice(0, retainedIdx), players)
+              : null;
 
-            const isUncapped = !player.isCapped && player.nationality === "Indian";
+            const isPlayerCapped = player.isCapped || player.nationality === "Overseas";
             const canAdd =
               !isRetained &&
-              retainedIds.length < 6 &&
-              (isUncapped ? !uncappedSlotsFull : !cappedSlotsFull);
+              retainedIds.length < MAX_TOTAL_RETENTIONS &&
+              (isPlayerCapped ? cappedCount < MAX_CAPPED_RETENTIONS : uncappedCount < MAX_UNCAPPED_RETENTIONS);
 
             return (
               <div
@@ -118,7 +125,7 @@ export default function RetentionPhase() {
                     </button>
                   ) : (
                     <button
-                      onClick={() => canAdd && retainPlayer(player.id, retainedIds.length + 1)}
+                      onClick={() => canAdd && retainPlayer(player.id)}
                       disabled={!canAdd}
                       className="font-space-mono font-bold text-[10px] tracking-wider text-text-primary border border-border px-3 py-1.5 rounded-[3px]
                         hover:bg-border hover:text-accent disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
@@ -134,7 +141,6 @@ export default function RetentionPhase() {
 
         {/* Summary sidebar */}
         <div className="w-[280px] shrink-0 flex flex-col">
-          {/* Retention summary */}
           <div className="flex-1 overflow-y-auto p-5">
             <div className="font-space-mono font-bold text-[9px] tracking-widest text-text-secondary mb-4 uppercase">
               Retention Summary
@@ -146,13 +152,18 @@ export default function RetentionPhase() {
               <div className="flex flex-col gap-3 mb-4">
                 {retainedIds.map((id, idx) => {
                   const p = players[id];
+                  const c = getPlayerRetentionCost(id, retainedIds.slice(0, idx), players);
+                  const isCapped = p?.isCapped || p?.nationality === "Overseas";
                   return (
-                    <div key={id} className="flex justify-between items-center text-[12px]">
-                      <span className="font-space-mono text-[9px] tracking-wider text-text-secondary">
-                        SLOT {idx + 1} <span className="font-barlow font-semibold text-text-primary">{p?.name}</span>
-                      </span>
+                    <div key={id} className="flex justify-between items-center">
+                      <div>
+                        <span className="font-space-mono text-[9px] tracking-wider text-text-secondary">
+                          {isCapped ? "CAPPED" : "UNCAPPED"}{" "}
+                        </span>
+                        <span className="font-barlow font-semibold text-[12px] text-text-primary">{p?.name}</span>
+                      </div>
                       <span className="font-barlow-condensed font-bold text-[13px] text-danger">
-                        -{formatPrice(getRetentionCost(idx + 1))}
+                        -{formatPrice(c)}
                       </span>
                     </div>
                   );
@@ -175,13 +186,29 @@ export default function RetentionPhase() {
               </div>
             </div>
 
-            <div className="mt-5 border-t border-border/30 pt-4">
+            {/* Slot counters */}
+            <div className="mt-4 flex gap-3">
+              <div className="flex-1 border border-border p-3 rounded-[3px]">
+                <div className="font-space-mono text-[8px] tracking-wider text-text-secondary mb-1">CAPPED/OS</div>
+                <div className="font-barlow-condensed font-bold text-[18px]" style={{ color: cappedCount >= MAX_CAPPED_RETENTIONS ? "#d6492f" : "#16130f" }}>
+                  {cappedCount}/{MAX_CAPPED_RETENTIONS}
+                </div>
+              </div>
+              <div className="flex-1 border border-border p-3 rounded-[3px]">
+                <div className="font-space-mono text-[8px] tracking-wider text-text-secondary mb-1">UNCAPPED</div>
+                <div className="font-barlow-condensed font-bold text-[18px]" style={{ color: uncappedCount >= MAX_UNCAPPED_RETENTIONS ? "#d6492f" : "#16130f" }}>
+                  {uncappedCount}/{MAX_UNCAPPED_RETENTIONS}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-4 border-t border-border/30 pt-4">
               <div className="font-space-mono font-bold text-[9px] tracking-widest text-text-secondary mb-2 uppercase">RTM Cards</div>
-              <div className="font-barlow-condensed font-bold text-[22px] text-text-primary">
-                {Math.max(0, 3 - retainedIds.length)} cards
+              <div className="font-barlow-condensed font-bold text-[28px] text-text-primary">
+                {rtmCards}
               </div>
               <p className="font-barlow text-[11px] text-text-secondary mt-1">
-                1 RTM for each of the first 3 players you do NOT retain.
+                {MAX_TOTAL_RETENTIONS} total slots minus retentions used.
               </p>
             </div>
           </div>
@@ -196,7 +223,7 @@ export default function RetentionPhase() {
             </button>
             {retainedIds.length === 0 && (
               <p className="font-space-mono text-[9px] text-text-secondary text-center mt-2 tracking-wider">
-                Proceeding with 0 retentions · 3 RTM cards
+                Proceeding with 0 retentions · {MAX_TOTAL_RETENTIONS} RTM cards
               </p>
             )}
           </div>

@@ -89,6 +89,19 @@ export interface BoardObjective {
   isCompleted: boolean;
 }
 
+// Franchise auction DNA — controls AI bidding behaviour (all fields 0–100)
+export interface FranchiseDNA {
+  loyalty: number;             // tendency to target ex-players
+  prefYoungsters: number;      // preference for young high-potential players
+  experienceFocus: number;     // preference for capped/experienced veterans
+  bigNamesPref: number;        // preference for elite star-rated players
+  looksForDepth: number;       // willingness to buy depth beyond starting XI
+  alrValue: number;            // how highly all-rounders are valued
+  batValue: number;            // how highly batters/WK-batters are valued
+  bowlValue: number;           // how highly bowlers are valued
+  commitmentToTargets: number; // how far a team pushes beyond their base valuation
+}
+
 export interface Team {
   id: string;
   name: string;
@@ -112,6 +125,7 @@ export interface Team {
   fanBase: FanBase;
   prestige: number;
   aiPersonality: AIPersonality;
+  dna: FranchiseDNA;
   description: string;
 }
 
@@ -127,6 +141,16 @@ export interface AuctionSet {
   playerIds: string[];
   currentIndex: number;
   isCompleted: boolean;
+}
+
+// RTM flow — set whenever user interaction is required (AI-vs-AI resolves silently)
+export interface RtmFlow {
+  phase: "offer" | "winner_counter" | "original_match";
+  originalTeamId: string;   // team with RTM right
+  winnerTeamId: string;     // team that won the initial bid
+  baseAmount: number;       // hammer price
+  raisedAmount: number;     // counter bid (non-zero from winner_counter phase onwards)
+  timerSeconds: number;
 }
 
 export interface AuctionState {
@@ -146,9 +170,7 @@ export interface AuctionState {
   currentSetIndex: number;
   teamPurses: Record<string, { remaining: number; squadCount: number }>;
   isAcceleratedPhase: boolean;
-  rtmEligibleTeamId: string | null;
-  rtmWindowOpen: boolean;
-  rtmTimerSeconds: number;
+  rtm: RtmFlow | null;
   soldFlash: { playerId: string; teamId: string; amount: number } | null;
   unsoldFlash: { playerId: string } | null;
   saleHistory: Array<{ playerId: string; teamId: string; price: number; lot: number; bids: BidEntry[] }>;

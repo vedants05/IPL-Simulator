@@ -127,11 +127,11 @@ export default function AuctionPage() {
             </div>
           ) : auction.currentPlayer ? (
             <div className="flex-1 flex flex-col overflow-hidden">
-              {/* Player card — scrollable top portion */}
-              <div className="flex-1 overflow-y-auto">
+              {/* Player card — scrollable when Player File is expanded */}
+              <div className="overflow-y-auto" style={{ maxHeight: "calc(100% - 248px)" }}>
                 <PlayerCard player={auction.currentPlayer} />
               </div>
-              {/* Bid panel — fixed bottom portion */}
+              {/* Bid panel — sits directly below player content, no gap */}
               <BidPanel />
             </div>
           ) : null}

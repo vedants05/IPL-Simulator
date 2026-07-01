@@ -16,6 +16,14 @@ import {
   canTeamBidOnPlayer,
   canTeamAffordBid,
   TOTAL_PURSE_LAKHS,
+  calculateTotalRetentionCost,
+  getPlayerRetentionCost,
+  MAX_CAPPED_RETENTIONS,
+  MAX_UNCAPPED_RETENTIONS,
+  MAX_TOTAL_RETENTIONS,
+  CAPPED_RETENTION_COSTS,
+  UNCAPPED_RETENTION_COST,
+  findRTMEligibleTeam,
 } from "@/lib/logic/auctionRules";
 import {
   buildInitialTeamPurses,
@@ -24,6 +32,7 @@ import {
   pickBiddingTeam,
   nextAIBidDelay,
   resetLotCache,
+  getCachedValuation,
   AuctionContext,
 } from "@/lib/logic/auctionEngine";
 
@@ -32,14 +41,21 @@ import {
 // ---------------------------------------------------------------------------
 interface GameActions {
   initNewGame: (userTeamId: string) => void;
-  retainPlayer: (playerId: string, slot: number) => void;
+  retainPlayer: (playerId: string) => void;
   releaseRetention: (playerId: string) => void;
   confirmRetentions: () => void;
   startAuction: () => void;
   placeBid: (teamId: string, amount: number) => void;
   passBid: () => void;
-  useRTM: () => void;
-  declineRTM: () => void;
+  // RTM actions — user as original team (offer phase)
+  exerciseRtm: () => void;
+  declineRtm: () => void;
+  // RTM actions — user as winner team (winner_counter phase)
+  raiseCounter: (amount: number) => void;
+  passCounter: () => void;
+  // RTM actions — user as original team (original_match phase)
+  matchCounter: () => void;
+  foldToCounter: () => void;
   tickTimer: () => void;
   tickRTMTimer: () => void;
   dismissSoldFlash: () => void;
@@ -132,9 +148,7 @@ export const useGameStore = create<Store>()(
             currentSetIndex: 0,
             teamPurses: {},
             isAcceleratedPhase: false,
-            rtmEligibleTeamId: null,
-            rtmWindowOpen: false,
-            rtmTimerSeconds: 15,
+            rtm: null,
             soldFlash: null,
             unsoldFlash: null,
             saleHistory: [],
@@ -143,67 +157,71 @@ export const useGameStore = create<Store>()(
         });
       },
 
-      retainPlayer: (playerId, slot) => {
+      retainPlayer: (playerId) => {
         const { teams, userTeamId, players } = get();
         const team = teams[userTeamId];
         if (!team) return;
-        if (team.retainedPlayers.length >= 6) return;
+        if (team.retainedPlayers.length >= MAX_TOTAL_RETENTIONS) return;
         if (team.retainedPlayers.includes(playerId)) return;
 
         const player = players[playerId];
         if (!player) return;
 
-        // Validate uncapped slots (4-6 must be uncapped Indian)
-        const isUncappedSlot = slot >= 4;
-        if (isUncappedSlot && (player.isCapped || player.nationality !== "Indian")) return;
+        const isPlayerCapped = player.isCapped || player.nationality === "Overseas";
+        const cappedCount = team.retainedPlayers.filter((id) => {
+          const p = players[id];
+          return p && (p.isCapped || p.nationality === "Overseas");
+        }).length;
+        const uncappedCount = team.retainedPlayers.length - cappedCount;
 
-        const cost = getRetentionCostForSlot(slot);
+        if (isPlayerCapped && cappedCount >= MAX_CAPPED_RETENTIONS) return;
+        if (!isPlayerCapped && uncappedCount >= MAX_UNCAPPED_RETENTIONS) return;
 
-        set((state) => {
-          const newTeam = {
-            ...team,
-            retainedPlayers: [...team.retainedPlayers, playerId],
-            remainingPurse: team.remainingPurse - cost,
-            spentAmount: team.spentAmount + cost,
-          };
-          const newPlayer = {
-            ...player,
-            isRetained: true,
-            retainedByTeamId: userTeamId,
-          };
-          return {
-            teams: { ...state.teams, [userTeamId]: newTeam },
-            players: { ...state.players, [playerId]: newPlayer },
-          };
-        });
+        const newRetained = [...team.retainedPlayers, playerId];
+        const newTotalCost = calculateTotalRetentionCost(newRetained, players);
+
+        set((state) => ({
+          teams: {
+            ...state.teams,
+            [userTeamId]: {
+              ...team,
+              retainedPlayers: newRetained,
+              remainingPurse: TOTAL_PURSE_LAKHS - newTotalCost,
+              spentAmount: newTotalCost,
+            },
+          },
+          players: {
+            ...state.players,
+            [playerId]: { ...player, isRetained: true, retainedByTeamId: userTeamId },
+          },
+        }));
       },
 
       releaseRetention: (playerId) => {
         const { teams, userTeamId, players } = get();
         const team = teams[userTeamId];
         if (!team) return;
+        if (!team.retainedPlayers.includes(playerId)) return;
 
-        const retainedIndex = team.retainedPlayers.indexOf(playerId);
-        if (retainedIndex === -1) return;
+        const player = players[playerId];
+        const newRetained = team.retainedPlayers.filter((id) => id !== playerId);
+        const newTotalCost = calculateTotalRetentionCost(newRetained, players);
 
-        const slot = retainedIndex + 1;
-        const cost = getRetentionCostForSlot(slot);
-
-        set((state) => {
-          const newRetained = team.retainedPlayers.filter((id) => id !== playerId);
-          const newTeam = {
-            ...team,
-            retainedPlayers: newRetained,
-            remainingPurse: team.remainingPurse + cost,
-            spentAmount: team.spentAmount - cost,
-          };
-          const player = players[playerId];
-          const newPlayer = { ...player, isRetained: false, retainedByTeamId: null };
-          return {
-            teams: { ...state.teams, [userTeamId]: newTeam },
-            players: { ...state.players, [playerId]: newPlayer },
-          };
-        });
+        set((state) => ({
+          teams: {
+            ...state.teams,
+            [userTeamId]: {
+              ...team,
+              retainedPlayers: newRetained,
+              remainingPurse: TOTAL_PURSE_LAKHS - newTotalCost,
+              spentAmount: newTotalCost,
+            },
+          },
+          players: {
+            ...state.players,
+            [playerId]: { ...player, isRetained: false, retainedByTeamId: null },
+          },
+        }));
       },
 
       confirmRetentions: () => {
@@ -214,7 +232,7 @@ export const useGameStore = create<Store>()(
           .filter((p) => !p.isRetained)
           .map((p) => p.id);
 
-        // AI teams: auto-retain their top 3 players
+        // AI teams: auto-retain their top 3 capped + top 1 uncapped (≤4 total, ≤6)
         const updatedTeams = { ...teams };
         const updatedPlayers = { ...players };
 
@@ -226,36 +244,42 @@ export const useGameStore = create<Store>()(
             .filter(Boolean)
             .sort((a, b) => b.starRating - a.starRating);
 
-          const toRetain = teamPlayers.slice(0, 3);
-          let purse = TOTAL_PURSE_LAKHS;
-          const retainedIds: string[] = [];
+          const cappedPlayers = teamPlayers.filter((p) => p.isCapped || p.nationality === "Overseas");
+          const uncappedPlayers = teamPlayers.filter((p) => !p.isCapped && p.nationality !== "Overseas");
 
-          toRetain.forEach((p, idx) => {
-            const cost = getRetentionCostForSlot(idx + 1);
+          // Retain top 3 capped + top 1 uncapped (realistic AI strategy)
+          const toRetain = [
+            ...cappedPlayers.slice(0, 3),
+            ...uncappedPlayers.slice(0, 1),
+          ];
+
+          const retainedIds: string[] = [];
+          toRetain.forEach((p) => {
             retainedIds.push(p.id);
-            purse -= cost;
             updatedPlayers[p.id] = { ...p, isRetained: true, retainedByTeamId: team.id };
-            // Remove from allPlayerIds
             const poolIdx = allPlayerIds.indexOf(p.id);
             if (poolIdx !== -1) allPlayerIds.splice(poolIdx, 1);
           });
 
+          const totalCost = calculateTotalRetentionCost(retainedIds, updatedPlayers);
+
           updatedTeams[team.id] = {
             ...team,
             retainedPlayers: retainedIds,
-            remainingPurse: purse,
-            spentAmount: TOTAL_PURSE_LAKHS - purse,
+            remainingPurse: TOTAL_PURSE_LAKHS - totalCost,
+            spentAmount: totalCost,
             squad: retainedIds,
-            rtmCardsTotal: Math.min(3, 3 - retainedIds.length + (retainedIds.length > 0 ? 1 : 0)),
+            // RTM cards = 6 minus number of retentions (per IPL rules)
+            rtmCardsTotal: Math.max(0, MAX_TOTAL_RETENTIONS - retainedIds.length),
           };
         });
 
-        // User team: clear squad to only retained players
+        // User team: clear squad to only retained players, set correct RTM cards
         const userTeam = updatedTeams[userTeamId];
         updatedTeams[userTeamId] = {
           ...userTeam,
           squad: userTeam.retainedPlayers,
-          rtmCardsTotal: Math.max(0, 3 - userTeam.retainedPlayers.length),
+          rtmCardsTotal: Math.max(0, MAX_TOTAL_RETENTIONS - userTeam.retainedPlayers.length),
         };
 
         const sets = buildAuctionSets(
@@ -302,6 +326,7 @@ export const useGameStore = create<Store>()(
                 currentHighBidderTeamId: null,
                 biddingHistory: [],
                 timerSeconds: 10,
+                rtm: null,
                 soldFlash: null,
                 unsoldFlash: null,
               }
@@ -337,109 +362,122 @@ export const useGameStore = create<Store>()(
         simulateRemainingBids(auction.currentPlayer);
       },
 
-      useRTM: () => {
-        const { auction, teams, players, userTeamId } = get();
-        if (!auction || !auction.rtmWindowOpen || !auction.currentPlayer) return;
+      // ---- RTM: user is original team, AI is winner ----
 
-        const userTeam = teams[userTeamId];
-        if (!userTeam) return;
+      exerciseRtm: () => {
+        const { auction, teams, userTeamId } = get();
+        if (!auction?.rtm || auction.rtm.phase !== "offer") return;
+        if (auction.rtm.originalTeamId !== userTeamId) return;
+        if (!auction.currentPlayer) return;
 
+        const { winnerTeamId, baseAmount } = auction.rtm;
         const player = auction.currentPlayer;
-        const rtmAmount = auction.currentBid;
+        const winnerValuation = getCachedValuation(winnerTeamId);
 
-        // Transfer player to user team
-        const winnerTeamId = auction.currentHighBidderTeamId!;
+        // Winner AI counter decision: counter if their valuation > soldAmount by ≥5%
+        if (winnerValuation > baseAmount * 1.05) {
+          // AI counters to some point between baseAmount and their valuation
+          let counterAmount = baseAmount;
+          const target = Math.min(winnerValuation, Math.round(baseAmount * 1.25));
+          while (counterAmount < target) {
+            counterAmount = getNextBidAmount(counterAmount);
+          }
+          if (counterAmount <= baseAmount) counterAmount = getNextBidAmount(baseAmount);
 
-        set((state) => {
-          const newTeams = { ...state.teams };
-
-          // Remove from winner's squad
-          newTeams[winnerTeamId] = {
-            ...newTeams[winnerTeamId],
-            squad: newTeams[winnerTeamId].squad.filter((id) => id !== player.id),
-            remainingPurse: newTeams[winnerTeamId].remainingPurse + rtmAmount,
-            spentAmount: newTeams[winnerTeamId].spentAmount - rtmAmount,
-            overseasPlayersCurrent:
-              player.nationality === "Overseas"
-                ? newTeams[winnerTeamId].overseasPlayersCurrent - 1
-                : newTeams[winnerTeamId].overseasPlayersCurrent,
-          };
-
-          // Add to user team
-          newTeams[userTeamId] = {
-            ...newTeams[userTeamId],
-            squad: [...newTeams[userTeamId].squad, player.id],
-            remainingPurse: newTeams[userTeamId].remainingPurse - rtmAmount,
-            spentAmount: newTeams[userTeamId].spentAmount + rtmAmount,
-            rtmCardsUsed: newTeams[userTeamId].rtmCardsUsed + 1,
-            overseasPlayersCurrent:
-              player.nationality === "Overseas"
-                ? newTeams[userTeamId].overseasPlayersCurrent + 1
-                : newTeams[userTeamId].overseasPlayersCurrent,
-          };
-
-          const newPlayers = {
-            ...state.players,
-            [player.id]: { ...player, currentTeamId: userTeamId },
-          };
-
-          const newSoldIds = [...(state.auction?.soldPlayerIds ?? []), player.id];
-          const newPurses = {
-            ...(state.auction?.teamPurses ?? {}),
-            [userTeamId]: {
-              remaining: newTeams[userTeamId].remainingPurse,
-              squadCount: newTeams[userTeamId].squad.length,
-            },
-            [winnerTeamId]: {
-              remaining: newTeams[winnerTeamId].remainingPurse,
-              squadCount: newTeams[winnerTeamId].squad.length,
-            },
-          };
-
-          return {
-            teams: newTeams,
-            players: newPlayers,
-            auction: state.auction
+          set((s) => ({
+            auction: s.auction?.rtm
               ? {
-                  ...state.auction,
-                  soldPlayerIds: newSoldIds,
-                  soldFlash: { playerId: player.id, teamId: userTeamId, amount: rtmAmount },
-                  rtmWindowOpen: false,
-                  rtmEligibleTeamId: null,
-                  teamPurses: newPurses,
-                  saleHistory: [...(state.auction.saleHistory ?? []), { playerId: player.id, teamId: userTeamId, price: rtmAmount, lot: state.auction.currentLotIndex, bids: state.auction.biddingHistory }],
+                  ...s.auction,
+                  rtm: { ...s.auction.rtm, phase: "original_match" as const, raisedAmount: counterAmount, timerSeconds: 15 },
                 }
-              : null,
-          };
-        });
-
-        // Advance after flash
-        setTimeout(() => advanceToNextLot(), 2200);
+              : s.auction,
+          }));
+        } else {
+          // AI doesn't counter → user gets player at baseAmount
+          doRTMTransfer(userTeamId, winnerTeamId, player, baseAmount, baseAmount);
+        }
       },
 
-      declineRTM: () => {
-        set((state) => {
-          const a = state.auction;
-          if (!a) return {};
-          const newSale = a.currentPlayer && a.currentHighBidderTeamId
-            ? { playerId: a.currentPlayer.id, teamId: a.currentHighBidderTeamId, price: a.currentBid, lot: a.currentLotIndex, bids: a.biddingHistory }
-            : null;
+      declineRtm: () => {
+        const { auction } = get();
+        if (!auction?.rtm) return;
+        const { winnerTeamId, baseAmount } = auction.rtm;
+        set((s) => {
+          const a = s.auction;
+          if (!a?.currentPlayer) return {};
           return {
             auction: {
               ...a,
-              rtmWindowOpen: false,
-              rtmEligibleTeamId: null,
-              saleHistory: newSale ? [...(a.saleHistory ?? []), newSale] : (a.saleHistory ?? []),
+              rtm: null,
+              soldFlash: { playerId: a.currentPlayer.id, teamId: winnerTeamId, amount: baseAmount },
+              saleHistory: [...(a.saleHistory ?? []), { playerId: a.currentPlayer.id, teamId: winnerTeamId, price: baseAmount, lot: a.currentLotIndex, bids: a.biddingHistory }],
             },
           };
         });
-        setTimeout(() => advanceToNextLot(), 300);
+        setTimeout(() => advanceToNextLot(), 2200);
+      },
+
+      // ---- RTM: user is winner, AI is original team ----
+
+      raiseCounter: (amount) => {
+        const { auction, userTeamId } = get();
+        if (!auction?.rtm || auction.rtm.phase !== "winner_counter") return;
+        if (auction.rtm.winnerTeamId !== userTeamId) return;
+        if (!auction.currentPlayer) return;
+
+        const { originalTeamId, baseAmount } = auction.rtm;
+        const player = auction.currentPlayer;
+        const aiValuation = getCachedValuation(originalTeamId);
+
+        if (aiValuation >= amount) {
+          // AI matches counter: AI (original) gets player at amount
+          doRTMTransfer(originalTeamId, userTeamId, player, amount, baseAmount);
+        } else {
+          // AI folds: user keeps player but pays 'amount' (extra above baseAmount)
+          doWinnerKeepsAtCounter(userTeamId, baseAmount, amount, player);
+        }
+      },
+
+      passCounter: () => {
+        const { auction, userTeamId } = get();
+        if (!auction?.rtm || auction.rtm.phase !== "winner_counter") return;
+        if (auction.rtm.winnerTeamId !== userTeamId) return;
+        if (!auction.currentPlayer) return;
+
+        const { originalTeamId, baseAmount } = auction.rtm;
+        const player = auction.currentPlayer;
+        // User doesn't raise → AI original gets player at baseAmount
+        doRTMTransfer(originalTeamId, userTeamId, player, baseAmount, baseAmount);
+      },
+
+      // ---- RTM: user is original team, counter-bid phase ----
+
+      matchCounter: () => {
+        const { auction, userTeamId } = get();
+        if (!auction?.rtm || auction.rtm.phase !== "original_match") return;
+        if (auction.rtm.originalTeamId !== userTeamId) return;
+        if (!auction.currentPlayer) return;
+
+        const { winnerTeamId, baseAmount, raisedAmount } = auction.rtm;
+        const player = auction.currentPlayer;
+        doRTMTransfer(userTeamId, winnerTeamId, player, raisedAmount, baseAmount);
+      },
+
+      foldToCounter: () => {
+        const { auction, userTeamId } = get();
+        if (!auction?.rtm || auction.rtm.phase !== "original_match") return;
+        if (auction.rtm.originalTeamId !== userTeamId) return;
+        if (!auction.currentPlayer) return;
+
+        const { winnerTeamId, baseAmount, raisedAmount } = auction.rtm;
+        const player = auction.currentPlayer;
+        doWinnerKeepsAtCounter(winnerTeamId, baseAmount, raisedAmount, player);
       },
 
       tickTimer: () => {
         const { auction } = get();
         if (!auction || auction.phase !== "live" || !auction.currentPlayer) return;
-        if (auction.rtmWindowOpen) return;
+        if (auction.rtm) return;
         if (auction.soldFlash) return;
         if (auction.unsoldFlash) return;
 
@@ -457,17 +495,22 @@ export const useGameStore = create<Store>()(
 
       tickRTMTimer: () => {
         const { auction } = get();
-        if (!auction?.rtmWindowOpen) return;
+        if (!auction?.rtm) return;
 
-        if (auction.rtmTimerSeconds <= 0) {
-          get().declineRTM();
+        if (auction.rtm.timerSeconds <= 0) {
+          // Auto-action on timeout based on phase and user role
+          const { rtm } = auction;
+          const { userTeamId } = get();
+          if (rtm.phase === "offer" && rtm.originalTeamId === userTeamId) get().declineRtm();
+          if (rtm.phase === "winner_counter" && rtm.winnerTeamId === userTeamId) get().passCounter();
+          if (rtm.phase === "original_match" && rtm.originalTeamId === userTeamId) get().foldToCounter();
           return;
         }
 
         set((state) => ({
-          auction: state.auction
-            ? { ...state.auction, rtmTimerSeconds: state.auction.rtmTimerSeconds - 1 }
-            : null,
+          auction: state.auction?.rtm
+            ? { ...state.auction, rtm: { ...state.auction.rtm, timerSeconds: state.auction.rtm.timerSeconds - 1 } }
+            : state.auction,
         }));
       },
 
@@ -504,13 +547,130 @@ export const useGameStore = create<Store>()(
         auction: state.auction,
         isSetupComplete: state.isSetupComplete,
       }),
+      merge: (persisted, current) => {
+        const p = persisted as Partial<Store>;
+        if (p.teams) {
+          for (const [id, team] of Object.entries(p.teams)) {
+            if (!team.dna) {
+              const seed = TEAMS_SEED.find(t => t.id === id);
+              if (seed) team.dna = seed.dna;
+            }
+          }
+        }
+        return { ...current, ...p };
+      },
     }
   )
 );
 
-function getRetentionCostForSlot(slot: number): number {
-  const costs = [1800, 1400, 1100, 1800, 1400, 1100];
-  return costs[slot - 1] ?? 0;
+// ---------------------------------------------------------------------------
+// RTM transfer helpers — called by both user RTM actions and AI-vs-AI RTM
+// ---------------------------------------------------------------------------
+
+/**
+ * Transfer a player from winnerTeam to originalTeam (RTM exercised + accepted).
+ * winnerTeam is refunded refundAmount (= hammer price).
+ * originalTeam pays transferPrice (= hammer price or raised counter amount).
+ */
+function doRTMTransfer(
+  originalTeamId: string,
+  winnerTeamId: string,
+  player: Player,
+  transferPrice: number,
+  refundAmount: number,
+) {
+  useGameStore.setState((s) => {
+    const newTeams = { ...s.teams };
+
+    newTeams[winnerTeamId] = {
+      ...newTeams[winnerTeamId],
+      squad: newTeams[winnerTeamId].squad.filter((id) => id !== player.id),
+      remainingPurse: newTeams[winnerTeamId].remainingPurse + refundAmount,
+      spentAmount: newTeams[winnerTeamId].spentAmount - refundAmount,
+      overseasPlayersCurrent:
+        player.nationality === "Overseas"
+          ? newTeams[winnerTeamId].overseasPlayersCurrent - 1
+          : newTeams[winnerTeamId].overseasPlayersCurrent,
+    };
+
+    newTeams[originalTeamId] = {
+      ...newTeams[originalTeamId],
+      squad: [...newTeams[originalTeamId].squad, player.id],
+      remainingPurse: newTeams[originalTeamId].remainingPurse - transferPrice,
+      spentAmount: newTeams[originalTeamId].spentAmount + transferPrice,
+      rtmCardsUsed: newTeams[originalTeamId].rtmCardsUsed + 1,
+      overseasPlayersCurrent:
+        player.nationality === "Overseas"
+          ? newTeams[originalTeamId].overseasPlayersCurrent + 1
+          : newTeams[originalTeamId].overseasPlayersCurrent,
+    };
+
+    const newPlayers = { ...s.players, [player.id]: { ...player, currentTeamId: originalTeamId } };
+    const newPurses = {
+      ...(s.auction?.teamPurses ?? {}),
+      [originalTeamId]: { remaining: newTeams[originalTeamId].remainingPurse, squadCount: newTeams[originalTeamId].squad.length },
+      [winnerTeamId]: { remaining: newTeams[winnerTeamId].remainingPurse, squadCount: newTeams[winnerTeamId].squad.length },
+    };
+
+    return {
+      teams: newTeams,
+      players: newPlayers,
+      auction: s.auction
+        ? {
+            ...s.auction,
+            rtm: null,
+            soldFlash: { playerId: player.id, teamId: originalTeamId, amount: transferPrice },
+            teamPurses: newPurses,
+            saleHistory: [
+              ...(s.auction.saleHistory ?? []),
+              { playerId: player.id, teamId: originalTeamId, price: transferPrice, lot: s.auction.currentLotIndex, bids: s.auction.biddingHistory },
+            ],
+          }
+        : null,
+    };
+  });
+  setTimeout(() => advanceToNextLot(), 2200);
+}
+
+/**
+ * Winner keeps the player but pays the counter amount (not just the hammer price).
+ * Used when original team folds or when user (winner) raises and AI (original) folds.
+ */
+function doWinnerKeepsAtCounter(
+  winnerTeamId: string,
+  soldAmount: number,
+  raisedAmount: number,
+  player: Player,
+) {
+  const extra = raisedAmount - soldAmount;
+  useGameStore.setState((s) => {
+    const newTeams = { ...s.teams };
+    newTeams[winnerTeamId] = {
+      ...newTeams[winnerTeamId],
+      remainingPurse: newTeams[winnerTeamId].remainingPurse - extra,
+      spentAmount: newTeams[winnerTeamId].spentAmount + extra,
+    };
+    const newPurses = {
+      ...(s.auction?.teamPurses ?? {}),
+      [winnerTeamId]: { remaining: newTeams[winnerTeamId].remainingPurse, squadCount: newTeams[winnerTeamId].squad.length },
+    };
+    return {
+      teams: newTeams,
+      auction: s.auction
+        ? {
+            ...s.auction,
+            rtm: null,
+            soldFlash: { playerId: player.id, teamId: winnerTeamId, amount: raisedAmount },
+            teamPurses: newPurses,
+            saleHistory: [
+              ...(s.auction.saleHistory ?? []),
+              { playerId: player.id, teamId: winnerTeamId, price: raisedAmount, lot: s.auction.currentLotIndex, bids: s.auction.biddingHistory },
+            ],
+          }
+        : null,
+    };
+  });
+  setTimeout(() => advanceToNextLot(), 2200);
 }
 
 /**
@@ -606,19 +766,10 @@ function hammerFall() {
 
   // Sold to highBidder
   const soldAmount = auction.currentBid;
-  const winnerTeam = teams[highBidder];
 
-  // Check RTM eligibility for user
-  const userTeam = teams[userTeamId];
-  const rtmEligible =
-    highBidder !== userTeamId &&
-    userTeam.rtmCardsUsed < userTeam.rtmCardsTotal &&
-    player.iplHistory.some((h) => h.teamId === userTeamId && h.season === "2024");
-
+  // Commit winner's team state (deduct purse, add to squad)
   useGameStore.setState((s) => {
     const newTeams = { ...s.teams };
-
-    // Update winner team
     newTeams[highBidder] = {
       ...newTeams[highBidder],
       squad: [...newTeams[highBidder].squad, player.id],
@@ -629,55 +780,109 @@ function hammerFall() {
           ? newTeams[highBidder].overseasPlayersCurrent + 1
           : newTeams[highBidder].overseasPlayersCurrent,
     };
-
-    const newPlayers = {
-      ...s.players,
-      [player.id]: { ...player, currentTeamId: highBidder },
-    };
-
+    const newPlayers = { ...s.players, [player.id]: { ...player, currentTeamId: highBidder } };
     const newPurses = {
       ...(s.auction?.teamPurses ?? {}),
-      [highBidder]: {
-        remaining: newTeams[highBidder].remainingPurse,
-        squadCount: newTeams[highBidder].squad.length,
-      },
+      [highBidder]: { remaining: newTeams[highBidder].remainingPurse, squadCount: newTeams[highBidder].squad.length },
     };
-
     const newSoldIds = [...(s.auction?.soldPlayerIds ?? []), player.id];
-
-    if (rtmEligible) {
-      return {
-        teams: newTeams,
-        players: newPlayers,
-        auction: s.auction
-          ? {
-              ...s.auction,
-              soldPlayerIds: newSoldIds,
-              teamPurses: newPurses,
-              rtmWindowOpen: true,
-              rtmEligibleTeamId: userTeamId,
-              rtmTimerSeconds: 15,
-            }
-          : null,
-      };
-    }
-
     return {
       teams: newTeams,
       players: newPlayers,
+      auction: s.auction ? { ...s.auction, soldPlayerIds: newSoldIds, teamPurses: newPurses } : null,
+    };
+  });
+
+  // Find RTM-eligible team (any team, not just user)
+  const currentState = useGameStore.getState();
+  const rtmTeamId = findRTMEligibleTeam(player, currentState.teams, highBidder);
+
+  if (!rtmTeamId) {
+    // No RTM: flash and advance
+    useGameStore.setState((s) => ({
       auction: s.auction
         ? {
             ...s.auction,
-            soldPlayerIds: newSoldIds,
-            teamPurses: newPurses,
             soldFlash: { playerId: player.id, teamId: highBidder, amount: soldAmount },
             saleHistory: [...(s.auction.saleHistory ?? []), { playerId: player.id, teamId: highBidder, price: soldAmount, lot: auction.currentLotIndex, bids: auction.biddingHistory }],
           }
         : null,
-    };
-  });
+    }));
+    setTimeout(() => advanceToNextLot(), 2200);
+    return;
+  }
 
-  if (!rtmEligible) {
+  const isUserOriginal = rtmTeamId === userTeamId;
+  const isUserWinner = highBidder === userTeamId;
+
+  if (!isUserOriginal && !isUserWinner) {
+    // AI-vs-AI RTM: resolve silently
+    const aiOrigValuation = getCachedValuation(rtmTeamId);
+    if (aiOrigValuation > soldAmount) {
+      // AI original exercises RTM
+      const aiWinnerValuation = getCachedValuation(highBidder);
+      if (aiWinnerValuation > soldAmount * 1.05) {
+        // Winner AI counters
+        let counterAmount = soldAmount;
+        const target = Math.min(aiWinnerValuation, Math.round(soldAmount * 1.25));
+        while (counterAmount < target) counterAmount = getNextBidAmount(counterAmount);
+        if (counterAmount <= soldAmount) counterAmount = getNextBidAmount(soldAmount);
+        // Original AI matches counter?
+        if (aiOrigValuation >= counterAmount) {
+          doRTMTransfer(rtmTeamId, highBidder, player, counterAmount, soldAmount);
+        } else {
+          doWinnerKeepsAtCounter(highBidder, soldAmount, counterAmount, player);
+        }
+      } else {
+        // Winner AI doesn't counter: original gets at soldAmount
+        doRTMTransfer(rtmTeamId, highBidder, player, soldAmount, soldAmount);
+      }
+    } else {
+      // AI declines RTM
+      useGameStore.setState((s) => ({
+        auction: s.auction
+          ? {
+              ...s.auction,
+              soldFlash: { playerId: player.id, teamId: highBidder, amount: soldAmount },
+              saleHistory: [...(s.auction.saleHistory ?? []), { playerId: player.id, teamId: highBidder, price: soldAmount, lot: auction.currentLotIndex, bids: auction.biddingHistory }],
+            }
+          : null,
+      }));
+      setTimeout(() => advanceToNextLot(), 2200);
+    }
+    return;
+  }
+
+  if (isUserOriginal) {
+    // User is original team: show "offer" modal
+    useGameStore.setState((s) => ({
+      auction: s.auction
+        ? { ...s.auction, rtm: { phase: "offer", originalTeamId: rtmTeamId, winnerTeamId: highBidder, baseAmount: soldAmount, raisedAmount: 0, timerSeconds: 15 } }
+        : null,
+    }));
+    return;
+  }
+
+  // User is winner, AI is original: AI decides to RTM or not
+  const aiOrigValuation = getCachedValuation(rtmTeamId);
+  if (aiOrigValuation > soldAmount) {
+    // AI exercises RTM → show "winner_counter" modal to user
+    useGameStore.setState((s) => ({
+      auction: s.auction
+        ? { ...s.auction, rtm: { phase: "winner_counter", originalTeamId: rtmTeamId, winnerTeamId: highBidder, baseAmount: soldAmount, raisedAmount: 0, timerSeconds: 15 } }
+        : null,
+    }));
+  } else {
+    // AI declines RTM: user keeps player
+    useGameStore.setState((s) => ({
+      auction: s.auction
+        ? {
+            ...s.auction,
+            soldFlash: { playerId: player.id, teamId: highBidder, amount: soldAmount },
+            saleHistory: [...(s.auction.saleHistory ?? []), { playerId: player.id, teamId: highBidder, price: soldAmount, lot: auction.currentLotIndex, bids: auction.biddingHistory }],
+          }
+        : null,
+    }));
     setTimeout(() => advanceToNextLot(), 2200);
   }
 }
@@ -690,9 +895,9 @@ function advanceToNextLot() {
   const { auction, players, teams, userTeamId } = state;
   if (!auction) return;
 
-  // Clear both flash states
+  // Clear flash and rtm state
   useGameStore.setState((s) => ({
-    auction: s.auction ? { ...s.auction, soldFlash: null, unsoldFlash: null } : null,
+    auction: s.auction ? { ...s.auction, soldFlash: null, unsoldFlash: null, rtm: null } : null,
   }));
 
   // Advance current set index
@@ -817,7 +1022,7 @@ function scheduleAIBids(player: Player) {
     // Guard: lot must still be the same player and auction active
     if (!a || !a.currentPlayer || a.currentPlayer.id !== player.id) return;
     if (a.phase !== "live") return;
-    if (a.rtmWindowOpen || a.soldFlash || a.unsoldFlash) return;
+    if (a.rtm || a.soldFlash || a.unsoldFlash) return;
 
     const nextBid = getNextBidAmount(a.currentBid);
 

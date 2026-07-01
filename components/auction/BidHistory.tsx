@@ -20,8 +20,8 @@ export default function BidHistory() {
   const player = auction.currentPlayer;
   const { canBid } = userTeam && player ? canTeamBidOnPlayer(userTeam, player) : { canBid: false };
   const canAfford = userTeam ? canTeamAffordBid(userTeam, nextBid) : false;
-  // Disable PASS during sold/unsold flash so rapid clicks don't queue extra hammers
-  const passDisabled = isUserHighBidder || !!auction.soldFlash || !!auction.unsoldFlash;
+  // Disable PASS during sold/unsold flash and RTM so rapid clicks don't queue extra hammers
+  const passDisabled = isUserHighBidder || !!auction.soldFlash || !!auction.unsoldFlash || !!auction.rtm;
 
   return (
     <div className="flex flex-col h-full">
