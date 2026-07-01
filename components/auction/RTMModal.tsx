@@ -1,7 +1,9 @@
 "use client";
 import { useGameStore } from "@/lib/store/gameStore";
-import { formatPrice } from "@/lib/logic/auctionRules";
-import TeamBadge from "@/components/shared/TeamBadge";
+
+function crore(lakhs: number) {
+  return `₹${(lakhs / 100).toFixed(2)} Cr`;
+}
 
 export default function RTMModal() {
   const { auction, teams, userTeamId } = useGameStore();
@@ -16,52 +18,62 @@ export default function RTMModal() {
   const rtmLeft = (userTeam?.rtmCardsTotal ?? 0) - (userTeam?.rtmCardsUsed ?? 0);
 
   return (
-    <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-      <div className="bg-surface border border-accent rounded-xl p-8 max-w-md w-full mx-4 shadow-2xl">
-        <div className="text-center mb-6">
-          <div className="text-xs uppercase tracking-widest text-accent mb-2">Right to Match</div>
-          <h2 className="text-2xl font-black text-text-primary mb-1">{player.name}</h2>
-          <p className="text-text-secondary text-sm">
-            Sold to {winnerTeam?.name} for{" "}
-            <span className="text-gold font-bold">{formatPrice(auction.currentBid)}</span>
-          </p>
-        </div>
-
-        <div className="bg-surface2 rounded-lg p-4 mb-6 border border-border">
-          <p className="text-sm text-text-secondary text-center">
-            This player was in your squad last season. You can match the winning bid and retain them.
-          </p>
-          <div className="mt-3 flex justify-center gap-6 text-sm">
-            <div className="text-center">
-              <div className="text-text-secondary text-xs">RTM Cards Remaining</div>
-              <div className="text-accent font-bold text-lg">{rtmLeft}</div>
-            </div>
-            <div className="text-center">
-              <div className="text-text-secondary text-xs">Match Price</div>
-              <div className="text-gold font-bold text-lg">{formatPrice(auction.currentBid)}</div>
-            </div>
-            <div className="text-center">
-              <div className="text-text-secondary text-xs">Time</div>
-              <div className={`font-bold text-lg ${auction.rtmTimerSeconds <= 5 ? "text-danger" : "text-text-primary"}`}>
-                {auction.rtmTimerSeconds}s
-              </div>
-            </div>
+    <div className="absolute inset-0 z-40 flex items-center justify-center bg-border/80 backdrop-blur-sm">
+      <div className="bg-bg border-2 border-border w-full max-w-md mx-4 shadow-2xl">
+        {/* Header strip */}
+        <div className="bg-accent px-6 py-4">
+          <div className="font-space-mono font-bold text-[10px] tracking-[.16em] text-border mb-1 uppercase">
+            Right to Match
           </div>
+          <h2 className="font-anton text-[32px] leading-none text-border uppercase">{player.name}</h2>
         </div>
 
-        <div className="flex gap-3">
-          <button
-            onClick={useRTM}
-            className="flex-1 bg-accent hover:bg-accent-hover text-white font-bold py-3 rounded-lg transition-colors"
-          >
-            USE RTM — {formatPrice(auction.currentBid)}
-          </button>
-          <button
-            onClick={declineRTM}
-            className="flex-1 bg-surface2 hover:bg-border text-text-secondary font-medium py-3 rounded-lg transition-colors border border-border"
-          >
-            Decline
-          </button>
+        <div className="px-6 py-5">
+          <p className="font-barlow text-[13px] text-text-secondary mb-5">
+            Sold to <span className="font-bold text-text-primary">{winnerTeam?.name}</span> for{" "}
+            <span className="font-barlow-condensed font-bold text-[16px] text-danger">{crore(auction.currentBid)}</span>.
+            You can match this bid using an RTM card.
+          </p>
+
+          <div className="flex gap-0 border-2 border-border mb-5">
+            {[
+              { label: "RTM Cards", value: rtmLeft },
+              { label: "Match Price", value: crore(auction.currentBid), highlight: true },
+              { label: "Time", value: `${auction.rtmTimerSeconds}s`, urgent: auction.rtmTimerSeconds <= 5 },
+            ].map((item, i) => (
+              <div
+                key={item.label}
+                className="flex-1 flex flex-col items-center justify-center py-4"
+                style={i < 2 ? { borderRight: "2px solid #16130f" } : {}}
+              >
+                <div className="font-space-mono text-[9px] tracking-widest text-text-secondary mb-1 uppercase">
+                  {item.label}
+                </div>
+                <div
+                  className="font-barlow-condensed font-bold text-[24px] leading-none"
+                  style={{ color: item.urgent ? "#d6492f" : "#16130f" }}
+                >
+                  {item.value}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex gap-3">
+            <button
+              onClick={useRTM}
+              className="flex-1 bg-border text-accent font-anton text-[18px] py-4 tracking-wide hover:bg-black transition-colors"
+            >
+              USE RTM · {crore(auction.currentBid)}
+            </button>
+            <button
+              onClick={declineRTM}
+              className="px-6 font-space-mono font-bold text-[12px] tracking-widest text-text-secondary
+                border-2 border-border hover:bg-surface transition-colors"
+            >
+              DECLINE
+            </button>
+          </div>
         </div>
       </div>
     </div>

@@ -136,6 +136,7 @@ export const useGameStore = create<Store>()(
             rtmWindowOpen: false,
             rtmTimerSeconds: 15,
             soldFlash: null,
+            saleHistory: [],
           },
           isSetupComplete: false,
         });
@@ -404,6 +405,7 @@ export const useGameStore = create<Store>()(
                   rtmWindowOpen: false,
                   rtmEligibleTeamId: null,
                   teamPurses: newPurses,
+                  saleHistory: [...(state.auction.saleHistory ?? []), { playerId: player.id, teamId: userTeamId, price: rtmAmount, lot: state.auction.currentLotIndex }],
                 }
               : null,
           };
@@ -414,11 +416,21 @@ export const useGameStore = create<Store>()(
       },
 
       declineRTM: () => {
-        set((state) => ({
-          auction: state.auction
-            ? { ...state.auction, rtmWindowOpen: false, rtmEligibleTeamId: null }
-            : null,
-        }));
+        set((state) => {
+          const a = state.auction;
+          if (!a) return {};
+          const newSale = a.currentPlayer && a.currentHighBidderTeamId
+            ? { playerId: a.currentPlayer.id, teamId: a.currentHighBidderTeamId, price: a.currentBid, lot: a.currentLotIndex }
+            : null;
+          return {
+            auction: {
+              ...a,
+              rtmWindowOpen: false,
+              rtmEligibleTeamId: null,
+              saleHistory: newSale ? [...(a.saleHistory ?? []), newSale] : (a.saleHistory ?? []),
+            },
+          };
+        });
         setTimeout(() => advanceToNextLot(), 300);
       },
 
@@ -646,6 +658,7 @@ function hammerFall() {
             soldPlayerIds: newSoldIds,
             teamPurses: newPurses,
             soldFlash: { playerId: player.id, teamId: highBidder, amount: soldAmount },
+            saleHistory: [...(s.auction.saleHistory ?? []), { playerId: player.id, teamId: highBidder, price: soldAmount, lot: auction.currentLotIndex }],
           }
         : null,
     };

@@ -16,29 +16,27 @@ export default function NavBar() {
   const userTeam = teams[userTeamId];
 
   return (
-    <nav className="h-12 bg-surface border-b border-border flex items-center px-4 gap-0 shrink-0 z-50">
-      {/* Team badge */}
+    <nav className="h-12 bg-bg border-b-2 border-border flex items-center px-5 gap-0 shrink-0 z-50">
       {userTeam && (
         <div
-          className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold mr-4"
+          className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold mr-4 shrink-0"
           style={{ backgroundColor: userTeam.primaryColor, color: userTeam.secondaryColor }}
         >
           {userTeam.shortName.slice(0, 2)}
         </div>
       )}
 
-      {/* Nav links */}
-      <div className="flex items-center gap-0.5">
+      <div className="flex items-center gap-0">
         {NAV_ITEMS.map((item) => {
           const active = pathname.startsWith(item.href);
           return (
             <Link
               key={item.href}
               href={item.href}
-              className={`px-4 py-2 text-sm font-medium transition-colors rounded
+              className={`px-4 h-12 flex items-center text-[11px] font-bold tracking-widest uppercase font-space-mono transition-colors border-b-2
                 ${active
-                  ? "text-text-primary bg-surface2 border-b-2 border-accent"
-                  : "text-text-secondary hover:text-text-primary hover:bg-surface2"
+                  ? "text-text-primary border-border bg-surface"
+                  : "text-text-secondary border-transparent hover:text-text-primary hover:bg-surface"
                 }`}
             >
               {item.label}
@@ -47,20 +45,15 @@ export default function NavBar() {
         })}
       </div>
 
-      {/* Spacer */}
       <div className="flex-1" />
 
-      {/* Right info */}
-      <div className="flex items-center gap-4 text-sm">
-        <span className="text-text-secondary">{currentDate} · Pre-Season</span>
+      <div className="flex items-center gap-5 font-space-mono text-[10px]">
+        <span className="text-text-secondary tracking-wider">{currentDate}</span>
         {userTeam && (
-          <span className="text-success font-semibold">
-            {formatPrice(userTeam.remainingPurse)} remaining
+          <span className="text-success font-bold tracking-wider">
+            {formatPrice(userTeam.remainingPurse)} left
           </span>
         )}
-        <button className="bg-accent hover:bg-accent-hover text-white px-4 py-1.5 rounded text-sm font-medium transition-colors">
-          Continue →
-        </button>
       </div>
     </nav>
   );

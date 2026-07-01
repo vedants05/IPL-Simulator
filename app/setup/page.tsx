@@ -19,119 +19,171 @@ export default function SetupPage() {
   const chosenTeam = TEAMS_SEED.find((t) => t.id === selectedTeam);
 
   return (
-    <div className="min-h-screen bg-bg text-text-primary flex flex-col items-center justify-center p-6">
-      <div className="w-full max-w-5xl">
-        {/* Logo / title */}
-        <div className="text-center mb-10">
-          <div className="text-5xl font-black tracking-tight text-white mb-1">
-            IPL <span className="text-accent">Manager</span>
-          </div>
-          <div className="text-text-secondary text-sm tracking-widest uppercase">2025 Season</div>
-        </div>
+    <div className="min-h-screen bg-bg text-text-primary flex flex-col">
+      {/* Top bar */}
+      <div className="border-b-2 border-border px-8 py-5 flex items-baseline gap-4">
+        <span className="font-anton text-[28px] leading-none text-text-primary uppercase">
+          IPL Manager
+        </span>
+        <span className="font-space-mono font-bold text-[10px] tracking-[.14em] text-text-secondary uppercase">
+          2025 Season
+        </span>
+      </div>
 
-        {step === "team" && (
-          <div>
-            <h2 className="text-xl font-bold text-text-primary mb-2">Choose Your Franchise</h2>
-            <p className="text-text-secondary text-sm mb-6">Select the IPL team you want to manage.</p>
-            <div className="grid grid-cols-2 gap-3">
-              {TEAMS_SEED.map((team) => (
-                <button
-                  key={team.id}
-                  onClick={() => setSelectedTeam(team.id)}
-                  className={`relative text-left rounded-lg border p-4 transition-all
-                    ${selectedTeam === team.id
-                      ? "border-accent bg-accent/10 ring-1 ring-accent"
-                      : "border-border bg-surface hover:border-accent/50 hover:bg-surface2"
-                    }`}
-                >
-                  <div className="flex items-center gap-3 mb-2">
-                    <div
-                      className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm shrink-0"
-                      style={{ backgroundColor: team.primaryColor, color: team.secondaryColor }}
+      <div className="flex-1 flex flex-col items-center justify-center px-8 py-10">
+        <div className="w-full max-w-5xl">
+
+          {step === "team" && (
+            <>
+              <div className="mb-8">
+                <div className="font-space-mono font-bold text-[10px] tracking-[.16em] text-text-secondary mb-2 uppercase">
+                  Step 1 of 2
+                </div>
+                <h2 className="font-anton text-[36px] leading-none text-text-primary uppercase mb-1">
+                  Choose Your Franchise
+                </h2>
+                <p className="font-barlow text-[13px] text-text-secondary">
+                  Select the IPL team you want to manage this season.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 mb-8">
+                {TEAMS_SEED.map((team) => {
+                  const isSelected = selectedTeam === team.id;
+                  return (
+                    <button
+                      key={team.id}
+                      onClick={() => setSelectedTeam(team.id)}
+                      className="text-left p-5 transition-all"
+                      style={{
+                        border: isSelected ? "2px solid #16130f" : "2px solid rgba(22,19,15,.2)",
+                        backgroundColor: isSelected ? "#fff6d6" : "#ffffff",
+                      }}
                     >
-                      {team.shortName.slice(0, 2)}
-                    </div>
-                    <div>
-                      <div className="font-bold text-text-primary text-sm">{team.name}</div>
-                      <div className="text-xs text-text-secondary">{team.homeGround}</div>
-                    </div>
-                  </div>
-                  <p className="text-xs text-text-secondary leading-relaxed">{team.description}</p>
-                  <div className="flex gap-3 mt-2">
-                    <span className="text-xs text-text-secondary">
-                      Fan Base: <span className="text-text-primary">{team.fanBase}</span>
-                    </span>
-                    <span className="text-xs text-text-secondary">
-                      Prestige: <span className="text-text-primary">{"★".repeat(Math.round(team.prestige / 2))}</span>
-                    </span>
-                  </div>
-                  {selectedTeam === team.id && (
-                    <div className="absolute top-2 right-2 w-5 h-5 bg-accent rounded-full flex items-center justify-center text-white text-xs">
-                      ✓
-                    </div>
-                  )}
-                </button>
-              ))}
-            </div>
-            <div className="flex justify-end mt-6">
-              <button
-                onClick={() => selectedTeam && setStep("confirm")}
-                disabled={!selectedTeam}
-                className="bg-accent hover:bg-accent-hover disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold px-8 py-3 rounded-lg transition-colors"
-              >
-                Next: Confirm →
-              </button>
-            </div>
-          </div>
-        )}
+                      <div className="flex items-center gap-3 mb-3">
+                        <div
+                          className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-[12px] shrink-0"
+                          style={{ backgroundColor: team.primaryColor, color: team.secondaryColor }}
+                        >
+                          {team.shortName.slice(0, 2)}
+                        </div>
+                        <div>
+                          <div className="font-barlow font-bold text-[14px] text-text-primary">{team.name}</div>
+                          <div className="font-space-mono text-[9px] text-text-secondary tracking-wider">
+                            {team.homeGround}
+                          </div>
+                        </div>
+                        {isSelected && (
+                          <div className="ml-auto w-5 h-5 bg-border rounded-full flex items-center justify-center">
+                            <span className="text-accent text-[11px] font-bold">✓</span>
+                          </div>
+                        )}
+                      </div>
+                      <p className="font-barlow text-[12px] text-text-secondary leading-relaxed mb-2">
+                        {team.description}
+                      </p>
+                      <div className="flex gap-4">
+                        <span className="font-space-mono text-[9px] tracking-wider text-text-secondary">
+                          FAN BASE: <span className="text-text-primary font-bold">{team.fanBase.toUpperCase()}</span>
+                        </span>
+                        <span className="font-space-mono text-[9px] tracking-wider text-text-secondary">
+                          PRESTIGE: <span className="text-text-primary font-bold">{team.prestige}/10</span>
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
 
-        {step === "confirm" && chosenTeam && (
-          <div className="max-w-lg mx-auto">
-            <h2 className="text-xl font-bold text-text-primary mb-6">Confirm Your Selection</h2>
-            <div className="bg-surface rounded-lg border border-border p-6 mb-6">
-              <div className="flex items-center gap-4 mb-4">
-                <div
-                  className="w-16 h-16 rounded-full flex items-center justify-center text-xl font-bold"
-                  style={{ backgroundColor: chosenTeam.primaryColor, color: chosenTeam.secondaryColor }}
+              <div className="flex justify-end">
+                <button
+                  onClick={() => selectedTeam && setStep("confirm")}
+                  disabled={!selectedTeam}
+                  className="bg-border text-accent font-anton text-[18px] tracking-wide px-10 py-4
+                    hover:bg-black disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                 >
-                  {chosenTeam.shortName.slice(0, 2)}
+                  NEXT: CONFIRM →
+                </button>
+              </div>
+            </>
+          )}
+
+          {step === "confirm" && chosenTeam && (
+            <div className="max-w-lg mx-auto">
+              <div className="mb-8">
+                <div className="font-space-mono font-bold text-[10px] tracking-[.16em] text-text-secondary mb-2 uppercase">
+                  Step 2 of 2
                 </div>
-                <div>
-                  <div className="text-xl font-black text-text-primary">{chosenTeam.name}</div>
-                  <div className="text-text-secondary text-sm">{chosenTeam.city} · {chosenTeam.homeGround}</div>
+                <h2 className="font-anton text-[36px] leading-none text-text-primary uppercase">
+                  Confirm Selection
+                </h2>
+              </div>
+
+              {/* Team card */}
+              <div className="border-2 border-border mb-5">
+                <div
+                  className="flex items-center gap-5 p-6"
+                  style={{ borderBottom: "2px solid #16130f" }}
+                >
+                  <div
+                    className="w-16 h-16 rounded-full flex items-center justify-center text-xl font-bold shrink-0"
+                    style={{ backgroundColor: chosenTeam.primaryColor, color: chosenTeam.secondaryColor }}
+                  >
+                    {chosenTeam.shortName.slice(0, 2)}
+                  </div>
+                  <div>
+                    <h3 className="font-anton text-[28px] leading-none text-text-primary uppercase">
+                      {chosenTeam.name}
+                    </h3>
+                    <div className="font-space-mono text-[10px] text-text-secondary tracking-wider mt-1">
+                      {chosenTeam.city.toUpperCase()} · {chosenTeam.homeGround.toUpperCase()}
+                    </div>
+                  </div>
+                </div>
+                <div className="p-6">
+                  <p className="font-barlow text-[13px] text-text-secondary mb-4">
+                    {chosenTeam.description}
+                  </p>
+                  <div className="flex gap-5">
+                    <div>
+                      <div className="font-space-mono text-[9px] tracking-widest text-text-secondary uppercase mb-1">Starting Purse</div>
+                      <div className="font-barlow-condensed font-bold text-[20px] text-success">₹120 Cr</div>
+                    </div>
+                  </div>
                 </div>
               </div>
-              <p className="text-text-secondary text-sm mb-4">{chosenTeam.description}</p>
-              <div className="text-sm">
-                <span className="text-text-secondary">Starting Purse: </span>
-                <span className="text-success font-semibold">₹120 Cr</span>
+
+              {/* What happens next */}
+              <div className="bg-surface border border-border/30 p-5 mb-6">
+                <div className="font-space-mono font-bold text-[9px] tracking-widest text-text-secondary mb-3 uppercase">
+                  What Happens Next
+                </div>
+                <ol className="font-barlow text-[13px] text-text-secondary space-y-1.5 list-decimal list-inside">
+                  <li>Select up to 6 players to retain (deducted from purse)</li>
+                  <li>All remaining players enter the mega auction pool</li>
+                  <li>AI teams auto-retain their top players</li>
+                  <li>Bid for players across 5 auction sets</li>
+                </ol>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setStep("team")}
+                  className="flex-1 font-space-mono font-bold text-[11px] tracking-widest text-text-secondary py-4
+                    border-2 border-border hover:bg-surface transition-colors"
+                >
+                  ← BACK
+                </button>
+                <button
+                  onClick={handleStart}
+                  className="flex-1 bg-border text-accent font-anton text-[18px] tracking-wide py-4 hover:bg-black transition-colors"
+                >
+                  BEGIN SEASON →
+                </button>
               </div>
             </div>
-            <div className="bg-surface2 rounded border border-border p-4 mb-6">
-              <h4 className="text-xs uppercase tracking-wider text-text-secondary mb-2">What happens next</h4>
-              <ol className="text-sm text-text-secondary space-y-1 list-decimal list-inside">
-                <li>Select up to 6 players to retain (deducted from your purse)</li>
-                <li>All remaining players enter the mega auction pool</li>
-                <li>AI teams auto-retain their top players</li>
-                <li>Bid for players across 5 auction sets</li>
-              </ol>
-            </div>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setStep("team")}
-                className="flex-1 bg-surface2 hover:bg-border text-text-secondary font-medium py-3 rounded-lg border border-border transition-colors"
-              >
-                ← Back
-              </button>
-              <button
-                onClick={handleStart}
-                className="flex-1 bg-accent hover:bg-accent-hover text-white font-bold py-3 rounded-lg transition-colors"
-              >
-                Begin Season →
-              </button>
-            </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );

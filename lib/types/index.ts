@@ -150,6 +150,7 @@ export interface AuctionState {
   rtmWindowOpen: boolean;
   rtmTimerSeconds: number;
   soldFlash: { playerId: string; teamId: string; amount: number } | null;
+  saleHistory: Array<{ playerId: string; teamId: string; price: number; lot: number }>;
 }
 
 export interface GameState {

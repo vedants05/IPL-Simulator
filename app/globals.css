@@ -3,14 +3,14 @@
 @tailwind utilities;
 
 :root {
-  --background: #0f1117;
-  --foreground: #e8eaf0;
+  --background: #f4f1ea;
+  --foreground: #16130f;
 }
 
 body {
   color: var(--foreground);
   background: var(--background);
-  font-family: system-ui, -apple-system, sans-serif;
+  font-family: var(--font-barlow), system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -24,16 +24,21 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  background: #0f1117;
+  background: #efece3;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #2e3347;
+  background: #b3ac9e;
   border-radius: 2px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #7c5cbf;
+  background: #8a8378;
+}
+
+@keyframes liveblink {
+  0%, 55% { opacity: 1; }
+  70%, 100% { opacity: 0.25; }
 }
 
 @keyframes shrink {

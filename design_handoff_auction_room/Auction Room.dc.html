@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@500;600;700&family=Barlow+Semi+Condensed:wght@500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  body{margin:0;background:#e7e4dd;font-family:Barlow,system-ui,sans-serif}
+  .dv-turn{padding:44px 48px 36px;border-bottom:1px solid rgba(0,0,0,.08);scroll-margin-top:16px}
+  .dv-thd{display:flex;align-items:baseline;gap:10px;margin:0 0 24px}
+  .dv-tid{font:700 10px "Space Mono",monospace;padding:3px 7px;background:#16130f;color:#fff;border-radius:4px;text-decoration:none}
+  .dv-tname{font:600 13px/1.2 Barlow,sans-serif;color:#16130f}
+  .dv-opts{display:flex;flex-wrap:wrap;gap:40px;align-items:flex-start}
+  .dv-opt{flex:none;display:flex;flex-direction:column;gap:11px;scroll-margin-top:16px}
+  .dv-oid{font:700 10.5px "Space Mono",monospace;padding:3px 7px;background:rgba(0,0,0,.09);color:#16130f;border-radius:5px;text-decoration:none}
+  .dv-olabel{display:flex;align-items:baseline;gap:9px;font:500 12px/1.3 Barlow,sans-serif;color:rgba(0,0,0,.5)}
+  .dv-card{max-width:100%;border-radius:14px;overflow:hidden;box-shadow:0 24px 60px -24px rgba(0,0,0,.45)}
+  .dv-opt:target .dv-oid{background:#ff2e93;color:#fff}
+  .dv-next{margin:26px 0 0;font:13px/1.6 Barlow,sans-serif;color:rgba(0,0,0,.5)}
+  @keyframes liveblink{0%,55%{opacity:1}70%,100%{opacity:.25}}
+  @keyframes barpulse{0%,100%{opacity:1}50%{opacity:.55}}
+</style>
+</helmet>
+
+<section class="dv-turn" id="t2">
+<div class="dv-thd"><a class="dv-tid" href="#t2">2</a><span class="dv-tname"><a class="dv-oid" href="#1b">1b</a> + live bid feed &amp; scrollable sold log</span></div>
+<div class="dv-opts">
+
+<div class="dv-opt" id="2a">
+<div class="dv-olabel"><a class="dv-oid" href="#2a">2a</a>Matchday, expanded &mdash; live bids for the current lot + full sold history</div>
+<div class="dv-card" style="width:1480px;background:#f4f1ea;color:#16130f;font-family:Barlow,sans-serif;border:1px solid #16130f">
+
+  <!-- header -->
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 22px;border-bottom:2px solid #16130f">
+    <div style="display:flex;align-items:center;gap:14px">
+      <div style="display:flex;align-items:center;gap:7px;background:#16130f;padding:5px 9px;border-radius:3px">
+        <span style="width:7px;height:7px;border-radius:50%;background:#ffc400;animation:liveblink 1.4s infinite"></span>
+        <span style="font:700 11px/1 'Space Mono',monospace;letter-spacing:.12em;color:#fff">LIVE</span>
+      </div>
+      <div style="font-family:Anton,sans-serif;font-size:22px;letter-spacing:.01em">MEGA AUCTION &rsquo;25</div>
+      <div style="font:400 11px/1 'Space Mono',monospace;letter-spacing:.04em;color:#8a8378">SET 3/9 &middot; MARQUEE SET</div>
+    </div>
+    <div style="display:flex;gap:0;border:1.5px solid #16130f;border-radius:5px;overflow:hidden">
+      <span style="font:700 10px/1 'Space Mono',monospace;padding:7px 11px;background:#1f9d57;color:#fff">SOLD 61</span>
+      <span style="font:700 10px/1 'Space Mono',monospace;padding:7px 11px;background:#d6492f;color:#fff;border-left:1.5px solid #16130f">UNSOLD 14</span>
+      <span style="font:700 10px/1 'Space Mono',monospace;padding:7px 11px;color:#16130f;border-left:1.5px solid #16130f">LEFT 329</span>
+    </div>
+  </div>
+
+  <div style="display:flex;height:772px">
+
+    <!-- COL A: team purse -->
+    <div style="width:212px;flex:none;border-right:2px solid #16130f;padding:14px;display:flex;flex-direction:column">
+      <div style="font:700 10px/1 'Space Mono',monospace;letter-spacing:.14em;color:#8a8378;margin-bottom:11px">PURSE / &#8377;Cr</div>
+      <div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid rgba(22,19,15,.14)"><span style="width:10px;height:10px;border-radius:50%;background:#ec1c24"></span><span style="flex:1;font-family:Anton,sans-serif;font-size:13px">RCB</span><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px">38.5</span></div>
+      <div style="display:flex;align-items:center;gap:8px;padding:7px;margin:0 -7px;background:#ffc400;border-bottom:1px solid #16130f"><span style="width:10px;height:10px;border-radius:50%;background:#004ba0"></span><span style="flex:1;font-family:Anton,sans-serif;font-size:13px">MI <span style="font:700 7px/1 'Space Mono',monospace">&middot;YOU</span></span><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px">52.0</span></div>
+      <div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid rgba(22,19,15,.14)"><span style="width:10px;height:10px;border-radius:50%;background:#f9cd05"></span><span style="flex:1;font-family:Anton,sans-serif;font-size:13px">CSK</span><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px">61.5</span></div>
+      <div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid rgba(22,19,15,.14)"><span style="width:10px;height:10px;border-radius:50%;background:#7e2d8f"></span><span style="flex:1;font-family:Anton,sans-serif;font-size:13px">KKR</span><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px">44.0</span></div>
+      <div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid rgba(22,19,15,.14)"><span style="width:10px;height:10px;border-radius:50%;background:#ff822a"></span><span style="flex:1;font-family:Anton,sans-serif;font-size:13px">SRH</span><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px">29.5</span></div>
+      <div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid rgba(22,19,15,.14)"><span style="width:10px;height:10px;border-radius:50%;background:#1b2133"></span><span style="flex:1;font-family:Anton,sans-serif;font-size:13px">GT</span><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px">58.0</span></div>
+      <div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid rgba(22,19,15,.14)"><span style="width:10px;height:10px;border-radius:50%;background:#0078bc"></span><span style="flex:1;font-family:Anton,sans-serif;font-size:13px">DC</span><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px">47.5</span></div>
+      <div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid rgba(22,19,15,.14)"><span style="width:10px;height:10px;border-radius:50%;background:#ea1a85"></span><span style="flex:1;font-family:Anton,sans-serif;font-size:13px">RR</span><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px">55.0</span></div>
+      <div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid rgba(22,19,15,.14)"><span style="width:10px;height:10px;border-radius:50%;background:#00a0e3"></span><span style="flex:1;font-family:Anton,sans-serif;font-size:13px">LSG</span><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px">41.0</span></div>
+      <div style="display:flex;align-items:center;gap:8px;padding:7px 0"><span style="width:10px;height:10px;border-radius:50%;background:#a7a9ac"></span><span style="flex:1;font-family:Anton,sans-serif;font-size:13px">PBKS</span><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px">63.5</span></div>
+      <div style="margin-top:auto;border-top:2px solid #16130f;padding-top:10px">
+        <div style="display:flex;align-items:center;gap:8px"><span style="width:22px;height:22px;border-radius:4px;background:#004ba0;display:inline-flex;align-items:center;justify-content:center;font-family:Anton,sans-serif;font-size:10px;color:#fff">MI</span><span style="font:700 9px/1 'Space Mono',monospace;letter-spacing:.08em;color:#8a8378">YOUR SQUAD 14/25</span></div>
+        <div style="display:flex;gap:5px;margin-top:9px">
+          <span style="flex:1;text-align:center;font:700 8px/1 'Space Mono',monospace;color:#16130f;background:#ffc400;border:1px solid #16130f;padding:5px 0;border-radius:3px">OS 5/8</span>
+          <span style="flex:1;text-align:center;font:700 8px/1 'Space Mono',monospace;color:#16130f;border:1px solid #16130f;padding:5px 0;border-radius:3px">RTM &times;3</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- COL B: center lot -->
+    <div style="flex:1;min-width:0;display:flex;flex-direction:column">
+      <div style="padding:18px 24px;border-bottom:2px solid #16130f">
+        <div style="font:700 10px/1 'Space Mono',monospace;letter-spacing:.16em;color:#d6492f;margin-bottom:8px">&#9632; ON THE BLOCK &middot; LOT 76</div>
+        <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:20px">
+          <div style="font-family:Anton,sans-serif;font-size:52px;line-height:.9">JOS BUTTLER</div>
+          <div style="text-align:right;flex:none"><div style="font:700 9px/1 'Space Mono',monospace;letter-spacing:.12em;color:#8a8378">BASE</div><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:22px">&#8377;2.00 Cr</div></div>
+        </div>
+        <div style="display:flex;gap:7px;margin-top:13px">
+          <span style="font:700 10px/1 'Space Mono',monospace;color:#fff;background:#16130f;padding:6px 9px;border-radius:3px">WK-BATSMAN</span>
+          <span style="font:700 10px/1 'Space Mono',monospace;color:#16130f;background:#ffc400;padding:6px 9px;border-radius:3px;border:1px solid #16130f">OVERSEAS &middot; ENG</span>
+          <span style="font:700 10px/1 'Space Mono',monospace;color:#16130f;padding:6px 9px;border-radius:3px;border:1px solid #16130f">CAPPED &middot; 35</span>
+        </div>
+      </div>
+      <div style="display:flex;border-bottom:2px solid #16130f">
+        <div style="flex:1;padding:11px 15px;border-right:1px solid rgba(22,19,15,.18)"><div style="font:700 9px/1 'Space Mono',monospace;color:#8a8378">MATCHES</div><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:24px;margin-top:2px">420</div></div>
+        <div style="flex:1;padding:11px 15px;border-right:1px solid rgba(22,19,15,.18)"><div style="font:700 9px/1 'Space Mono',monospace;color:#8a8378">RUNS</div><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:24px;margin-top:2px">12,108</div></div>
+        <div style="flex:1;padding:11px 15px;border-right:1px solid rgba(22,19,15,.18)"><div style="font:700 9px/1 'Space Mono',monospace;color:#8a8378">AVG</div><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:24px;margin-top:2px">36.1</div></div>
+        <div style="flex:1;padding:11px 15px;border-right:1px solid rgba(22,19,15,.18)"><div style="font:700 9px/1 'Space Mono',monospace;color:#8a8378">SR</div><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:24px;margin-top:2px;color:#d6492f">149.2</div></div>
+        <div style="flex:1;padding:11px 15px"><div style="font:700 9px/1 'Space Mono',monospace;color:#8a8378">RATING</div><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:24px;margin-top:2px">89</div></div>
+      </div>
+      <div style="flex:1;display:flex">
+        <div style="flex:1;background:#ffc400;padding:22px 24px;display:flex;flex-direction:column;justify-content:center;border-right:2px solid #16130f">
+          <div style="font:700 11px/1 'Space Mono',monospace;letter-spacing:.16em;color:#16130f">CURRENT BID</div>
+          <div style="font-family:Anton,sans-serif;font-size:72px;line-height:.86;margin-top:8px">&#8377;14.50<span style="font-size:32px;margin-left:8px">Cr</span></div>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:14px">
+            <span style="width:20px;height:20px;border-radius:4px;background:#ec1c24;display:inline-flex;align-items:center;justify-content:center;font:700 9px/1 'Space Mono',monospace;color:#fff">R</span>
+            <span style="font:700 13px/1 Barlow;color:#16130f">RCB lead</span>
+            <span style="font:700 9px/1 'Space Mono',monospace;color:#fff;background:#16130f;padding:4px 7px;border-radius:3px">HIGH BIDDER</span>
+          </div>
+        </div>
+        <div style="width:160px;flex:none;background:#16130f;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px">
+          <div style="font:700 9px/1 'Space Mono',monospace;letter-spacing:.16em;color:#8a8378">TIME LEFT</div>
+          <div style="font-family:Anton,sans-serif;font-size:60px;line-height:.9;color:#ffc400">7</div>
+          <div style="display:flex;gap:4px;margin-top:6px"><span style="width:20px;height:5px;border-radius:3px;background:#ffc400"></span><span style="width:20px;height:5px;border-radius:3px;background:#ffc400"></span><span style="width:20px;height:5px;border-radius:3px;background:#ffc400"></span><span style="width:20px;height:5px;border-radius:3px;background:rgba(255,255,255,.2)"></span></div>
+        </div>
+      </div>
+      <div style="display:flex;border-top:2px solid #16130f">
+        <button style="flex:1;border:none;cursor:pointer;background:#16130f;color:#ffc400;font-family:Anton,sans-serif;font-size:21px;padding:17px" style-hover="background:#000">BID &#8377;14.75 Cr &uarr;</button>
+        <button style="flex:none;cursor:pointer;background:#f4f1ea;border:none;border-left:2px solid #16130f;color:#16130f;font:700 13px/1 'Space Mono',monospace;letter-spacing:.1em;padding:0 28px" style-hover="background:#e8e3d8">PASS</button>
+      </div>
+    </div>
+
+    <!-- COL C: LIVE BIDS (current lot) -->
+    <div style="width:256px;flex:none;border-left:2px solid #16130f;display:flex;flex-direction:column">
+      <div style="padding:13px 14px;border-bottom:2px solid #16130f;display:flex;align-items:center;justify-content:space-between">
+        <div style="display:flex;align-items:center;gap:7px"><span style="width:7px;height:7px;border-radius:50%;background:#d6492f;animation:liveblink 1.4s infinite"></span><span style="font:700 11px/1 'Space Mono',monospace;letter-spacing:.1em">LIVE BIDS</span></div>
+        <span style="font:700 9px/1 'Space Mono',monospace;color:#8a8378">12 bids</span>
+      </div>
+      <div style="flex:1;overflow-y:auto;padding:8px 12px">
+        <div style="display:flex;align-items:center;gap:9px;padding:8px;background:#ffc400;border:1px solid #16130f;border-radius:5px;margin-bottom:6px"><span style="width:9px;height:9px;border-radius:50%;background:#ec1c24"></span><span style="flex:1;font:700 12px/1 Barlow">RCB</span><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px">&#8377;14.50</span></div>
+        <div style="display:flex;align-items:center;gap:9px;padding:7px 8px;border-bottom:1px solid rgba(22,19,15,.1)"><span style="width:9px;height:9px;border-radius:50%;background:#004ba0"></span><span style="flex:1;font:600 12px/1 Barlow">MI</span><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px;color:#5a5348">&#8377;14.00</span></div>
+        <div style="display:flex;align-items:center;gap:9px;padding:7px 8px;border-bottom:1px solid rgba(22,19,15,.1)"><span style="width:9px;height:9px;border-radius:50%;background:#ec1c24"></span><span style="flex:1;font:600 12px/1 Barlow">RCB</span><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px;color:#5a5348">&#8377;13.50</span></div>
+        <div style="display:flex;align-items:center;gap:9px;padding:7px 8px;border-bottom:1px solid rgba(22,19,15,.1)"><span style="width:9px;height:9px;border-radius:50%;background:#004ba0"></span><span style="flex:1;font:600 12px/1 Barlow">MI</span><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px;color:#5a5348">&#8377;13.00</span></div>
+        <div style="display:flex;align-items:center;gap:9px;padding:7px 8px;border-bottom:1px solid rgba(22,19,15,.1)"><span style="width:9px;height:9px;border-radius:50%;background:#ec1c24"></span><span style="flex:1;font:600 12px/1 Barlow">RCB</span><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px;color:#5a5348">&#8377;12.50</span></div>
+        <div style="display:flex;align-items:center;gap:9px;padding:7px 8px;border-bottom:1px solid rgba(22,19,15,.1)"><span style="width:9px;height:9px;border-radius:50%;background:#1b2133"></span><span style="flex:1;font:600 12px/1 Barlow">GT</span><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px;color:#5a5348">&#8377;12.00</span></div>
+        <div style="display:flex;align-items:center;gap:9px;padding:7px 8px;border-bottom:1px solid rgba(22,19,15,.1)"><span style="width:9px;height:9px;border-radius:50%;background:#004ba0"></span><span style="flex:1;font:600 12px/1 Barlow">MI</span><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px;color:#5a5348">&#8377;11.00</span></div>
+        <div style="display:flex;align-items:center;gap:9px;padding:7px 8px;border-bottom:1px solid rgba(22,19,15,.1)"><span style="width:9px;height:9px;border-radius:50%;background:#ec1c24"></span><span style="flex:1;font:600 12px/1 Barlow">RCB</span><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px;color:#5a5348">&#8377;10.00</span></div>
+        <div style="display:flex;align-items:center;gap:9px;padding:7px 8px;border-bottom:1px solid rgba(22,19,15,.1)"><span style="width:9px;height:9px;border-radius:50%;background:#1b2133"></span><span style="flex:1;font:600 12px/1 Barlow">GT</span><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px;color:#5a5348">&#8377;8.00</span></div>
+        <div style="display:flex;align-items:center;gap:9px;padding:7px 8px;border-bottom:1px solid rgba(22,19,15,.1)"><span style="width:9px;height:9px;border-radius:50%;background:#004ba0"></span><span style="flex:1;font:600 12px/1 Barlow">MI</span><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px;color:#5a5348">&#8377;6.00</span></div>
+        <div style="display:flex;align-items:center;gap:9px;padding:7px 8px;border-bottom:1px solid rgba(22,19,15,.1)"><span style="width:9px;height:9px;border-radius:50%;background:#ec1c24"></span><span style="flex:1;font:600 12px/1 Barlow">RCB</span><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px;color:#5a5348">&#8377;4.00</span></div>
+        <div style="display:flex;align-items:center;gap:9px;padding:7px 8px"><span style="width:9px;height:9px;border-radius:50%;background:#004ba0"></span><span style="flex:1;font:600 12px/1 Barlow">MI <span style="font:700 8px/1 'Space Mono',monospace;color:#8a8378">OPEN</span></span><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px;color:#5a5348">&#8377;2.00</span></div>
+      </div>
+      <div style="padding:10px 14px;border-top:2px solid #16130f;background:#efece3">
+        <div style="font:700 9px/1 'Space Mono',monospace;color:#8a8378;margin-bottom:4px">YOUR NEXT BID</div>
+        <div style="display:flex;align-items:baseline;justify-content:space-between"><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:20px">&#8377;14.75 Cr</span><span style="font:600 10px/1 'Space Mono',monospace;color:#1f9d57">+0.25</span></div>
+      </div>
+    </div>
+
+    <!-- COL D: SOLD LOG (scrollable full history) -->
+    <div style="width:264px;flex:none;border-left:2px solid #16130f;display:flex;flex-direction:column;background:#efece3">
+      <div style="padding:13px 14px;border-bottom:2px solid #16130f;display:flex;align-items:center;justify-content:space-between">
+        <span style="font:700 11px/1 'Space Mono',monospace;letter-spacing:.1em">SOLD LOG</span>
+        <span style="font:700 9px/1 'Space Mono',monospace;color:#8a8378">61 &middot; scroll &uarr; from start</span>
+      </div>
+      <div style="flex:1;overflow-y:auto;padding:6px 0">
+        <div style="display:flex;align-items:center;gap:9px;padding:8px 14px;border-bottom:1px solid rgba(22,19,15,.1)"><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:11px;color:#b3ac9e;width:24px">L75</span><div style="flex:1;min-width:0"><div style="font:600 11.5px/1.1 Barlow;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Marcus Stoinis</div><div style="display:flex;align-items:center;gap:4px;margin-top:2px"><span style="width:7px;height:7px;border-radius:50%;background:#00a0e3"></span><span style="font:600 9px/1 'Space Mono',monospace;color:#8a8378">LSG</span></div></div><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:14px">4.80</span></div>
+        <div style="display:flex;align-items:center;gap:9px;padding:8px 14px;border-bottom:1px solid rgba(22,19,15,.1)"><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:11px;color:#b3ac9e;width:24px">L74</span><div style="flex:1;min-width:0"><div style="font:600 11.5px/1.1 Barlow;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Rachin Ravindra</div><div style="display:flex;align-items:center;gap:4px;margin-top:2px"><span style="width:7px;height:7px;border-radius:50%;background:#f9cd05"></span><span style="font:600 9px/1 'Space Mono',monospace;color:#8a8378">CSK</span></div></div><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:14px">6.50</span></div>
+        <div style="display:flex;align-items:center;gap:9px;padding:8px 14px;border-bottom:1px solid rgba(22,19,15,.1)"><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:11px;color:#b3ac9e;width:24px">L73</span><div style="flex:1;min-width:0"><div style="font:600 11.5px/1.1 Barlow;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Nitish Rana</div><div style="display:flex;align-items:center;gap:4px;margin-top:2px"><span style="width:7px;height:7px;border-radius:50%;background:#ea1a85"></span><span style="font:600 9px/1 'Space Mono',monospace;color:#8a8378">RR</span></div></div><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:14px">2.40</span></div>
+        <div style="display:flex;align-items:center;gap:9px;padding:8px 14px;border-bottom:1px solid rgba(22,19,15,.1);background:#fff6d6"><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:11px;color:#b3ac9e;width:24px">L72</span><div style="flex:1;min-width:0"><div style="font:600 11.5px/1.1 Barlow;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Mitchell Starc</div><div style="display:flex;align-items:center;gap:4px;margin-top:2px"><span style="width:7px;height:7px;border-radius:50%;background:#7e2d8f"></span><span style="font:600 9px/1 'Space Mono',monospace;color:#8a8378">KKR</span></div></div><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:14px;color:#d6492f">11.75</span></div>
+        <div style="display:flex;align-items:center;gap:9px;padding:8px 14px;border-bottom:1px solid rgba(22,19,15,.1);background:#fff6d6"><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:11px;color:#b3ac9e;width:24px">L71</span><div style="flex:1;min-width:0"><div style="font:600 11.5px/1.1 Barlow;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Rishabh Pant</div><div style="display:flex;align-items:center;gap:4px;margin-top:2px"><span style="width:7px;height:7px;border-radius:50%;background:#00a0e3"></span><span style="font:600 9px/1 'Space Mono',monospace;color:#8a8378">LSG</span></div></div><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:14px;color:#d6492f">14.20</span></div>
+        <div style="display:flex;align-items:center;gap:9px;padding:8px 14px;border-bottom:1px solid rgba(22,19,15,.1)"><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:11px;color:#b3ac9e;width:24px">L70</span><div style="flex:1;min-width:0"><div style="font:600 11.5px/1.1 Barlow;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Shreyas Iyer</div><div style="display:flex;align-items:center;gap:4px;margin-top:2px"><span style="width:7px;height:7px;border-radius:50%;background:#a7a9ac"></span><span style="font:600 9px/1 'Space Mono',monospace;color:#8a8378">PBKS</span></div></div><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:14px;color:#d6492f">13.25</span></div>
+        <div style="display:flex;align-items:center;gap:9px;padding:8px 14px;border-bottom:1px solid rgba(22,19,15,.1)"><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:11px;color:#b3ac9e;width:24px">L69</span><div style="flex:1;min-width:0"><div style="font:600 11.5px/1.1 Barlow;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Arshdeep Singh</div><div style="display:flex;align-items:center;gap:4px;margin-top:2px"><span style="width:7px;height:7px;border-radius:50%;background:#a7a9ac"></span><span style="font:600 9px/1 'Space Mono',monospace;color:#8a8378">PBKS</span></div></div><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:14px">5.00</span></div>
+        <div style="display:flex;align-items:center;gap:9px;padding:8px 14px;border-bottom:1px solid rgba(22,19,15,.1)"><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:11px;color:#b3ac9e;width:24px">L68</span><div style="flex:1;min-width:0"><div style="font:600 11.5px/1.1 Barlow;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">David Miller</div><div style="display:flex;align-items:center;gap:4px;margin-top:2px"><span style="width:7px;height:7px;border-radius:50%;background:#1b2133"></span><span style="font:600 9px/1 'Space Mono',monospace;color:#8a8378">GT</span></div></div><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:14px">3.60</span></div>
+        <div style="display:flex;align-items:center;gap:9px;padding:8px 14px;border-bottom:1px solid rgba(22,19,15,.1)"><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:11px;color:#b3ac9e;width:24px">L67</span><div style="flex:1;min-width:0"><div style="font:600 11.5px/1.1 Barlow;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Yuzvendra Chahal</div><div style="display:flex;align-items:center;gap:4px;margin-top:2px"><span style="width:7px;height:7px;border-radius:50%;background:#ea1a85"></span><span style="font:600 9px/1 'Space Mono',monospace;color:#8a8378">RR</span></div></div><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:14px">4.40</span></div>
+        <div style="display:flex;align-items:center;gap:9px;padding:8px 14px;border-bottom:1px solid rgba(22,19,15,.1)"><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:11px;color:#b3ac9e;width:24px">L66</span><div style="flex:1;min-width:0"><div style="font:600 11.5px/1.1 Barlow;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Kagiso Rabada</div><div style="display:flex;align-items:center;gap:4px;margin-top:2px"><span style="width:7px;height:7px;border-radius:50%;background:#ff822a"></span><span style="font:600 9px/1 'Space Mono',monospace;color:#8a8378">SRH</span></div></div><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:14px">6.20</span></div>
+        <div style="display:flex;align-items:center;gap:9px;padding:8px 14px;border-bottom:1px solid rgba(22,19,15,.1)"><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:11px;color:#b3ac9e;width:24px">L65</span><div style="flex:1;min-width:0"><div style="font:600 11.5px/1.1 Barlow;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Venkatesh Iyer</div><div style="display:flex;align-items:center;gap:4px;margin-top:2px"><span style="width:7px;height:7px;border-radius:50%;background:#7e2d8f"></span><span style="font:600 9px/1 'Space Mono',monospace;color:#8a8378">KKR</span></div></div><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:14px">8.00</span></div>
+        <div style="display:flex;align-items:center;gap:9px;padding:8px 14px;border-bottom:1px solid rgba(22,19,15,.1)"><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:11px;color:#b3ac9e;width:24px">L64</span><div style="flex:1;min-width:0"><div style="font:600 11.5px/1.1 Barlow;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Faf du Plessis</div><div style="display:flex;align-items:center;gap:4px;margin-top:2px"><span style="width:7px;height:7px;border-radius:50%;background:#0078bc"></span><span style="font:600 9px/1 'Space Mono',monospace;color:#8a8378">DC</span></div></div><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:14px">5.40</span></div>
+        <div style="display:flex;align-items:center;gap:9px;padding:8px 14px;border-bottom:1px solid rgba(22,19,15,.1)"><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:11px;color:#b3ac9e;width:24px">L63</span><div style="flex:1;min-width:0"><div style="font:600 11.5px/1.1 Barlow;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Mohammed Shami</div><div style="display:flex;align-items:center;gap:4px;margin-top:2px"><span style="width:7px;height:7px;border-radius:50%;background:#1b2133"></span><span style="font:600 9px/1 'Space Mono',monospace;color:#8a8378">GT</span></div></div><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:14px">5.00</span></div>
+        <div style="display:flex;align-items:center;gap:9px;padding:8px 14px;border-bottom:1px solid rgba(22,19,15,.1)"><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:11px;color:#b3ac9e;width:24px">L62</span><div style="flex:1;min-width:0"><div style="font:600 11.5px/1.1 Barlow;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Devdutt Padikkal</div><div style="display:flex;align-items:center;gap:4px;margin-top:2px"><span style="width:7px;height:7px;border-radius:50%;background:#ec1c24"></span><span style="font:600 9px/1 'Space Mono',monospace;color:#8a8378">RCB</span></div></div><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:14px">3.20</span></div>
+        <div style="display:flex;align-items:center;gap:9px;padding:8px 14px"><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:11px;color:#b3ac9e;width:24px">L61</span><div style="flex:1;min-width:0"><div style="font:600 11.5px/1.1 Barlow;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Washington Sundar</div><div style="display:flex;align-items:center;gap:4px;margin-top:2px"><span style="width:7px;height:7px;border-radius:50%;background:#1b2133"></span><span style="font:600 9px/1 'Space Mono',monospace;color:#8a8378">GT</span></div></div><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:14px">2.60</span></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+</div>
+<p class="dv-next">Try next: &ldquo;add filters to the sold log (by team / by role)&rdquo; &middot; &ldquo;show my own bids highlighted in the live feed&rdquo; &middot; &ldquo;make the sold log a full-screen overview too&rdquo;</p>
+</section>
+
+<section class="dv-turn" id="t1">
+<div class="dv-thd"><a class="dv-tid" href="#t1">1</a><span class="dv-tname">Live auction room &mdash; three broadcast directions</span></div>
+<div class="dv-opts">
+
+<!-- ===================== 1a PRIME TIME ===================== -->
+<div class="dv-opt" id="1a">
+<div class="dv-olabel"><a class="dv-oid" href="#1a">1a</a>Prime Time &mdash; warm-black control room, electric accents, LED bid</div>
+<div class="dv-card" style="width:1360px;background:radial-gradient(125% 95% at 50% -12%, #1d1f26 0%, #0e0f12 56%);color:#f2f1ed;font-family:Barlow,sans-serif">
+
+  <!-- broadcast strip -->
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 22px;border-bottom:1px solid rgba(255,255,255,.07);background:rgba(0,0,0,.25)">
+    <div style="display:flex;align-items:center;gap:16px">
+      <div style="display:flex;align-items:center;gap:7px;background:#ff3b30;padding:4px 9px 4px 8px;border-radius:4px">
+        <span style="width:7px;height:7px;border-radius:50%;background:#fff;animation:liveblink 1.4s infinite"></span>
+        <span style="font:700 11px/1 'Space Mono',monospace;letter-spacing:.12em;color:#fff">LIVE</span>
+      </div>
+      <div style="font-family:Anton,sans-serif;font-size:19px;letter-spacing:.02em;color:#fff">MEGA AUCTION 2025</div>
+      <div style="font:400 11px/1 'Space Mono',monospace;letter-spacing:.06em;color:#7c7f8a;padding-left:4px">SET 3 / 9 &middot; MARQUEE</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:22px;font:400 11px/1 'Space Mono',monospace;color:#7c7f8a">
+      <span>SOLD <span style="color:#5fd08a;font-weight:700">61</span></span>
+      <span>UNSOLD <span style="color:#ff6a5e;font-weight:700">14</span></span>
+      <span>REMAINING <span style="color:#f2f1ed;font-weight:700">329</span></span>
+    </div>
+  </div>
+
+  <div style="display:flex;height:744px">
+
+    <!-- LEFT: team purse -->
+    <div style="width:286px;flex:none;border-right:1px solid rgba(255,255,255,.07);padding:18px 16px;display:flex;flex-direction:column;gap:11px;background:rgba(255,255,255,.012)">
+      <div style="font:700 10px/1 'Space Mono',monospace;letter-spacing:.16em;color:#6e7180">TEAM PURSE &nbsp;&middot;&nbsp; &#8377;Cr</div>
+      <div style="display:flex;flex-direction:column;gap:9px">
+        <!-- row -->
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="width:3px;height:30px;border-radius:2px;background:#ec1c24"></div>
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;justify-content:space-between;align-items:baseline">
+              <span style="font-family:Anton,sans-serif;font-size:14px;letter-spacing:.03em;color:#fff">RCB</span>
+              <span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px;color:#ffd84d">38.5</span>
+            </div>
+            <div style="height:3px;border-radius:2px;background:rgba(255,255,255,.08);margin-top:4px;overflow:hidden"><div style="height:100%;width:32%;background:#ec1c24"></div></div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;background:rgba(45,111,224,.12);margin:0 -8px;padding:5px 8px;border-radius:6px;outline:1px solid rgba(45,111,224,.4)">
+          <div style="width:3px;height:30px;border-radius:2px;background:#2d6fe0"></div>
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;justify-content:space-between;align-items:baseline">
+              <span style="font-family:Anton,sans-serif;font-size:14px;letter-spacing:.03em;color:#fff">MI <span style="font:700 8px/1 'Space Mono',monospace;color:#8fb4f5;letter-spacing:.1em">YOU</span></span>
+              <span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px;color:#ffd84d">52.0</span>
+            </div>
+            <div style="height:3px;border-radius:2px;background:rgba(255,255,255,.08);margin-top:4px;overflow:hidden"><div style="height:100%;width:43%;background:#2d6fe0"></div></div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="width:3px;height:30px;border-radius:2px;background:#f9cd05"></div>
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;justify-content:space-between;align-items:baseline">
+              <span style="font-family:Anton,sans-serif;font-size:14px;letter-spacing:.03em;color:#fff">CSK</span>
+              <span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px;color:#ffd84d">61.5</span>
+            </div>
+            <div style="height:3px;border-radius:2px;background:rgba(255,255,255,.08);margin-top:4px;overflow:hidden"><div style="height:100%;width:51%;background:#f9cd05"></div></div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="width:3px;height:30px;border-radius:2px;background:#7e2d8f"></div>
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;justify-content:space-between;align-items:baseline">
+              <span style="font-family:Anton,sans-serif;font-size:14px;letter-spacing:.03em;color:#fff">KKR</span>
+              <span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px;color:#ffd84d">44.0</span>
+            </div>
+            <div style="height:3px;border-radius:2px;background:rgba(255,255,255,.08);margin-top:4px;overflow:hidden"><div style="height:100%;width:37%;background:#7e2d8f"></div></div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="width:3px;height:30px;border-radius:2px;background:#ff822a"></div>
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;justify-content:space-between;align-items:baseline">
+              <span style="font-family:Anton,sans-serif;font-size:14px;letter-spacing:.03em;color:#fff">SRH</span>
+              <span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px;color:#ffd84d">29.5</span>
+            </div>
+            <div style="height:3px;border-radius:2px;background:rgba(255,255,255,.08);margin-top:4px;overflow:hidden"><div style="height:100%;width:25%;background:#ff822a"></div></div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="width:3px;height:30px;border-radius:2px;background:#2a9d8f"></div>
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;justify-content:space-between;align-items:baseline">
+              <span style="font-family:Anton,sans-serif;font-size:14px;letter-spacing:.03em;color:#fff">GT</span>
+              <span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px;color:#ffd84d">58.0</span>
+            </div>
+            <div style="height:3px;border-radius:2px;background:rgba(255,255,255,.08);margin-top:4px;overflow:hidden"><div style="height:100%;width:48%;background:#2a9d8f"></div></div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="width:3px;height:30px;border-radius:2px;background:#0078bc"></div>
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;justify-content:space-between;align-items:baseline">
+              <span style="font-family:Anton,sans-serif;font-size:14px;letter-spacing:.03em;color:#fff">DC</span>
+              <span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px;color:#ffd84d">47.5</span>
+            </div>
+            <div style="height:3px;border-radius:2px;background:rgba(255,255,255,.08);margin-top:4px;overflow:hidden"><div style="height:100%;width:40%;background:#0078bc"></div></div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="width:3px;height:30px;border-radius:2px;background:#ea1a85"></div>
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;justify-content:space-between;align-items:baseline">
+              <span style="font-family:Anton,sans-serif;font-size:14px;letter-spacing:.03em;color:#fff">RR</span>
+              <span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px;color:#ffd84d">55.0</span>
+            </div>
+            <div style="height:3px;border-radius:2px;background:rgba(255,255,255,.08);margin-top:4px;overflow:hidden"><div style="height:100%;width:46%;background:#ea1a85"></div></div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="width:3px;height:30px;border-radius:2px;background:#00a0e3"></div>
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;justify-content:space-between;align-items:baseline">
+              <span style="font-family:Anton,sans-serif;font-size:14px;letter-spacing:.03em;color:#fff">LSG</span>
+              <span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px;color:#ffd84d">41.0</span>
+            </div>
+            <div style="height:3px;border-radius:2px;background:rgba(255,255,255,.08);margin-top:4px;overflow:hidden"><div style="height:100%;width:34%;background:#00a0e3"></div></div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="width:3px;height:30px;border-radius:2px;background:#a7a9ac"></div>
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;justify-content:space-between;align-items:baseline">
+              <span style="font-family:Anton,sans-serif;font-size:14px;letter-spacing:.03em;color:#fff">PBKS</span>
+              <span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px;color:#ffd84d">63.5</span>
+            </div>
+            <div style="height:3px;border-radius:2px;background:rgba(255,255,255,.08);margin-top:4px;overflow:hidden"><div style="height:100%;width:53%;background:#a7a9ac"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CENTER: lot -->
+    <div style="flex:1;min-width:0;padding:22px 26px;display:flex;flex-direction:column">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+        <span style="font:700 10px/1 'Space Mono',monospace;letter-spacing:.2em;color:#ff3b30">&#9632; ON THE BLOCK</span>
+        <span style="font:400 10px/1 'Space Mono',monospace;letter-spacing:.06em;color:#6e7180">LOT 76 &middot; OVERSEAS MARQUEE</span>
+      </div>
+
+      <!-- player identity -->
+      <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:20px">
+        <div>
+          <div style="font-family:Anton,sans-serif;font-size:54px;line-height:.92;letter-spacing:.005em;color:#fff">JOS BUTTLER</div>
+          <div style="display:flex;gap:7px;margin-top:12px">
+            <span style="font:700 10px/1 'Space Mono',monospace;letter-spacing:.08em;color:#13e0b0;background:rgba(19,224,176,.12);border:1px solid rgba(19,224,176,.35);padding:5px 9px;border-radius:4px">WK-BATSMAN</span>
+            <span style="font:700 10px/1 'Space Mono',monospace;letter-spacing:.08em;color:#ffb84d;background:rgba(255,184,77,.12);border:1px solid rgba(255,184,77,.35);padding:5px 9px;border-radius:4px">OVERSEAS</span>
+            <span style="font:700 10px/1 'Space Mono',monospace;letter-spacing:.08em;color:#9aa0ad;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);padding:5px 9px;border-radius:4px">CAPPED &middot; AGE 35</span>
+          </div>
+        </div>
+        <div style="text-align:right;flex:none">
+          <div style="font:700 9px/1 'Space Mono',monospace;letter-spacing:.14em;color:#6e7180">BASE PRICE</div>
+          <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:24px;color:#f2f1ed;margin-top:2px">&#8377;2.00 Cr</div>
+        </div>
+      </div>
+
+      <!-- ratings + stats -->
+      <div style="display:flex;gap:26px;margin-top:22px">
+        <div style="flex:1">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
+            <span style="font:600 10px/1 'Space Mono',monospace;letter-spacing:.1em;color:#7c7f8a">BATTING</span>
+            <span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:18px;color:#fff">89 <span style="font-size:12px;color:#5fd08a">&rarr; 90</span></span>
+          </div>
+          <div style="height:6px;border-radius:3px;background:rgba(255,255,255,.08);overflow:hidden;position:relative">
+            <div style="position:absolute;inset:0;width:90%;background:rgba(95,208,138,.25);border-radius:3px"></div>
+            <div style="position:absolute;inset:0;width:89%;background:#3b82f6;border-radius:3px"></div>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin:14px 0 6px">
+            <span style="font:600 10px/1 'Space Mono',monospace;letter-spacing:.1em;color:#7c7f8a">KEEPING</span>
+            <span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:18px;color:#fff">84</span>
+          </div>
+          <div style="height:6px;border-radius:3px;background:rgba(255,255,255,.08);overflow:hidden">
+            <div style="height:100%;width:84%;background:#13e0b0;border-radius:3px"></div>
+          </div>
+        </div>
+        <div style="flex:1;display:grid;grid-template-columns:1fr 1fr;gap:1px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.07);border-radius:8px;overflow:hidden">
+          <div style="background:#14151a;padding:10px 12px"><div style="font:600 9px/1 'Space Mono',monospace;letter-spacing:.1em;color:#6e7180">T20 MATCHES</div><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:22px;color:#fff;margin-top:3px">420</div></div>
+          <div style="background:#14151a;padding:10px 12px"><div style="font:600 9px/1 'Space Mono',monospace;letter-spacing:.1em;color:#6e7180">RUNS</div><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:22px;color:#fff;margin-top:3px">12,108</div></div>
+          <div style="background:#14151a;padding:10px 12px"><div style="font:600 9px/1 'Space Mono',monospace;letter-spacing:.1em;color:#6e7180">AVERAGE</div><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:22px;color:#fff;margin-top:3px">36.1</div></div>
+          <div style="background:#14151a;padding:10px 12px"><div style="font:600 9px/1 'Space Mono',monospace;letter-spacing:.1em;color:#6e7180">STRIKE RATE</div><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:22px;color:#ffd84d;margin-top:3px">149.2</div></div>
+        </div>
+      </div>
+
+      <!-- big bid stage -->
+      <div style="margin-top:auto;display:flex;align-items:center;gap:22px;padding:20px 22px;border-radius:12px;background:linear-gradient(180deg,rgba(236,28,36,.10),rgba(236,28,36,.02));border:1px solid rgba(236,28,36,.28)">
+        <div style="flex:1">
+          <div style="font:700 10px/1 'Space Mono',monospace;letter-spacing:.16em;color:#9aa0ad">CURRENT BID</div>
+          <div style="font-family:Anton,sans-serif;font-size:62px;line-height:.9;color:#ffd84d;margin-top:6px;text-shadow:0 0 30px rgba(255,216,77,.25)">&#8377;14.50<span style="font-size:30px;color:#fff;margin-left:8px">Cr</span></div>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:10px">
+            <span style="width:18px;height:18px;border-radius:50%;background:#ec1c24;display:inline-flex;align-items:center;justify-content:center;font:700 8px/1 'Space Mono',monospace;color:#fff">R</span>
+            <span style="font:600 12px/1 Barlow;color:#fff">Royal Challengers Bengaluru</span>
+            <span style="font:700 9px/1 'Space Mono',monospace;letter-spacing:.08em;color:#ff8a82;background:rgba(236,28,36,.16);padding:4px 7px;border-radius:4px">HIGH BIDDER</span>
+          </div>
+        </div>
+        <!-- timer ring -->
+        <div style="flex:none;width:84px;height:84px;border-radius:50%;background:conic-gradient(#ffd84d 0% 70%, rgba(255,255,255,.09) 70% 100%);display:flex;align-items:center;justify-content:center">
+          <div style="width:66px;height:66px;border-radius:50%;background:#101116;display:flex;flex-direction:column;align-items:center;justify-content:center">
+            <span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:30px;line-height:1;color:#fff">7</span>
+            <span style="font:400 8px/1 'Space Mono',monospace;color:#6e7180;letter-spacing:.1em">SEC</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- actions -->
+      <div style="display:flex;gap:10px;margin-top:14px">
+        <button style="flex:1;border:none;cursor:pointer;background:#ffd84d;color:#16130f;font-family:Anton,sans-serif;font-size:20px;letter-spacing:.02em;padding:15px;border-radius:10px;box-shadow:0 8px 24px -8px rgba(255,216,77,.6)" style-hover="background:#ffe680">BID &#8377;14.75 Cr &uarr;</button>
+        <button style="flex:none;cursor:pointer;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.14);color:#9aa0ad;font:700 13px/1 'Space Mono',monospace;letter-spacing:.1em;padding:0 26px;border-radius:10px" style-hover="background:rgba(255,255,255,.1)">PASS</button>
+        <button style="flex:none;cursor:pointer;background:rgba(19,224,176,.1);border:1px solid rgba(19,224,176,.4);color:#13e0b0;font:700 13px/1 'Space Mono',monospace;letter-spacing:.1em;padding:0 22px;border-radius:10px">RTM &middot; 3</button>
+      </div>
+    </div>
+
+    <!-- RIGHT: your squad -->
+    <div style="width:282px;flex:none;border-left:1px solid rgba(255,255,255,.07);display:flex;flex-direction:column;background:rgba(255,255,255,.012)">
+      <div style="padding:16px;border-bottom:1px solid rgba(255,255,255,.07)">
+        <div style="display:flex;align-items:center;gap:9px">
+          <span style="width:26px;height:26px;border-radius:6px;background:#2d6fe0;display:inline-flex;align-items:center;justify-content:center;font-family:Anton,sans-serif;font-size:11px;color:#fff">MI</span>
+          <div style="font:700 10px/1 'Space Mono',monospace;letter-spacing:.12em;color:#9aa0ad">YOUR SQUAD</div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:14px">
+          <div style="flex:1"><div style="font:600 8px/1 'Space Mono',monospace;letter-spacing:.1em;color:#6e7180">PURSE LEFT</div><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:22px;color:#5fd08a;margin-top:3px">&#8377;52.0<span style="font-size:11px;color:#6e7180"> Cr</span></div></div>
+          <div style="flex:none;text-align:right"><div style="font:600 8px/1 'Space Mono',monospace;letter-spacing:.1em;color:#6e7180">SLOTS</div><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:22px;color:#fff;margin-top:3px">14/25</div></div>
+        </div>
+        <div style="display:flex;gap:6px;margin-top:12px">
+          <span style="flex:1;text-align:center;font:600 9px/1 'Space Mono',monospace;color:#ffb84d;background:rgba(255,184,77,.1);border:1px solid rgba(255,184,77,.25);padding:6px 0;border-radius:5px">OVERSEAS 5/8</span>
+          <span style="flex:1;text-align:center;font:600 9px/1 'Space Mono',monospace;color:#8fb4f5;background:rgba(45,111,224,.12);border:1px solid rgba(45,111,224,.3);padding:6px 0;border-radius:5px">RTM 3 LEFT</span>
+        </div>
+      </div>
+      <div style="flex:1;padding:8px;display:flex;flex-direction:column;gap:2px;overflow:hidden">
+        <div style="display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:6px"><span style="font:700 8px/1 'Space Mono',monospace;color:#3b82f6;width:34px">BAT</span><span style="flex:1;font:600 12px/1 Barlow;color:#e9eaee">Rohit Sharma</span><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;color:#9aa0ad">16.3</span></div>
+        <div style="display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:6px;background:rgba(255,255,255,.025)"><span style="font:700 8px/1 'Space Mono',monospace;color:#ef4444;width:34px">PACE</span><span style="flex:1;font:600 12px/1 Barlow;color:#e9eaee">Jasprit Bumrah</span><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;color:#9aa0ad">18.0</span></div>
+        <div style="display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:6px"><span style="font:700 8px/1 'Space Mono',monospace;color:#3b82f6;width:34px">BAT</span><span style="flex:1;font:600 12px/1 Barlow;color:#e9eaee">Suryakumar Yadav</span><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;color:#9aa0ad">14.5</span></div>
+        <div style="display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:6px;background:rgba(255,255,255,.025)"><span style="font:700 8px/1 'Space Mono',monospace;color:#a855f7;width:34px">AR</span><span style="flex:1;font:600 12px/1 Barlow;color:#e9eaee">Hardik Pandya</span><span style="font:700 8px/1 'Space Mono',monospace;color:#ffb84d">OS</span></div>
+        <div style="display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:6px"><span style="font:700 8px/1 'Space Mono',monospace;color:#3b82f6;width:34px">BAT</span><span style="flex:1;font:600 12px/1 Barlow;color:#e9eaee">Tilak Varma</span><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;color:#9aa0ad">8.0</span></div>
+        <div style="display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:6px;background:rgba(255,255,255,.025)"><span style="font:700 8px/1 'Space Mono',monospace;color:#f59e0b;width:34px">SPIN</span><span style="flex:1;font:600 12px/1 Barlow;color:#e9eaee">Piyush Chawla</span><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;color:#9aa0ad">0.5</span></div>
+        <div style="display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:6px"><span style="font:700 8px/1 'Space Mono',monospace;color:#14b8a6;width:34px">WK</span><span style="flex:1;font:600 12px/1 Barlow;color:#e9eaee">Ryan Rickelton</span><span style="font:700 8px/1 'Space Mono',monospace;color:#ffb84d">OS</span></div>
+        <div style="margin-top:auto;padding:10px 8px 4px;font:400 10px/1.4 'Space Mono',monospace;color:#5a5d68">+ 7 more &middot; need 1 keeper, 2 quicks</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+</div>
+
+<!-- ===================== 1b MATCHDAY ===================== -->
+<div class="dv-opt" id="1b">
+<div class="dv-olabel"><a class="dv-oid" href="#1b">1b</a>Matchday &mdash; light editorial broadcast, bold color blocks</div>
+<div class="dv-card" style="width:1360px;background:#f4f1ea;color:#16130f;font-family:Barlow,sans-serif;border:1px solid #16130f">
+
+  <!-- header -->
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 22px;border-bottom:2px solid #16130f">
+    <div style="display:flex;align-items:center;gap:14px">
+      <div style="display:flex;align-items:center;gap:7px;background:#16130f;padding:5px 9px;border-radius:3px">
+        <span style="width:7px;height:7px;border-radius:50%;background:#ffc400;animation:liveblink 1.4s infinite"></span>
+        <span style="font:700 11px/1 'Space Mono',monospace;letter-spacing:.12em;color:#fff">LIVE</span>
+      </div>
+      <div style="font-family:Anton,sans-serif;font-size:22px;letter-spacing:.01em">MEGA AUCTION &rsquo;25</div>
+      <div style="font:400 11px/1 'Space Mono',monospace;letter-spacing:.04em;color:#8a8378">SET 3/9 &middot; MARQUEE SET</div>
+    </div>
+    <div style="display:flex;gap:0;border:1.5px solid #16130f;border-radius:5px;overflow:hidden">
+      <span style="font:700 10px/1 'Space Mono',monospace;padding:7px 11px;background:#1f9d57;color:#fff">SOLD 61</span>
+      <span style="font:700 10px/1 'Space Mono',monospace;padding:7px 11px;background:#d6492f;color:#fff;border-left:1.5px solid #16130f">UNSOLD 14</span>
+      <span style="font:700 10px/1 'Space Mono',monospace;padding:7px 11px;color:#16130f;border-left:1.5px solid #16130f">LEFT 329</span>
+    </div>
+  </div>
+
+  <div style="display:flex;height:740px">
+
+    <!-- LEFT purse -->
+    <div style="width:268px;flex:none;border-right:2px solid #16130f;padding:16px;display:flex;flex-direction:column;gap:0">
+      <div style="font:700 10px/1 'Space Mono',monospace;letter-spacing:.14em;color:#8a8378;margin-bottom:12px">TEAM PURSE / &#8377;Cr</div>
+      <div style="display:flex;align-items:center;gap:9px;padding:8px 0;border-bottom:1px solid rgba(22,19,15,.14)"><span style="width:11px;height:11px;border-radius:50%;background:#ec1c24"></span><span style="flex:1;font-family:Anton,sans-serif;font-size:14px;letter-spacing:.02em">RCB</span><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:17px">38.5</span></div>
+      <div style="display:flex;align-items:center;gap:9px;padding:8px;margin:0 -8px;background:#ffc400;border-bottom:1px solid #16130f"><span style="width:11px;height:11px;border-radius:50%;background:#004ba0"></span><span style="flex:1;font-family:Anton,sans-serif;font-size:14px;letter-spacing:.02em">MI <span style="font:700 8px/1 'Space Mono',monospace">&middot; YOU</span></span><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:17px">52.0</span></div>
+      <div style="display:flex;align-items:center;gap:9px;padding:8px 0;border-bottom:1px solid rgba(22,19,15,.14)"><span style="width:11px;height:11px;border-radius:50%;background:#f9cd05"></span><span style="flex:1;font-family:Anton,sans-serif;font-size:14px;letter-spacing:.02em">CSK</span><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:17px">61.5</span></div>
+      <div style="display:flex;align-items:center;gap:9px;padding:8px 0;border-bottom:1px solid rgba(22,19,15,.14)"><span style="width:11px;height:11px;border-radius:50%;background:#7e2d8f"></span><span style="flex:1;font-family:Anton,sans-serif;font-size:14px;letter-spacing:.02em">KKR</span><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:17px">44.0</span></div>
+      <div style="display:flex;align-items:center;gap:9px;padding:8px 0;border-bottom:1px solid rgba(22,19,15,.14)"><span style="width:11px;height:11px;border-radius:50%;background:#ff822a"></span><span style="flex:1;font-family:Anton,sans-serif;font-size:14px;letter-spacing:.02em">SRH</span><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:17px">29.5</span></div>
+      <div style="display:flex;align-items:center;gap:9px;padding:8px 0;border-bottom:1px solid rgba(22,19,15,.14)"><span style="width:11px;height:11px;border-radius:50%;background:#1b2133"></span><span style="flex:1;font-family:Anton,sans-serif;font-size:14px;letter-spacing:.02em">GT</span><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:17px">58.0</span></div>
+      <div style="display:flex;align-items:center;gap:9px;padding:8px 0;border-bottom:1px solid rgba(22,19,15,.14)"><span style="width:11px;height:11px;border-radius:50%;background:#0078bc"></span><span style="flex:1;font-family:Anton,sans-serif;font-size:14px;letter-spacing:.02em">DC</span><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:17px">47.5</span></div>
+      <div style="display:flex;align-items:center;gap:9px;padding:8px 0;border-bottom:1px solid rgba(22,19,15,.14)"><span style="width:11px;height:11px;border-radius:50%;background:#ea1a85"></span><span style="flex:1;font-family:Anton,sans-serif;font-size:14px;letter-spacing:.02em">RR</span><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:17px">55.0</span></div>
+      <div style="display:flex;align-items:center;gap:9px;padding:8px 0;border-bottom:1px solid rgba(22,19,15,.14)"><span style="width:11px;height:11px;border-radius:50%;background:#00a0e3"></span><span style="flex:1;font-family:Anton,sans-serif;font-size:14px;letter-spacing:.02em">LSG</span><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:17px">41.0</span></div>
+      <div style="display:flex;align-items:center;gap:9px;padding:8px 0"><span style="width:11px;height:11px;border-radius:50%;background:#a7a9ac"></span><span style="flex:1;font-family:Anton,sans-serif;font-size:14px;letter-spacing:.02em">PBKS</span><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:17px">63.5</span></div>
+    </div>
+
+    <!-- CENTER -->
+    <div style="flex:1;min-width:0;display:flex;flex-direction:column">
+      <!-- identity band -->
+      <div style="padding:20px 26px;border-bottom:2px solid #16130f">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <span style="font:700 10px/1 'Space Mono',monospace;letter-spacing:.16em;color:#d6492f">&#9632; ON THE BLOCK &middot; LOT 76</span>
+        </div>
+        <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:20px">
+          <div style="font-family:Anton,sans-serif;font-size:58px;line-height:.9">JOS BUTTLER</div>
+          <div style="text-align:right;flex:none"><div style="font:700 9px/1 'Space Mono',monospace;letter-spacing:.12em;color:#8a8378">BASE</div><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:24px">&#8377;2.00 Cr</div></div>
+        </div>
+        <div style="display:flex;gap:7px;margin-top:14px">
+          <span style="font:700 10px/1 'Space Mono',monospace;letter-spacing:.06em;color:#fff;background:#16130f;padding:6px 9px;border-radius:3px">WK-BATSMAN</span>
+          <span style="font:700 10px/1 'Space Mono',monospace;letter-spacing:.06em;color:#16130f;background:#ffc400;padding:6px 9px;border-radius:3px;border:1px solid #16130f">OVERSEAS &middot; ENG</span>
+          <span style="font:700 10px/1 'Space Mono',monospace;letter-spacing:.06em;color:#16130f;background:transparent;padding:6px 9px;border-radius:3px;border:1px solid #16130f">CAPPED &middot; 35</span>
+        </div>
+      </div>
+
+      <!-- stats strip -->
+      <div style="display:flex;border-bottom:2px solid #16130f">
+        <div style="flex:1;padding:12px 16px;border-right:1px solid rgba(22,19,15,.18)"><div style="font:700 9px/1 'Space Mono',monospace;letter-spacing:.1em;color:#8a8378">MATCHES</div><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:26px;margin-top:2px">420</div></div>
+        <div style="flex:1;padding:12px 16px;border-right:1px solid rgba(22,19,15,.18)"><div style="font:700 9px/1 'Space Mono',monospace;letter-spacing:.1em;color:#8a8378">RUNS</div><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:26px;margin-top:2px">12,108</div></div>
+        <div style="flex:1;padding:12px 16px;border-right:1px solid rgba(22,19,15,.18)"><div style="font:700 9px/1 'Space Mono',monospace;letter-spacing:.1em;color:#8a8378">AVG</div><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:26px;margin-top:2px">36.1</div></div>
+        <div style="flex:1;padding:12px 16px;border-right:1px solid rgba(22,19,15,.18)"><div style="font:700 9px/1 'Space Mono',monospace;letter-spacing:.1em;color:#8a8378">SR</div><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:26px;margin-top:2px;color:#d6492f">149.2</div></div>
+        <div style="flex:1;padding:12px 16px"><div style="font:700 9px/1 'Space Mono',monospace;letter-spacing:.1em;color:#8a8378">RATING</div><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:26px;margin-top:2px">89</div></div>
+      </div>
+
+      <!-- THE BID block, signature yellow -->
+      <div style="flex:1;display:flex">
+        <div style="flex:1;background:#ffc400;padding:24px 26px;display:flex;flex-direction:column;justify-content:center;border-right:2px solid #16130f">
+          <div style="font:700 11px/1 'Space Mono',monospace;letter-spacing:.16em;color:#16130f">CURRENT BID</div>
+          <div style="font-family:Anton,sans-serif;font-size:76px;line-height:.86;margin-top:8px">&#8377;14.50<span style="font-size:34px;margin-left:8px">Cr</span></div>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:16px">
+            <span style="width:20px;height:20px;border-radius:4px;background:#ec1c24;display:inline-flex;align-items:center;justify-content:center;font:700 9px/1 'Space Mono',monospace;color:#fff">R</span>
+            <span style="font:700 13px/1 Barlow;color:#16130f">RCB lead</span>
+            <span style="font:700 9px/1 'Space Mono',monospace;letter-spacing:.06em;color:#fff;background:#16130f;padding:4px 7px;border-radius:3px">HIGH BIDDER</span>
+          </div>
+        </div>
+        <div style="width:172px;flex:none;background:#16130f;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px">
+          <div style="font:700 9px/1 'Space Mono',monospace;letter-spacing:.16em;color:#8a8378">TIME LEFT</div>
+          <div style="font-family:Anton,sans-serif;font-size:64px;line-height:.9;color:#ffc400">7</div>
+          <div style="display:flex;gap:4px;margin-top:6px">
+            <span style="width:22px;height:5px;border-radius:3px;background:#ffc400"></span>
+            <span style="width:22px;height:5px;border-radius:3px;background:#ffc400"></span>
+            <span style="width:22px;height:5px;border-radius:3px;background:#ffc400"></span>
+            <span style="width:22px;height:5px;border-radius:3px;background:rgba(255,255,255,.2)"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- actions -->
+      <div style="display:flex;gap:0;border-top:2px solid #16130f">
+        <button style="flex:1;border:none;cursor:pointer;background:#16130f;color:#ffc400;font-family:Anton,sans-serif;font-size:22px;letter-spacing:.02em;padding:18px" style-hover="background:#000">BID &#8377;14.75 Cr &uarr;</button>
+        <button style="flex:none;cursor:pointer;background:#f4f1ea;border:none;border-left:2px solid #16130f;color:#16130f;font:700 14px/1 'Space Mono',monospace;letter-spacing:.1em;padding:0 30px" style-hover="background:#e8e3d8">PASS</button>
+      </div>
+    </div>
+
+    <!-- RIGHT squad -->
+    <div style="width:264px;flex:none;border-left:2px solid #16130f;display:flex;flex-direction:column">
+      <div style="padding:16px;border-bottom:2px solid #16130f">
+        <div style="display:flex;align-items:center;gap:9px"><span style="width:26px;height:26px;border-radius:5px;background:#004ba0;display:inline-flex;align-items:center;justify-content:center;font-family:Anton,sans-serif;font-size:11px;color:#fff">MI</span><div style="font:700 11px/1 'Space Mono',monospace;letter-spacing:.1em">YOUR SQUAD</div></div>
+        <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-top:14px">
+          <div><div style="font:700 9px/1 'Space Mono',monospace;letter-spacing:.1em;color:#8a8378">PURSE LEFT</div><div style="font-family:Anton,sans-serif;font-size:30px;line-height:1;color:#1f9d57;margin-top:4px">&#8377;52.0</div></div>
+          <div style="text-align:right"><div style="font:700 9px/1 'Space Mono',monospace;letter-spacing:.1em;color:#8a8378">SLOTS</div><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:24px;margin-top:2px">14/25</div></div>
+        </div>
+        <div style="display:flex;gap:6px;margin-top:12px">
+          <span style="flex:1;text-align:center;font:700 9px/1 'Space Mono',monospace;color:#16130f;background:#ffc400;border:1px solid #16130f;padding:6px 0;border-radius:3px">OVERSEAS 5/8</span>
+          <span style="flex:1;text-align:center;font:700 9px/1 'Space Mono',monospace;color:#16130f;border:1px solid #16130f;padding:6px 0;border-radius:3px">RTM &times;3</span>
+        </div>
+      </div>
+      <div style="flex:1;padding:6px 10px">
+        <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid rgba(22,19,15,.12)"><span style="font:700 8px/1 'Space Mono',monospace;color:#fff;background:#3b82f6;padding:3px 4px;border-radius:3px;width:28px;text-align:center">BAT</span><span style="flex:1;font:600 12px/1 Barlow">Rohit Sharma</span><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;color:#8a8378">16.3</span></div>
+        <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid rgba(22,19,15,.12)"><span style="font:700 8px/1 'Space Mono',monospace;color:#fff;background:#ef4444;padding:3px 4px;border-radius:3px;width:28px;text-align:center">PAC</span><span style="flex:1;font:600 12px/1 Barlow">Jasprit Bumrah</span><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;color:#8a8378">18.0</span></div>
+        <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid rgba(22,19,15,.12)"><span style="font:700 8px/1 'Space Mono',monospace;color:#fff;background:#3b82f6;padding:3px 4px;border-radius:3px;width:28px;text-align:center">BAT</span><span style="flex:1;font:600 12px/1 Barlow">Suryakumar Yadav</span><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;color:#8a8378">14.5</span></div>
+        <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid rgba(22,19,15,.12)"><span style="font:700 8px/1 'Space Mono',monospace;color:#fff;background:#a855f7;padding:3px 4px;border-radius:3px;width:28px;text-align:center">AR</span><span style="flex:1;font:600 12px/1 Barlow">Hardik Pandya</span><span style="font:700 8px/1 'Space Mono',monospace;color:#d6492f">OS</span></div>
+        <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid rgba(22,19,15,.12)"><span style="font:700 8px/1 'Space Mono',monospace;color:#fff;background:#3b82f6;padding:3px 4px;border-radius:3px;width:28px;text-align:center">BAT</span><span style="flex:1;font:600 12px/1 Barlow">Tilak Varma</span><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;color:#8a8378">8.0</span></div>
+        <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid rgba(22,19,15,.12)"><span style="font:700 8px/1 'Space Mono',monospace;color:#fff;background:#14b8a6;padding:3px 4px;border-radius:3px;width:28px;text-align:center">WK</span><span style="flex:1;font:600 12px/1 Barlow">Ryan Rickelton</span><span style="font:700 8px/1 'Space Mono',monospace;color:#d6492f">OS</span></div>
+        <div style="padding:12px 0 0;font:400 10px/1.4 'Space Mono',monospace;color:#8a8378">+ 8 more &middot; need 1 keeper, 2 quicks</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+</div>
+
+<!-- ===================== 1c FLOODLIGHT ===================== -->
+<div class="dv-opt" id="1c">
+<div class="dv-olabel"><a class="dv-oid" href="#1c">1c</a>Floodlight &mdash; saturated stadium night, neon poster composition</div>
+<div class="dv-card" style="width:1360px;background:#0d0f2e;color:#eef0ff;font-family:Barlow,sans-serif">
+
+  <!-- header -->
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 22px;border-bottom:1px solid rgba(255,255,255,.1);background:linear-gradient(90deg,rgba(255,46,147,.14),rgba(25,211,240,.1))">
+    <div style="display:flex;align-items:center;gap:15px">
+      <div style="display:flex;align-items:center;gap:7px;background:#ff2e93;padding:4px 10px;border-radius:20px;box-shadow:0 0 18px rgba(255,46,147,.6)">
+        <span style="width:7px;height:7px;border-radius:50%;background:#fff;animation:liveblink 1.4s infinite"></span>
+        <span style="font:700 11px/1 'Space Mono',monospace;letter-spacing:.12em;color:#fff">LIVE</span>
+      </div>
+      <div style="font-family:Anton,sans-serif;font-size:20px;letter-spacing:.02em;color:#fff">MEGA AUCTION 2025</div>
+      <div style="font:400 11px/1 'Space Mono',monospace;letter-spacing:.05em;color:#19d3f0">SET 3 / 9</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:18px;font:400 11px/1 'Space Mono',monospace;color:#9498d8">
+      <span>SOLD <span style="color:#b6ff3c;font-weight:700">61</span></span>
+      <span>UNSOLD <span style="color:#ff6a8e;font-weight:700">14</span></span>
+      <span>LEFT <span style="color:#fff;font-weight:700">329</span></span>
+    </div>
+  </div>
+
+  <div style="display:flex;height:744px">
+
+    <!-- LEFT purse grid -->
+    <div style="width:256px;flex:none;border-right:1px solid rgba(255,255,255,.1);padding:16px;display:flex;flex-direction:column;gap:12px">
+      <div style="font:700 10px/1 'Space Mono',monospace;letter-spacing:.14em;color:#7d82c8">PURSE TRACKER</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div style="border:1px solid rgba(236,28,36,.5);border-radius:8px;padding:8px 10px;background:rgba(236,28,36,.08)"><div style="font-family:Anton,sans-serif;font-size:14px;color:#fff">RCB</div><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:17px;color:#ff6a8e">38.5</div></div>
+        <div style="border:1px solid rgba(25,211,240,.7);border-radius:8px;padding:8px 10px;background:rgba(25,211,240,.12);box-shadow:0 0 16px rgba(25,211,240,.25)"><div style="font-family:Anton,sans-serif;font-size:14px;color:#fff">MI <span style="font:700 7px/1 'Space Mono',monospace;color:#19d3f0">YOU</span></div><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:17px;color:#19d3f0">52.0</div></div>
+        <div style="border:1px solid rgba(255,255,255,.14);border-radius:8px;padding:8px 10px"><div style="font-family:Anton,sans-serif;font-size:14px;color:#fff">CSK</div><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:17px;color:#f9cd05">61.5</div></div>
+        <div style="border:1px solid rgba(255,255,255,.14);border-radius:8px;padding:8px 10px"><div style="font-family:Anton,sans-serif;font-size:14px;color:#fff">KKR</div><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:17px;color:#c79bff">44.0</div></div>
+        <div style="border:1px solid rgba(255,255,255,.14);border-radius:8px;padding:8px 10px"><div style="font-family:Anton,sans-serif;font-size:14px;color:#fff">SRH</div><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:17px;color:#ffac6b">29.5</div></div>
+        <div style="border:1px solid rgba(255,255,255,.14);border-radius:8px;padding:8px 10px"><div style="font-family:Anton,sans-serif;font-size:14px;color:#fff">GT</div><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:17px;color:#5fe3d4">58.0</div></div>
+        <div style="border:1px solid rgba(255,255,255,.14);border-radius:8px;padding:8px 10px"><div style="font-family:Anton,sans-serif;font-size:14px;color:#fff">DC</div><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:17px;color:#6bb6ff">47.5</div></div>
+        <div style="border:1px solid rgba(255,255,255,.14);border-radius:8px;padding:8px 10px"><div style="font-family:Anton,sans-serif;font-size:14px;color:#fff">RR</div><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:17px;color:#ff7ac6">55.0</div></div>
+        <div style="border:1px solid rgba(255,255,255,.14);border-radius:8px;padding:8px 10px"><div style="font-family:Anton,sans-serif;font-size:14px;color:#fff">LSG</div><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:17px;color:#6bb6ff">41.0</div></div>
+        <div style="border:1px solid rgba(255,255,255,.14);border-radius:8px;padding:8px 10px"><div style="font-family:Anton,sans-serif;font-size:14px;color:#fff">PBKS</div><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:17px;color:#cfd2e6">63.5</div></div>
+      </div>
+      <div style="margin-top:auto;border:1px dashed rgba(255,255,255,.18);border-radius:8px;padding:11px;font:400 10px/1.5 'Space Mono',monospace;color:#7d82c8">PBKS hold the deepest purse &middot; 5 marquee lots remain</div>
+    </div>
+
+    <!-- CENTER poster -->
+    <div style="flex:1;min-width:0;position:relative;padding:24px 28px;display:flex;flex-direction:column;background:radial-gradient(110% 80% at 80% 0%, rgba(255,46,147,.16), transparent 60%),radial-gradient(90% 70% at 0% 100%, rgba(25,211,240,.14), transparent 55%)">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span style="font:700 10px/1 'Space Mono',monospace;letter-spacing:.2em;color:#b6ff3c">&#9632; ON THE BLOCK</span>
+        <span style="font:400 10px/1 'Space Mono',monospace;color:#7d82c8">LOT 76 &middot; OVERSEAS MARQUEE</span>
+      </div>
+      <div style="font-family:Anton,sans-serif;font-size:60px;line-height:.9;color:#fff;margin-top:10px;text-shadow:0 0 36px rgba(25,211,240,.3)">JOS<br>BUTTLER</div>
+      <div style="display:flex;gap:7px;margin-top:14px">
+        <span style="font:700 10px/1 'Space Mono',monospace;letter-spacing:.06em;color:#0d0f2e;background:#19d3f0;padding:6px 9px;border-radius:20px">WK-BATSMAN</span>
+        <span style="font:700 10px/1 'Space Mono',monospace;letter-spacing:.06em;color:#0d0f2e;background:#b6ff3c;padding:6px 9px;border-radius:20px">OVERSEAS</span>
+        <span style="font:700 10px/1 'Space Mono',monospace;letter-spacing:.06em;color:#fff;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.2);padding:6px 9px;border-radius:20px">CAPPED &middot; 35</span>
+      </div>
+
+      <div style="display:flex;gap:18px;margin-top:20px">
+        <div style="display:flex;gap:10px">
+          <div style="text-align:center"><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:26px;color:#fff">420</div><div style="font:600 8px/1 'Space Mono',monospace;color:#7d82c8;letter-spacing:.08em">MAT</div></div>
+          <div style="width:1px;background:rgba(255,255,255,.12)"></div>
+          <div style="text-align:center"><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:26px;color:#fff">12,108</div><div style="font:600 8px/1 'Space Mono',monospace;color:#7d82c8;letter-spacing:.08em">RUNS</div></div>
+          <div style="width:1px;background:rgba(255,255,255,.12)"></div>
+          <div style="text-align:center"><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:26px;color:#b6ff3c">149.2</div><div style="font:600 8px/1 'Space Mono',monospace;color:#7d82c8;letter-spacing:.08em">SR</div></div>
+          <div style="width:1px;background:rgba(255,255,255,.12)"></div>
+          <div style="text-align:center"><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:26px;color:#19d3f0">89</div><div style="font:600 8px/1 'Space Mono',monospace;color:#7d82c8;letter-spacing:.08em">BAT</div></div>
+        </div>
+      </div>
+
+      <!-- bid stage -->
+      <div style="margin-top:auto;display:flex;align-items:flex-end;gap:24px">
+        <div style="flex:1">
+          <div style="font:700 10px/1 'Space Mono',monospace;letter-spacing:.18em;color:#9498d8">CURRENT BID</div>
+          <div style="font-family:Anton,sans-serif;font-size:74px;line-height:.86;color:#19d3f0;margin-top:6px;text-shadow:0 0 40px rgba(25,211,240,.5)">&#8377;14.50<span style="font-size:32px;color:#fff;margin-left:8px">Cr</span></div>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:12px">
+            <span style="width:18px;height:18px;border-radius:5px;background:#ec1c24;display:inline-flex;align-items:center;justify-content:center;font:700 8px/1 'Space Mono',monospace;color:#fff">R</span>
+            <span style="font:600 12px/1 Barlow;color:#fff">RCB lead the chase</span>
+            <span style="font:700 9px/1 'Space Mono',monospace;letter-spacing:.06em;color:#ff2e93;background:rgba(255,46,147,.16);border:1px solid rgba(255,46,147,.5);padding:4px 7px;border-radius:20px">HIGH BIDDER</span>
+          </div>
+        </div>
+        <div style="flex:none;width:96px;height:96px;border-radius:50%;background:conic-gradient(#ff2e93 0% 70%, rgba(255,255,255,.1) 70% 100%);display:flex;align-items:center;justify-content:center;box-shadow:0 0 28px rgba(255,46,147,.4)">
+          <div style="width:76px;height:76px;border-radius:50%;background:#0d0f2e;display:flex;flex-direction:column;align-items:center;justify-content:center">
+            <span style="font-family:Anton,sans-serif;font-size:34px;line-height:1;color:#fff">7</span>
+            <span style="font:400 8px/1 'Space Mono',monospace;color:#7d82c8;letter-spacing:.12em">SEC</span>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:10px;margin-top:16px">
+        <button style="flex:1;border:none;cursor:pointer;background:linear-gradient(90deg,#19d3f0,#b6ff3c);color:#06121a;font-family:Anton,sans-serif;font-size:20px;letter-spacing:.02em;padding:15px;border-radius:30px;box-shadow:0 8px 28px -6px rgba(25,211,240,.6)" style-hover="filter:brightness(1.08)">BID &#8377;14.75 Cr &uarr;</button>
+        <button style="flex:none;cursor:pointer;background:transparent;border:1px solid rgba(255,255,255,.25);color:#cfd2e6;font:700 13px/1 'Space Mono',monospace;letter-spacing:.1em;padding:0 26px;border-radius:30px" style-hover="background:rgba(255,255,255,.06)">PASS</button>
+        <button style="flex:none;cursor:pointer;background:rgba(182,255,60,.12);border:1px solid rgba(182,255,60,.5);color:#b6ff3c;font:700 13px/1 'Space Mono',monospace;letter-spacing:.1em;padding:0 22px;border-radius:30px">RTM &middot; 3</button>
+      </div>
+    </div>
+
+    <!-- RIGHT squad -->
+    <div style="width:266px;flex:none;border-left:1px solid rgba(255,255,255,.1);display:flex;flex-direction:column">
+      <div style="padding:16px;border-bottom:1px solid rgba(255,255,255,.1)">
+        <div style="display:flex;align-items:center;gap:9px"><span style="width:26px;height:26px;border-radius:7px;background:#19d3f0;display:inline-flex;align-items:center;justify-content:center;font-family:Anton,sans-serif;font-size:11px;color:#06121a">MI</span><div style="font:700 10px/1 'Space Mono',monospace;letter-spacing:.1em;color:#9498d8">YOUR SQUAD</div></div>
+        <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-top:14px">
+          <div><div style="font:600 8px/1 'Space Mono',monospace;letter-spacing:.1em;color:#7d82c8">PURSE LEFT</div><div style="font-family:Anton,sans-serif;font-size:30px;line-height:1;color:#b6ff3c;margin-top:4px">&#8377;52.0</div></div>
+          <div style="text-align:right"><div style="font:600 8px/1 'Space Mono',monospace;letter-spacing:.1em;color:#7d82c8">SLOTS</div><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:24px;color:#fff;margin-top:2px">14/25</div></div>
+        </div>
+        <div style="display:flex;gap:6px;margin-top:12px">
+          <span style="flex:1;text-align:center;font:700 9px/1 'Space Mono',monospace;color:#19d3f0;background:rgba(25,211,240,.12);border:1px solid rgba(25,211,240,.4);padding:6px 0;border-radius:20px">OVERSEAS 5/8</span>
+          <span style="flex:1;text-align:center;font:700 9px/1 'Space Mono',monospace;color:#ff2e93;background:rgba(255,46,147,.12);border:1px solid rgba(255,46,147,.4);padding:6px 0;border-radius:20px">RTM &times;3</span>
+        </div>
+      </div>
+      <div style="flex:1;padding:8px 10px">
+        <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.07)"><span style="font:700 8px/1 'Space Mono',monospace;color:#6bb6ff;width:30px">BAT</span><span style="flex:1;font:600 12px/1 Barlow;color:#eef0ff">Rohit Sharma</span><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;color:#9498d8">16.3</span></div>
+        <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.07)"><span style="font:700 8px/1 'Space Mono',monospace;color:#ff6a8e;width:30px">PAC</span><span style="flex:1;font:600 12px/1 Barlow;color:#eef0ff">Jasprit Bumrah</span><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;color:#9498d8">18.0</span></div>
+        <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.07)"><span style="font:700 8px/1 'Space Mono',monospace;color:#6bb6ff;width:30px">BAT</span><span style="flex:1;font:600 12px/1 Barlow;color:#eef0ff">Suryakumar Yadav</span><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;color:#9498d8">14.5</span></div>
+        <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.07)"><span style="font:700 8px/1 'Space Mono',monospace;color:#c79bff;width:30px">AR</span><span style="flex:1;font:600 12px/1 Barlow;color:#eef0ff">Hardik Pandya</span><span style="font:700 8px/1 'Space Mono',monospace;color:#b6ff3c">OS</span></div>
+        <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.07)"><span style="font:700 8px/1 'Space Mono',monospace;color:#6bb6ff;width:30px">BAT</span><span style="flex:1;font:600 12px/1 Barlow;color:#eef0ff">Tilak Varma</span><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;color:#9498d8">8.0</span></div>
+        <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.07)"><span style="font:700 8px/1 'Space Mono',monospace;color:#5fe3d4;width:30px">WK</span><span style="flex:1;font:600 12px/1 Barlow;color:#eef0ff">Ryan Rickelton</span><span style="font:700 8px/1 'Space Mono',monospace;color:#b6ff3c">OS</span></div>
+        <div style="padding:12px 2px 0;font:400 10px/1.4 'Space Mono',monospace;color:#7d82c8">+ 8 more &middot; need 1 keeper, 2 quicks</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+</div>
+
+</div>
+<p class="dv-next">Try next: &ldquo;take <a class="dv-oid" href="#1a">1a</a> and add a live bid-history ticker&rdquo; &middot; &ldquo;make <a class="dv-oid" href="#1b">1b</a> the full retention screen too&rdquo; &middot; &ldquo;push <a class="dv-oid" href="#1c">1c</a> even more neon&rdquo; &middot; &ldquo;new directions&rdquo;</p>
+</section>
+</x-dc>
+</body>
+</html>
