@@ -78,9 +78,9 @@ function getFSMState(team: Team, comp: SquadComp, ctx: AuctionContext): FSMState
   const slotsToMin = Math.max(0, RULES.minTotal - comp.total);
   const prog = ctx.totalLots > 0 ? ctx.currentLotIndex / ctx.totalLots : 0;
 
-  // Thresholds are sampled — Team A may panic earlier than Team B
-  if (slotsToMin > 0 && prog > u(0.63, 0.78)) return "Panic";
-  if (comp.wks === 0  && prog > u(0.54, 0.67)) return "Panic";
+  // Thresholds sampled — earlier panic triggers to ensure teams fill squads
+  if (slotsToMin > 0 && prog > u(0.55, 0.72)) return "Panic";
+  if (comp.wks === 0  && prog > u(0.46, 0.60)) return "Panic";
 
   const satisfied = totalMissingSlots(comp) === 0;
   if (satisfied && team.remainingPurse < team.totalPurse * u(0.11, 0.19)) return "Snoozing";
@@ -92,9 +92,11 @@ function getFSMState(team: Team, comp: SquadComp, ctx: AuctionContext): FSMState
 // Market-rate anchors (IPL salary-calibrated, not changed)
 // ---------------------------------------------------------------------------
 function starToBaseLakhs(star: number): number {
+  // Anchors calibrated to IPL 2025 mega auction prices.
+  // Mid-tier (2.5–3.5★) boosted so 70-80-rated players reach realistic hammer prices.
   const anchors: [number, number][] = [
-    [1.0, 22], [1.5, 35], [2.0, 65], [2.5, 175],
-    [3.0, 375], [3.5, 700], [4.0, 1050], [4.5, 1500], [5.0, 1900],
+    [1.0, 25], [1.5, 45], [2.0, 80], [2.5, 230],
+    [3.0, 500], [3.5, 900], [4.0, 1300], [4.5, 1700], [5.0, 2200],
   ];
   for (let i = 0; i < anchors.length - 1; i++) {
     const [s0, v0] = anchors[i];
@@ -163,9 +165,11 @@ function getRoleNeedMult(player: Player, comp: SquadComp, fsm: FSMState): number
 function getNatMult(player: Player, comp: SquadComp): number {
   if (player.nationality === "Overseas") {
     if (comp.overseas >= RULES.maxOverseas) return 0; // Hard IPL rule
-    if (comp.overseas >= 6) return u(0.56, 0.80);
-    if (comp.overseas >= 4) return u(0.68, 0.92);
-    return u(0.76, 1.00);
+    // Overseas premium declines only as team fills slots (IPL reality: first 4 slots are coveted)
+    if (comp.overseas >= 6) return u(0.68, 0.88);
+    if (comp.overseas >= 4) return u(0.80, 1.02);
+    if (comp.overseas >= 2) return u(0.90, 1.12);
+    return u(0.96, 1.18); // First 2 overseas slots get a premium
   }
   return comp.overseas > comp.indians ? u(1.04, 1.26) : u(0.94, 1.06);
 }
@@ -186,10 +190,10 @@ function getLoyaltyMult(player: Player, team: Team): number {
 // ---------------------------------------------------------------------------
 function getBudgetMult(team: Team): number {
   const pct = team.remainingPurse / team.totalPurse;
-  // Smooth curve: ~0.40 when nearly broke, ~1.10 when flush
-  // Exponent sampled so teams have different budget sensitivity curves
-  const exponent = u(0.70, 1.00);
-  const base = 0.40 + Math.pow(Math.max(0, pct), exponent) * 0.72;
+  // Higher floor (0.55) so teams with depleted purses still bid competitively.
+  // Teams with budget should spend it — upper range ~1.20.
+  const exponent = u(0.65, 0.95);
+  const base = 0.55 + Math.pow(Math.max(0, pct), exponent) * 0.65;
   return base * lognormal(u(0.04, 0.09));
 }
 
@@ -219,9 +223,10 @@ function getScarcityMult(
 function getUrgencyMult(comp: SquadComp, ctx: AuctionContext): number {
   const prog    = ctx.totalLots > 0 ? ctx.currentLotIndex / ctx.totalLots : 0;
   const missing = totalMissingSlots(comp);
-  if (missing > 0 && prog > u(0.73, 0.88)) return u(1.10, 1.40);
-  if (missing > 0 && prog > u(0.52, 0.68)) return u(1.02, 1.22);
-  return u(0.96, 1.04);
+  // Earlier panic + stronger multipliers so teams buy enough players
+  if (missing > 0 && prog > u(0.65, 0.80)) return u(1.25, 1.65);
+  if (missing > 0 && prog > u(0.42, 0.60)) return u(1.08, 1.30);
+  return u(0.97, 1.05);
 }
 
 // ---------------------------------------------------------------------------
@@ -300,23 +305,26 @@ function shouldParticipate(player: Player, team: Team, comp: SquadComp, fsm: FSM
   // composition independently draw different participation thresholds
   let chance: number;
   if (excess < 0) {
-    chance = star >= 4.5 ? u(0.38, 0.64) : star >= 4.0 ? u(0.26, 0.50) : u(0.14, 0.34);
+    // Role needed — significantly more interest, especially for mid-tier players
+    chance = star >= 4.5 ? u(0.60, 0.85) : star >= 4.0 ? u(0.46, 0.70) : u(0.30, 0.54);
   } else if (excess === 0) {
-    chance = star >= 4.5 ? u(0.12, 0.30) : u(0.05, 0.17);
+    // At target — roughly doubled vs before so bidding wars happen
+    chance = star >= 4.5 ? u(0.28, 0.52) : star >= 3.5 ? u(0.18, 0.36) : u(0.10, 0.24);
   } else if (excess === 1) {
-    chance = star >= 4.5 ? u(0.03, 0.13) : u(0.01, 0.07);
+    // Slight overshoot — some opportunistic bidding
+    chance = star >= 4.5 ? u(0.10, 0.24) : u(0.04, 0.14);
   } else {
-    chance = u(0.005, 0.025);
+    chance = u(0.008, 0.030);
   }
 
-  if (team.id === "RCB" && star >= 4.5)                    chance += u(0.07, 0.23);
-  if (team.id === "MI"  && star >= 4.5)                    chance += u(0.04, 0.16);
-  if (team.id === "CSK" && player.age >= 33)               chance += u(0.03, 0.13);
-  if (team.id === "KKR" && player.role === "All-Rounder")  chance += u(0.04, 0.16);
-  if (team.id === "SRH" && player.nationality === "Overseas") chance += u(0.04, 0.16);
-  if (team.id === "RR")                                    chance *= u(0.40, 0.65);
+  if (team.id === "RCB" && star >= 4.5)                       chance += u(0.07, 0.23);
+  if (team.id === "MI"  && star >= 4.5)                       chance += u(0.04, 0.16);
+  if (team.id === "CSK" && player.age >= 33)                  chance += u(0.03, 0.13);
+  if (team.id === "KKR" && player.role === "All-Rounder")     chance += u(0.04, 0.16);
+  if (team.id === "SRH" && player.nationality === "Overseas") chance += u(0.05, 0.18);
+  if (team.id === "RR")                                       chance *= u(0.50, 0.75);
 
-  return Math.random() < Math.min(0.85, chance);
+  return Math.random() < Math.min(0.90, chance);
 }
 
 // ---------------------------------------------------------------------------
@@ -368,10 +376,9 @@ export function computeTeamValuation(
   const raw = base * formMult * roleNeed * natMult * loyalty * personality * budget * scarcity * urgency * lnVar;
 
   // Commitment: fraction of purse this team will risk on a single player.
-  // Mean is sampled, then a lognormal stretch is applied — so distribution
-  // has a realistic long tail (occasional team goes all-in)
-  const commitMean = u(0.16, 0.32);
-  const commitPct  = Math.max(0.08, Math.min(0.48, commitMean * lognormal(u(0.15, 0.28))));
+  // Raised mean so teams don't hoard purse — realistic IPL spending patterns.
+  const commitMean = u(0.22, 0.42);
+  const commitPct  = Math.max(0.10, Math.min(0.58, commitMean * lognormal(u(0.15, 0.28))));
   const purseCap   = team.remainingPurse * commitPct;
 
   // Soft ceiling: the market-rate multiplier is sampled so sometimes

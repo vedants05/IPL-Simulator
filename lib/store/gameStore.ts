@@ -136,6 +136,7 @@ export const useGameStore = create<Store>()(
             rtmWindowOpen: false,
             rtmTimerSeconds: 15,
             soldFlash: null,
+            unsoldFlash: null,
             saleHistory: [],
           },
           isSetupComplete: false,
@@ -302,6 +303,7 @@ export const useGameStore = create<Store>()(
                 biddingHistory: [],
                 timerSeconds: 10,
                 soldFlash: null,
+                unsoldFlash: null,
               }
             : null,
         }));
@@ -439,6 +441,7 @@ export const useGameStore = create<Store>()(
         if (!auction || auction.phase !== "live" || !auction.currentPlayer) return;
         if (auction.rtmWindowOpen) return;
         if (auction.soldFlash) return;
+        if (auction.unsoldFlash) return;
 
         if (auction.timerSeconds <= 0) {
           hammerFall();
@@ -516,6 +519,9 @@ function getRetentionCostForSlot(slot: number): number {
  * then hands off to hammerFall so the player sells (or goes unsold) normally.
  */
 function simulateRemainingBids(player: Player) {
+  // Guard: if hammer already fired for this lot, don't re-simulate
+  if (_hammerLotId === player.id) return;
+
   const state = useGameStore.getState();
   const { auction, teams, players: allPlayers, userTeamId } = state;
   if (!auction || !auction.currentPlayer || auction.currentPlayer.id !== player.id) return;
@@ -574,20 +580,27 @@ function hammerFall() {
   if (!auction || !auction.currentPlayer) return;
 
   const player = auction.currentPlayer;
+
+  // Idempotency: prevent double-hammer from timer race + rapid PASS clicks
+  if (_hammerLotId === player.id) return;
+  _hammerLotId = player.id;
+
   const highBidder = auction.currentHighBidderTeamId;
 
   if (!highBidder) {
-    // No bids → unsold
+    // No bids → unsold: show UNSOLD animation for 2.2s then advance
     useGameStore.setState((s) => ({
       auction: s.auction
         ? {
             ...s.auction,
             unsoldPlayerIds: [...s.auction.unsoldPlayerIds, player.id],
+            unsoldFlash: { playerId: player.id },
             soldFlash: null,
+            timerSeconds: 0,
           }
         : null,
     }));
-    setTimeout(() => advanceToNextLot(), 500);
+    setTimeout(() => advanceToNextLot(), 2200);
     return;
   }
 
@@ -670,13 +683,16 @@ function hammerFall() {
 }
 
 function advanceToNextLot() {
+  // Reset idempotency guard for the next lot
+  _hammerLotId = null;
+
   const state = useGameStore.getState();
   const { auction, players, teams, userTeamId } = state;
   if (!auction) return;
 
-  // Clear sold flash
+  // Clear both flash states
   useGameStore.setState((s) => ({
-    auction: s.auction ? { ...s.auction, soldFlash: null } : null,
+    auction: s.auction ? { ...s.auction, soldFlash: null, unsoldFlash: null } : null,
   }));
 
   // Advance current set index
@@ -724,6 +740,7 @@ function advanceToNextLot() {
               ...s.auction,
               sets: acceleratedSets,
               currentSetIndex: 0,
+              currentLotIndex: s.auction.currentLotIndex + 1,
               currentPlayer: firstPlayer,
               currentBid: firstPlayer.basePrice,
               currentHighBidderTeamId: null,
@@ -731,6 +748,8 @@ function advanceToNextLot() {
               timerSeconds: 10,
               isAcceleratedPhase: true,
               unsoldPlayerIds: [],
+              soldFlash: null,
+              unsoldFlash: null,
             }
           : null,
       }));
@@ -754,6 +773,7 @@ function advanceToNextLot() {
           ...s.auction,
           sets: newSets,
           currentSetIndex: next.setIndex,
+          currentLotIndex: s.auction.currentLotIndex + 1,
           currentPlayer: player,
           currentBid: player.basePrice,
           currentHighBidderTeamId: null,
@@ -797,7 +817,7 @@ function scheduleAIBids(player: Player) {
     // Guard: lot must still be the same player and auction active
     if (!a || !a.currentPlayer || a.currentPlayer.id !== player.id) return;
     if (a.phase !== "live") return;
-    if (a.rtmWindowOpen || a.soldFlash) return;
+    if (a.rtmWindowOpen || a.soldFlash || a.unsoldFlash) return;
 
     const nextBid = getNextBidAmount(a.currentBid);
 
@@ -832,4 +852,11 @@ function scheduleAIBids(player: Player) {
   }, delay);
 }
 
+// ---------------------------------------------------------------------------
+// Hammer idempotency guard — prevents the same lot from being hammered twice
+// (race between timer fire + PASS click, or rapid PASS double-click)
+// ---------------------------------------------------------------------------
+let _hammerLotId: string | null = null;
+
 export { hammerFall, advanceToNextLot, scheduleAIBids };
+export type { }; // keep module boundary

@@ -10,6 +10,7 @@ import UserSquad from "@/components/auction/UserSquad";
 import MiniSoldLog from "@/components/auction/MiniSoldLog";
 import RTMModal from "@/components/auction/RTMModal";
 import SoldAnimation from "@/components/auction/SoldAnimation";
+import UnsoldAnimation from "@/components/auction/UnsoldAnimation";
 import PlayerListPopup from "@/components/auction/PlayerListPopup";
 
 type PopupTab = "sold" | "unsold" | "left" | null;
@@ -100,6 +101,7 @@ export default function AuctionPage() {
         {/* Zone 2: Center Lot — flex:1 */}
         <div className="flex-1 min-w-0 flex flex-col overflow-hidden relative">
           <SoldAnimation />
+          <UnsoldAnimation />
           <RTMModal />
 
           {needsStart ? (

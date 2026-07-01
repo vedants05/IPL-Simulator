@@ -21,14 +21,15 @@ export default function BidPanel() {
   const playerId = auction?.currentPlayer?.id;
   const rtmOpen = auction?.rtmWindowOpen;
   const hasSoldFlash = !!auction?.soldFlash;
+  const hasUnsoldFlash = !!auction?.unsoldFlash;
 
   useEffect(() => {
     if (timerRef.current) clearInterval(timerRef.current);
-    if (!playerId || rtmOpen || hasSoldFlash) return;
+    if (!playerId || rtmOpen || hasSoldFlash || hasUnsoldFlash) return;
 
     timerRef.current = setInterval(() => {
       const s = useGameStore.getState();
-      if (!s.auction?.currentPlayer || s.auction.rtmWindowOpen || s.auction.soldFlash) {
+      if (!s.auction?.currentPlayer || s.auction.rtmWindowOpen || s.auction.soldFlash || s.auction.unsoldFlash) {
         clearInterval(timerRef.current!);
         return;
       }
@@ -41,7 +42,7 @@ export default function BidPanel() {
     }, 1000);
 
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [playerId, rtmOpen, hasSoldFlash]);
+  }, [playerId, rtmOpen, hasSoldFlash, hasUnsoldFlash]);
 
   useEffect(() => {
     if (rtmTimerRef.current) clearInterval(rtmTimerRef.current);
