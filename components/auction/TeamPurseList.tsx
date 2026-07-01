@@ -1,43 +1,53 @@
 "use client";
+import { useState } from "react";
 import { useGameStore } from "@/lib/store/gameStore";
 
 function crore(lakhs: number) {
   return (lakhs / 100).toFixed(1);
 }
 
+const ROLE_SHORT: Record<string, string> = {
+  "Batsman": "BAT",
+  "WK-Batsman": "WK",
+  "All-Rounder": "AR",
+  "Pace Bowler": "PACE",
+  "Spin Bowler": "SPIN",
+};
+
 export default function TeamPurseList() {
-  const { teams, userTeamId, auction } = useGameStore();
+  const { teams, players, userTeamId, auction } = useGameStore();
+  const [expanded, setExpanded] = useState<string | null>(null);
 
   const sortedTeams = Object.values(teams).sort((a, b) =>
     a.id === userTeamId ? -1 : b.id === userTeamId ? 1 : a.name.localeCompare(b.name)
   );
 
-  const userTeam = teams[userTeamId];
-  const rtmLeft = (userTeam?.rtmCardsTotal ?? 0) - (userTeam?.rtmCardsUsed ?? 0);
-  const userSquadCount = auction?.teamPurses[userTeamId]?.squadCount ?? userTeam?.squad.length ?? 0;
-  const userOverseas = userTeam?.overseasPlayersCurrent ?? 0;
-
   return (
-    <div className="flex flex-col h-full">
-      {/* Zone header */}
-      <div className="px-4 py-2 border-b-2 border-border shrink-0">
+    <div className="flex-1 overflow-y-auto">
+      <div className="px-4 py-2 shrink-0" style={{ borderBottom: "2px solid #16130f" }}>
         <span className="font-space-mono font-bold text-[10px] tracking-[.14em] text-text-secondary uppercase">
           Purse / ₹Cr
         </span>
       </div>
 
-      {/* Team rows */}
-      <div className="flex-1 overflow-y-auto">
-        {sortedTeams.map((team) => {
-          const purseInfo = auction?.teamPurses[team.id];
-          const remaining = purseInfo?.remaining ?? team.remainingPurse;
-          const isUser = team.id === userTeamId;
+      {sortedTeams.map((team) => {
+        const purseInfo = auction?.teamPurses[team.id];
+        const remaining = purseInfo?.remaining ?? team.remainingPurse;
+        const squadCount = purseInfo?.squadCount ?? team.squad.length;
+        const isUser = team.id === userTeamId;
+        const isOpen = expanded === team.id;
+        const squadPlayers = team.squad.map((id) => players[id]).filter(Boolean);
 
-          return (
-            <div
-              key={team.id}
-              className={`flex items-center px-4 py-[7px] gap-3 ${isUser ? "bg-accent border-b border-border" : ""}`}
-              style={!isUser ? { borderBottom: "1px solid rgba(22,19,15,.14)" } : {}}
+        return (
+          <div key={team.id}>
+            {/* Team row */}
+            <button
+              onClick={() => setExpanded(isOpen ? null : team.id)}
+              className="w-full flex items-center px-4 py-[7px] gap-3 text-left transition-colors hover:bg-surface"
+              style={{
+                borderBottom: "1px solid rgba(22,19,15,.14)",
+                backgroundColor: isUser ? "#ffc400" : undefined,
+              }}
             >
               <div
                 className="w-[10px] h-[10px] rounded-full shrink-0"
@@ -49,43 +59,53 @@ export default function TeamPurseList() {
                   <span className="font-space-mono font-bold text-[9px] ml-1.5 tracking-wider">·YOU</span>
                 )}
               </span>
+              <span className="font-barlow-condensed font-bold text-[13px] text-text-secondary shrink-0">
+                {squadCount}p
+              </span>
               <span
-                className="font-barlow-condensed font-bold text-[16px] leading-none shrink-0"
+                className="font-barlow-condensed font-bold text-[15px] leading-none shrink-0"
                 style={{ color: remaining > 3000 ? "#1f9d57" : "#d6492f" }}
               >
                 {crore(remaining)}
               </span>
-            </div>
-          );
-        })}
-      </div>
+              <span className="font-space-mono text-[9px] text-text-secondary shrink-0">
+                {isOpen ? "▲" : "▼"}
+              </span>
+            </button>
 
-      {/* Squad summary pinned bottom */}
-      <div className="shrink-0 border-t-2 border-border p-3 bg-surface">
-        <div className="flex items-center gap-2 mb-2">
-          {userTeam && (
-            <div
-              className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold shrink-0"
-              style={{ backgroundColor: userTeam.primaryColor, color: userTeam.secondaryColor }}
-            >
-              {userTeam.shortName.slice(0, 2)}
-            </div>
-          )}
-          <span className="font-space-mono font-bold text-[10px] text-text-primary tracking-wide">
-            YOUR SQUAD {userSquadCount}/25
-          </span>
-        </div>
-        <div className="flex gap-2">
-          <span className="font-space-mono text-[9px] font-bold tracking-wider bg-accent text-border px-2 py-[3px] rounded-[3px]">
-            OS {userOverseas}/8
-          </span>
-          {rtmLeft > 0 && (
-            <span className="font-space-mono text-[9px] font-bold tracking-wider border border-border text-text-primary px-2 py-[3px] rounded-[3px]">
-              RTM ×{rtmLeft}
-            </span>
-          )}
-        </div>
-      </div>
+            {/* Squad dropdown */}
+            {isOpen && (
+              <div className="bg-surface" style={{ borderBottom: "1px solid rgba(22,19,15,.2)" }}>
+                {squadPlayers.length === 0 ? (
+                  <div className="px-5 py-3 font-space-mono text-[9px] text-text-secondary tracking-wider">
+                    No players yet
+                  </div>
+                ) : (
+                  squadPlayers.map((p) => (
+                    <div
+                      key={p.id}
+                      className="flex items-center justify-between px-5 py-[5px]"
+                      style={{ borderBottom: "1px solid rgba(22,19,15,.08)" }}
+                    >
+                      <span className="font-barlow font-medium text-[11px] text-text-primary truncate flex-1 min-w-0">
+                        {p.name}
+                      </span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {p.nationality === "Overseas" && (
+                          <span className="font-space-mono text-[8px] bg-accent text-border px-1 rounded-[2px] font-bold">OS</span>
+                        )}
+                        <span className="font-space-mono text-[8px] text-text-secondary tracking-wider">
+                          {ROLE_SHORT[p.role] ?? p.role}
+                        </span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

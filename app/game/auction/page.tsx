@@ -5,7 +5,8 @@ import PlayerCard from "@/components/auction/PlayerCard";
 import BidPanel from "@/components/auction/BidPanel";
 import BidHistory from "@/components/auction/BidHistory";
 import TeamPurseList from "@/components/auction/TeamPurseList";
-import SoldLog from "@/components/auction/SoldLog";
+import UserSquad from "@/components/auction/UserSquad";
+import MiniSoldLog from "@/components/auction/MiniSoldLog";
 import RTMModal from "@/components/auction/RTMModal";
 import SoldAnimation from "@/components/auction/SoldAnimation";
 
@@ -29,11 +30,10 @@ export default function AuctionPage() {
     <div className="h-[calc(100vh-3rem)] flex flex-col overflow-hidden bg-bg">
       {/* Header bar */}
       <div
-        className="flex items-center justify-between px-[22px] py-[16px] shrink-0"
+        className="flex items-center justify-between px-[22px] py-[14px] shrink-0"
         style={{ borderBottom: "2px solid #16130f" }}
       >
         <div className="flex items-center gap-[14px]">
-          {/* LIVE pill */}
           <div className="flex items-center gap-2 bg-border px-[9px] py-[5px] rounded-[3px]">
             <div
               className="w-[7px] h-[7px] rounded-full bg-accent shrink-0"
@@ -41,18 +41,15 @@ export default function AuctionPage() {
             />
             <span className="font-space-mono font-bold text-[11px] tracking-[.12em] text-white">LIVE</span>
           </div>
-          {/* Title */}
           <span className="font-anton text-[22px] leading-none text-text-primary">
             MEGA AUCTION &apos;25
           </span>
-          {/* Subtitle */}
           <span className="font-space-mono text-[11px] text-text-secondary">
             SET {auction.currentSetIndex + 1}/{auction.sets.length}
             {currentSet ? ` · ${currentSet.name.toUpperCase()}` : ""}
           </span>
         </div>
 
-        {/* Segmented counter */}
         <div className="flex overflow-hidden" style={{ border: "1.5px solid #16130f", borderRadius: "5px" }}>
           <div className="bg-success px-[11px] py-[7px]">
             <span className="font-space-mono font-bold text-[10px] tracking-wider text-white">
@@ -74,9 +71,14 @@ export default function AuctionPage() {
 
       {/* 4-zone flex row */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Zone 1: Team Purse — 212px */}
-        <div className="w-[212px] shrink-0 flex flex-col overflow-hidden" style={{ borderRight: "2px solid #16130f" }}>
+
+        {/* Zone 1: Team Purse (top) + Sold Log (bottom) — 220px */}
+        <div
+          className="w-[220px] shrink-0 flex flex-col overflow-hidden relative"
+          style={{ borderRight: "2px solid #16130f" }}
+        >
           <TeamPurseList />
+          <MiniSoldLog />
         </div>
 
         {/* Zone 2: Center Lot — flex:1 */}
@@ -107,7 +109,11 @@ export default function AuctionPage() {
             </div>
           ) : auction.currentPlayer ? (
             <div className="flex-1 flex flex-col overflow-hidden">
-              <PlayerCard player={auction.currentPlayer} />
+              {/* Player card — scrollable top portion */}
+              <div className="flex-1 overflow-y-auto">
+                <PlayerCard player={auction.currentPlayer} />
+              </div>
+              {/* Bid panel — fixed bottom portion */}
               <BidPanel />
             </div>
           ) : null}
@@ -121,12 +127,12 @@ export default function AuctionPage() {
           <BidHistory />
         </div>
 
-        {/* Zone 4: Sold Log — 264px */}
+        {/* Zone 4: Your Squad — 264px */}
         <div
           className="w-[264px] shrink-0 flex flex-col overflow-hidden"
           style={{ borderLeft: "2px solid #16130f" }}
         >
-          <SoldLog />
+          <UserSquad />
         </div>
       </div>
     </div>

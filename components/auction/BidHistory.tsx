@@ -1,24 +1,31 @@
 "use client";
 import { useGameStore } from "@/lib/store/gameStore";
-import { getNextBidAmount } from "@/lib/logic/auctionRules";
+import { getNextBidAmount, canTeamBidOnPlayer, canTeamAffordBid } from "@/lib/logic/auctionRules";
 
 function crore(lakhs: number) {
   return `₹${(lakhs / 100).toFixed(2)} Cr`;
 }
 
 export default function BidHistory() {
-  const { auction, teams } = useGameStore();
+  const { auction, teams, userTeamId } = useGameStore();
+  const passBid = useGameStore((s) => s.passBid);
 
   if (!auction) return null;
 
   const history = auction.biddingHistory;
   const nextBid = getNextBidAmount(auction.currentBid);
-  const increment = nextBid - auction.currentBid;
+  const isUserHighBidder = auction.currentHighBidderTeamId === userTeamId;
+
+  const userTeam = teams[userTeamId];
+  const player = auction.currentPlayer;
+  const { canBid } = userTeam && player ? canTeamBidOnPlayer(userTeam, player) : { canBid: false };
+  const canAfford = userTeam ? canTeamAffordBid(userTeam, nextBid) : false;
+  const passDisabled = isUserHighBidder;
 
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="px-4 py-2 border-b-2 border-border flex items-center justify-between shrink-0">
+      <div className="px-4 py-2 flex items-center justify-between shrink-0" style={{ borderBottom: "2px solid #16130f" }}>
         <div className="flex items-center gap-2">
           <div
             className="w-2 h-2 rounded-full bg-danger shrink-0"
@@ -38,7 +45,8 @@ export default function BidHistory() {
         {history.length === 0 ? (
           <div className="flex-1 flex items-center justify-center py-8">
             <span className="font-space-mono text-[10px] text-text-secondary tracking-wider text-center">
-              Opened at{"\n"}{auction.currentPlayer ? crore(auction.currentPlayer.basePrice) : "—"}
+              Opened at{" "}
+              {auction.currentPlayer ? crore(auction.currentPlayer.basePrice) : "—"}
             </span>
           </div>
         ) : (
@@ -81,19 +89,17 @@ export default function BidHistory() {
         )}
       </div>
 
-      {/* Footer: next bid */}
-      <div className="shrink-0 border-t-2 border-border bg-surface px-4 py-3">
-        <div className="font-space-mono font-bold text-[9px] tracking-widest text-text-secondary mb-1 uppercase">
-          Your Next Bid
-        </div>
-        <div className="flex items-baseline gap-2">
-          <span className="font-barlow-condensed font-bold text-[20px] leading-none text-text-primary">
-            {crore(nextBid)}
-          </span>
-          <span className="font-space-mono font-bold text-[10px] text-success tracking-wider">
-            +{(increment / 100).toFixed(2)}
-          </span>
-        </div>
+      {/* Footer: PASS button */}
+      <div className="shrink-0" style={{ borderTop: "2px solid #16130f" }}>
+        <button
+          onClick={passBid}
+          disabled={passDisabled}
+          title={passDisabled ? "You're the highest bidder" : "Skip to auction result"}
+          className="w-full font-space-mono font-bold text-[12px] tracking-widest text-text-primary bg-bg
+            py-4 hover:bg-surface disabled:opacity-30 disabled:cursor-not-allowed transition-colors uppercase"
+        >
+          {passDisabled ? "You're Winning — Wait" : "Pass"}
+        </button>
       </div>
     </div>
   );

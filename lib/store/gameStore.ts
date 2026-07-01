@@ -405,7 +405,7 @@ export const useGameStore = create<Store>()(
                   rtmWindowOpen: false,
                   rtmEligibleTeamId: null,
                   teamPurses: newPurses,
-                  saleHistory: [...(state.auction.saleHistory ?? []), { playerId: player.id, teamId: userTeamId, price: rtmAmount, lot: state.auction.currentLotIndex }],
+                  saleHistory: [...(state.auction.saleHistory ?? []), { playerId: player.id, teamId: userTeamId, price: rtmAmount, lot: state.auction.currentLotIndex, bids: state.auction.biddingHistory }],
                 }
               : null,
           };
@@ -420,7 +420,7 @@ export const useGameStore = create<Store>()(
           const a = state.auction;
           if (!a) return {};
           const newSale = a.currentPlayer && a.currentHighBidderTeamId
-            ? { playerId: a.currentPlayer.id, teamId: a.currentHighBidderTeamId, price: a.currentBid, lot: a.currentLotIndex }
+            ? { playerId: a.currentPlayer.id, teamId: a.currentHighBidderTeamId, price: a.currentBid, lot: a.currentLotIndex, bids: a.biddingHistory }
             : null;
           return {
             auction: {
@@ -658,7 +658,7 @@ function hammerFall() {
             soldPlayerIds: newSoldIds,
             teamPurses: newPurses,
             soldFlash: { playerId: player.id, teamId: highBidder, amount: soldAmount },
-            saleHistory: [...(s.auction.saleHistory ?? []), { playerId: player.id, teamId: highBidder, price: soldAmount, lot: auction.currentLotIndex }],
+            saleHistory: [...(s.auction.saleHistory ?? []), { playerId: player.id, teamId: highBidder, price: soldAmount, lot: auction.currentLotIndex, bids: auction.biddingHistory }],
           }
         : null,
     };
