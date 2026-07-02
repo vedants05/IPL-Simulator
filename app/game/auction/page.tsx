@@ -132,7 +132,6 @@ export default function AuctionPage() {
           <SoldAnimation />
           <UnsoldAnimation />
           <RTMModal />
-          <SkipSetSummaryModal />
 
           <div className="flex-1 flex flex-col overflow-hidden">
             {/* Active Set Banner */}
@@ -205,6 +204,9 @@ export default function AuctionPage() {
       {activePopup && (
         <PlayerListPopup type={activePopup} onClose={() => setActivePopup(null)} />
       )}
+
+      {/* Skip set summary overlay */}
+      <SkipSetSummaryModal />
     </div>
   );
 }

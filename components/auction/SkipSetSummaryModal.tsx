@@ -12,47 +12,41 @@ export default function SkipSetSummaryModal() {
   if (!skipSetSummary) return null;
 
   const { setName, results } = skipSetSummary;
-  const cleanSetName = setName.replace(/^Set \d+:\s*/i, "");
 
   return (
-    <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 select-none">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 select-none">
       <div
-        className="w-full max-w-2xl bg-[#f4f1ea] border-2 border-[#16130f] shadow-2xl rounded-[8px] flex flex-col overflow-hidden text-[#16130f] max-h-[90vh]"
+        className="w-full max-w-xl bg-[#f4f1ea] border-2 border-[#16130f] shadow-2xl rounded-[6px] flex flex-col overflow-hidden text-[#16130f] max-h-[85vh]"
       >
         {/* Header */}
         <div
-          className="px-6 py-4 flex items-center justify-between shrink-0"
-          style={{ backgroundColor: "var(--team-cta-bg, #111622)", color: "#ffffff", borderBottom: "2px solid #16130f" }}
+          className="px-5 py-3.5 flex items-center justify-between shrink-0 bg-[#16130f] text-white"
+          style={{ borderBottom: "2px solid #16130f" }}
         >
-          <div>
-            <div className="font-space-mono text-[9px] font-bold tracking-[.2em] text-white/70 uppercase mb-0.5">
-              SET SIMULATION COMPLETED
-            </div>
-            <h2 className="font-anton text-[26px] leading-none text-white uppercase tracking-wide">
-              {cleanSetName}
-            </h2>
-          </div>
-          <span className="font-space-mono text-[11px] font-bold text-white/90 bg-white/10 px-3 py-1 rounded border border-white/20">
+          <h2 className="font-anton text-[22px] leading-none text-white uppercase tracking-wide">
+            {setName}
+          </h2>
+          <span className="font-space-mono text-[10px] font-bold text-[#8a8378] uppercase tracking-wider bg-white/10 px-2.5 py-0.5 rounded">
             {results.length} Players
           </span>
         </div>
 
         {/* Results List */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-2">
+        <div className="flex-1 overflow-y-auto divide-y divide-[#16130f]/10">
           {results.map((item, index) => {
             const team = item.teamId ? teams[item.teamId] : null;
             return (
               <div
                 key={`${item.player.id}-${index}`}
-                className="flex items-center justify-between p-3 rounded border border-[#16130f]/15 bg-white shadow-sm"
+                className="flex items-center justify-between px-5 py-3 bg-white/40 hover:bg-white transition-colors"
               >
                 {/* Player details */}
                 <div className="min-w-0 flex-1 pr-4">
                   <div className="flex items-center gap-2">
-                    <span className="font-anton text-[17px] text-[#16130f] truncate leading-tight">
+                    <span className="font-anton text-[18px] text-[#16130f] truncate leading-tight">
                       {item.player.name}
                     </span>
-                    <span className="font-space-mono text-[9px] text-[#16130f]/60 uppercase bg-[#16130f]/5 px-1.5 py-0.5 rounded shrink-0">
+                    <span className="font-space-mono text-[9px] text-text-secondary uppercase bg-[#16130f]/5 px-1.5 py-0.5 rounded shrink-0">
                       {item.player.role}
                     </span>
                     {item.player.nationality === "Overseas" && (
@@ -60,9 +54,6 @@ export default function SkipSetSummaryModal() {
                         OS
                       </span>
                     )}
-                  </div>
-                  <div className="font-space-mono text-[9px] text-text-secondary mt-0.5">
-                    Base: ₹{(item.player.basePrice / 100).toFixed(2)} Cr · {item.player.starRating}★
                   </div>
                 </div>
 
@@ -76,7 +67,7 @@ export default function SkipSetSummaryModal() {
                         </span>
                       )}
                       <div
-                        className="flex items-center gap-1.5 px-2.5 py-1 rounded"
+                        className="flex items-center gap-1.5 px-2.5 py-1 rounded shadow-sm"
                         style={{ backgroundColor: team.primaryColor, color: team.secondaryColor }}
                       >
                         <span className="font-anton text-[11px] uppercase tracking-wider">
@@ -88,7 +79,7 @@ export default function SkipSetSummaryModal() {
                       </div>
                     </div>
                   ) : (
-                    <span className="font-space-mono font-bold text-[10px] tracking-wider text-red-600 bg-red-100 px-2.5 py-1 rounded uppercase border border-red-200">
+                    <span className="font-space-mono font-bold text-[10px] tracking-wider text-[#d6492f] bg-red-50 px-2.5 py-1 rounded uppercase border border-red-200">
                       UNSOLD
                     </span>
                   )}
@@ -98,14 +89,11 @@ export default function SkipSetSummaryModal() {
           })}
         </div>
 
-        {/* Footer Action */}
-        <div className="p-4 bg-[#efece3] border-t-2 border-[#16130f] flex items-center justify-between shrink-0">
-          <span className="font-space-mono text-[10px] text-text-secondary">
-            Press button below to begin simulating the next set
-          </span>
+        {/* Compact Footer Action */}
+        <div className="px-5 py-3 bg-surface border-t-2 border-[#16130f] flex justify-end shrink-0">
           <button
             onClick={dismissSkipSetSummary}
-            className="font-anton text-[18px] px-8 py-3.5 tracking-wide text-white bg-[#16130f] hover:bg-black hover:scale-105 active:scale-95 transition-all duration-150 rounded-[4px] shadow-lg cursor-pointer"
+            className="font-anton text-[18px] px-7 py-2.5 tracking-wide text-white bg-[#16130f] hover:bg-black hover:scale-105 active:scale-95 transition-all duration-150 rounded-[4px] shadow-md cursor-pointer"
           >
             GO TO NEXT SET →
           </button>
