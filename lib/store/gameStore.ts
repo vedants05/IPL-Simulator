@@ -118,7 +118,7 @@ export const useGameStore = create<Store>()(
       saveId: "",
       saveCreatedAt: "",
       currentDate: "2026-10-01",
-      currentSeason: 2026,
+      currentSeason: 2027,
       auctionCycle: 1,
       players: {},
       teams: {},
@@ -138,7 +138,7 @@ export const useGameStore = create<Store>()(
         const teamsMap: Record<string, Team> = {};
         TEAMS_SEED.forEach((t) => {
           const teamPlayers = PLAYERS_SEED.filter((p: Player) => 
-            p.iplHistory?.some((h) => h.season === "2025" && h.teamId === t.id)
+            p.iplHistory?.some((h) => h.season === "2026" && h.teamId === t.id)
           );
           teamsMap[t.id] = {
             ...t,
@@ -712,8 +712,8 @@ function doRTMTransfer(
     };
 
     const updatedHistory = [
-      ...player.iplHistory.filter(h => h.season !== "2026"),
-      { teamId: originalTeamId, season: "2026", price: transferPrice }
+      ...player.iplHistory.filter(h => h.season !== "2027"),
+      { teamId: originalTeamId, season: "2027", price: transferPrice }
     ];
     const newPlayers = { ...s.players, [player.id]: { ...player, currentTeamId: originalTeamId, iplHistory: updatedHistory } };
     const newPurses = {
@@ -891,8 +891,8 @@ function hammerFall() {
           : newTeams[highBidder].overseasPlayersCurrent,
     };
     const updatedHistory = [
-      ...player.iplHistory.filter(h => h.season !== "2026"),
-      { teamId: highBidder, season: "2026", price: soldAmount }
+      ...player.iplHistory.filter(h => h.season !== "2027"),
+      { teamId: highBidder, season: "2027", price: soldAmount }
     ];
     const newPlayers = { ...s.players, [player.id]: { ...player, currentTeamId: highBidder, iplHistory: updatedHistory } };
     const newPurses = {
