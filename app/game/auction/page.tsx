@@ -70,7 +70,7 @@ export default function AuctionPage() {
             <span className="font-space-mono font-bold text-[11px] tracking-[.12em] text-white">LIVE</span>
           </div>
           <span className="font-anton text-[22px] leading-none text-text-primary">
-            MEGA AUCTION &apos;26
+            MEGA AUCTION &apos;27
           </span>
         </div>
 
