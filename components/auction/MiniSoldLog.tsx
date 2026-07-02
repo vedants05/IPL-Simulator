@@ -6,6 +6,19 @@ function crore(lakhs: number) {
   return `₹${(lakhs / 100).toFixed(2)} Cr`;
 }
 
+function getTeamColors(teamId?: string, team?: any) {
+  if (teamId === "RCB") {
+    return { bg: "#DA1818", text: "#D4A017" };
+  }
+  if (teamId === "RR") {
+    return { bg: "#EA1A85", text: "#ffffff" };
+  }
+  return {
+    bg: team?.primaryColor ?? "#8a8378",
+    text: team?.secondaryColor ?? "#ffffff",
+  };
+}
+
 export default function MiniSoldLog() {
   const { auction, teams, players } = useGameStore();
   const [selectedSale, setSelectedSale] = useState<{ playerId: string; teamId: string; price: number; lot: number; bids?: any[] } | null>(null);
@@ -106,9 +119,10 @@ export default function MiniSoldLog() {
       {/* Expanded detail popout overlay on right */}
       {selectedSale && selectedPlayer && (
         <div
-          className="absolute left-full top-0 ml-2 w-[260px] bg-[#f4f1ea] border-2 border-[#16130f] p-3 shadow-2xl z-50 rounded-[4px] text-[#16130f]"
+          className="absolute left-full ml-0 w-[260px] h-[280px] flex flex-col bg-[#f4f1ea] border-2 border-[#16130f] p-3 shadow-2xl z-50 rounded-[4px] text-[#16130f]"
+          style={{ top: "-2px" }}
         >
-          <div className="flex justify-between items-start mb-2">
+          <div className="flex justify-between items-start mb-2 shrink-0">
             <div>
               <div className="font-anton text-[16px] leading-tight uppercase">
                 {selectedPlayer.name}
@@ -122,44 +136,42 @@ export default function MiniSoldLog() {
                 e.stopPropagation();
                 setSelectedSale(null);
               }}
-              className="text-[12px] font-bold text-text-secondary hover:text-text-primary px-1 cursor-pointer"
+              className="w-6 h-6 flex items-center justify-center rounded text-[12px] font-bold text-text-secondary hover:text-white hover:bg-red-600 transition-all duration-150 cursor-pointer active:scale-95"
             >
               ✕
             </button>
           </div>
 
-          <div
-            className="p-2.5 rounded mb-2 flex items-center justify-between gap-2"
-            style={{ backgroundColor: buyerTeam?.primaryColor ?? "#8a8378", color: buyerTeam?.secondaryColor ?? "#ffffff" }}
-          >
-            <div className="min-w-0 flex-1">
-              <div className="font-space-mono text-[8px] tracking-widest opacity-80 uppercase">
-                SOLD TO
-              </div>
-              <div className="font-anton text-[13px] leading-tight truncate">
-                {buyerTeam?.name ?? selectedSale.teamId}
-              </div>
-            </div>
-            <div className="font-anton text-[16px] whitespace-nowrap shrink-0 ml-1">
-              {crore(selectedSale.price)}
-            </div>
-          </div>
 
-          {/* Quick Stats */}
-          <div className="grid grid-cols-2 gap-1 mb-2 text-[9px] font-space-mono bg-black/5 p-2 rounded text-[#16130f]">
-            <div>Matches: <span className="font-bold">{selectedPlayer.careerStats.batting.matches}</span></div>
-            <div>Star Rating: <span className="font-bold">{selectedPlayer.starRating}★</span></div>
-            {selectedPlayer.careerStats.batting.runs ? <div>Runs: <span className="font-bold">{selectedPlayer.careerStats.batting.runs}</span></div> : null}
-            {selectedPlayer.careerStats.bowling.wickets ? <div>Wkts: <span className="font-bold">{selectedPlayer.careerStats.bowling.wickets}</span></div> : null}
-          </div>
+          {(() => {
+            const colors = getTeamColors(selectedSale.teamId, buyerTeam);
+            return (
+              <div
+                className="p-2.5 rounded mb-2 flex items-center justify-between gap-2 shrink-0"
+                style={{ backgroundColor: colors.bg, color: colors.text }}
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="font-space-mono text-[8px] tracking-widest opacity-80 uppercase">
+                    SOLD TO
+                  </div>
+                  <div className="font-anton text-[13px] leading-tight truncate">
+                    {buyerTeam?.name ?? selectedSale.teamId}
+                  </div>
+                </div>
+                <div className="font-anton text-[16px] whitespace-nowrap shrink-0 ml-1">
+                  {crore(selectedSale.price)}
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Bidding Log Summary */}
           {selectedSale.bids && selectedSale.bids.length > 0 && (
-            <div>
-              <div className="font-space-mono text-[8px] font-bold tracking-wider text-text-secondary mb-1 uppercase">
+            <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+              <div className="font-space-mono text-[8px] font-bold tracking-wider text-text-secondary mb-1 uppercase shrink-0">
                 Bidding Trail ({selectedSale.bids.length})
               </div>
-              <div className="max-h-[80px] overflow-y-auto text-[8px] font-space-mono space-y-1 pr-1">
+              <div className="flex-1 overflow-y-auto text-[8px] font-space-mono space-y-1 pr-1">
                 {selectedSale.bids.map((b: any, bi: number) => {
                   const bTeam = teams[b.teamId];
                   return (
