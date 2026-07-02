@@ -35,7 +35,9 @@ import {
   pickBiddingTeam,
   nextAIBidDelay,
   resetLotCache,
+  resetAuctionQuirks,
   getCachedValuation,
+  decideAIRetentions,
   AuctionContext,
 } from "@/lib/logic/auctionEngine";
 
@@ -261,37 +263,29 @@ export const useGameStore = create<Store>()(
       confirmRetentions: () => {
         const { teams, players, userTeamId } = get();
 
+        // Fresh per-auction AI quirks (fuzzed roster targets, temperament,
+        // budget envelopes) — sampled once per auction inside the engine
+        resetAuctionQuirks();
+
         // Build player pool: all non-retained players
         const allPlayerIds = Object.values(players)
           .filter((p) => !p.isRetained)
           .map((p) => p.id);
 
-        // AI teams: auto-retain their top 3 capped + top 1 uncapped (≤4 total, ≤6)
+        // AI teams: engine weighs each player's estimated worth against the
+        // retention slab costs (loyalty DNA, reputation, age, potential…)
         const updatedTeams = { ...teams };
         const updatedPlayers = { ...players };
 
         Object.values(teams).forEach((team) => {
           if (team.id === userTeamId) return;
 
-          const teamPlayers = team.squad
-            .map((id) => players[id])
-            .filter(Boolean)
-            .sort((a, b) => b.starRating - a.starRating);
-
-          const cappedPlayers = teamPlayers.filter((p) => p.isCapped || p.nationality === "Overseas");
-          const uncappedPlayers = teamPlayers.filter((p) => !p.isCapped && p.nationality !== "Overseas");
-
-          // Retain top 3 capped + top 1 uncapped (realistic AI strategy)
-          const toRetain = [
-            ...cappedPlayers.slice(0, 3),
-            ...uncappedPlayers.slice(0, 1),
-          ];
-
-          const retainedIds: string[] = [];
-          toRetain.forEach((p) => {
-            retainedIds.push(p.id);
-            updatedPlayers[p.id] = { ...p, isRetained: true, retainedByTeamId: team.id };
-            const poolIdx = allPlayerIds.indexOf(p.id);
+          const retainedIds = decideAIRetentions(team, players);
+          retainedIds.forEach((pid) => {
+            const p = players[pid];
+            if (!p) return;
+            updatedPlayers[pid] = { ...p, isRetained: true, retainedByTeamId: team.id };
+            const poolIdx = allPlayerIds.indexOf(pid);
             if (poolIdx !== -1) allPlayerIds.splice(poolIdx, 1);
           });
 
@@ -864,9 +858,12 @@ export const useGameStore = create<Store>()(
         const p = persisted as Partial<Store>;
         if (p.teams) {
           for (const [id, team] of Object.entries(p.teams)) {
+            const seed = TEAMS_SEED.find(t => t.id === id);
             if (!team.dna) {
-              const seed = TEAMS_SEED.find(t => t.id === id);
               if (seed) team.dna = seed.dna;
+            } else if (!team.dna.segmentFocus && seed?.dna.segmentFocus) {
+              // Older saves predate teamLogic.csv segment focus — patch it in
+              team.dna.segmentFocus = seed.dna.segmentFocus;
             }
           }
         }

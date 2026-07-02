@@ -96,6 +96,19 @@ export interface BoardObjective {
   isCompleted: boolean;
 }
 
+// Segment focus — from teamLogic.csv: how strongly a franchise targets each
+// nationality × role segment (all fields 0–100, ~30 = avoids, ~95 = obsessed)
+export interface SegmentFocus {
+  overseasPacers: number;
+  indianPacers: number;
+  overseasSpinners: number;
+  indianSpinners: number;
+  overseasAllRounders: number;
+  indianAllRounders: number;
+  overseasBatters: number;
+  indianBatters: number;
+}
+
 // Franchise auction DNA — controls AI bidding behaviour (all fields 0–100)
 export interface FranchiseDNA {
   loyalty: number;             // tendency to target ex-players
@@ -107,6 +120,7 @@ export interface FranchiseDNA {
   batValue: number;            // how highly batters/WK-batters are valued
   bowlValue: number;           // how highly bowlers are valued
   commitmentToTargets: number; // how far a team pushes beyond their base valuation
+  segmentFocus?: SegmentFocus; // nationality × role targeting (teamLogic.csv)
 }
 
 export interface Team {

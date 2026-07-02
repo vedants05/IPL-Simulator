@@ -26,7 +26,7 @@ export const TEAMS_SEED: Team[] = [
     fanBase: "Massive",
     prestige: 10,
     aiPersonality: "Aggressive",
-    dna: { loyalty: 78, prefYoungsters: 89, experienceFocus: 67, bigNamesPref: 87, looksForDepth: 40, alrValue: 95, batValue: 80, bowlValue: 65, commitmentToTargets: 80 },
+    dna: { loyalty: 78, prefYoungsters: 89, experienceFocus: 67, bigNamesPref: 87, looksForDepth: 40, alrValue: 95, batValue: 80, bowlValue: 65, commitmentToTargets: 80 , segmentFocus: { overseasPacers: 85, indianPacers: 70, overseasSpinners: 35, indianSpinners: 40, overseasAllRounders: 75, indianAllRounders: 85, overseasBatters: 70, indianBatters: 85 } },
     description: "Five-time champions with ₹120Cr purse. Retaining Rohit & Bumrah. Rebuilding around Indian core.",
   },
   {
@@ -54,7 +54,7 @@ export const TEAMS_SEED: Team[] = [
     fanBase: "Massive",
     prestige: 10,
     aiPersonality: "Conservative",
-    dna: { loyalty: 93, prefYoungsters: 44, experienceFocus: 90, bigNamesPref: 80, looksForDepth: 88, alrValue: 75, batValue: 65, bowlValue: 50, commitmentToTargets: 87 },
+    dna: { loyalty: 93, prefYoungsters: 44, experienceFocus: 90, bigNamesPref: 80, looksForDepth: 88, alrValue: 75, batValue: 65, bowlValue: 50, commitmentToTargets: 87 , segmentFocus: { overseasPacers: 75, indianPacers: 75, overseasSpinners: 65, indianSpinners: 80, overseasAllRounders: 80, indianAllRounders: 90, overseasBatters: 70, indianBatters: 70 } },
     description: "Five-time champions. Retaining Dhoni and Jadeja. Experienced squad, value-driven bidding.",
   },
   {
@@ -82,7 +82,7 @@ export const TEAMS_SEED: Team[] = [
     fanBase: "Large",
     prestige: 9,
     aiPersonality: "Balanced",
-    dna: { loyalty: 83, prefYoungsters: 68, experienceFocus: 55, bigNamesPref: 86, looksForDepth: 80, alrValue: 90, batValue: 75, bowlValue: 75, commitmentToTargets: 75 },
+    dna: { loyalty: 83, prefYoungsters: 68, experienceFocus: 55, bigNamesPref: 86, looksForDepth: 80, alrValue: 90, batValue: 75, bowlValue: 75, commitmentToTargets: 75 , segmentFocus: { overseasPacers: 65, indianPacers: 65, overseasSpinners: 85, indianSpinners: 85, overseasAllRounders: 95, indianAllRounders: 75, overseasBatters: 60, indianBatters: 80 } },
     description: "Three-time champions. Retaining Narine & Russell. Strong overseas core, seeking Indian stars.",
   },
   {
@@ -110,7 +110,7 @@ export const TEAMS_SEED: Team[] = [
     fanBase: "Massive",
     prestige: 8,
     aiPersonality: "Aggressive",
-    dna: { loyalty: 60, prefYoungsters: 58, experienceFocus: 74, bigNamesPref: 96, looksForDepth: 40, alrValue: 60, batValue: 90, bowlValue: 59, commitmentToTargets: 45 },
+    dna: { loyalty: 60, prefYoungsters: 58, experienceFocus: 74, bigNamesPref: 96, looksForDepth: 40, alrValue: 60, batValue: 90, bowlValue: 59, commitmentToTargets: 45 , segmentFocus: { overseasPacers: 80, indianPacers: 60, overseasSpinners: 30, indianSpinners: 55, overseasAllRounders: 60, indianAllRounders: 60, overseasBatters: 95, indianBatters: 90 } },
     description: "Retaining Virat Kohli. High-spending franchise targeting marquee names to chase maiden title.",
   },
   {
@@ -138,7 +138,7 @@ export const TEAMS_SEED: Team[] = [
     fanBase: "Large",
     prestige: 7,
     aiPersonality: "Balanced",
-    dna: { loyalty: 50, prefYoungsters: 30, experienceFocus: 80, bigNamesPref: 75, looksForDepth: 74, alrValue: 65, batValue: 55, bowlValue: 80, commitmentToTargets: 60 },
+    dna: { loyalty: 50, prefYoungsters: 30, experienceFocus: 80, bigNamesPref: 75, looksForDepth: 74, alrValue: 65, batValue: 55, bowlValue: 80, commitmentToTargets: 60 , segmentFocus: { overseasPacers: 80, indianPacers: 65, overseasSpinners: 55, indianSpinners: 75, overseasAllRounders: 65, indianAllRounders: 70, overseasBatters: 70, indianBatters: 60 } },
     description: "Rebuilding with Rishabh Pant as cornerstone. Aiming for first IPL title.",
   },
   {
@@ -166,7 +166,7 @@ export const TEAMS_SEED: Team[] = [
     fanBase: "Large",
     prestige: 7,
     aiPersonality: "Aggressive",
-    dna: { loyalty: 70, prefYoungsters: 83, experienceFocus: 55, bigNamesPref: 65, looksForDepth: 70, alrValue: 75, batValue: 91, bowlValue: 45, commitmentToTargets: 67 },
+    dna: { loyalty: 70, prefYoungsters: 83, experienceFocus: 55, bigNamesPref: 65, looksForDepth: 70, alrValue: 75, batValue: 91, bowlValue: 45, commitmentToTargets: 67 , segmentFocus: { overseasPacers: 75, indianPacers: 55, overseasSpinners: 45, indianSpinners: 65, overseasAllRounders: 70, indianAllRounders: 70, overseasBatters: 90, indianBatters: 70 } },
     description: "Two-time champions. Retaining Head & Klaasen. Explosive batting-focused strategy.",
   },
   {
@@ -194,7 +194,7 @@ export const TEAMS_SEED: Team[] = [
     fanBase: "Medium",
     prestige: 6,
     aiPersonality: "Balanced",
-    dna: { loyalty: 38, prefYoungsters: 55, experienceFocus: 77, bigNamesPref: 68, looksForDepth: 45, alrValue: 76, batValue: 45, bowlValue: 30, commitmentToTargets: 30 },
+    dna: { loyalty: 38, prefYoungsters: 55, experienceFocus: 77, bigNamesPref: 68, looksForDepth: 45, alrValue: 76, batValue: 45, bowlValue: 30, commitmentToTargets: 30 , segmentFocus: { overseasPacers: 75, indianPacers: 60, overseasSpinners: 45, indianSpinners: 40, overseasAllRounders: 75, indianAllRounders: 60, overseasBatters: 70, indianBatters: 85 } },
     description: "Full rebuild after mega auction. Best chance to reshape the squad around young Indian talent.",
   },
   {
@@ -222,7 +222,7 @@ export const TEAMS_SEED: Team[] = [
     fanBase: "Medium",
     prestige: 7,
     aiPersonality: "Conservative",
-    dna: { loyalty: 80, prefYoungsters: 88, experienceFocus: 26, bigNamesPref: 46, looksForDepth: 70, alrValue: 65, batValue: 81, bowlValue: 85, commitmentToTargets: 67 },
+    dna: { loyalty: 80, prefYoungsters: 88, experienceFocus: 26, bigNamesPref: 46, looksForDepth: 70, alrValue: 65, batValue: 81, bowlValue: 85, commitmentToTargets: 67 , segmentFocus: { overseasPacers: 90, indianPacers: 85, overseasSpinners: 60, indianSpinners: 75, overseasAllRounders: 55, indianAllRounders: 70, overseasBatters: 50, indianBatters: 85 } },
     description: "Smart bidders who excel at finding undervalued talent. Retaining Samson and key domestic stars.",
   },
   {
@@ -250,7 +250,7 @@ export const TEAMS_SEED: Team[] = [
     fanBase: "Large",
     prestige: 8,
     aiPersonality: "Balanced",
-    dna: { loyalty: 70, prefYoungsters: 60, experienceFocus: 55, bigNamesPref: 50, looksForDepth: 88, alrValue: 50, batValue: 80, bowlValue: 90, commitmentToTargets: 75 },
+    dna: { loyalty: 70, prefYoungsters: 60, experienceFocus: 55, bigNamesPref: 50, looksForDepth: 88, alrValue: 50, batValue: 80, bowlValue: 90, commitmentToTargets: 75 , segmentFocus: { overseasPacers: 85, indianPacers: 95, overseasSpinners: 75, indianSpinners: 75, overseasAllRounders: 45, indianAllRounders: 65, overseasBatters: 60, indianBatters: 85 } },
     description: "Two-time finalists. Retaining Shubman Gill & Rashid Khan. Strong bowling attack.",
   },
   {
@@ -278,7 +278,7 @@ export const TEAMS_SEED: Team[] = [
     fanBase: "Medium",
     prestige: 6,
     aiPersonality: "Aggressive",
-    dna: { loyalty: 20, prefYoungsters: 61, experienceFocus: 60, bigNamesPref: 50, looksForDepth: 80, alrValue: 70, batValue: 65, bowlValue: 90, commitmentToTargets: 70 },
+    dna: { loyalty: 20, prefYoungsters: 61, experienceFocus: 60, bigNamesPref: 50, looksForDepth: 80, alrValue: 70, batValue: 65, bowlValue: 90, commitmentToTargets: 70 , segmentFocus: { overseasPacers: 40, indianPacers: 90, overseasSpinners: 40, indianSpinners: 70, overseasAllRounders: 70, indianAllRounders: 70, overseasBatters: 90, indianBatters: 55 } },
     description: "Newer franchise with deep pockets. Retaining KL Rahul. Targeting overseas power-hitters.",
   },
 ];
