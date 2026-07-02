@@ -650,11 +650,16 @@ export const useGameStore = create<Store>()(
         const results: SkipSetResultItem[] = [];
         const totalLots = auction.sets.reduce((sum, s) => sum + s.playerIds.length, 0);
 
+        // The first player in this slice is the one already on the block, so it
+        // keeps the current lot number; only subsequent players advance the lot.
+        let isFirstProcessed = true;
+
         playersToAuctionIds.forEach((playerId) => {
           const player = newPlayers[playerId];
           if (!player) return;
 
-          currentLotIndex++;
+          if (!isFirstProcessed) currentLotIndex++;
+          isFirstProcessed = false;
           resetLotCache();
 
           const ctx: AuctionContext = {
@@ -750,9 +755,12 @@ export const useGameStore = create<Store>()(
               };
             }
 
+            // Record the sale under the auction season ("2026"), matching the
+            // live hammerFall / doRTMTransfer flow so skip-sold and live-sold
+            // players have identical, accurate iplHistory.
             const updatedHistory = [
-              ...player.iplHistory.filter((h) => h.season !== "2027"),
-              { teamId: finalWinnerId, season: "2027", price: finalPrice },
+              ...player.iplHistory.filter((h) => h.season !== "2026"),
+              { teamId: finalWinnerId, season: "2026", price: finalPrice },
             ];
 
             newPlayers[player.id] = {
