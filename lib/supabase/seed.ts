@@ -4,6 +4,7 @@
  */
 import { createClient } from "@supabase/supabase-js";
 import { PLAYERS_SEED } from "../data/players";
+import { Player, IPLHistoryEntry } from "../types";
 
 const supabase = createClient(
   "https://qnmmplezmitcllovbyur.supabase.co",
@@ -18,7 +19,7 @@ async function seed() {
   await supabase.from("players").delete().neq("id", "");
 
   // Insert players in batches of 50
-  const playerRows = PLAYERS_SEED.map((p) => ({
+  const playerRows = PLAYERS_SEED.map((p: Player) => ({
     id: p.id,
     name: p.name,
     age: p.age,
@@ -77,8 +78,8 @@ async function seed() {
   }
 
   // Insert IPL history
-  const historyRows = PLAYERS_SEED.flatMap((p) =>
-    p.iplHistory.map((h) => ({
+  const historyRows = PLAYERS_SEED.flatMap((p: Player) =>
+    p.iplHistory.map((h: IPLHistoryEntry) => ({
       player_id: p.id,
       team_id: h.teamId,
       season: h.season,

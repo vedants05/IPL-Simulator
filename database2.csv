@@ -1,0 +1,337 @@
+Team,Player Name,IPL 2025 Team and Salary,Nationality,Age,IPL 2026 Salary (Cr),Overseas Status,Status,Primary Role,Bowling Type (Spinner/Pacer/NA),Bowling Hand,"Batting Hand (""Right"" or  ""Left"")",Current Batting,Potential Batting,Current Bowling,Potential Bowling,Reputation,Can they keep wickets?,Are they a part time wicketkeeper?,Opener?,Finisher?,Captaincy,Batting Aggression (1-99)
+Kolkata Knight Riders,Varun Chakravarthy,KKR (12.00 Cr),India,34,12.00,Indian,Capped,Bowler (Spinner),Spinner,Right Handed Bowler,RHB,0,0,91,91,9,No,No,No,No,45.00,25.00
+Kolkata Knight Riders,Sunil Narine,KKR (12.00 Cr),West Indies,38,12.00,Overseas,Capped,All-Rounder,Spinner,Right Handed Bowler,LHB,77,77,88,88,9,No,No,Yes,No,78.00,85.00
+Kolkata Knight Riders,Rinku Singh,KKR (13.00 Cr),India,28,13.00,Indian,Capped,Batter,Spinner,Right Handed Bowler,LHB,86,88,61,61,8,No,No,No,Yes,55.00,85.00
+Kolkata Knight Riders,Cameron Green,Unsold (0.00 Cr),Australia,27,25.20,Overseas,Capped,All-Rounder,Pacer,Right Handed Bowler,RHB,83,89,79,84,8,No,No,No,No,65.00,85.00
+Kolkata Knight Riders,Matheesha Pathirana,CSK (13.00 Cr),Sri Lanka,23,18.00,Overseas,Capped,Bowler (Pace),Pacer,Right Handed Bowler,RHB,0,0,83,90,8,No,No,No,No,40.00,25.00
+Kolkata Knight Riders,Harshit Rana,KKR (4.00 Cr),India,24,4.00,Indian,Capped,Bowler (Pace),Pacer,Right Handed Bowler,RHB,61,68,84,89,7,No,No,No,No,40.00,78.00
+Kolkata Knight Riders,Rachin Ravindra,CSK (4.00 Cr),New Zealand,26,2.00,Overseas,Capped,All-Rounder,Spinner,Left Handed Bowler,LHB,82,89,75,79,8,No,No,Yes,No,72.00,82.00
+Kolkata Knight Riders,Kartik Tyagi,GT (0.60 Cr),India,25,0.30,Indian,Uncapped,Bowler (Pace),Pacer,Right Handed Bowler,RHB,53,60,81,86,5,No,No,No,No,55.00,35.00
+Kolkata Knight Riders,Finn Allen,Unsold,New Zealand,27,2.00,Overseas,Capped,Batter,NA,NA,RHB,84,89,0,0,8,Yes,Yes,Yes,No,40.00,95.00
+Kolkata Knight Riders,Rahul Tripathi,CSK (3.40 Cr),India,35,0.75,Indian,Capped,Batter,NA,NA,RHB,79,79,0,0,6,Yes,Yes,Yes,No,65.00,78.00
+Kolkata Knight Riders,Rovman Powell,KKR (1.50 Cr),West Indies,32,1.50,Overseas,Capped,Batter,NA,NA,RHB,81,81,0,0,8,No,No,No,Yes,81.00,85.00
+Kolkata Knight Riders,Akash Deep,LSG (8.00 Cr),India,29,1.00,Indian,Capped,Bowler (Pace),Pacer,Right Handed Bowler,RHB,61,61,79,80,7,No,No,No,No,70.00,35.00
+Kolkata Knight Riders,Umran Malik,KKR (0.75 Cr),India,26,0.75,Indian,Capped,Bowler (Pace),Pacer,Right Handed Bowler,RHB,0,0,78,83,8,No,No,No,No,40.00,20.00
+Kolkata Knight Riders,Tim Seifert,RCB (2.00 Cr),New Zealand,31,1.50,Overseas,Capped,Wicketkeeper-Batter,NA,NA,RHB,81,81,0,0,7,Yes,No,Yes,No,60.00,85.00
+Kolkata Knight Riders,Ramandeep Singh,KKR (4.00 Cr),India,29,4.00,Indian,Capped,All-Rounder,Pacer,Right Handed Bowler,RHB,77,81,71,75,7,No,No,No,Yes,52.00,82.00
+Kolkata Knight Riders,Vaibhav Arora,KKR (1.80 Cr),India,28,1.80,Indian,Uncapped,Bowler (Pace),Pacer,Right Handed Bowler,RHB,0,0,76,81,6,No,No,No,No,55.00,25.00
+Kolkata Knight Riders,Ajinkya Rahane,KKR (1.50 Cr),India,38,1.50,Indian,Capped,Batter,NA,NA,RHB,75,75,0,0,8,No,No,No,No,76.00,65.00
+Kolkata Knight Riders,Angkrish Raghuvanshi,KKR (3.00 Cr),India,21,3.00,Indian,Uncapped,Batter,NA,NA,RHB,78,87,0,0,4,Yes,Yes,Yes,No,40.00,75.00
+Kolkata Knight Riders,Manish Pandey,KKR (0.75 Cr),India,36,0.75,Indian,Capped,Batter,NA,NA,RHB,74,74,0,0,7,Yes,Yes,No,No,75.00,65.00
+Kolkata Knight Riders,Blessing Muzarabani,RCB (0.75 Cr),Zimbabwe,29,0.75,Overseas,Capped,Bowler (Pace),Pacer,Right Handed Bowler,RHB,0,0,77,78,4,No,No,No,No,40.00,15.00
+Kolkata Knight Riders,Anukul Roy,KKR (0.40 Cr),India,27,0.40,Indian,Uncapped,All-Rounder,Spinner,Left Handed Bowler,LHB,75,77,77,83,6,No,No,No,No,48.00,55.00
+Kolkata Knight Riders,Prashant Solanki,Unsold,India,26,0.30,Indian,Uncapped,Bowler (Spinner),Spinner,Right Handed Bowler,RHB,0,0,72,76,4,No,No,No,No,40.00,25.00
+,Saurabh Dubey,Unsold,India,28,0.30,Indian,Uncapped,Bowler (Pace),Pacer,Left Handed Bowler,RHB,0,0,73,79,3,No,No,No,No,45.00,25.00
+Kolkata Knight Riders,Tejasvi Singh Dahiya,Unsold,India,24,3.00,Indian,Uncapped,Wicketkeeper-Batter,NA,NA,RHB,70,81,0,0,4,Yes,No,No,No,42.00,65.00
+Kolkata Knight Riders,Sarthak Ranjan,Unsold,India,29,0.30,Indian,Uncapped,Batter,NA,NA,RHB,67,78,0,0,4,No,No,Yes,No,48.00,65.00
+Kolkata Knight Riders,Daksh Kamra,Unsold,India,23,0.30,Indian,Uncapped,All-Rounder,Spinner,Right Handed Bowler,RHB,65,79,70,82,3,No,No,No,No,35.00,40.00
+Mumbai Indians,Jasprit Bumrah,MI (18.00 Cr),India,32,18.00,Indian,Capped,Bowler (Pace),Pacer,Right Handed Bowler,RHB,0,0,94,94,10,No,No,No,No,82.00,25.00
+Mumbai Indians,Suryakumar Yadav,MI (16.35 Cr),India,35,16.35,Indian,Capped,Batter,Spinner,Right Handed Bowler,RHB,85,85,51,51,9,No,No,No,No,88.00,92.00
+Mumbai Indians,Rohit Sharma,MI (16.30 Cr),India,39,16.00,Indian,Capped,Batter,Spinner,Right Handed Bowler,RHB,85,85,62,62,10,No,No,Yes,No,95.00,88.00
+Mumbai Indians,Hardik Pandya,MI (16.35 Cr),India,32,16.35,Indian,Capped,All-Rounder,Pacer,Right Handed Bowler,RHB,86,86,81,81,9,No,No,No,Yes,84.00,88.00
+Mumbai Indians,Trent Boult,MI (12.50 Cr),New Zealand,36,12.50,Overseas,Capped,Bowler (Pace),Pacer,Left Handed Bowler,LHB,0,0,81,81,9,No,No,No,No,70.00,35.00
+Mumbai Indians,Tilak Varma,MI (8.00 Cr),India,23,8.00,Indian,Capped,Batter,Spinner,Right Handed Bowler,LHB,84,89,53,56,8,No,No,No,No,72.00,72.00
+Mumbai Indians,Will Jacks,MI (5.25 Cr),England,27,5.25,Overseas,Capped,All-Rounder,Spinner,Right Handed Bowler,RHB,82,87,74,79,8,No,No,No,No,72.00,88.00
+Mumbai Indians,Ryan Rickelton,MI (1.00 Cr),South Africa,29,1.00,Overseas,Capped,Wicketkeeper-Batter,NA,NA,LHB,82,85,0,0,7,Yes,No,No,No,75.00,88.00
+Mumbai Indians,Allah Ghazanfar,MI (4.80 Cr),Afghanistan,20,4.80,Overseas,Capped,Bowler (Spinner),Spinner,Right Handed Bowler,RHB,0,0,81,90,7,No,No,No,No,40.00,65.00
+Mumbai Indians,Keshav Maharaj,Unsold,South Africa,36,0.75,Overseas,Capped,Bowler (Spinner),Spinner,Left Handed Bowler,RHB,0,0,80,80,8,No,No,No,No,74.00,55.00
+Mumbai Indians,Sherfane Rutherford,GT (2.60 Cr),West Indies,27,2.60,Overseas,Capped,Batter,NA,Right Handed Bowler,LHB,80,80,0,0,7,No,No,No,Yes,55.00,88.00
+Mumbai Indians,Deepak Chahar,MI (9.25 Cr),India,33,9.25,Indian,Capped,Bowler (Pace),Pacer,Right Handed Bowler,RHB,0,0,78,78,7,No,No,No,No,70.00,45.00
+Mumbai Indians,Naman Dhir,MI (5.25 Cr),India,26,5.25,Indian,Uncapped,All-Rounder,Spinner,Right Handed Bowler,RHB,77,84,68,74,6,No,No,No,No,60.00,75.00
+Mumbai Indians,Shardul Thakur,LSG (2.00 Cr),India,34,2.00,Indian,Capped,Bowler (Pace),Pacer,Right Handed Bowler,RHB,72,72,76,77,7,No,No,No,No,78.00,75.00
+,Mahipal Lomror,GT (1.70 Cr),India,26,1.70,Indian,Uncapped,Batter,Spinner,Left Handed Bowler,LHB,76,81,55,55,6,No,No,No,No,55.00,78.00
+Mumbai Indians,Mayank Markande,KKR (0.30 Cr),India,28,0.30,Indian,Capped,Bowler (Spinner),Spinner,Right Handed Bowler,RHB,0,0,76,79,6,No,No,No,No,65.00,40.00
+Mumbai Indians,Corbin Bosch,MI (0.30 Cr),South Africa,31,0.30,Overseas,Capped,All-Rounder,Pacer,Right Handed Bowler,RHB,74,77,81,81,7,No,No,No,No,55.00,65.00
+Mumbai Indians,Robin Minz,MI (0.65 Cr),India,23,0.65,Indian,Uncapped,Wicketkeeper-Batter,NA,Left Handed Bowler,LHB,71,82,0,0,4,Yes,No,No,Yes,38.00,82.00
+Mumbai Indians,Danish Malewar,Unsold,India,22,0.30,Indian,Uncapped,Batter,NA,NA,RHB,70,83,0,0,2,No,No,No,No,35.00,65.00
+Mumbai Indians,Mayank Rawat,Unsold,India,26,0.30,Indian,Uncapped,All-Rounder,Spinner,Right Handed Bowler,RHB,68,77,66,75,3,No,No,No,No,40.00,85.00
+Mumbai Indians,Ashwani Kumar,MI (0.30 Cr),India,24,0.30,Indian,Uncapped,Bowler (Pace),Pacer,Right Handed Bowler,RHB,0,0,68,77,4,No,No,No,No,35.00,35.00
+Mumbai Indians,Raghu Sharma,MI (0.30 Cr),India,33,0.30,Indian,Uncapped,Bowler (Spinner),Spinner,Right Handed Bowler,RHB,0,0,73,73,4,No,No,No,No,44.00,25.00
+Mumbai Indians,Mohammad Izhar,Unsold,India,22,0.30,Indian,Uncapped,Bowler (Pace),Pacer,Something went wrong. Try again.,RHB,0,0,66,78,3,No,No,No,No,38.00,25.00
+,Krish Bhagat,MI (0.30 Cr),India,21,0.30,Indian,Uncapped,Bowler (Pace),Pacer,Right Handed Bowler,RHB,0,0,65,76,3,No,No,No,No,38.00,25.00
+,Ruchit Ahir,MI (0.30 Cr),India,25,0.30,Indian,Uncapped,Bowler (Pace),Pacer,Right Handed Bowler,RHB,0,0,64,75,3,No,No,No,No,35.00,25.00
+Mumbai Indians,Quinton De Kock,KKR (3.60 Cr),South Africa,33,1.00,Overseas,Capped,Wicketkeeper-Batter,NA,NA,LHB,79,79,0,0,8,Yes,No,Yes,No,82.00,85.00
+Mumbai Indians,Mitchell Santner,MI (2.00 Cr),New Zealand,34,2.00,Overseas,Capped,All-Rounder,Spinner,Left Handed Bowler,LHB,77,77,81,81,8,No,No,No,No,86.00,65.00
+Mumbai Indians,Raj Angad Bawa,MI (0.30 Cr),India,23,0.30,Indian,Uncapped,All-Rounder,Pacer,Right Handed Bowler,LHB,66,75,67,78,4,No,No,No,No,45.00,75.00
+Royal Challengers Bengaluru,Virat Kohli,RCB (21.00 Cr),India,37,21.00,Indian,Capped,Batter,NA,NA,RHB,89,89,0,0,10,No,No,No,No,94.00,90.00
+Royal Challengers Bengaluru,Josh Hazlewood,RCB (12.50 Cr),Australia,35,12.50,Overseas,Capped,Bowler (Pace),Pacer,Right Handed Bowler,RHB,0,0,86,86,8,No,No,No,No,75.00,35.00
+Royal Challengers Bengaluru,Phil Salt,RCB (11.50 Cr),England,29,11.50,Overseas,Capped,Wicketkeeper-Batter,NA,Right Handed Bowler,RHB,87,87,0,0,8,Yes,No,Yes,No,75.00,94.00
+Royal Challengers Bengaluru,Rajat Patidar,RCB (11.00 Cr),India,33,11.00,Indian,Capped,Batter,NA,Right Handed Bowler,RHB,89,89,0,0,8,No,No,No,No,92.00,88.00
+Royal Challengers Bengaluru,Bhuvneshwar Kumar,RCB (10.75 Cr),India,36,10.75,Indian,Capped,Bowler (Pace),Pacer,Right Handed Bowler,RHB,0,0,86,86,8,No,No,No,No,75.00,30.00
+Royal Challengers Bengaluru,Tim David,RCB (3.00 Cr),Australia,30,3.00,Overseas,Capped,Batter,Spinner,Right Handed Bowler,RHB,82,82,56,58,8,No,No,No,Yes,62.00,85.00
+Royal Challengers Bengaluru,Venkatesh Iyer,KKR (23.75 Cr),India,31,7.00,Indian,Capped,All-Rounder,Pacer,Right Handed Bowler,LHB,79,83,65,68,7,No,No,Yes,No,70.00,75.00
+Royal Challengers Bengaluru,Jitesh Sharma,RCB (11.00 Cr),India,32,11.00,Indian,Capped,Wicketkeeper-Batter,NA,NA,RHB,78,81,0,0,8,Yes,No,No,Yes,77.00,80.00
+Royal Challengers Bengaluru,Nuwan Thushara,RCB (1.60 Cr),Sri Lanka,31,5.45,Overseas,Capped,Bowler (Pace),Pacer,Right Handed Bowler,RHB,0,0,80,80,8,No,No,No,No,40.00,30.00
+Royal Challengers Bengaluru,Krunal Pandya,RCB (5.75 Cr),India,35,5.75,Indian,Capped,All-Rounder,Spinner,Left Handed Bowler,LHB,78,78,77,77,8,No,No,No,No,75.00,70.00
+Royal Challengers Bengaluru,Rasikh Salam,RCB (6.00 Cr),India,26,6.00,Indian,Uncapped,Bowler (Pace),Pacer,Right Handed Bowler,RHB,0,0,78,83,6,No,No,No,No,45.00,25.00
+Royal Challengers Bengaluru,Jacob Duffy,RCB (2.00 Cr),New Zealand,31,2.00,Overseas,Capped,Bowler (Pace),Pacer,Right Handed Bowler,RHB,0,0,80,81,6,No,No,No,No,45.00,20.00
+Royal Challengers Bengaluru,Romario Shepherd,RCB (1.50 Cr),West Indies,31,1.50,Overseas,Capped,All-Rounder,Pacer,Right Handed Bowler,RHB,80,80,70,70,7,No,No,No,No,70.00,90.00
+Royal Challengers Bengaluru,Devdutt Padikkal,RCB (2.00 Cr),India,25,2.00,Indian,Capped,Batter,NA,NA,LHB,76,82,0,0,8,No,No,No,No,68.00,80.00
+Royal Challengers Bengaluru,Suyash Sharma,RCB (2.60 Cr),India,23,2.60,Indian,Uncapped,Bowler (Spinner),Spinner,Right Handed Bowler,RHB,0,0,77,86,5,No,No,No,No,45.00,25.00
+,Richard Gleeson,MI (1.00 Cr),England,38,1.60,Overseas,Capped,Bowler (Pace),Pacer,Right Handed Bowler,RHB,0,0,76,76,6,No,No,No,No,50.00,65.00
+Royal Challengers Bengaluru,Jordan Cox,Not in IPL,England,25,0.75,Overseas,Uncapped,Wicketkeeper-Batter,NA,NA,RHB,75,83,0,0,4,Yes,No,No,No,42.00,88.00
+Royal Challengers Bengaluru,Jacob Bethell,RCB (2.60 Cr),England,22,2.60,Overseas,Capped,All-Rounder,Spinner,Left Handed Bowler,LHB,74,89,73,77,8,No,No,No,No,70.00,82.00
+Royal Challengers Bengaluru,Swapnil Singh,RCB (0.50 Cr),India,35,0.50,Indian,Uncapped,All-Rounder,Spinner,Left Handed Bowler,RHB,73,73,72,72,5,No,No,No,No,52.00,70.00
+Royal Challengers Bengaluru,Vicky Ostwal,DC (0.30 Cr),India,23,0.30,Indian,Uncapped,Bowler (Spinner),Spinner,Left Handed Bowler,RHB,0,0,70,81,3,No,No,No,No,35.00,25.00
+Royal Challengers Bengaluru,Mangesh Yadav,Unsold,India,23,5.20,Indian,Uncapped,Bowler (Pace),Pacer,Right Handed Bowler,RHB,0,0,70,79,4,No,No,No,No,35.00,25.00
+Royal Challengers Bengaluru,Kanishk Chouhan,Unsold,India,19,0.30,Indian,Uncapped,All-Rounder,Spinner,Right Handed Bowler,RHB,67,78,66,76,3,No,No,No,No,35.00,82.00
+Royal Challengers Bengaluru,Abhinandan Singh,RCB (0.30 Cr),India,29,0.30,Indian,Uncapped,Bowler (Pace),Pacer,Right Handed Bowler,RHB,0,0,70,77,3,No,No,No,No,40.00,25.00
+Royal Challengers Bengaluru,Vihaan Malhotra,Unsold,India,19,0.30,Indian,Uncapped,Batter,NA,NA,LHB,65,79,0,0,3,No,No,No,No,19.00,85.00
+Royal Challengers Bengaluru,Satvik Deswal,Unsold,India,19,0.30,Indian,Uncapped,All-Rounder,Spinner,Right Handed Bowler,RHB,64,76,62,74,3,No,No,No,No,30.00,82.00
+Gujarat Titans,Kagiso Rabada,GT (10.75 Cr),South Africa,31,10.75,Overseas,Capped,Bowler (Pace),Pacer,Right Handed Bowler,LHB,0,0,91,91,9,No,No,No,No,75.00,35.00
+Gujarat Titans,Shubman Gill,GT (16.50 Cr),India,26,16.50,Indian,Capped,Batter,NA,NA,RHB,89,93,0,0,10,No,No,Yes,No,86.00,92.00
+Gujarat Titans,Jos Buttler,GT (15.75 Cr),England,35,15.75,Overseas,Capped,Wicketkeeper-Batter,NA,NA,RHB,87,87,0,0,9,Yes,No,Yes,No,82.00,85.00
+Gujarat Titans,Rashid Khan,GT (18.00 Cr),Afghanistan,27,18.00,Overseas,Capped,Bowler (Spinner),Spinner,Right Handed Bowler,RHB,73,73,88,90,9,No,No,No,No,88.00,88.00
+Gujarat Titans,Sai Sudharsan,GT (8.50 Cr),India,24,8.50,Indian,Capped,Batter,NA,NA,LHB,86,89,0,0,8,No,No,Yes,No,75.00,85.00
+Gujarat Titans,Mohammed Siraj,GT (12.25 Cr),India,32,12.25,Indian,Capped,Bowler (Pace),Pacer,Right Handed Bowler,RHB,0,0,84,84,8,No,No,No,No,45.00,30.00
+Gujarat Titans,Glenn Phillips,GT (2.00 Cr),New Zealand,29,2.00,Overseas,Capped,Batter,Spinner,Right Handed Bowler,RHB,81,82,64,64,8,Yes,Yes,No,No,72.00,85.00
+Gujarat Titans,Prasidh Krishna,GT (9.50 Cr),India,30,9.50,Indian,Capped,Bowler (Pace),Pacer,Right Handed Bowler,RHB,0,0,80,80,7,No,No,No,No,50.00,30.00
+Gujarat Titans,R. Sai Kishore,GT (2 Cr),India,29,2.00,Indian,Capped,Bowler (Spinner),Spinner,Left Handed Bowler,LHB,0,0,80,83,8,No,No,No,No,72.00,35.00
+Gujarat Titans,Washington Sundar,GT (3.20 Cr),India,26,3.20,Indian,Capped,All-Rounder,Spinner,Right Handed Bowler,LHB,79,84,78,83,8,No,No,No,No,65.00,75.00
+,Kusal Mendis,GT (0.75 Cr),Sri Lanka,31,0.75,Overseas,Capped,Wicketkeeper-Batter,NA,NA,RHB,79,81,0,0,7,Yes,No,Yes,No,78.00,85.00
+Gujarat Titans,Rahul Tewatia,GT (4.00 Cr),India,33,4.00,Indian,Capped,All-Rounder,Spinner,Right Handed Bowler,LHB,78,78,70,70,8,No,No,No,Yes,55.00,82.00
+Gujarat Titans,Tom Banton,Unsold,England,27,2.00,Overseas,Capped,Wicketkeeper-Batter,NA,NA,RHB,78,80,0,0,7,Yes,No,Yes,No,62.00,85.00
+Gujarat Titans,Jason Holder,Unsold,West Indies,34,7.00,Overseas,Capped,All-Rounder,Pacer,Right Handed Bowler,RHB,73,73,77,77,7,No,No,No,No,84.00,75.00
+Gujarat Titans,Shahrukh Khan,GT (4.00 Cr),India,31,4.00,Indian,Uncapped,Batter,NA,NA,RHB,77,77,0,0,7,No,No,No,Yes,55.00,80.00
+Gujarat Titans,Ishant Sharma,GT (0.75 Cr),India,37,0.75,Indian,Capped,Bowler (Pace),Pacer,Right Handed Bowler,RHB,0,0,76,76,7,No,No,No,No,74.00,25.00
+Gujarat Titans,Luke Wood,MI (0.50 Cr),England,30,0.75,Overseas,Capped,Bowler (Pace),Pacer,Left Handed Bowler,LHB,0,0,78,78,6,No,No,No,No,72.00,35.00
+Gujarat Titans,Anuj Rawat,GT (0.30 Cr),India,26,0.30,Indian,Uncapped,Wicketkeeper-Batter,NA,NA,LHB,75,81,0,0,5,Yes,No,No,No,55.00,80.00
+,Karim Janat,GT (0.75 Cr),Afghanistan,27,0.75,Overseas,Capped,All-Rounder,Pacer,Right Handed Bowler,RHB,75,78,74,77,7,No,No,No,No,45.00,85.00
+Gujarat Titans,Kumar Kushagra,GT (0.65 Cr),India,21,0.65,Indian,Uncapped,Wicketkeeper-Batter,NA,NA,RHB,74,83,0,0,4,Yes,No,No,No,65.00,82.00
+Gujarat Titans,Jayant Yadav,GT (0.75 Cr),India,36,0.75,Indian,Capped,Bowler (Spinner),Spinner,Right Handed Bowler,RHB,0,0,74,74,6,No,No,No,No,74.00,35.00
+Gujarat Titans,Manav Suthar,GT (0.30 Cr),India,23,0.30,Indian,Uncapped,Bowler (Spinner),Spinner,Left Handed Bowler,LHB,0,0,75,83,3,No,No,No,No,40.00,25.00
+Gujarat Titans,Mohd. Arshad Khan,GT (1.30 Cr),India,28,1.30,Indian,Uncapped,All-Rounder,Pacer,Left Handed Bowler,LHB,72,79,74,80,4,No,No,No,No,52.00,75.00
+,Kulwant Khejroliya,GT (0.30 Cr),India,34,0.30,Indian,Uncapped,Bowler (Pace),Pacer,Left Handed Bowler,LHB,0,0,74,74,4,No,No,No,No,48.00,25.00
+Gujarat Titans,Nishant Sindhu,GT (0.30 Cr),India,22,0.30,Indian,Uncapped,All-Rounder,Spinner,Left Handed Bowler,LHB,75,82,70,80,4,No,No,No,No,45.00,75.00
+Gujarat Titans,Gurnoor Singh Brar,GT (1.30 Cr),India,25,1.30,Indian,Uncapped,Bowler (Pace),Pacer,Right Handed Bowler,LHB,0,0,70,80,4,No,No,No,No,40.00,25.00
+,Connor Esterhuizen,Unsold,South Africa,25,0.75,Overseas,Uncapped,Wicketkeeper-Batter,NA,NA,RHB,68,80,0,0,7,Yes,No,No,No,40.00,85.00
+Gujarat Titans,Ashok Sharma,RR (0.30 Cr),India,24,0.90,Indian,Uncapped,Bowler (Pace),Pacer,Right Handed Bowler,RHB,0,0,76,79,4,No,No,No,No,40.00,25.00
+Gujarat Titans,Yarra Prithvi Raj,GT (0.30 Cr),India,28,0.30,Indian,Uncapped,Bowler (Pace),Pacer,Left Handed Bowler,LHB,0,0,68,76,3,No,No,No,No,40.00,25.00
+Rajasthan Royals,Vaibhav Suryavanshi,RR (1.10 Cr),India,15,1.10,Indian,Uncapped,Batter,NA,NA,LHB,90,97,0,0,7,No,No,Yes,No,45.00,82.00
+Rajasthan Royals,Jofra Archer,RR (12.50 Cr),England,31,12.50,Overseas,Capped,Bowler (Pace),Pacer,Right Handed Bowler,RHB,0,0,91,93,9,No,No,No,No,70.00,35.00
+Rajasthan Royals,Yashasvi Jaiswal,RR (18.00 Cr),India,24,18.00,Indian,Capped,Batter,NA,NA,LHB,87,92,0,0,9,No,No,Yes,No,60.00,92.00
+Rajasthan Royals,Ravindra Jadeja,CSK (18.00 Cr),India,37,14.00,Indian,Capped,All-Rounder,Spinner,Left Handed Bowler,LHB,80,80,85,85,9,No,No,No,Yes,75.00,80.00
+Rajasthan Royals,Riyan Parag,RR (14.00 Cr),India,24,14.00,Indian,Capped,All-Rounder,Spinner,Right Handed Bowler,RHB,79,86,68,72,8,No,No,No,No,65.00,85.00
+Rajasthan Royals,Sam Curran,CSK (2.40 Cr),England,28,2.40,Overseas,Capped,All-Rounder,Pacer,Left Handed Bowler,LHB,80,84,82,85,8,No,No,No,No,80.00,85.00
+Rajasthan Royals,Ravi Bishnoi,LSG (11.00 Cr),India,25,7.20,Indian,Capped,Bowler (Spinner),Spinner,Right Handed Bowler,RHB,0,0,83,86,8,No,No,No,No,60.00,25.00
+,Maheesh Theekshana,RR (4.40 Cr),Sri Lanka,25,4.40,Overseas,Capped,Bowler (Spinner),Spinner,Right Handed Bowler,RHB,0,0,82,85,8,No,No,No,No,45.00,25.00
+Rajasthan Royals,Shimron Hetmyer,RR (11.00 Cr),West Indies,29,11.00,Overseas,Capped,Batter,NA,NA,LHB,82,82,0,0,8,No,No,No,Yes,74.00,85.00
+Rajasthan Royals,Dhruv Jurel,RR (14.00 Cr),India,25,14.00,Indian,Capped,Wicketkeeper-Batter,NA,NA,RHB,85,88,0,0,8,Yes,No,No,No,74.00,80.00
+,Fazalhaq Farooqi,RR (2.00 Cr),Afghanistan,25,2.00,Overseas,Capped,Bowler (Pace),Pacer,Left Handed Bowler,RHB,0,0,81,84,8,No,No,No,No,45.00,25.00
+Rajasthan Royals,Tushar Deshpande,RR (6.50 Cr),India,31,6.50,Indian,Capped,Bowler (Pace),Pacer,Right Handed Bowler,LHB,0,0,80,81,7,No,No,No,No,55.00,35.00
+Rajasthan Royals,Nandre Burger,RR (3.50 Cr),South Africa,30,3.50,Overseas,Capped,Bowler (Pace),Pacer,Left Handed Bowler,LHB,0,0,80,82,7,No,No,No,No,45.00,25.00
+Rajasthan Royals,Sandeep Sharma,RR (4.00 Cr),India,33,4.00,Indian,Capped,Bowler (Pace),Pacer,Right Handed Bowler,RHB,0,0,78,78,6,No,No,No,No,74.00,30.00
+Rajasthan Royals,Vignesh Puthur,MI (0.30 Cr),India,25,0.30,Indian,Uncapped,Bowler (Spinner),Spinner,Left Handed Bowler,RHB,0,0,75,83,4,No,No,No,No,40.00,25.00
+Rajasthan Royals,Aman Rao,Unsold,India,22,0.30,Indian,Uncapped,Batter,NA,NA,RHB,72,81,0,0,3,No,No,No,No,35.00,65.00
+Rajasthan Royals,Adam Milne,Unsold,New Zealand,34,2.40,Overseas,Capped,Bowler (Pace),Pacer,Right Handed Bowler,RHB,0,0,77,77,6,No,No,No,No,60.00,35.00
+Rajasthan Royals,Donovan Ferreira,DC (0.75 Cr),South Africa,27,1.00,Overseas,Capped,Batter,Spinner,Right Handed Bowler,RHB,78,84,71,72,7,Yes,Yes,No,No,65.00,85.00
+Rajasthan Royals,Ravi Singh,RR (0.30 Cr),India,25,0.95,Indian,Uncapped,Wicketkeeper-Batter,NA,NA,LHB,75,80,0,0,4,Yes,No,No,No,42.00,85.00
+Rajasthan Royals,Kuldeep Sen,PBKS (0.80 Cr),India,29,0.75,Indian,Capped,Bowler (Pace),Pacer,Right Handed Bowler,RHB,0,0,75,78,7,No,No,No,No,55.00,25.00
+,Dasun Shanaka,GT (0.75 Cr),Sri Lanka,34,2.00,Overseas,Capped,All-Rounder,Pacer,Right Handed Bowler,RHB,74,74,72,72,7,No,No,No,No,75.00,85.00
+Rajasthan Royals,Kwena Maphaka,RR (1.50 Cr),South Africa,20,1.50,Overseas,Uncapped,Bowler (Pace),Pacer,Left Handed Bowler,LHB,0,0,74,89,7,No,No,No,No,35.00,25.00
+Rajasthan Royals,Brijesh Sharma,Unsold,India,27,0.3,Indian,Uncapped,Bowler (Pace),Pacer,Right Handed Bowler,RHB,0,0,78,82,4,No,No,No,No,45.00,25.00
+Rajasthan Royals,Shubham Dubey,RR (5.80 Cr),India,31,5.80,Indian,Uncapped,Batter,NA,NA,LHB,74,78,0,0,6,No,No,No,Yes,60.00,85.00
+,Kumar Kartikeya,RR (0.30 Cr),India,28,0.30,Indian,Uncapped,Bowler (Spinner),Spinner,Left Handed Bowler,RHB,0,0,76,76,4,No,No,No,No,45.00,25.00
+Rajasthan Royals,Lhuan-dre Pretorius,RR (0.30 Cr),South Africa,20,0.30,Overseas,Uncapped,Wicketkeeper-Batter,NA,NA,LHB,74,87,0,0,4,Yes,No,No,No,70.00,85.00
+Rajasthan Royals,Sushant Mishra,GT (2.20 Cr),India,25,0.90,Indian,Uncapped,Bowler (Pace),Pacer,Left Handed Bowler,LHB,0,0,71,79,4,No,No,No,No,40.00,25.00
+Rajasthan Royals,Yudhvir Singh,RR (0.35 Cr),India,28,0.35,Indian,Uncapped,All-Rounder,Pacer,Right Handed Bowler,RHB,68,75,70,76,3,No,No,No,No,45.00,75.00
+Delhi Capitals,Rishabh Pant,LSG (27.00 Cr),India,28,15.00,Indian,Capped,Wicketkeeper-Batter,NA,NA,LHB,84,87,0,0,9,Yes,No,No,Yes,80.00,85.00
+Lucknow Super Giants,Nicholas Pooran,LSG (21.00 Cr),West Indies,30,21.00,Overseas,Capped,Wicketkeeper-Batter,NA,NA,LHB,86,88,0,0,9,Yes,No,No,Yes,80.00,85.00
+Lucknow Super Giants,Mohammed Shami,SRH (10.00 Cr),India,35,10.00,Indian,Capped,Bowler (Pace),Pacer,Right Handed Bowler,RHB,0,0,86,86,9,No,No,No,No,75.00,35.00
+Lucknow Super Giants,Wanindu Hasaranga,RR (5.25 Cr),Sri Lanka,28,2.00,Overseas,Capped,All-Rounder,Spinner,Right Handed Bowler,RHB,78,78,81,84,8,No,No,No,No,80.00,75.00
+Lucknow Super Giants,Mitchell Marsh,LSG (3.40 Cr),Australia,34,3.40,Overseas,Capped,All-Rounder,Pacer,Right Handed Bowler,RHB,84,84,76,76,8,No,No,No,No,84.00,82.00
+Lucknow Super Giants,Anrich Nortje,KKR (6.50 Cr),South Africa,32,2.00,Overseas,Capped,Bowler (Pace),Pacer,Right Handed Bowler,RHB,0,0,80,80,8,No,No,No,No,60.00,25.00
+Lucknow Super Giants,Mayank Yadav,LSG (11.00 Cr),India,24,11.00,Indian,Capped,Bowler (Pace),Pacer,Right Handed Bowler,RHB,0,0,80,88,8,No,No,No,No,40.00,25.00
+Lucknow Super Giants,Avesh Khan,LSG (9.75 Cr),India,29,9.75,Indian,Capped,Bowler (Pace),Pacer,Right Handed Bowler,RHB,0,0,82,82,8,No,No,No,No,55.00,25.00
+Lucknow Super Giants,Josh Inglis,PBKS (2.60 Cr),Australia,31,8.60,Overseas,Capped,Wicketkeeper-Batter,NA,NA,RHB,85,85,0,0,8,Yes,No,No,No,75.00,85.00
+Lucknow Super Giants,Aiden Markram,LSG (2.00 Cr),South Africa,31,2.00,Overseas,Capped,Batter,Spinner,Right Handed Bowler,RHB,83,83,70,70,8,No,No,Yes,No,88.00,85.00
+Lucknow Super Giants,Mohsin Khan,LSG (4.00 Cr),India,27,4.00,Indian,Uncapped,Bowler (Pace),Pacer,Left Handed Bowler,LHB,0,0,78,84,7,No,No,No,No,40.00,25.00
+Lucknow Super Giants,Shahbaz Ahmed,LSG (2.40 Cr),India,31,2.40,Indian,Capped,All-Rounder,Spinner,Left Handed Bowler,LHB,77,79,76,78,7,No,No,No,No,55.00,65.00
+Lucknow Super Giants,Ayush Badoni,LSG (4.00 Cr),India,26,4.00,Indian,Uncapped,Batter,Spinner,Right Handed Bowler,RHB,76,82,70,75,7,No,No,No,Yes,45.00,78.00
+Lucknow Super Giants,Abdul Samad,LSG (4.20 Cr),India,24,4.20,Indian,Uncapped,Batter,Spinner,Right Handed Bowler,RHB,76,81,65,65,6,No,No,No,No,55.00,85.00
+Lucknow Super Giants,Matthew Breetzke,LSG (0.75 Cr),South Africa,27,0.75,Overseas,Capped,Batter,NA,Right Handed Bowler,RHB,76,81,0,0,7,Yes,Yes,Yes,No,76.00,85.00
+Lucknow Super Giants,Manimaran Siddharth,LSG (0.75 Cr),India,27,0.75,Indian,Uncapped,Bowler (Spinner),Spinner,NA,RHB,0,0,74,79,4,No,No,No,No,45.00,25.00
+Lucknow Super Giants,Digvesh Rathi,LSG (0.30 Cr),India,26,0.30,Indian,Uncapped,Bowler (Spinner),Spinner,Right Handed Bowler,RHB,0,0,79,82,4,No,No,No,No,40.00,25.00
+Lucknow Super Giants,Himmat Singh,LSG (0.30 Cr),India,29,0.30,Indian,Uncapped,Batter,NA,NA,RHB,72,76,0,0,4,No,No,No,No,60.00,65.00
+Lucknow Super Giants,Akash Singh,LSG (0.30 Cr),India,24,0.30,Indian,Uncapped,Bowler (Pace),Pacer,Left Handed Bowler,RHB,0,0,72,79,4,No,No,No,No,40.00,25.00
+Lucknow Super Giants,Arshin Kulkarni,LSG (0.30 Cr),India,21,0.30,Indian,Uncapped,All-Rounder,Spinner,Right Handed Bowler,RHB,71,83,68,78,3,No,No,No,No,35.00,82.00
+Lucknow Super Giants,Prince Yadav,LSG (0.30 Cr),India,24,0.30,Indian,Uncapped,Bowler (Pace),Pacer,Right Handed Bowler,RHB,0,0,80,85,3,No,No,No,No,40.00,25.00
+Lucknow Super Giants,Akshat Raghuwanshi,LSG (2.20 Cr),India,22,2.20,Indian,Uncapped,Batter,NA,NA,RHB,70,81,0,0,4,No,No,No,No,35.00,75.00
+Lucknow Super Giants,Arjun Tendulkar,MI (0.30 Cr),India,26,0.30,Indian,Uncapped,Bowler (Pace),Pacer,Left Handed Bowler,LHB,63,69,74,80,3,No,No,No,No,40.00,75.00
+Lucknow Super Giants,Mukul Choudhary,Unsold,India,21,2.60,Indian,Uncapped,Wicketkeeper-Batter,NA,NA,RHB,73,82,0,0,4,Yes,No,No,No,35.00,85.00
+Lucknow Super Giants,Naman Tiwari,Unsold,India,20,1.00,Indian,Uncapped,Bowler (Pace),Pacer,Left Handed Bowler,LHB,0,0,68,80,4,No,No,No,No,40.00,25.00
+Sunrisers Hyderabad,Abhishek Sharma,SRH (14.00 Cr),India,25,14.00,Indian,Capped,All-Rounder,Spinner,Left Handed Bowler,LHB,90,93,69,74,9,No,No,Yes,No,74.00,85.00
+Sunrisers Hyderabad,Heinrich Klaasen,SRH (23.00 Cr),South Africa,34,23.00,Overseas,Capped,Wicketkeeper-Batter,NA,NA,RHB,91,91,0,0,9,Yes,No,No,Yes,72.00,92.00
+Sunrisers Hyderabad,Travis Head,SRH (14.00 Cr),Australia,32,14.00,Overseas,Capped,Batter,NA,NA,LHB,89,89,0,0,9,No,No,Yes,No,82.00,95.00
+Sunrisers Hyderabad,Pat Cummins,SRH (18.00 Cr),Australia,33,18.00,Overseas,Capped,All-Rounder,Pacer,Right Handed Bowler,RHB,71,71,85,85,9,No,No,No,No,92.00,75.00
+Sunrisers Hyderabad,Ishan Kishan,SRH (11.25 Cr),India,27,11.25,Indian,Capped,Wicketkeeper-Batter,NA,NA,LHB,88,90,0,0,9,Yes,No,Yes,No,80.00,85.00
+Sunrisers Hyderabad,Harshal Patel,SRH (8.00 Cr),India,35,8.00,Indian,Capped,Bowler (Pace),Pacer,Right Handed Bowler,RHB,0,0,80,80,8,No,No,No,No,75.00,75.00
+Sunrisers Hyderabad,Kamindu Mendis,SRH (0.75 Cr),Sri Lanka,27,0.75,Overseas,Capped,All-Rounder,Spinner,Ambidextrous Bowler,LHB,81,86,77,82,8,No,No,Yes,No,72.00,82.00
+Sunrisers Hyderabad,Nitish Kumar Reddy,SRH (6.00 Cr),India,23,6.00,Indian,Capped,All-Rounder,Pacer,Right Handed Bowler,RHB,79,88,75,83,8,No,No,No,No,55.00,82.00
+Sunrisers Hyderabad,Liam Livingstone,RCB (8.75 Cr),England,32,13.00,Overseas,Capped,All-Rounder,Spinner,Right Handed Bowler,RHB,80,80,77,77,8,No,No,No,Yes,74.00,78.00
+Sunrisers Hyderabad,Brydon Carse,SRH (1.00 Cr),England,30,1.00,Overseas,Capped,Bowler (Pace),Pacer,Right Handed Bowler,RHB,59,59,78,78,7,No,No,No,No,60.00,78.00
+Sunrisers Hyderabad,Jaydev Unadkat,SRH (1.00 Cr),India,34,1.00,Indian,Capped,Bowler (Pace),Pacer,Left Handed Bowler,RHB,0,0,76,76,7,No,No,No,No,80.00,25.00
+Sunrisers Hyderabad,Jack Edwards,SRH (3.00 Cr),Australia,26,3.00,Overseas,Capped,Bowler (Pace),Pacer,Left Handed Bowler,RHB,0,0,74,80,6,No,No,No,No,55.00,65.00
+Sunrisers Hyderabad,Shivam Mavi,Unsold,India,27,3.00,Indian,Capped,Bowler (Pace),Pacer,Right Handed Bowler,RHB,0,0,75,79,7,No,No,No,No,45.00,30.00
+Sunrisers Hyderabad,Eshan Malinga,SRH (1.20 Cr),Sri Lanka,25,1.20,Overseas,Uncapped,Bowler (Pace),Pacer,Right Handed Bowler,LHB,0,0,79,84,6,No,No,No,No,45.00,25.00
+Sunrisers Hyderabad,Zeeshan Ansari,SRH (0.40 Cr),India,26,0.40,Indian,Uncapped,Bowler (Spinner),Spinner,Right Handed Bowler,RHB,0,0,72,78,3,No,No,No,No,45.00,25.00
+Sunrisers Hyderabad,Aniket Verma,SRH (0.30 Cr),India,24,0.30,Indian,Uncapped,Batter,NA,Right Handed Bowler,RHB,71,82,0,0,3,No,No,No,No,40.00,82.00
+Sunrisers Hyderabad,Harsh Dubey,SRH (0.30 Cr),India,24,0.30,Indian,Uncapped,All-Rounder,Spinner,Left Handed Bowler,LHB,70,77,75,82,4,No,No,No,No,48.00,75.00
+Sunrisers Hyderabad,Salil Arora,Unsold,India,24,1.50,Indian,Uncapped,Wicketkeeper-Batter,NA,NA,RHB,72,80,0,0,4,Yes,No,No,No,42.00,85.00
+Sunrisers Hyderabad,Smaran Ravichandran,SRH (0.30 Cr),India,23,0.30,Indian,Uncapped,Batter,Pacer,Right Handed Bowler,LHB,68,78,56,61,3,No,No,No,No,40.00,82.00
+Sunrisers Hyderabad,Shivang Kumar,Unsold,India,23,0.30,Indian,Uncapped,Bowler (Pace),Pacer,Right Handed Bowler,RHB,0,0,75,79,3,No,No,No,No,40.00,25.00
+Sunrisers Hyderabad,Sakib Hussain,Unsold,India,21,0.30,Indian,Uncapped,Bowler (Pace),Pacer,Right Handed Bowler,RHB,0,0,78,86,4,No,No,No,No,40.00,25.00
+Sunrisers Hyderabad,Omkar Tarmale,Unsold,India,22,0.30,Indian,Uncapped,Bowler (Pace),Pacer,Right Handed Bowler,RHB,0,0,65,76,3,No,No,No,No,35.00,25.00
+Sunrisers Hyderabad,Krains Fuletra,Unsold,India,23,0.30,Indian,Uncapped,Bowler (Pace),Pacer,Right Handed Bowler,RHB,0,0,64,75,3,No,No,No,No,38.00,25.00
+Sunrisers Hyderabad,Praful Hinge,Unsold,India,24,0.30,Indian,Uncapped,Bowler (Pace),Pacer,Right Handed Bowler,RHB,0,0,77,82,4,No,No,No,No,40.00,25.00
+Sunrisers Hyderabad,Amit Kumar,SRH (0.30 Cr),India,22,0.30,Indian,Uncapped,All-Rounder,Spinner,Right Handed Bowler,RHB,63,75,62,74,3,No,No,No,No,35.00,75.00
+Punjab Kings,Arshdeep Singh,PBKS (18.00 Cr),India,27,18.00,Indian,Capped,Bowler (Pace),Pacer,Left Handed Bowler,LHB,0,0,84,89,8,No,No,No,No,45.00,25.00
+Punjab Kings,Yuzvendra Chahal,PBKS (18.00 Cr),India,35,18.00,Indian,Capped,Bowler (Spinner),Spinner,Right Handed Bowler,RHB,0,0,85,85,9,No,No,No,No,45.00,25.00
+Punjab Kings,Shreyas Iyer,PBKS (26.75 Cr),India,31,26.75,Indian,Capped,Batter,Spinner,Right Handed Bowler,RHB,85,85,60,60,9,No,No,No,No,88.00,80.00
+Punjab Kings,Lockie Ferguson,PBKS (2.00 Cr),New Zealand,35,2.00,Overseas,Capped,Bowler (Pace),Pacer,Right Handed Bowler,RHB,0,0,82,82,8,No,No,No,No,70.00,25.00
+Punjab Kings,Marcus Stoinis,PBKS (11.00 Cr),Australia,36,11.00,Overseas,Capped,All-Rounder,Pacer,Right Handed Bowler,RHB,82,82,75,75,8,No,No,No,Yes,75.00,85.00
+Punjab Kings,Marco Jansen,PBKS (7.00 Cr),South Africa,26,7.00,Overseas,Capped,All-Rounder,Pacer,Left Handed Bowler,LHB,73,80,84,88,8,No,No,No,No,45.00,75.00
+Punjab Kings,Shashank Singh,PBKS (5.50 Cr),India,34,5.50,Indian,Uncapped,Batter,Pacer,Right Handed Bowler,RHB,82,82,0,0,7,No,No,No,Yes,55.00,85.00
+Punjab Kings,Prabhsimran Singh,PBKS (4.00 Cr),India,25,4.00,Indian,Uncapped,Wicketkeeper-Batter,NA,NA,RHB,83,87,63,65,8,Yes,No,Yes,No,60.00,85.00
+Punjab Kings,Nehal Wadhera,PBKS (4.20 Cr),India,25,4.20,Indian,Uncapped,Batter,Spinner,Right Handed Bowler,LHB,78,84,75,75,6,No,No,No,No,65.00,78.00
+Punjab Kings,Harpreet Brar,PBKS (1.50 Cr),India,30,1.50,Indian,Uncapped,Bowler (Spinner),Spinner,Left Handed Bowler,LHB,0,0,78,79,6,No,No,No,No,48.00,75.00
+Punjab Kings,Xavier Bartlett,PBKS (0.80 Cr),Australia,27,0.80,Overseas,Capped,Bowler (Pace),Pacer,Right Handed Bowler,RHB,0,0,78,84,7,No,No,No,No,45.00,35.00
+Punjab Kings,Priyansh Arya,PBKS (3.80 Cr),India,25,3.80,Indian,Uncapped,Batter,NA,NA,LHB,84,88,0,0,5,No,No,Yes,No,45.00,85.00
+Punjab Kings,Azmatullah Omarzai,PBKS (2.40 Cr),Afghanistan,26,2.40,Overseas,Capped,All-Rounder,Pacer,Right Handed Bowler,RHB,73,79,78,82,8,No,No,No,No,72.00,85.00
+Punjab Kings,Vijaykumar Vyshak,PBKS (1.80 Cr),India,29,1.80,Indian,Uncapped,Bowler (Pace),Pacer,Right Handed Bowler,RHB,0,0,76,79,5,No,No,No,No,55.00,35.00
+Punjab Kings,Yash Thakur,PBKS (1.60 Cr),India,27,1.60,Indian,Uncapped,Bowler (Pace),Pacer,Right Handed Bowler,RHB,0,0,76,81,5,No,No,No,No,55.00,30.00
+Punjab Kings,Ben Dwarshuis,Unsold,Australia,32,4.40,Overseas,Capped,Bowler (Pace),Pacer,Left Handed Bowler,LHB,0,0,78,78,6,No,No,No,No,65.00,35.00
+Punjab Kings,Cooper Connolly,Unsold,Australia,22,3.00,Overseas,Capped,All-Rounder,Spinner,Left Handed Bowler,LHB,79,87,72,79,8,No,No,No,No,72.00,82.00
+Punjab Kings,Musheer Khan,PBKS (0.30 Cr),India,21,0.30,Indian,Uncapped,All-Rounder,Spinner,Left Handed Bowler,LHB,72,84,72,82,4,No,No,Yes,No,42.00,75.00
+Punjab Kings,Vishnu Vinod,PBKS (0.95 Cr),India,32,0.95,Indian,Uncapped,Wicketkeeper-Batter,NA,NA,RHB,73,74,0,0,4,Yes,No,No,No,48.00,85.00
+Punjab Kings,Pravin Dubey,Delhi Capitals (0.50 Cr),India,32,0.30,Indian,Uncapped,Bowler (Spinner),Spinner,Right Handed Bowler,RHB,0,0,73,75,4,No,No,No,No,55.00,40.00
+Punjab Kings,Harnoor Singh,PBKS (0.30 Cr),India,23,0.30,Indian,Uncapped,Batter,NA,NA,LHB,71,81,0,0,3,No,No,Yes,No,45.00,75.00
+Punjab Kings,Suryansh Shedge,PBKS (0.30 Cr),India,23,0.30,Indian,Uncapped,All-Rounder,Pacer,Right Handed Bowler,RHB,75,83,68,76,3,No,No,No,No,48.00,85.00
+Punjab Kings,Mitchell Owen,PBKS (3.00 Cr),Australia,24,3.00,Overseas,Uncapped,All-Rounder,Pacer,Right Handed Bowler,RHB,76,82,68,74,5,No,No,No,No,40.00,75.00
+Punjab Kings,Pyla Avinash,PBKS (0.30 Cr),India,25,0.30,Indian,Uncapped,Batter,NA,Right Handed Bowler,RHB,68,77,0,0,3,No,No,No,No,45.00,75.00
+Punjab Kings,Vishal Nishad,Unsold,India,21,0.30,Indian,Uncapped,Bowler (Spinner),Spinner,Right Handed Bowler,RHB,0,0,65,78,3,No,No,No,No,38.00,25.00
+Chennai Super Kings,Ruturaj Gaikwad,CSK (18.00 Cr),India,29,18.00,Indian,Capped,Batter,NA,NA,RHB,83,87,0,0,9,No,No,Yes,No,80.00,75.00
+Chennai Super Kings,Sanju Samson,RR (18.00 Cr),India,31,18.00,Indian,Capped,Wicketkeeper-Batter,NA,NA,RHB,89,89,0,0,9,Yes,No,Yes,No,85.00,85.00
+Chennai Super Kings,Noor Ahmad,CSK (10.00 Cr),Afghanistan,21,10.00,Overseas,Capped,Bowler (Spinner),Spinner,Left Handed Bowler,RHB,0,0,84,91,8,No,No,No,No,40.00,25.00
+Chennai Super Kings,Shivam Dube,CSK (12.00 Cr),India,32,12.00,Indian,Capped,All-Rounder,Pacer,Right Handed Bowler,LHB,83,84,72,73,8,No,No,No,Yes,75.00,85.00
+Chennai Super Kings,Rahul Chahar,SRH (3.20 Cr),India,26,5.20,Indian,Capped,Bowler (Spinner),Spinner,Right Handed Bowler,RHB,0,0,82,84,8,No,No,No,No,65.00,40.00
+Chennai Super Kings,Nathan Ellis,CSK (1.50 Cr),Australia,31,1.50,Overseas,Capped,Bowler (Pace),Pacer,Right Handed Bowler,RHB,0,0,82,82,7,No,No,No,No,78.00,35.00
+Chennai Super Kings,MS Dhoni,CSK (4.00 Cr),India,44,4.00,Indian,Uncapped,Wicketkeeper-Batter,NA,NA,RHB,80,80,0,0,10,Yes,No,No,Yes,99.00,85.00
+Chennai Super Kings,Matt Henry,Unsold,New Zealand,34,2.00,Overseas,Capped,Bowler (Pace),Pacer,Right Handed Bowler,RHB,0,0,81,81,7,No,No,No,No,65.00,35.00
+Chennai Super Kings,Akeal Hosein,SRH (1.00 Cr),West Indies,32,2.00,Overseas,Capped,Bowler (Spinner),Spinner,Left Handed Bowler,LHB,65,65,81,81,8,No,No,No,No,78.00,65.00
+Chennai Super Kings,Matthew Short,CSK (1.50 Cr),Australia,30,1.50,Overseas,Capped,All-Rounder,Spinner,Right Handed Bowler,LHB,79,80,72,73,8,No,No,Yes,No,72.00,85.00
+Chennai Super Kings,Sarfaraz Khan,Unsold,India,28,0.75,Indian,Capped,Batter,NA,NA,RHB,79,82,0,0,8,Yes,Yes,No,No,65.00,85.00
+Chennai Super Kings,Anshul Kamboj,CSK (3.40 Cr),India,25,3.40,Indian,Capped,Bowler (Pace),Pacer,Right Handed Bowler,RHB,64,64,78,82,6,No,No,No,No,58.00,25.00
+Chennai Super Kings,Akash Madhwal,RR (1.20 Cr),India,32,1.20,Indian,Capped,Bowler (Pace),Pacer,Right Handed Bowler,RHB,0,0,78,78,7,No,No,No,No,65.00,35.00
+Chennai Super Kings,Kartik Sharma,Unsold,India,19,14.20,Indian,Uncapped,Wicketkeeper-Batter,NA,NA,RHB,77,88,0,0,7,Yes,No,No,No,35.00,85.00
+Chennai Super Kings,Prashant Veer,CSK (14.20 Cr),India,20,14.20,Indian,Uncapped,All-Rounder,Spinner,Right Handed Bowler,LHB,76,84,75,82,4,No,No,No,No,35.00,75.00
+Chennai Super Kings,Dewald Brevis,CSK (2.20 Cr),South Africa,22,2.20,Overseas,Capped,Batter,Spinner,Right Handed Bowler,RHB,78,89,64,70,7,No,No,No,No,60.00,88.00
+Chennai Super Kings,Mukesh Choudhary,CSK (0.30 Cr),India,29,0.30,Indian,Uncapped,Bowler (Pace),Pacer,Left Handed Bowler,LHB,0,0,76,81,6,No,No,No,No,55.00,25.00
+Chennai Super Kings,Shreyas Gopal,CSK (0.30 Cr),India,32,0.30,Indian,Uncapped,Bowler (Spinner),Spinner,Right Handed Bowler,RHB,0,0,76,76,4,No,No,No,No,68.00,40.00
+Chennai Super Kings,Gurjapneet Singh,CSK (2.20 Cr),India,27,2.20,Indian,Uncapped,Bowler (Pace),Pacer,Left Handed Bowler,RHB,0,0,77,78,4,No,No,No,No,45.00,25.00
+Chennai Super Kings,Zak Foulkes,Unsold,New Zealand,23,0.75,Overseas,Capped,All-Rounder,Pacer,Right Handed Bowler,RHB,74,78,76,83,6,No,No,No,No,70.00,75.00
+Chennai Super Kings,Urvil Patel,CSK (0.30 Cr),India,27,0.30,Indian,Uncapped,Wicketkeeper-Batter,NA,NA,RHB,78,81,0,0,6,Yes,No,No,No,40.00,82.00
+Chennai Super Kings,Aman Hakim Khan,CSK (0.40 Cr),India,29,0.40,Indian,Uncapped,All-Rounder,Pacer,Right Handed Bowler,RHB,74,77,68,71,4,No,No,No,No,58.00,75.00
+,Dian Forrester,CSK (1.50 Cr),South Africa,25,0.30,Overseas,Uncapped,All-Rounder,Pacer,Right Handed Bowler,LHB,73,81,74,82,4,No,No,No,No,45.00,85.00
+,Macneil Noronha,CSK (0.30 Cr),India,24,0.30,Indian,Uncapped,All-Rounder,Spinner,Right Handed Bower,RHB,71,80,68,74,4,No,No,No,No,45.00,75.00
+,Kuldip Yadav,DC (13.25 Cr),India,29,0.30,Indian,Uncapped,Bowler (Pace),Pacer,Left Handed Bowler,LHB,0,0,70,74,3,No,No,No,No,60.00,25.00
+Lucknow Super Giants,Kuldeep Yadav,DC (13.25 Cr),India,31,13.50,Indian,Capped,Bowler (Spinner),Spinner,Left Handed Bowler,LHB,0,0,88,88,9,No,No,No,No,75.00,25.00
+Delhi Capitals,Tristan Stubbs,DC (10.00 Cr),South Africa,25,10.00,Overseas,Capped,Wicketkeeper-Batter,Spinner,Right Handed Bowler,RHB,83,88,61,61,8,Yes,Yes,No,Yes,75.00,85.00
+Delhi Capitals,KL Rahul,DC (14.00 Cr),India,34,14.00,Indian,Capped,Wicketkeeper-Batter,NA,NA,RHB,88,88,0,0,9,Yes,No,Yes,No,81.00,88.00
+Delhi Capitals,Mitchell Starc,DC (11.75 Cr),Australia,36,11.75,Overseas,Capped,Bowler (Pace),Pacer,Left Handed Bowler,LHB,0,0,85,85,9,No,No,No,No,75.00,35.00
+Delhi Capitals,Axar Patel,DC (16.50 Cr),India,32,16.50,Indian,Capped,All-Rounder,Spinner,Left Handed Bowler,LHB,83,83,83,83,9,No,No,No,Yes,70.00,75.00
+Delhi Capitals,David Miller,LSG (7.50 Cr),South Africa,37,2.00,Overseas,Capped,Batter,NA,NA,LHB,84,84,0,0,9,No,No,No,Yes,78.00,85.00
+Delhi Capitals,T. Natarajan,DC (10.75 Cr),India,35,10.75,Indian,Capped,Bowler (Pace),Pacer,Left Handed Bowler,LHB,0,0,81,81,8,No,No,No,No,45.00,25.00
+Delhi Capitals,Lungi Ngidi,RCB (1.00 Cr),South Africa,30,2.00,Overseas,Capped,Bowler (Pace),Pacer,Right Handed Bowler,RHB,0,0,83,83,7,No,No,No,No,70.00,35.00
+Delhi Capitals,Mukesh Kumar,DC (8.00 Cr),India,32,8.00,Indian,Capped,Bowler (Pace),Pacer,Right Handed Bowler,RHB,0,0,80,80,7,No,No,No,No,72.00,25.00
+Delhi Capitals,Pathum Nissanka,Unsold,Sri Lanka,28,4.00,Overseas,Capped,Batter,NA,NA,RHB,82,84,0,0,8,No,No,Yes,No,45.00,80.00
+Delhi Capitals,Nitish Rana,RR (4.20 Cr),India,32,4.20,Indian,Capped,Batter,Spinner,Right Handed Bowler,LHB,79,79,67,67,7,No,No,No,No,78.00,75.00
+Delhi Capitals,Kyle Jamieson,PBKS (2.00 Cr),New Zealand,31,2.00,Overseas,Capped,Bowler (Pace),Pacer,Right Handed Bowler,RHB,67,68,79,81,8,No,No,No,No,65.00,75.00
+Delhi Capitals,Prithvi Shaw,Unsold,India,26,0.75,Indian,Capped,Batter,NA,NA,RHB,78,80,0,0,6,No,No,Yes,No,78.00,80.00
+Delhi Capitals,Ashutosh Sharma,DC (3.80 Cr),India,27,3.80,Indian,Uncapped,Batter,Pacer,Right Handed Bowler,RHB,79,83,70,72,6,No,No,No,Yes,62.00,85.00
+Delhi Capitals,Abishek Porel,DC (4.00 Cr),India,23,4.00,Indian,Uncapped,Wicketkeeper-Batter,NA,NA,LHB,75,82,0,0,5,Yes,No,Yes,No,45.00,80.00
+Delhi Capitals,Auqib Nabi,Unsold,India,29,8.40,Indian,Uncapped,Bowler (Pace),Pacer,Right Handed Bowler,RHB,0,0,77,81,4,No,No,No,No,45.00,25.00
+Delhi Capitals,Karun Nair,DC (0.50 Cr),India,34,0.50,Indian,Capped,Batter,NA,NA,RHB,77,77,0,0,7,No,No,No,No,75.00,75.00
+Delhi Capitals,Dushmantha Chameera,DC (0.75 Cr),Sri Lanka,34,0.75,Overseas,Capped,Bowler (Pace),Pacer,Right Handed Bowler,RHB,0,0,76,76,7,No,No,No,No,60.00,20.00
+Delhi Capitals,Rehan Ahmed,DC (0.75 Cr),England,21,0.75,Overseas,Capped,All-Rounder,Spinner,Right Handed Bowler,RHB,71,82,75,86,7,No,No,No,No,72.00,65.00
+Delhi Capitals,Sameer Rizvi,DC (0.95 Cr),India,22,0.95,Indian,Uncapped,Batter,Spinner,Right Handed Bowler,RHB,78,83,58,62,4,No,No,No,No,55.00,75.00
+Delhi Capitals,Vipraj Nigam,DC (0.50 Cr),India,21,0.50,Indian,Uncapped,Bowler (Spinner),Spinner,Right Handed Bowler,RHB,72,78,73,82,6,No,No,No,No,35.00,25.00
+Delhi Capitals,Tripurana Vijay,DC (0.30 Cr),India,24,0.30,Indian,Uncapped,Bowler (Spinner),Spinner,Right Handed Bowler,RHB,0,0,70,79,3,No,No,No,No,40.00,25.00
+Delhi Capitals,Ajay Mandal,DC (0.30 Cr),India,30,0.30,Indian,Uncapped,All-Rounder,Spinner,Left Handed Bowler,LHB,72,74,74,74,3,No,No,No,No,55.00,70.00
+Delhi Capitals,Madhav Tiwari,DC (0.40 Cr),India,22,0.40,Indian,Uncapped,Bowler (Pace),Pacer,Right Handed Bowler,RHB,70,81,68,75,3,No,No,No,No,35.00,25.00
+Delhi Capitals,Sahil Parakh,Unsold,India,19,0.30,Indian,Uncapped,Batter,NA,NA,RHB,66,82,0,0,4,No,No,Yes,No,35.00,85.00
+,Devon Conway,CSK (6.25 Cr),New Zealand,34,,Overseas,Capped,Wicketkeeper-Batter,NA,NA,LHB,77,77,0,0,8,Yes,No,Yes,No,70.00,80.00
+,Steve Smith,Unsold,Australia,37,,Overseas,Capped,Batter,Spinner,Right Handed Bowler,RHB,79,79,60,60,9,No,No,No,No,85.00,75.00
+,Daryl Mitchell,CSK (14.00 Cr),New Zealand,35,,Overseas,Capped,all-Rounder,Pacer,Right Handed Bowler,RHB,0,0,77,77,8,No,No,No,Yes,65.00,85.00
+,Gus Atkinson,Unsold,England,28,,Overseas,Capped,Bowler (Pace),Pacer,Right Handed Bowler,RHB,55,58,78,80,7,No,No,No,No,45.00,35.00
+,Alzarri Joseph,RCB (2 Cr),West Indies,29,,Overseas,Capped,Bowler (Pace),Pacer,Right Handed Bowler,RHB,0,0,75,75,7,No,No,No,No,50.00,40.00
+,Jamie Smith,Unsold,England,25,,Overseas,Capped,Wicketkeeper-Batter,NA,NA,RHB,76,84,0,0,7,Yes,No,No,No,55.00,82.00
+,Gerald Coetzee,GT (2.40 Cr),South Africa,25,,Overseas,Capped,Bowler (Pace),Pacer,Right Handed Bowler,RHB,63,66,76,80,8,No,No,No,No,50.00,65.00
+,Spencer Johnson,KKR (2.80 Cr),Australia,30,,Overseas,Capped,Bowler (Pace),Pacer,Left Handed Bowler,LHB,0,0,78,81,7,No,No,No,No,45.00,35.00
+,Mujeeb Ur Rahman,MI (2.00 Cr),Afghanistan,25,,Overseas,Capped,Bowler (Spinner),Spinner,Right Handed Bowler,RHB,0,0,77,83,8,No,No,No,No,55.00,40.00
+,Michael Bracewell,Unsold,New Zealand,35,,Overseas,Capped,All-Rounder,Spinner,Right Handed Bowler,LHB,76,78,75,77,7,No,No,No,Yes,60.00,85.00
+,Dan Lawrence,Rajasthan Royals (1.00 Cr),England,28,,Overseas,Capped,Batter,Spinner,Right Handed Bowler,RHB,78,82,65,68,6,No,No,No,No,55.00,80.00
+,Wiaan Mulder,SRH (0.75 Cr),South Africa,28,,Overseas,Capped,All-Rounder,Pacer,Right Handed Bowler,RHB,74,79,75,79,6,No,No,No,No,50.00,75.00
+,Taskin Ahmed,Unsold,Bangladesh,31,,Overseas,Capped,Bowler (Pace),Pacer,Right Handed Bowler,LHB,0,0,79,79,7,No,No,No,No,60.00,35.00
+,Riley Meredith,Unsold,Australia,29,,Overseas,Capped,Bowler (Pace),Pacer,Right Handed Bowler,RHB,0,0,76,78,6,No,No,No,No,45.00,30.00
+,Jhye Richardson,Unsold,Australia,29,,Overseas,Capped,Bowler (Pace),Pacer,Right Handed Bowler,RHB,0,0,77,80,7,No,No,No,No,50.00,40.00
+,Rahmanullah Gurbaz,KKR (2.00 Cr),Afghanistan,24,,Overseas,Capped,Wicketkeeper-Batter,NA,NA,RHB,77,86,0,0,8,Yes,No,Yes,No,65.00,88.00
+,Deepak Hooda,CSK (1.70 Cr),India,31,,Indian,Capped,All-rounder,Spinner,Right Handed Bowler,RHB,76,78,68,70,7,No,No,No,No,60.00,80.00
+,Karn Sharma,MI (0.50 Cr),India,38,,Indian,Capped,Bowler (Spinner),Spinner,Right Handed Bowler,LHB,0,0,75,75,6,No,No,No,No,55.00,40.00
+,Chetan Sakariya,KKR (0.75 Cr),India,28,,Indian,Capped,Bowler (Pace),Pacer,Left Handed Bowler,LHB,0,0,76,79,6,No,No,No,No,45.00,30.00
+,KS Bharat,KKR (0.50 Cr),India,32,,Indian,Capped,Wicketkeeper-Batter,NA,NA,RHB,74,76,0,0,6,Yes,No,No,No,60.00,70.00
+,Vijay Shankar,CSK (1.20 Cr),India,35,,Indian,Capped,All-rounder,Pacer,Right Handed Bowler,RHB,75,75,68,68,6,No,No,No,No,60.00,75.00
+Chennai Super Kings,Ayush Mhatre,CSK (0.30 Cr),India,18,0.3,Indian,Uncapped,Batter,Spinner,Right Handed Bowler,RHB,79,89,57,65,7,No,No,Yes,No,75.00,83.00
+,Yashvardhan Dalal,Unsold,India,21,,Indian,Uncapped,Wicketkeeper-Batter,NA,NA,RHB,70,82,0,0,3,Yes,No,Yes,No,42.00,55.00
+,Nitya J Pandya,Unsold,India,20,,Indian,Uncapped,Batter,Pacer,Right Handed Bowler,LHB,68,78,50,60,3,No,No,Yes,No,65.00,68.00
+,Hemchudeshan J,Unsold,India,18,,Indian,Uncapped,All-rounder,Spinner,Right Handed Bowler,RHB,65,75,65,75,3,No,No,No,No,38.00,35.00
+,P Vidyuth,Unsold,India,25,,Indian,Uncapped,All-Rounder,Spinner,Left Handed Bowler,LHB,66,76,68,78,3,No,No,No,Yes,55.00,84.00
+,Dipjyoti Saikia,Unsold,India,23,,Indian,Uncapped,Bowler (Pacer),Pacer,Right Handed Bowler,RHB,0,0,70,80,3,No,No,No,No,40.00,32.00
+,R Jashwanth Shreeram,Unsold,India,21,,Indian,Uncapped,Batter,NA,NA,RHB,69,80,0,0,3,No,No,Yes,No,48.00,58.00
+,Vishnu Bhardwaj,Unsold,India,21,,Indian,Uncapped,Bowler,Spinner,Right Handed Bowler,RHB,0,0,68,78,3,No,No,No,No,35.00,30.00
+,Aneesh KV,Unsold,India,23,,Indian,Uncapped,Batter,NA,NA,LHB,67,79,0,0,3,No,No,No,No,50.00,81.00
+,Lakshya Raichandani,Unsold,India,17,,Indian,Uncapped,Batter,Spinner,Right Handed Bowler,RHB,65,80,55,65,3,No,No,Yes,No,45.00,64.00
+,RS Ambrish,SRH (0.30 Cr),India,19,,Indian,Uncapped,All-Rounder,Pacer,Right Handed Bowler,LHB,65,76,72,86,5,No,No,No,Yes,45.00,75.00
+,Will Smeed,Unsold,England,24,,Overseas,Uncapped,Batter,Spinner,Right Handed Bowler,RHB,76,86,0,0,,No,No,Yes,No,40.00,90.00
+,Jewel Andrew,Unsold,West Indies,19,,Overseas,Capped,Wicketkeeper-Batter,NA,N/A,RHB,72,86,0,0,,Yes,No,No,Yes,35.00,80.00
+,Dan Mousley,Unsold,England,24,,Overseas,Capped,All-Rounder,Spinner,Right Handed Bowler,LHB,74,82,70,78,,No,No,No,No,50.00,75.00
+,Matthew Forde,MI (0.40 Cr),West Indies,24,,Overseas,Capped,All-Rounder,Pacer,Right Handed Bowler,RHB,70,78,75,82,,No,No,No,Yes,45.00,75.00
+,Oliver Davies,Unsold,Australia,25,,Overseas,Uncapped,Batter,Spinner,Right Handed Bowler,RHB,74,82,0,0,,No,No,No,No,40.00,85.00
+,Ali Naseer,Unsold,UAE,22,,Overseas,Capped,All-Rounder,Pacer,Left Handed Bowler,LHB,68,78,68,78,,No,No,No,Yes,40.00,75.00
+,John Turner,Unsold,England,25,,Overseas,Capped,Bowler (Pacer),Pacer,Right Handed Bowler,RHB,0,0,72,82,,No,No,No,No,35.00,40.00
+,Josh Clarkson,Unsold,New Zealand,29,,Overseas,Capped,All-Rounder,Pacer,Right Handed Bowler,RHB,75,80,72,76,,No,No,No,Yes,45.00,85.00
+,Swastik Chikara,RCB (0.30 Cr),India,21,,Indian,Uncapped,Batter,NA,NA,RHB,71,82,0,0,,No,No,Yes,No,50.00,90.00
+,Sachin Dhas,Unsold,India,21,,Indian,Uncapped,Batter,NA,NA,RHB,65,82,0,0,,No,No,No,Yes,45.00,85.00
+,Uday Saharan,Unsold,India,21,,Indian,Uncapped,Batter,NA,NA,RHB,66,80,0,0,,No,No,No,No,65.00,70.00
+,Aravelly Avanish,CSK (0.30 Cr),India,21,,Indian,Uncapped,Wicketkeeper-Batter,NA,NA,LHB,65,78,0,0,,Yes,No,No,Yes,45.00,85.00
+,Arshin Kulkarni,LSG (0.30 Cr),India,21,,Indian,Uncapped,All-Rounder,Pacer,Right Handed Bowler,RHB,68,80,65,78,,No,No,Yes,No,45.00,85.00
+,Saumy Pandey,CSK (0.75 Cr),India,21,,Indian,Uncapped,Bowler (Spinner),Spinner,Left Handed Bowler,RHB,0,0,68,80,,No,No,No,No,60.00,40.00
+,Raj Limbani,Unsold,India,21,,Indian,Uncapped,Bowler (Pacer),Pacer,Right Handed Bowler,LHB,0,0,68,80,,No,No,No,No,45.00,40.00
+,Tom Prest,Unsold,England,23,,Overseas,Uncapped,Batter,NA,NA,RHB,75.00,81.00,0.00,0.00,,No,No,No,No,60.00,65.00
+,Tazeem Ali,Unsold,England,20,,Overseas,Uncapped,Bowler (Spinner),Spinner,Right Handed Bowler,RHB,0.00,0.00,67.00,83.00,,No,No,No,No,40.00,25.00
+,Farhan Ahmed,Unsold,England,18,,Overseas,Uncapped,Bowler (Spinner),Spinner,Right Handed Bowler,RHB,0.00,0.00,72.00,92.00,,No,No,No,No,45.00,25.00
+,Archie Vaughan,Unsold,England,20,,Overseas,Uncapped,All-Rounder,Spinner,Right Handed Bowler,RHB,70.00,82.00,71.00,82.00,,No,No,No,No,45.00,75.00
+,Hamza Shaikh,Unsold,England,20,,Overseas,Uncapped,Batter,NA,NA,RHB,68.00,83.00,55.00,0.00,,No,No,No,No,40.00,75.00
+,Thomas Rew,Unsold,England,18,,Overseas,Uncapped,Wicketkeeper-Batter,NA,NA,RHB,65.00,85.00,0.00,0.00,,Yes,No,No,No,40.00,85.00
+,Mahli Beardman,Unsold,Australia,20,,Overseas,Uncapped,Bowler (Pacer),Pacer,Right Handed Bowler,RHB,0.00,0.00,67.00,83.00,,No,No,No,No,40.00,25.00
+,Callum Vidler,DC (0.30 Cr),Australia,20,,Overseas,Uncapped,Bowler (Pacer),Pacer,Right Handed Bowler,RHB,0.00,0.00,65.00,79.00,,No,No,No,No,40.00,25.00
+,Harry Dixon,Unsold,Australia,21,,Overseas,Uncapped,Batter,NA,NA,LHB,68.00,85.00,0.00,0.00,,No,No,yes,No,40.00,83.00
+,Sam Konstas,Unsold,Australia,20,,Overseas,Uncapped,Batter,NA,NA,RHB,72.00,84.00,0.00,0.00,,No,No,yes,No,40.00,88.00
+,Hugh Weibgen,Unsold,Australia,21,,Overseas,Uncapped,Batter,NA,NA,RHB,72.00,83.00,55.00,0.00,,No,No,No,No,65.00,75.00
+,Tom Straker,Unsold,Australia,21,,Overseas,Uncapped,Bowler (Pacer),Pacer,Right Handed Bowler,RHB,0.00,0.00,65.00,81.00,,No,No,No,No,45.00,25.00
+,Ollie Peake,Unsold,Australia,19,,Overseas,Uncapped,Batter,NA,NA,LHB,73.00,87.00,0.00,0.00,,No,No,No,No,40.00,65.00
+,Steve Stolk,Unsold,South Africa,20,,Overseas,Uncapped,Batter,NA,NA,RHB,70.00,82.00,0.00,0.00,,No,No,Yes,No,45.00,90.00
+,Nqaba Peter,Unsold,South Africa,24,,Overseas,Capped,Bowler (Spinner),Spinner,Right Handed Bowler,RHB,0.00,0.00,74.00,80.00,,No,No,No,No,40.00,25.00
+,David Teeger,Unsold,South Africa,21,,Overseas,Uncapped,Batter,NA,NA,RHB,68.00,79.00,0.00,0.00,,No,No,No,No,60.00,65.00
+,Tristan Luus,Unsold,South Africa,21,,Overseas,Uncapped,Bowler (Pacer),Pacer,Right Handed Bowler,RHB,0.00,0.00,67.00,83.00,,No,No,No,No,40.00,25.00
+,Andile Simelane,Unsold,South Africa,23,,Overseas,Uncapped,All-Rounder,Pacer,Right Handed Bowler,RHB,69.00,78.00,69.00,80.00,,No,No,No,yes,45.00,82.00
+,Matthew Boast,Unsold,South Africa,23,,Overseas,Uncapped,All-Rounder,Pacer,Right Handed Bowler,RHB,70.00,74.00,68.00,78.00,,No,No,No,yes,40.00,80.00
+,Romashan Pillay,Unsold,South Africa,19,,Overseas,Uncapped,All-Rounder,Pacer,Right Handed Bowler,RHB,0.00,78.00,68.00,78.00,,No,No,No,No,40.00,65.00
+,Isai Thorne,Unsold,West Indies,21,,Overseas,Uncapped,Bowler (Pacer),Pacer,Right Handed Bowler,RHB,0.00,0.00,68.00,81.00,,No,No,No,No,45.00,25.00
+,Jordan Johnson,Unsold,West Indies,21,,Overseas,Uncapped,Batter,NA,NA,LHB,68.00,78.00,0.00,0.00,,No,No,No,No,45.00,75.00
+,Nathan Edward,Unsold,West Indies,21,,Overseas,Uncapped,All-Rounder,Pacer,Left Handed Bowler,LHB,68.00,76.00,70.00,78.00,,No,No,No,yes,45.00,40.00
+,Teddy Bishop,Unsold,West Indies,23,,Overseas,Capped,Batter,NA,NA,RHB,67.00,80.00,0.00,0.00,,No,No,No,No,45.00,70.00
+,Kevin Wickham,Unsold,West Indies,23,,Overseas,Uncapped,Batter,NA,NA,RHB,70.00,80.00,0.00,0.00,,No,No,No,yes,45.00,80.00
+,Matthew Nandu,Unsold,West Indies,23,,Overseas,Uncapped,All-Rounder,Spinner,Right Handed Bowler,LHB,0.00,78.00,70.00,78.00,,No,No,yes,No,45.00,65.00
+,Johan Layne,Unsold,West Indies,22,,Overseas,Uncapped,Bowler (Pacer),Pacer,Right Handed Bowler,RHB,0.00,0.00,75.00,78.00,,No,No,No,No,45.00,25.00
+,McKenny Clarke,Unsold,West Indies,23,,Overseas,Uncapped,Bowler (Pacer),Pacer,Right Handed Bowler,RHB,0.00,0.00,65.00,76.00,,No,No,No,No,40.00,25.00

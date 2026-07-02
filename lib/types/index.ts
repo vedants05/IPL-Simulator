@@ -79,6 +79,13 @@ export interface Player {
   potentialBatting: number;
   currentBowling: number;
   potentialBowling: number;
+  reputation?: number;
+  captaincy?: number;
+  battingAggression?: number;
+  isWicketkeeper?: boolean;
+  isPartTimeWk?: boolean;
+  isOpener?: boolean;
+  isFinisher?: boolean;
 }
 
 export interface BoardObjective {
