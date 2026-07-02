@@ -255,7 +255,7 @@ export default function PlayerCard({ player }: Props) {
           label="Bowling"
           current={player.currentBowling}
           potential={player.potentialBowling}
-          color="#d6492f"
+          color="var(--team-bowling-bar, #ffc72c)"
         />
       </div>
 

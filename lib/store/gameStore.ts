@@ -1090,7 +1090,8 @@ function scheduleAIBids(player: Player) {
       return;
     }
 
-    const nextBid = getNextBidAmount(a.currentBid);
+    const hasBids = !!a.currentHighBidderTeamId;
+    const nextBid = hasBids ? getNextBidAmount(a.currentBid) : a.currentBid;
 
     // Build auction context for AI engine
     const totalLots = a.sets.reduce((sum, s) => sum + s.playerIds.length, 0);

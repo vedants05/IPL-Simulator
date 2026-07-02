@@ -44,22 +44,26 @@ export default function TeamPurseList() {
             {/* Team row */}
             <button
               onClick={() => setExpanded(isOpen ? null : team.id)}
-              className="w-full flex items-center px-4 py-[7px] gap-3 text-left transition-colors duration-200 hover:bg-surface"
+              className="w-full flex items-center px-3 py-[7px] gap-2 text-left transition-colors duration-200 hover:bg-surface"
               style={{
                 borderBottom: "1px solid rgba(22,19,15,.14)",
                 backgroundColor: isUser ? "var(--team-primary-tint)" : undefined,
               }}
             >
               <div
-                className="w-[10px] h-[10px] rounded-full shrink-0"
+                className="w-[9px] h-[9px] rounded-full shrink-0"
                 style={{ backgroundColor: team.primaryColor }}
               />
-              <span className="font-anton text-[13px] leading-none flex-1 min-w-0 truncate text-text-primary">
-                {team.shortName}
+              <div className="flex items-center gap-1 flex-1 min-w-0">
+                <span className="font-anton text-[13px] leading-none truncate text-text-primary">
+                  {team.shortName}
+                </span>
                 {isUser && (
-                  <span className="font-space-mono font-bold text-[9px] ml-1 tracking-wider" style={{ color: "var(--team-primary)" }}>-YOU</span>
+                  <span className="font-space-mono font-bold text-[8px] tracking-wider shrink-0" style={{ color: "var(--team-primary)" }}>
+                    -YOU
+                  </span>
                 )}
-              </span>
+              </div>
               <span className="font-barlow-condensed font-bold text-[13px] text-text-secondary shrink-0">
                 {squadCount}p
               </span>

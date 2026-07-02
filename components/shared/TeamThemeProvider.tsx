@@ -18,22 +18,24 @@ export function applyTeamTheme(teamCode: string) {
   const rgb = hexToRgb(theme.accent);
   const accentText = readableOn(theme.accent);
 
-  root.style.setProperty("--app-base-bg", theme.baseBg);
+  root.style.setProperty("--app-base-bg", "#efece3");
   root.style.setProperty("--chrome-nav-active", theme.navActive);
   root.style.setProperty("--chrome-nav-muted", theme.navMuted);
   root.style.setProperty("--team-primary", theme.accent);
   root.style.setProperty("--team-accent", theme.accent);
   root.style.setProperty("--team-accent-text", accentText);
+  root.style.setProperty("--team-bowling-bar", theme.bowlingBar || "#ffc72c");
   root.style.setProperty("--team-primary-rgb", rgb);
-  root.style.setProperty("--team-primary-tint", `rgba(${rgb}, 0.12)`);
+  root.style.setProperty("--team-primary-tint", "rgba(22, 19, 15, 0.05)");
   root.style.setProperty("--team-bid-bg", theme.bidBg);
+  root.style.setProperty("--team-bid-tinge", theme.bidTinge);
   root.style.setProperty("--team-bid-text", theme.bidText);
   root.style.setProperty("--team-bid-muted", theme.bidMuted);
   root.style.setProperty("--team-cta-bg", theme.ctaBg);
   root.style.setProperty("--team-cta-text", theme.ctaText);
 
   root.setAttribute("data-team", theme.code);
-  document.body.style.backgroundColor = theme.baseBg;
+  document.body.style.backgroundColor = "#efece3";
 }
 
 export default function TeamThemeProvider({ children }: { children: React.ReactNode }) {

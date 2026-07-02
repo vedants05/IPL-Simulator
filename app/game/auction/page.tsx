@@ -81,8 +81,11 @@ export default function AuctionPage() {
         <div className="flex gap-[6px]">
           <button
             onClick={() => setActivePopup(activePopup === "sold" ? null : "sold")}
-            className="bg-success px-[11px] py-[7px] hover:brightness-90 transition-all flex items-center justify-center rounded-[5px]"
-            style={{ border: "1.5px solid #16130f" }}
+            className="px-[11px] py-[7px] hover:brightness-95 transition-all flex items-center justify-center rounded-[5px]"
+            style={{
+              background: "linear-gradient(var(--team-primary-tint), var(--team-primary-tint)), #1f9d57",
+              border: "1.5px solid #16130f",
+            }}
           >
             <span className="font-space-mono font-bold text-[10px] tracking-wider text-white leading-none">
               SOLD {auction.soldPlayerIds.length}
@@ -90,8 +93,11 @@ export default function AuctionPage() {
           </button>
           <button
             onClick={() => setActivePopup(activePopup === "unsold" ? null : "unsold")}
-            className="bg-danger px-[11px] py-[7px] hover:brightness-90 transition-all flex items-center justify-center rounded-[5px]"
-            style={{ border: "1.5px solid #16130f" }}
+            className="px-[11px] py-[7px] hover:brightness-95 transition-all flex items-center justify-center rounded-[5px]"
+            style={{
+              background: "linear-gradient(var(--team-primary-tint), var(--team-primary-tint)), #d6492f",
+              border: "1.5px solid #16130f",
+            }}
           >
             <span className="font-space-mono font-bold text-[10px] tracking-wider text-white leading-none">
               UNSOLD {auction.unsoldPlayerIds.length}
@@ -99,8 +105,11 @@ export default function AuctionPage() {
           </button>
           <button
             onClick={() => setActivePopup(activePopup === "left" ? null : "left")}
-            className="bg-bg px-[11px] py-[7px] hover:bg-surface transition-all flex items-center justify-center rounded-[5px]"
-            style={{ border: "1.5px solid #16130f" }}
+            className="px-[11px] py-[7px] hover:brightness-95 transition-all flex items-center justify-center rounded-[5px]"
+            style={{
+              backgroundColor: "var(--team-primary-tint, #efece3)",
+              border: "1.5px solid #16130f",
+            }}
           >
             <span className="font-space-mono font-bold text-[10px] tracking-wider text-text-primary leading-none">
               LEFT {totalLeft}
@@ -118,7 +127,6 @@ export default function AuctionPage() {
           style={{ borderRight: "2px solid #16130f" }}
         >
           <TeamPurseList />
-          <div className="h-[252px] shrink-0" />
           <MiniSoldLog />
         </div>
 

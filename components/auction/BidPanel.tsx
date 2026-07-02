@@ -57,7 +57,8 @@ export default function BidPanel() {
   if (!auction || !auction.currentPlayer) return null;
 
   const player = auction.currentPlayer;
-  const nextBid = getNextBidAmount(auction.currentBid);
+  const hasBids = !!auction.currentHighBidderTeamId;
+  const nextBid = hasBids ? getNextBidAmount(auction.currentBid) : auction.currentBid;
   const userTeam = teams[userTeamId];
   const highBidder = auction.currentHighBidderTeamId ? teams[auction.currentHighBidderTeamId] : null;
   const isUserHighBidder = auction.currentHighBidderTeamId === userTeamId;
@@ -80,20 +81,20 @@ export default function BidPanel() {
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      {/* Bid stage: Main Container with halftone texture + TIME LEFT solid container */}
-      <div className="flex flex-1 min-h-0" style={{ backgroundColor: "var(--team-bid-bg, #1b2133)" }}>
-        {/* Main Active Central Bid Component Container with Halftone Dot Texture */}
+      {/* Bid stage: Deep stadium neutral with subtle team tinge overlay + halftone energy pattern */}
+      <div className="flex flex-1 min-h-0" style={{ backgroundColor: "var(--team-bid-bg, #111622)" }}>
+        {/* Main Active Central Bid Component Container with Halftone Dot Texture + Soft Team Tinge */}
         <div
           className="flex-1 flex flex-col items-center justify-center px-6 py-5 relative transition-colors duration-200"
           style={{
-            backgroundColor: "var(--team-bid-bg, #1b2133)",
-            backgroundImage: "radial-gradient(rgba(255, 255, 255, 0.09) 1.4px, transparent 1.6px)",
-            backgroundSize: "14px 14px",
+            backgroundColor: "var(--team-bid-bg, #111622)",
+            backgroundImage: "var(--team-bid-tinge, linear-gradient(rgba(29,85,196,0.1), rgba(29,85,196,0.1))), radial-gradient(rgba(255, 255, 255, 0.08) 1.4px, transparent 1.6px)",
+            backgroundSize: "100% 100%, 14px 14px",
           }}
         >
           <div
-            className="font-space-mono font-bold text-[10px] tracking-[.16em] mb-2 uppercase"
-            style={{ color: "var(--team-bid-muted, #9aa4bc)" }}
+            className="font-space-mono font-bold text-[10px] tracking-[.14em] mb-2 uppercase"
+            style={{ color: "var(--team-bid-muted, #8a92a3)" }}
           >
             Current Bid
           </div>
@@ -102,38 +103,31 @@ export default function BidPanel() {
             style={{ color: "var(--team-bid-text, #ffffff)" }}
           >
             <span className="text-[56px]">₹{crore(auction.currentBid)}</span>
-            <span className="text-[24px] ml-1" style={{ color: "var(--team-bid-muted, #9aa4bc)" }}>Cr</span>
+            <span className="text-[24px] ml-1" style={{ color: "var(--team-bid-muted, #8a92a3)" }}>Cr</span>
           </div>
           {highBidder ? (
-            <div className="flex items-center gap-2">
-              <div
-                className="h-5 min-w-[22px] px-1 rounded-full flex items-center justify-center text-[8px] font-bold shrink-0"
-                style={{ backgroundColor: highBidder.primaryColor, color: highBidder.secondaryColor }}
-              >
-                {highBidder.shortName}
-              </div>
-              <span className="font-barlow font-bold text-[12px] text-white">{highBidder.shortName}</span>
+            <div className="flex items-center">
               <span
-                className="font-space-mono font-bold text-[9px] tracking-widest bg-black/60 text-white border border-white/20 px-2 py-[2px] rounded-[3px]"
+                className="font-space-mono font-bold text-[10px] tracking-widest bg-black/60 text-white border border-white/20 px-3 py-[4px] rounded-[4px] uppercase"
               >
-                {isUserHighBidder ? "YOU — HIGH" : `${highBidder.shortName} lead`}
+                {isUserHighBidder ? "YOU lead" : `${highBidder.shortName} lead`}
               </span>
             </div>
           ) : (
-            <div className="font-space-mono text-[10px] tracking-wider" style={{ color: "var(--team-bid-muted, #9aa4bc)" }}>
+            <div className="font-space-mono text-[10px] tracking-wider" style={{ color: "var(--team-bid-muted, #8a92a3)" }}>
               Opening — no bids yet
             </div>
           )}
         </div>
 
-        {/* Contrasting Solid Block for TIME LEFT Box */}
+        {/* Solid Un-Textured Deep Neutral Block for TIME LEFT Box */}
         <div
           className="w-[148px] shrink-0 flex flex-col items-center justify-center px-4 py-5 gap-3 border-l border-white/10 transition-colors duration-200"
-          style={{ backgroundColor: "var(--team-bid-bg, #1b2133)" }}
+          style={{ backgroundColor: "var(--team-bid-bg, #111622)" }}
         >
           <div
-            className="font-space-mono font-bold text-[10px] tracking-[.16em] uppercase"
-            style={{ color: "var(--team-bid-muted, #9aa4bc)" }}
+            className="font-space-mono font-bold text-[10px] tracking-[.14em] uppercase"
+            style={{ color: "var(--team-bid-muted, #8a92a3)" }}
           >
             Time Left
           </div>

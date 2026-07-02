@@ -3,17 +3,18 @@ import { useGameStore } from "@/lib/store/gameStore";
 import { getNextBidAmount } from "@/lib/logic/auctionRules";
 
 function crore(lakhs: number) {
-  return `₹${(lakhs / 100).toFixed(2)}`;
+  return `₹${(lakhs / 100).toFixed(2)} Cr`;
 }
 
 export default function BidHistory() {
-  const { auction, teams, userTeamId } = useGameStore();
+  const { auction, teams } = useGameStore();
 
   if (!auction) return null;
 
   const history = auction.biddingHistory;
-  const nextBid = getNextBidAmount(auction.currentBid);
-  const bidStep = nextBid - auction.currentBid;
+  const hasBids = !!auction.currentHighBidderTeamId;
+  const nextBid = hasBids ? getNextBidAmount(auction.currentBid) : auction.currentBid;
+  const bidStep = hasBids ? nextBid - auction.currentBid : 5;
 
   return (
     <div className="flex flex-col h-full">
@@ -34,7 +35,7 @@ export default function BidHistory() {
       </div>
 
       {/* Ladder */}
-      <div className="flex-1 overflow-y-auto py-2 px-3 flex flex-col gap-1.5">
+      <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-1.5 box-border">
         {history.length === 0 ? (
           <div className="flex-1 flex items-center justify-center py-8">
             <span className="font-space-mono text-[10px] text-text-secondary tracking-wider text-center">
@@ -49,12 +50,19 @@ export default function BidHistory() {
             return (
               <div
                 key={i}
-                className="flex items-center justify-between px-3 py-[7px] rounded-[5px] transition-colors duration-200"
-                style={{
-                  backgroundColor: isTop ? "var(--team-primary-tint)" : undefined,
-                  border: isTop ? "1px solid rgba(22,19,15,.2)" : undefined,
-                  borderBottom: !isTop ? "1px solid rgba(22,19,15,.1)" : undefined,
-                }}
+                className="flex items-center justify-between px-3 py-[7px] rounded-[6px] overflow-hidden shrink-0 box-border transition-all duration-200 my-[3px]"
+                style={
+                  isTop
+                    ? {
+                        backgroundColor: "rgba(22, 19, 15, 0.06)",
+                        border: "1.5px solid #16130f",
+                        borderRadius: "6px",
+                        boxSizing: "border-box",
+                      }
+                    : {
+                        borderBottom: "1px solid rgba(22, 19, 15, 0.1)",
+                      }
+                }
               >
                 <div className="flex items-center gap-2 min-w-0">
                   <div
@@ -76,7 +84,7 @@ export default function BidHistory() {
           })
         )}
         {history.length > 0 && (
-          <div className="text-center pt-2 pb-1">
+          <div className="text-center pt-2 pb-1 shrink-0">
             <span className="font-space-mono text-[9px] text-text-secondary tracking-wider">
               OPEN · {auction.currentPlayer ? crore(auction.currentPlayer.basePrice) : "—"}
             </span>
