@@ -3,9 +3,8 @@ import { Player, Team, AuctionSet } from "@/lib/types";
 export const TOTAL_PURSE_LAKHS = 12000; // ₹120 crore in lakhs
 
 // IPL 2026 mega-auction retention costs
-// Capped slots 1-5: 18, 14, 11, 18, 14 Cr (in lakhs)
 export const CAPPED_RETENTION_COSTS = [1800, 1400, 1100, 1800, 1400];
-export const UNCAPPED_RETENTION_COST = 400; // ₹4 Cr per uncapped player
+export const UNCAPPED_RETENTION_COST = 400;
 export const MAX_CAPPED_RETENTIONS = 5;
 export const MAX_UNCAPPED_RETENTIONS = 2;
 export const MAX_TOTAL_RETENTIONS = 6;
@@ -14,7 +13,6 @@ function isPlayerCapped(player: Player): boolean {
   return player.isCapped || player.nationality === "Overseas";
 }
 
-/** Cost to retain a specific player given which players are already retained (in order). */
 export function getPlayerRetentionCost(
   playerId: string,
   alreadyRetained: string[],
@@ -30,7 +28,6 @@ export function getPlayerRetentionCost(
   return CAPPED_RETENTION_COSTS[cappedBefore] ?? 0;
 }
 
-/** Total purse cost for an ordered retention list. */
 export function calculateTotalRetentionCost(
   retainedIds: string[],
   players: Record<string, Player>
@@ -65,80 +62,189 @@ export function formatPrice(lakhs: number): string {
   return `₹${lakhs}L`;
 }
 
-export function buildAuctionSets(players: Player[], isAccelerated = false): AuctionSet[] {
-  const marquee = players.filter((p) => p.basePrice >= 200 && !isAccelerated);
-  const batsmen = players.filter(
-    (p) => (p.role === "Batsman" || p.role === "WK-Batsman") && !marquee.includes(p)
-  );
-  const allRounders = players.filter((p) => p.role === "All-Rounder" && !marquee.includes(p));
-  const paceBowlers = players.filter((p) => p.role === "Pace Bowler" && !marquee.includes(p));
-  const spinBowlers = players.filter((p) => p.role === "Spin Bowler" && !marquee.includes(p));
+function shuffleArray<T>(array: T[]): T[] {
+  const arr = [...array];
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
 
+function getRating(p: Player): number {
+  return Math.max(p.currentBatting || 0, p.currentBowling || 0);
+}
+
+function getRoleGroup(p: Player): "WK" | "BAT" | "AR" | "PACE" | "SPIN" {
+  if (p.isWicketkeeper || p.isPartTimeWk || p.role === "WK-Batsman") {
+    return "WK";
+  }
+  if (p.role === "All-Rounder") {
+    return "AR";
+  }
+  if (p.role === "Pace Bowler") {
+    return "PACE";
+  }
+  if (p.role === "Spin Bowler") {
+    return "SPIN";
+  }
+  return "BAT";
+}
+
+export function buildAuctionSets(players: Player[], isAccelerated = false): AuctionSet[] {
   if (isAccelerated) {
     return [
       {
         id: "accelerated",
         name: "Accelerated Auction",
-        playerIds: players.map((p) => p.id),
+        playerIds: shuffleArray(players.map((p) => p.id)),
         currentIndex: 0,
         isCompleted: false,
       },
     ];
   }
 
-  const sets: AuctionSet[] = [];
+  // Only unretained players enter the mega auction sets
+  const playerPool = players.filter((p) => !p.isRetained);
 
-  if (marquee.length > 0) {
-    sets.push({
-      id: "marquee",
-      name: "Marquee Players",
-      playerIds: marquee.map((p) => p.id),
-      currentIndex: 0,
-      isCompleted: false,
+  // 1. Identify Marquee Players: Capped players with Rating >= 85
+  const marqueeEligible = playerPool
+    .filter((p) => p.isCapped && getRating(p) >= 85)
+    .sort((a, b) => getRating(b) - getRating(a));
+
+  const marqueeIds = new Set(marqueeEligible.map((p) => p.id));
+
+  // Non-marquee pool
+  const nonMarquee = playerPool.filter((p) => !marqueeIds.has(p.id));
+
+  // Separate Capped vs Uncapped
+  const cappedNonMarquee = nonMarquee.filter((p) => p.isCapped);
+  const uncappedPool = nonMarquee.filter((p) => !p.isCapped);
+
+  // 2. Classify Capped Players into Set A and Set B by Role
+  const isTierA = (p: Player) => {
+    const rating = getRating(p);
+    if (p.nationality === "Overseas" && rating >= 76) return true;
+    return rating >= 80;
+  };
+
+  const cappedByRole = {
+    BAT: { A: [] as Player[], B: [] as Player[] },
+    AR: { A: [] as Player[], B: [] as Player[] },
+    WK: { A: [] as Player[], B: [] as Player[] },
+    PACE: { A: [] as Player[], B: [] as Player[] },
+    SPIN: { A: [] as Player[], B: [] as Player[] },
+  };
+
+  cappedNonMarquee.forEach((p) => {
+    const role = getRoleGroup(p);
+    if (isTierA(p)) {
+      cappedByRole[role].A.push(p);
+    } else {
+      cappedByRole[role].B.push(p);
+    }
+  });
+
+  // 3. Classify Uncapped Players by Role
+  const uncappedByRole = {
+    BAT: [] as Player[],
+    AR: [] as Player[],
+    WK: [] as Player[],
+    PACE: [] as Player[],
+    SPIN: [] as Player[],
+  };
+
+  uncappedPool.forEach((p) => {
+    const role = getRoleGroup(p);
+    uncappedByRole[role].push(p);
+  });
+
+  const rawSets: Array<{ id: string; name: string; pool: Player[] }> = [];
+
+  // Helper to chunk pools into sets of max 10 players, merging leftovers < 4 into previous chunk
+  const addCategoryPools = (
+    pools: Player[][],
+    baseId: string,
+    baseTitle: string,
+    maxPerSet = 10,
+    minSetSize = 4
+  ) => {
+    const allPlayers: Player[] = [];
+    pools.forEach((pool) => {
+      allPlayers.push(...shuffleArray(pool));
     });
+
+    if (allPlayers.length === 0) return;
+
+    const chunks: Player[][] = [];
+    for (let i = 0; i < allPlayers.length; i += maxPerSet) {
+      chunks.push(allPlayers.slice(i, i + maxPerSet));
+    }
+
+    // Merge leftover chunk < minSetSize into previous chunk
+    if (chunks.length > 1 && chunks[chunks.length - 1].length < minSetSize) {
+      const lastChunk = chunks.pop()!;
+      chunks[chunks.length - 1].push(...lastChunk);
+    }
+
+    chunks.forEach((chunk, index) => {
+      const setId = chunks.length === 1 ? baseId : `${baseId}_${index + 1}`;
+      const setName =
+        chunks.length === 1
+          ? baseTitle
+          : `${baseTitle} Set ${String.fromCharCode(65 + index)}`;
+      rawSets.push({ id: setId, name: setName, pool: shuffleArray(chunk) });
+    });
+  };
+
+  // Macro Order Sequence:
+  // 1. Marquee Sets
+  if (marqueeEligible.length > 0) {
+    addCategoryPools([marqueeEligible], "marquee", "Marquee");
   }
 
-  if (batsmen.length > 0) {
-    sets.push({
-      id: "batsmen",
-      name: "Batsmen & Wicket-Keepers",
-      playerIds: batsmen.map((p) => p.id),
-      currentIndex: 0,
-      isCompleted: false,
-    });
-  }
+  // 2. Capped Sequence (Tier A + Tier B by Role)
+  const cappedRoles = [
+    { code: "BAT" as const, title: "Capped Batters" },
+    { code: "AR" as const, title: "Capped All-Rounders" },
+    { code: "WK" as const, title: "Capped Wicketkeepers" },
+    { code: "PACE" as const, title: "Capped Fast Bowlers" },
+    { code: "SPIN" as const, title: "Capped Spinners" },
+  ];
 
-  if (allRounders.length > 0) {
-    sets.push({
-      id: "allrounders",
-      name: "All-Rounders",
-      playerIds: allRounders.map((p) => p.id),
-      currentIndex: 0,
-      isCompleted: false,
-    });
-  }
+  cappedRoles.forEach(({ code, title }) => {
+    addCategoryPools(
+      [cappedByRole[code].A, cappedByRole[code].B],
+      `capped_${code.toLowerCase()}`,
+      title
+    );
+  });
 
-  if (paceBowlers.length > 0) {
-    sets.push({
-      id: "pace",
-      name: "Pace Bowlers",
-      playerIds: paceBowlers.map((p) => p.id),
-      currentIndex: 0,
-      isCompleted: false,
-    });
-  }
+  // 3. Uncapped Sequence
+  const uncappedRoles = [
+    { code: "BAT" as const, title: "Uncapped Batters" },
+    { code: "AR" as const, title: "Uncapped All-Rounders" },
+    { code: "WK" as const, title: "Uncapped Wicketkeepers" },
+    { code: "PACE" as const, title: "Uncapped Fast Bowlers" },
+    { code: "SPIN" as const, title: "Uncapped Spinners" },
+  ];
 
-  if (spinBowlers.length > 0) {
-    sets.push({
-      id: "spin",
-      name: "Spin Bowlers",
-      playerIds: spinBowlers.map((p) => p.id),
-      currentIndex: 0,
-      isCompleted: false,
-    });
-  }
+  uncappedRoles.forEach(({ code, title }) => {
+    addCategoryPools(
+      [uncappedByRole[code]],
+      `uncapped_${code.toLowerCase()}`,
+      title
+    );
+  });
 
-  return sets;
+  // Format each set name with explicit Set Number (e.g. Set 1: Marquee Set A)
+  return rawSets.map((s, i) => ({
+    id: s.id,
+    name: `Set ${i + 1}: ${s.name}`,
+    playerIds: s.pool.map((p) => p.id),
+    currentIndex: 0,
+    isCompleted: false,
+  }));
 }
 
 export function canTeamBidOnPlayer(team: Team, player: Player): { canBid: boolean; reason?: string } {
@@ -173,7 +279,6 @@ export function getSquadConstraintWarnings(team: Team, players: Record<string, P
   return warnings;
 }
 
-/** Returns the teamId that has RTM rights on this player (if any), excluding the winner. */
 export function findRTMEligibleTeam(
   player: Player,
   teams: Record<string, Team>,

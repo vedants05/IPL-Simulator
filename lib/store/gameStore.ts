@@ -84,7 +84,19 @@ function pickNextLot(sets: AuctionSet[]): { setIndex: number; playerIndex: numbe
   for (let si = 0; si < sets.length; si++) {
     const set = sets[si];
     if (!set.isCompleted) {
-      if (set.currentIndex < set.playerIds.length) {
+      const unauctionedCount = set.playerIds.length - set.currentIndex;
+      if (unauctionedCount > 0) {
+        // Pick a random index from the remaining unauctioned players in this set
+        const offset = Math.floor(Math.random() * unauctionedCount);
+        const randomIndex = set.currentIndex + offset;
+
+        // Swap randomly selected player into current lot position
+        if (randomIndex !== set.currentIndex) {
+          const temp = set.playerIds[set.currentIndex];
+          set.playerIds[set.currentIndex] = set.playerIds[randomIndex];
+          set.playerIds[randomIndex] = temp;
+        }
+
         return { setIndex: si, playerIndex: set.currentIndex };
       }
     }
@@ -119,16 +131,19 @@ export const useGameStore = create<Store>()(
       // ----- Actions -----
       initNewGame: (userTeamId) => {
         const playersMap: Record<string, Player> = {};
-        PLAYERS_SEED.forEach((p) => {
-          playersMap[p.id] = { ...p };
+        PLAYERS_SEED.forEach((p: Player) => {
+          playersMap[p.id] = { ...p, currentTeamId: null, isRetained: false, retainedByTeamId: null };
         });
 
         const teamsMap: Record<string, Team> = {};
         TEAMS_SEED.forEach((t) => {
-          const teamPlayers = PLAYERS_SEED.filter((p) => p.currentTeamId === t.id);
+          const teamPlayers = PLAYERS_SEED.filter((p: Player) => 
+            p.iplHistory?.some((h) => h.season === "2025" && h.teamId === t.id)
+          );
           teamsMap[t.id] = {
             ...t,
-            squad: teamPlayers.map((p) => p.id),
+            squad: teamPlayers.map((p: Player) => p.id),
+            retainedPlayers: [],
             remainingPurse: TOTAL_PURSE_LAKHS,
             spentAmount: 0,
           };
@@ -317,18 +332,41 @@ export const useGameStore = create<Store>()(
       },
 
       startAuction: () => {
-        const { auction, players } = get();
+        const { auction, players, teams } = get();
         if (!auction || auction.phase !== "live") return;
-        if (auction.sets.length === 0) return;
 
-        const next = pickNextLot(auction.sets);
+        // Sync teams colors with updated TEAMS_SEED
+        const updatedTeams = { ...teams };
+        TEAMS_SEED.forEach((t) => {
+          if (updatedTeams[t.id]) {
+            updatedTeams[t.id] = {
+              ...updatedTeams[t.id],
+              primaryColor: t.primaryColor,
+              secondaryColor: t.secondaryColor,
+            };
+          }
+        });
+
+        let activeSets = auction.sets;
+        if (!activeSets || activeSets.length === 0) {
+          const unretained = Object.values(players).filter((p) => !p.isRetained);
+          activeSets = buildAuctionSets(unretained.length > 0 ? unretained : Object.values(players));
+          set((state) => ({
+            auction: state.auction ? { ...state.auction, sets: activeSets, currentSetIndex: 0 } : null,
+          }));
+        }
+
+        if (activeSets.length === 0) return;
+
+        const next = pickNextLot(activeSets);
         if (!next) return;
 
-        const currentSet = auction.sets[next.setIndex];
+        const currentSet = activeSets[next.setIndex];
         const playerId = currentSet.playerIds[next.playerIndex];
         const player = players[playerId];
 
         set((state) => ({
+          teams: updatedTeams,
           auction: state.auction
             ? {
                 ...state.auction,
