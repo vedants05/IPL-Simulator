@@ -30,10 +30,10 @@ export default function UserSquad() {
       <div className="px-4 h-[36px] flex items-center shrink-0" style={{ borderBottom: "2px solid #16130f" }}>
         <div className="flex items-center gap-2">
           <div
-            className="w-5 h-5 rounded-full flex items-center justify-center text-[8px] font-bold shrink-0"
-            style={{ backgroundColor: userTeam.primaryColor, color: userTeam.secondaryColor }}
+            className="h-5 min-w-[22px] px-1 rounded-full flex items-center justify-center text-[8px] font-bold shrink-0 transition-colors duration-200"
+            style={{ backgroundColor: "var(--team-accent)", color: "var(--team-accent-text)" }}
           >
-            {userTeam.shortName.slice(0, 2)}
+            {userTeam.shortName}
           </div>
           <span className="font-space-mono font-bold text-[10px] tracking-widest text-text-primary uppercase">
             Your Squad
@@ -106,8 +106,8 @@ export default function UserSquad() {
                       {Array.from({ length: 5 }).map((_, si) => (
                         <div
                           key={si}
-                          className="w-2 h-2 rounded-sm"
-                          style={{ backgroundColor: si < p.starRating ? "#ffc400" : "rgba(22,19,15,.12)" }}
+                          className="w-2 h-2 rounded-sm transition-colors duration-200"
+                          style={{ backgroundColor: si < p.starRating ? "var(--team-accent)" : "rgba(22,19,15,.12)" }}
                         />
                       ))}
                     </div>
@@ -119,15 +119,14 @@ export default function UserSquad() {
         )}
       </div>
 
-      {/* Purse footer */}
+      {/* Purse footer: REMAINING container box */}
       <div
-        className="shrink-0 h-[52px] px-4 bg-bg flex justify-between items-center"
-        style={{ borderTop: "2px solid #16130f" }}
+        className="shrink-0 h-[52px] px-4 flex justify-between items-center transition-colors duration-200"
+        style={{ borderTop: "2px solid #16130f", backgroundColor: "var(--app-base-bg, #f4f1ea)" }}
       >
-        <span className="font-space-mono text-[9px] tracking-widest text-text-secondary uppercase">Remaining</span>
+        <span className="font-space-mono text-[9px] tracking-widest text-text-secondary uppercase">REMAINING</span>
         <span
-          className="font-barlow-condensed font-bold text-[18px]"
-          style={{ color: remaining > 2000 ? "#1f9d57" : "#d6492f" }}
+          className="font-anton text-[20px] text-success leading-none"
         >
           {crore(remaining)}
         </span>

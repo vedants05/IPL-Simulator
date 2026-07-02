@@ -16,46 +16,52 @@ function BidHistoryPopup({ sale, onClose }: { sale: SaleEntry; onClose: () => vo
 
   return (
     <div
-      className="absolute bottom-0 left-0 right-0 z-50 flex flex-col bg-[#f4f1ea] rounded-t-[8px] overflow-hidden"
-      style={{ border: "2px solid #16130f", maxHeight: "320px" }}
+      className="absolute bottom-0 left-0 right-0 z-50 flex flex-col rounded-t-[8px] overflow-hidden transition-colors duration-200"
+      style={{ border: "2px solid #16130f", maxHeight: "320px", backgroundColor: "var(--app-base-bg, #f4f1ea)" }}
     >
       {/* Popup header */}
       <div
-        className="flex items-center justify-between px-4 py-2 bg-border shrink-0"
-        style={{ borderBottom: "2px solid #16130f" }}
+        className="flex items-center justify-between px-4 py-2 shrink-0 transition-colors duration-200"
+        style={{ backgroundColor: "var(--team-bid-bg, #1b2133)", borderBottom: "2px solid #16130f" }}
       >
         <div className="min-w-0 flex-1">
-          <div className="font-space-mono font-bold text-[9px] tracking-widest text-accent uppercase">
+          <div className="font-space-mono font-bold text-[9px] tracking-widest uppercase" style={{ color: "var(--team-accent, #1d55c4)" }}>
             LOT {sale.lot + 1} · BID HISTORY
           </div>
-          <div className="font-barlow font-bold text-[12px] text-white truncate">
+          <div className="font-barlow font-bold text-[12px] truncate" style={{ color: "var(--team-bid-text, #ffffff)" }}>
             {player?.name ?? sale.playerId}
           </div>
         </div>
         <button
           onClick={onClose}
-          className="w-7 h-7 flex items-center justify-center border border-white/10 bg-white/5 text-accent hover:bg-accent hover:text-[#16130f] hover:border-accent transition-all duration-150 rounded shrink-0 text-[14px] font-bold"
+          className="w-7 h-7 flex items-center justify-center font-bold transition-all duration-150 rounded shrink-0 text-[14px]"
+          style={{ backgroundColor: "var(--team-accent, #1d55c4)", color: "var(--team-accent-text, #ffffff)" }}
         >
           ✕
         </button>
       </div>
 
       {/* Sold-to row */}
-      <div className="flex items-center justify-between px-4 py-2 bg-accent shrink-0"
-        style={{ borderBottom: "1px solid rgba(22,19,15,.3)" }}>
+      <div
+        className="flex items-center justify-between px-4 py-2 shrink-0 transition-colors duration-200"
+        style={{ backgroundColor: "var(--team-primary-tint)", borderBottom: "1px solid rgba(22,19,15,.3)" }}
+      >
         <div className="flex items-center gap-2">
           <div
             className="w-3 h-3 rounded-full shrink-0"
             style={{ backgroundColor: buyerTeam?.primaryColor ?? "#8a8378" }}
           />
-          <span className="font-barlow font-bold text-[12px] text-border">
+          <span className="font-barlow font-bold text-[12px] text-text-primary">
             {buyerTeam?.shortName ?? sale.teamId}
           </span>
-          <span className="font-space-mono font-bold text-[8px] tracking-wider bg-border text-accent px-1.5 py-[2px] rounded-[3px]">
+          <span
+            className="font-space-mono font-bold text-[8px] tracking-wider px-1.5 py-[2px] rounded-[3px]"
+            style={{ backgroundColor: "var(--team-accent)", color: "var(--team-accent-text)" }}
+          >
             SOLD TO
           </span>
         </div>
-        <span className="font-barlow-condensed font-bold text-[15px] text-border">
+        <span className="font-barlow-condensed font-bold text-[15px] text-text-primary">
           {crore(sale.price)}
         </span>
       </div>
@@ -124,7 +130,7 @@ export default function MiniSoldLog() {
 
   return (
     <div
-      className="absolute bottom-0 left-0 flex flex-col bg-[#f4f1ea] transition-all duration-300 ease-in-out rounded-t-[8px] overflow-hidden"
+      className="absolute bottom-0 left-0 flex flex-col transition-all duration-300 ease-in-out rounded-t-[8px] overflow-hidden"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => {
         setIsHovered(false);
@@ -137,6 +143,7 @@ export default function MiniSoldLog() {
         height: `${height}px`,
         zIndex: zIndex,
         border: "2px solid #16130f",
+        backgroundColor: "var(--app-base-bg, #f4f1ea)",
         boxShadow: isClicked || isHovered ? "0 20px 40px rgba(0, 0, 0, 0.7)" : "none",
       }}
     >
@@ -181,7 +188,7 @@ export default function MiniSoldLog() {
                 className="w-full flex items-center gap-2 px-3 py-[7px] text-left hover:bg-surface transition-colors"
                 style={{
                   borderBottom: "1px solid rgba(22,19,15,.1)",
-                  backgroundColor: isMarquee ? "#fff6d6" : undefined,
+                  backgroundColor: isMarquee ? "var(--team-primary-tint, #fff6d6)" : undefined,
                 }}
               >
                 <span className="font-barlow-condensed font-bold text-[10px] text-muted w-[22px] shrink-0">

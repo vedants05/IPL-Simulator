@@ -151,6 +151,17 @@ export default function PlayerCard({ player }: Props) {
     <div className="flex flex-col" style={{ borderBottom: "2px solid #16130f" }}>
       {/* Identity band */}
       <div className="px-6 py-4" style={{ borderBottom: "2px solid #16130f" }}>
+        {/* ON THE BLOCK + LOT header */}
+        <div className="flex items-center gap-2 mb-2">
+          <div
+            className="w-2 h-2 rounded-full shrink-0 transition-colors duration-200"
+            style={{ backgroundColor: "var(--team-accent, #1d55c4)" }}
+          />
+          <span className="font-space-mono font-bold text-[9px] tracking-widest text-text-secondary uppercase">
+            ON THE BLOCK · LOT {lotIndex + 1}
+          </span>
+        </div>
+
         {/* Name + base price */}
         <div className="flex items-end justify-between gap-3 mb-1.5">
           <h2 className="font-anton text-[36px] leading-none uppercase text-text-primary truncate flex-1 min-w-0">
@@ -158,7 +169,7 @@ export default function PlayerCard({ player }: Props) {
           </h2>
           <div className="text-right shrink-0">
             <div className="font-space-mono font-bold text-[9px] tracking-widest text-text-secondary mb-0.5">BASE</div>
-            <div className="font-barlow-condensed font-bold text-[20px] leading-none text-text-primary">
+            <div className="font-barlow-condensed font-bold text-[20px] leading-none transition-colors duration-200" style={{ color: "var(--team-accent, #1d55c4)" }}>
               {crore(player.basePrice)}
             </div>
           </div>
@@ -167,7 +178,7 @@ export default function PlayerCard({ player }: Props) {
         {/* Chips row + MORE INFO button on right */}
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 flex-wrap flex-1 min-w-0">
-            <span className="font-space-mono font-bold text-[9px] tracking-widest px-2 py-[3px] rounded-[3px] bg-border text-bg">
+            <span className="font-space-mono font-bold text-[9px] tracking-widest px-2 py-[3px] rounded-[3px] bg-border text-white">
               {roleLabel}
             </span>
             {player.nationality === "Overseas" && (
@@ -198,7 +209,7 @@ export default function PlayerCard({ player }: Props) {
             style={{
               border: "1.5px solid #16130f",
               backgroundColor: showDetails ? "#16130f" : "transparent",
-              color: showDetails ? "#ffc400" : "#16130f",
+              color: showDetails ? "#ffffff" : "#16130f",
               borderRadius: "3px",
             }}
           >
@@ -238,7 +249,7 @@ export default function PlayerCard({ player }: Props) {
           label="Batting"
           current={player.currentBatting}
           potential={player.potentialBatting}
-          color="#004BA0"
+          color="var(--team-accent, #1d55c4)"
         />
         <RatingBar
           label="Bowling"
@@ -279,7 +290,7 @@ export default function PlayerCard({ player }: Props) {
             </div>
           )}
 
-          {/* Extended bowling stats (for players with bowling data) */}
+          {/* Extended bowling stats */}
           {hasBowl && (
             <div className="px-6 py-4" style={{ borderBottom: "1px solid rgba(22,19,15,.15)" }}>
               <div className="font-space-mono font-bold text-[9px] tracking-widest text-text-secondary mb-3 uppercase">

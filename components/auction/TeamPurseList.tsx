@@ -44,10 +44,10 @@ export default function TeamPurseList() {
             {/* Team row */}
             <button
               onClick={() => setExpanded(isOpen ? null : team.id)}
-              className="w-full flex items-center px-4 py-[7px] gap-3 text-left transition-colors hover:bg-surface"
+              className="w-full flex items-center px-4 py-[7px] gap-3 text-left transition-colors duration-200 hover:bg-surface"
               style={{
                 borderBottom: "1px solid rgba(22,19,15,.14)",
-                backgroundColor: isUser ? "#ffc400" : undefined,
+                backgroundColor: isUser ? "var(--team-primary-tint)" : undefined,
               }}
             >
               <div
@@ -57,7 +57,7 @@ export default function TeamPurseList() {
               <span className="font-anton text-[13px] leading-none flex-1 min-w-0 truncate text-text-primary">
                 {team.shortName}
                 {isUser && (
-                  <span className="font-space-mono font-bold text-[9px] ml-1.5 tracking-wider">·YOU</span>
+                  <span className="font-space-mono font-bold text-[9px] ml-1 tracking-wider" style={{ color: "var(--team-primary)" }}>-YOU</span>
                 )}
               </span>
               <span className="font-barlow-condensed font-bold text-[13px] text-text-secondary shrink-0">
@@ -66,14 +66,16 @@ export default function TeamPurseList() {
               {rtmLeft > 0 && (
                 <span
                   className="font-space-mono font-bold text-[8px] tracking-wider shrink-0 px-1.5 py-0.5 rounded-[2px]"
-                  style={{ backgroundColor: "rgba(22,19,15,.12)", color: "#5a5348" }}
+                  style={{
+                    backgroundColor: "rgba(22,19,15,.12)",
+                    color: "#5a5348",
+                  }}
                 >
                   {rtmLeft}RTM
                 </span>
               )}
               <span
-                className="font-barlow-condensed font-bold text-[15px] leading-none shrink-0"
-                style={{ color: remaining > 3000 ? "#1f9d57" : "#d6492f" }}
+                className="font-barlow-condensed font-bold text-[15px] leading-none shrink-0 text-text-primary font-bold"
               >
                 {crore(remaining)}
               </span>

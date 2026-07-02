@@ -1,27 +1,19 @@
 "use client";
 import { useGameStore } from "@/lib/store/gameStore";
-import { getNextBidAmount, canTeamBidOnPlayer, canTeamAffordBid } from "@/lib/logic/auctionRules";
+import { getNextBidAmount } from "@/lib/logic/auctionRules";
 
 function crore(lakhs: number) {
-  return `₹${(lakhs / 100).toFixed(2)} Cr`;
+  return `₹${(lakhs / 100).toFixed(2)}`;
 }
 
 export default function BidHistory() {
   const { auction, teams, userTeamId } = useGameStore();
-  const passBid = useGameStore((s) => s.passBid);
 
   if (!auction) return null;
 
   const history = auction.biddingHistory;
   const nextBid = getNextBidAmount(auction.currentBid);
-  const isUserHighBidder = auction.currentHighBidderTeamId === userTeamId;
-
-  const userTeam = teams[userTeamId];
-  const player = auction.currentPlayer;
-  const { canBid } = userTeam && player ? canTeamBidOnPlayer(userTeam, player) : { canBid: false };
-  const canAfford = userTeam ? canTeamAffordBid(userTeam, nextBid) : false;
-  // Disable PASS during sold/unsold flash and RTM so rapid clicks don't queue extra hammers
-  const passDisabled = isUserHighBidder || !!auction.soldFlash || !!auction.unsoldFlash || !!auction.rtm;
+  const bidStep = nextBid - auction.currentBid;
 
   return (
     <div className="flex flex-col h-full">
@@ -29,8 +21,8 @@ export default function BidHistory() {
       <div className="px-4 h-[36px] flex items-center justify-between shrink-0" style={{ borderBottom: "2px solid #16130f" }}>
         <div className="flex items-center gap-2">
           <div
-            className="w-2 h-2 rounded-full bg-danger shrink-0"
-            style={{ animation: "liveblink 1.4s infinite" }}
+            className="w-2 h-2 rounded-full shrink-0 transition-colors duration-200"
+            style={{ backgroundColor: "var(--team-accent)", animation: "liveblink 1.4s infinite" }}
           />
           <span className="font-space-mono font-bold text-[11px] tracking-widest text-text-primary uppercase">
             Live Bids
@@ -57,10 +49,12 @@ export default function BidHistory() {
             return (
               <div
                 key={i}
-                className={`flex items-center justify-between px-3 py-[7px] rounded-[5px] ${
-                  isTop ? "bg-accent border border-border" : ""
-                }`}
-                style={!isTop ? { borderBottom: "1px solid rgba(22,19,15,.1)" } : {}}
+                className="flex items-center justify-between px-3 py-[7px] rounded-[5px] transition-colors duration-200"
+                style={{
+                  backgroundColor: isTop ? "var(--team-primary-tint)" : undefined,
+                  border: isTop ? "1px solid rgba(22,19,15,.2)" : undefined,
+                  borderBottom: !isTop ? "1px solid rgba(22,19,15,.1)" : undefined,
+                }}
               >
                 <div className="flex items-center gap-2 min-w-0">
                   <div
@@ -90,22 +84,22 @@ export default function BidHistory() {
         )}
       </div>
 
-      {/* Footer: PASS button */}
-      <div className="shrink-0 h-[52px] flex items-center" style={{ borderTop: "2px solid #16130f" }}>
-        <button
-          onClick={passBid}
-          disabled={passDisabled}
-          title={passDisabled ? "You're the highest bidder" : "Skip to auction result"}
-          className="w-full h-full font-space-mono font-bold text-[12px] tracking-widest text-text-primary bg-bg
-            hover:bg-surface disabled:opacity-30 disabled:cursor-not-allowed transition-colors uppercase"
-        >
-          {isUserHighBidder
-            ? "You're Winning"
-            : passDisabled
-              ? "Please Wait..."
-              : "Pass"
-          }
-        </button>
+      {/* Structural Guardrail: Exact layout at bottom of Live Bids column containing "YOUR NEXT BID" container box */}
+      <div
+        className="shrink-0 h-[52px] px-4 flex items-center justify-between transition-colors duration-200"
+        style={{ borderTop: "2px solid #16130f", backgroundColor: "var(--app-base-bg, #f4f1ea)" }}
+      >
+        <span className="font-space-mono text-[9px] tracking-widest text-text-secondary uppercase">
+          YOUR NEXT BID
+        </span>
+        <div className="flex items-baseline gap-2">
+          <span className="font-anton text-[18px] leading-none text-text-primary">
+            {crore(nextBid)}
+          </span>
+          <span className="font-space-mono font-bold text-[9px] text-success">
+            +{(bidStep / 100).toFixed(2)}
+          </span>
+        </div>
       </div>
     </div>
   );

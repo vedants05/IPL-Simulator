@@ -34,12 +34,18 @@ export default function RTMModal() {
   if (phase === "offer" && isUserOriginal) {
     return (
       <div className="absolute inset-0 z-40 flex items-center justify-center bg-border/80 backdrop-blur-sm">
-        <div className="bg-[#f4f1ea] border-2 border-border w-full max-w-md mx-4 shadow-2xl rounded-[8px] overflow-hidden">
-          <div className="bg-accent px-6 py-4">
-            <div className="font-space-mono font-bold text-[10px] tracking-[.16em] text-border mb-1 uppercase">
+        <div
+          className="border-2 border-border w-full max-w-md mx-4 shadow-2xl rounded-[8px] overflow-hidden transition-colors duration-200"
+          style={{ backgroundColor: "var(--app-base-bg, #f4f1ea)" }}
+        >
+          <div
+            className="px-6 py-4 transition-colors duration-200"
+            style={{ backgroundColor: "var(--team-cta-bg, #1d55c4)", color: "var(--team-cta-text, #ffffff)" }}
+          >
+            <div className="font-space-mono font-bold text-[10px] tracking-[.16em] uppercase mb-1" style={{ opacity: 0.85 }}>
               Right to Match · Your Decision
             </div>
-            <h2 className="font-anton text-[32px] leading-none text-border uppercase">{player.name}</h2>
+            <h2 className="font-anton text-[32px] leading-none uppercase">{player.name}</h2>
           </div>
 
           <div className="px-6 py-5">
@@ -49,7 +55,7 @@ export default function RTMModal() {
               {" "}This player previously played for you. Exercise RTM to match this bid.
             </p>
 
-            <div className="flex gap-0 border-2 border-border mb-5">
+            <div className="flex gap-0 border-2 border-border mb-5 bg-white">
               {[
                 { label: "RTM Cards Left", value: rtmLeft },
                 { label: "Match Price", value: crore(baseAmount), highlight: true },
@@ -75,7 +81,8 @@ export default function RTMModal() {
             <div className="flex gap-3">
               <button
                 onClick={exerciseRtm}
-                className="flex-1 bg-border text-accent font-anton text-[18px] py-4 tracking-wide hover:bg-black transition-colors"
+                className="flex-1 font-anton text-[18px] py-4 tracking-wide hover:brightness-95 transition-all duration-200"
+                style={{ backgroundColor: "var(--team-cta-bg, #1d55c4)", color: "var(--team-cta-text, #ffffff)" }}
               >
                 USE RTM · {crore(baseAmount)}
               </button>
@@ -98,7 +105,10 @@ export default function RTMModal() {
     const currentCounter = counterInput ?? minRaise;
     return (
       <div className="absolute inset-0 z-40 flex items-center justify-center bg-border/80 backdrop-blur-sm">
-        <div className="bg-[#f4f1ea] border-2 border-border w-full max-w-md mx-4 shadow-2xl rounded-[8px] overflow-hidden">
+        <div
+          className="border-2 border-border w-full max-w-md mx-4 shadow-2xl rounded-[8px] overflow-hidden transition-colors duration-200"
+          style={{ backgroundColor: "var(--app-base-bg, #f4f1ea)" }}
+        >
           <div className="bg-danger px-6 py-4">
             <div className="font-space-mono font-bold text-[10px] tracking-[.16em] text-white mb-1 uppercase">
               RTM Alert · {originalTeam?.shortName} Exercised RTM
@@ -113,7 +123,7 @@ export default function RTMModal() {
               {" "}Raise your bid to try and keep this player — they must then decide to match or concede.
             </p>
 
-            <div className="flex gap-0 border-2 border-border mb-4">
+            <div className="flex gap-0 border-2 border-border mb-4 bg-white">
               {[
                 { label: "RTM Price", value: crore(baseAmount), highlight: true },
                 { label: "Time", value: `${timerSeconds}s`, urgent: timerSeconds <= 5 },
@@ -132,7 +142,7 @@ export default function RTMModal() {
             </div>
 
             {/* Counter bid stepper */}
-            <div className="flex items-center gap-3 mb-4 border-2 border-border p-3">
+            <div className="flex items-center gap-3 mb-4 border-2 border-border p-3 bg-white">
               <button
                 onClick={() => setCounterInput(Math.max(minRaise, getNextBidAmount(currentCounter - getNextBidAmount(currentCounter))))}
                 className="w-10 h-10 font-barlow-condensed font-bold text-[20px] border border-border hover:bg-surface transition-colors"
@@ -149,7 +159,8 @@ export default function RTMModal() {
             <div className="flex gap-3">
               <button
                 onClick={() => { raiseCounter(currentCounter); setCounterInput(null); }}
-                className="flex-1 bg-border text-accent font-anton text-[16px] py-4 tracking-wide hover:bg-black transition-colors"
+                className="flex-1 font-anton text-[16px] py-4 tracking-wide hover:brightness-95 transition-all duration-200"
+                style={{ backgroundColor: "var(--team-cta-bg, #1d55c4)", color: "var(--team-cta-text, #ffffff)" }}
               >
                 RAISE TO {crore(currentCounter)}
               </button>
@@ -170,12 +181,18 @@ export default function RTMModal() {
   if (phase === "original_match" && isUserOriginal) {
     return (
       <div className="absolute inset-0 z-40 flex items-center justify-center bg-border/80 backdrop-blur-sm">
-        <div className="bg-[#f4f1ea] border-2 border-border w-full max-w-md mx-4 shadow-2xl rounded-[8px] overflow-hidden">
-          <div className="bg-accent px-6 py-4">
-            <div className="font-space-mono font-bold text-[10px] tracking-[.16em] text-border mb-1 uppercase">
+        <div
+          className="border-2 border-border w-full max-w-md mx-4 shadow-2xl rounded-[8px] overflow-hidden transition-colors duration-200"
+          style={{ backgroundColor: "var(--app-base-bg, #f4f1ea)" }}
+        >
+          <div
+            className="px-6 py-4 transition-colors duration-200"
+            style={{ backgroundColor: "var(--team-cta-bg, #1d55c4)", color: "var(--team-cta-text, #ffffff)" }}
+          >
+            <div className="font-space-mono font-bold text-[10px] tracking-[.16em] uppercase mb-1" style={{ opacity: 0.85 }}>
               RTM Counter · Your Final Decision
             </div>
-            <h2 className="font-anton text-[32px] leading-none text-border uppercase">{player.name}</h2>
+            <h2 className="font-anton text-[32px] leading-none uppercase">{player.name}</h2>
           </div>
 
           <div className="px-6 py-5">
@@ -185,7 +202,7 @@ export default function RTMModal() {
               {" "}Match this price to take the player — or fold and they keep it.
             </p>
 
-            <div className="flex gap-0 border-2 border-border mb-5">
+            <div className="flex gap-0 border-2 border-border mb-5 bg-white">
               {[
                 { label: "Original Bid", value: crore(baseAmount) },
                 { label: "Counter Bid", value: crore(raisedAmount), highlight: true },
@@ -207,7 +224,8 @@ export default function RTMModal() {
             <div className="flex gap-3">
               <button
                 onClick={matchCounter}
-                className="flex-1 bg-border text-accent font-anton text-[18px] py-4 tracking-wide hover:bg-black transition-colors"
+                className="flex-1 font-anton text-[18px] py-4 tracking-wide hover:brightness-95 transition-all duration-200"
+                style={{ backgroundColor: "var(--team-cta-bg, #1d55c4)", color: "var(--team-cta-text, #ffffff)" }}
               >
                 MATCH · {crore(raisedAmount)}
               </button>

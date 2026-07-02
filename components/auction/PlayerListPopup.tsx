@@ -1,5 +1,4 @@
 "use client";
-import { useState, useEffect } from "react";
 import { useGameStore } from "@/lib/store/gameStore";
 import { Player } from "@/lib/types";
 
@@ -42,8 +41,8 @@ function PlayerRow({
           {Array.from({ length: 5 }).map((_, i) => (
             <div
               key={i}
-              className="w-[7px] h-[7px] rounded-sm"
-              style={{ backgroundColor: i < player.starRating ? "#ffc400" : "rgba(22,19,15,.12)" }}
+              className="w-[7px] h-[7px] rounded-sm transition-colors duration-200"
+              style={{ backgroundColor: i < player.starRating ? "var(--team-accent, #1d55c4)" : "rgba(22,19,15,.12)" }}
             />
           ))}
         </div>
@@ -53,7 +52,12 @@ function PlayerRow({
           </div>
           <div className="flex items-center gap-1.5 mt-[1px]">
             {player.nationality === "Overseas" && (
-              <span className="font-space-mono text-[7px] bg-accent text-border px-1 rounded-[2px] font-bold">OS</span>
+              <span
+                className="font-space-mono text-[7px] px-1 rounded-[2px] font-bold"
+                style={{ backgroundColor: "var(--team-accent)", color: "var(--team-accent-text)" }}
+              >
+                OS
+              </span>
             )}
             <span className="font-space-mono text-[8px] text-muted">
               {player.isCapped ? "CAPPED" : "UNCAPPED"} · AGE {player.age}
@@ -107,9 +111,9 @@ export default function PlayerListPopup({
   const saleMap = new Map((auction.saleHistory ?? []).map((s) => [s.playerId, s]));
 
   const labelMap: Record<PopupType, string> = {
-    sold: "SOLD",
-    unsold: "UNSOLD",
-    left: "UPCOMING",
+    sold: "SOLD PLAYERS",
+    unsold: "UNSOLD PLAYERS",
+    left: "UPCOMING PLAYERS",
   };
 
   return (
@@ -119,29 +123,31 @@ export default function PlayerListPopup({
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div
-        className="w-full bg-[#f4f1ea] flex flex-col rounded-[8px] overflow-hidden"
+        className="w-full flex flex-col rounded-[8px] overflow-hidden shadow-2xl transition-colors duration-200"
         style={{
           maxWidth: "640px",
           border: "2px solid #16130f",
           maxHeight: "calc(100vh - 80px)",
+          backgroundColor: "var(--app-base-bg, #f4f1ea)",
         }}
       >
         {/* Header */}
         <div
-          className="flex items-center justify-between px-6 py-4 shrink-0 bg-border"
-          style={{ borderBottom: "2px solid #16130f" }}
+          className="flex items-center justify-between px-6 py-4 shrink-0 transition-colors duration-200"
+          style={{ backgroundColor: "var(--team-bid-bg, #1b2133)", borderBottom: "2px solid #16130f" }}
         >
           <div>
-            <div className="font-space-mono font-bold text-[9px] tracking-[.16em] text-accent uppercase mb-1">
+            <div className="font-space-mono font-bold text-[9px] tracking-[.16em] uppercase mb-1" style={{ color: "var(--team-accent, #1d55c4)" }}>
               {labelMap[type]}
             </div>
-            <div className="font-anton text-[30px] leading-none text-white uppercase">
+            <div className="font-anton text-[30px] leading-none uppercase" style={{ color: "var(--team-bid-text, #ffffff)" }}>
               {playerList.length} Players
             </div>
           </div>
           <button
             onClick={onClose}
-            className="w-7 h-7 flex items-center justify-center border border-white/10 bg-white/5 text-accent hover:bg-accent hover:text-[#16130f] hover:border-accent transition-all duration-150 rounded shrink-0 text-[14px] font-bold"
+            className="w-8 h-8 flex items-center justify-center font-bold transition-all duration-150 rounded shrink-0 text-[14px]"
+            style={{ backgroundColor: "var(--team-accent, #1d55c4)", color: "var(--team-accent-text, #ffffff)" }}
           >
             ✕
           </button>
@@ -172,8 +178,9 @@ export default function PlayerListPopup({
                 <div key={cat.label}>
                   {/* Category header */}
                   <div
-                    className="px-6 py-[10px] bg-surface flex items-center justify-between"
+                    className="px-6 py-[10px] flex items-center justify-between transition-colors duration-200"
                     style={{
+                      backgroundColor: "var(--team-primary-tint, rgba(0,0,0,0.05))",
                       borderBottom: "2px solid #16130f",
                       borderTop: "2px solid #16130f",
                     }}
@@ -189,7 +196,7 @@ export default function PlayerListPopup({
                     <>
                       <div
                         className="px-6 py-[5px]"
-                        style={{ borderBottom: "1px solid rgba(22,19,15,.15)", backgroundColor: "#f7f4ed" }}
+                        style={{ borderBottom: "1px solid rgba(22,19,15,.15)", backgroundColor: "rgba(0,0,0,0.03)" }}
                       >
                         <span className="font-space-mono text-[8px] tracking-widest text-muted uppercase">Indian</span>
                       </div>
@@ -215,7 +222,7 @@ export default function PlayerListPopup({
                     <>
                       <div
                         className="px-6 py-[5px]"
-                        style={{ borderBottom: "1px solid rgba(22,19,15,.15)", backgroundColor: "#fff6d6" }}
+                        style={{ borderBottom: "1px solid rgba(22,19,15,.15)", backgroundColor: "var(--team-primary-tint)" }}
                       >
                         <span className="font-space-mono text-[8px] tracking-widest text-muted uppercase">Overseas</span>
                       </div>

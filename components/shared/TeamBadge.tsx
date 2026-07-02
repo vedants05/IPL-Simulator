@@ -12,10 +12,10 @@ export default function TeamBadge({ team, size = "sm", showName = false }: Props
   return (
     <span className="flex items-center gap-1.5">
       <span
-        className={`${sizes[size]} rounded-full flex items-center justify-center font-bold`}
+        className={`${sizes[size]} min-w-[24px] px-1 rounded-full flex items-center justify-center font-bold`}
         style={{ backgroundColor: team.primaryColor, color: team.secondaryColor }}
       >
-        {team.shortName.slice(0, 2)}
+        {team.shortName}
       </span>
       {showName && <span className="text-text-primary text-sm font-medium">{team.shortName}</span>}
     </span>

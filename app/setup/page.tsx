@@ -65,7 +65,7 @@ export default function SetupPage() {
                           className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-[12px] shrink-0"
                           style={{ backgroundColor: team.primaryColor, color: team.secondaryColor }}
                         >
-                          {team.shortName.slice(0, 2)}
+                          {team.shortName}
                         </div>
                         <div>
                           <div className="font-barlow font-bold text-[14px] text-text-primary">{team.name}</div>
@@ -129,7 +129,7 @@ export default function SetupPage() {
                     className="w-16 h-16 rounded-full flex items-center justify-center text-xl font-bold shrink-0"
                     style={{ backgroundColor: chosenTeam.primaryColor, color: chosenTeam.secondaryColor }}
                   >
-                    {chosenTeam.shortName.slice(0, 2)}
+                    {chosenTeam.shortName}
                   </div>
                   <div>
                     <h3 className="font-anton text-[28px] leading-none text-text-primary uppercase">

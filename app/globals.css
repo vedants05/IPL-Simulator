@@ -5,11 +5,32 @@
 :root {
   --background: #f4f1ea;
   --foreground: #16130f;
+
+  --app-base-bg: #eef0f4;
+  --chrome-nav-active: #111726;
+  --chrome-nav-muted: #8a92a3;
+  --team-primary: #1d55c4;
+  --team-accent: #1d55c4;
+  --team-accent-text: #ffffff;
+  --team-primary-tint: rgba(29, 85, 196, 0.12);
+  --team-primary-rgb: 29, 85, 196;
+
+  --team-bid-bg: #1b2133;
+  --team-bid-text: #ffffff;
+  --team-bid-muted: #9aa4bc;
+  --team-cta-bg: #1d55c4;
+  --team-cta-text: #ffffff;
+
+  /* neutral base */
+  --base-bg: #f4f1ea;
+  --surface: #efece3;
+  --ink: #16130f;
+  --hairline: #eee9dd;
 }
 
 body {
   color: var(--foreground);
-  background: var(--background);
+  background: var(--app-base-bg, var(--background));
   font-family: var(--font-barlow), system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
@@ -28,12 +49,12 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #b3ac9e;
+  background: rgba(var(--team-primary-rgb, 22, 19, 15), 0.45);
   border-radius: 2px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #8a8378;
+  background: rgba(var(--team-primary-rgb, 22, 19, 15), 0.7);
 }
 
 @keyframes liveblink {

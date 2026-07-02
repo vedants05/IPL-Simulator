@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useGameStore } from "@/lib/store/gameStore";
-import { formatPrice } from "@/lib/logic/auctionRules";
+import { TEAM_THEMES } from "@/lib/theme/teams";
 
 const NAV_ITEMS = [
   { label: "Overview", href: "/game/overview" },
@@ -12,18 +12,26 @@ const NAV_ITEMS = [
 
 export default function NavBar() {
   const pathname = usePathname();
-  const { teams, userTeamId, currentDate, auction, isPaused, togglePaused, speed, increaseSpeed, decreaseSpeed } = useGameStore();
+  const { teams, userTeamId, currentDate, auction, isPaused, togglePaused, speed, increaseSpeed, decreaseSpeed, setUserTeam } = useGameStore();
   const userTeam = teams[userTeamId];
   const isAuctionPage = pathname.startsWith("/game/auction");
 
   return (
-    <nav className="h-12 bg-bg border-b-2 border-border flex items-center px-5 gap-0 shrink-0 z-50">
+    <nav className="h-12 border-b-2 border-border flex items-center px-5 gap-0 shrink-0 z-50">
       {userTeam && (
-        <div
-          className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold mr-4 shrink-0"
-          style={{ backgroundColor: userTeam.primaryColor, color: userTeam.secondaryColor }}
-        >
-          {userTeam.shortName.slice(0, 2)}
+        <div className="flex items-center gap-2.5 mr-5 shrink-0">
+          <div
+            className="h-7 min-w-[28px] px-1.5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 transition-colors duration-200"
+            style={{ backgroundColor: "var(--team-accent)", color: "var(--team-accent-text)" }}
+          >
+            {userTeam.shortName}
+          </div>
+          <span
+            className="font-space-mono font-bold text-[10px] tracking-widest uppercase transition-colors duration-200"
+            style={{ color: "var(--chrome-nav-active, #16130f)" }}
+          >
+            {userTeam.name}
+          </span>
         </div>
       )}
 
@@ -36,9 +44,13 @@ export default function NavBar() {
               href={item.href}
               className={`px-4 h-12 flex items-center text-[11px] font-bold tracking-widest uppercase font-space-mono transition-colors border-b-2
                 ${active
-                  ? "text-text-primary border-border bg-surface"
-                  : "text-text-secondary border-transparent hover:text-text-primary hover:bg-surface"
+                  ? "bg-surface"
+                  : "hover:bg-surface"
                 }`}
+              style={{
+                color: active ? "var(--chrome-nav-active, #16130f)" : "var(--chrome-nav-muted, #8a92a3)",
+                borderBottomColor: active ? "var(--team-accent, #16130f)" : "transparent",
+              }}
             >
               {item.label}
             </Link>
@@ -49,8 +61,26 @@ export default function NavBar() {
       <div className="flex-1" />
 
       <div className="flex items-center gap-4 font-space-mono text-[10px]">
+        {/* Team Theme Switcher */}
+        <div className="flex items-center gap-1 bg-border/5 p-1 rounded border border-border/20">
+          {Object.values(TEAM_THEMES).map((theme) => {
+            const isSelected = theme.code === userTeamId;
+            return (
+              <button
+                key={theme.code}
+                onClick={() => setUserTeam(theme.code)}
+                title={`${theme.name} (${theme.code})`}
+                className={`w-4 h-4 rounded-full transition-all duration-150 relative flex items-center justify-center shrink-0 cursor-pointer ${
+                  isSelected ? "ring-2 ring-border scale-110 z-10" : "hover:scale-105 opacity-80 hover:opacity-100"
+                }`}
+                style={{ backgroundColor: theme.accent }}
+              />
+            );
+          })}
+        </div>
+
         {!isAuctionPage && (
-          <span className="text-text-secondary tracking-wider">{currentDate}</span>
+          <span className="tracking-wider" style={{ color: "var(--chrome-nav-muted)" }}>{currentDate}</span>
         )}
         {isAuctionPage && auction && auction.phase === "live" && (
           <>

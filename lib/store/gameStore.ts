@@ -67,6 +67,7 @@ interface GameActions {
   resetGame: () => void;
   setPaused: (paused: boolean) => void;
   togglePaused: () => void;
+  setUserTeam: (teamId: string) => void;
   increaseSpeed: () => void;
   decreaseSpeed: () => void;
 }
@@ -539,6 +540,11 @@ export const useGameStore = create<Store>()(
 
       togglePaused: () => {
         set((state) => ({ isPaused: !state.isPaused }));
+      },
+
+      setUserTeam: (teamId: string) => {
+        if (!get().teams[teamId]) return;
+        set({ userTeamId: teamId });
       },
 
       increaseSpeed: () => {
