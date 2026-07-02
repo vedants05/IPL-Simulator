@@ -6,51 +6,78 @@ function crore(lakhs: number) {
 }
 
 export default function SkipSetSummaryModal() {
-  const { skipSetSummary, teams } = useGameStore();
+  const { skipSetSummary, teams, userTeamId } = useGameStore();
   const dismissSkipSetSummary = useGameStore((s) => s.dismissSkipSetSummary);
 
   if (!skipSetSummary) return null;
 
+  const userTeam = teams[userTeamId];
   const { setName, results } = skipSetSummary;
 
+  const primaryColor = userTeam?.primaryColor ?? "#16130f";
+  const secondaryColor = userTeam?.secondaryColor ?? "#ffffff";
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 select-none">
+    <div
+      onClick={dismissSkipSetSummary}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 select-none cursor-pointer"
+      title="Click anywhere to dismiss and start next set"
+    >
       <div
-        className="w-full max-w-xl bg-[#f4f1ea] border-2 border-[#16130f] shadow-2xl rounded-[6px] flex flex-col overflow-hidden text-[#16130f] max-h-[85vh]"
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-xl bg-[#efece3] border-2 border-[#16130f] shadow-2xl rounded-[8px] flex flex-col overflow-hidden text-[#16130f] max-h-[85vh] cursor-default"
       >
-        {/* Header */}
+        {/* Header themed to user's team */}
         <div
-          className="px-5 py-3.5 flex items-center justify-between shrink-0 bg-[#16130f] text-white"
-          style={{ borderBottom: "2px solid #16130f" }}
+          className="px-6 py-4 flex items-center justify-between shrink-0 transition-colors duration-200"
+          style={{
+            backgroundColor: primaryColor,
+            color: secondaryColor,
+            borderBottom: "2px solid #16130f",
+          }}
         >
-          <h2 className="font-anton text-[22px] leading-none text-white uppercase tracking-wide">
-            {setName}
-          </h2>
-          <span className="font-space-mono text-[10px] font-bold text-[#8a8378] uppercase tracking-wider bg-white/10 px-2.5 py-0.5 rounded">
+          <div className="flex items-center gap-3">
+            {userTeam && (
+              <span
+                className="font-space-mono font-bold text-[10px] tracking-widest uppercase px-2 py-0.5 rounded-full shrink-0 border border-current/20"
+                style={{ backgroundColor: "rgba(0,0,0,0.15)", color: secondaryColor }}
+              >
+                {userTeam.shortName}
+              </span>
+            )}
+            <h2 className="font-anton text-[22px] leading-none uppercase tracking-wide">
+              {setName}
+            </h2>
+          </div>
+
+          <span
+            className="font-space-mono font-bold text-[10px] tracking-widest uppercase px-2.5 py-1 rounded shrink-0 border border-current/20"
+            style={{ backgroundColor: "rgba(0,0,0,0.18)", color: secondaryColor }}
+          >
             {results.length} Players
           </span>
         </div>
 
         {/* Results List */}
-        <div className="flex-1 overflow-y-auto divide-y divide-[#16130f]/10">
+        <div className="flex-1 overflow-y-auto divide-y divide-[#16130f]/10 p-2 space-y-1">
           {results.map((item, index) => {
             const team = item.teamId ? teams[item.teamId] : null;
             return (
               <div
                 key={`${item.player.id}-${index}`}
-                className="flex items-center justify-between px-5 py-3 bg-white/40 hover:bg-white transition-colors"
+                className="flex items-center justify-between px-4 py-2.5 rounded bg-white/70 hover:bg-white transition-all border border-[#16130f]/5 shadow-sm"
               >
-                {/* Player details */}
+                {/* Player info */}
                 <div className="min-w-0 flex-1 pr-4">
                   <div className="flex items-center gap-2">
-                    <span className="font-anton text-[18px] text-[#16130f] truncate leading-tight">
+                    <span className="font-barlow font-bold text-[17px] text-[#16130f] truncate leading-tight">
                       {item.player.name}
                     </span>
-                    <span className="font-space-mono text-[9px] text-text-secondary uppercase bg-[#16130f]/5 px-1.5 py-0.5 rounded shrink-0">
+                    <span className="font-space-mono font-bold text-[9px] tracking-wider text-[#5a5348] uppercase bg-[#16130f]/5 px-2 py-0.5 rounded-[3px] border border-[#16130f]/10 shrink-0">
                       {item.player.role}
                     </span>
                     {item.player.nationality === "Overseas" && (
-                      <span className="font-space-mono text-[9px] text-[#1d55c4] font-bold bg-[#1d55c4]/10 px-1.5 py-0.5 rounded shrink-0">
+                      <span className="font-space-mono font-bold text-[9px] tracking-widest text-[#1d55c4] bg-[#1d55c4]/10 px-2 py-0.5 rounded-[3px] border border-[#1d55c4]/20 shrink-0">
                         OS
                       </span>
                     )}
@@ -62,13 +89,17 @@ export default function SkipSetSummaryModal() {
                   {item.status === "sold" && team && item.price !== undefined ? (
                     <div className="flex items-center gap-2">
                       {item.usedRtm && (
-                        <span className="font-space-mono font-bold text-[8px] tracking-widest uppercase bg-amber-500 text-black px-1.5 py-0.5 rounded">
+                        <span className="font-space-mono font-bold text-[8px] tracking-widest uppercase bg-amber-500 text-black px-1.5 py-0.5 rounded border border-black/20">
                           RTM
                         </span>
                       )}
                       <div
                         className="flex items-center gap-1.5 px-2.5 py-1 rounded shadow-sm"
-                        style={{ backgroundColor: team.primaryColor, color: team.secondaryColor }}
+                        style={{
+                          backgroundColor: team.primaryColor,
+                          color: team.secondaryColor,
+                          border: "1.5px solid #16130f",
+                        }}
                       >
                         <span className="font-anton text-[11px] uppercase tracking-wider">
                           {team.shortName}
@@ -79,7 +110,7 @@ export default function SkipSetSummaryModal() {
                       </div>
                     </div>
                   ) : (
-                    <span className="font-space-mono font-bold text-[10px] tracking-wider text-[#d6492f] bg-red-50 px-2.5 py-1 rounded uppercase border border-red-200">
+                    <span className="font-space-mono font-bold text-[10px] tracking-wider text-[#d6492f] bg-[#d6492f]/10 px-2.5 py-1 rounded uppercase border border-[#d6492f]/30">
                       UNSOLD
                     </span>
                   )}
@@ -89,11 +120,19 @@ export default function SkipSetSummaryModal() {
           })}
         </div>
 
-        {/* Compact Footer Action */}
-        <div className="px-5 py-3 bg-surface border-t-2 border-[#16130f] flex justify-end shrink-0">
+        {/* Compact Themed Footer */}
+        <div className="px-5 py-3 bg-[#efece3] border-t-2 border-[#16130f] flex items-center justify-between shrink-0">
+          <span className="font-space-mono text-[10px] text-text-secondary">
+            Click anywhere outside to continue
+          </span>
           <button
             onClick={dismissSkipSetSummary}
-            className="font-anton text-[18px] px-7 py-2.5 tracking-wide text-white bg-[#16130f] hover:bg-black hover:scale-105 active:scale-95 transition-all duration-150 rounded-[4px] shadow-md cursor-pointer"
+            className="font-anton text-[17px] px-6 py-2.5 tracking-wide rounded-[5px] cursor-pointer shadow-md hover:scale-105 active:scale-95 transition-all duration-150"
+            style={{
+              backgroundColor: primaryColor,
+              color: secondaryColor,
+              border: "1.5px solid #16130f",
+            }}
           >
             GO TO NEXT SET →
           </button>
