@@ -2,65 +2,18 @@
 import { useState } from "react";
 import { Player } from "@/lib/types";
 import { useGameStore } from "@/lib/store/gameStore";
+import { PLAYERS } from "@/lib/data/players";
+
+const PLAYERS_MAP = new Map(PLAYERS.map((p) => [p.id, p]));
 
 interface Props {
   player: Player;
+  soldPrice?: number;
+  collapsible?: boolean;
 }
 
 function crore(lakhs: number) {
   return `₹${(lakhs / 100).toFixed(2)} Cr`;
-}
-
-function groupIplHistory(history: { teamId: string; season: string; price: number }[]) {
-  const sorted = [...history].sort((a, b) => parseInt(a.season) - parseInt(b.season));
-  
-  const batches = [
-    { start: 2019, end: 2021 },
-    { start: 2022, end: 2024 },
-    { start: 2025, end: 9999 }
-  ];
-
-  const groups: { teamId: string; startYear: string; endYear: string; price: number }[] = [];
-
-  for (const batch of batches) {
-    const batchEntries = sorted.filter(e => {
-      const year = parseInt(e.season);
-      return year >= batch.start && year <= batch.end;
-    });
-
-    if (batchEntries.length === 0) continue;
-
-    let currentGroup: { teamId: string; startYear: string; endYear: string; price: number } | null = null;
-    for (const entry of batchEntries) {
-      if (!currentGroup) {
-        currentGroup = {
-          teamId: entry.teamId,
-          startYear: entry.season,
-          endYear: entry.season,
-          price: entry.price
-        };
-      } else if (
-        currentGroup.teamId === entry.teamId &&
-        currentGroup.price === entry.price &&
-        parseInt(entry.season) === parseInt(currentGroup.endYear) + 1
-      ) {
-        currentGroup.endYear = entry.season;
-      } else {
-        groups.push(currentGroup);
-        currentGroup = {
-          teamId: entry.teamId,
-          startYear: entry.season,
-          endYear: entry.season,
-          price: entry.price
-        };
-      }
-    }
-    if (currentGroup) {
-      groups.push(currentGroup);
-    }
-  }
-
-  return groups;
 }
 
 function RatingBar({
@@ -115,107 +68,169 @@ function RatingBar({
   );
 }
 
-export default function PlayerCard({ player }: Props) {
-  const auction = useGameStore((s) => s.auction);
-  const lotIndex = auction?.currentLotIndex ?? 0;
-  const stats = player.careerStats;
+export default function PlayerCard({ player, soldPrice, collapsible = true }: Props) {
   const [showDetails, setShowDetails] = useState(false);
+  const { teams } = useGameStore();
 
-  const hasBat = stats.batting.matches > 0;
+  const seedP = PLAYERS_MAP.get(player.id);
+  const isWk = player.isWicketkeeper ?? seedP?.isWicketkeeper;
+  const isPtWk = player.isPartTimeWk ?? seedP?.isPartTimeWk;
+  const isOpener = player.isOpener ?? seedP?.isOpener;
+  const isFinisher = player.isFinisher ?? seedP?.isFinisher;
+
+  const isFullTimeWk = isWk && !isPtWk;
+  const isExpanded = !collapsible || showDetails;
+
+  const stats = player.careerStats;
+  const hasBat = stats.batting.runs > 0 || stats.batting.matches > 0;
   const hasBowl = stats.bowling.wickets > 0;
 
-  const roleLabel =
-    player.role === "WK-Batsman" ? "WICKETKEEPER" :
-    player.role === "All-Rounder" ? "ALL-ROUNDER" :
-    player.role === "Pace Bowler" ? "PACE BOWLER" :
-    player.role === "Spin Bowler" ? "SPIN BOWLER" : "BATSMAN";
+  const roleLabel = player.role === "WK-Batsman" ? "BATSMAN" : player.role.toUpperCase();
 
-  const statCells: Array<{ label: string; value: string | number; highlight?: boolean }> =
-    hasBowl && !hasBat
-      ? [
-          { label: "MATCHES", value: stats.bowling.matches },
-          { label: "WICKETS", value: stats.bowling.wickets },
-          { label: "ECON", value: stats.bowling.economy.toFixed(2) },
-          { label: "AVG", value: stats.bowling.average.toFixed(1), highlight: true },
-          { label: "BEST", value: stats.bowling.bestFigures },
-        ]
-      : [
-          { label: "MATCHES", value: hasBat ? stats.batting.matches : "—" },
-          { label: "RUNS", value: hasBat ? stats.batting.runs.toLocaleString() : "—" },
-          { label: "AVG", value: hasBat ? stats.batting.average.toFixed(1) : "—" },
-          { label: "SR", value: hasBat ? stats.batting.strikeRate.toFixed(1) : "—", highlight: true },
-          { label: hasBowl ? "WKTs" : "50s", value: hasBowl ? stats.bowling.wickets : (hasBat ? stats.batting.fifties : "—") },
-        ];
+  const statCells = [
+    { label: "MATCHES", value: stats.batting.matches || stats.bowling.matches || "—" },
+    { label: "RUNS", value: hasBat ? stats.batting.runs.toLocaleString() : "—" },
+    { label: "AVG", value: hasBat ? stats.batting.average.toFixed(1) : "—" },
+    { label: "SR", value: hasBat ? stats.batting.strikeRate.toFixed(1) : "—" },
+    { label: hasBowl ? "WKTs" : "50s", value: hasBowl ? stats.bowling.wickets : (hasBat ? stats.batting.fifties : "—") },
+  ];
+
+  const validHistory = player.iplHistory.filter(
+    (g) => g.teamId && g.teamId.toUpperCase() !== "UNSOLD" && g.teamId.trim() !== ""
+  );
 
   return (
-    <div className="flex flex-col" style={{ borderBottom: "2px solid #16130f" }}>
-      {/* Identity band */}
-      <div className="px-6 py-4" style={{ borderBottom: "2px solid #16130f" }}>
-        {/* ON THE BLOCK + LOT header */}
-        <div className="flex items-center gap-2 mb-2">
-          <div
-            className="w-2 h-2 rounded-full shrink-0 transition-colors duration-200"
-            style={{ backgroundColor: "var(--team-accent, #1d55c4)" }}
-          />
-          <span className="font-space-mono font-bold text-[9px] tracking-widest text-text-secondary uppercase">
-            ON THE BLOCK · LOT {lotIndex + 1}
-          </span>
-        </div>
-
-        {/* Name + base price */}
-        <div className="flex items-end justify-between gap-3 mb-1.5">
-          <h2 className="font-anton text-[36px] leading-none uppercase text-text-primary truncate flex-1 min-w-0">
-            {player.name}
-          </h2>
-          <div className="text-right shrink-0">
-            <div className="font-space-mono font-bold text-[9px] tracking-widest text-text-secondary mb-0.5">BASE</div>
-            <div className="font-barlow-condensed font-bold text-[20px] leading-none transition-colors duration-200" style={{ color: "var(--team-accent, #1d55c4)" }}>
-              {crore(player.basePrice)}
+    <div className="flex flex-col bg-surface overflow-hidden">
+      {/* Player header banner */}
+      <div
+        className="px-6 py-4 flex flex-col gap-2 shrink-0"
+        style={{ borderBottom: "2px solid #16130f" }}
+      >
+        <div className="flex justify-between items-start">
+          <div className="min-w-0 flex-1 pr-4">
+            {/* Player Name & Stars in the same row */}
+            <div className="flex items-baseline gap-3 flex-wrap">
+              <h2 className="font-anton text-[42px] leading-none tracking-wide text-text-primary uppercase">
+                {player.name}
+              </h2>
+              {/* Star rating right next to name */}
+              <div className="flex gap-0.5 items-center">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <span
+                    key={i}
+                    className={`text-[15px] ${
+                      i < Math.floor(player.starRating)
+                        ? "text-accent"
+                        : i < player.starRating
+                        ? "text-accent opacity-60"
+                        : "text-muted/30"
+                    }`}
+                  >
+                    ★
+                  </span>
+                ))}
+              </div>
             </div>
+          </div>
+
+          {/* Right side: Base / Salary price badge */}
+          <div className="flex flex-col items-end shrink-0">
+            <span className="font-space-mono font-bold text-[9px] tracking-widest text-text-secondary uppercase">
+              {soldPrice !== undefined
+                ? "SALARY"
+                : player.currentTeamId
+                ? "SALARY"
+                : "BASE"}
+            </span>
+            <span className="font-anton text-[24px] leading-none text-text-primary">
+              {soldPrice !== undefined
+                ? crore(soldPrice)
+                : player.currentTeamId
+                ? crore(player.iplHistory.find((h) => h.season === "2026")?.price ?? player.basePrice)
+                : crore(player.basePrice)}
+            </span>
           </div>
         </div>
 
-        {/* Chips row + MORE INFO button on right */}
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2 flex-wrap flex-1 min-w-0">
-            <span className="font-space-mono font-bold text-[9px] tracking-widest px-2 py-[3px] rounded-[3px] bg-border text-white">
+        {/* Player tags */}
+        <div className="flex items-center justify-between gap-2 mt-1">
+          <div className="flex items-center gap-1.5 flex-wrap flex-1 min-w-0">
+            {/* 1. Role */}
+            <span className="font-space-mono font-bold text-[9px] tracking-widest px-2 py-[3px] rounded-[3px] border border-[#16130f] text-[#16130f] bg-transparent uppercase">
               {roleLabel}
             </span>
+
+            {/* 2. Bowling style */}
+            {player.bowlingStyle && (
+              <span className="font-space-mono font-bold text-[9px] tracking-widest px-2 py-[3px] rounded-[3px] border border-[#16130f] text-[#16130f] bg-transparent uppercase">
+                {player.bowlingStyle.toUpperCase()}
+              </span>
+            )}
+
+            {/* 3. Specialty Tabs: PART-TIME WK or WK, OPENER, FINISHER */}
+            {isPtWk ? (
+              <span className="font-space-mono font-bold text-[9px] tracking-widest px-2 py-[3px] rounded-[3px] border border-[#16130f] text-[#16130f] bg-transparent uppercase">
+                PART-TIME WK
+              </span>
+            ) : isFullTimeWk ? (
+              <span className="font-space-mono font-bold text-[9px] tracking-widest px-2 py-[3px] rounded-[3px] border border-[#16130f] text-[#16130f] bg-transparent uppercase">
+                WK
+              </span>
+            ) : null}
+
+            {isOpener && (
+              <span className="font-space-mono font-bold text-[9px] tracking-widest px-2 py-[3px] rounded-[3px] border border-[#16130f] text-[#16130f] bg-transparent uppercase">
+                OPENER
+              </span>
+            )}
+
+            {isFinisher && (
+              <span className="font-space-mono font-bold text-[9px] tracking-widest px-2 py-[3px] rounded-[3px] border border-[#16130f] text-[#16130f] bg-transparent uppercase">
+                FINISHER
+              </span>
+            )}
+
+            {/* 4. Overseas */}
             {player.nationality === "Overseas" && (
-              <span className="font-space-mono font-bold text-[9px] tracking-widest px-2 py-[3px] rounded-[3px] bg-accent text-border border border-border">
+              <span className="font-space-mono font-bold text-[9px] tracking-widest px-2 py-[3px] rounded-[3px] border border-[#16130f] text-[#16130f] bg-transparent uppercase">
                 OVERSEAS
               </span>
             )}
-            <span className="font-space-mono font-bold text-[9px] tracking-widest px-2 py-[3px] rounded-[3px] border border-border text-text-primary">
+
+            {/* 5. Capped / Age */}
+            <span className="font-space-mono font-bold text-[9px] tracking-widest px-2 py-[3px] rounded-[3px] border border-[#16130f] text-[#16130f] bg-transparent uppercase">
               {player.isCapped ? "CAPPED" : "UNCAPPED"} · AGE {player.age}
             </span>
-            <span className="font-space-mono font-bold text-[9px] tracking-widest px-2 py-[3px] rounded-[3px] border border-border text-text-secondary">
+
+            {/* 6. RHB / LHB */}
+            <span className="font-space-mono font-bold text-[9px] tracking-widest px-2 py-[3px] rounded-[3px] border border-[#16130f] text-[#16130f] bg-transparent uppercase">
               {player.battingStyle === "Right-hand" ? "RHB" : "LHB"}
             </span>
-            {player.bowlingStyle && (
-              <span className="font-space-mono font-bold text-[9px] tracking-widest px-2 py-[3px] rounded-[3px] border border-border text-text-secondary">
-                {player.bowlingStyle}
-              </span>
-            )}
-            <span className="font-space-mono font-bold text-[9px] tracking-widest px-2 py-[3px] rounded-[3px] border border-border text-text-secondary">
+
+            {/* 7. Potential */}
+            <span className="font-space-mono font-bold text-[9px] tracking-widest px-2 py-[3px] rounded-[3px] border border-[#16130f] text-[#16130f] bg-transparent uppercase">
               {player.potential.toUpperCase()}
             </span>
           </div>
 
-          {/* MORE INFO toggle */}
-          <button
-            onClick={() => setShowDetails((v) => !v)}
-            className="shrink-0 flex items-center gap-1.5 px-3 py-[5px] font-space-mono font-bold text-[9px] tracking-widest transition-colors"
-            style={{
-              border: "1.5px solid #16130f",
-              backgroundColor: showDetails ? "#16130f" : "transparent",
-              color: showDetails ? "#ffffff" : "#16130f",
-              borderRadius: "3px",
-            }}
-          >
-            PLAYER FILE
-            <span className="text-[8px]">{showDetails ? "▲" : "▼"}</span>
-          </button>
+          {/* PLAYER FILE toggle — shown when collapsible is true */}
+          {collapsible && (
+            <button
+              onClick={() => setShowDetails((v) => !v)}
+              className={`shrink-0 flex items-center gap-1.5 px-3 py-[5px] font-space-mono font-bold text-[9px] tracking-widest transition-all duration-150 cursor-pointer ${
+                showDetails
+                  ? "bg-[#16130f] text-white hover:bg-[#332c25]"
+                  : "bg-transparent text-[#16130f] hover:bg-[#16130f] hover:text-white"
+              }`}
+              style={{
+                border: "1.5px solid #16130f",
+                borderRadius: "3px",
+              }}
+            >
+              PLAYER FILE
+              <span className="text-[8px]">{showDetails ? "▲" : "▼"}</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -230,17 +245,14 @@ export default function PlayerCard({ player }: Props) {
             <span className="font-space-mono text-[8px] tracking-widest text-text-secondary mb-0.5 uppercase">
               {cell.label}
             </span>
-            <span
-              className="font-barlow-condensed font-bold text-[18px] leading-none"
-              style={{ color: cell.highlight ? "#d6492f" : "#16130f" }}
-            >
+            <span className="font-barlow-condensed font-bold text-[18px] leading-none text-text-primary">
               {cell.value}
             </span>
           </div>
         ))}
       </div>
 
-      {/* Ratings — always show both bars */}
+      {/* Ratings — Batting & Bowling */}
       <div
         className="px-6 py-4 flex flex-col gap-4 shrink-0"
         style={{ borderBottom: "2px solid #16130f" }}
@@ -259,25 +271,46 @@ export default function PlayerCard({ player }: Props) {
         />
       </div>
 
-      {/* PLAYER FILE — expandable details */}
-      {showDetails && (
+      {/* Additional stats — shown when expanded or when non-collapsible */}
+      {isExpanded && (
         <div className="shrink-0" style={{ borderBottom: "2px solid #16130f" }}>
-          {/* IPL History */}
-          {player.iplHistory.length > 0 && (
+          {/* Traits & Personality Ratings */}
+          <div className="px-6 py-4 flex flex-col gap-3" style={{ borderBottom: "1px solid rgba(22,19,15,.15)" }}>
+            <div className="font-space-mono font-bold text-[9px] tracking-widest text-text-secondary uppercase">
+              Traits & Personality
+            </div>
+            <RatingBar
+              label="Reputation"
+              current={(player.reputation ?? seedP?.reputation ?? 5) * 10}
+              potential={(player.reputation ?? seedP?.reputation ?? 5) * 10}
+              color="#8b5cf6"
+            />
+            <RatingBar
+              label="Captaincy"
+              current={player.captaincy ?? seedP?.captaincy ?? 50}
+              potential={player.captaincy ?? seedP?.captaincy ?? 50}
+              color="#0284c7"
+            />
+            <RatingBar
+              label="Batting Aggression"
+              current={player.battingAggression ?? seedP?.battingAggression ?? 50}
+              potential={player.battingAggression ?? seedP?.battingAggression ?? 50}
+              color="#f97316"
+            />
+          </div>
+
+          {/* IPL History (Valid Teams Only) */}
+          {validHistory.length > 0 && (
             <div className="px-6 py-4" style={{ borderBottom: "1px solid rgba(22,19,15,.15)" }}>
               <div className="font-space-mono font-bold text-[9px] tracking-widest text-text-secondary mb-3 uppercase">
                 IPL History
               </div>
               <div className="flex flex-col gap-2">
-                {groupIplHistory(player.iplHistory).reverse().map((g, i) => (
+                {validHistory.map((g, i) => (
                   <div key={i} className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <span className="font-space-mono text-[9px] text-text-secondary w-[68px]">
-                        {parseInt(g.startYear) >= 2025
-                          ? `${g.startYear}–present`
-                          : g.startYear === g.endYear
-                            ? g.startYear
-                            : `${g.startYear}–${g.endYear}`}
+                        {g.season}
                       </span>
                       <span className="font-barlow font-semibold text-[12px] text-text-primary">{g.teamId}</span>
                     </div>
