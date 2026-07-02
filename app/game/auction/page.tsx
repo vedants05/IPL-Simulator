@@ -12,6 +12,7 @@ import RTMModal from "@/components/auction/RTMModal";
 import SoldAnimation from "@/components/auction/SoldAnimation";
 import UnsoldAnimation from "@/components/auction/UnsoldAnimation";
 import PlayerListPopup from "@/components/auction/PlayerListPopup";
+import SkipSetSummaryModal from "@/components/auction/SkipSetSummaryModal";
 
 type PopupTab = "sold" | "unsold" | "left" | null;
 
@@ -131,6 +132,7 @@ export default function AuctionPage() {
           <SoldAnimation />
           <UnsoldAnimation />
           <RTMModal />
+          <SkipSetSummaryModal />
 
           <div className="flex-1 flex flex-col overflow-hidden">
             {/* Active Set Banner */}

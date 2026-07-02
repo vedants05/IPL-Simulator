@@ -11,7 +11,7 @@ const NAV_ITEMS = [
 
 export default function NavBar() {
   const pathname = usePathname();
-  const { teams, userTeamId, currentDate, auction, isPaused, togglePaused, speed, increaseSpeed, decreaseSpeed } = useGameStore();
+  const { teams, userTeamId, currentDate, auction, isPaused, togglePaused, speed, increaseSpeed, decreaseSpeed, skipCurrentSet } = useGameStore();
   const userTeam = teams[userTeamId];
   const isAuctionPage = pathname.startsWith("/game/auction");
 
@@ -65,6 +65,20 @@ export default function NavBar() {
         )}
         {isAuctionPage && auction && auction.phase === "live" && (
           <>
+            {/* Skip Set Button */}
+            <button
+              onClick={skipCurrentSet}
+              className="px-3 rounded font-space-mono font-bold text-[10px] tracking-wider uppercase transition-all duration-150 flex items-center justify-center h-[28px] cursor-pointer hover:bg-[#1d55c4] hover:text-white hover:scale-105 active:scale-95"
+              style={{
+                border: "1.5px solid #16130f",
+                backgroundColor: "var(--team-bid-bg, #111622)",
+                backgroundImage: "var(--team-bid-tinge)",
+                color: "#ffffff",
+              }}
+              title="Skip remaining players in current set"
+            >
+              ⏭ Skip Set
+            </button>
             {/* Speed Controls */}
             <div
               className="flex items-center gap-0 rounded select-none h-[28px] overflow-hidden transition-colors duration-200"

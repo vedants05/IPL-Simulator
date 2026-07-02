@@ -7,6 +7,9 @@ import {
   Player,
   Team,
   AuctionSet,
+  SkipSetSummary,
+  SkipSetResultItem,
+  BidEntry,
 } from "@/lib/types";
 import { PLAYERS_SEED } from "@/lib/data/players";
 import { TEAMS_SEED } from "@/lib/data/teams";
@@ -42,6 +45,7 @@ import {
 interface GameStateAdditions {
   isPaused: boolean;
   speed: number;
+  skipSetSummary: SkipSetSummary | null;
 }
 
 interface GameActions {
@@ -70,6 +74,8 @@ interface GameActions {
   setUserTeam: (teamId: string) => void;
   increaseSpeed: () => void;
   decreaseSpeed: () => void;
+  skipCurrentSet: () => void;
+  dismissSkipSetSummary: () => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -127,6 +133,7 @@ export const useGameStore = create<Store>()(
       isSetupComplete: false,
       isPaused: false,
       speed: 1,
+      skipSetSummary: null,
 
       // ----- Actions -----
       initNewGame: (userTeamId) => {
@@ -611,6 +618,206 @@ export const useGameStore = create<Store>()(
           else if (state.speed === 4) nextSpeed = 2;
           else if (state.speed === 2) nextSpeed = 1;
           return { speed: nextSpeed };
+        });
+      },
+
+      dismissSkipSetSummary: () => {
+        set({ skipSetSummary: null, isPaused: false });
+        advanceToNextLot();
+      },
+
+      skipCurrentSet: () => {
+        const state = get();
+        const { auction, players, teams, userTeamId } = state;
+        if (!auction || auction.phase !== "live") return;
+
+        const currentSet = auction.sets[auction.currentSetIndex];
+        if (!currentSet || currentSet.isCompleted) return;
+
+        _hammerLotId = null;
+
+        const newTeams = { ...teams };
+        const newPlayers = { ...players };
+        const newSoldIds = [...(auction.soldPlayerIds ?? [])];
+        const newUnsoldIds = [...(auction.unsoldPlayerIds ?? [])];
+        const newSaleHistory = [...(auction.saleHistory ?? [])];
+        let currentLotIndex = auction.currentLotIndex;
+
+        const setPlayerIds = currentSet.playerIds;
+        const startIndex = currentSet.currentIndex;
+        const playersToAuctionIds = setPlayerIds.slice(startIndex);
+
+        const results: SkipSetResultItem[] = [];
+        const totalLots = auction.sets.reduce((sum, s) => sum + s.playerIds.length, 0);
+
+        playersToAuctionIds.forEach((playerId) => {
+          const player = newPlayers[playerId];
+          if (!player) return;
+
+          currentLotIndex++;
+          resetLotCache();
+
+          const ctx: AuctionContext = {
+            remainingPlayerIds: auction.allPlayerIds.filter(
+              (id) => !newSoldIds.includes(id) && id !== player.id
+            ),
+            soldPlayerIds: newSoldIds,
+            currentLotIndex,
+            totalLots,
+          };
+
+          let currentBid = player.basePrice;
+          let highBidderTeamId: string | null = null;
+          let biddingHistory: BidEntry[] = [];
+
+          let iterations = 0;
+          const MAX_ITER = 300;
+          while (iterations < MAX_ITER) {
+            iterations++;
+            const nextBid = getNextBidAmount(currentBid);
+
+            const interested = Object.values(newTeams).filter((t) => {
+              if (t.id === userTeamId) return false;
+              if (t.id === highBidderTeamId) return false;
+              return canAIBidAtAmount(t, player, nextBid, player.id, newPlayers, ctx);
+            });
+
+            if (interested.length === 0) break;
+
+            const bidder = pickBiddingTeam(interested, player, player.id, newPlayers, ctx);
+            if (!bidder) break;
+
+            currentBid = nextBid;
+            highBidderTeamId = bidder.id;
+            biddingHistory = [{ teamId: bidder.id, amount: nextBid, timestamp: Date.now() }, ...biddingHistory];
+          }
+
+          if (!highBidderTeamId) {
+            newUnsoldIds.push(player.id);
+            results.push({
+              player,
+              status: "unsold",
+            });
+          } else {
+            let finalWinnerId = highBidderTeamId;
+            let finalPrice = currentBid;
+            let usedRtm = false;
+
+            const rtmTeamId = findRTMEligibleTeam(player, newTeams, highBidderTeamId, currentBid);
+
+            if (rtmTeamId && rtmTeamId !== userTeamId) {
+              const rtmTeam = newTeams[rtmTeamId];
+              const aiOrigValuation = getCachedValuation(rtmTeamId);
+
+              if (aiOrigValuation > currentBid && rtmTeam.remainingPurse >= currentBid) {
+                const winnerTeam = newTeams[highBidderTeamId];
+                const aiWinnerValuation = getCachedValuation(highBidderTeamId);
+
+                if (aiWinnerValuation > currentBid * 1.05 && winnerTeam.remainingPurse >= currentBid * 1.05) {
+                  let counterAmount = currentBid;
+                  const target = Math.min(aiWinnerValuation, Math.round(currentBid * 1.25));
+                  while (counterAmount < target) counterAmount = getNextBidAmount(counterAmount);
+                  if (counterAmount <= currentBid) counterAmount = getNextBidAmount(currentBid);
+
+                  if (aiOrigValuation >= counterAmount && rtmTeam.remainingPurse >= counterAmount) {
+                    finalWinnerId = rtmTeamId;
+                    finalPrice = counterAmount;
+                    usedRtm = true;
+                  } else {
+                    finalWinnerId = highBidderTeamId;
+                    finalPrice = counterAmount;
+                  }
+                } else {
+                  finalWinnerId = rtmTeamId;
+                  finalPrice = currentBid;
+                  usedRtm = true;
+                }
+              }
+            }
+
+            const winnerTeam = newTeams[finalWinnerId];
+            if (winnerTeam) {
+              newTeams[finalWinnerId] = {
+                ...winnerTeam,
+                squad: [...winnerTeam.squad, player.id],
+                remainingPurse: winnerTeam.remainingPurse - finalPrice,
+                spentAmount: winnerTeam.spentAmount + finalPrice,
+                rtmCardsUsed: usedRtm ? winnerTeam.rtmCardsUsed + 1 : winnerTeam.rtmCardsUsed,
+                overseasPlayersCurrent:
+                  player.nationality === "Overseas"
+                    ? winnerTeam.overseasPlayersCurrent + 1
+                    : winnerTeam.overseasPlayersCurrent,
+              };
+            }
+
+            const updatedHistory = [
+              ...player.iplHistory.filter((h) => h.season !== "2027"),
+              { teamId: finalWinnerId, season: "2027", price: finalPrice },
+            ];
+
+            newPlayers[player.id] = {
+              ...player,
+              currentTeamId: finalWinnerId,
+              iplHistory: updatedHistory,
+            };
+
+            newSoldIds.push(player.id);
+
+            newSaleHistory.push({
+              playerId: player.id,
+              teamId: finalWinnerId,
+              price: finalPrice,
+              lot: currentLotIndex,
+              bids: biddingHistory,
+            });
+
+            results.push({
+              player: newPlayers[player.id],
+              status: "sold",
+              teamId: finalWinnerId,
+              price: finalPrice,
+              usedRtm,
+            });
+          }
+        });
+
+        const updatedSets = auction.sets.map((s, i) => {
+          if (i === auction.currentSetIndex) {
+            return {
+              ...s,
+              currentIndex: s.playerIds.length,
+              isCompleted: true,
+            };
+          }
+          return s;
+        });
+
+        const updatedPurses: Record<string, { remaining: number; squadCount: number }> = {};
+        Object.values(newTeams).forEach((t) => {
+          updatedPurses[t.id] = { remaining: t.remainingPurse, squadCount: t.squad.length };
+        });
+
+        set({
+          teams: newTeams,
+          players: newPlayers,
+          isPaused: true,
+          skipSetSummary: {
+            setIndex: auction.currentSetIndex,
+            setName: currentSet.name,
+            results,
+          },
+          auction: {
+            ...auction,
+            sets: updatedSets,
+            currentLotIndex,
+            soldPlayerIds: newSoldIds,
+            unsoldPlayerIds: newUnsoldIds,
+            saleHistory: newSaleHistory,
+            teamPurses: updatedPurses,
+            soldFlash: null,
+            unsoldFlash: null,
+            rtm: null,
+          },
         });
       },
 

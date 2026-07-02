@@ -183,6 +183,20 @@ export interface AuctionState {
   saleHistory: Array<{ playerId: string; teamId: string; price: number; lot: number; bids: BidEntry[] }>;
 }
 
+export interface SkipSetResultItem {
+  player: Player;
+  status: "sold" | "unsold";
+  teamId?: string;
+  price?: number;
+  usedRtm?: boolean;
+}
+
+export interface SkipSetSummary {
+  setIndex: number;
+  setName: string;
+  results: SkipSetResultItem[];
+}
+
 export interface GameState {
   saveId: string;
   saveCreatedAt: string;
