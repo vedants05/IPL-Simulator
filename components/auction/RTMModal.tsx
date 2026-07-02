@@ -28,10 +28,9 @@ export default function RTMModal() {
   const isUserWinner = winnerTeamId === userTeamId;
 
   const userTeam = teams[userTeamId];
-  const rtmLeft = (userTeam?.rtmCardsTotal ?? 0) - (userTeam?.rtmCardsUsed ?? 0);
-
-  // ---- Phase: offer — user is original team ----
+  const rtmLeft = (userTeam?.rtmCardsTotal ?? 0) - (userTeam?.rtmCardsUsed ?? 0);  // ---- Phase: offer — user is original team ----
   if (phase === "offer" && isUserOriginal) {
+    const canAfford = (userTeam?.remainingPurse ?? 0) >= baseAmount;
     return (
       <div className="absolute inset-0 z-40 flex items-center justify-center bg-border/80 backdrop-blur-sm">
         <div
@@ -55,7 +54,7 @@ export default function RTMModal() {
               {" "}This player previously played for you. Exercise RTM to match this bid.
             </p>
 
-            <div className="flex gap-0 border-2 border-border mb-5 bg-white">
+            <div className="flex gap-0 border-2 border-border mb-4 bg-white">
               {[
                 { label: "RTM Cards Left", value: rtmLeft },
                 { label: "Match Price", value: crore(baseAmount), highlight: true },
@@ -74,6 +73,12 @@ export default function RTMModal() {
               ))}
             </div>
 
+            {!canAfford && (
+              <div className="font-space-mono text-[10px] text-red-600 font-bold mb-3 uppercase">
+                ⚠️ Insufficient purse ({crore(userTeam?.remainingPurse ?? 0)}) to match {crore(baseAmount)}.
+              </div>
+            )}
+
             <div className="font-space-mono text-[10px] text-text-secondary tracking-wider mb-4">
               Note: {winnerTeam?.shortName} may raise their bid after you RTM.
             </div>
@@ -81,7 +86,8 @@ export default function RTMModal() {
             <div className="flex gap-3">
               <button
                 onClick={exerciseRtm}
-                className="flex-1 font-anton text-[18px] py-4 tracking-wide hover:brightness-95 transition-all duration-200"
+                disabled={!canAfford}
+                className="flex-1 font-anton text-[18px] py-4 tracking-wide hover:brightness-95 transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
                 style={{ backgroundColor: "var(--team-cta-bg, #1d55c4)", color: "var(--team-cta-text, #ffffff)" }}
               >
                 USE RTM · {crore(baseAmount)}
@@ -103,6 +109,7 @@ export default function RTMModal() {
   if (phase === "winner_counter" && isUserWinner) {
     const minRaise = getNextBidAmount(baseAmount);
     const currentCounter = counterInput ?? minRaise;
+    const canAffordCounter = (userTeam?.remainingPurse ?? 0) >= currentCounter;
     return (
       <div className="absolute inset-0 z-40 flex items-center justify-center bg-border/80 backdrop-blur-sm">
         <div
@@ -156,10 +163,17 @@ export default function RTMModal() {
               >+</button>
             </div>
 
+            {!canAffordCounter && (
+              <div className="font-space-mono text-[10px] text-red-600 font-bold mb-3 uppercase">
+                ⚠️ Insufficient purse ({crore(userTeam?.remainingPurse ?? 0)}) for {crore(currentCounter)}.
+              </div>
+            )}
+
             <div className="flex gap-3">
               <button
                 onClick={() => { raiseCounter(currentCounter); setCounterInput(null); }}
-                className="flex-1 font-anton text-[16px] py-4 tracking-wide hover:brightness-95 transition-all duration-200"
+                disabled={!canAffordCounter}
+                className="flex-1 font-anton text-[16px] py-4 tracking-wide hover:brightness-95 transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
                 style={{ backgroundColor: "var(--team-cta-bg, #1d55c4)", color: "var(--team-cta-text, #ffffff)" }}
               >
                 RAISE TO {crore(currentCounter)}
@@ -179,6 +193,7 @@ export default function RTMModal() {
 
   // ---- Phase: original_match — user is original team, winner AI countered ----
   if (phase === "original_match" && isUserOriginal) {
+    const canAffordMatch = (userTeam?.remainingPurse ?? 0) >= raisedAmount;
     return (
       <div className="absolute inset-0 z-40 flex items-center justify-center bg-border/80 backdrop-blur-sm">
         <div
@@ -202,7 +217,7 @@ export default function RTMModal() {
               {" "}Match this price to take the player — or fold and they keep it.
             </p>
 
-            <div className="flex gap-0 border-2 border-border mb-5 bg-white">
+            <div className="flex gap-0 border-2 border-border mb-4 bg-white">
               {[
                 { label: "Original Bid", value: crore(baseAmount) },
                 { label: "Counter Bid", value: crore(raisedAmount), highlight: true },
@@ -221,10 +236,17 @@ export default function RTMModal() {
               ))}
             </div>
 
+            {!canAffordMatch && (
+              <div className="font-space-mono text-[10px] text-red-600 font-bold mb-3 uppercase">
+                ⚠️ Insufficient purse ({crore(userTeam?.remainingPurse ?? 0)}) to match {crore(raisedAmount)}.
+              </div>
+            )}
+
             <div className="flex gap-3">
               <button
                 onClick={matchCounter}
-                className="flex-1 font-anton text-[18px] py-4 tracking-wide hover:brightness-95 transition-all duration-200"
+                disabled={!canAffordMatch}
+                className="flex-1 font-anton text-[18px] py-4 tracking-wide hover:brightness-95 transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
                 style={{ backgroundColor: "var(--team-cta-bg, #1d55c4)", color: "var(--team-cta-text, #ffffff)" }}
               >
                 MATCH · {crore(raisedAmount)}

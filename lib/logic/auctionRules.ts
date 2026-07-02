@@ -282,7 +282,8 @@ export function getSquadConstraintWarnings(team: Team, players: Record<string, P
 export function findRTMEligibleTeam(
   player: Player,
   teams: Record<string, Team>,
-  winnerTeamId: string
+  winnerTeamId: string,
+  requiredPurse?: number
 ): string | null {
   const h2025 = player.iplHistory.find(
     (h) => h.season === "2025" && h.teamId !== winnerTeamId
@@ -293,5 +294,6 @@ export function findRTMEligibleTeam(
   if (team.rtmCardsUsed >= team.rtmCardsTotal) return null;
   if (player.nationality === "Overseas" && team.overseasPlayersCurrent >= team.overseasPlayersMax) return null;
   if (team.squad.length >= team.maxSquadSize) return null;
+  if (requiredPurse !== undefined && team.remainingPurse < requiredPurse) return null;
   return h2025.teamId;
 }
