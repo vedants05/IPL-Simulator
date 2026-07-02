@@ -70,11 +70,7 @@ export default function AuctionPage() {
             <span className="font-space-mono font-bold text-[11px] tracking-[.12em] text-white">LIVE</span>
           </div>
           <span className="font-anton text-[22px] leading-none text-text-primary">
-            MEGA AUCTION &apos;25
-          </span>
-          <span className="font-space-mono text-[11px] text-text-secondary">
-            SET {auction.currentSetIndex + 1}/{auction.sets.length}
-            {currentSet ? ` · ${currentSet.name.toUpperCase()}` : ""}
+            MEGA AUCTION &apos;26
           </span>
         </div>
 
@@ -136,37 +132,54 @@ export default function AuctionPage() {
           <UnsoldAnimation />
           <RTMModal />
 
-          {needsStart ? (
-            <div className="flex-1 flex items-center justify-center">
-              <div className="text-center px-8">
-                <div className="font-space-mono font-bold text-[11px] tracking-[.16em] text-text-secondary mb-4 uppercase">
-                  Ready to Begin
+          <div className="flex-1 flex flex-col overflow-hidden">
+            {/* Active Set Banner */}
+            <div
+              className="h-[36px] px-6 flex items-center justify-between shrink-0 bg-surface text-[#16130f]"
+              style={{ borderBottom: "2px solid #16130f" }}
+            >
+              <div className="flex items-center gap-2.5">
+                <span className="font-space-mono font-bold text-[9px] tracking-widest uppercase bg-[#16130f] text-white px-2 py-0.5 rounded-[3px]">
+                  SET {auction.currentSetIndex + 1} OF {auction.sets.length}
+                </span>
+                <span className="font-space-mono font-bold text-[11px] tracking-wider text-text-primary uppercase">
+                  {currentSet?.name ? currentSet.name.replace(/^Set \d+:\s*/i, "") : ""}
+                </span>
+              </div>
+            </div>
+
+            {needsStart ? (
+              <div className="flex-1 flex items-center justify-center">
+                <div className="text-center px-8">
+                  <div className="font-space-mono font-bold text-[11px] tracking-[.16em] text-text-secondary mb-4 uppercase">
+                    Ready to Begin
+                  </div>
+                  <h2 className="font-anton text-[48px] leading-none text-text-primary uppercase mb-2">
+                    Auction Day
+                  </h2>
+                  <p className="font-barlow text-[14px] text-text-secondary mb-8">
+                    {auction.sets.reduce((s, set) => s + set.playerIds.length, 0)} players across{" "}
+                    {auction.sets.length} sets
+                  </p>
+                  <button
+                    onClick={startAuction}
+                    className="bg-border text-accent font-anton text-[21px] tracking-wide px-10 py-5 hover:bg-black transition-colors"
+                  >
+                    START AUCTION
+                  </button>
                 </div>
-                <h2 className="font-anton text-[48px] leading-none text-text-primary uppercase mb-2">
-                  Auction Day
-                </h2>
-                <p className="font-barlow text-[14px] text-text-secondary mb-8">
-                  {auction.sets.reduce((s, set) => s + set.playerIds.length, 0)} players across{" "}
-                  {auction.sets.length} sets
-                </p>
-                <button
-                  onClick={startAuction}
-                  className="bg-border text-accent font-anton text-[21px] tracking-wide px-10 py-5 hover:bg-black transition-colors"
-                >
-                  START AUCTION
-                </button>
               </div>
-            </div>
-          ) : auction.currentPlayer ? (
-            <div className="flex-1 flex flex-col overflow-hidden">
-              {/* Player card — scrollable when Player File is expanded */}
-              <div className="overflow-y-auto" style={{ maxHeight: "calc(100% - 248px)" }}>
-                <PlayerCard player={auction.currentPlayer} />
-              </div>
-              {/* Bid panel — sits directly below player content, no gap */}
-              <BidPanel />
-            </div>
-          ) : null}
+            ) : auction.currentPlayer ? (
+              <>
+                {/* Player card — scrollable when Player File is expanded */}
+                <div className="overflow-y-auto" style={{ maxHeight: "calc(100% - 280px)" }}>
+                  <PlayerCard player={auction.currentPlayer} />
+                </div>
+                {/* Bid panel — sits directly below player content, no gap */}
+                <BidPanel />
+              </>
+            ) : null}
+          </div>
         </div>
 
         {/* Zone 3: Live Bids — 256px */}
@@ -179,7 +192,7 @@ export default function AuctionPage() {
 
         {/* Zone 4: Your Squad — 264px */}
         <div
-          className="w-[264px] shrink-0 flex flex-col overflow-hidden"
+          className="w-[264px] shrink-0 flex flex-col relative z-30"
           style={{ borderLeft: "2px solid #16130f" }}
         >
           <UserSquad />

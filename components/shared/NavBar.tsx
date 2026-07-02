@@ -99,11 +99,11 @@ export default function NavBar() {
 
             <button
               onClick={togglePaused}
-              className={`px-3.5 rounded font-space-mono font-bold text-[10px] tracking-wider uppercase transition-all duration-150 flex items-center justify-center h-[28px]
-                ${isPaused
-                  ? "bg-danger text-white hover:brightness-95 animate-pulse"
-                  : "hover:brightness-110"
-                }`}
+              className={`px-3.5 rounded font-space-mono font-bold text-[10px] tracking-wider uppercase transition-all duration-150 flex items-center justify-center h-[28px] cursor-pointer ${
+                isPaused
+                  ? "bg-danger text-white hover:bg-red-600 hover:scale-105 active:scale-95 animate-pulse"
+                  : "hover:bg-[#1d55c4] hover:text-white hover:scale-105 active:scale-95"
+              }`}
               style={{
                 border: "1.5px solid #16130f",
                 backgroundColor: isPaused ? undefined : "var(--team-bid-bg, #111622)",
