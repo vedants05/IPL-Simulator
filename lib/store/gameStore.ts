@@ -421,6 +421,9 @@ export const useGameStore = create<Store>()(
         if (!auction.currentPlayer) return;
 
         const { winnerTeamId, baseAmount } = auction.rtm;
+        const userTeam = teams[userTeamId];
+        if (userTeam && userTeam.remainingPurse < baseAmount) return; // Cannot afford RTM
+
         const player = auction.currentPlayer;
         const winnerValuation = getCachedValuation(winnerTeamId);
 
@@ -470,10 +473,13 @@ export const useGameStore = create<Store>()(
       // ---- RTM: user is winner, AI is original team ----
 
       raiseCounter: (amount) => {
-        const { auction, userTeamId } = get();
+        const { auction, teams, userTeamId } = get();
         if (!auction?.rtm || auction.rtm.phase !== "winner_counter") return;
         if (auction.rtm.winnerTeamId !== userTeamId) return;
         if (!auction.currentPlayer) return;
+
+        const userTeam = teams[userTeamId];
+        if (userTeam && userTeam.remainingPurse < amount) return; // Cannot afford raised amount
 
         const { originalTeamId, baseAmount } = auction.rtm;
         const player = auction.currentPlayer;
@@ -503,12 +509,15 @@ export const useGameStore = create<Store>()(
       // ---- RTM: user is original team, counter-bid phase ----
 
       matchCounter: () => {
-        const { auction, userTeamId } = get();
+        const { auction, teams, userTeamId } = get();
         if (!auction?.rtm || auction.rtm.phase !== "original_match") return;
         if (auction.rtm.originalTeamId !== userTeamId) return;
         if (!auction.currentPlayer) return;
 
         const { winnerTeamId, baseAmount, raisedAmount } = auction.rtm;
+        const userTeam = teams[userTeamId];
+        if (userTeam && userTeam.remainingPurse < raisedAmount) return; // Cannot afford raised amount
+
         const player = auction.currentPlayer;
         doRTMTransfer(userTeamId, winnerTeamId, player, raisedAmount, baseAmount);
       },
@@ -568,7 +577,7 @@ export const useGameStore = create<Store>()(
 
       dismissSoldFlash: () => {
         set((state) => ({
-          auction: state.auction ? { ...state.auction, soldFlash: null } : null,
+          auction: state.auction ? { ...state.auction, soldFlash: null, unsoldFlash: null } : null,
         }));
       },
 
@@ -668,6 +677,14 @@ function doRTMTransfer(
   transferPrice: number,
   refundAmount: number,
 ) {
+  const state = useGameStore.getState();
+  const origTeam = state.teams[originalTeamId];
+  if (!origTeam || origTeam.remainingPurse < transferPrice) {
+    // Original team cannot afford transferPrice -> fallback: winner team keeps player!
+    doWinnerKeepsAtCounter(winnerTeamId, refundAmount, refundAmount, player);
+    return;
+  }
+
   useGameStore.setState((s) => {
     const newTeams = { ...s.teams };
 
@@ -892,7 +909,7 @@ function hammerFall() {
 
   // Find RTM-eligible team (any team, not just user)
   const currentState = useGameStore.getState();
-  const rtmTeamId = findRTMEligibleTeam(player, currentState.teams, highBidder);
+  const rtmTeamId = findRTMEligibleTeam(player, currentState.teams, highBidder, soldAmount);
 
   if (!rtmTeamId) {
     // No RTM: flash and advance
@@ -1022,45 +1039,50 @@ function advanceToNextLot() {
         .filter(Boolean)
         .map((p) => ({ ...p, basePrice: Math.max(20, Math.floor(p.basePrice / 2)) }));
 
-      const acceleratedSets = [{
-        id: "accelerated",
-        name: "Accelerated Auction",
-        playerIds: unsoldPlayers.map((p) => p.id),
-        currentIndex: 0,
-        isCompleted: false,
-      }];
+      if (unsoldPlayers.length > 0) {
+        const acceleratedSets = [{
+          id: "accelerated",
+          name: "Accelerated Auction",
+          playerIds: unsoldPlayers.map((p) => p.id),
+          currentIndex: 0,
+          isCompleted: false,
+        }];
 
-      const firstPlayer = unsoldPlayers[0];
+        const firstPlayer = unsoldPlayers[0];
 
-      useGameStore.setState((s) => ({
-        players: {
-          ...s.players,
-          ...Object.fromEntries(unsoldPlayers.map((p) => [p.id, p])),
-        },
-        auction: s.auction
-          ? {
-              ...s.auction,
-              sets: acceleratedSets,
-              currentSetIndex: 0,
-              currentLotIndex: s.auction.currentLotIndex + 1,
-              currentPlayer: firstPlayer,
-              currentBid: firstPlayer.basePrice,
-              currentHighBidderTeamId: null,
-              biddingHistory: [],
-              timerSeconds: 10,
-              isAcceleratedPhase: true,
-              unsoldPlayerIds: [],
-              soldFlash: null,
-              unsoldFlash: null,
-            }
-          : null,
-      }));
-      return;
+        useGameStore.setState((s) => ({
+          players: {
+            ...s.players,
+            ...Object.fromEntries(unsoldPlayers.map((p) => [p.id, p])),
+          },
+          auction: s.auction
+            ? {
+                ...s.auction,
+                sets: acceleratedSets,
+                currentSetIndex: 0,
+                currentLotIndex: s.auction.currentLotIndex + 1,
+                currentPlayer: firstPlayer,
+                currentBid: firstPlayer.basePrice,
+                currentHighBidderTeamId: null,
+                biddingHistory: [],
+                timerSeconds: 10,
+                isAcceleratedPhase: true,
+                unsoldPlayerIds: [],
+                soldFlash: null,
+                unsoldFlash: null,
+              }
+            : null,
+        }));
+
+        resetLotCache();
+        scheduleAIBids(firstPlayer);
+        return;
+      }
     }
 
     // Auction complete
     useGameStore.setState((s) => ({
-      auction: s.auction ? { ...s.auction, phase: "completed", currentPlayer: null } : null,
+      auction: s.auction ? { ...s.auction, phase: "completed", currentPlayer: null, soldFlash: null, unsoldFlash: null } : null,
     }));
     return;
   }
