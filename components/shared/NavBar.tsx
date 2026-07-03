@@ -1,4 +1,5 @@
 "use client";
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useGameStore } from "@/lib/store/gameStore";
@@ -11,7 +12,40 @@ const NAV_ITEMS = [
 
 export default function NavBar() {
   const pathname = usePathname();
-  const { teams, userTeamId, currentDate, auction, isPaused, togglePaused, speed, increaseSpeed, decreaseSpeed, skipCurrentSet } = useGameStore();
+  const {
+    teams,
+    userTeamId,
+    currentDate,
+    auction,
+    isPaused,
+    setPaused,
+    togglePaused,
+    speed,
+    increaseSpeed,
+    decreaseSpeed,
+    skipCurrentSet,
+  } = useGameStore();
+
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [wasPausedBeforeConfirm, setWasPausedBeforeConfirm] = useState(false);
+
+  const handleSkipPress = () => {
+    setWasPausedBeforeConfirm(isPaused);
+    setPaused(true);
+    setShowConfirm(true);
+  };
+
+  const handleConfirm = () => {
+    setShowConfirm(false);
+    skipCurrentSet();
+  };
+
+  const handleCancel = () => {
+    setShowConfirm(false);
+    if (!wasPausedBeforeConfirm) {
+      setPaused(false);
+    }
+  };
   const userTeam = teams[userTeamId];
   const isAuctionPage = pathname.startsWith("/game/auction");
 
@@ -66,19 +100,77 @@ export default function NavBar() {
         {isAuctionPage && auction && auction.phase === "live" && (
           <>
             {/* Skip Set Button */}
-            <button
-              onClick={skipCurrentSet}
-              className="px-3 rounded font-space-mono font-bold text-[10px] tracking-wider uppercase transition-all duration-150 flex items-center justify-center h-[28px] cursor-pointer hover:bg-[#1d55c4] hover:text-white hover:scale-105 active:scale-95"
-              style={{
-                border: "1.5px solid #16130f",
-                backgroundColor: "var(--team-bid-bg, #111622)",
-                backgroundImage: "var(--team-bid-tinge)",
-                color: "#ffffff",
-              }}
-              title="Skip remaining players in current set"
-            >
-              ⏭ Skip Set
-            </button>
+            <div className="relative flex items-center">
+              <button
+                onClick={handleSkipPress}
+                className="px-3 rounded font-space-mono font-bold text-[10px] tracking-wider uppercase transition-all duration-150 flex items-center justify-center h-[28px] cursor-pointer hover:bg-[#1d55c4] hover:text-white hover:scale-105 active:scale-95"
+                style={{
+                  border: "1.5px solid #16130f",
+                  backgroundColor: "var(--team-bid-bg, #111622)",
+                  backgroundImage: "var(--team-bid-tinge)",
+                  color: "#ffffff",
+                }}
+                title="Skip remaining players in current set"
+              >
+                ⏭ Skip Set
+              </button>
+
+              {showConfirm && (
+                <>
+                  {/* Invisible overlay for clicking outside */}
+                  <div
+                    className="fixed inset-0 z-40 cursor-default"
+                    onClick={handleCancel}
+                  />
+                  {/* Small confirmation tile */}
+                  <div
+                    className="absolute right-0 top-full mt-2 w-64 p-4 z-50 rounded shadow-xl text-left border-2 flex flex-col gap-3 font-space-mono animate-in fade-in slide-in-from-top-2 duration-150"
+                    style={{
+                      backgroundColor: "var(--surface, #efece3)",
+                      color: "var(--ink, #16130f)",
+                      borderColor: "var(--ink, #16130f)",
+                    }}
+                  >
+                    <div className="flex flex-col gap-1.5">
+                      <div className="text-[10px] font-bold tracking-wider uppercase text-danger flex items-center gap-1">
+                        ⚠️ Skip Set?
+                      </div>
+                      <p className="text-[10px] leading-normal font-bold">
+                        Skip all remaining players in{" "}
+                        <span className="underline decoration-wavy decoration-[#1d55c4]">
+                          {auction?.sets?.[auction?.currentSetIndex]?.name || "current set"}
+                        </span>
+                        ?
+                      </p>
+                      <p className="text-[9px] leading-normal opacity-85 font-medium">
+                        This will instantly simulate and finalize the auction for the rest of this set.
+                      </p>
+                    </div>
+
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handleConfirm}
+                        className="flex-1 h-[26px] rounded font-bold text-[9px] uppercase tracking-wider transition-all cursor-pointer bg-danger text-white hover:bg-red-600 active:scale-95 flex items-center justify-center"
+                        style={{
+                          border: "1.5px solid var(--ink, #16130f)",
+                        }}
+                      >
+                        Confirm
+                      </button>
+                      <button
+                        onClick={handleCancel}
+                        className="flex-1 h-[26px] rounded font-bold text-[9px] uppercase tracking-wider transition-all cursor-pointer bg-transparent text-[#16130f] hover:bg-black/5 active:scale-95 flex items-center justify-center"
+                        style={{
+                          border: "1.5px solid var(--ink, #16130f)",
+                        }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
             {/* Speed Controls */}
             <div
               className="flex items-center gap-0 rounded select-none h-[28px] overflow-hidden transition-colors duration-200"
