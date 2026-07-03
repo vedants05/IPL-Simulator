@@ -146,7 +146,7 @@ export default function PlayerCard({ player, soldPrice, collapsible = true }: Pr
               {soldPrice !== undefined
                 ? crore(soldPrice)
                 : player.currentTeamId
-                ? crore(player.iplHistory.find((h) => h.season === "2026")?.price ?? player.basePrice)
+                ? crore(player.iplHistory.find((h) => h.season === "2027")?.price ?? player.iplHistory[player.iplHistory.length - 1]?.price ?? player.basePrice)
                 : crore(player.basePrice)}
             </span>
           </div>

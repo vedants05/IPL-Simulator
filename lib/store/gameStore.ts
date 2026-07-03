@@ -284,7 +284,18 @@ export const useGameStore = create<Store>()(
           retainedIds.forEach((pid) => {
             const p = players[pid];
             if (!p) return;
-            updatedPlayers[pid] = { ...p, isRetained: true, retainedByTeamId: team.id };
+            const retentionCost = getPlayerRetentionCost(pid, retainedIds, players);
+            const updatedHistory = [
+              ...p.iplHistory.filter((h) => h.season !== "2027"),
+              { teamId: team.id, season: "2027", price: retentionCost },
+            ];
+            updatedPlayers[pid] = {
+              ...p,
+              isRetained: true,
+              retainedByTeamId: team.id,
+              currentTeamId: team.id,
+              iplHistory: updatedHistory,
+            };
             const poolIdx = allPlayerIds.indexOf(pid);
             if (poolIdx !== -1) allPlayerIds.splice(poolIdx, 1);
           });
@@ -302,8 +313,25 @@ export const useGameStore = create<Store>()(
           };
         });
 
-        // User team: clear squad to only retained players, set correct RTM cards
+        // User team retentions history update
         const userTeam = updatedTeams[userTeamId];
+        userTeam.retainedPlayers.forEach((pid) => {
+          const p = updatedPlayers[pid];
+          if (!p) return;
+          const retentionCost = getPlayerRetentionCost(pid, userTeam.retainedPlayers, players);
+          const updatedHistory = [
+            ...p.iplHistory.filter((h) => h.season !== "2027"),
+            { teamId: userTeamId, season: "2027", price: retentionCost },
+          ];
+          updatedPlayers[pid] = {
+            ...p,
+            isRetained: true,
+            retainedByTeamId: userTeamId,
+            currentTeamId: userTeamId,
+            iplHistory: updatedHistory,
+          };
+        });
+
         updatedTeams[userTeamId] = {
           ...userTeam,
           squad: userTeam.retainedPlayers,

@@ -201,7 +201,7 @@ export default function TeamPurseList() {
           <div className="flex-1 overflow-y-auto">
             {(() => {
               const sale = auction?.saleHistory.find((s: any) => s.playerId === selectedPlayer.id);
-              const salary = sale?.price ?? selectedPlayer.iplHistory.find((h) => h.season === "2026")?.price ?? selectedPlayer.basePrice;
+              const salary = sale?.price ?? selectedPlayer.iplHistory.find((h) => h.season === "2027")?.price ?? selectedPlayer.iplHistory[selectedPlayer.iplHistory.length - 1]?.price ?? selectedPlayer.basePrice;
               return <PlayerCard player={selectedPlayer} soldPrice={salary} collapsible={false} />;
             })()}
           </div>

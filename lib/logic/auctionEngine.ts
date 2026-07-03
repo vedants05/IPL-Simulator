@@ -972,7 +972,20 @@ export function computeTeamValuation(
     return eliteFloorValuation(player, team, comp);
   }
 
-  const base = starToBaseLakhs(player.starRating);
+  const priorEntry = player.iplHistory.find((h) => h.season === "2026");
+  const priorSalary = priorEntry ? priorEntry.price : 0;
+
+  // Market anchor combines star-rating anchor with prior IPL salary precedent.
+  // Proven high-earning players (e.g. ₹10-18 Cr prior salary like Riyan Parag, Nitish Reddy, etc.)
+  // retain strong valuation floors (70-90% of prior salary) so market precedents hold.
+  const starAnchor = starToBaseLakhs(player.starRating);
+  let salaryAnchor = 0;
+  if (priorSalary > 0) {
+    const isYouthOrStar = player.age <= 25 || ratingOf(player) >= 80 || isYoungGun(player) || (player.reputation ?? 0) >= 8;
+    const anchorPct = isYouthOrStar ? u(0.72, 0.92) : u(0.50, 0.70);
+    salaryAnchor = priorSalary * anchorPct;
+  }
+  const base = Math.max(starAnchor, salaryAnchor);
 
   // Form: rating sensitivity, floor and slope both sampled
   const relevantRating = ratingOf(player);
