@@ -107,9 +107,11 @@ export function buildAuctionSets(players: Player[], isAccelerated = false): Auct
   // Only unretained players enter the mega auction sets
   const playerPool = players.filter((p) => !p.isRetained);
 
-  // 1. Identify Marquee Players: Capped players with Rating >= 85
+  // 1. Identify Marquee Players: anyone rated 85+ headlines the auction —
+  // a proven uncapped superstar (Suryavanshi-type) is marquee billing too,
+  // and must come up while teams still have full purses.
   const marqueeEligible = playerPool
-    .filter((p) => p.isCapped && getRating(p) >= 85)
+    .filter((p) => getRating(p) >= 85)
     .sort((a, b) => getRating(b) - getRating(a));
 
   const marqueeIds = new Set(marqueeEligible.map((p) => p.id));

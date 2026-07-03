@@ -82,11 +82,36 @@ function isQualityPaceOption(p: Player, minRating = 78): boolean {
   return p.role === "All-Rounder" && /fast|medium|pace/i.test(p.bowlingStyle ?? "");
 }
 
-/** Elite = current skill 82+/4★+, or a high-ceiling wonderkid. */
+function potentialOf(p: Player): number {
+  return Math.max(p.potentialBatting ?? 0, p.potentialBowling ?? 0);
+}
+
+/** Elite = current skill 82+/4★+, or a young high-ceiling prospect. */
 function isEliteProspect(p: Player): boolean {
   if (ratingOf(p) >= 82 || p.starRating >= 4.0) return true;
-  const potRating = Math.max(p.potentialBatting ?? 0, p.potentialBowling ?? 0);
-  return potRating >= 88 && p.age <= 23;
+  return potentialOf(p) >= 86 && p.age <= 25;
+}
+
+/** Young high-ceiling prospect — future value priced into today's bid. */
+function isYoungGun(p: Player): boolean {
+  return p.age <= 25 && potentialOf(p) >= 85 && potentialOf(p) - ratingOf(p) >= 3;
+}
+
+// ---------------------------------------------------------------------------
+// Potential upside — young players with a high ceiling command real money even
+// while their current rating lags (franchises buy the next 5 years, not the
+// last one). Scales with youth, ceiling height and room left to grow.
+// ---------------------------------------------------------------------------
+function getPotentialMult(p: Player): number {
+  const cur = ratingOf(p);
+  const pot = potentialOf(p);
+  const gap = Math.max(0, pot - cur);
+  if (p.age > 26 || pot < 82) return 1.0;
+
+  const ageFactor    = clamp((28 - p.age) / 10, 0, 1);  // 18yo → 1.0, 27yo → 0.1
+  const gapNorm      = Math.min(gap, 15) / 15;           // room to grow
+  const ceilingNorm  = clamp((pot - 82) / 15, 0, 1);     // how high the ceiling is
+  return 1 + ageFactor * (gapNorm * u(0.30, 0.65) + ceilingNorm * u(0.25, 0.50));
 }
 
 type RoleGroup = "BAT" | "WK" | "AR" | "PACE" | "SPIN";
@@ -293,7 +318,7 @@ function getGuidelineBoost(
 // ---------------------------------------------------------------------------
 // Role need — sampled ranges, guideline-aware
 // ---------------------------------------------------------------------------
-function getRoleNeedMult(player: Player, comp: SquadComp, fsm: FSMState): number {
+function getRoleNeedMult(player: Player, comp: SquadComp, fsm: FSMState, quirks: TeamQuirks): number {
   const r = player.role;
 
   if (fsm === "Panic") {
@@ -307,9 +332,16 @@ function getRoleNeedMult(player: Player, comp: SquadComp, fsm: FSMState): number
   }
 
   if (r === "WK-Batsman") {
-    if (comp.wks === 0) return u(1.6, 2.5);
-    if (comp.wks === 1) return u(1.1, 1.7);
-    return u(0.45, 0.80);
+    // Keeper demand runs off the (fuzzed) keeper roster target — a squad
+    // wanting 3 keepers keeps paying for the 2nd and 3rd. Elite keepers
+    // (85+ bat) are premium middle-order assets regardless of the count.
+    let need: number;
+    if (comp.keepers === 0)                        need = u(1.7, 2.6);
+    else if (comp.keepers < quirks.keepersTarget)  need = u(1.15, 1.75);
+    else if (comp.keepers === quirks.keepersTarget) need = u(0.85, 1.10);
+    else                                            need = u(0.45, 0.80);
+    if ((player.currentBatting ?? 0) >= 82) need = Math.max(need, u(0.90, 1.15));
+    return need;
   }
 
   const bowlers = comp.pacers + comp.spinners;
@@ -513,6 +545,79 @@ function getDepletionMult(
 }
 
 // ---------------------------------------------------------------------------
+// Target list / purse planning — every team keeps "players in mind" that are
+// still to come in the auction, picked by ITS mentality: segment focus,
+// big-names preference, youth preference, loyalty to ex-players, and whatever
+// its current (post-retention) squad is lacking. While coveted targets remain
+// in the pool, the team holds back purse — dampening bids on non-targets —
+// and pushes a little harder when a coveted player is actually on the block.
+// ---------------------------------------------------------------------------
+function covetScore(
+  player: Player,
+  team: Team,
+  comp: SquadComp,
+  quirks: TeamQuirks
+): number {
+  // Only genuine difference-makers make a team's mental shortlist
+  if (!(ratingOf(player) >= 82 || player.starRating >= 4.0 || isYoungGun(player))) return 0;
+  if (player.nationality === "Overseas" && comp.overseas >= RULES.maxOverseas) return 0;
+
+  let s = 0;
+  // Segment focus: a team obsessed with overseas pacers shortlists them
+  s += (segmentFocusOf(team, player) - 60) / 35;                    // ≈ -0.86 … +1.0
+  // Star hunger: reputation × bigNamesPref
+  const rep = repOf(player);
+  if (rep >= 8) s += Math.max(0, (team.dna.bigNamesPref - 50) / 50) * ((rep - 7) / 3);
+  // Youth projects for youth-focused franchises
+  if (isYoungGun(player)) s += Math.max(0, (team.dna.prefYoungsters - 40) / 60) * 0.8;
+  // Squad holes the player would plug
+  if (fillsLaggingGuideline(player, comp, quirks)) s += 0.6;
+  // Loyalty pull toward ex-players
+  if (player.iplHistory.some(h => h.teamId === team.id)) s += (team.dna.loyalty / 100) * 0.4;
+  return s;
+}
+
+const COVET_THRESHOLD = 0.75;
+
+function getTargetReserveMult(
+  player: Player,
+  team: Team,
+  comp: SquadComp,
+  allPlayers: Record<string, Player>,
+  ctx: AuctionContext,
+  quirks: TeamQuirks
+): number {
+  // Is the CURRENT lot one of the team's coveted players?
+  if (covetScore(player, team, comp, quirks) >= COVET_THRESHOLD) {
+    return u(1.03, 1.15); // their man is on the block — push for him
+  }
+
+  // Otherwise: how much money do the still-to-come targets demand?
+  const targetCosts: number[] = [];
+  for (const id of ctx.remainingPlayerIds) {
+    const p = allPlayers[id];
+    if (!p || p.id === player.id) continue;
+    if (covetScore(p, team, comp, quirks) >= COVET_THRESHOLD) {
+      targetCosts.push(starToBaseLakhs(p.starRating) * 0.55);
+      if (targetCosts.length >= 8) break; // shortlists aren't encyclopedias
+    }
+  }
+  if (targetCosts.length === 0) return 1.0;
+
+  // Reserve for the top few wants, weighed against free spending room
+  const reserved = targetCosts
+    .sort((a, b) => b - a)
+    .slice(0, 4)
+    .reduce((a, b) => a + b, 0);
+  const headroom = Math.max(1, team.remainingPurse - minimumReserveLakhs(team, allPlayers));
+  const ratio = reserved / headroom;
+
+  if (ratio > 0.65) return u(0.60, 0.82); // wants are expensive — hold the wallet
+  if (ratio > 0.40) return u(0.78, 0.94);
+  return u(0.95, 1.03);
+}
+
+// ---------------------------------------------------------------------------
 // Urgency — trigger thresholds and response magnitudes sampled
 // ---------------------------------------------------------------------------
 function getUrgencyMult(comp: SquadComp, ctx: AuctionContext): number {
@@ -572,7 +677,8 @@ function getPersonalityMult(player: Player, team: Team, comp: SquadComp): number
   }
 
   // ── Youngster preference ──────────────────────────────────────────────────
-  if (player.age <= 23 && (player.potential === "Wonderkid" || player.potential === "Promising")) {
+  if ((player.age <= 23 && (player.potential === "Wonderkid" || player.potential === "Promising"))
+      || isYoungGun(player)) {
     const youthNorm = Math.max(0, (dna.prefYoungsters - 20) / 80);
     m *= 1.0 + youthNorm * u(0.08, 0.22);
   }
@@ -627,14 +733,21 @@ function shouldParticipate(
   quirks: TeamQuirks
 ): boolean {
   if (fsm === "Panic") {
-    return getRoleNeedMult(player, comp, fsm) > 1.5
+    return getRoleNeedMult(player, comp, fsm, quirks) > 1.5
       || fillsLaggingGuideline(player, comp, quirks)
       || Math.random() < u(0.18, 0.40);
   }
   if (player.role === "WK-Batsman" && comp.wks === 0) return true;
 
-  const excess = getRoleExcess(player.role, comp);
-  const star   = player.starRating;
+  // Keepers gauge interest against the team's own keeper target (usually 3,
+  // incl. part-timers) rather than the bare 2-WK league rule — quality
+  // keepers stay in demand deep into the auction.
+  const excess = player.role === "WK-Batsman"
+    ? comp.keepers - quirks.keepersTarget
+    : getRoleExcess(player.role, comp);
+  // Young high-ceiling prospects draw interest half a tier above their
+  // current rating — franchises scout the ceiling, not the resume
+  const star   = player.starRating + (isYoungGun(player) ? 0.5 : 0);
   const dna    = team.dna;
 
   let chance: number;
@@ -651,6 +764,11 @@ function shouldParticipate(
   // ── Guideline chasing: strongly boosts interest in lagging categories ────
   if (fillsLaggingGuideline(player, comp, quirks)) {
     chance += u(0.18, 0.38);
+  }
+
+  // ── Shortlist loyalty: a team almost always contests its coveted targets ─
+  if (covetScore(player, team, comp, quirks) >= COVET_THRESHOLD) {
+    chance += u(0.15, 0.35);
   }
 
   // ── Leadership hunting (Issue 8): until 2 leaders secured ────────────────
@@ -674,10 +792,10 @@ function shouldParticipate(
     chance += bigFactor * u(0.05, 0.20);
   }
 
-  // ── Youngster seekers ─────────────────────────────────────────────────────
-  if (player.age <= 23 && player.potential === "Wonderkid") {
+  // ── Youngster seekers — wonderkids AND young high-ceiling prospects ──────
+  if ((player.age <= 23 && player.potential === "Wonderkid") || isYoungGun(player)) {
     const youthFactor = Math.max(0, (dna.prefYoungsters - 40) / 60);
-    chance += youthFactor * u(0.04, 0.14);
+    chance += youthFactor * u(0.05, 0.16);
   }
 
   return Math.random() < clamp(chance, 0, 0.92);
@@ -698,13 +816,24 @@ function eliteFloorValuation(player: Player, team: Team, comp: SquadComp): numbe
   if (getRoleExcess(player.role, comp) >= 3) return 0;
 
   const rating = ratingOf(player);
-  const potRating = Math.max(player.potentialBatting ?? 0, player.potentialBowling ?? 0);
+  const potRating = potentialOf(player);
   const prob = rating >= 88 ? 0.95
     : rating >= 85 ? 0.80
     : potRating >= 90 && player.age <= 23 ? 0.75 // hot wonderkids draw floor bids too
     : 0.55;
   if (Math.random() > prob) return 0;
-  return Math.round(player.basePrice * u(1.05, 1.50));
+
+  // Floor scales with player CLASS, not base price — an uncapped star with a
+  // ₹50L base (Suryavanshi-type, rating 90) is still worth a real fraction of
+  // his market anchor even to a team that isn't chasing him. Young guns are
+  // classed half a tier up: the market floors their ceiling, not their CV.
+  const floorStar = isYoungGun(player)
+    ? Math.min(5.0, player.starRating + 0.5)
+    : player.starRating;
+  const classFloor = starToBaseLakhs(floorStar) * u(0.12, 0.30);
+  const baseFloor  = player.basePrice * u(1.05, 1.50);
+  const affordable = team.remainingPurse * 0.25;
+  return Math.round(Math.min(Math.max(baseFloor, classFloor), Math.max(baseFloor, affordable)));
 }
 
 // ---------------------------------------------------------------------------
@@ -765,32 +894,39 @@ export function computeTeamValuation(
     ? u(0.86, 0.94) + (relevantRating / 100) * u(0.14, 0.26)
     : u(0.94, 1.06);
 
-  const roleNeed = getRoleNeedMult(player, comp, fsm);
+  const roleNeed = getRoleNeedMult(player, comp, fsm, quirks);
   if (roleNeed < 0.1) return eliteFloorValuation(player, team, comp);
 
   const natMult = getNatMult(player, comp, team, allPlayers, quirks);
   if (natMult === 0) return 0;
 
   const guideline   = getGuidelineBoost(player, comp, quirks, ctx);
+  const potential   = getPotentialMult(player);
   const loyalty     = getLoyaltyMult(player, team);
   const personality = getPersonalityMult(player, team, comp);
   const budget      = getBudgetMult(team);
   const scarcity    = getScarcityMult(player, allPlayers, ctx);
   const depletion   = getDepletionMult(player, team, allPlayers, ctx, quirks);
+  const reserve     = getTargetReserveMult(player, team, comp, allPlayers, ctx, quirks);
   const urgency     = getUrgencyMult(comp, ctx);
 
   // Private market read: mid-tier players price on consensus (small sigma) so
   // they can't randomly explode; contested elite lots still diverge wildly.
-  const isMidTier = player.starRating >= 3.0 && player.starRating <= 3.5;
+  // Young high-ceiling prospects are exempt — their upside IS contested.
+  const isMidTier = player.starRating >= 3.0 && player.starRating <= 3.5 && !isYoungGun(player);
   const lnSigma = isMidTier ? u(0.12, 0.22) : u(0.18, 0.36);
   const lnVar   = lognormal(lnSigma);
 
-  const raw = base * formMult * roleNeed * natMult * guideline * loyalty
-    * personality * budget * scarcity * depletion * urgency
+  const raw = base * formMult * roleNeed * natMult * guideline * potential
+    * loyalty * personality * budget * scarcity * depletion * reserve * urgency
     * quirks.temperament * lnVar;
 
-  // Tier-dependent ceiling (Issues 3 + 5)
-  const cappedRaw = applyTierCeiling(raw, base, player.starRating);
+  // Tier-dependent ceiling (Issues 3 + 5). Young high-ceiling prospects are
+  // priced half a tier up — the mid-tier dampener must not crush wonderkids.
+  const effectiveStar = isYoungGun(player)
+    ? Math.min(5.0, player.starRating + 0.5)
+    : player.starRating;
+  const cappedRaw = applyTierCeiling(raw, base, effectiveStar);
 
   // Commitment: per-team fraction of REMAINING purse on one player,
   // tightened so a single superstar can't gut the squad build (Issue 5)
@@ -917,26 +1053,33 @@ const MAX_TOTAL = 6;
 /** Estimated market worth in lakhs — used only for retention decisions. */
 function estimateRetentionWorth(player: Player, team: Team): number {
   let worth = starToBaseLakhs(player.starRating);
+  const rep = repOf(player);
 
   // Skill: same shape as auction form multiplier
   const rating = ratingOf(player);
   if (rating > 0) worth *= 0.90 + (rating / 100) * 0.20;
 
-  // Age curve: youth appreciates, veterans depreciate
+  // Age curve: youth appreciates, veterans depreciate. Iconic veterans
+  // (rep 9-10) age far more gently — their brand + big-match value endures,
+  // which is exactly why real franchises retain their ageing faces.
   if      (player.age <= 24) worth *= u(1.05, 1.20);
   else if (player.age <= 29) worth *= u(1.00, 1.10);
   else if (player.age <= 33) worth *= u(0.88, 1.00);
-  else                        worth *= u(0.70, 0.90);
+  else                        worth *= rep >= 9 ? u(0.85, 0.98) : u(0.70, 0.90);
 
-  // Potential upside
-  if (player.potential === "Wonderkid")      worth *= u(1.10, 1.30);
-  else if (player.potential === "Promising") worth *= u(1.02, 1.15);
+  // Potential upside — same ceiling logic as the auction valuation, so a
+  // Parag-type (79 now, 86 ceiling, age 24) is valued on his next 5 years
+  worth *= getPotentialMult(player);
+  if (player.potential === "Wonderkid")      worth *= u(1.05, 1.18);
+  else if (player.potential === "Promising") worth *= u(1.00, 1.10);
 
-  // Reputation & leadership & finishing — the extended database fields
-  const rep = repOf(player);
-  if (rep >= 8) worth *= 1 + (rep - 7) * u(0.04, 0.10);
+  // Reputation & leadership & finishing — shaded by franchise mentality:
+  // star-hungry teams (bigNamesPref) overvalue reputation in retention too,
+  // youth-focused teams (prefYoungsters) overweight the potential upside
+  if (rep >= 8) worth *= 1 + (rep - 7) * u(0.04, 0.10) * (0.70 + 0.60 * (team.dna.bigNamesPref / 100));
   if ((player.captaincy ?? 0) >= 80) worth *= u(1.04, 1.14);
   if (isFinisherType(player) && (player.battingAggression ?? 0) >= 85) worth *= u(1.02, 1.12);
+  if (isYoungGun(player)) worth *= 1 + 0.15 * Math.max(0, (team.dna.prefYoungsters - 40) / 60);
 
   // Team lens: role valuation + segment focus shade the worth estimate
   const dna = team.dna;
@@ -949,8 +1092,9 @@ function estimateRetentionWorth(player: Player, team: Team): number {
   const focusNorm = clamp((segmentFocusOf(team, player) - 62.5) / 32.5, -1, 1);
   worth *= 1 + focusNorm * u(0.02, 0.08);
 
-  // Per-run noise so retention sets differ between saves
-  worth *= lognormal(u(0.10, 0.16));
+  // Per-run noise so retention sets differ between saves. High-reputation
+  // players get a tighter read — no franchise misjudges its own superstar.
+  worth *= lognormal(rep >= 8 ? u(0.05, 0.09) : u(0.10, 0.16));
 
   return worth;
 }
@@ -963,20 +1107,49 @@ export function decideAIRetentions(
   const loyaltyNorm = team.dna.loyalty / 100;
 
   // Spend guard: leave enough purse to build an 18-25 squad at auction.
-  // High-loyalty teams tolerate committing more of the purse to retentions.
-  const maxRetentionSpend = team.totalPurse * u(0.44, 0.58) * (0.92 + loyaltyNorm * 0.16);
+  // High-loyalty teams tolerate committing more of the purse to retentions,
+  // and icon-rich squads (multiple rep-9 faces) stretch further still —
+  // real MI/CSK-type franchises spent ₹75 Cr keeping their cores together.
+  const iconCount = squad.filter(p => repOf(p) >= 9).length;
+  const iconStretch = 1 + Math.min(2, Math.max(0, iconCount - 3)) * 0.05;
+  const maxRetentionSpend = team.totalPurse * u(0.46, 0.60) * (0.92 + loyaltyNorm * 0.16) * iconStretch;
+  // Cornerstones may push total retention spend beyond the normal guard —
+  // a franchise NEVER auctions its face to save auction budget
+  const cornerstoneSpendCap = team.totalPurse * 0.72;
 
   const isCappedPlayer = (p: Player) => p.isCapped || p.nationality === "Overseas";
 
-  const cappedCandidates = squad
-    .filter(isCappedPlayer)
-    .map(p => ({ p, worth: estimateRetentionWorth(p, team) }))
-    .sort((a, b) => b.worth - a.worth);
+  // Franchise cornerstones: elite, high-reputation faces (Rohit/Kohli/Bumrah
+  // class) plus any rep-10 legend (Dhoni). Processed FIRST and effectively
+  // never released — a franchise never auctions its identity.
+  const isCornerstone = (p: Player) =>
+    repOf(p) >= 10 || (repOf(p) >= 9 && ratingOf(p) >= 85);
 
+  const scored = squad
+    .filter(isCappedPlayer)
+    .map(p => ({ p, worth: estimateRetentionWorth(p, team) }));
+
+  const cornerstones = scored
+    .filter(c => isCornerstone(c.p))
+    .sort((a, b) => b.worth - a.worth)
+    .slice(0, MAX_CAPPED);
+  const cornerstoneIds = new Set(cornerstones.map(c => c.p.id));
+
+  const cappedCandidates = [
+    ...cornerstones,
+    ...scored.filter(c => !cornerstoneIds.has(c.p.id)).sort((a, b) => b.worth - a.worth),
+  ];
+
+  // Uncapped candidates — rep-10 legends (an uncapped Dhoni) jump the queue
+  // and ignore the spend guard: ₹4 Cr for the face of the franchise is free.
   const uncappedCandidates = squad
     .filter(p => !isCappedPlayer(p))
     .map(p => ({ p, worth: estimateRetentionWorth(p, team) }))
-    .sort((a, b) => b.worth - a.worth);
+    .sort((a, b) => {
+      const aIcon = isCornerstone(a.p) ? 1 : 0;
+      const bIcon = isCornerstone(b.p) ? 1 : 0;
+      return bIcon - aIcon || b.worth - a.worth;
+    });
 
   const retained: string[] = [];
   let cappedUsed = 0;
@@ -987,7 +1160,19 @@ export function decideAIRetentions(
   for (const { p, worth } of cappedCandidates) {
     if (cappedUsed >= MAX_CAPPED || retained.length >= MAX_TOTAL) break;
     const slabCost = RETENTION_SLABS[cappedUsed];
-    if (totalSpend + slabCost > maxRetentionSpend) break;
+    const cornerstone = cornerstoneIds.has(p.id);
+    const spendCap = cornerstone ? cornerstoneSpendCap : maxRetentionSpend;
+    if (totalSpend + slabCost > spendCap) {
+      if (cornerstone) continue; // never let a cheaper non-icon jump the queue
+      break;
+    }
+    if (cornerstone) {
+      // Faces of the franchise stay, essentially unconditionally
+      retained.push(p.id);
+      cappedUsed++;
+      totalSpend += slabCost;
+      continue;
+    }
 
     // Base bar: the player must be worth roughly the slab. Loyalty discounts
     // the bar by up to ~22%; disloyal teams demand a clear surplus. The bar
@@ -995,15 +1180,21 @@ export function decideAIRetentions(
     // must be justified against the auction flexibility it forfeits.
     let bar = slabCost * (1.06 - loyaltyNorm * 0.24) * (1 + cappedUsed * 0.06);
 
-    // Iconic-star override: high-loyalty franchises protect faces of the
-    // franchise (rep ≥ 9) even at a real financial deficit.
+    // Iconic-star override: EVERY franchise protects a rep-9/10 face of the
+    // franchise; loyalty only decides how deep a deficit they'll swallow
+    // (CSK at 93 → bar ~0.45× slab; LSG at 20 → ~0.67× slab).
     const rep = repOf(p);
-    if (rep >= 9 && loyaltyNorm >= 0.6 && ratingOf(p) >= 80) {
-      bar = Math.min(bar, slabCost * u(0.55, 0.75));
+    if (rep >= 9 && ratingOf(p) >= 78) {
+      bar = Math.min(bar, slabCost * (0.42 + (1 - loyaltyNorm) * 0.28) * u(0.95, 1.10));
+    } else if (rep >= 8 && loyaltyNorm >= 0.5 && ratingOf(p) >= 80) {
+      bar = Math.min(bar, slabCost * u(0.72, 0.92));
     }
-    // Elite young cornerstone: everyone fights to keep a sub-27 superstar
+    // Elite young cornerstone: everyone fights to keep a current or FUTURE
+    // superstar (Jaiswal-types by rating, wonderkids by ceiling)
     if (ratingOf(p) >= 88 && p.age <= 27) {
-      bar = Math.min(bar, slabCost * u(0.70, 0.88));
+      bar = Math.min(bar, slabCost * u(0.68, 0.86));
+    } else if (potentialOf(p) >= 88 && p.age <= 25) {
+      bar = Math.min(bar, slabCost * u(0.72, 0.90));
     }
 
     if (worth >= bar) {
@@ -1018,7 +1209,17 @@ export function decideAIRetentions(
   // ── Uncapped retentions: cheap slab, so the bar is a value multiple ──────
   for (const { p, worth } of uncappedCandidates) {
     if (uncappedUsed >= MAX_UNCAPPED || retained.length >= MAX_TOTAL) break;
-    if (totalSpend + UNCAPPED_SLAB > maxRetentionSpend) break;
+    const cornerstone = isCornerstone(p);
+    if (totalSpend + UNCAPPED_SLAB > (cornerstone ? cornerstoneSpendCap : maxRetentionSpend)) {
+      if (cornerstone) continue;
+      break;
+    }
+    if (cornerstone) {
+      retained.push(p.id);
+      uncappedUsed++;
+      totalSpend += UNCAPPED_SLAB;
+      continue;
+    }
 
     // Retain when worth clearly exceeds the ₹4 Cr slab; loyalty + youth help
     let bar = UNCAPPED_SLAB * u(1.35, 2.10) * (1.05 - loyaltyNorm * 0.15);
