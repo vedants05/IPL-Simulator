@@ -486,7 +486,7 @@ function getNatMult(
 // Bowling (PACE+SPIN = 0.42) now roughly matches batting (BAT+WK = 0.38) per
 // head, so a 4.0★ pacer is valued like a 4.0★ batter rather than a bargain.
 const ROLE_BUDGET_SHARE: Record<RoleGroup, number> = {
-  BAT: 0.24, WK: 0.10, AR: 0.18, PACE: 0.33, SPIN: 0.15,
+  BAT: 0.22, WK: 0.18, AR: 0.18, PACE: 0.26, SPIN: 0.18,
 };
 
 function roleGroupSpent(
@@ -502,7 +502,11 @@ function roleGroupSpent(
 }
 
 function roleEnvelope(group: RoleGroup, team: Team, quirks: TeamQuirks): number {
-  return team.totalPurse * ROLE_BUDGET_SHARE[group] * quirks.roleTilt[group];
+  let share = ROLE_BUDGET_SHARE[group];
+  if (group === "WK") {
+    share = Math.max(share, ROLE_BUDGET_SHARE["BAT"] * 0.90);
+  }
+  return team.totalPurse * share * quirks.roleTilt[group];
 }
 
 // ---------------------------------------------------------------------------
@@ -766,15 +770,19 @@ function getPersonalityMult(player: Player, team: Team, comp: SquadComp): number
   const focusNorm = clamp((focus - 62.5) / 32.5, -1, 1);
   m *= 1.0 + focusNorm * u(0.04, 0.13);
 
-  // ── Elite bowler premium ──────────────────────────────────────────────────
-  // Match-winning bowling is scarcer than the deep pace pool's average price
-  // suggests. Franchises pay a real premium for a genuinely top bowler
-  // (82+ rating), scaled by how much they value bowling — so quality pacers
-  // like Harshit Rana don't clear at journeyman prices.
-  if ((player.role === "Pace Bowler" || player.role === "Spin Bowler") && ratingOf(player) >= 82) {
-    const ratingNorm = clamp((ratingOf(player) - 82) / 10, 0, 1);
+  // ── Elite bowler & spinner premium ──────────────────────────────────────────
+  if ((player.role === "Pace Bowler" || player.role === "Spin Bowler") && ratingOf(player) >= 78) {
+    const ratingNorm = clamp((ratingOf(player) - 78) / 14, 0, 1);
     const bowlWeight = 0.6 + (team.dna.bowlValue / 100) * 0.7;
-    m *= 1.0 + (0.10 + ratingNorm * 0.22) * bowlWeight;
+    const spinBonus = player.role === "Spin Bowler" ? 0.08 : 0;
+    m *= 1.0 + (0.12 + ratingNorm * 0.28 + spinBonus) * bowlWeight;
+  }
+
+  // ── Elite wicket-keeper premium ────────────────────────────────────────────
+  if (isKeeper(player) && (ratingOf(player) >= 78 || player.starRating >= 3.5)) {
+    const wkNorm = clamp((ratingOf(player) - 78) / 14, 0, 1);
+    const batWeight = 0.6 + (team.dna.batValue / 100) * 0.7;
+    m *= 1.0 + (0.14 + wkNorm * 0.28) * batWeight;
   }
 
   return m;
