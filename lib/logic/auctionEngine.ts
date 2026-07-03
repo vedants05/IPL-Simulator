@@ -86,13 +86,6 @@ function potentialOf(p: Player): number {
   return Math.max(p.potentialBatting ?? 0, p.potentialBowling ?? 0);
 }
 
-/** Elite = current skill 82+/4★+, or a young high-ceiling prospect. */
-function isEliteProspect(p: Player): boolean {
-  if (ratingOf(p) >= 82 || p.starRating >= 4.0) return true;
-  return potentialOf(p) >= 86 && p.age <= 25;
-}
-
-/** Young high-ceiling prospect — future value priced into today's bid. */
 function isYoungGun(p: Player): boolean {
   return p.age <= 25 && potentialOf(p) >= 85 && potentialOf(p) - ratingOf(p) >= 3;
 }
@@ -175,16 +168,6 @@ function getSquadComp(squad: Player[]): SquadComp {
   };
 }
 
-function totalMissingSlots(comp: SquadComp): number {
-  return (
-    Math.max(0, RULES.batters     - comp.batters)     +
-    Math.max(0, RULES.wks         - comp.wks)         +
-    Math.max(0, RULES.allrounders - comp.allrounders) +
-    Math.max(0, RULES.spinners    - comp.spinners)     +
-    Math.max(0, RULES.pacers      - comp.pacers)
-  );
-}
-
 // ---------------------------------------------------------------------------
 // Per-auction team quirks — each team samples its own fuzzed roster targets,
 // temperament and budget envelopes ONCE per auction, so team plans differ
@@ -207,6 +190,7 @@ let _teamQuirks: Record<string, TeamQuirks> = {};
 
 export function resetAuctionQuirks() {
   _teamQuirks = {};
+  _teamPlans = {};
 }
 
 function getQuirks(team: Team): TeamQuirks {
@@ -255,41 +239,203 @@ function getQuirks(team: Team): TeamQuirks {
 }
 
 // ---------------------------------------------------------------------------
-// FSM — panic triggers now watch the roster guidelines, not just raw counts
+// Prior-salary anchor — a proven earner (Parag ₹14 Cr, Nitish Reddy…) keeps a
+// strong valuation floor tied to what the market last paid, weighted toward
+// youth/quality so a young ₹14 Cr all-rounder isn't priced like a journeyman.
 // ---------------------------------------------------------------------------
-type FSMState = "Snoozing" | "Hunting" | "Panic";
-
-function getFSMState(team: Team, comp: SquadComp, ctx: AuctionContext, quirks: TeamQuirks): FSMState {
-  const slotsToMin = Math.max(0, RULES.minTotal - comp.total);
-  const prog = ctx.totalLots > 0 ? ctx.currentLotIndex / ctx.totalLots : 0;
-
-  if (slotsToMin > 0 && prog > u(0.50, 0.66)) return "Panic";
-  if (slotsToMin >= 4 && prog > u(0.42, 0.55)) return "Panic";
-  if (comp.keepers === 0 && prog > u(0.42, 0.58)) return "Panic";
-  // Guideline lag panic — badly behind on multiple targets late in the auction
-  const lags =
-    (comp.openers     < quirks.openersTarget     - 1 ? 1 : 0) +
-    (comp.keepers     < quirks.keepersTarget     - 1 ? 1 : 0) +
-    (comp.qualityPace < quirks.qualityPaceTarget - 1 ? 1 : 0) +
-    (comp.qualitySpin < quirks.qualitySpinTarget - 1 ? 1 : 0) +
-    (comp.allrounders < quirks.arTarget          - 1 ? 1 : 0);
-  if (lags >= 2 && prog > u(0.60, 0.75)) return "Panic";
-
-  const satisfied = totalMissingSlots(comp) === 0;
-  if (satisfied && team.remainingPurse < team.totalPurse * u(0.11, 0.19)) return "Snoozing";
-
-  return "Hunting";
+function salaryAnchorOf(player: Player): number {
+  const prior = player.iplHistory.find(h => h.season === "2026")?.price ?? 0;
+  if (prior <= 0) return 0;
+  const premiumProfile = player.age <= 26 || ratingOf(player) >= 80
+    || isYoungGun(player) || repOf(player) >= 8;
+  return prior * (premiumProfile ? 0.80 : 0.58);
 }
 
 // ---------------------------------------------------------------------------
-// Market-rate anchors (IPL 2025-mega calibrated).
-// Marquee anchors trimmed so superstars land ~₹18-28 Cr instead of purse-killers;
-// mid-tier anchors trimmed so 3.0-3.5★ players anchor at ₹4.2-7 Cr.
+// PLAYER FIT — the single "how much does THIS team want THIS player" score,
+// built from EVERY stat in the database crossed with the franchise's ideology
+// and its current squad needs. Drives both the pre-auction target plan and the
+// live valuation, so an AI's bidding reflects a coherent team-building idea.
+// Returns roughly 0 (no interest) … 1 (solid regular) … 2+ (must-have target).
 // ---------------------------------------------------------------------------
+const BAT_ROLES = ["Batsman", "WK-Batsman"];
+const BOWL_ROLES = ["Pace Bowler", "Spin Bowler"];
+
+function computePlayerFit(
+  player: Player,
+  team: Team,
+  comp: SquadComp,
+  quirks: TeamQuirks
+): number {
+  const dna = team.dna;
+  const rating = ratingOf(player);
+  const pot = potentialOf(player);
+  const rep = repOf(player);
+
+  // 1. Core present-day ability (the backbone of the score)
+  let fit = clamp((rating - 58) / 34, 0, 1.15); // 58→0, 92→1, 95→1.09
+
+  // 2. Youth ceiling — ABSOLUTE potential, youth-weighted. This is the
+  //    Riyan-Parag fix: an 87-ceiling 24yo is a prized asset even if his
+  //    current rating and his growth-gap are modest.
+  const youthW = clamp((29 - player.age) / 13, 0, 1); // 16yo→1, 29yo→0
+  fit += clamp((pot - 74) / 20, 0, 1) * youthW * u(0.30, 0.52);
+
+  // 3. Reputation / star power, amplified by a franchise's big-names appetite
+  fit += clamp((rep - 5) / 5, 0, 1) * (0.05 + (dna.bigNamesPref / 100) * 0.22);
+
+  // 4. Role value from franchise DNA (batValue / bowlValue / alrValue)
+  const roleVal = BAT_ROLES.includes(player.role) ? dna.batValue
+    : BOWL_ROLES.includes(player.role) ? dna.bowlValue
+    : dna.alrValue;
+  fit *= 0.86 + ((roleVal - 30) / 65) * 0.28; // 0.86 … 1.14
+
+  // 5. Squad need — the biggest swing: does he fill a hole toward a full XI?
+  const excess = getRoleExcess(player.role, comp);
+  if (excess < 0)      fit += u(0.18, 0.34);   // role under strength
+  else if (excess === 0) fit += u(0.02, 0.10);
+  else if (excess >= 2)  fit -= u(0.14, 0.28); // already stacked here
+
+  // 6. Specialist attributes vs concrete guideline gaps
+  if (player.isOpener && comp.openers < quirks.openersTarget) fit += u(0.10, 0.24);
+  if (isKeeper(player) && comp.keepers < quirks.keepersTarget) fit += u(0.12, 0.28);
+  if ((player.captaincy ?? 0) >= 78 && comp.leaders < 2) fit += u(0.10, 0.24);
+  if (isFinisherType(player) && comp.finishers < quirks.finisherTarget) {
+    const aggNorm = clamp(((player.battingAggression ?? 70) - 70) / 29, 0, 1);
+    fit += (0.06 + aggNorm * 0.18);
+  }
+  if (isQualityPaceOption(player) && comp.qualityPace < quirks.qualityPaceTarget) fit += u(0.06, 0.18);
+  if (isQualitySpinOption(player, comp.qualitySpin === 0 ? 74 : 78) && comp.qualitySpin < quirks.qualitySpinTarget) fit += u(0.08, 0.20);
+
+  // 7. Ideology — teamLogic.csv nationality × role segment focus
+  fit += clamp((segmentFocusOf(team, player) - 62) / 33, -1, 1) * u(0.05, 0.15);
+
+  // 8. Age-profile preference (youth seekers vs experience seekers)
+  if (player.age <= 24 && dna.prefYoungsters >= 60) fit += ((dna.prefYoungsters - 60) / 40) * u(0.04, 0.14);
+  if (player.age >= 31 && player.isCapped && dna.experienceFocus >= 60) fit += ((dna.experienceFocus - 60) / 40) * u(0.03, 0.12);
+
+  // 9. Loyalty pull toward a returning ex-player
+  if (player.iplHistory.some(h => h.teamId === team.id)) fit += (dna.loyalty / 100) * u(0.04, 0.16);
+
+  // 10. Overseas balance — a full overseas contingent cools foreign interest
+  if (player.nationality === "Overseas" && comp.overseas >= RULES.maxOverseas - 1) fit -= u(0.10, 0.25);
+
+  return Math.max(0, fit);
+}
+
+// ---------------------------------------------------------------------------
+// Effective star — the quality TIER a player should be priced in, lifting the
+// raw star rating for young high-ceiling prospects and for proven earners
+// (prior IPL salary). This keeps a ₹14 Cr young all-rounder (Parag) or a ₹18 Cr
+// pacer (Arshdeep) out of the mid-tier hard-cap bracket they'd otherwise hit.
+// ---------------------------------------------------------------------------
+function effectiveStar(player: Player): number {
+  let s = player.starRating;
+  // Young high-ceiling prospects are priced a half-tier up, but only up TO the
+  // 4.5 marquee tier — a young gun shouldn't be valued like a proven 5★ great.
+  if (isYoungGun(player)) s = Math.min(4.5, s + 0.5);
+  const prior = player.iplHistory.find(h => h.season === "2026")?.price ?? 0;
+  if      (prior >= 1600) s = Math.max(s, 4.5);
+  else if (prior >= 1100) s = Math.max(s, 4.0);
+  else if (prior >= 650)  s = Math.max(s, 3.5);
+  return Math.min(5.0, s);
+}
+
+// ---------------------------------------------------------------------------
+// Intrinsic value (lakhs) — fit crossed with the market anchor (effective star
+// tier + prior-salary precedent), then tier-capped for the effective tier so a
+// genuine mid-tier player can't be valued like a superstar.
+// ---------------------------------------------------------------------------
+function intrinsicValue(
+  player: Player,
+  team: Team,
+  comp: SquadComp,
+  quirks: TeamQuirks,
+  fitOverride?: number
+): number {
+  const fit = fitOverride ?? computePlayerFit(player, team, comp, quirks);
+  const effStar = effectiveStar(player);
+  const anchor = Math.max(starToBaseLakhs(effStar), salaryAnchorOf(player));
+
+  // Central valuation sits near the market anchor (premium ≈ 1.0 for a solid
+  // fit), so the SECOND-highest bid — the clearing price — lands near anchor
+  // rather than running to the ceiling and gutting the rest of the budget.
+  const premium = clamp(0.55 + fit * 0.46, 0.36, 1.24);
+  const raw = anchor * premium * quirks.temperament;
+  return applyTierCeiling(raw, anchor, effStar);
+}
+
+// ---------------------------------------------------------------------------
+// PRE-AUCTION TEAM PLAN — formed ONCE, before a ball is bowled. Each team ranks
+// the entire auction pool by fit, then earmarks its purse: a set of PRIMARY
+// TARGETS it will pay up for (its "shortlist"), plus a depth budget for the
+// remaining slots so it can still build out a full 25-man squad. During the
+// auction a team bids toward these plan figures and, if a target gets away or
+// goes cheap, the freed/held budget naturally flows to the alternatives.
+// ---------------------------------------------------------------------------
+interface TeamPlan {
+  maxBid: Record<string, number>; // primary-target ceilings (lakhs)
+  depthValue: number;             // avg lakhs earmarked per depth slot
+  targetSquad: number;            // how many players the team wants (≤25)
+}
+
+let _teamPlans: Record<string, TeamPlan> = {};
+
+function getTeamPlan(team: Team, allPlayers: Record<string, Player>): TeamPlan {
+  if (_teamPlans[team.id]) return _teamPlans[team.id];
+
+  const quirks = getQuirks(team);
+  const squad = team.squad.map(id => allPlayers[id]).filter(Boolean);
+  const comp = getSquadComp(squad);
+
+  // Auction pool = everyone not retained and not already bought this auction.
+  const pool = Object.values(allPlayers).filter(
+    p => !p.isRetained && (p.currentTeamId == null)
+  );
+
+  // Teams aim to fill out a full squad (24-25) — depth wins tournaments.
+  const targetSquad = clamp(Math.round(u(24.0, 25.4)), 24, 25);
+  const toBuy = clamp(targetSquad - comp.total, 6, 25);
+
+  // Score & rank the pool for this franchise (all stats × ideology × needs).
+  const scored = pool
+    .map(p => {
+      const fit = computePlayerFit(p, team, comp, quirks);
+      return { p, fit, val: intrinsicValue(p, team, comp, quirks, fit) };
+    })
+    .sort((a, b) => (b.fit * b.val) - (a.fit * a.val));
+
+  // Earmark the purse: a chunk for primary targets, the rest for depth.
+  const purse = team.remainingPurse;
+  const starBudget = purse * u(0.60, 0.74);
+  const primaryCap = Math.max(3, Math.round(toBuy * u(0.38, 0.55)));
+
+  const maxBid: Record<string, number> = {};
+  let spend = 0;
+  let primaries = 0;
+  for (const s of scored) {
+    if (primaries >= primaryCap) break;
+    if (s.fit < 0.55) break; // below this it's depth, not a target
+    const expectedCost = s.val * 0.82; // what they expect to actually pay
+    if (spend + expectedCost > starBudget) continue; // can't fund this one → skip to cheaper targets
+    maxBid[s.p.id] = Math.round(s.val);
+    spend += expectedCost;
+    primaries++;
+  }
+
+  const depthSlots = Math.max(1, toBuy - primaries);
+  const depthReserve = Math.max(purse * 0.12, purse - spend);
+  const depthValue = depthReserve / depthSlots;
+
+  const plan: TeamPlan = { maxBid, depthValue, targetSquad };
+  _teamPlans[team.id] = plan;
+  return plan;
+}
+
 function starToBaseLakhs(star: number): number {
   const anchors: [number, number][] = [
-    [1.0, 25], [1.5, 45], [2.0, 80], [2.5, 200],
-    [3.0, 420], [3.5, 700], [4.0, 1200], [4.5, 1550], [5.0, 1950],
+    [1.0, 25], [1.5, 45], [2.0, 80], [2.5, 190],
+    [3.0, 400], [3.5, 640], [4.0, 1020], [4.5, 1340], [5.0, 1650],
   ];
   for (let i = 0; i < anchors.length - 1; i++) {
     const [s0, v0] = anchors[i];
@@ -297,495 +443,6 @@ function starToBaseLakhs(star: number): number {
     if (star >= s0 && star <= s1) return v0 + ((star - s0) / (s1 - s0)) * (v1 - v0);
   }
   return anchors[anchors.length - 1][1];
-}
-
-// ---------------------------------------------------------------------------
-// Guideline boost — extra role-need pressure when this player fills a roster
-// guideline the team is lagging on. Scales with auction progress.
-// ---------------------------------------------------------------------------
-function getGuidelineBoost(
-  player: Player,
-  comp: SquadComp,
-  quirks: TeamQuirks,
-  ctx: AuctionContext
-): number {
-  const prog = ctx.totalLots > 0 ? ctx.currentLotIndex / ctx.totalLots : 0;
-  const urgency = 0.6 + prog * 0.9; // late-auction lag matters much more
-  let m = 1.0;
-
-  if (player.isOpener && comp.openers < quirks.openersTarget) {
-    const lag = quirks.openersTarget - comp.openers;
-    m *= 1 + clamp(lag * u(0.05, 0.12) * urgency, 0, 0.45);
-  }
-  if (isKeeper(player) && comp.keepers < quirks.keepersTarget) {
-    const lag = quirks.keepersTarget - comp.keepers;
-    m *= 1 + clamp(lag * u(0.06, 0.14) * urgency, 0, 0.50);
-  }
-  if (player.role === "All-Rounder" && comp.allrounders < quirks.arTarget) {
-    const lag = quirks.arTarget - comp.allrounders;
-    m *= 1 + clamp(lag * u(0.05, 0.11) * urgency, 0, 0.40);
-  }
-  if (isQualityPaceOption(player) && comp.qualityPace < quirks.qualityPaceTarget) {
-    const lag = quirks.qualityPaceTarget - comp.qualityPace;
-    m *= 1 + clamp(lag * u(0.05, 0.12) * urgency, 0, 0.45);
-  }
-  // Quality spin is structurally scarce league-wide, so a lagging team also
-  // chases best-available (74+) spinners rather than waiting for unicorns
-  if (isQualitySpinOption(player, comp.qualitySpin === 0 ? 74 : 78) && comp.qualitySpin < quirks.qualitySpinTarget) {
-    const lag = quirks.qualitySpinTarget - comp.qualitySpin;
-    m *= 1 + clamp(lag * u(0.06, 0.14) * urgency, 0, 0.45);
-  }
-  return m;
-}
-
-// ---------------------------------------------------------------------------
-// Role need — sampled ranges, guideline-aware
-// ---------------------------------------------------------------------------
-function getRoleNeedMult(player: Player, comp: SquadComp, fsm: FSMState, quirks: TeamQuirks): number {
-  const r = player.role;
-
-  if (fsm === "Panic") {
-    if (r === "WK-Batsman"  && comp.wks         < RULES.wks)         return u(2.5, 3.6);
-    if (r === "Batsman"     && comp.batters      < RULES.batters)     return u(1.9, 3.1);
-    if (r === "Pace Bowler" && comp.pacers       < RULES.pacers)      return u(1.9, 3.1);
-    if (r === "Spin Bowler" && comp.spinners     < RULES.spinners)    return u(1.9, 3.1);
-    if (r === "All-Rounder" && comp.allrounders  < RULES.allrounders) return u(1.5, 2.5);
-    if (comp.total < RULES.minTotal)                                   return u(1.3, 2.1);
-    return u(0.30, 0.65); // Role covered in panic — mostly skipped
-  }
-
-  if (r === "WK-Batsman") {
-    // Keeper demand runs off the (fuzzed) keeper roster target — a squad
-    // wanting 3 keepers keeps paying for the 2nd and 3rd. Elite keepers
-    // (85+ bat) are premium middle-order assets regardless of the count.
-    let need: number;
-    if (comp.keepers === 0)                        need = u(1.7, 2.6);
-    else if (comp.keepers < quirks.keepersTarget)  need = u(1.15, 1.75);
-    else if (comp.keepers === quirks.keepersTarget) need = u(0.85, 1.10);
-    else                                            need = u(0.45, 0.80);
-    if ((player.currentBatting ?? 0) >= 82) need = Math.max(need, u(0.90, 1.15));
-    return need;
-  }
-
-  const bowlers = comp.pacers + comp.spinners;
-  const hitters = comp.batters + comp.wks;
-  if (bowlers > hitters + 2) {
-    if (r === "Batsman")                              return u(1.15, 1.50);
-    if (r === "All-Rounder")                          return u(1.05, 1.28);
-    if (r === "Pace Bowler" || r === "Spin Bowler")   return u(0.45, 0.80);
-  }
-  if (hitters > bowlers + 3) {
-    if (r === "Pace Bowler" || r === "Spin Bowler")   return u(1.15, 1.50);
-    if (r === "All-Rounder")                          return u(1.05, 1.28);
-    if (r === "Batsman")                              return u(0.50, 0.85);
-  }
-
-  if (r === "Batsman"     && comp.batters      < RULES.batters)      return u(1.08, 1.42);
-  if (r === "Pace Bowler" && comp.pacers       < RULES.pacers)       return u(1.08, 1.42);
-  if (r === "Spin Bowler" && comp.spinners     < RULES.spinners)     return u(1.08, 1.42);
-  if (r === "All-Rounder" && comp.allrounders  < RULES.allrounders)  return u(1.05, 1.38);
-
-  let excess = 0;
-  if (r === "Batsman")     excess = comp.batters      - RULES.batters;
-  if (r === "Pace Bowler") excess = comp.pacers        - RULES.pacers;
-  if (r === "Spin Bowler") excess = comp.spinners      - RULES.spinners;
-  if (r === "All-Rounder") excess = comp.allrounders   - RULES.allrounders;
-  if (excess >= 4) return u(0.28, 0.58);
-  if (excess >= 3) return u(0.42, 0.72);
-  if (excess >= 2) return u(0.58, 0.88);
-  if (excess >= 1) return u(0.74, 1.04);
-
-  return u(0.88, 1.12); // At exactly target — slight noise either side
-}
-
-// ---------------------------------------------------------------------------
-// Player acquisition cost — retention slabs or auction price
-// ---------------------------------------------------------------------------
-function getPlayerCost(
-  player: Player,
-  team: Team,
-  allPlayers: Record<string, Player>
-): number {
-  if (player.isRetained) {
-    const retainedList = team.retainedPlayers || [];
-    let cappedCount = 0;
-    for (const id of retainedList) {
-      if (id === player.id) {
-        if (player.isCapped || player.nationality === "Overseas") {
-          const CAPPED_RETENTION_COSTS = [1800, 1400, 1100, 1800, 1400];
-          return CAPPED_RETENTION_COSTS[cappedCount] ?? 0;
-        } else {
-          return 400; // Uncapped
-        }
-      }
-      const p = allPlayers[id];
-      if (p && (p.isCapped || p.nationality === "Overseas")) {
-        cappedCount++;
-      }
-    }
-    return player.basePrice;
-  } else {
-    const entry = player.iplHistory.find(h => h.season === "2026");
-    return entry ? entry.price : player.basePrice;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Nationality — rebalanced (Issue 2): elite internationals carry an early-slot
-// PREMIUM; the budget governor only bites when a team is genuinely ahead of
-// its overseas spending pace, and never collapses below 0.5 while slots+funds
-// remain. Elite overseas talent (rating ≥ 85) is partially shielded.
-// ---------------------------------------------------------------------------
-function getNatMult(
-  player: Player,
-  comp: SquadComp,
-  team: Team,
-  allPlayers: Record<string, Player>,
-  quirks: TeamQuirks
-): number {
-  if (player.nationality === "Overseas") {
-    if (comp.overseas >= RULES.maxOverseas) return 0; // Hard IPL rule
-
-    const squad = team.squad.map(id => allPlayers[id]).filter(Boolean);
-    const overseasSpent = squad
-      .filter(p => p.nationality === "Overseas")
-      .reduce((sum, p) => sum + getPlayerCost(p, team, allPlayers), 0);
-
-    // Slot pressure: premium while slots are open, taper only near the cap
-    let m: number;
-    if      (comp.overseas <= 3) m = u(1.00, 1.20);
-    else if (comp.overseas <= 5) m = u(0.90, 1.08);
-    else if (comp.overseas === 6) m = u(0.75, 0.95);
-    else                          m = u(0.55, 0.85);
-
-    // Budget governor vs the team's own sampled overseas envelope
-    const overseasBudget = team.totalPurse * quirks.overseasBudgetPct;
-    const pace = (comp.overseas / RULES.maxOverseas) + 0.18; // grace margin
-    const expectedSpent = overseasBudget * Math.min(1, pace);
-    if (overseasSpent > expectedSpent) {
-      const over = overseasSpent / Math.max(1, expectedSpent) - 1;
-      m *= Math.max(0.50, 1.0 - over * 0.45);
-    } else if (comp.overseas > 0) {
-      m *= Math.min(1.15, 1.0 + (1.0 - overseasSpent / Math.max(1, expectedSpent)) * 0.10);
-    }
-
-    // Elite shield: never harshly discount genuinely elite overseas players
-    if (ratingOf(player) >= 85) m = Math.max(m, u(0.88, 1.02));
-
-    return m;
-  }
-  return comp.overseas > comp.indians ? u(1.04, 1.26) : u(0.94, 1.06);
-}
-
-// ---------------------------------------------------------------------------
-// Role budget bookkeeping — how much a team has already committed to a role
-// group, and the purse it earmarked for it (DNA-weighted via roleTilt).
-// ---------------------------------------------------------------------------
-// Shares reflect that the pace pool is the DEEPEST in the league — spreading a
-// too-small slice across many pacers is what made quality bowlers go cheap.
-// Bowling (PACE+SPIN = 0.42) now roughly matches batting (BAT+WK = 0.38) per
-// head, so a 4.0★ pacer is valued like a 4.0★ batter rather than a bargain.
-const ROLE_BUDGET_SHARE: Record<RoleGroup, number> = {
-  BAT: 0.22, WK: 0.18, AR: 0.18, PACE: 0.26, SPIN: 0.18,
-};
-
-function roleGroupSpent(
-  group: RoleGroup,
-  team: Team,
-  allPlayers: Record<string, Player>
-): number {
-  return team.squad
-    .map(id => allPlayers[id])
-    .filter(Boolean)
-    .filter(p => roleGroupOf(p) === group)
-    .reduce((sum, p) => sum + getPlayerCost(p, team, allPlayers), 0);
-}
-
-function roleEnvelope(group: RoleGroup, team: Team, quirks: TeamQuirks): number {
-  let share = ROLE_BUDGET_SHARE[group];
-  if (group === "WK") {
-    share = Math.max(share, ROLE_BUDGET_SHARE["BAT"] * 0.90);
-  }
-  return team.totalPurse * share * quirks.roleTilt[group];
-}
-
-// ---------------------------------------------------------------------------
-// Loyalty — scales with team.dna.loyalty (0-100)
-// ---------------------------------------------------------------------------
-function getLoyaltyMult(player: Player, team: Team): number {
-  const wasMine = player.iplHistory.some(h => h.teamId === team.id);
-  if (!wasMine) return u(0.96, 1.04);
-  const loyaltyFactor = team.dna.loyalty / 100;
-  const premiumProb = 0.10 + loyaltyFactor * 0.75;
-  if (Math.random() < premiumProb) {
-    return u(1.06, 1.08 + loyaltyFactor * 0.27);
-  }
-  return u(0.96, 1.06);
-}
-
-// ---------------------------------------------------------------------------
-// Budget — ROLE-AWARE. A team bids a role from the purse it earmarked for that
-// role, not from whatever's left after earlier categories. This is the core
-// fix for "players in later sets go cheap": a pacer in Fast-Bowlers-Set-A
-// (which comes up AFTER the batter/AR/keeper sets in each tier round) is
-// valued off the team's untouched pace budget, so quality bowlers keep their
-// price even though batters were bought minutes earlier. A global near-broke
-// damper still applies once the WHOLE purse is nearly gone.
-// ---------------------------------------------------------------------------
-function getBudgetMult(
-  player: Player,
-  team: Team,
-  allPlayers: Record<string, Player>,
-  quirks: TeamQuirks
-): number {
-  const group = roleGroupOf(player);
-  const envelope = roleEnvelope(group, team, quirks);
-  const spent = roleGroupSpent(group, team, allPlayers);
-  const headroomPct = (envelope - spent) / Math.max(1, envelope); // 1 = untouched
-
-  // Centred near 1.0 for a healthy role budget: the goal is role PARITY (a
-  // pacer bought from a fresh pace reserve is valued like a batter bought
-  // early from a fresh bat reserve), NOT a blanket price boost. Willingness
-  // only decays as the role's earmarked budget is used up.
-  let m: number;
-  if      (headroomPct >= 0.85) m = u(0.98, 1.09);
-  else if (headroomPct >= 0.60) m = u(0.92, 1.03);
-  else if (headroomPct >= 0.35) m = u(0.83, 0.96);
-  else if (headroomPct >= 0.12) m = u(0.68, 0.86);
-  else if (headroomPct >= 0.00) m = u(0.52, 0.70);
-  else                          m = u(0.33, 0.52); // role budget overspent
-
-  // Global safety: only bites when the entire purse is nearly exhausted, so a
-  // team that has spent most of its money can't keep bidding recklessly.
-  const globalPct = team.remainingPurse / team.totalPurse;
-  if      (globalPct < 0.12) m *= u(0.45, 0.65);
-  else if (globalPct < 0.25) m *= u(0.72, 0.88);
-
-  return m * lognormal(u(0.04, 0.09));
-}
-
-// ---------------------------------------------------------------------------
-// Scarcity — boost when quality alternatives in the role are running out
-// ---------------------------------------------------------------------------
-function getScarcityMult(
-  player: Player,
-  allPlayers: Record<string, Player>,
-  ctx: AuctionContext
-): number {
-  // Quality-aware: count same-role players of SIMILAR-OR-BETTER ability still
-  // to come, by RATING not just star. In a deep pace pool this separates the
-  // genuinely elite (few 84+ peers left → scarce, priced up) from the many
-  // interchangeable 78s (plenty of equals → no premium), instead of dragging
-  // every pacer down to the pool average.
-  const group = roleGroupOf(player);
-  const myRating = ratingOf(player);
-  const betterOrEqual = ctx.remainingPlayerIds.filter(id => {
-    const p = allPlayers[id];
-    return p && roleGroupOf(p) === group && ratingOf(p) >= myRating - 2;
-  }).length;
-
-  if (betterOrEqual <= 1) return u(1.12, 1.34);
-  if (betterOrEqual <= 3) return u(1.05, 1.22);
-  if (betterOrEqual <= 6) return u(1.00, 1.14);
-  if (betterOrEqual <= 10) return u(0.95, 1.08);
-  return u(0.90, 1.04);
-}
-
-// ---------------------------------------------------------------------------
-// Pool abundance damper — while MANY quality same-role players are still to
-// come, teams hold a little capital back (the per-role budget defence now
-// lives in getBudgetMult, so this only handles pool timing).
-// ---------------------------------------------------------------------------
-function getDepletionMult(
-  player: Player,
-  allPlayers: Record<string, Player>,
-  ctx: AuctionContext
-): number {
-  // Genuinely top-tier players (or young guns) are never "abundant" — a deep
-  // pace pool shouldn't drag down the price of its best names.
-  if (ratingOf(player) >= 82 || isYoungGun(player)) return 1.0;
-
-  const minStar = player.starRating - 0.5;
-  const remainingQuality = ctx.remainingPlayerIds.filter(id => {
-    const p = allPlayers[id];
-    return p && p.role === player.role && p.starRating >= minStar;
-  }).length;
-  if (remainingQuality >= 8) return u(0.88, 0.97);
-  if (remainingQuality >= 5) return u(0.94, 1.02);
-  return 1.0;
-}
-
-// ---------------------------------------------------------------------------
-// Target list / purse planning — every team keeps "players in mind" that are
-// still to come in the auction, picked by ITS mentality: segment focus,
-// big-names preference, youth preference, loyalty to ex-players, and whatever
-// its current (post-retention) squad is lacking. While coveted targets remain
-// in the pool, the team holds back purse — dampening bids on non-targets —
-// and pushes a little harder when a coveted player is actually on the block.
-// ---------------------------------------------------------------------------
-function covetScore(
-  player: Player,
-  team: Team,
-  comp: SquadComp,
-  quirks: TeamQuirks
-): number {
-  // Only genuine difference-makers make a team's mental shortlist
-  if (!(ratingOf(player) >= 82 || player.starRating >= 4.0 || isYoungGun(player))) return 0;
-  if (player.nationality === "Overseas" && comp.overseas >= RULES.maxOverseas) return 0;
-
-  let s = 0;
-  // Segment focus: a team obsessed with overseas pacers shortlists them
-  s += (segmentFocusOf(team, player) - 60) / 35;                    // ≈ -0.86 … +1.0
-  // Star hunger: reputation × bigNamesPref
-  const rep = repOf(player);
-  if (rep >= 8) s += Math.max(0, (team.dna.bigNamesPref - 50) / 50) * ((rep - 7) / 3);
-  // Youth projects for youth-focused franchises
-  if (isYoungGun(player)) s += Math.max(0, (team.dna.prefYoungsters - 40) / 60) * 0.8;
-  // Squad holes the player would plug
-  if (fillsLaggingGuideline(player, comp, quirks)) s += 0.6;
-  // Loyalty pull toward ex-players
-  if (player.iplHistory.some(h => h.teamId === team.id)) s += (team.dna.loyalty / 100) * 0.4;
-  return s;
-}
-
-const COVET_THRESHOLD = 0.75;
-
-function getTargetReserveMult(
-  player: Player,
-  team: Team,
-  comp: SquadComp,
-  allPlayers: Record<string, Player>,
-  ctx: AuctionContext,
-  quirks: TeamQuirks
-): number {
-  // Is the CURRENT lot one of the team's coveted players?
-  if (covetScore(player, team, comp, quirks) >= COVET_THRESHOLD) {
-    return u(1.03, 1.15); // their man is on the block — push for him
-  }
-
-  // Otherwise: how much money do the still-to-come targets demand?
-  const targetCosts: number[] = [];
-  for (const id of ctx.remainingPlayerIds) {
-    const p = allPlayers[id];
-    if (!p || p.id === player.id) continue;
-    if (covetScore(p, team, comp, quirks) >= COVET_THRESHOLD) {
-      targetCosts.push(starToBaseLakhs(p.starRating) * 0.55);
-      if (targetCosts.length >= 8) break; // shortlists aren't encyclopedias
-    }
-  }
-  if (targetCosts.length === 0) return 1.0;
-
-  // Reserve for the top few wants, weighed against free spending room
-  const reserved = targetCosts
-    .sort((a, b) => b - a)
-    .slice(0, 4)
-    .reduce((a, b) => a + b, 0);
-  const headroom = Math.max(1, team.remainingPurse - minimumReserveLakhs(team, allPlayers));
-  const ratio = reserved / headroom;
-
-  if (ratio > 0.65) return u(0.60, 0.82); // wants are expensive — hold the wallet
-  if (ratio > 0.40) return u(0.78, 0.94);
-  return u(0.95, 1.03);
-}
-
-// ---------------------------------------------------------------------------
-// Urgency — trigger thresholds and response magnitudes sampled
-// ---------------------------------------------------------------------------
-function getUrgencyMult(comp: SquadComp, ctx: AuctionContext): number {
-  const prog    = ctx.totalLots > 0 ? ctx.currentLotIndex / ctx.totalLots : 0;
-  const missing = totalMissingSlots(comp);
-  if (missing > 0 && prog > u(0.65, 0.80)) return u(1.25, 1.65);
-  if (missing > 0 && prog > u(0.42, 0.60)) return u(1.08, 1.30);
-  return u(0.97, 1.05);
-}
-
-// ---------------------------------------------------------------------------
-// Personality — data-driven from team.dna + extended player fields (Issue 8)
-// ---------------------------------------------------------------------------
-function getPersonalityMult(player: Player, team: Team, comp: SquadComp): number {
-  const dna = team.dna;
-  let m = 1.0;
-
-  // ── Role valuation (batValue / bowlValue / alrValue, 30-95 → 0.84-1.18) ──
-  const batRoles = ["Batsman", "WK-Batsman"];
-  const bowlRoles = ["Pace Bowler", "Spin Bowler"];
-  const roleVal = batRoles.includes(player.role) ? dna.batValue
-    : bowlRoles.includes(player.role) ? dna.bowlValue
-    : dna.alrValue;
-  const roleNorm = (roleVal - 30) / 65;
-  m *= 0.84 + roleNorm * 0.34;
-
-  // ── Reputation → big-names preference (Issue 8) ──────────────────────────
-  // The 1-10 reputation score maps straight onto bigNamesPref: star-hungry
-  // teams (RCB 96, MI 87) pay visibly more for high-visibility names.
-  const rep = repOf(player);
-  if (rep >= 8) {
-    const bigNorm = clamp((dna.bigNamesPref - 40) / 60, 0, 1);
-    const repNorm = (rep - 7) / 3; // 8→0.33, 10→1.0
-    m *= 1.0 + bigNorm * repNorm * u(0.12, 0.30);
-  } else if (rep <= 4 && dna.bigNamesPref >= 80) {
-    // Star-obsessed franchises mildly undervalue anonymous players
-    m *= u(0.93, 1.00);
-  }
-
-  // ── Leadership premium (Issue 8) ─────────────────────────────────────────
-  // Every team wants a captain + vice-captain; premium until 2 leaders secured
-  const capt = player.captaincy ?? 0;
-  if (capt >= 65) {
-    const capNorm = clamp((capt - 65) / 34, 0, 1);
-    if (comp.leaders === 0)      m *= 1.0 + capNorm * u(0.18, 0.40);
-    else if (comp.leaders === 1) m *= 1.0 + capNorm * u(0.08, 0.22);
-    else                          m *= 1.0 + capNorm * u(0.00, 0.06);
-  }
-
-  // ── Finisher premium (Issue 4) ───────────────────────────────────────────
-  // Death-overs hitters are a tactical asset, priced above their raw averages.
-  // Scales with batting aggression; strongest while the team lacks finishers.
-  if (isFinisherType(player)) {
-    const aggNorm = clamp(((player.battingAggression ?? 75) - 70) / 29, 0, 1);
-    if (comp.finishers < 2) m *= 1.0 + 0.10 + aggNorm * u(0.12, 0.30);
-    else                     m *= 1.0 + aggNorm * u(0.02, 0.12);
-  }
-
-  // ── Youngster preference ──────────────────────────────────────────────────
-  if ((player.age <= 23 && (player.potential === "Wonderkid" || player.potential === "Promising"))
-      || isYoungGun(player)) {
-    const youthNorm = Math.max(0, (dna.prefYoungsters - 20) / 80);
-    m *= 1.0 + youthNorm * u(0.08, 0.22);
-  }
-
-  // ── Experience focus ──────────────────────────────────────────────────────
-  if (player.age >= 31 && player.isCapped) {
-    const expNorm = Math.max(0, (dna.experienceFocus - 20) / 80);
-    m *= 1.0 + expNorm * u(0.06, 0.18);
-  } else if (player.age <= 22 && dna.experienceFocus >= 80) {
-    const penalty = (dna.experienceFocus - 80) / 20;
-    m *= 1.0 - penalty * u(0.02, 0.07);
-  }
-
-  // ── Segment focus (Issue 9) — teamLogic.csv nationality × role targeting ──
-  // Focus 30 → ~0.90×, focus 95 → ~1.12×, with per-lot variance so the bias
-  // stays organic rather than rigid.
-  const focus = segmentFocusOf(team, player);
-  const focusNorm = clamp((focus - 62.5) / 32.5, -1, 1);
-  m *= 1.0 + focusNorm * u(0.04, 0.13);
-
-  // ── Elite bowler & spinner premium ──────────────────────────────────────────
-  if ((player.role === "Pace Bowler" || player.role === "Spin Bowler") && ratingOf(player) >= 78) {
-    const ratingNorm = clamp((ratingOf(player) - 78) / 14, 0, 1);
-    const bowlWeight = 0.6 + (team.dna.bowlValue / 100) * 0.7;
-    const spinBonus = player.role === "Spin Bowler" ? 0.08 : 0;
-    m *= 1.0 + (0.12 + ratingNorm * 0.28 + spinBonus) * bowlWeight;
-  }
-
-  // ── Elite wicket-keeper premium ────────────────────────────────────────────
-  if (isKeeper(player) && (ratingOf(player) >= 78 || player.starRating >= 3.5)) {
-    const wkNorm = clamp((ratingOf(player) - 78) / 14, 0, 1);
-    const batWeight = 0.6 + (team.dna.batValue / 100) * 0.7;
-    m *= 1.0 + (0.14 + wkNorm * 0.28) * batWeight;
-  }
-
-  return m;
 }
 
 // ---------------------------------------------------------------------------
@@ -800,127 +457,6 @@ function getRoleExcess(role: string, comp: SquadComp): number {
   return 0;
 }
 
-/** True when this player would fill a roster guideline the team is behind on. */
-function fillsLaggingGuideline(player: Player, comp: SquadComp, quirks: TeamQuirks): boolean {
-  if (player.isOpener && comp.openers < quirks.openersTarget) return true;
-  if (isKeeper(player) && comp.keepers < quirks.keepersTarget) return true;
-  if (player.role === "All-Rounder" && comp.allrounders < quirks.arTarget) return true;
-  if (isQualityPaceOption(player) && comp.qualityPace < quirks.qualityPaceTarget) return true;
-  if (isQualitySpinOption(player, comp.qualitySpin === 0 ? 74 : 78) && comp.qualitySpin < quirks.qualitySpinTarget) return true;
-  if (isFinisherType(player) && comp.finishers < quirks.finisherTarget) return true;
-  return false;
-}
-
-function shouldParticipate(
-  player: Player,
-  team: Team,
-  comp: SquadComp,
-  fsm: FSMState,
-  quirks: TeamQuirks
-): boolean {
-  if (fsm === "Panic") {
-    return getRoleNeedMult(player, comp, fsm, quirks) > 1.5
-      || fillsLaggingGuideline(player, comp, quirks)
-      || Math.random() < u(0.18, 0.40);
-  }
-  if (player.role === "WK-Batsman" && comp.wks === 0) return true;
-
-  // Keepers gauge interest against the team's own keeper target (usually 3,
-  // incl. part-timers) rather than the bare 2-WK league rule — quality
-  // keepers stay in demand deep into the auction.
-  const excess = player.role === "WK-Batsman"
-    ? comp.keepers - quirks.keepersTarget
-    : getRoleExcess(player.role, comp);
-  // Young high-ceiling prospects draw interest half a tier above their
-  // current rating — franchises scout the ceiling, not the resume
-  const star   = player.starRating + (isYoungGun(player) ? 0.5 : 0);
-  const dna    = team.dna;
-
-  let chance: number;
-  if (excess < 0) {
-    chance = star >= 4.5 ? u(0.60, 0.85) : star >= 4.0 ? u(0.46, 0.70) : u(0.30, 0.54);
-  } else if (excess === 0) {
-    chance = star >= 4.5 ? u(0.28, 0.52) : star >= 3.5 ? u(0.18, 0.36) : u(0.10, 0.24);
-  } else if (excess === 1) {
-    chance = star >= 4.5 ? u(0.10, 0.24) : u(0.04, 0.14);
-  } else {
-    chance = u(0.008, 0.030);
-  }
-
-  // ── Guideline chasing: strongly boosts interest in lagging categories ────
-  if (fillsLaggingGuideline(player, comp, quirks)) {
-    chance += u(0.18, 0.38);
-  }
-
-  // ── Shortlist loyalty: a team almost always contests its coveted targets ─
-  if (covetScore(player, team, comp, quirks) >= COVET_THRESHOLD) {
-    chance += u(0.15, 0.35);
-  }
-
-  // ── Leadership hunting (Issue 8): until 2 leaders secured ────────────────
-  if ((player.captaincy ?? 0) >= 75 && comp.leaders < 2) {
-    chance += u(0.10, 0.25);
-  }
-
-  // ── Segment focus (Issue 9): affects QUANTITY pursued per segment ────────
-  const focusNorm = clamp((segmentFocusOf(team, player) - 62.5) / 32.5, -1, 1);
-  chance += focusNorm * u(0.04, 0.13);
-
-  // ── Depth bonus ───────────────────────────────────────────────────────────
-  if (excess >= 1 && star >= 3.0) {
-    const depthFactor = Math.max(0, (dna.looksForDepth - 50) / 50);
-    chance += depthFactor * u(0.04, 0.16) * (star / 5.0);
-  }
-
-  // ── Big-name magnetism — reputation-driven ────────────────────────────────
-  if (repOf(player) >= 8) {
-    const bigFactor = Math.max(0, (dna.bigNamesPref - 50) / 50);
-    chance += bigFactor * u(0.05, 0.20);
-  }
-
-  // ── Youngster seekers — wonderkids AND young high-ceiling prospects ──────
-  if ((player.age <= 23 && player.potential === "Wonderkid") || isYoungGun(player)) {
-    const youthFactor = Math.max(0, (dna.prefYoungsters - 40) / 60);
-    chance += youthFactor * u(0.05, 0.16);
-  }
-
-  return Math.random() < clamp(chance, 0, 0.92);
-}
-
-// ---------------------------------------------------------------------------
-// Elite safety floor (Issue 1) — a genuinely good player must never clear the
-// block without an opening bid while teams have space and funds. When a team
-// declines to seriously pursue an elite player, it still books a "courtesy"
-// valuation slightly above base price, guaranteeing opening interest without
-// fuelling a bidding war.
-// ---------------------------------------------------------------------------
-function eliteFloorValuation(player: Player, team: Team, comp: SquadComp): number {
-  if (!isEliteProspect(player)) return 0;
-  if (comp.total >= RULES.maxTotal - 1) return 0;
-  if (player.nationality === "Overseas" && comp.overseas >= RULES.maxOverseas) return 0;
-  if (team.remainingPurse < player.basePrice * 4) return 0;
-  if (getRoleExcess(player.role, comp) >= 3) return 0;
-
-  const rating = ratingOf(player);
-  const potRating = potentialOf(player);
-  const prob = rating >= 88 ? 0.95
-    : rating >= 85 ? 0.80
-    : potRating >= 90 && player.age <= 23 ? 0.75 // hot wonderkids draw floor bids too
-    : 0.55;
-  if (Math.random() > prob) return 0;
-
-  // Floor scales with player CLASS, not base price — an uncapped star with a
-  // ₹50L base (Suryavanshi-type, rating 90) is still worth a real fraction of
-  // his market anchor even to a team that isn't chasing him. Young guns are
-  // classed half a tier up: the market floors their ceiling, not their CV.
-  const floorStar = isYoungGun(player)
-    ? Math.min(5.0, player.starRating + 0.5)
-    : player.starRating;
-  const classFloor = starToBaseLakhs(floorStar) * u(0.12, 0.30);
-  const baseFloor  = player.basePrice * u(1.05, 1.50);
-  const affordable = team.remainingPurse * 0.25;
-  return Math.round(Math.min(Math.max(baseFloor, classFloor), Math.max(baseFloor, affordable)));
-}
 
 // ---------------------------------------------------------------------------
 // Tier-dependent price discipline (Issues 3 + 5).
@@ -933,15 +469,15 @@ function applyTierCeiling(raw: number, base: number, star: number): number {
   let ceilMult: number, carry: number, hardCap = Infinity;
 
   if (star <= 2.5) {
-    ceilMult = u(1.90, 3.00); carry = u(0.10, 0.25);
+    ceilMult = u(1.70, 2.60); carry = u(0.08, 0.20);
   } else if (star <= 3.0) {
-    ceilMult = u(1.30, 1.70); carry = u(0.04, 0.10); hardCap = u(720, 950);
+    ceilMult = u(1.20, 1.50); carry = u(0.04, 0.10); hardCap = u(650, 850);
   } else if (star <= 3.5) {
-    ceilMult = u(1.20, 1.55); carry = u(0.04, 0.10); hardCap = u(850, 1150);
+    ceilMult = u(1.14, 1.40); carry = u(0.04, 0.10); hardCap = u(800, 1050);
   } else if (star <= 4.0) {
-    ceilMult = u(1.20, 1.58); carry = u(0.05, 0.12);
+    ceilMult = u(1.12, 1.36); carry = u(0.05, 0.12);
   } else {
-    ceilMult = u(1.30, 1.65); carry = u(0.05, 0.12);
+    ceilMult = u(1.15, 1.42); carry = u(0.05, 0.12);
   }
 
   const softCeil = base * ceilMult;
@@ -961,110 +497,82 @@ export function computeTeamValuation(
   const squad  = team.squad.map(id => allPlayers[id]).filter(Boolean);
   const comp   = getSquadComp(squad);
   const quirks = getQuirks(team);
-  const fsm    = getFSMState(team, comp, ctx, quirks);
+  const plan   = getTeamPlan(team, allPlayers);
 
-  if (fsm === "Snoozing") {
-    return Math.round(player.basePrice * lognormal(u(0.08, 0.18)));
+  // Overseas / squad-full hard stops (the eligibility gate re-checks these too)
+  if (comp.total >= RULES.maxTotal) return 0;
+  if (player.nationality === "Overseas" && comp.overseas >= RULES.maxOverseas) return 0;
+
+  const excess = getRoleExcess(player.role, comp);
+  const needsBodies = comp.total < plan.targetSquad;
+  const planned = plan.maxBid[player.id];
+  const fit = computePlayerFit(player, team, comp, quirks);
+  const highValue = effectiveStar(player) >= 4.0 || ratingOf(player) >= 80;
+
+  // ── Interest gate ─────────────────────────────────────────────────────────
+  // A team bids if the player is on its shortlist, OR it still needs bodies,
+  // OR he's a genuine quality asset worth having on the books. It backs off
+  // only when a role is heavily overstacked (and he's not a planned target).
+  const slotsLeft = plan.targetSquad - comp.total;
+  if (planned === undefined) {
+    if (!needsBodies && !highValue) return 0;
+    // Role-stacking limit relaxes when the squad is well short of a full 25 —
+    // a team that still needs many bodies takes the best available even if the
+    // role is a little crowded, so everyone fills out to 25.
+    const excessLimit = slotsLeft >= 6 ? 3 : slotsLeft >= 3 ? 4 : 6;
+    if (excess >= excessLimit && !highValue) return 0;
+    // Weak-fit filler is ignored while there's still real squad-building to do.
+    const fitFloor = highValue ? 0.28 : slotsLeft >= 8 ? 0.50 : slotsLeft >= 4 ? 0.34 : 0.18;
+    if (fit < fitFloor) return 0;
   }
 
-  if (!shouldParticipate(player, team, comp, fsm, quirks)) {
-    // Not actively pursuing — but elite players still get a floor bid (Issue 1)
-    return eliteFloorValuation(player, team, comp);
+  // ── Market-anchored value for EVERY interested team ───────────────────────
+  let base = intrinsicValue(player, team, comp, quirks, fit);
+
+  if (planned !== undefined) {
+    // Shortlist premium — pay a touch above market for pre-formed targets.
+    base = Math.max(base, planned) * u(1.0, 1.10);
+  } else {
+    // Off-shortlist: scale by fit so weaker fits bid modestly (but still bid,
+    // so quality players find buyers instead of going unsold).
+    base *= clamp(0.64 + fit * 0.40, 0.50, 1.08);
   }
 
-  const priorEntry = player.iplHistory.find((h) => h.season === "2026");
-  const priorSalary = priorEntry ? priorEntry.price : 0;
+  // Depth floor: while the squad still needs bodies, keep the bid off the
+  // floor so squad-building depth clears for a sensible price, not scraps.
+  if (needsBodies) base = Math.max(base, plan.depthValue * u(0.70, 1.10));
 
-  // Market anchor combines star-rating anchor with prior IPL salary precedent.
-  // Proven high-earning players (e.g. ₹10-18 Cr prior salary like Riyan Parag, Nitish Reddy, etc.)
-  // retain strong valuation floors (70-90% of prior salary) so market precedents hold.
-  const starAnchor = starToBaseLakhs(player.starRating);
-  let salaryAnchor = 0;
-  if (priorSalary > 0) {
-    const isYouthOrStar = player.age <= 25 || ratingOf(player) >= 80 || isYoungGun(player) || (player.reputation ?? 0) >= 8;
-    const anchorPct = isYouthOrStar ? u(0.72, 0.92) : u(0.50, 0.70);
-    salaryAnchor = priorSalary * anchorPct;
-  }
-  const base = Math.max(starAnchor, salaryAnchor);
+  // ── Live scatter so identical squads still diverge in the room ────────────
+  base *= lognormal(u(0.09, 0.18));
 
-  // Form: rating sensitivity, floor and slope both sampled
-  const relevantRating = ratingOf(player);
-  const formMult = relevantRating > 0
-    ? u(0.86, 0.94) + (relevantRating / 100) * u(0.14, 0.26)
-    : u(0.94, 1.06);
+  // ── Budget-per-slot concentration ─────────────────────────────────────────
+  // Self-balancing squad economics: the team spends this many "fair shares"
+  // (avg purse per remaining slot) on one player — stars concentrate 4-6×,
+  // depth ~0.6×. Because the fair share recomputes after every buy, a team
+  // that splurges on a star automatically has less per slot for the rest, so
+  // it can never overspend into a short squad — it fills all the way to 25.
+  const slotsToFill = Math.max(1, plan.targetSquad - comp.total);
+  const avgPerSlot = team.remainingPurse / slotsToFill;
+  // Concentrations average near 1.0 across a full build so money and slots run
+  // out together — the team fills all the way to a full 25 rather than blowing
+  // the purse on a handful of stars. Genuine marquee names (4.5★-effective /
+  // 85+ rating) concentrate hardest, so several teams bid them into the ₹12-18
+  // Cr range, while depth stays cheap enough to still round out the squad.
+  const marquee = effectiveStar(player) >= 4.5 || ratingOf(player) >= 85;
+  let concentration: number;
+  if (marquee)                 concentration = u(3.0, 5.0);
+  else if (planned !== undefined) concentration = u(2.2, 3.4);
+  else if (highValue)          concentration = u(1.7, 2.7);
+  else if (fit >= 0.72)        concentration = u(1.0, 1.6);
+  else                         concentration = u(0.55, 1.00);
+  // A near-empty squad shouldn't hand its whole purse to lot one even so.
+  const affordabilityCap = Math.min(avgPerSlot * concentration, team.remainingPurse * 0.5);
 
-  const roleNeed = getRoleNeedMult(player, comp, fsm, quirks);
-  if (roleNeed < 0.1) return eliteFloorValuation(player, team, comp);
-
-  const natMult = getNatMult(player, comp, team, allPlayers, quirks);
-  if (natMult === 0) return 0;
-
-  const guideline   = getGuidelineBoost(player, comp, quirks, ctx);
-  const potential   = getPotentialMult(player);
-  const loyalty     = getLoyaltyMult(player, team);
-  const personality = getPersonalityMult(player, team, comp);
-  const budget      = getBudgetMult(player, team, allPlayers, quirks);
-  const scarcity    = getScarcityMult(player, allPlayers, ctx);
-  const depletion   = getDepletionMult(player, allPlayers, ctx);
-  const targetReserveMult = getTargetReserveMult(player, team, comp, allPlayers, ctx, quirks);
-  const urgency           = getUrgencyMult(comp, ctx);
-
-  // Private market read: mid-tier players price on consensus (small sigma) so
-  // they can't randomly explode; contested elite lots still diverge wildly.
-  // Young high-ceiling prospects are exempt — their upside IS contested.
-  const isMidTier = player.starRating >= 3.0 && player.starRating <= 3.5 && !isYoungGun(player);
-  const lnSigma = isMidTier ? u(0.12, 0.22) : u(0.18, 0.36);
-  const lnVar   = lognormal(lnSigma);
-
-  const raw = base * formMult * roleNeed * natMult * guideline * potential
-    * loyalty * personality * budget * scarcity * depletion * targetReserveMult * urgency
-    * quirks.temperament * lnVar;
-
-  // Tier-dependent ceiling (Issues 3 + 5). Young high-ceiling prospects are
-  // priced half a tier up — the mid-tier dampener must not crush wonderkids.
-  const effectiveStar = isYoungGun(player)
-    ? Math.min(5.0, player.starRating + 0.5)
-    : player.starRating;
-  const cappedRaw = applyTierCeiling(raw, base, effectiveStar);
-
-  // Commitment: per-team fraction of REMAINING purse on one player,
-  // tightened so a single superstar can't gut the squad build (Issue 5)
-  const commitBase = 0.10 + (team.dna.commitmentToTargets / 100) * 0.26; // 0.13-0.36
-  const commitMean = u(commitBase * 0.85, commitBase * 1.15);
-  const commitPct  = clamp(commitMean * lognormal(u(0.12, 0.22)), 0.08, 0.38);
-
-  // Role budget headroom: how much of the earmarked role budget remains
-  const group = roleGroupOf(player);
-  const envelope = roleEnvelope(group, team, quirks);
-  const spentInRole = roleGroupSpent(group, team, allPlayers);
-  const roleHeadroom = Math.max(0, envelope - spentInRole);
-
-  // For quality/elite targets or young prospects, role headroom allows teams to bid
-  // competitively even if earlier sets (batters/ARs) consumed general purse,
-  // preventing late-set role sets (like Fast Bowlers Set A) from being artificially capped.
-  const isQualityTarget = ratingOf(player) >= 78 || player.starRating >= 3.5 || isYoungGun(player);
-  const roleCommitCap = isQualityTarget
-    ? Math.max(team.remainingPurse * commitPct, roleHeadroom * clamp(commitPct * 1.8, 0.45, 0.85))
-    : team.remainingPurse * commitPct;
-
-  const reserve = minimumReserveLakhs(team, allPlayers);
-  const maxSpendable = Math.max(0, team.remainingPurse - reserve);
-
-  const purseCap = Math.min(roleCommitCap, maxSpendable);
-
-  // Absolute franchise cap: even the most aggressive team never plans more
-  // than ~a quarter-to-third of its TOTAL purse on one lot
+  // Absolute franchise cap — no one player eats the whole purse
   const absCap = team.totalPurse * (0.20 + (team.dna.commitmentToTargets / 100) * 0.09) * u(0.92, 1.08);
 
-  let value = Math.min(cappedRaw, purseCap, absCap);
-
-  // Elite floor: a top player a team CAN afford is always worth ≥ base price
-  if (isEliteProspect(player) && value < player.basePrice
-      && team.remainingPurse >= player.basePrice * 4) {
-    value = player.basePrice * u(1.05, 1.35);
-  }
-
-  return Math.round(value);
+  const value = Math.min(base, affordabilityCap, absCap, team.remainingPurse);
+  return Math.round(Math.max(0, value));
 }
 
 // ---------------------------------------------------------------------------

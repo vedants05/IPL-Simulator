@@ -211,84 +211,145 @@ export default function AuctionPage() {
   );
 }
 
-function AuctionComplete() {
-  const { teams, players, userTeamId } = useGameStore();
-  const userTeam = teams[userTeamId];
+const ROLE_GROUPS = [
+  { label: "WK", roles: ["WK-Batsman"] },
+  { label: "BAT", roles: ["Batsman"] },
+  { label: "AR", roles: ["All-Rounder"] },
+  { label: "PACE", roles: ["Pace Bowler"] },
+  { label: "SPIN", roles: ["Spin Bowler"] },
+] as const;
 
-  const roleGroups = [
-    { label: "Wicketkeepers", roles: ["WK-Batsman"] },
-    { label: "Batters", roles: ["Batsman"] },
-    { label: "All-Rounders", roles: ["All-Rounder"] },
-    { label: "Pace Bowlers", roles: ["Pace Bowler"] },
-    { label: "Spin Bowlers", roles: ["Spin Bowler"] },
-  ];
+function playerRating(p: { currentBatting?: number; currentBowling?: number }) {
+  return Math.max(p.currentBatting ?? 0, p.currentBowling ?? 0);
+}
+
+function TeamSquadCard({
+  team,
+  players,
+  isUser,
+}: {
+  team: import("@/lib/types").Team;
+  players: Record<string, import("@/lib/types").Player>;
+  isUser: boolean;
+}) {
+  const squad = team.squad.map((id) => players[id]).filter(Boolean);
+  const overseas = squad.filter((p) => p.nationality === "Overseas").length;
 
   return (
-    <div className="min-h-screen bg-bg flex items-center justify-center p-8">
-      <div className="max-w-2xl w-full">
-        <div className="mb-8 text-center">
-          <div className="font-space-mono font-bold text-[10px] tracking-[.16em] text-success mb-3 uppercase">
+    <div
+      style={{ border: isUser ? "3px solid #16130f" : "2px solid #16130f" }}
+      className="flex flex-col bg-surface2"
+    >
+      {/* Team header — franchise colours */}
+      <div
+        className="px-4 py-3 flex items-center justify-between shrink-0"
+        style={{ backgroundColor: team.primaryColor, color: team.secondaryColor, borderBottom: "2px solid #16130f" }}
+      >
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div
+            className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0"
+            style={{ backgroundColor: team.secondaryColor, color: team.primaryColor }}
+          >
+            {team.shortName.slice(0, 3)}
+          </div>
+          <span className="font-anton text-[16px] leading-none uppercase tracking-wide truncate">
+            {team.name}
+          </span>
+          {isUser && (
+            <span className="font-space-mono font-bold text-[8px] tracking-widest uppercase px-1.5 py-0.5 rounded shrink-0"
+              style={{ backgroundColor: "rgba(0,0,0,0.22)", color: team.secondaryColor }}>
+              YOU
+            </span>
+          )}
+        </div>
+        <span className="font-anton text-[16px] shrink-0">{squad.length}</span>
+      </div>
+
+      {/* Stat strip */}
+      <div className="flex items-stretch text-center shrink-0" style={{ borderBottom: "1px solid rgba(22,19,15,.15)" }}>
+        {[
+          { l: "SPENT", v: `₹${(team.spentAmount / 100).toFixed(1)}Cr` },
+          { l: "LEFT", v: `₹${(team.remainingPurse / 100).toFixed(1)}Cr` },
+          { l: "OVERSEAS", v: `${overseas}/8` },
+        ].map((s, i) => (
+          <div key={s.l} className="flex-1 py-2" style={i < 2 ? { borderRight: "1px solid rgba(22,19,15,.12)" } : {}}>
+            <div className="font-space-mono text-[8px] tracking-widest text-text-secondary uppercase">{s.l}</div>
+            <div className="font-barlow-condensed font-bold text-[15px] text-text-primary leading-tight">{s.v}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Squad by role group */}
+      <div className="p-2.5 space-y-1.5">
+        {ROLE_GROUPS.map(({ label, roles }) => {
+          const group = squad
+            .filter((p) => (roles as readonly string[]).includes(p.role))
+            .sort((a, b) => playerRating(b) - playerRating(a));
+          if (group.length === 0) return null;
+          return (
+            <div key={label} className="flex gap-2">
+              <span className="font-space-mono font-bold text-[9px] tracking-wider text-text-secondary uppercase w-[34px] shrink-0 pt-1">
+                {label}
+              </span>
+              <div className="flex flex-wrap gap-1 flex-1">
+                {group.map((p) => {
+                  const wasRetained = team.retainedPlayers.includes(p.id);
+                  return (
+                    <span
+                      key={p.id}
+                      className="font-barlow text-[11px] leading-tight px-1.5 py-0.5 rounded-[3px] bg-[#16130f]/[0.05] border border-[#16130f]/10"
+                      title={`${p.role} · rating ${playerRating(p)}${wasRetained ? " · retained" : ""}`}
+                    >
+                      <span className="font-semibold text-text-primary">{p.name}</span>
+                      <span className="text-text-secondary"> {playerRating(p)}</span>
+                      {p.nationality === "Overseas" && <span className="text-[8px] text-[#1d55c4] font-bold"> OS</span>}
+                      {wasRetained && <span className="text-[8px] text-success font-bold"> ®</span>}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function AuctionComplete() {
+  const { teams, players, userTeamId } = useGameStore();
+
+  // User team first, then the rest by spend (biggest spenders lead)
+  const ordered = Object.values(teams).sort((a, b) => {
+    if (a.id === userTeamId) return -1;
+    if (b.id === userTeamId) return 1;
+    return b.spentAmount - a.spentAmount;
+  });
+
+  return (
+    <div className="min-h-screen bg-bg overflow-y-auto">
+      <div className="max-w-6xl mx-auto p-8">
+        <div className="mb-7 text-center">
+          <div className="font-space-mono font-bold text-[10px] tracking-[.16em] text-success mb-2 uppercase">
             Auction Complete
           </div>
-          <h1 className="font-anton text-[52px] leading-none text-text-primary uppercase mb-2">
-            {userTeam?.name}
+          <h1 className="font-anton text-[44px] leading-none text-text-primary uppercase mb-2">
+            Final Squads
           </h1>
-          <p className="font-barlow text-[14px] text-text-secondary">
-            {userTeam?.squad.length} players signed
+          <p className="font-barlow text-[13px] text-text-secondary">
+            All ten franchises · ® retained &nbsp;·&nbsp; OS overseas &nbsp;·&nbsp; number = player rating
           </p>
         </div>
 
-        <div style={{ border: "2px solid #16130f" }}>
-          <div className="bg-border px-6 py-4">
-            <span className="font-space-mono font-bold text-[11px] tracking-widest text-accent uppercase">
-              Final Squad
-            </span>
-          </div>
-          <div>
-            {roleGroups.map(({ label, roles }) => {
-              const group = userTeam?.squad
-                .map((id) => players[id])
-                .filter((p) => p && roles.includes(p.role)) ?? [];
-              if (group.length === 0) return null;
-              return (
-                <div key={label}>
-                  <div className="px-4 py-2 bg-surface" style={{ borderTop: "1px solid rgba(22,19,15,.2)" }}>
-                    <span className="font-space-mono text-[9px] tracking-widest text-text-secondary uppercase">
-                      {label}
-                    </span>
-                  </div>
-                  {group.map((p) => (
-                    <div
-                      key={p.id}
-                      className="flex justify-between items-center px-4 py-2"
-                      style={{ borderBottom: "1px solid rgba(22,19,15,.1)" }}
-                    >
-                      <span className="font-barlow font-semibold text-[13px] text-text-primary">{p.name}</span>
-                      <div className="flex items-center gap-3">
-                        {p.nationality === "Overseas" && (
-                          <span className="font-space-mono text-[9px] bg-accent text-border px-2 py-[2px] rounded-[3px] font-bold">
-                            OS
-                          </span>
-                        )}
-                        <span className="font-barlow text-[12px] text-text-secondary">Age {p.age}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              );
-            })}
-          </div>
-          <div
-            className="px-6 py-4 bg-surface flex justify-between items-center"
-            style={{ borderTop: "2px solid #16130f" }}
-          >
-            <span className="font-space-mono text-[10px] text-text-secondary tracking-wider uppercase">
-              Remaining Purse
-            </span>
-            <span className="font-barlow-condensed font-bold text-[20px] text-success">
-              ₹{((userTeam?.remainingPurse ?? 0) / 100).toFixed(2)} Cr
-            </span>
-          </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          {ordered.map((team) => (
+            <TeamSquadCard
+              key={team.id}
+              team={team}
+              players={players}
+              isUser={team.id === userTeamId}
+            />
+          ))}
         </div>
       </div>
     </div>
