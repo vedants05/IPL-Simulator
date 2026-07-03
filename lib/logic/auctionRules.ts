@@ -107,137 +107,91 @@ export function buildAuctionSets(players: Player[], isAccelerated = false): Auct
   // Only unretained players enter the mega auction sets
   const playerPool = players.filter((p) => !p.isRetained);
 
-  // 1. Identify Marquee Players: anyone rated 85+ headlines the auction —
-  // a proven uncapped superstar (Suryavanshi-type) is marquee billing too,
-  // and must come up while teams still have full purses.
-  const marqueeEligible = playerPool
-    .filter((p) => getRating(p) >= 85)
-    .sort((a, b) => getRating(b) - getRating(a));
-
-  const marqueeIds = new Set(marqueeEligible.map((p) => p.id));
-
-  // Non-marquee pool
-  const nonMarquee = playerPool.filter((p) => !marqueeIds.has(p.id));
-
-  // Separate Capped vs Uncapped
-  const cappedNonMarquee = nonMarquee.filter((p) => p.isCapped);
-  const uncappedPool = nonMarquee.filter((p) => !p.isCapped);
-
-  // 2. Classify Capped Players into Set A and Set B by Role
-  const isTierA = (p: Player) => {
+  // Quality score for set-tiering: current ability dominates, ceiling and
+  // reputation pull genuinely promising / marquee names into earlier sets
+  const qualityScore = (p: Player): number => {
     const rating = getRating(p);
-    if (p.nationality === "Overseas" && rating >= 76) return true;
-    return rating >= 80;
+    const pot = Math.max(p.potentialBatting || 0, p.potentialBowling || 0);
+    const rep = p.reputation ?? p.starRating * 2;
+    return rating + Math.max(0, pot - rating) * 0.35 + rep * 0.6 + p.starRating * 2;
   };
 
-  const cappedByRole = {
-    BAT: { A: [] as Player[], B: [] as Player[] },
-    AR: { A: [] as Player[], B: [] as Player[] },
-    WK: { A: [] as Player[], B: [] as Player[] },
-    PACE: { A: [] as Player[], B: [] as Player[] },
-    SPIN: { A: [] as Player[], B: [] as Player[] },
-  };
-
-  cappedNonMarquee.forEach((p) => {
-    const role = getRoleGroup(p);
-    if (isTierA(p)) {
-      cappedByRole[role].A.push(p);
-    } else {
-      cappedByRole[role].B.push(p);
-    }
-  });
-
-  // 3. Classify Uncapped Players by Role
-  const uncappedByRole = {
-    BAT: [] as Player[],
-    AR: [] as Player[],
-    WK: [] as Player[],
-    PACE: [] as Player[],
-    SPIN: [] as Player[],
-  };
-
-  uncappedPool.forEach((p) => {
-    const role = getRoleGroup(p);
-    uncappedByRole[role].push(p);
-  });
-
-  const rawSets: Array<{ id: string; name: string; pool: Player[] }> = [];
-
-  // Helper to chunk pools into sets of max 10 players, merging leftovers < 4 into previous chunk
-  const addCategoryPools = (
-    pools: Player[][],
-    baseId: string,
-    baseTitle: string,
-    maxPerSet = 10,
-    minSetSize = 4
-  ) => {
-    const allPlayers: Player[] = [];
-    pools.forEach((pool) => {
-      allPlayers.push(...shuffleArray(pool));
-    });
-
-    if (allPlayers.length === 0) return;
-
+  // Rank a pool by quality and slice into tiers of 10 (A = best 10, B = next
+  // 10, …). A trailing tier of < 4 players merges into the previous one.
+  const buildTiers = (pool: Player[], maxPerSet = 10, minSetSize = 4): Player[][] => {
+    if (pool.length === 0) return [];
+    const sorted = [...pool].sort((a, b) => qualityScore(b) - qualityScore(a));
     const chunks: Player[][] = [];
-    for (let i = 0; i < allPlayers.length; i += maxPerSet) {
-      chunks.push(allPlayers.slice(i, i + maxPerSet));
+    for (let i = 0; i < sorted.length; i += maxPerSet) {
+      chunks.push(sorted.slice(i, i + maxPerSet));
     }
-
-    // Merge leftover chunk < minSetSize into previous chunk
     if (chunks.length > 1 && chunks[chunks.length - 1].length < minSetSize) {
       const lastChunk = chunks.pop()!;
       chunks[chunks.length - 1].push(...lastChunk);
     }
-
-    chunks.forEach((chunk, index) => {
-      const setId = chunks.length === 1 ? baseId : `${baseId}_${index + 1}`;
-      const setName =
-        chunks.length === 1
-          ? baseTitle
-          : `${baseTitle} Set ${String.fromCharCode(65 + index)}`;
-      rawSets.push({ id: setId, name: setName, pool: shuffleArray(chunk) });
-    });
+    return chunks;
   };
 
-  // Macro Order Sequence:
-  // 1. Marquee Sets
-  if (marqueeEligible.length > 0) {
-    addCategoryPools([marqueeEligible], "marquee", "Marquee");
-  }
+  // 1. Marquee: anyone rated 85+ headlines the auction — a proven uncapped
+  // superstar (Suryavanshi-type) is marquee billing too, and must come up
+  // while teams still have full purses.
+  const marqueeEligible = playerPool.filter((p) => getRating(p) >= 85);
+  const marqueeIds = new Set(marqueeEligible.map((p) => p.id));
+  const nonMarquee = playerPool.filter((p) => !marqueeIds.has(p.id));
 
-  // 2. Capped Sequence (Tier A + Tier B by Role)
-  const cappedRoles = [
-    { code: "BAT" as const, title: "Capped Batters" },
-    { code: "AR" as const, title: "Capped All-Rounders" },
-    { code: "WK" as const, title: "Capped Wicketkeepers" },
-    { code: "PACE" as const, title: "Capped Fast Bowlers" },
-    { code: "SPIN" as const, title: "Capped Spinners" },
-  ];
+  const rawSets: Array<{ id: string; name: string; pool: Player[] }> = [];
 
-  cappedRoles.forEach(({ code, title }) => {
-    addCategoryPools(
-      [cappedByRole[code].A, cappedByRole[code].B],
-      `capped_${code.toLowerCase()}`,
-      title
-    );
+  const marqueeTiers = buildTiers(marqueeEligible);
+  marqueeTiers.forEach((chunk, i) => {
+    rawSets.push({
+      id: marqueeTiers.length === 1 ? "marquee" : `marquee_${i + 1}`,
+      name: marqueeTiers.length === 1 ? "Marquee" : `Marquee Set ${String.fromCharCode(65 + i)}`,
+      pool: shuffleArray(chunk),
+    });
   });
 
-  // 3. Uncapped Sequence
-  const uncappedRoles = [
-    { code: "BAT" as const, title: "Uncapped Batters" },
-    { code: "AR" as const, title: "Uncapped All-Rounders" },
-    { code: "WK" as const, title: "Uncapped Wicketkeepers" },
-    { code: "PACE" as const, title: "Uncapped Fast Bowlers" },
-    { code: "SPIN" as const, title: "Uncapped Spinners" },
+  // 2. Capped then uncapped, in round-robin tier order: every category's
+  // Set A first (best 10 of each role), then every Set B, then C, … so the
+  // auction's quality — and the money — tapers evenly instead of one role's
+  // full pool draining budgets before another role has even started.
+  const ROLE_ORDER = [
+    { code: "BAT" as const, title: "Batters" },
+    { code: "AR" as const, title: "All-Rounders" },
+    { code: "WK" as const, title: "Wicketkeepers" },
+    { code: "PACE" as const, title: "Fast Bowlers" },
+    { code: "SPIN" as const, title: "Spinners" },
   ];
 
-  uncappedRoles.forEach(({ code, title }) => {
-    addCategoryPools(
-      [uncappedByRole[code]],
-      `uncapped_${code.toLowerCase()}`,
-      title
-    );
-  });
+  const addRoundRobinTiers = (pool: Player[], prefix: "capped" | "uncapped") => {
+    const byRole: Record<string, Player[]> = { BAT: [], AR: [], WK: [], PACE: [], SPIN: [] };
+    pool.forEach((p) => byRole[getRoleGroup(p)].push(p));
+
+    const tiersByRole: Record<string, Player[][]> = {};
+    let maxTiers = 0;
+    ROLE_ORDER.forEach(({ code }) => {
+      tiersByRole[code] = buildTiers(byRole[code]);
+      maxTiers = Math.max(maxTiers, tiersByRole[code].length);
+    });
+
+    const titleCase = prefix === "capped" ? "Capped" : "Uncapped";
+    for (let tier = 0; tier < maxTiers; tier++) {
+      ROLE_ORDER.forEach(({ code, title }) => {
+        const chunk = tiersByRole[code][tier];
+        if (!chunk) return; // this role ran out of tiers — skip
+        const single = tiersByRole[code].length === 1;
+        rawSets.push({
+          id: single ? `${prefix}_${code.toLowerCase()}` : `${prefix}_${code.toLowerCase()}_${tier + 1}`,
+          name: single
+            ? `${titleCase} ${title}`
+            : `${titleCase} ${title} Set ${String.fromCharCode(65 + tier)}`,
+          pool: shuffleArray(chunk),
+        });
+      });
+    }
+  };
+
+  addRoundRobinTiers(nonMarquee.filter((p) => p.isCapped), "capped");
+  addRoundRobinTiers(nonMarquee.filter((p) => !p.isCapped), "uncapped");
 
   // Format each set name with explicit Set Number (e.g. Set 1: Marquee Set A)
   return rawSets.map((s, i) => ({

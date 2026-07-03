@@ -199,7 +199,8 @@ interface TeamQuirks {
   finisherTarget: number;
   overseasBudgetPct: number;                 // target share of purse on overseas
   temperament: number;                       // whole-auction valuation bias
-  roleTilt: Record<RoleGroup, number>;       // noise on category budget envelopes
+  roleTilt: Record<RoleGroup, number>;       // per-role budget-envelope weighting
+  retentionAppetite: number;                 // <1 → trims retentions, saves for auction
 }
 
 let _teamQuirks: Record<string, TeamQuirks> = {};
@@ -213,19 +214,41 @@ function getQuirks(team: Team): TeamQuirks {
     // Stochastic fuzzing of the guideline targets (±1, mostly 0) so squad
     // compositions vary between teams and between auctions
     const fuzz = () => (Math.random() < 0.55 ? 0 : Math.random() < 0.5 ? -1 : 1);
+    const dna = team.dna;
+
+    // Role budget tilt is anchored to the franchise's DNA role values, so a
+    // bowling-minded team (high bowlValue) genuinely earmarks a bigger slice
+    // of its purse for pacers/spinners — and then defends it in the auction.
+    const tiltFor = (dnaVal: number) =>
+      clamp(0.80 + ((dnaVal - 30) / 65) * 0.45, 0.78, 1.32) * u(0.90, 1.10);
+
+    // Some franchises deliberately go light on retentions to hoard auction
+    // firepower (aggressive, low-loyalty raiders); others lock their core in.
+    const hunter = Math.random() < 0.35;
+    const retentionAppetite = hunter
+      ? u(0.70, 0.90)
+      : u(0.92, 1.10) + (team.dna.loyalty / 100) * u(0.0, 0.10);
+
     _teamQuirks[team.id] = {
       openersTarget:     Math.max(3, 4 + fuzz()),
       keepersTarget:     Math.max(2, 3 + fuzz()),
       arTarget:          Math.max(2, 3 + fuzz()),
-      qualityPaceTarget: Math.max(3, 4 + fuzz()),
-      qualitySpinTarget: 2 + (Math.random() < 0.30 ? 1 : 0),
+      // Deep pace pool + high per-team need: teams want 5 quality pacers, so
+      // demand roughly matches supply and quality bowlers stay contested
+      // instead of clearing cheap once a couple of slots are filled.
+      qualityPaceTarget: Math.max(4, 5 + fuzz()),
+      qualitySpinTarget: 2 + (Math.random() < 0.40 ? 1 : 0),
       finisherTarget:    Math.max(1, 2 + fuzz()),
       overseasBudgetPct: u(0.30, 0.42),
       temperament:       u(0.93, 1.09),
       roleTilt: {
-        BAT: u(0.88, 1.14), WK: u(0.88, 1.14), AR: u(0.88, 1.14),
-        PACE: u(0.88, 1.14), SPIN: u(0.88, 1.14),
+        BAT:  tiltFor(dna.batValue),
+        WK:   tiltFor(dna.batValue),
+        AR:   tiltFor(dna.alrValue),
+        PACE: tiltFor(dna.bowlValue),
+        SPIN: tiltFor(dna.bowlValue),
       },
+      retentionAppetite,
     };
   }
   return _teamQuirks[team.id];
@@ -455,6 +478,34 @@ function getNatMult(
 }
 
 // ---------------------------------------------------------------------------
+// Role budget bookkeeping — how much a team has already committed to a role
+// group, and the purse it earmarked for it (DNA-weighted via roleTilt).
+// ---------------------------------------------------------------------------
+// Shares reflect that the pace pool is the DEEPEST in the league — spreading a
+// too-small slice across many pacers is what made quality bowlers go cheap.
+// Bowling (PACE+SPIN = 0.42) now roughly matches batting (BAT+WK = 0.38) per
+// head, so a 4.0★ pacer is valued like a 4.0★ batter rather than a bargain.
+const ROLE_BUDGET_SHARE: Record<RoleGroup, number> = {
+  BAT: 0.24, WK: 0.10, AR: 0.18, PACE: 0.33, SPIN: 0.15,
+};
+
+function roleGroupSpent(
+  group: RoleGroup,
+  team: Team,
+  allPlayers: Record<string, Player>
+): number {
+  return team.squad
+    .map(id => allPlayers[id])
+    .filter(Boolean)
+    .filter(p => roleGroupOf(p) === group)
+    .reduce((sum, p) => sum + getPlayerCost(p, team, allPlayers), 0);
+}
+
+function roleEnvelope(group: RoleGroup, team: Team, quirks: TeamQuirks): number {
+  return team.totalPurse * ROLE_BUDGET_SHARE[group] * quirks.roleTilt[group];
+}
+
+// ---------------------------------------------------------------------------
 // Loyalty — scales with team.dna.loyalty (0-100)
 // ---------------------------------------------------------------------------
 function getLoyaltyMult(player: Player, team: Team): number {
@@ -469,13 +520,44 @@ function getLoyaltyMult(player: Player, team: Team): number {
 }
 
 // ---------------------------------------------------------------------------
-// Budget — continuous concave curve + per-team noise
+// Budget — ROLE-AWARE. A team bids a role from the purse it earmarked for that
+// role, not from whatever's left after earlier categories. This is the core
+// fix for "players in later sets go cheap": a pacer in Fast-Bowlers-Set-A
+// (which comes up AFTER the batter/AR/keeper sets in each tier round) is
+// valued off the team's untouched pace budget, so quality bowlers keep their
+// price even though batters were bought minutes earlier. A global near-broke
+// damper still applies once the WHOLE purse is nearly gone.
 // ---------------------------------------------------------------------------
-function getBudgetMult(team: Team): number {
-  const pct = team.remainingPurse / team.totalPurse;
-  const exponent = u(0.65, 0.95);
-  const base = 0.55 + Math.pow(Math.max(0, pct), exponent) * 0.65;
-  return base * lognormal(u(0.04, 0.09));
+function getBudgetMult(
+  player: Player,
+  team: Team,
+  allPlayers: Record<string, Player>,
+  quirks: TeamQuirks
+): number {
+  const group = roleGroupOf(player);
+  const envelope = roleEnvelope(group, team, quirks);
+  const spent = roleGroupSpent(group, team, allPlayers);
+  const headroomPct = (envelope - spent) / Math.max(1, envelope); // 1 = untouched
+
+  // Centred near 1.0 for a healthy role budget: the goal is role PARITY (a
+  // pacer bought from a fresh pace reserve is valued like a batter bought
+  // early from a fresh bat reserve), NOT a blanket price boost. Willingness
+  // only decays as the role's earmarked budget is used up.
+  let m: number;
+  if      (headroomPct >= 0.85) m = u(0.98, 1.09);
+  else if (headroomPct >= 0.60) m = u(0.92, 1.03);
+  else if (headroomPct >= 0.35) m = u(0.83, 0.96);
+  else if (headroomPct >= 0.12) m = u(0.68, 0.86);
+  else if (headroomPct >= 0.00) m = u(0.52, 0.70);
+  else                          m = u(0.33, 0.52); // role budget overspent
+
+  // Global safety: only bites when the entire purse is nearly exhausted, so a
+  // team that has spent most of its money can't keep bidding recklessly.
+  const globalPct = team.remainingPurse / team.totalPurse;
+  if      (globalPct < 0.12) m *= u(0.45, 0.65);
+  else if (globalPct < 0.25) m *= u(0.72, 0.88);
+
+  return m * lognormal(u(0.04, 0.09));
 }
 
 // ---------------------------------------------------------------------------
@@ -486,62 +568,47 @@ function getScarcityMult(
   allPlayers: Record<string, Player>,
   ctx: AuctionContext
 ): number {
-  const minStar = player.starRating - 0.5;
-  const remaining = ctx.remainingPlayerIds.filter(id => {
+  // Quality-aware: count same-role players of SIMILAR-OR-BETTER ability still
+  // to come, by RATING not just star. In a deep pace pool this separates the
+  // genuinely elite (few 84+ peers left → scarce, priced up) from the many
+  // interchangeable 78s (plenty of equals → no premium), instead of dragging
+  // every pacer down to the pool average.
+  const group = roleGroupOf(player);
+  const myRating = ratingOf(player);
+  const betterOrEqual = ctx.remainingPlayerIds.filter(id => {
     const p = allPlayers[id];
-    return p && p.role === player.role && p.starRating >= minStar;
+    return p && roleGroupOf(p) === group && ratingOf(p) >= myRating - 2;
   }).length;
 
-  if (remaining <= 1) return u(1.15, 1.45);
-  if (remaining <= 3) return u(1.06, 1.26);
-  if (remaining <= 6) return u(1.00, 1.16);
-  return u(0.93, 1.07);
+  if (betterOrEqual <= 1) return u(1.12, 1.34);
+  if (betterOrEqual <= 3) return u(1.05, 1.22);
+  if (betterOrEqual <= 6) return u(1.00, 1.14);
+  if (betterOrEqual <= 10) return u(0.95, 1.08);
+  return u(0.90, 1.04);
 }
 
 // ---------------------------------------------------------------------------
-// Category depletion (Issue 6) — two forces that flatten spend across the
-// auction lifecycle:
-//   1. Pool-side: while MANY quality same-role players are still to come,
-//      teams hold capital back (mild damper early in a category run).
-//   2. Team-side: each team has a sampled budget envelope per role group;
-//      once spending in that category outruns the envelope, willingness
-//      decays hard — no more blowing the whole pace budget on lot one.
+// Pool abundance damper — while MANY quality same-role players are still to
+// come, teams hold a little capital back (the per-role budget defence now
+// lives in getBudgetMult, so this only handles pool timing).
 // ---------------------------------------------------------------------------
-const ROLE_BUDGET_SHARE: Record<RoleGroup, number> = {
-  BAT: 0.30, WK: 0.13, AR: 0.22, PACE: 0.23, SPIN: 0.12,
-};
-
 function getDepletionMult(
   player: Player,
-  team: Team,
   allPlayers: Record<string, Player>,
-  ctx: AuctionContext,
-  quirks: TeamQuirks
+  ctx: AuctionContext
 ): number {
-  let m = 1.0;
+  // Genuinely top-tier players (or young guns) are never "abundant" — a deep
+  // pace pool shouldn't drag down the price of its best names.
+  if (ratingOf(player) >= 82 || isYoungGun(player)) return 1.0;
 
-  // 1. Pool abundance damper
   const minStar = player.starRating - 0.5;
   const remainingQuality = ctx.remainingPlayerIds.filter(id => {
     const p = allPlayers[id];
     return p && p.role === player.role && p.starRating >= minStar;
   }).length;
-  if (remainingQuality >= 8)      m *= u(0.82, 0.94);
-  else if (remainingQuality >= 5) m *= u(0.90, 1.00);
-
-  // 2. Category budget envelope
-  const group = roleGroupOf(player);
-  const squad = team.squad.map(id => allPlayers[id]).filter(Boolean);
-  const groupSpent = squad
-    .filter(p => roleGroupOf(p) === group)
-    .reduce((sum, p) => sum + getPlayerCost(p, team, allPlayers), 0);
-  const envelope = team.totalPurse * ROLE_BUDGET_SHARE[group] * quirks.roleTilt[group];
-  const r = groupSpent / Math.max(1, envelope);
-  if (r > 1.20)      m *= u(0.40, 0.60);
-  else if (r > 0.95) m *= u(0.62, 0.82);
-  else if (r > 0.70) m *= u(0.82, 0.98);
-
-  return m;
+  if (remainingQuality >= 8) return u(0.88, 0.97);
+  if (remainingQuality >= 5) return u(0.94, 1.02);
+  return 1.0;
 }
 
 // ---------------------------------------------------------------------------
@@ -699,6 +766,17 @@ function getPersonalityMult(player: Player, team: Team, comp: SquadComp): number
   const focusNorm = clamp((focus - 62.5) / 32.5, -1, 1);
   m *= 1.0 + focusNorm * u(0.04, 0.13);
 
+  // ── Elite bowler premium ──────────────────────────────────────────────────
+  // Match-winning bowling is scarcer than the deep pace pool's average price
+  // suggests. Franchises pay a real premium for a genuinely top bowler
+  // (82+ rating), scaled by how much they value bowling — so quality pacers
+  // like Harshit Rana don't clear at journeyman prices.
+  if ((player.role === "Pace Bowler" || player.role === "Spin Bowler") && ratingOf(player) >= 82) {
+    const ratingNorm = clamp((ratingOf(player) - 82) / 10, 0, 1);
+    const bowlWeight = 0.6 + (team.dna.bowlValue / 100) * 0.7;
+    m *= 1.0 + (0.10 + ratingNorm * 0.22) * bowlWeight;
+  }
+
   return m;
 }
 
@@ -853,7 +931,7 @@ function applyTierCeiling(raw: number, base: number, star: number): number {
   } else if (star <= 3.5) {
     ceilMult = u(1.20, 1.55); carry = u(0.04, 0.10); hardCap = u(850, 1150);
   } else if (star <= 4.0) {
-    ceilMult = u(1.35, 1.80); carry = u(0.06, 0.14);
+    ceilMult = u(1.20, 1.58); carry = u(0.05, 0.12);
   } else {
     ceilMult = u(1.30, 1.65); carry = u(0.05, 0.12);
   }
@@ -904,11 +982,11 @@ export function computeTeamValuation(
   const potential   = getPotentialMult(player);
   const loyalty     = getLoyaltyMult(player, team);
   const personality = getPersonalityMult(player, team, comp);
-  const budget      = getBudgetMult(team);
+  const budget      = getBudgetMult(player, team, allPlayers, quirks);
   const scarcity    = getScarcityMult(player, allPlayers, ctx);
-  const depletion   = getDepletionMult(player, team, allPlayers, ctx, quirks);
-  const reserve     = getTargetReserveMult(player, team, comp, allPlayers, ctx, quirks);
-  const urgency     = getUrgencyMult(comp, ctx);
+  const depletion   = getDepletionMult(player, allPlayers, ctx);
+  const targetReserveMult = getTargetReserveMult(player, team, comp, allPlayers, ctx, quirks);
+  const urgency           = getUrgencyMult(comp, ctx);
 
   // Private market read: mid-tier players price on consensus (small sigma) so
   // they can't randomly explode; contested elite lots still diverge wildly.
@@ -918,7 +996,7 @@ export function computeTeamValuation(
   const lnVar   = lognormal(lnSigma);
 
   const raw = base * formMult * roleNeed * natMult * guideline * potential
-    * loyalty * personality * budget * scarcity * depletion * reserve * urgency
+    * loyalty * personality * budget * scarcity * depletion * targetReserveMult * urgency
     * quirks.temperament * lnVar;
 
   // Tier-dependent ceiling (Issues 3 + 5). Young high-ceiling prospects are
@@ -933,7 +1011,25 @@ export function computeTeamValuation(
   const commitBase = 0.10 + (team.dna.commitmentToTargets / 100) * 0.26; // 0.13-0.36
   const commitMean = u(commitBase * 0.85, commitBase * 1.15);
   const commitPct  = clamp(commitMean * lognormal(u(0.12, 0.22)), 0.08, 0.38);
-  const purseCap   = team.remainingPurse * commitPct;
+
+  // Role budget headroom: how much of the earmarked role budget remains
+  const group = roleGroupOf(player);
+  const envelope = roleEnvelope(group, team, quirks);
+  const spentInRole = roleGroupSpent(group, team, allPlayers);
+  const roleHeadroom = Math.max(0, envelope - spentInRole);
+
+  // For quality/elite targets or young prospects, role headroom allows teams to bid
+  // competitively even if earlier sets (batters/ARs) consumed general purse,
+  // preventing late-set role sets (like Fast Bowlers Set A) from being artificially capped.
+  const isQualityTarget = ratingOf(player) >= 78 || player.starRating >= 3.5 || isYoungGun(player);
+  const roleCommitCap = isQualityTarget
+    ? Math.max(team.remainingPurse * commitPct, roleHeadroom * clamp(commitPct * 1.8, 0.45, 0.85))
+    : team.remainingPurse * commitPct;
+
+  const reserve = minimumReserveLakhs(team, allPlayers);
+  const maxSpendable = Math.max(0, team.remainingPurse - reserve);
+
+  const purseCap = Math.min(roleCommitCap, maxSpendable);
 
   // Absolute franchise cap: even the most aggressive team never plans more
   // than ~a quarter-to-third of its TOTAL purse on one lot
@@ -1105,14 +1201,18 @@ export function decideAIRetentions(
 ): string[] {
   const squad = team.squad.map(id => allPlayers[id]).filter(Boolean);
   const loyaltyNorm = team.dna.loyalty / 100;
+  const quirks = getQuirks(team);
+  const appetite = quirks.retentionAppetite; // <1 → hunter, saves for auction
 
   // Spend guard: leave enough purse to build an 18-25 squad at auction.
   // High-loyalty teams tolerate committing more of the purse to retentions,
   // and icon-rich squads (multiple rep-9 faces) stretch further still —
   // real MI/CSK-type franchises spent ₹75 Cr keeping their cores together.
+  // Auction-hunter franchises (low appetite) deliberately keep the guard low
+  // so they arrive at the auction with a war chest for the big names.
   const iconCount = squad.filter(p => repOf(p) >= 9).length;
   const iconStretch = 1 + Math.min(2, Math.max(0, iconCount - 3)) * 0.05;
-  const maxRetentionSpend = team.totalPurse * u(0.46, 0.60) * (0.92 + loyaltyNorm * 0.16) * iconStretch;
+  const maxRetentionSpend = team.totalPurse * u(0.46, 0.60) * (0.92 + loyaltyNorm * 0.16) * iconStretch * appetite;
   // Cornerstones may push total retention spend beyond the normal guard —
   // a franchise NEVER auctions its face to save auction budget
   const cornerstoneSpendCap = team.totalPurse * 0.72;
@@ -1177,8 +1277,10 @@ export function decideAIRetentions(
     // Base bar: the player must be worth roughly the slab. Loyalty discounts
     // the bar by up to ~22%; disloyal teams demand a clear surplus. The bar
     // escalates with each slab used — the 4th/5th retention (₹18/14 Cr again)
-    // must be justified against the auction flexibility it forfeits.
-    let bar = slabCost * (1.06 - loyaltyNorm * 0.24) * (1 + cappedUsed * 0.06);
+    // must be justified against the auction flexibility it forfeits. Low
+    // appetite (auction hunters) raises the bar so borderline keeps are
+    // released to fund big auction moves instead.
+    let bar = slabCost * (1.06 - loyaltyNorm * 0.24) * (1 + cappedUsed * 0.06) * (2 - appetite);
 
     // Iconic-star override: EVERY franchise protects a rep-9/10 face of the
     // franchise; loyalty only decides how deep a deficit they'll swallow
