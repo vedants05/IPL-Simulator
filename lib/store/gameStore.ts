@@ -1271,13 +1271,20 @@ function advanceToNextLot() {
   const next = pickNextLot(newSets);
 
   if (!next) {
-    // All sets done — start accelerated phase or end
-    if (!auction.isAcceleratedPhase && auction.unsoldPlayerIds.length > 0) {
-      // Build accelerated set with unsold players at half price
+    // All sets done — run (possibly repeated) accelerated rounds so teams can
+    // keep filling toward a full 25-man squad. Re-run while each round is still
+    // making sales; stop once a whole round clears no one (no more interest).
+    const madeProgress = auction.unsoldPlayerIds.length > 0 &&
+      (!auction.isAcceleratedPhase || auction.unsoldPlayerIds.length < _lastAccelUnsoldCount);
+    if (madeProgress) {
+      _lastAccelUnsoldCount = auction.unsoldPlayerIds.length;
+      // Halve base price only on the FIRST accelerated round; later rounds keep
+      // the reduced base so prices don't collapse to nothing.
+      const halve = !auction.isAcceleratedPhase;
       const unsoldPlayers = auction.unsoldPlayerIds
         .map((id) => players[id])
         .filter(Boolean)
-        .map((p) => ({ ...p, basePrice: Math.max(20, Math.floor(p.basePrice / 2)) }));
+        .map((p) => halve ? { ...p, basePrice: Math.max(20, Math.floor(p.basePrice / 2)) } : { ...p });
 
       if (unsoldPlayers.length > 0) {
         const acceleratedSets = [{
@@ -1429,6 +1436,10 @@ function scheduleAIBids(player: Player) {
 // (race between timer fire + PASS click, or rapid PASS double-click)
 // ---------------------------------------------------------------------------
 let _hammerLotId: string | null = null;
+
+// Tracks the unsold count entering the current accelerated round, so repeated
+// accelerated rounds stop once a whole pass clears no one.
+let _lastAccelUnsoldCount = Infinity;
 
 export { hammerFall, advanceToNextLot, scheduleAIBids };
 export type { }; // keep module boundary
