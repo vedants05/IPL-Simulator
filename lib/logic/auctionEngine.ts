@@ -75,6 +75,10 @@ function isQualitySpinOption(p: Player, minRating = 78): boolean {
   return p.role === "All-Rounder" && /spin|orthodox/i.test(p.bowlingStyle ?? "");
 }
 
+function isSpinAllRounder(p: Player): boolean {
+  return p.role === "All-Rounder" && /spin|orthodox/i.test(p.bowlingStyle ?? "");
+}
+
 /** Counts specialist pacers AND pace-bowling all-rounders. */
 function isQualityPaceOption(p: Player, minRating = 78): boolean {
   if ((p.currentBowling ?? 0) < minRating) return false;
@@ -158,6 +162,17 @@ interface SquadComp {
   // Guideline tracking (from extended database fields)
   openers: number; keepers: number; finishers: number;
   qualityPace: number; qualitySpin: number; leaders: number;
+
+  // New constraints properties
+  premiumIndians: number;
+  premiumOverseas: number;
+  premiumWKs: number;
+  battingIndians78: number;
+  bowlingIndians77: number;
+  spinners75: number;
+  spinners79: number;
+  spinAllRounders75: number;
+  totalSpinners75: number;
 }
 
 // IPL structural rules — these are fixed (league rules, not preferences)
@@ -167,6 +182,51 @@ const RULES = {
 };
 
 function getSquadComp(squad: Player[]): SquadComp {
+  const premiumIndians = squad.filter(p => p.nationality === "Indian" && ratingOf(p) > 78).length;
+  const premiumOverseas = squad.filter(p => p.nationality === "Overseas" && ratingOf(p) > 78).length;
+  const premiumWKs = squad.filter(p => isKeeper(p) && ratingOf(p) > 78).length;
+
+  const indians = squad.filter(p => p.nationality === "Indian");
+  let battingIndians78 = 0;
+  let bowlingIndians77 = 0;
+
+  const indiansWithDiff = indians.map(p => ({
+    player: p,
+    diff: (p.currentBatting ?? 0) - (p.currentBowling ?? 0)
+  })).sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff));
+
+  for (const item of indiansWithDiff) {
+    const p = item.player;
+    if (item.diff > 0) {
+      if ((p.currentBatting ?? 0) > 78) battingIndians78++;
+    } else if (item.diff < 0) {
+      if ((p.currentBowling ?? 0) > 77) bowlingIndians77++;
+    } else {
+      if (battingIndians78 < 5 && bowlingIndians77 >= 4) {
+        if ((p.currentBatting ?? 0) > 78) battingIndians78++;
+      } else if (bowlingIndians77 < 4 && battingIndians78 >= 5) {
+        if ((p.currentBowling ?? 0) > 77) bowlingIndians77++;
+      } else if (battingIndians78 < 5 && bowlingIndians77 < 4) {
+        if (5 - battingIndians78 > 4 - bowlingIndians77) {
+          if ((p.currentBatting ?? 0) > 78) battingIndians78++;
+        } else {
+          if ((p.currentBowling ?? 0) > 77) bowlingIndians77++;
+        }
+      } else {
+        if (battingIndians78 <= bowlingIndians77) {
+          if ((p.currentBatting ?? 0) > 78) battingIndians78++;
+        } else {
+          if ((p.currentBowling ?? 0) > 77) bowlingIndians77++;
+        }
+      }
+    }
+  }
+
+  const spinners75 = squad.filter(p => p.role === "Spin Bowler" && (p.currentBowling ?? 0) > 75).length;
+  const spinners79 = squad.filter(p => p.role === "Spin Bowler" && (p.currentBowling ?? 0) > 79).length;
+  const spinAllRounders75 = squad.filter(p => isSpinAllRounder(p) && (p.currentBowling ?? 0) > 75).length;
+  const totalSpinners75 = spinners75 + spinAllRounders75;
+
   return {
     batters:     squad.filter(p => p.role === "Batsman").length,
     wks:         squad.filter(p => p.role === "WK-Batsman").length,
@@ -182,6 +242,16 @@ function getSquadComp(squad: Player[]): SquadComp {
     qualityPace: squad.filter(isQualityPaceOption).length,
     qualitySpin: squad.filter(isQualitySpinOption).length,
     leaders:     squad.filter(isLeader).length,
+
+    premiumIndians,
+    premiumOverseas,
+    premiumWKs,
+    battingIndians78,
+    bowlingIndians77,
+    spinners75,
+    spinners79,
+    spinAllRounders75,
+    totalSpinners75,
   };
 }
 
@@ -327,6 +397,54 @@ function computePlayerFit(
 
   // 10. Overseas balance — a full overseas contingent cools foreign interest
   if (player.nationality === "Overseas" && comp.overseas >= RULES.maxOverseas - 1) fit -= u(0.10, 0.25);
+
+  // 11. Custom Player Count requirements
+  // 8 Indians and 4 overseas players with rating > 78 including 1 wicketkeeper
+  if (player.nationality === "Indian" && rating > 78) {
+    if ((comp.premiumIndians ?? 0) < 8) fit += u(0.35, 0.55);
+  }
+  if (player.nationality === "Overseas" && rating > 78) {
+    if ((comp.overseas ?? 0) >= 5) {
+      // Once you reach 5 overseas players reduce the need for higher-rated overseas players
+      fit *= 0.60;
+    } else {
+      if ((comp.premiumOverseas ?? 0) < 4) {
+        fit += u(0.35, 0.55);
+      }
+    }
+  }
+  if (isKeeper(player) && rating > 78) {
+    if ((comp.premiumWKs ?? 0) < 1) fit += u(0.40, 0.60);
+  }
+
+  // 5 batting Indians with rating > 78 and 4 bowling Indians with rating > 77.
+  if (player.nationality === "Indian") {
+    const isBattingPrimarily = (player.currentBatting ?? 0) >= (player.currentBowling ?? 0);
+    if (isBattingPrimarily && (player.currentBatting ?? 0) > 78) {
+      if ((comp.battingIndians78 ?? 0) < 5) fit += u(0.35, 0.55);
+    } else if (!isBattingPrimarily && (player.currentBowling ?? 0) > 77) {
+      if ((comp.bowlingIndians77 ?? 0) < 4) fit += u(0.35, 0.55);
+    }
+  }
+
+  // Spinner requirements: minimum of 3 spinners > 75 (total), and at least 2 must be out-and-out spinners (>75). One out-and-out must be > 79.
+  if (player.role === "Spin Bowler") {
+    if ((player.currentBowling ?? 0) > 79 && (comp.spinners79 ?? 0) < 1) {
+      fit += u(0.45, 0.65);
+    }
+    if ((player.currentBowling ?? 0) > 75) {
+      if ((comp.spinners75 ?? 0) < 2) {
+        fit += u(0.35, 0.55);
+      }
+      if ((comp.totalSpinners75 ?? 0) < 3) {
+        fit += u(0.30, 0.50);
+      }
+    }
+  } else if (isSpinAllRounder(player)) {
+    if ((player.currentBowling ?? 0) > 75 && (comp.totalSpinners75 ?? 0) < 3) {
+      fit += u(0.30, 0.50);
+    }
+  }
 
   return Math.max(0, fit);
 }

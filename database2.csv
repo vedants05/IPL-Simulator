@@ -107,7 +107,7 @@ Gujarat Titans,Gurnoor Singh Brar,GT (1.30 Cr),India,25,1.30,Indian,Uncapped,Bow
 ,Connor Esterhuizen,Unsold,South Africa,25,0.75,Overseas,Uncapped,Wicketkeeper-Batter,NA,NA,RHB,68,80,0,0,7,Yes,No,No,No,40.00,85.00
 Gujarat Titans,Ashok Sharma,RR (0.30 Cr),India,24,0.90,Indian,Uncapped,Bowler (Pace),Pacer,Right Handed Bowler,RHB,0,0,76,79,4,No,No,No,No,40.00,25.00
 Gujarat Titans,Yarra Prithvi Raj,GT (0.30 Cr),India,28,0.30,Indian,Uncapped,Bowler (Pace),Pacer,Left Handed Bowler,LHB,0,0,68,76,3,No,No,No,No,40.00,25.00
-Rajasthan Royals,Vaibhav Suryavanshi,RR (1.10 Cr),India,15,1.10,Indian,Uncapped,Batter,NA,NA,LHB,90,97,0,0,7,No,No,Yes,No,45.00,82.00
+Rajasthan Royals,Vaibhav Suryavanshi,RR (1.10 Cr),India,15,1.10,Indian,Capped,Batter,NA,NA,LHB,90,97,0,0,7,No,No,Yes,No,45.00,82.00
 Rajasthan Royals,Jofra Archer,RR (12.50 Cr),England,31,12.50,Overseas,Capped,Bowler (Pace),Pacer,Right Handed Bowler,RHB,0,0,91,93,9,No,No,No,No,70.00,35.00
 Rajasthan Royals,Yashasvi Jaiswal,RR (18.00 Cr),India,24,18.00,Indian,Capped,Batter,NA,NA,LHB,87,92,0,0,9,No,No,Yes,No,60.00,92.00
 Rajasthan Royals,Ravindra Jadeja,CSK (18.00 Cr),India,37,14.00,Indian,Capped,All-Rounder,Spinner,Left Handed Bowler,LHB,80,80,85,85,9,No,No,No,Yes,75.00,80.00
@@ -236,7 +236,7 @@ Chennai Super Kings,Aman Hakim Khan,CSK (0.40 Cr),India,29,0.40,Indian,Uncapped,
 ,Macneil Noronha,CSK (0.30 Cr),India,24,0.30,Indian,Uncapped,All-Rounder,Spinner,Right Handed Bower,RHB,71,80,68,74,4,No,No,No,No,45.00,75.00
 ,Kuldip Yadav,DC (13.25 Cr),India,29,0.30,Indian,Uncapped,Bowler (Pace),Pacer,Left Handed Bowler,LHB,0,0,70,74,3,No,No,No,No,60.00,25.00
 Lucknow Super Giants,Kuldeep Yadav,DC (13.25 Cr),India,31,13.50,Indian,Capped,Bowler (Spinner),Spinner,Left Handed Bowler,LHB,0,0,88,88,9,No,No,No,No,75.00,25.00
-Delhi Capitals,Tristan Stubbs,DC (10.00 Cr),South Africa,25,10.00,Overseas,Capped,Wicketkeeper-Batter,Spinner,Right Handed Bowler,RHB,83,88,61,61,8,Yes,Yes,No,Yes,75.00,85.00
+Delhi Capitals,Tristan Stubbs,DC (10.00 Cr),South Africa,25,10.00,Overseas,Capped,Batter,Spinner,Right Handed Bowler,RHB,83,88,61,61,8,Yes,Yes,No,Yes,75.00,85.00
 Delhi Capitals,KL Rahul,DC (14.00 Cr),India,34,14.00,Indian,Capped,Wicketkeeper-Batter,NA,NA,RHB,88,88,0,0,9,Yes,No,Yes,No,81.00,88.00
 Delhi Capitals,Mitchell Starc,DC (11.75 Cr),Australia,36,11.75,Overseas,Capped,Bowler (Pace),Pacer,Left Handed Bowler,LHB,0,0,85,85,9,No,No,No,No,75.00,35.00
 Delhi Capitals,Axar Patel,DC (16.50 Cr),India,32,16.50,Indian,Capped,All-Rounder,Spinner,Left Handed Bowler,LHB,83,83,83,83,9,No,No,No,Yes,70.00,75.00
@@ -333,5 +333,5 @@ Chennai Super Kings,Ayush Mhatre,CSK (0.30 Cr),India,18,0.3,Indian,Uncapped,Batt
 ,Teddy Bishop,Unsold,West Indies,23,,Overseas,Capped,Batter,NA,NA,RHB,67.00,80.00,0.00,0.00,,No,No,No,No,45.00,70.00
 ,Kevin Wickham,Unsold,West Indies,23,,Overseas,Uncapped,Batter,NA,NA,RHB,70.00,80.00,0.00,0.00,,No,No,No,yes,45.00,80.00
 ,Matthew Nandu,Unsold,West Indies,23,,Overseas,Uncapped,All-Rounder,Spinner,Right Handed Bowler,LHB,0.00,78.00,70.00,78.00,,No,No,yes,No,45.00,65.00
-,Johan Layne,Unsold,West Indies,22,,Overseas,Uncapped,Bowler (Pacer),Pacer,Right Handed Bowler,RHB,0.00,0.00,75.00,78.00,,No,No,No,No,45.00,25.00
+,Johann Layne,Unsold,West Indies,22,,Overseas,Uncapped,All-Rounder,Pacer,Right Handed Bowler,RHB,61.00,72.00,73.00,81.00,,No,No,No,No,45.00,25.00
 ,McKenny Clarke,Unsold,West Indies,23,,Overseas,Uncapped,Bowler (Pacer),Pacer,Right Handed Bowler,RHB,0.00,0.00,65.00,76.00,,No,No,No,No,40.00,25.00
