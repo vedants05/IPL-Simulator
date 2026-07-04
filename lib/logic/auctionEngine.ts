@@ -99,16 +99,26 @@ function getPotentialMult(p: Player): number {
   const cur = ratingOf(p);
   const pot = potentialOf(p);
   const gap = Math.max(0, pot - cur);
-  if (p.age > 26 || pot < 82) return 1.0;
+  if (p.age >= 28 || pot < 82) return 1.0;
 
-  const ageFactor    = clamp((28 - p.age) / 10, 0, 1);  // 18yo → 1.0, 27yo → 0.1
+  const ageFactor    = clamp(0.50 + ((28 - p.age) / 10) * 0.50, 0.50, 1.00);  // Less pronounced age difference
   const gapNorm      = Math.min(gap, 15) / 15;           // room to grow
   const ceilingNorm  = clamp((pot - 80) / 17, 0, 1);     // how high the ceiling is
   
   // Exponential bonus for elite potentials (like Vaibhav Suryavanshi at 97)
-  const eliteBonus = pot >= 90 ? Math.pow(pot - 89, 1.4) * 0.10 : 0;
+  let eliteBonus = pot >= 88 ? Math.pow(pot - 87, 1.4) * 0.10 : 0;
+  if (pot >= 88) {
+    const proximityBoost = 1.0 + clamp((15 - gap) / 15, 0, 1) * 0.50;
+    eliteBonus *= proximityBoost;
+  }
   
-  return 1.0 + ageFactor * (gapNorm * u(0.40, 0.80) + ceilingNorm * u(0.40, 0.75)) + eliteBonus;
+  let mult = 1.0 + ageFactor * (gapNorm * u(0.40, 0.80) + ceilingNorm * u(0.40, 0.75)) + eliteBonus;
+  if (cur <= 82) {
+    const penaltyFactor = clamp((cur - 76) / 7, 0, 1); // 76 -> 0.0, 82 -> 0.857, 83 -> 1.0
+    const potentialScaling = 0.40 + 0.60 * penaltyFactor;
+    mult = 1.0 + (mult - 1.0) * potentialScaling;
+  }
+  return mult;
 }
 
 type RoleGroup = "BAT" | "WK" | "AR" | "PACE" | "SPIN";
@@ -326,14 +336,16 @@ function computePlayerFit(
 function effectiveQuality(player: Player): number {
   const rating = ratingOf(player);
   const rep = repOf(player);
-  let q = 0.7 * rating + 0.3 * (rep * 10);
+  let q = 0.8 * rating + 0.2 * (rep * 10);
   
   if (isYoungGun(player)) q = Math.min(88, q + 6);
   
   // High potential superstars get elevated to elite brackets
   const pot = potentialOf(player);
-  if (pot >= 90 && player.age <= 25) {
-    q = Math.max(q, pot - 1);
+  if (pot >= 88 && player.age <= 25) {
+    const penaltyFactor = clamp((rating - 76) / 7, 0, 1);
+    const penalty = 6 - 5 * penaltyFactor; // 76 or below -> 6, 82 -> 1.71 (rounds to 2), 83 -> 1
+    q = Math.max(q, Math.round(pot - penalty));
   }
   
   return Math.min(97, q);
@@ -457,7 +469,7 @@ function getRoleExcess(role: string, comp: SquadComp): number {
 function applyQualityCeiling(raw: number, base: number, quality: number, player?: Player): number {
   let ceilMult: number, carry: number, hardCap = Infinity;
 
-  const hasElitePotential = player && potentialOf(player) >= 90 && player.age <= 25;
+  const hasElitePotential = player && potentialOf(player) >= 88 && player.age <= 25;
 
   if (quality <= 55) {
     ceilMult = u(1.70, 2.60); carry = u(0.08, 0.20);
@@ -676,21 +688,27 @@ const MAX_UNCAPPED = 2;
 const MAX_TOTAL = 6;
 
 /** Estimated market worth in lakhs — used only for retention decisions. */
-function estimateRetentionWorth(player: Player, team: Team): number {
+export function estimateRetentionWorth(player: Player, team: Team): number {
   const rating = ratingOf(player);
   const rep = repOf(player);
-  let worth = qualityToBaseLakhs(0.7 * rating + 0.3 * (rep * 10));
+  let worth = qualityToBaseLakhs(0.8 * rating + 0.2 * (rep * 10));
 
   // Skill: same shape as auction form multiplier
-  if (rating > 0) worth *= 0.90 + (rating / 100) * 0.20;
+  if (rating > 0) worth *= 0.50 + Math.pow(rating / 100, 2.5) * 0.80;
 
-  // Age curve: youth appreciates, veterans depreciate. Iconic veterans
-  // (rep 9-10) age far more gently — their brand + big-match value endures,
-  // which is exactly why real franchises retain their ageing faces.
-  if      (player.age <= 24) worth *= u(1.05, 1.20);
+  // Age curve: youth appreciates, but do not discount veterans
+  if (player.age <= 24) worth *= u(1.05, 1.20);
   else if (player.age <= 29) worth *= u(1.00, 1.10);
-  else if (player.age <= 33) worth *= u(0.88, 1.00);
-  else                        worth *= rep >= 9 ? u(0.85, 0.98) : u(0.70, 0.90);
+
+  // Veteran decline penalty for players aged over 34 who are 81 rated or below
+  if (player.age > 34 && rating <= 81) {
+    worth *= 0.50;
+  }
+
+  // Superstars rated >= 86 are prioritized heavily
+  if (rating >= 86) {
+    worth *= 2.5;
+  }
 
   // Potential upside — same ceiling logic as the auction valuation, so a
   // Parag-type (79 now, 86 ceiling, age 24) is valued on his next 5 years
@@ -706,16 +724,12 @@ function estimateRetentionWorth(player: Player, team: Team): number {
   if (isFinisherType(player) && (player.battingAggression ?? 0) >= 85) worth *= u(1.02, 1.12);
   if (isYoungGun(player)) worth *= 1 + 0.15 * Math.max(0, (team.dna.prefYoungsters - 40) / 60);
 
-  // Team lens: role valuation + segment focus shade the worth estimate
-  const dna = team.dna;
-  const batRoles = ["Batsman", "WK-Batsman"];
-  const bowlRoles = ["Pace Bowler", "Spin Bowler"];
-  const roleVal = batRoles.includes(player.role) ? dna.batValue
-    : bowlRoles.includes(player.role) ? dna.bowlValue
-    : dna.alrValue;
-  worth *= 0.90 + ((roleVal - 30) / 65) * 0.20;
-  const focusNorm = clamp((segmentFocusOf(team, player) - 62.5) / 32.5, -1, 1);
-  worth *= 1 + focusNorm * u(0.02, 0.08);
+  // Boost for young Indian talents with high potential (e.g. Angkrish Raghuvanshi)
+  if (player.nationality === "Indian" && player.age <= 24 && potentialOf(player) >= 84) {
+    worth *= 1.30;
+  }
+
+
 
   // Per-run noise so retention sets differ between saves. High-reputation
   // players get a tighter read — no franchise misjudges its own superstar.
@@ -752,116 +766,97 @@ export function decideAIRetentions(
   // class) plus any rep-10 legend (Dhoni). Processed FIRST and effectively
   // never released — a franchise never auctions its identity.
   const isCornerstone = (p: Player) =>
-    repOf(p) >= 9 || ratingOf(p) >= 84 || potentialOf(p) >= 90;
+    repOf(p) >= 9 || ratingOf(p) >= 84 || potentialOf(p) >= 88;
 
-  const scored = squad
-    .filter(isCappedPlayer)
-    .map(p => ({ p, worth: estimateRetentionWorth(p, team) }));
+  // 1. Score all players (both capped and uncapped)
+  const allCandidates = squad.map(p => {
+    const worth = estimateRetentionWorth(p, team);
+    const cornerstone = isCornerstone(p);
+    return { p, worth, isCapped: isCappedPlayer(p), cornerstone };
+  });
 
-  const cornerstones = scored
-    .filter(c => isCornerstone(c.p))
-    .sort((a, b) => b.worth - a.worth)
-    .slice(0, MAX_CAPPED);
-  const cornerstoneIds = new Set(cornerstones.map(c => c.p.id));
+  // Sort them so that cornerstones are processed first (in worth order) and then all other candidates (in worth order)
+  allCandidates.sort((a, b) => {
+    const aVal = a.cornerstone ? 1 : 0;
+    const bVal = b.cornerstone ? 1 : 0;
+    if (bVal !== aVal) return bVal - aVal;
+    if (Math.abs(b.worth - a.worth) > 0.001) return b.worth - a.worth;
 
-  const cappedCandidates = [
-    ...cornerstones,
-    ...scored.filter(c => !cornerstoneIds.has(c.p.id)).sort((a, b) => b.worth - a.worth),
-  ];
-
-  // Uncapped candidates — rep-10 legends (an uncapped Dhoni) jump the queue
-  // and ignore the spend guard: ₹4 Cr for the face of the franchise is free.
-  const uncappedCandidates = squad
-    .filter(p => !isCappedPlayer(p))
-    .map(p => ({ p, worth: estimateRetentionWorth(p, team) }))
-    .sort((a, b) => {
-      const aIcon = isCornerstone(a.p) ? 1 : 0;
-      const bIcon = isCornerstone(b.p) ? 1 : 0;
-      return bIcon - aIcon || b.worth - a.worth;
-    });
+    // Tie-breaker: same ability (rating) and age -> select Indian first
+    const aRtg = ratingOf(a.p);
+    const bRtg = ratingOf(b.p);
+    if (aRtg === bRtg && a.p.age === b.p.age) {
+      const aInd = a.p.nationality === "Indian" ? 1 : 0;
+      const bInd = b.p.nationality === "Indian" ? 1 : 0;
+      return bInd - aInd;
+    }
+    return b.worth - a.worth;
+  });
 
   const retained: string[] = [];
   let cappedUsed = 0;
   let uncappedUsed = 0;
   let totalSpend = 0;
 
-  // ── Capped retentions: worth vs slab cost, loyalty lowers the bar ─────────
-  for (const { p, worth } of cappedCandidates) {
-    if (cappedUsed >= MAX_CAPPED || retained.length >= MAX_TOTAL) break;
-    const slabCost = RETENTION_SLABS[cappedUsed];
-    const cornerstone = cornerstoneIds.has(p.id);
+  for (const { p, worth, isCapped, cornerstone } of allCandidates) {
+    if (retained.length >= MAX_TOTAL) break;
+
+    // Check slot limits
+    if (isCapped) {
+      if (cappedUsed >= MAX_CAPPED) continue;
+    } else {
+      if (uncappedUsed >= MAX_UNCAPPED) continue;
+    }
+
+    const slabCost = isCapped ? RETENTION_SLABS[cappedUsed] : UNCAPPED_SLAB;
     const spendCap = cornerstone ? cornerstoneSpendCap : maxRetentionSpend;
+
     if (totalSpend + slabCost > spendCap) {
-      if (cornerstone) continue; // never let a cheaper non-icon jump the queue
+      if (cornerstone) continue; // never let a cheaper non-icon block the queue
       break;
     }
+
     if (cornerstone) {
-      // Faces of the franchise stay, essentially unconditionally
       retained.push(p.id);
-      cappedUsed++;
+      if (isCapped) cappedUsed++; else uncappedUsed++;
       totalSpend += slabCost;
       continue;
     }
 
-    // Base bar: the player must be worth roughly the slab. Loyalty discounts
-    // the bar by up to ~22%; disloyal teams demand a clear surplus. The bar
-    // escalates with each slab used — the 4th/5th retention (₹18/14 Cr again)
-    // must be justified against the auction flexibility it forfeits. Low
-    // appetite (auction hunters) raises the bar so borderline keeps are
-    // released to fund big auction moves instead.
-    let bar = slabCost * (1.00 - loyaltyNorm * 0.15) * (1 + cappedUsed * 0.04) * (1.5 - appetite * 0.5);
-    bar = Math.min(bar, slabCost * 1.15); // The bar should never be more than 15% above the slab cost
+    // Base bar checks depending on capped vs uncapped
+    let bar = 0;
+    if (isCapped) {
+      bar = slabCost * (1.00 - loyaltyNorm * 0.15) * (1 + cappedUsed * 0.04) * (1.5 - appetite * 0.5);
+      bar = Math.min(bar, slabCost * 1.15); // The bar should never be more than 15% above the slab cost
 
-    // Iconic-star override: EVERY franchise protects a rep-9/10 face of the
-    // franchise; loyalty only decides how deep a deficit they'll swallow
-    const rep = repOf(p);
-    if (rep >= 9 && ratingOf(p) >= 78) {
-      bar = Math.min(bar, slabCost * (0.42 + (1 - loyaltyNorm) * 0.28) * u(0.95, 1.10));
-    } else if (rep >= 8 && loyaltyNorm >= 0.5 && ratingOf(p) >= 80) {
-      bar = Math.min(bar, slabCost * u(0.72, 0.92));
-    }
-    // Elite young cornerstone: everyone fights to keep a current or FUTURE
-    // superstar (Jaiswal-types by rating, wonderkids by ceiling)
-    if (ratingOf(p) >= 84 && p.age <= 27) {
-      bar = Math.min(bar, slabCost * u(0.68, 0.86));
-    } else if (potentialOf(p) >= 88 && p.age <= 25) {
-      bar = Math.min(bar, slabCost * u(0.72, 0.90));
+      if (ratingOf(p) >= 86) {
+        bar = Math.min(bar, slabCost * 0.40);
+      }
+
+      // Iconic-star override: EVERY franchise protects a rep-9/10 face of the franchise
+      const rep = repOf(p);
+      if (rep >= 9 && ratingOf(p) >= 78) {
+        bar = Math.min(bar, slabCost * (0.42 + (1 - loyaltyNorm) * 0.28) * u(0.95, 1.10));
+      } else if (rep >= 8 && loyaltyNorm >= 0.5 && ratingOf(p) >= 80) {
+        bar = Math.min(bar, slabCost * u(0.72, 0.92));
+      }
+      // Elite young cornerstone
+      if (ratingOf(p) >= 84 && p.age <= 27) {
+        bar = Math.min(bar, slabCost * u(0.68, 0.86));
+      } else if (potentialOf(p) >= 88 && p.age <= 25) {
+        bar = Math.min(bar, slabCost * u(0.72, 0.90));
+      }
+    } else {
+      bar = UNCAPPED_SLAB * u(1.35, 2.10) * (1.05 - loyaltyNorm * 0.15);
+      if (p.age <= 23 && (p.potential === "Wonderkid" || p.potential === "Promising")) {
+        bar *= u(0.75, 0.92);
+      }
     }
 
     if (worth >= bar) {
       retained.push(p.id);
-      cappedUsed++;
+      if (isCapped) cappedUsed++; else uncappedUsed++;
       totalSpend += slabCost;
-    }
-    // No break on decline: a later candidate with an override may still
-    // qualify at this same slab price.
-  }
-
-  // ── Uncapped retentions: cheap slab, so the bar is a value multiple ──────
-  for (const { p, worth } of uncappedCandidates) {
-    if (uncappedUsed >= MAX_UNCAPPED || retained.length >= MAX_TOTAL) break;
-    const cornerstone = isCornerstone(p);
-    if (totalSpend + UNCAPPED_SLAB > (cornerstone ? cornerstoneSpendCap : maxRetentionSpend)) {
-      if (cornerstone) continue;
-      break;
-    }
-    if (cornerstone) {
-      retained.push(p.id);
-      uncappedUsed++;
-      totalSpend += UNCAPPED_SLAB;
-      continue;
-    }
-
-    // Retain when worth clearly exceeds the ₹4 Cr slab; loyalty + youth help
-    let bar = UNCAPPED_SLAB * u(1.35, 2.10) * (1.05 - loyaltyNorm * 0.15);
-    if (p.age <= 23 && (p.potential === "Wonderkid" || p.potential === "Promising")) {
-      bar *= u(0.75, 0.92);
-    }
-
-    if (worth >= bar) {
-      retained.push(p.id);
-      uncappedUsed++;
-      totalSpend += UNCAPPED_SLAB;
     }
   }
 
