@@ -1,5 +1,5 @@
 import { Player, Team, SegmentFocus } from "@/lib/types";
-import { getNextBidAmount, canTeamBidOnPlayer, canTeamAffordBid } from "./auctionRules";
+import { getNextBidAmount, canTeamBidOnPlayer, canTeamAffordBid, getCappedRetentionSlabsForCount } from "./auctionRules";
 
 // ---------------------------------------------------------------------------
 // Per-lot valuation cache — computed once per team per player lot
@@ -113,6 +113,9 @@ function getPotentialMult(p: Player): number {
   }
   
   let mult = 1.0 + ageFactor * (gapNorm * u(0.40, 0.80) + ceilingNorm * u(0.40, 0.75)) + eliteBonus;
+  if (cur >= 84) {
+    mult = 1.0 + (mult - 1.0) * 0.20;
+  }
   if (cur <= 82) {
     const penaltyFactor = clamp((cur - 76) / 7, 0, 1); // 76 -> 0.0, 82 -> 0.857, 83 -> 1.0
     const potentialScaling = 0.40 + 0.60 * penaltyFactor;
@@ -710,6 +713,11 @@ export function estimateRetentionWorth(player: Player, team: Team): number {
     worth *= 2.5;
   }
 
+  // Elite superstars rated >= 90 receive an additional multiplier
+  if (rating >= 90) {
+    worth *= 1.30;
+  }
+
   // Potential upside — same ceiling logic as the auction valuation, so a
   // Parag-type (79 now, 86 ceiling, age 24) is valued on his next 5 years
   worth *= getPotentialMult(player);
@@ -793,74 +801,85 @@ export function decideAIRetentions(
     return b.worth - a.worth;
   });
 
-  const retained: string[] = [];
-  let cappedUsed = 0;
-  let uncappedUsed = 0;
-  let totalSpend = 0;
+  // 2. Perform trial evaluations to find a stable capped player count
+  // We try targeting 5 down to 0 capped players, and select the first target that is fully satisfied.
+  for (let targetCapped = MAX_CAPPED; targetCapped >= 0; targetCapped--) {
+    const slabs = getCappedRetentionSlabsForCount(targetCapped);
+    const retainedList: string[] = [];
+    let cappedUsed = 0;
+    let uncappedUsed = 0;
+    let totalSpend = 0;
 
-  for (const { p, worth, isCapped, cornerstone } of allCandidates) {
-    if (retained.length >= MAX_TOTAL) break;
+    for (const { p, worth, isCapped, cornerstone } of allCandidates) {
+      if (retainedList.length >= MAX_TOTAL) break;
 
-    // Check slot limits
-    if (isCapped) {
-      if (cappedUsed >= MAX_CAPPED) continue;
-    } else {
-      if (uncappedUsed >= MAX_UNCAPPED) continue;
-    }
-
-    const slabCost = isCapped ? RETENTION_SLABS[cappedUsed] : UNCAPPED_SLAB;
-    const spendCap = cornerstone ? cornerstoneSpendCap : maxRetentionSpend;
-
-    if (totalSpend + slabCost > spendCap) {
-      if (cornerstone) continue; // never let a cheaper non-icon block the queue
-      break;
-    }
-
-    if (cornerstone) {
-      retained.push(p.id);
-      if (isCapped) cappedUsed++; else uncappedUsed++;
-      totalSpend += slabCost;
-      continue;
-    }
-
-    // Base bar checks depending on capped vs uncapped
-    let bar = 0;
-    if (isCapped) {
-      bar = slabCost * (1.00 - loyaltyNorm * 0.15) * (1 + cappedUsed * 0.04) * (1.5 - appetite * 0.5);
-      bar = Math.min(bar, slabCost * 1.15); // The bar should never be more than 15% above the slab cost
-
-      if (ratingOf(p) >= 86) {
-        bar = Math.min(bar, slabCost * 0.40);
+      // Check slot limits
+      if (isCapped) {
+        if (cappedUsed >= targetCapped) continue;
+      } else {
+        if (uncappedUsed >= MAX_UNCAPPED) continue;
       }
 
-      // Iconic-star override: EVERY franchise protects a rep-9/10 face of the franchise
-      const rep = repOf(p);
-      if (rep >= 9 && ratingOf(p) >= 78) {
-        bar = Math.min(bar, slabCost * (0.42 + (1 - loyaltyNorm) * 0.28) * u(0.95, 1.10));
-      } else if (rep >= 8 && loyaltyNorm >= 0.5 && ratingOf(p) >= 80) {
-        bar = Math.min(bar, slabCost * u(0.72, 0.92));
+      const slabCost = isCapped ? slabs[cappedUsed] : UNCAPPED_SLAB;
+      const isRep10 = repOf(p) === 10;
+      const spendCap = cornerstone ? cornerstoneSpendCap : maxRetentionSpend;
+
+      if (!isRep10 && totalSpend + slabCost > spendCap) {
+        if (cornerstone) continue; // never let a cheaper non-icon block the queue
+        break;
       }
-      // Elite young cornerstone
-      if (ratingOf(p) >= 84 && p.age <= 27) {
-        bar = Math.min(bar, slabCost * u(0.68, 0.86));
-      } else if (potentialOf(p) >= 88 && p.age <= 25) {
-        bar = Math.min(bar, slabCost * u(0.72, 0.90));
+
+      if (isRep10 || cornerstone) {
+        retainedList.push(p.id);
+        if (isCapped) cappedUsed++; else uncappedUsed++;
+        totalSpend += slabCost;
+        continue;
       }
-    } else {
-      bar = UNCAPPED_SLAB * u(1.35, 2.10) * (1.05 - loyaltyNorm * 0.15);
-      if (p.age <= 23 && (p.potential === "Wonderkid" || p.potential === "Promising")) {
-        bar *= u(0.75, 0.92);
+
+      // Base bar checks depending on capped vs uncapped
+      let bar = 0;
+      if (isCapped) {
+        bar = slabCost * (1.00 - loyaltyNorm * 0.15) * (1 + cappedUsed * 0.04) * (1.5 - appetite * 0.5);
+        bar = Math.min(bar, slabCost * 1.15); // The bar should never be more than 15% above the slab cost
+
+        if (ratingOf(p) >= 86) {
+          bar = Math.min(bar, slabCost * 0.40);
+        }
+
+        // Iconic-star override: EVERY franchise protects a rep-9/10 face of the franchise
+        const rep = repOf(p);
+        if (rep >= 9 && ratingOf(p) >= 78) {
+          bar = Math.min(bar, slabCost * (0.42 + (1 - loyaltyNorm) * 0.28) * u(0.95, 1.10));
+        } else if (rep >= 8 && loyaltyNorm >= 0.5 && ratingOf(p) >= 80) {
+          bar = Math.min(bar, slabCost * u(0.72, 0.92));
+        }
+        // Elite young cornerstone
+        if (ratingOf(p) >= 84 && p.age <= 27) {
+          bar = Math.min(bar, slabCost * u(0.68, 0.86));
+        } else if (potentialOf(p) >= 88 && p.age <= 25) {
+          bar = Math.min(bar, slabCost * u(0.72, 0.90));
+        }
+      } else {
+        bar = UNCAPPED_SLAB * u(1.35, 2.10) * (1.05 - loyaltyNorm * 0.15);
+        if (p.age <= 23 && (p.potential === "Wonderkid" || p.potential === "Promising")) {
+          bar *= u(0.75, 0.92);
+        }
+      }
+
+      if (worth >= bar) {
+        retainedList.push(p.id);
+        if (isCapped) cappedUsed++; else uncappedUsed++;
+        totalSpend += slabCost;
       }
     }
 
-    if (worth >= bar) {
-      retained.push(p.id);
-      if (isCapped) cappedUsed++; else uncappedUsed++;
-      totalSpend += slabCost;
+    // If we successfully retained exactly the target count of capped players (or if we targeted 0), this is our stable solution
+    if (cappedUsed === targetCapped || targetCapped === 0) {
+      return retainedList;
     }
   }
 
-  return retained;
+  return [];
 }
 
 // ---------------------------------------------------------------------------

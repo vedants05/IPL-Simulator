@@ -13,6 +13,14 @@ function isPlayerCapped(player: Player): boolean {
   return player.isCapped || player.nationality === "Overseas";
 }
 
+export function getCappedRetentionSlabsForCount(count: number): number[] {
+  if (count <= 1) return [1800];
+  if (count === 2) return [1800, 1400];
+  if (count === 3) return [1800, 1400, 1100];
+  if (count === 4) return [1800, 1800, 1400, 1100];
+  return [1800, 1800, 1400, 1400, 1100]; // count >= 5
+}
+
 export function getPlayerRetentionCost(
   playerId: string,
   alreadyRetained: string[],
@@ -22,6 +30,13 @@ export function getPlayerRetentionCost(
   if (!player) return 0;
   if (!isPlayerCapped(player)) return UNCAPPED_RETENTION_COST;
   
+  // Count how many capped players are in alreadyRetained in total
+  const cappedPlayers = alreadyRetained.filter((id) => {
+    const p = players[id];
+    return p && isPlayerCapped(p);
+  });
+  const slabs = getCappedRetentionSlabsForCount(cappedPlayers.length);
+
   const index = alreadyRetained.indexOf(playerId);
   if (index !== -1) {
     // If the player is in the array, count capped players preceding them
@@ -29,7 +44,7 @@ export function getPlayerRetentionCost(
       const p = players[id];
       return p && isPlayerCapped(p);
     }).length;
-    return CAPPED_RETENTION_COSTS[cappedBefore] ?? 0;
+    return slabs[cappedBefore] ?? 0;
   }
   
   // Otherwise, count all capped players in the array
@@ -37,20 +52,26 @@ export function getPlayerRetentionCost(
     const p = players[id];
     return p && isPlayerCapped(p);
   }).length;
-  return CAPPED_RETENTION_COSTS[cappedCount] ?? 0;
+  return slabs[cappedCount] ?? 0;
 }
 
 export function calculateTotalRetentionCost(
   retainedIds: string[],
   players: Record<string, Player>
 ): number {
+  const cappedPlayers = retainedIds.filter((id) => {
+    const p = players[id];
+    return p && isPlayerCapped(p);
+  });
+  const slabs = getCappedRetentionSlabsForCount(cappedPlayers.length);
+
   let cappedCount = 0;
   let total = 0;
   for (const id of retainedIds) {
     const p = players[id];
     if (!p) continue;
     if (isPlayerCapped(p)) {
-      total += CAPPED_RETENTION_COSTS[cappedCount] ?? 0;
+      total += slabs[cappedCount] ?? 0;
       cappedCount++;
     } else {
       total += UNCAPPED_RETENTION_COST;
