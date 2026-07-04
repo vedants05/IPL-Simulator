@@ -53,7 +53,7 @@ function ratingOf(p: Player): number {
 
 /** Reputation 1-10; fallback derives from star rating for legacy data. */
 function repOf(p: Player): number {
-  return p.reputation ?? Math.round(p.starRating * 2);
+  return p.reputation ?? 5;
 }
 
 function isKeeper(p: Player): boolean {
@@ -103,8 +103,12 @@ function getPotentialMult(p: Player): number {
 
   const ageFactor    = clamp((28 - p.age) / 10, 0, 1);  // 18yo → 1.0, 27yo → 0.1
   const gapNorm      = Math.min(gap, 15) / 15;           // room to grow
-  const ceilingNorm  = clamp((pot - 82) / 15, 0, 1);     // how high the ceiling is
-  return 1 + ageFactor * (gapNorm * u(0.30, 0.65) + ceilingNorm * u(0.25, 0.50));
+  const ceilingNorm  = clamp((pot - 80) / 17, 0, 1);     // how high the ceiling is
+  
+  // Exponential bonus for elite potentials (like Vaibhav Suryavanshi at 97)
+  const eliteBonus = pot >= 90 ? Math.pow(pot - 89, 1.4) * 0.10 : 0;
+  
+  return 1.0 + ageFactor * (gapNorm * u(0.40, 0.80) + ceilingNorm * u(0.40, 0.75)) + eliteBonus;
 }
 
 type RoleGroup = "BAT" | "WK" | "AR" | "PACE" | "SPIN";
@@ -238,18 +242,7 @@ function getQuirks(team: Team): TeamQuirks {
   return _teamQuirks[team.id];
 }
 
-// ---------------------------------------------------------------------------
-// Prior-salary anchor — a proven earner (Parag ₹14 Cr, Nitish Reddy…) keeps a
-// strong valuation floor tied to what the market last paid, weighted toward
-// youth/quality so a young ₹14 Cr all-rounder isn't priced like a journeyman.
-// ---------------------------------------------------------------------------
-function salaryAnchorOf(player: Player): number {
-  const prior = player.iplHistory.find(h => h.season === "2026")?.price ?? 0;
-  if (prior <= 0) return 0;
-  const premiumProfile = player.age <= 26 || ratingOf(player) >= 80
-    || isYoungGun(player) || repOf(player) >= 8;
-  return prior * (premiumProfile ? 0.80 : 0.58);
-}
+
 
 // ---------------------------------------------------------------------------
 // PLAYER FIT — the single "how much does THIS team want THIS player" score,
@@ -311,11 +304,13 @@ function computePlayerFit(
   fit += clamp((segmentFocusOf(team, player) - 62) / 33, -1, 1) * u(0.05, 0.15);
 
   // 8. Age-profile preference (youth seekers vs experience seekers)
-  if (player.age <= 24 && dna.prefYoungsters >= 60) fit += ((dna.prefYoungsters - 60) / 40) * u(0.04, 0.14);
-  if (player.age >= 31 && player.isCapped && dna.experienceFocus >= 60) fit += ((dna.experienceFocus - 60) / 40) * u(0.03, 0.12);
+  if (rating < 84) {
+    if (player.age <= 24 && dna.prefYoungsters >= 60) fit += ((dna.prefYoungsters - 60) / 40) * u(0.04, 0.14);
+    if (player.age >= 31 && dna.experienceFocus >= 60) fit += ((dna.experienceFocus - 60) / 40) * u(0.03, 0.12);
+  }
 
   // 9. Loyalty pull toward a returning ex-player
-  if (player.iplHistory.some(h => h.teamId === team.id)) fit += (dna.loyalty / 100) * u(0.04, 0.16);
+  if (player.iplHistory.some(h => h.teamId === team.id)) fit += (dna.loyalty / 100) * u(0.25, 0.60);
 
   // 10. Overseas balance — a full overseas contingent cools foreign interest
   if (player.nationality === "Overseas" && comp.overseas >= RULES.maxOverseas - 1) fit -= u(0.10, 0.25);
@@ -324,27 +319,46 @@ function computePlayerFit(
 }
 
 // ---------------------------------------------------------------------------
-// Effective star — the quality TIER a player should be priced in, lifting the
-// raw star rating for young high-ceiling prospects and for proven earners
-// (prior IPL salary). This keeps a ₹14 Cr young all-rounder (Parag) or a ₹18 Cr
-// pacer (Arshdeep) out of the mid-tier hard-cap bracket they'd otherwise hit.
+// Effective quality — the quality TIER a player should be priced in, lifting the
+// raw quality rating for young high-ceiling prospects and for proven earners
+// (prior IPL salary).
 // ---------------------------------------------------------------------------
-function effectiveStar(player: Player): number {
-  let s = player.starRating;
-  // Young high-ceiling prospects are priced a half-tier up, but only up TO the
-  // 4.5 marquee tier — a young gun shouldn't be valued like a proven 5★ great.
-  if (isYoungGun(player)) s = Math.min(4.5, s + 0.5);
-  const prior = player.iplHistory.find(h => h.season === "2026")?.price ?? 0;
-  if      (prior >= 1600) s = Math.max(s, 4.5);
-  else if (prior >= 1100) s = Math.max(s, 4.0);
-  else if (prior >= 650)  s = Math.max(s, 3.5);
-  return Math.min(5.0, s);
+function effectiveQuality(player: Player): number {
+  const rating = ratingOf(player);
+  const rep = repOf(player);
+  let q = 0.7 * rating + 0.3 * (rep * 10);
+  
+  if (isYoungGun(player)) q = Math.min(88, q + 6);
+  
+  // High potential superstars get elevated to elite brackets
+  const pot = potentialOf(player);
+  if (pot >= 90 && player.age <= 25) {
+    q = Math.max(q, pot - 1);
+  }
+  
+  return Math.min(97, q);
+}
+
+function qualityToBaseLakhs(quality: number): number {
+  if (quality >= 85) {
+    return 1350 + ((quality - 85) / 12) * 800;
+  }
+  if (quality >= 75) {
+    return 780 + ((quality - 75) / 10) * 570;
+  }
+  if (quality >= 65) {
+    return 220 + ((quality - 65) / 10) * 560;
+  }
+  if (quality >= 55) {
+    return 100 + ((quality - 55) / 10) * 120;
+  }
+  return Math.max(20, 20 + ((quality - 30) / 25) * 80);
 }
 
 // ---------------------------------------------------------------------------
-// Intrinsic value (lakhs) — fit crossed with the market anchor (effective star
-// tier + prior-salary precedent), then tier-capped for the effective tier so a
-// genuine mid-tier player can't be valued like a superstar.
+// Intrinsic value (lakhs) — fit crossed with the market anchor (effective quality
+// tier), then quality-capped for the effective tier so a genuine mid-tier
+// player can't be valued like a superstar.
 // ---------------------------------------------------------------------------
 function intrinsicValue(
   player: Player,
@@ -354,15 +368,15 @@ function intrinsicValue(
   fitOverride?: number
 ): number {
   const fit = fitOverride ?? computePlayerFit(player, team, comp, quirks);
-  const effStar = effectiveStar(player);
-  const anchor = Math.max(starToBaseLakhs(effStar), salaryAnchorOf(player));
+  const effQ = effectiveQuality(player);
+  const anchor = qualityToBaseLakhs(effQ);
 
   // Central valuation sits near the market anchor (premium ≈ 1.0 for a solid
   // fit), so the SECOND-highest bid — the clearing price — lands near anchor
   // rather than running to the ceiling and gutting the rest of the budget.
   const premium = clamp(0.55 + fit * 0.46, 0.36, 1.24);
-  const raw = anchor * premium * quirks.temperament;
-  return applyTierCeiling(raw, anchor, effStar);
+  const raw = anchor * premium * quirks.temperament * getPotentialMult(player);
+  return applyQualityCeiling(raw, anchor, effQ, player);
 }
 
 // ---------------------------------------------------------------------------
@@ -431,23 +445,6 @@ function getTeamPlan(team: Team, allPlayers: Record<string, Player>): TeamPlan {
   _teamPlans[team.id] = plan;
   return plan;
 }
-
-function starToBaseLakhs(star: number): number {
-  const anchors: [number, number][] = [
-    [1.0, 25], [1.5, 45], [2.0, 80], [2.5, 190],
-    [3.0, 400], [3.5, 640], [4.0, 1020], [4.5, 1340], [5.0, 1650],
-  ];
-  for (let i = 0; i < anchors.length - 1; i++) {
-    const [s0, v0] = anchors[i];
-    const [s1, v1] = anchors[i + 1];
-    if (star >= s0 && star <= s1) return v0 + ((star - s0) / (s1 - s0)) * (v1 - v0);
-  }
-  return anchors[anchors.length - 1][1];
-}
-
-// ---------------------------------------------------------------------------
-// Participation — whether a team enters the bidding at all
-// ---------------------------------------------------------------------------
 function getRoleExcess(role: string, comp: SquadComp): number {
   if (role === "WK-Batsman")  return comp.wks         - RULES.wks;
   if (role === "Batsman")     return comp.batters      - RULES.batters;
@@ -457,27 +454,27 @@ function getRoleExcess(role: string, comp: SquadComp): number {
   return 0;
 }
 
-
-// ---------------------------------------------------------------------------
-// Tier-dependent price discipline (Issues 3 + 5).
-// Mid-tier (3.0-3.5★) valuations hit a much lower soft ceiling with tiny
-// carry-through AND a hard cap around ₹9-11 Cr, so average players cannot be
-// valued like superstars. Marquee ceilings are tightened so a superstar costs
-// ₹18-28 Cr, not half the purse.
-// ---------------------------------------------------------------------------
-function applyTierCeiling(raw: number, base: number, star: number): number {
+function applyQualityCeiling(raw: number, base: number, quality: number, player?: Player): number {
   let ceilMult: number, carry: number, hardCap = Infinity;
 
-  if (star <= 2.5) {
+  const hasElitePotential = player && potentialOf(player) >= 90 && player.age <= 25;
+
+  if (quality <= 55) {
     ceilMult = u(1.70, 2.60); carry = u(0.08, 0.20);
-  } else if (star <= 3.0) {
+  } else if (quality <= 65) {
     ceilMult = u(1.20, 1.50); carry = u(0.04, 0.10); hardCap = u(650, 850);
-  } else if (star <= 3.5) {
+  } else if (quality <= 75) {
     ceilMult = u(1.14, 1.40); carry = u(0.04, 0.10); hardCap = u(800, 1050);
-  } else if (star <= 4.0) {
+  } else if (quality <= 85) {
     ceilMult = u(1.12, 1.36); carry = u(0.05, 0.12);
   } else {
     ceilMult = u(1.15, 1.42); carry = u(0.05, 0.12);
+  }
+
+  if (hasElitePotential) {
+    // Elite prospects can command astronomical bids (carrying values up to 1.8x softCeil with high carry through)
+    ceilMult *= u(1.40, 1.70);
+    carry = u(0.35, 0.55);
   }
 
   const softCeil = base * ceilMult;
@@ -507,7 +504,7 @@ export function computeTeamValuation(
   const needsBodies = comp.total < plan.targetSquad;
   const planned = plan.maxBid[player.id];
   const fit = computePlayerFit(player, team, comp, quirks);
-  const highValue = effectiveStar(player) >= 4.0 || ratingOf(player) >= 80;
+  const highValue = ratingOf(player) >= 80 || (player.reputation ?? 0) >= 8;
 
   // ── Interest gate ─────────────────────────────────────────────────────────
   // A team bids if the player is on its shortlist, OR it still needs bodies,
@@ -555,18 +552,21 @@ export function computeTeamValuation(
   const avgPerSlot = team.remainingPurse / slotsToFill;
   // Concentrations average near 1.0 across a full build so money and slots run
   // out together — the team fills all the way to a full 25 rather than blowing
-  // the purse on a handful of stars. Genuine marquee names (4.5★-effective /
-  // 85+ rating) concentrate hardest, so several teams bid them into the ₹12-18
-  // Cr range, while depth stays cheap enough to still round out the squad.
-  const marquee = effectiveStar(player) >= 4.5 || ratingOf(player) >= 85;
+  // the purse on a handful of stars. Genuine marquee names (85+ rating) concentrate
+  // hardest, so several teams bid them into the ₹12-18 Cr range, while depth stays
+  // cheap enough to still round out the squad.
+  const marquee = ratingOf(player) >= 84 || (player.reputation ?? 0) >= 9;
   let concentration: number;
-  if (marquee)                 concentration = u(3.0, 5.0);
+  if (marquee)                 concentration = u(3.2, 5.2);
   else if (planned !== undefined) concentration = u(2.2, 3.4);
   else if (highValue)          concentration = u(1.7, 2.7);
   else if (fit >= 0.72)        concentration = u(1.0, 1.6);
   else                         concentration = u(0.55, 1.00);
   // A near-empty squad shouldn't hand its whole purse to lot one even so.
-  const affordabilityCap = Math.min(avgPerSlot * concentration, team.remainingPurse * 0.5);
+  let affordabilityCap = Math.min(avgPerSlot * concentration, team.remainingPurse * (ratingOf(player) >= 84 ? 0.60 : 0.50));
+  if (ratingOf(player) >= 84) {
+    affordabilityCap *= u(1.15, 1.30);
+  }
 
   // Absolute franchise cap — no one player eats the whole purse
   const absCap = team.totalPurse * (0.20 + (team.dna.commitmentToTargets / 100) * 0.09) * u(0.92, 1.08);
@@ -677,11 +677,11 @@ const MAX_TOTAL = 6;
 
 /** Estimated market worth in lakhs — used only for retention decisions. */
 function estimateRetentionWorth(player: Player, team: Team): number {
-  let worth = starToBaseLakhs(player.starRating);
+  const rating = ratingOf(player);
   const rep = repOf(player);
+  let worth = qualityToBaseLakhs(0.7 * rating + 0.3 * (rep * 10));
 
   // Skill: same shape as auction form multiplier
-  const rating = ratingOf(player);
   if (rating > 0) worth *= 0.90 + (rating / 100) * 0.20;
 
   // Age curve: youth appreciates, veterans depreciate. Iconic veterans
@@ -752,7 +752,7 @@ export function decideAIRetentions(
   // class) plus any rep-10 legend (Dhoni). Processed FIRST and effectively
   // never released — a franchise never auctions its identity.
   const isCornerstone = (p: Player) =>
-    repOf(p) >= 10 || (repOf(p) >= 9 && ratingOf(p) >= 85);
+    repOf(p) >= 9 || ratingOf(p) >= 84 || potentialOf(p) >= 90;
 
   const scored = squad
     .filter(isCappedPlayer)
@@ -809,11 +809,11 @@ export function decideAIRetentions(
     // must be justified against the auction flexibility it forfeits. Low
     // appetite (auction hunters) raises the bar so borderline keeps are
     // released to fund big auction moves instead.
-    let bar = slabCost * (1.06 - loyaltyNorm * 0.24) * (1 + cappedUsed * 0.06) * (2 - appetite);
+    let bar = slabCost * (1.00 - loyaltyNorm * 0.15) * (1 + cappedUsed * 0.04) * (1.5 - appetite * 0.5);
+    bar = Math.min(bar, slabCost * 1.15); // The bar should never be more than 15% above the slab cost
 
     // Iconic-star override: EVERY franchise protects a rep-9/10 face of the
     // franchise; loyalty only decides how deep a deficit they'll swallow
-    // (CSK at 93 → bar ~0.45× slab; LSG at 20 → ~0.67× slab).
     const rep = repOf(p);
     if (rep >= 9 && ratingOf(p) >= 78) {
       bar = Math.min(bar, slabCost * (0.42 + (1 - loyaltyNorm) * 0.28) * u(0.95, 1.10));
@@ -822,7 +822,7 @@ export function decideAIRetentions(
     }
     // Elite young cornerstone: everyone fights to keep a current or FUTURE
     // superstar (Jaiswal-types by rating, wonderkids by ceiling)
-    if (ratingOf(p) >= 88 && p.age <= 27) {
+    if (ratingOf(p) >= 84 && p.age <= 27) {
       bar = Math.min(bar, slabCost * u(0.68, 0.86));
     } else if (potentialOf(p) >= 88 && p.age <= 25) {
       bar = Math.min(bar, slabCost * u(0.72, 0.90));

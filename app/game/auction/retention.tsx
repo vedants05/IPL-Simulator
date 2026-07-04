@@ -22,7 +22,11 @@ export default function RetentionPhase() {
   const squadPlayers = userTeam.squad
     .map((id) => players[id])
     .filter(Boolean)
-    .sort((a, b) => b.starRating - a.starRating);
+    .sort((a, b) => {
+      const rA = Math.max(a.currentBatting || 0, a.currentBowling || 0);
+      const rB = Math.max(b.currentBatting || 0, b.currentBowling || 0);
+      return rB - rA;
+    });
 
   const retainedIds = userTeam.retainedPlayers;
   const totalCost = calculateTotalRetentionCost(retainedIds, players);
@@ -99,15 +103,8 @@ export default function RetentionPhase() {
                 </div>
 
                 <div className="flex items-center gap-5">
-                  {/* Stars */}
-                  <div className="flex gap-0.5">
-                    {Array.from({ length: 5 }).map((_, i) => (
-                      <div
-                        key={i}
-                        className="w-3 h-3 rounded-sm"
-                        style={{ backgroundColor: i < player.starRating ? "#ffc400" : "rgba(22,19,15,.15)" }}
-                      />
-                    ))}
+                  <div className="font-space-mono text-[9px] text-text-secondary bg-[#16130f]/5 px-2 py-[2px] rounded font-bold">
+                    RTG: {Math.max(player.currentBatting || 0, player.currentBowling || 0)}
                   </div>
 
                   {isRetained && cost !== null && (

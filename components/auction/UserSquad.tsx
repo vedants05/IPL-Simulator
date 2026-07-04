@@ -113,20 +113,37 @@ export default function UserSquad() {
                 </div>
                 {group.map((p) => {
                   const isSelected = selectedPlayer?.id === p.id;
+                  const wasRetained = userTeam.retainedPlayers.includes(p.id);
+                  const sale = auction?.saleHistory.find((s: any) => s.playerId === p.id);
+                  const price = sale?.price ?? p.iplHistory.find((h) => h.season === "2027")?.price ?? p.iplHistory.find((h) => h.season === "2026")?.price;
+                  const priceStr = price ? `(₹${(price / 100).toFixed(1)}Cr)` : "";
+                  const isRtm = !!p.iplHistory.find((h) => h.season === "2027")?.isRtm;
+
+                  let rowBg = undefined;
+                  let rowBorder = "1px solid rgba(22,19,15,.08)";
+                  if (isSelected) {
+                    rowBg = "rgba(22, 19, 15, 0.08)";
+                  } else if (wasRetained) {
+                    rowBg = `${userTeam.primaryColor}18`;
+                    rowBorder = `1px solid ${userTeam.primaryColor}33`;
+                  }
+
                   return (
                     <div
                       key={p.id}
                       onClick={() => setSelectedPlayer(isSelected ? null : p)}
                       className="flex items-center justify-between px-3 py-[6px] hover:bg-black/5 cursor-pointer transition-colors duration-150 group select-none"
                       style={{
-                        borderBottom: "1px solid rgba(22,19,15,.08)",
-                        backgroundColor: isSelected ? "rgba(22, 19, 15, 0.08)" : undefined,
+                        borderBottom: rowBorder,
+                        backgroundColor: rowBg,
                       }}
                       title="Click to view player file"
                     >
                       <div className="min-w-0 flex-1">
-                        <div className="font-barlow font-semibold text-[11.5px] text-text-primary group-hover:text-black group-hover:underline truncate leading-tight">
-                          {p.name}
+                        <div className="font-barlow font-semibold text-[11.5px] text-text-primary group-hover:text-black group-hover:underline truncate leading-tight flex items-center gap-1.5 flex-wrap">
+                          <span>{p.name}</span>
+                          {priceStr && <span className="text-[9px] text-text-secondary font-mono font-medium">{priceStr}</span>}
+                          {isRtm && <span className="text-[7.5px] font-space-mono font-extrabold bg-[#1d55c4]/15 text-[#1d55c4] px-1 rounded-[2px] tracking-wide uppercase leading-none py-0.5 shrink-0">RTM</span>}
                         </div>
                         <div className="flex items-center gap-1 mt-[1px]">
                           {p.nationality === "Overseas" && (
@@ -143,18 +160,7 @@ export default function UserSquad() {
                           </span>
                         </div>
                       </div>
-                      {/* Star dots */}
-                      <div className="flex gap-0.5 shrink-0 ml-2">
-                        {Array.from({ length: 5 }).map((_, si) => (
-                          <div
-                            key={si}
-                            className="w-2 h-2 rounded-sm"
-                            style={{
-                              backgroundColor: si < p.starRating ? userTeam.primaryColor : "rgba(22,19,15,.12)",
-                            }}
-                          />
-                        ))}
-                      </div>
+
                     </div>
                   );
                 })}

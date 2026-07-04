@@ -12,7 +12,11 @@ export default function SquadPage() {
   );
 
   const squadPlayers = userTeam.squad.map((id) => players[id]).filter(Boolean)
-    .sort((a, b) => b.starRating - a.starRating);
+    .sort((a, b) => {
+      const ratingA = Math.max(a.currentBatting || 0, a.currentBowling || 0);
+      const ratingB = Math.max(b.currentBatting || 0, b.currentBowling || 0);
+      return ratingB - ratingA;
+    });
 
   const roleGroups = [
     { label: "Wicketkeepers", roles: ["WK-Batsman"] },
@@ -69,18 +73,8 @@ export default function SquadPage() {
                             OS
                           </span>
                         )}
-                        {/* Star rating */}
-                        <div className="flex gap-0.5">
-                          {Array.from({ length: 5 }).map((_, si) => (
-                            <div
-                              key={si}
-                              className="w-3 h-3 rounded-sm"
-                              style={{ backgroundColor: si < p.starRating ? "#ffc400" : "rgba(22,19,15,.15)" }}
-                            />
-                          ))}
-                        </div>
-                        <div className="font-barlow-condensed font-bold text-[16px] text-text-secondary w-5 text-right">
-                          {p.starRating}
+                        <div className="font-space-mono text-[9px] text-text-secondary bg-[#16130f]/5 px-2 py-[2px] rounded font-bold">
+                          RTG: {Math.max(p.currentBatting || 0, p.currentBowling || 0)}
                         </div>
                       </div>
                     </div>

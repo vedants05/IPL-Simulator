@@ -55,6 +55,7 @@ export interface IPLHistoryEntry {
   teamId: string;
   season: string;
   price: number;
+  isRtm?: boolean;
 }
 
 export interface Player {

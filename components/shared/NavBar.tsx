@@ -24,10 +24,13 @@ export default function NavBar() {
     increaseSpeed,
     decreaseSpeed,
     skipCurrentSet,
+    skipAllAuction,
   } = useGameStore();
 
   const [showConfirm, setShowConfirm] = useState(false);
   const [wasPausedBeforeConfirm, setWasPausedBeforeConfirm] = useState(false);
+  const [showConfirmAll, setShowConfirmAll] = useState(false);
+  const [wasPausedBeforeConfirmAll, setWasPausedBeforeConfirmAll] = useState(false);
 
   const handleSkipPress = () => {
     setWasPausedBeforeConfirm(isPaused);
@@ -43,6 +46,24 @@ export default function NavBar() {
   const handleCancel = () => {
     setShowConfirm(false);
     if (!wasPausedBeforeConfirm) {
+      setPaused(false);
+    }
+  };
+
+  const handleSkipAllPress = () => {
+    setWasPausedBeforeConfirmAll(isPaused);
+    setPaused(true);
+    setShowConfirmAll(true);
+  };
+
+  const handleConfirmAll = () => {
+    setShowConfirmAll(false);
+    skipAllAuction();
+  };
+
+  const handleCancelAll = () => {
+    setShowConfirmAll(false);
+    if (!wasPausedBeforeConfirmAll) {
       setPaused(false);
     }
   };
@@ -159,6 +180,75 @@ export default function NavBar() {
                       </button>
                       <button
                         onClick={handleCancel}
+                        className="flex-1 h-[26px] rounded font-bold text-[9px] uppercase tracking-wider transition-all cursor-pointer bg-transparent text-[#16130f] hover:bg-black/5 active:scale-95 flex items-center justify-center"
+                        style={{
+                          border: "1.5px solid var(--ink, #16130f)",
+                        }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Skip All Button */}
+            <div className="relative flex items-center">
+              <button
+                onClick={handleSkipAllPress}
+                className="px-3 rounded font-space-mono font-bold text-[10px] tracking-wider uppercase transition-all duration-150 flex items-center justify-center h-[28px] cursor-pointer hover:bg-danger hover:text-white hover:scale-105 active:scale-95 animate-pulse"
+                style={{
+                  border: "1.5px solid #16130f",
+                  backgroundColor: "var(--team-bid-bg, #111622)",
+                  backgroundImage: "var(--team-bid-tinge)",
+                  color: "#ffffff",
+                }}
+                title="Skip and simulate the rest of the entire auction"
+              >
+                ⏩ Skip All
+              </button>
+
+              {showConfirmAll && (
+                <>
+                  {/* Invisible overlay for clicking outside */}
+                  <div
+                    className="fixed inset-0 z-40 cursor-default"
+                    onClick={handleCancelAll}
+                  />
+                  {/* Small confirmation tile */}
+                  <div
+                    className="absolute right-0 top-full mt-2 w-64 p-4 z-50 rounded shadow-xl text-left border-2 flex flex-col gap-3 font-space-mono animate-in fade-in slide-in-from-top-2 duration-150"
+                    style={{
+                      backgroundColor: "var(--surface, #efece3)",
+                      color: "var(--ink, #16130f)",
+                      borderColor: "var(--ink, #16130f)",
+                    }}
+                  >
+                    <div className="flex flex-col gap-1.5">
+                      <div className="text-[10px] font-bold tracking-wider uppercase text-danger flex items-center gap-1">
+                        ⚠️ Skip Entire Auction?
+                      </div>
+                      <p className="text-[10px] leading-normal font-bold">
+                        Simulate and skip the entire rest of the Mega Auction?
+                      </p>
+                      <p className="text-[9px] leading-normal opacity-85 font-medium">
+                        This will instantly simulate every remaining player in all sets, run accelerated phases, and finalize the franchise squads.
+                      </p>
+                    </div>
+
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handleConfirmAll}
+                        className="flex-1 h-[26px] rounded font-bold text-[9px] uppercase tracking-wider transition-all cursor-pointer bg-danger text-white hover:bg-red-600 active:scale-95 flex items-center justify-center"
+                        style={{
+                          border: "1.5px solid var(--ink, #16130f)",
+                        }}
+                      >
+                        Confirm
+                      </button>
+                      <button
+                        onClick={handleCancelAll}
                         className="flex-1 h-[26px] rounded font-bold text-[9px] uppercase tracking-wider transition-all cursor-pointer bg-transparent text-[#16130f] hover:bg-black/5 active:scale-95 flex items-center justify-center"
                         style={{
                           border: "1.5px solid var(--ink, #16130f)",

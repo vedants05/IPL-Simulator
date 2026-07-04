@@ -132,19 +132,37 @@ export default function TeamPurseList() {
                 ) : (
                   squadPlayers.map((p) => {
                     const isSelected = selectedPlayer?.id === p.id;
+                    const wasRetained = team.retainedPlayers.includes(p.id);
+                    const sale = auction?.saleHistory.find((s: any) => s.playerId === p.id);
+                    const price = sale?.price ?? p.iplHistory.find((h) => h.season === "2027")?.price ?? p.iplHistory.find((h) => h.season === "2026")?.price;
+                    const priceStr = price ? ` (₹${(price / 100).toFixed(1)}Cr)` : "";
+
+                    const isRtm = !!p.iplHistory.find((h) => h.season === "2027")?.isRtm;
+
+                    let rowBg = undefined;
+                    let rowBorder = "1px solid rgba(22,19,15,.08)";
+                    if (isSelected) {
+                      rowBg = "rgba(22, 19, 15, 0.08)";
+                    } else if (wasRetained) {
+                      rowBg = `${team.primaryColor}18`;
+                      rowBorder = `1px solid ${team.primaryColor}33`;
+                    }
+
                     return (
                       <div
                         key={p.id}
                         onClick={() => setSelectedPlayer(isSelected ? null : p)}
                         className="flex items-center justify-between px-5 py-[5px] hover:bg-black/5 cursor-pointer transition-colors duration-150 group select-none"
                         style={{
-                          borderBottom: "1px solid rgba(22,19,15,.08)",
-                          backgroundColor: isSelected ? "rgba(22, 19, 15, 0.08)" : undefined,
+                          borderBottom: rowBorder,
+                          backgroundColor: rowBg,
                         }}
                         title="Click to view player file"
                       >
-                        <span className="font-barlow font-medium text-[11px] text-text-primary group-hover:text-black group-hover:underline truncate flex-1 min-w-0">
-                          {p.name}
+                        <span className="font-barlow font-medium text-[11px] text-text-primary group-hover:text-black group-hover:underline truncate flex-1 min-w-0 flex items-center gap-1.5 flex-wrap">
+                          <span>{p.name}</span>
+                          {priceStr && <span className="text-[9.5px] text-text-secondary font-mono font-medium">{priceStr}</span>}
+                          {isRtm && <span className="text-[7.5px] font-space-mono font-extrabold bg-[#1d55c4]/15 text-[#1d55c4] px-1 rounded-[2px] tracking-wide uppercase leading-none py-0.5 shrink-0">RTM</span>}
                         </span>
                         <div className="flex items-center gap-2 shrink-0">
                           {p.nationality === "Overseas" && (

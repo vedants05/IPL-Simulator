@@ -41,16 +41,7 @@ function PlayerRow({
         className="flex items-center justify-between px-6 py-[9px] hover:bg-black/5 cursor-pointer transition-colors select-none"
       >
         <div className="flex items-center gap-3 min-w-0 flex-1">
-          {/* Star dots */}
-          <div className="flex gap-[3px] shrink-0">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <div
-                key={i}
-                className="w-[7px] h-[7px] rounded-sm transition-colors duration-200"
-                style={{ backgroundColor: i < player.starRating ? "var(--team-accent, #1d55c4)" : "rgba(22,19,15,.12)" }}
-              />
-            ))}
-          </div>
+
           <div className="min-w-0">
             <div className="font-barlow font-semibold text-[13px] text-text-primary truncate leading-tight">
               {player.name}
@@ -227,11 +218,11 @@ export default function PlayerListPopup({
               let categoryPlayers: Player[];
               if (cat.marquee) {
                 categoryPlayers = playerList.filter(
-                  (p) => p.starRating >= 4.5
+                  (p) => (p.reputation ?? 0) >= 8 || Math.max(p.currentBatting ?? 0, p.currentBowling ?? 0) >= 85
                 );
               } else {
                 categoryPlayers = playerList.filter(
-                  (p) => p.starRating < 4.5 && cat.roles.includes(p.role)
+                  (p) => !((p.reputation ?? 0) >= 8 || Math.max(p.currentBatting ?? 0, p.currentBowling ?? 0) >= 85) && cat.roles.includes(p.role)
                 );
               }
 

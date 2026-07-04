@@ -21,11 +21,23 @@ export function getPlayerRetentionCost(
   const player = players[playerId];
   if (!player) return 0;
   if (!isPlayerCapped(player)) return UNCAPPED_RETENTION_COST;
-  const cappedBefore = alreadyRetained.filter((id) => {
+  
+  const index = alreadyRetained.indexOf(playerId);
+  if (index !== -1) {
+    // If the player is in the array, count capped players preceding them
+    const cappedBefore = alreadyRetained.slice(0, index).filter((id) => {
+      const p = players[id];
+      return p && isPlayerCapped(p);
+    }).length;
+    return CAPPED_RETENTION_COSTS[cappedBefore] ?? 0;
+  }
+  
+  // Otherwise, count all capped players in the array
+  const cappedCount = alreadyRetained.filter((id) => {
     const p = players[id];
     return p && isPlayerCapped(p);
   }).length;
-  return CAPPED_RETENTION_COSTS[cappedBefore] ?? 0;
+  return CAPPED_RETENTION_COSTS[cappedCount] ?? 0;
 }
 
 export function calculateTotalRetentionCost(
@@ -112,8 +124,8 @@ export function buildAuctionSets(players: Player[], isAccelerated = false): Auct
   const qualityScore = (p: Player): number => {
     const rating = getRating(p);
     const pot = Math.max(p.potentialBatting || 0, p.potentialBowling || 0);
-    const rep = p.reputation ?? p.starRating * 2;
-    return rating + Math.max(0, pot - rating) * 0.35 + rep * 0.6 + p.starRating * 2;
+    const rep = p.reputation ?? 5;
+    return rating + Math.max(0, pot - rating) * 0.35 + rep * 1.2;
   };
 
   // Rank a pool by quality and slice into tiers of 10 (A = best 10, B = next
@@ -135,7 +147,7 @@ export function buildAuctionSets(players: Player[], isAccelerated = false): Auct
   // 1. Marquee: anyone rated 85+ headlines the auction — a proven uncapped
   // superstar (Suryavanshi-type) is marquee billing too, and must come up
   // while teams still have full purses.
-  const marqueeEligible = playerPool.filter((p) => getRating(p) >= 85);
+  const marqueeEligible = playerPool.filter((p) => getRating(p) >= 84);
   const marqueeIds = new Set(marqueeEligible.map((p) => p.id));
   const nonMarquee = playerPool.filter((p) => !marqueeIds.has(p.id));
 

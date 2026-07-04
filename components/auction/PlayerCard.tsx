@@ -108,28 +108,11 @@ export default function PlayerCard({ player, soldPrice, collapsible = true }: Pr
       >
         <div className="flex justify-between items-start">
           <div className="min-w-0 flex-1 pr-4">
-            {/* Player Name & Stars in the same row */}
+            {/* Player Name */}
             <div className="flex items-baseline gap-3 flex-wrap">
               <h2 className="font-anton text-[42px] leading-none tracking-wide text-text-primary uppercase">
                 {player.name}
               </h2>
-              {/* Star rating right next to name */}
-              <div className="flex gap-0.5 items-center">
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <span
-                    key={i}
-                    className={`text-[15px] ${
-                      i < Math.floor(player.starRating)
-                        ? "text-accent"
-                        : i < player.starRating
-                        ? "text-accent opacity-60"
-                        : "text-muted/30"
-                    }`}
-                  >
-                    ★
-                  </span>
-                ))}
-              </div>
             </div>
           </div>
 

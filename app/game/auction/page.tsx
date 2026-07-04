@@ -294,16 +294,27 @@ function TeamSquadCard({
               <div className="flex flex-wrap gap-1 flex-1">
                 {group.map((p) => {
                   const wasRetained = team.retainedPlayers.includes(p.id);
+                  const sale = p.iplHistory.find((h) => h.season === "2027");
+                  const price = sale?.price ?? p.iplHistory.find((h) => h.season === "2026")?.price;
+                  const isRtm = sale?.isRtm;
+                  const priceStr = price ? `(₹${(price / 100).toFixed(1)}Cr)` : "";
+
+                  const bgStyle = wasRetained 
+                    ? { backgroundColor: `${team.primaryColor}18`, borderColor: team.primaryColor }
+                    : { backgroundColor: "rgba(22,19,15,0.05)", borderColor: "rgba(22,19,15,0.1)" };
+
                   return (
                     <span
                       key={p.id}
-                      className="font-barlow text-[11px] leading-tight px-1.5 py-0.5 rounded-[3px] bg-[#16130f]/[0.05] border border-[#16130f]/10"
-                      title={`${p.role} · rating ${playerRating(p)}${wasRetained ? " · retained" : ""}`}
+                      style={bgStyle}
+                      className="font-barlow text-[11px] leading-tight px-1.5 py-0.5 rounded-[3px] border inline-flex items-center gap-1"
+                      title={`${p.role} · rating ${playerRating(p)}${wasRetained ? " · retained" : ""}${isRtm ? " · bought via RTM" : ""}`}
                     >
                       <span className="font-semibold text-text-primary">{p.name}</span>
                       <span className="text-text-secondary"> {playerRating(p)}</span>
+                      {priceStr && <span className="text-[9px] text-text-secondary font-mono font-medium"> {priceStr}</span>}
+                      {isRtm && <span className="text-[7.5px] font-space-mono font-extrabold bg-[#1d55c4]/15 text-[#1d55c4] px-1 rounded-[2px] tracking-wide uppercase leading-none py-0.5">RTM</span>}
                       {p.nationality === "Overseas" && <span className="text-[8px] text-[#1d55c4] font-bold"> OS</span>}
-                      {wasRetained && <span className="text-[8px] text-success font-bold"> ®</span>}
                     </span>
                   );
                 })}
@@ -319,6 +330,8 @@ function TeamSquadCard({
 function AuctionComplete() {
   const { teams, players, userTeamId } = useGameStore();
 
+  const userTeam = teams[userTeamId];
+
   // User team first, then the rest by spend (biggest spenders lead)
   const ordered = Object.values(teams).sort((a, b) => {
     if (a.id === userTeamId) return -1;
@@ -326,19 +339,203 @@ function AuctionComplete() {
     return b.spentAmount - a.spentAmount;
   });
 
+  // Calculate sold players in the current auction season
+  const soldPlayersList = Object.values(players)
+    .filter((p) => p.currentTeamId && p.iplHistory.some((h) => h.season === "2027") && !p.isRetained)
+    .map((p) => {
+      const sale = p.iplHistory.find((h) => h.season === "2027");
+      return {
+        player: p,
+        teamId: p.currentTeamId!,
+        price: sale?.price ?? p.basePrice,
+      };
+    })
+    .sort((a, b) => b.price - a.price);
+
+  const topBuys = soldPlayersList.slice(0, 5);
+  const totalSpentAll = Object.values(teams).reduce((acc, t) => acc + t.spentAmount, 0);
+  const totalSold = soldPlayersList.length;
+  const avgPrice = totalSold > 0 ? (totalSpentAll / totalSold).toFixed(1) : "0.0";
+
+  // User squad details
+  const userSquad = userTeam?.squad.map((id) => players[id]).filter(Boolean) || [];
+  const userAvgRating = userSquad.length > 0
+    ? (userSquad.reduce((acc, p) => acc + playerRating(p), 0) / userSquad.length).toFixed(1)
+    : "0.0";
+  const userOverseas = userSquad.filter((p) => p.nationality === "Overseas").length;
+
   return (
     <div className="min-h-screen bg-bg overflow-y-auto">
       <div className="max-w-6xl mx-auto p-8">
-        <div className="mb-7 text-center">
+        <div className="mb-8 text-center">
           <div className="font-space-mono font-bold text-[10px] tracking-[.16em] text-success mb-2 uppercase">
-            Auction Complete
+            Auction Completed
           </div>
-          <h1 className="font-anton text-[44px] leading-none text-text-primary uppercase mb-2">
-            Final Squads
+          <h1 className="font-anton text-[48px] leading-none text-text-primary uppercase mb-2">
+            MEGA AUCTION SUMMARY
           </h1>
-          <p className="font-barlow text-[13px] text-text-secondary">
-            All ten franchises · ® retained &nbsp;·&nbsp; OS overseas &nbsp;·&nbsp; number = player rating
+          <p className="font-barlow text-[14px] text-text-secondary">
+            Simulations completed · Franchise squads finalized for Season &apos;27
           </p>
+        </div>
+
+        {/* Dashboard Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
+          {/* User Franchise Performance Card */}
+          <div className="bg-surface border-2 border-[#16130f] rounded-[8px] p-5 flex flex-col justify-between shadow-sm">
+            <div>
+              <div className="flex items-center gap-2 mb-4">
+                {userTeam && (
+                  <div
+                    className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold shrink-0"
+                    style={{ backgroundColor: userTeam.primaryColor, color: userTeam.secondaryColor }}
+                  >
+                    {userTeam.shortName.slice(0, 3)}
+                  </div>
+                )}
+                <h3 className="font-anton text-[18px] tracking-wide text-text-primary uppercase">
+                  YOUR FRANCHISE
+                </h3>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 mb-4">
+                <div>
+                  <div className="font-space-mono text-[9px] tracking-widest text-text-secondary uppercase">
+                    Spent
+                  </div>
+                  <div className="font-barlow-condensed font-bold text-[22px] text-text-primary">
+                    ₹{((userTeam?.spentAmount ?? 0) / 100).toFixed(2)} Cr
+                  </div>
+                </div>
+                <div>
+                  <div className="font-space-mono text-[9px] tracking-widest text-text-secondary uppercase">
+                    Purse Left
+                  </div>
+                  <div className="font-barlow-condensed font-bold text-[22px] text-accent">
+                    ₹{((userTeam?.remainingPurse ?? 0) / 100).toFixed(2)} Cr
+                  </div>
+                </div>
+                <div>
+                  <div className="font-space-mono text-[9px] tracking-widest text-text-secondary uppercase">
+                    Squad Size
+                  </div>
+                  <div className="font-barlow-condensed font-bold text-[22px] text-text-primary">
+                    {userSquad.length} / 25
+                  </div>
+                </div>
+                <div>
+                  <div className="font-space-mono text-[9px] tracking-widest text-text-secondary uppercase">
+                    Avg Rating
+                  </div>
+                  <div className="font-barlow-condensed font-bold text-[22px] text-success">
+                    {userAvgRating}
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="font-space-mono text-[9px] tracking-wide text-text-secondary border-t border-[#16130f]/10 pt-3">
+              Overseas Players: {userOverseas} (Limit 8)
+            </div>
+          </div>
+
+          {/* League Stats Card */}
+          <div className="bg-surface border-2 border-[#16130f] rounded-[8px] p-5 flex flex-col justify-between shadow-sm">
+            <div>
+              <div className="flex items-center gap-2 mb-4">
+                <h3 className="font-anton text-[18px] tracking-wide text-text-primary uppercase">
+                  MARKET STATS
+                </h3>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 mb-4">
+                <div>
+                  <div className="font-space-mono text-[9px] tracking-widest text-text-secondary uppercase">
+                    Total Volume
+                  </div>
+                  <div className="font-barlow-condensed font-bold text-[22px] text-text-primary">
+                    ₹{(totalSpentAll / 100).toFixed(1)} Cr
+                  </div>
+                </div>
+                <div>
+                  <div className="font-space-mono text-[9px] tracking-widest text-text-secondary uppercase">
+                    Players Sold
+                  </div>
+                  <div className="font-barlow-condensed font-bold text-[22px] text-text-primary">
+                    {totalSold}
+                  </div>
+                </div>
+                <div>
+                  <div className="font-space-mono text-[9px] tracking-widest text-text-secondary uppercase">
+                    Avg Price
+                  </div>
+                  <div className="font-barlow-condensed font-bold text-[22px] text-text-primary">
+                    ₹{(parseFloat(avgPrice) / 100).toFixed(2)} Cr
+                  </div>
+                </div>
+                <div>
+                  <div className="font-space-mono text-[9px] tracking-widest text-text-secondary uppercase">
+                    Unsold Lots
+                  </div>
+                  <div className="font-barlow-condensed font-bold text-[22px] text-danger">
+                    {Object.values(players).filter((p) => !p.currentTeamId).length}
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="font-space-mono text-[9px] tracking-wide text-text-secondary border-t border-[#16130f]/10 pt-3">
+              Accelerated round deals factored.
+            </div>
+          </div>
+
+          {/* Top Buys Card */}
+          <div className="bg-surface border-2 border-[#16130f] rounded-[8px] p-5 flex flex-col shadow-sm">
+            <h3 className="font-anton text-[18px] tracking-wide text-text-primary uppercase mb-3">
+              TOP 5 EXPENSIVE BUYS
+            </h3>
+            <div className="flex-1 flex flex-col justify-center divide-y divide-[#16130f]/10">
+              {topBuys.map((buy, idx) => {
+                const buyer = teams[buy.teamId];
+                return (
+                  <div key={buy.player.id} className="py-1.5 flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2 truncate">
+                      <span className="font-space-mono font-bold text-[10px] text-text-secondary">
+                        #{idx + 1}
+                      </span>
+                      <span className="font-semibold text-text-primary truncate">{buy.player.name}</span>
+                      <span className="font-space-mono text-[8px] bg-[#16130f]/5 px-1.5 py-0.5 rounded text-text-secondary">
+                        {buy.player.role}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0 pl-2">
+                      <span
+                        className="font-anton text-[9px] px-1.5 py-0.5 rounded uppercase"
+                        style={{ backgroundColor: buyer?.primaryColor, color: buyer?.secondaryColor }}
+                      >
+                        {buyer?.shortName}
+                      </span>
+                      <span className="font-bold text-text-primary">
+                        ₹{(buy.price / 100).toFixed(2)} Cr
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+              {topBuys.length === 0 && (
+                <div className="text-center font-space-mono text-[10px] text-text-secondary py-4">
+                  No auction sales recorded.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="mb-5 flex items-center justify-between">
+          <h2 className="font-anton text-[24px] tracking-wide text-text-primary uppercase">
+            FINAL FRANCHISE SQUADS
+          </h2>
+          <div className="font-space-mono text-[10px] text-text-secondary">
+            ® = Retained · OS = Overseas · Rating = Peak skill
+          </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">

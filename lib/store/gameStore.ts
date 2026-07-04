@@ -39,6 +39,7 @@ import {
   getCachedValuation,
   decideAIRetentions,
   AuctionContext,
+  getLotValuation,
 } from "@/lib/logic/auctionEngine";
 
 // ---------------------------------------------------------------------------
@@ -77,6 +78,7 @@ interface GameActions {
   increaseSpeed: () => void;
   decreaseSpeed: () => void;
   skipCurrentSet: () => void;
+  skipAllAuction: () => void;
   dismissSkipSetSummary: () => void;
 }
 
@@ -735,8 +737,9 @@ export const useGameStore = create<Store>()(
             if (rtmTeamId && rtmTeamId !== userTeamId) {
               const rtmTeam = newTeams[rtmTeamId];
               const aiOrigValuation = getCachedValuation(rtmTeamId);
+              const loyaltyBonus = 1.0 + (rtmTeam?.dna.loyalty ?? 50) / 100 * 0.25;
 
-              if (aiOrigValuation > currentBid && rtmTeam.remainingPurse >= currentBid) {
+              if (aiOrigValuation * loyaltyBonus > currentBid && rtmTeam.remainingPurse >= currentBid) {
                 const winnerTeam = newTeams[highBidderTeamId];
                 const aiWinnerValuation = getCachedValuation(highBidderTeamId);
 
@@ -746,7 +749,7 @@ export const useGameStore = create<Store>()(
                   while (counterAmount < target) counterAmount = getNextBidAmount(counterAmount);
                   if (counterAmount <= currentBid) counterAmount = getNextBidAmount(currentBid);
 
-                  if (aiOrigValuation >= counterAmount && rtmTeam.remainingPurse >= counterAmount) {
+                  if (aiOrigValuation * loyaltyBonus >= counterAmount && rtmTeam.remainingPurse >= counterAmount) {
                     finalWinnerId = rtmTeamId;
                     finalPrice = counterAmount;
                     usedRtm = true;
@@ -777,12 +780,12 @@ export const useGameStore = create<Store>()(
               };
             }
 
-            // Record the sale under the auction season ("2026"), matching the
+            // Record the sale under the auction season ("2027"), matching the
             // live hammerFall / doRTMTransfer flow so skip-sold and live-sold
             // players have identical, accurate iplHistory.
             const updatedHistory = [
-              ...player.iplHistory.filter((h) => h.season !== "2026"),
-              { teamId: finalWinnerId, season: "2026", price: finalPrice },
+              ...player.iplHistory.filter((h) => h.season !== "2027"),
+              { teamId: finalWinnerId, season: "2027", price: finalPrice, isRtm: usedRtm },
             ];
 
             newPlayers[player.id] = {
@@ -840,6 +843,215 @@ export const useGameStore = create<Store>()(
             ...auction,
             sets: updatedSets,
             currentLotIndex,
+            soldPlayerIds: newSoldIds,
+            unsoldPlayerIds: newUnsoldIds,
+            saleHistory: newSaleHistory,
+            teamPurses: updatedPurses,
+            soldFlash: null,
+            unsoldFlash: null,
+            rtm: null,
+          },
+        });
+      },
+
+      skipAllAuction: () => {
+        const state = get();
+        const { auction, players, teams, userTeamId } = state;
+        if (!auction || auction.phase !== "live") return;
+
+        _hammerLotId = null;
+
+        const newTeams = { ...teams };
+        const newPlayers = { ...players };
+        let newSoldIds = [...(auction.soldPlayerIds ?? [])];
+        let newUnsoldIds = [...(auction.unsoldPlayerIds ?? [])];
+        let newSaleHistory = [...(auction.saleHistory ?? [])];
+        let currentLotIndex = auction.currentLotIndex;
+        const totalLots = auction.allPlayerIds.length;
+
+        // Gather all remaining players across all remaining sets
+        const remainingPlayerIds: string[] = [];
+        
+        // 1. Current set remaining players
+        const currentSet = auction.sets[auction.currentSetIndex];
+        if (currentSet && !currentSet.isCompleted) {
+          remainingPlayerIds.push(...currentSet.playerIds.slice(currentSet.currentIndex));
+        }
+
+        // 2. Future sets players
+        for (let i = auction.currentSetIndex + 1; i < auction.sets.length; i++) {
+          remainingPlayerIds.push(...auction.sets[i].playerIds);
+        }
+
+        const simulateOne = (playerId: string) => {
+          const player = newPlayers[playerId];
+          if (!player) return;
+
+          resetLotCache();
+
+          const ctx: AuctionContext = {
+            remainingPlayerIds: auction.allPlayerIds.filter(
+              (id) => !newSoldIds.includes(id) && id !== player.id
+            ),
+            soldPlayerIds: newSoldIds,
+            currentLotIndex,
+            totalLots,
+          };
+
+          let currentBid = player.basePrice;
+          let highBidderTeamId: string | null = null;
+          let biddingHistory: BidEntry[] = [];
+
+          let iterations = 0;
+          const MAX_ITER = 300;
+          while (iterations < MAX_ITER) {
+            iterations++;
+            const nextBid = getNextBidAmount(currentBid);
+
+            const interested = Object.values(newTeams).filter((t) => {
+              if (t.id === highBidderTeamId) return false;
+              return canAIBidAtAmount(t, player, nextBid, player.id, newPlayers, ctx);
+            });
+
+            if (interested.length === 0) break;
+
+            const bidder = pickBiddingTeam(interested, player, player.id, newPlayers, ctx);
+            if (!bidder) break;
+
+            currentBid = nextBid;
+            highBidderTeamId = bidder.id;
+            biddingHistory = [{ teamId: bidder.id, amount: nextBid, timestamp: Date.now() }, ...biddingHistory];
+          }
+
+          if (!highBidderTeamId) {
+            newUnsoldIds.push(player.id);
+          } else {
+            let finalWinnerId = highBidderTeamId;
+            let finalPrice = currentBid;
+            let usedRtm = false;
+
+            const rtmTeamId = findRTMEligibleTeam(player, newTeams, highBidderTeamId, currentBid);
+
+            if (rtmTeamId) {
+              const rtmTeam = newTeams[rtmTeamId];
+              const aiOrigValuation = getCachedValuation(rtmTeamId) || getLotValuation(player.id, rtmTeam, player, newPlayers, ctx);
+              const loyaltyBonus = 1.0 + (rtmTeam?.dna.loyalty ?? 50) / 100 * 0.25;
+
+              if (aiOrigValuation * loyaltyBonus > currentBid && rtmTeam.remainingPurse >= currentBid) {
+                const winnerTeam = newTeams[highBidderTeamId];
+                const aiWinnerValuation = getCachedValuation(highBidderTeamId) || getLotValuation(player.id, winnerTeam, player, newPlayers, ctx);
+
+                if (aiWinnerValuation > currentBid * 1.05 && winnerTeam.remainingPurse >= currentBid * 1.05) {
+                  let counterAmount = currentBid;
+                  const target = Math.min(aiWinnerValuation, Math.round(currentBid * 1.25));
+                  while (counterAmount < target) counterAmount = getNextBidAmount(counterAmount);
+                  if (counterAmount <= currentBid) counterAmount = getNextBidAmount(currentBid);
+
+                  if (aiOrigValuation * loyaltyBonus >= counterAmount && rtmTeam.remainingPurse >= counterAmount) {
+                    finalWinnerId = rtmTeamId;
+                    finalPrice = counterAmount;
+                    usedRtm = true;
+                  } else {
+                    finalWinnerId = highBidderTeamId;
+                    finalPrice = counterAmount;
+                  }
+                } else {
+                  finalWinnerId = rtmTeamId;
+                  finalPrice = currentBid;
+                  usedRtm = true;
+                }
+              }
+            }
+
+            const winnerTeam = newTeams[finalWinnerId];
+            if (winnerTeam) {
+              newTeams[finalWinnerId] = {
+                ...winnerTeam,
+                squad: [...winnerTeam.squad, player.id],
+                remainingPurse: winnerTeam.remainingPurse - finalPrice,
+                spentAmount: winnerTeam.spentAmount + finalPrice,
+                rtmCardsUsed: usedRtm ? winnerTeam.rtmCardsUsed + 1 : winnerTeam.rtmCardsUsed,
+                overseasPlayersCurrent:
+                  player.nationality === "Overseas"
+                    ? winnerTeam.overseasPlayersCurrent + 1
+                    : winnerTeam.overseasPlayersCurrent,
+              };
+            }
+
+            const updatedHistory = [
+              ...player.iplHistory.filter((h) => h.season !== "2027"),
+              { teamId: finalWinnerId, season: "2027", price: finalPrice, isRtm: usedRtm },
+            ];
+
+            newPlayers[player.id] = {
+              ...player,
+              currentTeamId: finalWinnerId,
+              iplHistory: updatedHistory,
+            };
+
+            newSoldIds.push(player.id);
+
+            newSaleHistory.push({
+              playerId: player.id,
+              teamId: finalWinnerId,
+              price: finalPrice,
+              lot: currentLotIndex,
+              bids: biddingHistory,
+            });
+          }
+          currentLotIndex++;
+        };
+
+        // Simulate all remaining players in regular sets
+        remainingPlayerIds.forEach(simulateOne);
+
+        // Simulate accelerated phases
+        let isAccelerated = true;
+        let lastAccelUnsoldCount = newUnsoldIds.length;
+        let halve = true;
+
+        while (isAccelerated && newUnsoldIds.length > 0) {
+          const unsoldPlayers = newUnsoldIds
+            .map((id) => newPlayers[id])
+            .filter(Boolean)
+            .map((p) => halve ? { ...p, basePrice: Math.max(20, Math.floor(p.basePrice / 2)) } : { ...p });
+          
+          halve = false;
+          
+          if (unsoldPlayers.length === 0) break;
+
+          const playersToSimulate = unsoldPlayers.map(p => p.id);
+          newUnsoldIds = [];
+
+          playersToSimulate.forEach(simulateOne);
+
+          const madeProgress = newUnsoldIds.length < lastAccelUnsoldCount;
+          if (!madeProgress) break;
+          lastAccelUnsoldCount = newUnsoldIds.length;
+        }
+
+        const updatedSets = auction.sets.map((s) => ({
+          ...s,
+          currentIndex: s.playerIds.length,
+          isCompleted: true,
+        }));
+
+        const updatedPurses: Record<string, { remaining: number; squadCount: number }> = {};
+        Object.values(newTeams).forEach((t) => {
+          updatedPurses[t.id] = { remaining: t.remainingPurse, squadCount: t.squad.length };
+        });
+
+        set({
+          teams: newTeams,
+          players: newPlayers,
+          isPaused: false,
+          skipSetSummary: null,
+          auction: {
+            ...auction,
+            sets: updatedSets,
+            phase: "completed",
+            currentLotIndex,
+            currentPlayer: null,
             soldPlayerIds: newSoldIds,
             unsoldPlayerIds: newUnsoldIds,
             saleHistory: newSaleHistory,
@@ -953,7 +1165,7 @@ function doRTMTransfer(
 
     const updatedHistory = [
       ...player.iplHistory.filter(h => h.season !== "2027"),
-      { teamId: originalTeamId, season: "2027", price: transferPrice }
+      { teamId: originalTeamId, season: "2027", price: transferPrice, isRtm: true }
     ];
     const newPlayers = { ...s.players, [player.id]: { ...player, currentTeamId: originalTeamId, iplHistory: updatedHistory } };
     const newPurses = {
@@ -1172,7 +1384,9 @@ function hammerFall() {
   if (!isUserOriginal && !isUserWinner) {
     // AI-vs-AI RTM: resolve silently
     const aiOrigValuation = getCachedValuation(rtmTeamId);
-    if (aiOrigValuation > soldAmount) {
+    const rtmTeam = teams[rtmTeamId];
+    const loyaltyBonus = 1.0 + (rtmTeam?.dna.loyalty ?? 50) / 100 * 0.25;
+    if (aiOrigValuation * loyaltyBonus > soldAmount) {
       // AI original exercises RTM
       const aiWinnerValuation = getCachedValuation(highBidder);
       if (aiWinnerValuation > soldAmount * 1.05) {
@@ -1182,7 +1396,7 @@ function hammerFall() {
         while (counterAmount < target) counterAmount = getNextBidAmount(counterAmount);
         if (counterAmount <= soldAmount) counterAmount = getNextBidAmount(soldAmount);
         // Original AI matches counter?
-        if (aiOrigValuation >= counterAmount) {
+        if (aiOrigValuation * loyaltyBonus >= counterAmount) {
           doRTMTransfer(rtmTeamId, highBidder, player, counterAmount, soldAmount);
         } else {
           doWinnerKeepsAtCounter(highBidder, soldAmount, counterAmount, player);
@@ -1218,8 +1432,10 @@ function hammerFall() {
   }
 
   // User is winner, AI is original: AI decides to RTM or not
+  const rtmTeam = teams[rtmTeamId];
+  const loyaltyBonus = 1.0 + (rtmTeam?.dna.loyalty ?? 50) / 100 * 0.25;
   const aiOrigValuation = getCachedValuation(rtmTeamId);
-  if (aiOrigValuation > soldAmount) {
+  if (aiOrigValuation * loyaltyBonus > soldAmount) {
     // AI exercises RTM → show "winner_counter" modal to user
     useGameStore.setState((s) => ({
       auction: s.auction
