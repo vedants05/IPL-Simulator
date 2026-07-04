@@ -29,54 +29,57 @@ export function getPlayerRetentionCost(
   const player = players[playerId];
   if (!player) return 0;
   if (!isPlayerCapped(player)) return UNCAPPED_RETENTION_COST;
-  
-  // Count how many capped players are in alreadyRetained in total
-  const cappedPlayers = alreadyRetained.filter((id) => {
-    const p = players[id];
-    return p && isPlayerCapped(p);
-  });
-  const slabs = getCappedRetentionSlabsForCount(cappedPlayers.length);
 
-  const index = alreadyRetained.indexOf(playerId);
-  if (index !== -1) {
-    // If the player is in the array, count capped players preceding them
-    const cappedBefore = alreadyRetained.slice(0, index).filter((id) => {
+  const retainedList = alreadyRetained.includes(playerId)
+    ? alreadyRetained
+    : [...alreadyRetained, playerId];
+
+  const cappedPlayers = retainedList
+    .filter((id) => {
       const p = players[id];
       return p && isPlayerCapped(p);
-    }).length;
-    return slabs[cappedBefore] ?? 0;
-  }
-  
-  // Otherwise, count all capped players in the array
-  const cappedCount = alreadyRetained.filter((id) => {
-    const p = players[id];
-    return p && isPlayerCapped(p);
-  }).length;
-  return slabs[cappedCount] ?? 0;
+    })
+    .map((id) => players[id])
+    .sort((a, b) => {
+      const rA = Math.max(a.currentBatting || 0, a.currentBowling || 0);
+      const rB = Math.max(b.currentBatting || 0, b.currentBowling || 0);
+      if (rB !== rA) return rB - rA;
+      return a.id.localeCompare(b.id);
+    });
+
+  const slabs = getCappedRetentionSlabsForCount(cappedPlayers.length);
+  const idx = cappedPlayers.findIndex((p) => p.id === playerId);
+  if (idx === -1) return 0;
+  return slabs[idx] ?? 0;
 }
 
 export function calculateTotalRetentionCost(
   retainedIds: string[],
   players: Record<string, Player>
 ): number {
-  const cappedPlayers = retainedIds.filter((id) => {
-    const p = players[id];
-    return p && isPlayerCapped(p);
-  });
-  const slabs = getCappedRetentionSlabsForCount(cappedPlayers.length);
+  const cappedPlayers = retainedIds
+    .filter((id) => {
+      const p = players[id];
+      return p && isPlayerCapped(p);
+    })
+    .map((id) => players[id])
+    .sort((a, b) => {
+      const rA = Math.max(a.currentBatting || 0, a.currentBowling || 0);
+      const rB = Math.max(b.currentBatting || 0, b.currentBowling || 0);
+      if (rB !== rA) return rB - rA;
+      return a.id.localeCompare(b.id);
+    });
 
-  let cappedCount = 0;
+  const slabs = getCappedRetentionSlabsForCount(cappedPlayers.length);
+  
   let total = 0;
-  for (const id of retainedIds) {
-    const p = players[id];
-    if (!p) continue;
-    if (isPlayerCapped(p)) {
-      total += slabs[cappedCount] ?? 0;
-      cappedCount++;
-    } else {
-      total += UNCAPPED_RETENTION_COST;
-    }
-  }
+  cappedPlayers.forEach((p, idx) => {
+    total += slabs[idx] ?? 0;
+  });
+
+  const uncappedCount = retainedIds.length - cappedPlayers.length;
+  total += uncappedCount * UNCAPPED_RETENTION_COST;
+
   return total;
 }
 

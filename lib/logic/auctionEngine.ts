@@ -113,12 +113,12 @@ function getPotentialMult(p: Player): number {
   }
   
   let mult = 1.0 + ageFactor * (gapNorm * u(0.40, 0.80) + ceilingNorm * u(0.40, 0.75)) + eliteBonus;
-  if (cur >= 84) {
+  if (cur >= 86) {
     mult = 1.0 + (mult - 1.0) * 0.20;
   }
   if (cur <= 82) {
-    const penaltyFactor = clamp((cur - 76) / 7, 0, 1); // 76 -> 0.0, 82 -> 0.857, 83 -> 1.0
-    const potentialScaling = 0.40 + 0.60 * penaltyFactor;
+    const penaltyFactor = clamp((cur - 76) / 6, 0, 1); // 76 -> 0.0, 82 -> 1.0 (steeper)
+    const potentialScaling = 0.20 + 0.50 * penaltyFactor; // 76 -> 0.20, 82 -> 0.70
     mult = 1.0 + (mult - 1.0) * potentialScaling;
   }
   return mult;
@@ -737,6 +737,11 @@ export function estimateRetentionWorth(player: Player, team: Team): number {
     worth *= 1.30;
   }
 
+  // Premium for established Indian players rated 84+ (e.g. Harshit Rana over Pathirana)
+  if (player.nationality === "Indian" && rating >= 84) {
+    worth *= 1.15;
+  }
+
 
 
   // Per-run noise so retention sets differ between saves. High-reputation
@@ -780,14 +785,15 @@ export function decideAIRetentions(
   const allCandidates = squad.map(p => {
     const worth = estimateRetentionWorth(p, team);
     const cornerstone = isCornerstone(p);
-    return { p, worth, isCapped: isCappedPlayer(p), cornerstone };
+    const isRep10 = repOf(p) === 10;
+    return { p, worth, isCapped: isCappedPlayer(p), cornerstone, isRep10 };
   });
 
-  // Sort them so that cornerstones are processed first (in worth order) and then all other candidates (in worth order)
+  // Sort: rep-10 legends first, then cornerstones, then all others — all sub-sorted by worth
   allCandidates.sort((a, b) => {
-    const aVal = a.cornerstone ? 1 : 0;
-    const bVal = b.cornerstone ? 1 : 0;
-    if (bVal !== aVal) return bVal - aVal;
+    const aRep10 = a.isRep10 ? 2 : a.cornerstone ? 1 : 0;
+    const bRep10 = b.isRep10 ? 2 : b.cornerstone ? 1 : 0;
+    if (bRep10 !== aRep10) return bRep10 - aRep10;
     if (Math.abs(b.worth - a.worth) > 0.001) return b.worth - a.worth;
 
     // Tie-breaker: same ability (rating) and age -> select Indian first
@@ -821,15 +827,14 @@ export function decideAIRetentions(
       }
 
       const slabCost = isCapped ? slabs[cappedUsed] : UNCAPPED_SLAB;
-      const isRep10 = repOf(p) === 10;
       const spendCap = cornerstone ? cornerstoneSpendCap : maxRetentionSpend;
 
-      if (!isRep10 && totalSpend + slabCost > spendCap) {
+      if (totalSpend + slabCost > spendCap) {
         if (cornerstone) continue; // never let a cheaper non-icon block the queue
         break;
       }
 
-      if (isRep10 || cornerstone) {
+      if (cornerstone) {
         retainedList.push(p.id);
         if (isCapped) cappedUsed++; else uncappedUsed++;
         totalSpend += slabCost;

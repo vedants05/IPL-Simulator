@@ -197,7 +197,7 @@ export default function NavBar() {
             <div className="relative flex items-center">
               <button
                 onClick={handleSkipAllPress}
-                className="px-3 rounded font-space-mono font-bold text-[10px] tracking-wider uppercase transition-all duration-150 flex items-center justify-center h-[28px] cursor-pointer hover:bg-danger hover:text-white hover:scale-105 active:scale-95 animate-pulse"
+                className="px-3 rounded font-space-mono font-bold text-[10px] tracking-wider uppercase transition-all duration-150 flex items-center justify-center h-[28px] cursor-pointer hover:bg-danger hover:text-white hover:scale-105 active:scale-95"
                 style={{
                   border: "1.5px solid #16130f",
                   backgroundColor: "var(--team-bid-bg, #111622)",

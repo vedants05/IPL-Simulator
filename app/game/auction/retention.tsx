@@ -67,9 +67,7 @@ export default function RetentionPhase() {
             const retainedIdx = retainedIds.indexOf(player.id);
             const isRetained = retainedIdx !== -1;
             const slot = isRetained ? retainedIdx + 1 : null;
-            const cost = isRetained
-              ? getPlayerRetentionCost(player.id, retainedIds.slice(0, retainedIdx), players)
-              : null;
+            const cost = getPlayerRetentionCost(player.id, retainedIds, players);
 
             const isPlayerCapped = player.isCapped || player.nationality === "Overseas";
             const canAdd =
@@ -107,9 +105,9 @@ export default function RetentionPhase() {
                     RTG: {Math.max(player.currentBatting || 0, player.currentBowling || 0)}
                   </div>
 
-                  {isRetained && cost !== null && (
-                    <span className="font-barlow-condensed font-bold text-[14px] text-danger w-24 text-right">
-                      -{formatPrice(cost)}
+                  {cost !== null && (
+                    <span className={`font-barlow-condensed font-bold text-[14px] w-24 text-right ${isRetained ? "text-danger" : "text-text-secondary opacity-60"}`}>
+                      {isRetained ? "-" : ""}{formatPrice(cost)}
                     </span>
                   )}
 
@@ -149,7 +147,7 @@ export default function RetentionPhase() {
               <div className="flex flex-col gap-3 mb-4">
                 {retainedIds.map((id, idx) => {
                   const p = players[id];
-                  const c = getPlayerRetentionCost(id, retainedIds.slice(0, idx), players);
+                  const c = getPlayerRetentionCost(id, retainedIds, players);
                   const isCapped = p?.isCapped || p?.nationality === "Overseas";
                   return (
                     <div key={id} className="flex justify-between items-center">
