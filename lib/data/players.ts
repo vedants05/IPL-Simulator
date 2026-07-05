@@ -4163,7 +4163,7 @@ export const PLAYERS: Player[] = [
     "battingAggression": 90,
     "isWicketkeeper": false,
     "isPartTimeWk": false,
-    "isOpener": false,
+    "isOpener": true,
     "isFinisher": false,
     "attributes": {
       "technique": 17,

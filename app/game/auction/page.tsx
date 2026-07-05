@@ -223,106 +223,488 @@ function playerRating(p: { currentBatting?: number; currentBowling?: number }) {
   return Math.max(p.currentBatting ?? 0, p.currentBowling ?? 0);
 }
 
+function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@/lib/types").Player[] {
+  if (squad.length === 0) return [];
+
+  // Patch Virat Kohli to be an opener dynamically for current saves
+  squad.forEach(p => {
+    if (p.id === "virat-kohli") {
+      p.isOpener = true;
+    }
+  });
+  
+  const getEffectiveRole = (p: import("@/lib/types").Player): string => {
+    if (p.role === "All-Rounder") {
+      const bat = p.currentBatting ?? 0;
+      const bowl = p.currentBowling ?? 0;
+      if (bat - bowl >= 10) {
+        return "Batsman";
+      }
+      if (bowl - bat >= 10) {
+        const isSpin = /spin|orthodox/i.test(p.bowlingStyle ?? "");
+        return isSpin ? "Spin Bowler" : "Pace Bowler";
+      }
+    }
+    return p.role;
+  };
+
+  const isCapableBowler = (p: import("@/lib/types").Player) => {
+    const effRole = getEffectiveRole(p);
+    return effRole === "Pace Bowler" || effRole === "Spin Bowler" || effRole === "All-Rounder";
+  };
+
+  const isKeeper = (p: import("@/lib/types").Player) => 
+    !!(p.isWicketkeeper || p.isPartTimeWk || p.role === "WK-Batsman");
+
+  const isSpinner = (p: import("@/lib/types").Player) => {
+    const effRole = getEffectiveRole(p);
+    return effRole === "Spin Bowler" || (effRole === "All-Rounder" && /spin|orthodox/i.test(p.bowlingStyle ?? ""));
+  };
+
+  const isFinisherType = (p: import("@/lib/types").Player) => 
+    !!(p.isFinisher || ((p.battingAggression ?? 0) >= 85 && !p.isOpener && (p.currentBatting ?? 0) >= 65));
+
+  let selected: import("@/lib/types").Player[] = [];
+  let remaining = [...squad];
+
+  // 1. Select 2 Openers
+  let openers = remaining
+    .filter(p => p.isOpener)
+    .sort((a, b) => playerRating(b) - playerRating(a));
+  
+  let selectedOpeners: import("@/lib/types").Player[] = [];
+  if (openers.length >= 2) {
+    selectedOpeners = openers.slice(0, 2);
+  } else if (openers.length === 1) {
+    selectedOpeners.push(openers[0]);
+    const nextBest = remaining
+      .filter(p => p.id !== openers[0].id && (getEffectiveRole(p) === "Batsman" || getEffectiveRole(p) === "WK-Batsman"))
+      .sort((a, b) => playerRating(b) - playerRating(a))[0];
+    if (nextBest) selectedOpeners.push(nextBest);
+  } else {
+    const bestBatters = remaining
+      .filter(p => getEffectiveRole(p) === "Batsman" || getEffectiveRole(p) === "WK-Batsman")
+      .sort((a, b) => playerRating(b) - playerRating(a));
+    selectedOpeners = bestBatters.slice(0, 2);
+  }
+
+  selectedOpeners.forEach(op => {
+    selected.push(op);
+    remaining = remaining.filter(p => p.id !== op.id);
+  });
+
+  // 2. Include the highest rated wicketkeeper (who is not already an opener)
+  const bestKeeper = remaining
+    .filter(isKeeper)
+    .sort((a, b) => playerRating(b) - playerRating(a))[0];
+  if (bestKeeper) {
+    selected.push(bestKeeper);
+    remaining = remaining.filter(p => p.id !== bestKeeper.id);
+  }
+
+  // 3. Ensure the highest rated spinner is playing
+  const bestSpinner = remaining
+    .filter(isSpinner)
+    .sort((a, b) => (b.currentBowling ?? 0) - (a.currentBowling ?? 0))[0];
+  if (bestSpinner) {
+    selected.push(bestSpinner);
+    remaining = remaining.filter(p => p.id !== bestSpinner.id);
+  }
+
+  // 4. Fill the rest greedily to reach 12 players, adhering to bowler & all-rounder rules
+  const countOverseas = () => selected.filter(p => p.nationality === "Overseas").length;
+  const countBowlers = () => selected.filter(isCapableBowler).length;
+  const countARs = () => selected.filter(p => getEffectiveRole(p) === "All-Rounder").length;
+
+  // Determine if we need a second all-rounder:
+  const outAndOutBowlers = squad.filter(p => getEffectiveRole(p) === "Pace Bowler" || getEffectiveRole(p) === "Spin Bowler")
+    .sort((a, b) => (b.currentBowling ?? 0) - (a.currentBowling ?? 0));
+  const fifthBowler = outAndOutBowlers[4];
+  const needSecondAllRounder = !fifthBowler || (fifthBowler.currentBowling ?? 0) < 75;
+
+  // Force at least 1 all-rounder in the selected lineup's bowlers
+  if (countARs() < 1) {
+    const bestAR = remaining
+      .filter(p => getEffectiveRole(p) === "All-Rounder" && countOverseas() + (p.nationality === "Overseas" ? 1 : 0) <= 4)
+      .sort((a, b) => playerRating(b) - playerRating(a))[0];
+    if (bestAR) {
+      selected.push(bestAR);
+      remaining = remaining.filter(p => p.id !== bestAR.id);
+    }
+  }
+
+  // If the 5th out and out bowler is below 75 rated, force a 2nd all-rounder
+  if (needSecondAllRounder && countARs() < 2) {
+    const bestAR = remaining
+      .filter(p => getEffectiveRole(p) === "All-Rounder" && countOverseas() + (p.nationality === "Overseas" ? 1 : 0) <= 4)
+      .sort((a, b) => playerRating(b) - playerRating(a))[0];
+    if (bestAR) {
+      selected.push(bestAR);
+      remaining = remaining.filter(p => p.id !== bestAR.id);
+    }
+  }
+
+  // Now sort the rest and fill greedily
+  const countOutAndOut = () => selected.filter(p => {
+    const r = getEffectiveRole(p);
+    return r === "Pace Bowler" || r === "Spin Bowler";
+  }).length;
+
+  remaining.sort((a, b) => playerRating(b) - playerRating(a));
+
+  for (const p of remaining) {
+    if (selected.length >= 12) break;
+
+    const isOS = p.nationality === "Overseas" ? 1 : 0;
+    const effRole = getEffectiveRole(p);
+    const isOutAndOut = effRole === "Pace Bowler" || effRole === "Spin Bowler";
+    const currentARs = countARs();
+    const currentOutAndOut = countOutAndOut();
+    const maxAllowedBowlers = currentARs >= 2 ? 4 : 5;
+
+    if (countOverseas() + isOS <= 4) {
+      if (!isOutAndOut || (currentOutAndOut + 1 <= maxAllowedBowlers)) {
+        selected.push(p);
+      }
+    }
+  }
+
+  if (selected.length < 12) {
+    for (const p of remaining) {
+      if (selected.length >= 12) break;
+      if (!selected.some(s => s.id === p.id)) {
+        selected.push(p);
+      }
+    }
+  }
+
+  // Ensure the remaining pool only has players not already selected in the XII
+  remaining = remaining.filter(p => !selected.some(s => s.id === p.id));
+
+  // 5. Post-selection Batter Replacement Rule:
+  // If an all-rounder in the remaining pool has a higher or equal batting rating than a selected out-and-out batter,
+  // we replace the batter (unless they are the sole wicketkeeper in the XII, or if swapping them reduces total openers below 2).
+  const selectedKeepers = selected.filter(isKeeper);
+  const onlyKeeperId = selectedKeepers.length === 1 ? selectedKeepers[0].id : null;
+
+  let swapDone = true;
+  while (swapDone) {
+    swapDone = false;
+
+    const remainingARs = remaining
+      .filter(p => getEffectiveRole(p) === "All-Rounder")
+      .sort((a, b) => (b.currentBatting ?? 0) - (a.currentBatting ?? 0));
+
+    if (remainingARs.length === 0) break;
+
+    const replaceableBatters = selected
+      .filter(p => {
+        const effRole = getEffectiveRole(p);
+        const isBatter = effRole === "Batsman" || effRole === "WK-Batsman";
+        const isOnlyKeeper = p.id === onlyKeeperId;
+        return isBatter && !isOnlyKeeper;
+      })
+      .sort((a, b) => (a.currentBatting ?? 0) - (b.currentBatting ?? 0)); // lowest batting first
+
+    if (replaceableBatters.length === 0) break;
+
+    const bestAR = remainingARs[0];
+    let foundSwap = null;
+
+    for (const worstBatter of replaceableBatters) {
+      const arBat = bestAR.currentBatting ?? 0;
+      const batBat = worstBatter.currentBatting ?? 0;
+
+      if (arBat >= batBat) {
+        const currentOSCount = selected.filter(p => p.nationality === "Overseas").length;
+        const nextOSCount = currentOSCount - (worstBatter.nationality === "Overseas" ? 1 : 0) + (bestAR.nationality === "Overseas" ? 1 : 0);
+
+        const currentOpenersCount = selected.filter(p => p.isOpener).length;
+        const nextOpenersCount = currentOpenersCount - (worstBatter.isOpener ? 1 : 0) + (bestAR.isOpener ? 1 : 0);
+
+        // Evaluate out-and-out bowler cap under the swap
+        const tempSelected = selected.filter(p => p.id !== worstBatter.id).concat(bestAR);
+        const tempARs = tempSelected.filter(p => getEffectiveRole(p) === "All-Rounder").length;
+        const tempOutAndOut = tempSelected.filter(p => {
+          const r = getEffectiveRole(p);
+          return r === "Pace Bowler" || r === "Spin Bowler";
+        }).length;
+        const maxAllowedOutAndOut = tempARs >= 2 ? 4 : 5;
+
+        if (nextOSCount <= 4 && nextOpenersCount >= 2 && tempOutAndOut <= maxAllowedOutAndOut) {
+          foundSwap = worstBatter;
+          break; // Found the lowest-rated batter we can validly swap with
+        }
+      }
+    }
+
+    if (foundSwap) {
+      selected = selected.filter(p => p.id !== foundSwap.id);
+      selected.push(bestAR);
+      remaining = remaining.filter(p => p.id !== bestAR.id);
+      remaining.push(foundSwap);
+      swapDone = true;
+    }
+  }
+
+  // 6. All-Rounder Limit of 3 Rule:
+  // Place an all-rounder limit at 3 unless the 4th all-rounder has a higher batting rating than all of the unselected batsmen.
+  // If not true, swap the all-rounder for the best unselected batter.
+  let arLimitCheckDone = false;
+  while (!arLimitCheckDone) {
+    arLimitCheckDone = true;
+
+    const selectedARs = selected
+      .filter(p => getEffectiveRole(p) === "All-Rounder")
+      .sort((a, b) => (b.currentBatting ?? 0) - (a.currentBatting ?? 0)); // highest batting first
+
+    if (selectedARs.length > 3) {
+      const fourthAR = selectedARs[3]; 
+
+      const unselectedBatters = remaining
+        .filter(p => {
+          const effRole = getEffectiveRole(p);
+          return effRole === "Batsman" || effRole === "WK-Batsman";
+        })
+        .sort((a, b) => playerRating(b) - playerRating(a)); // highest rated first
+
+      if (unselectedBatters.length > 0) {
+        const bestUnselectedBatter = unselectedBatters[0];
+        const arBat = fourthAR.currentBatting ?? 0;
+        const batBat = bestUnselectedBatter.currentBatting ?? 0;
+
+        if (arBat <= batBat) {
+          selected = selected.filter(p => p.id !== fourthAR.id);
+          selected.push(bestUnselectedBatter);
+          remaining = remaining.filter(p => p.id !== bestUnselectedBatter.id);
+          remaining.push(fourthAR);
+          arLimitCheckDone = false; // re-run check
+        }
+      }
+    }
+  }
+
+  // Arrange the lineup:
+  // - 2 openers
+  // - Batsmen who aren't finishers, ranked highest to lowest
+  // - Finishers, ranked highest to lowest
+  // - All-rounders ranked as per batting ratings (if not finishers/openers), highest to lowest
+  // - Pace bowlers, highest to lowest
+  // - Spin bowlers, highest to lowest
+  const availableOpeners = selected
+    .filter(p => p.isOpener)
+    .sort((a, b) => playerRating(b) - playerRating(a));
+
+  let finalOpeners: import("@/lib/types").Player[] = [];
+  if (availableOpeners.length >= 2) {
+    finalOpeners = availableOpeners.slice(0, 2);
+  } else if (availableOpeners.length === 1) {
+    finalOpeners.push(availableOpeners[0]);
+    const nextBest = selected
+      .filter(p => p.id !== availableOpeners[0].id && (getEffectiveRole(p) === "Batsman" || getEffectiveRole(p) === "WK-Batsman"))
+      .sort((a, b) => playerRating(b) - playerRating(a))[0];
+    if (nextBest) finalOpeners.push(nextBest);
+  } else {
+    const bestBatters = selected
+      .filter(p => getEffectiveRole(p) === "Batsman" || getEffectiveRole(p) === "WK-Batsman")
+      .sort((a, b) => playerRating(b) - playerRating(a));
+    finalOpeners = bestBatters.slice(0, 2);
+  }
+
+  const finalOpenersIds = finalOpeners.map(f => f.id);
+  const remainingTen = selected.filter(p => !finalOpenersIds.includes(p.id));
+
+  const batters = remainingTen.filter(p => (getEffectiveRole(p) === "Batsman" || getEffectiveRole(p) === "WK-Batsman") && !isFinisherType(p))
+    .sort((a, b) => playerRating(b) - playerRating(a));
+
+  const finishers = remainingTen.filter(p => isFinisherType(p) && getEffectiveRole(p) !== "Pace Bowler" && getEffectiveRole(p) !== "Spin Bowler")
+    .sort((a, b) => playerRating(b) - playerRating(a));
+
+  const allrounders = remainingTen.filter(p => getEffectiveRole(p) === "All-Rounder" && !isFinisherType(p))
+    .sort((a, b) => (b.currentBatting ?? 0) - (a.currentBatting ?? 0));
+
+  const pacers = remainingTen.filter(p => getEffectiveRole(p) === "Pace Bowler")
+    .sort((a, b) => playerRating(b) - playerRating(a));
+
+  const spinners = remainingTen.filter(p => getEffectiveRole(p) === "Spin Bowler")
+    .sort((a, b) => playerRating(b) - playerRating(a));
+
+  const merged = [...finalOpeners, ...batters, ...finishers, ...allrounders, ...pacers, ...spinners];
+  const leftover = remainingTen.filter(p => !merged.some(m => m.id === p.id));
+
+  const finalLineup = [...merged, ...leftover];
+
+  // Final Unique Filter to guarantee absolutely no duplicate player IDs
+  const uniqueLineup = [];
+  const seenIds = new Set();
+  for (const p of finalLineup) {
+    if (!seenIds.has(p.id)) {
+      seenIds.add(p.id);
+      uniqueLineup.push(p);
+    }
+  }
+  return uniqueLineup;
+}
+
 function TeamSquadCard({
   team,
   players,
   isUser,
+  positionIndex,
 }: {
   team: import("@/lib/types").Team;
   players: Record<string, import("@/lib/types").Player>;
   isUser: boolean;
+  positionIndex: number;
 }) {
-  const squad = team.squad.map((id) => players[id]).filter(Boolean);
+  const squad = Array.from(new Set(team.squad)).map((id) => players[id]).filter(Boolean);
   const overseas = squad.filter((p) => p.nationality === "Overseas").length;
+  const lineup = selectPotentialLineup(squad);
+
+  // Find the primary wicketkeeper (highest rated keeper in the lineup)
+  const isKeeperRole = (p: import("@/lib/types").Player) =>
+    !!(p.isWicketkeeper || p.isPartTimeWk || p.role === "WK-Batsman");
+  const wkCandidates = lineup.filter(isKeeperRole).sort((a, b) => playerRating(b) - playerRating(a));
+  const primaryWkId = wkCandidates[0]?.id;
+
+  // Find the captain (highest captaincy rating, tiebreaker overall rating)
+  const captainCandidates = [...lineup].sort((a, b) => {
+    const capDiff = (b.captaincy ?? 0) - (a.captaincy ?? 0);
+    if (capDiff !== 0) return capDiff;
+    return playerRating(b) - playerRating(a);
+  });
+  const captainId = captainCandidates[0]?.id;
+
+  // Left vs Right layout variables
+  const isLeftCol = positionIndex % 2 === 0;
 
   return (
-    <div
-      style={{ border: isUser ? "3px solid #16130f" : "2px solid #16130f" }}
-      className="flex flex-col bg-surface2"
-    >
-      {/* Team header — franchise colours */}
+    <div className="relative flex flex-col items-stretch gap-y-4 lg:gap-y-0">
+      {/* Main Squad Card (Takes full column width) */}
       <div
-        className="px-4 py-3 flex items-center justify-between shrink-0"
-        style={{ backgroundColor: team.primaryColor, color: team.secondaryColor, borderBottom: "2px solid #16130f" }}
+        style={{ border: isUser ? "3px solid #16130f" : "2px solid #16130f" }}
+        className="w-full flex flex-col bg-surface2 z-0 relative"
       >
-        <div className="flex items-center gap-2.5 min-w-0">
-          <div
-            className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0"
-            style={{ backgroundColor: team.secondaryColor, color: team.primaryColor }}
-          >
-            {team.shortName.slice(0, 3)}
-          </div>
-          <span className="font-anton text-[16px] leading-none uppercase tracking-wide truncate">
-            {team.name}
-          </span>
-          {isUser && (
-            <span className="font-space-mono font-bold text-[8px] tracking-widest uppercase px-1.5 py-0.5 rounded shrink-0"
-              style={{ backgroundColor: "rgba(0,0,0,0.22)", color: team.secondaryColor }}>
-              YOU
-            </span>
-          )}
-        </div>
-        <span className="font-anton text-[16px] shrink-0">{squad.length}</span>
-      </div>
-
-      {/* Stat strip */}
-      <div className="flex items-stretch text-center shrink-0" style={{ borderBottom: "1px solid rgba(22,19,15,.15)" }}>
-        {[
-          { l: "SPENT", v: `₹${(team.spentAmount / 100).toFixed(1)}Cr` },
-          { l: "LEFT", v: `₹${(team.remainingPurse / 100).toFixed(1)}Cr` },
-          { l: "OVERSEAS", v: `${overseas}/8` },
-        ].map((s, i) => (
-          <div key={s.l} className="flex-1 py-2" style={i < 2 ? { borderRight: "1px solid rgba(22,19,15,.12)" } : {}}>
-            <div className="font-space-mono text-[8px] tracking-widest text-text-secondary uppercase">{s.l}</div>
-            <div className="font-barlow-condensed font-bold text-[15px] text-text-primary leading-tight">{s.v}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* Squad by role group */}
-      <div className="p-2.5 space-y-1.5">
-        {ROLE_GROUPS.map(({ label, roles }) => {
-          const group = squad
-            .filter((p) => (roles as readonly string[]).includes(p.role))
-            .sort((a, b) => playerRating(b) - playerRating(a));
-          if (group.length === 0) return null;
-          return (
-            <div key={label} className="flex gap-2">
-              <span className="font-space-mono font-bold text-[9px] tracking-wider text-text-secondary uppercase w-[34px] shrink-0 pt-1">
-                {label}
-              </span>
-              <div className="flex flex-wrap gap-1 flex-1">
-                {group.map((p) => {
-                  const wasRetained = team.retainedPlayers.includes(p.id);
-                  const sale = p.iplHistory.find((h) => h.season === "2027");
-                  const price = sale?.price ?? p.iplHistory.find((h) => h.season === "2026")?.price;
-                  const isRtm = sale?.isRtm;
-                  const priceStr = price ? `(₹${(price / 100).toFixed(1)}Cr)` : "";
-
-                  const bgStyle = wasRetained 
-                    ? { backgroundColor: `${team.primaryColor}18`, borderColor: team.primaryColor }
-                    : { backgroundColor: "rgba(22,19,15,0.05)", borderColor: "rgba(22,19,15,0.1)" };
-
-                  return (
-                    <span
-                      key={p.id}
-                      style={bgStyle}
-                      className="font-barlow text-[11px] leading-tight px-1.5 py-0.5 rounded-[3px] border inline-flex items-center gap-1"
-                      title={`${p.role} · rating ${playerRating(p)}${wasRetained ? " · retained" : ""}${isRtm ? " · bought via RTM" : ""}`}
-                    >
-                      <span className="font-semibold text-text-primary">{p.name}</span>
-                      <span className="text-text-secondary"> {playerRating(p)}</span>
-                      {priceStr && <span className="text-[9px] text-text-secondary font-mono font-medium"> {priceStr}</span>}
-                      {isRtm && <span className="text-[7.5px] font-space-mono font-extrabold bg-[#1d55c4]/15 text-[#1d55c4] px-1 rounded-[2px] tracking-wide uppercase leading-none py-0.5">RTM</span>}
-                      {p.nationality === "Overseas" && <span className="text-[8px] text-[#1d55c4] font-bold"> OS</span>}
-                    </span>
-                  );
-                })}
-              </div>
+        {/* Team header — franchise colours */}
+        <div
+          className="px-4 py-3 flex items-center justify-between shrink-0"
+          style={{ backgroundColor: team.primaryColor, color: team.secondaryColor, borderBottom: "2px solid #16130f" }}
+        >
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div
+              className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0"
+              style={{ backgroundColor: team.secondaryColor, color: team.primaryColor }}
+            >
+              {team.shortName.slice(0, 3)}
             </div>
-          );
-        })}
+            <span className="font-anton text-[16px] leading-none uppercase tracking-wide truncate">
+              {team.name}
+            </span>
+            {isUser && (
+              <span className="font-space-mono font-bold text-[8px] tracking-widest uppercase px-1.5 py-0.5 rounded shrink-0"
+                style={{ backgroundColor: "rgba(0,0,0,0.22)", color: team.secondaryColor }}>
+                YOU
+              </span>
+            )}
+          </div>
+          <span className="font-anton text-[16px] shrink-0">{squad.length}</span>
+        </div>
+
+        {/* Stat strip */}
+        <div className="flex items-stretch text-center shrink-0" style={{ borderBottom: "1px solid rgba(22,19,15,.15)" }}>
+          {[
+            { l: "SPENT", v: `₹${(team.spentAmount / 100).toFixed(1)}Cr` },
+            { l: "LEFT", v: `₹${(team.remainingPurse / 100).toFixed(1)}Cr` },
+            { l: "OVERSEAS", v: `${overseas}/8` },
+          ].map((s, i) => (
+            <div key={s.l} className="flex-1 py-2" style={i < 2 ? { borderRight: "1px solid rgba(22,19,15,.12)" } : {}}>
+              <div className="font-space-mono text-[8px] tracking-widest text-text-secondary uppercase">{s.l}</div>
+              <div className="font-barlow-condensed font-bold text-[15px] text-text-primary leading-tight">{s.v}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Squad by role group */}
+        <div className="p-2.5 space-y-1.5 flex-1 min-w-0">
+          {ROLE_GROUPS.map(({ label, roles }) => {
+            const group = squad
+              .filter((p) => (roles as readonly string[]).includes(p.role))
+              .sort((a, b) => playerRating(b) - playerRating(a));
+            if (group.length === 0) return null;
+            return (
+              <div key={label} className="flex gap-2">
+                <span className="font-space-mono font-bold text-[9px] tracking-wider text-text-secondary uppercase w-[34px] shrink-0 pt-1">
+                  {label}
+                </span>
+                <div className="flex flex-wrap gap-1 flex-1">
+                  {group.map((p) => {
+                    const wasRetained = team.retainedPlayers.includes(p.id);
+                    const sale = p.iplHistory.find((h) => h.season === "2027");
+                    const price = sale?.price ?? p.iplHistory.find((h) => h.season === "2026")?.price;
+                    const isRtm = sale?.isRtm;
+                    const priceStr = price ? `(₹${(price / 100).toFixed(1)}Cr)` : "";
+
+                    const bgStyle = wasRetained 
+                      ? { backgroundColor: `${team.primaryColor}18`, borderColor: team.primaryColor }
+                      : { backgroundColor: "rgba(22,19,15,0.05)", borderColor: "rgba(22,19,15,0.1)" };
+
+                    return (
+                      <span
+                        key={p.id}
+                        style={bgStyle}
+                        className="font-barlow text-[11px] leading-tight px-1.5 py-0.5 rounded-[3px] border inline-flex items-center gap-1"
+                        title={`${p.role} · rating ${playerRating(p)}${wasRetained ? " · retained" : ""}${isRtm ? " · bought via RTM" : ""}`}
+                      >
+                        <span className="font-semibold text-text-primary">{p.name}</span>
+                        <span className="text-text-secondary"> {playerRating(p)}</span>
+                        {priceStr && <span className="text-[9px] text-text-secondary font-mono font-medium"> {priceStr}</span>}
+                        {isRtm && <span className="text-[7.5px] font-space-mono font-extrabold bg-[#1d55c4]/15 text-[#1d55c4] px-1 rounded-[2px] tracking-wide uppercase leading-none py-0.5">RTM</span>}
+                        {p.nationality === "Overseas" && <span className="text-[8px] text-[#1d55c4] font-bold"> OS</span>}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
+
+      {/* Floating Potential XII Tile */}
+      {lineup.length > 0 && (
+        <div
+          style={{ backgroundColor: "#ffffff" }}
+          className={`w-full lg:w-[170px] shrink-0 p-2.5 border-2 border-[#16130f] shadow-xl flex flex-col gap-1.5 transition-all duration-200 lg:hover:-translate-y-1 hover:shadow-2xl z-10
+            ${isLeftCol 
+              ? "lg:absolute lg:right-full lg:mr-5 lg:top-0 rounded lg:rounded-r-none" 
+              : "lg:absolute lg:left-full lg:ml-5 lg:top-0 rounded lg:rounded-l-none"}
+          `}
+        >
+          <div className="font-space-mono text-[8.5px] tracking-widest text-[#16130f] uppercase font-bold border-b border-[#16130f]/15 pb-1 flex items-center justify-between">
+            <span>★ Potential XII</span>
+            <span className="text-[8px] opacity-75">{lineup.filter(p => p.nationality === "Overseas").length} OS</span>
+          </div>
+          <div className="flex flex-col gap-0.5">
+            {lineup.map((p, idx) => {
+              const isWK = p.id === primaryWkId;
+              const isCaptain = p.id === captainId;
+              return (
+                <div key={p.id} className="flex justify-between items-center text-[10px] py-[1px] border-b border-[#16130f]/5 last:border-0 leading-tight">
+                  <div className="flex items-center gap-1 min-w-0">
+                    <span className="text-[8px] font-space-mono text-[#16130f]/50 w-3.5 shrink-0">{idx + 1}</span>
+                    <span className="font-medium text-[#16130f] truncate" title={p.name}>
+                      {p.name}{isCaptain ? " (C)" : ""}
+                    </span>
+                    {p.nationality === "Overseas" && <span className="text-[7px] text-[#1d55c4] font-extrabold shrink-0" title="Overseas Player">OS</span>}
+                    {isWK && <span className="text-[7px] text-danger font-extrabold shrink-0" title="Wicketkeeper">WK</span>}
+                  </div>
+                  <span className="font-bold text-[#16130f]/75 text-[8.5px] pl-1 shrink-0">{playerRating(p)}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -538,13 +920,14 @@ function AuctionComplete() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-          {ordered.map((team) => (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-y-10 gap-x-16">
+          {ordered.map((team, idx) => (
             <TeamSquadCard
               key={team.id}
               team={team}
               players={players}
               isUser={team.id === userTeamId}
+              positionIndex={idx}
             />
           ))}
         </div>

@@ -60,6 +60,10 @@ function isKeeper(p: Player): boolean {
   return !!(p.isWicketkeeper || p.isPartTimeWk || p.role === "WK-Batsman");
 }
 
+function isFullTimeKeeper(p: Player): boolean {
+  return !!((p.isWicketkeeper || p.role === "WK-Batsman") && !p.isPartTimeWk);
+}
+
 function isFinisherType(p: Player): boolean {
   return !!(p.isFinisher || ((p.battingAggression ?? 0) >= 85 && !p.isOpener && (p.currentBatting ?? 0) >= 65));
 }
@@ -167,6 +171,7 @@ interface SquadComp {
   premiumIndians: number;
   premiumOverseas: number;
   premiumWKs: number;
+  wks76: number;
   battingIndians78: number;
   bowlingIndians77: number;
   spinners75: number;
@@ -227,6 +232,8 @@ function getSquadComp(squad: Player[]): SquadComp {
   const spinAllRounders75 = squad.filter(p => isSpinAllRounder(p) && (p.currentBowling ?? 0) > 75).length;
   const totalSpinners75 = spinners75 + spinAllRounders75;
 
+    const wks76 = squad.filter(p => isFullTimeKeeper(p) && ratingOf(p) > 76).length;
+
   return {
     batters:     squad.filter(p => p.role === "Batsman").length,
     wks:         squad.filter(p => p.role === "WK-Batsman").length,
@@ -246,6 +253,7 @@ function getSquadComp(squad: Player[]): SquadComp {
     premiumIndians,
     premiumOverseas,
     premiumWKs,
+    wks76,
     battingIndians78,
     bowlingIndians77,
     spinners75,
@@ -415,6 +423,9 @@ function computePlayerFit(
   }
   if (isKeeper(player) && rating > 78) {
     if ((comp.premiumWKs ?? 0) < 1) fit += u(0.40, 0.60);
+  }
+  if (isFullTimeKeeper(player) && rating > 76) {
+    if ((comp.wks76 ?? 0) < 2) fit += u(1.50, 2.20);
   }
 
   // 5 batting Indians with rating > 78 and 4 bowling Indians with rating > 77.
