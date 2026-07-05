@@ -12,10 +12,17 @@ const ROOT = process.cwd();
 const CSV_PATH = path.join(ROOT, "database.csv");
 const OUT_PATH = path.join(ROOT, "lib", "data", "players.ts");
 
+import WebSocket from "ws";
+
 // ---- Supabase ----
 const supabase = createClient(
   "https://qnmmplezmitcllovbyur.supabase.co",
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFubW1wbGV6bWl0Y2xsb3ZieXVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI4MzIxMDQsImV4cCI6MjA5ODQwODEwNH0.w6OHOuz8O92tYXmvTuOmO1SnBuuqx_VzixN_jW5KTsA"
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFubW1wbGV6bWl0Y2xsb3ZieXVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI4MzIxMDQsImV4cCI6MjA5ODQwODEwNH0.w6OHOuz8O92tYXmvTuOmO1SnBuuqx_VzixN_jW5KTsA",
+  {
+    realtime: {
+      transport: WebSocket as any
+    }
+  }
 );
 
 // ---- Maps ----
@@ -647,7 +654,7 @@ function q(v: unknown): string {
 const lines: string[] = [
   `import type { Player } from "@/lib/types";`,
   ``,
-  `export const PLAYERS_SEED: Player[] = [`,
+  `export const PLAYERS: Player[] = [`,
 ];
 
 for (const p of players) {
@@ -662,7 +669,8 @@ for (const p of players) {
 
 lines.push(`];`);
 lines.push(``);
-lines.push(`export const PLAYERS_MAP: Record<string, Player> = Object.fromEntries(PLAYERS_SEED.map(p => [p.id, p]));`);
+lines.push(`export const PLAYERS_SEED: Player[] = PLAYERS;`);
+lines.push(`export const PLAYERS_MAP: Record<string, Player> = Object.fromEntries(PLAYERS.map(p => [p.id, p]));`);
 
 fs.writeFileSync(OUT_PATH, lines.join("\n"), "utf-8");
 console.log(`✓ Written lib/data/players.ts`);
@@ -686,6 +694,12 @@ async function seedSupabase() {
     is_capped: p.isCapped,
     current_team_id: p.currentTeamId,
     potential: p.potential,
+    has_batted_at_3: (p as any).hasBattedAt3 === true,
+    has_batted_at_4: (p as any).hasBattedAt4 === true,
+    has_batted_at_5: (p as any).hasBattedAt5 === true,
+    has_batted_at_6: (p as any).hasBattedAt6 === true,
+    only_opens_or_benched: (p as any).onlyOpensOrBenched === true,
+    is_opener: (p as any).isOpener === true,
     attr_technique:    p.attributes.technique,
     attr_power:        p.attributes.power,
     attr_timing:       p.attributes.timing,

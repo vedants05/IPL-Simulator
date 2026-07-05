@@ -270,7 +270,7 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
   // 1. Select 2 Openers
   let openers = remaining
     .filter(p => p.isOpener)
-    .sort((a, b) => playerRating(b) - playerRating(a));
+    .sort((a, b) => (b.currentBatting ?? 0) - (a.currentBatting ?? 0));
   
   let selectedOpeners: import("@/lib/types").Player[] = [];
   if (openers.length >= 2) {
@@ -493,7 +493,7 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
   // - Spin bowlers, highest to lowest
   const availableOpeners = selected
     .filter(p => p.isOpener)
-    .sort((a, b) => playerRating(b) - playerRating(a));
+    .sort((a, b) => (b.currentBatting ?? 0) - (a.currentBatting ?? 0));
 
   let finalOpeners: import("@/lib/types").Player[] = [];
   if (availableOpeners.length >= 2) {
