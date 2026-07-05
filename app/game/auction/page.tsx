@@ -226,10 +226,184 @@ function playerRating(p: { currentBatting?: number; currentBowling?: number }) {
 function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@/lib/types").Player[] {
   if (squad.length === 0) return [];
 
-  // Patch Virat Kohli to be an opener dynamically for current saves
+  // Patch players dynamically for current saves
   squad.forEach(p => {
     if (p.id === "virat-kohli") {
       p.isOpener = true;
+    }
+    if (p.id === "tristan-stubbs") {
+      p.isPartTimeWk = true;
+      p.isWicketkeeper = true;
+      p.role = "Batsman";
+      p.hasBattedAt3 = false;
+      p.hasBattedAt4 = true;
+      p.hasBattedAt5 = true;
+      p.hasBattedAt6 = true;
+    }
+    if (p.id === "josh-inglis") {
+      p.isOpener = true;
+    }
+    if (p.id === "hardik-pandya") {
+      p.hasBattedAt3 = false;
+      p.hasBattedAt4 = false;
+    }
+    if (p.id === "tim-david") {
+      p.hasBattedAt4 = false;
+      p.hasBattedAt5 = false;
+    }
+    if (p.id === "rinku-singh") {
+      p.hasBattedAt3 = false;
+      p.hasBattedAt4 = false;
+      p.hasBattedAt5 = true;
+    }
+    if (p.id === "shivam-dube") {
+      p.hasBattedAt3 = false;
+      p.hasBattedAt4 = false;
+      p.hasBattedAt5 = false;
+    }
+    if (p.id === "shashank-singh") {
+      p.hasBattedAt3 = false;
+      p.hasBattedAt4 = false;
+      p.hasBattedAt5 = false;
+    }
+    if (p.id === "axar-patel") {
+      p.hasBattedAt3 = false;
+      p.hasBattedAt4 = false;
+    }
+    if (p.id === "heinrich-klaasen") {
+      p.hasBattedAt3 = false;
+    }
+    if (p.id === "ishan-kishan") {
+      p.isOpener = true;
+      p.hasBattedAt3 = true;
+    }
+    if (p.id === "ramandeep-singh") {
+      p.hasBattedAt3 = false;
+      p.hasBattedAt4 = false;
+      p.hasBattedAt5 = false;
+      p.hasBattedAt6 = false;
+    }
+    if (p.id === "jitesh-sharma") {
+      p.hasBattedAt3 = false;
+      p.hasBattedAt4 = false;
+      p.hasBattedAt5 = false;
+    }
+    if (p.id === "nicholas-pooran") {
+      p.hasBattedAt3 = true;
+      p.hasBattedAt4 = true;
+      p.hasBattedAt5 = true;
+      p.hasBattedAt6 = true;
+    }
+    if (p.id === "ravindra-jadeja") {
+      p.hasBattedAt3 = false;
+      p.hasBattedAt4 = false;
+    }
+    if (p.id === "sam-curran") {
+      p.hasBattedAt3 = false;
+      p.hasBattedAt4 = false;
+      p.hasBattedAt5 = false;
+      p.hasBattedAt6 = false;
+    }
+    if (p.id === "ashutosh-sharma") {
+      p.hasBattedAt3 = false;
+      p.hasBattedAt4 = false;
+      p.hasBattedAt5 = false;
+    }
+    if (p.id === "sameer-rizvi") {
+      p.hasBattedAt3 = true;
+      p.hasBattedAt4 = true;
+      p.hasBattedAt5 = true;
+      p.hasBattedAt6 = true;
+    }
+    if (p.id === "washington-sundar") {
+      p.hasBattedAt3 = false;
+      p.hasBattedAt4 = true;
+      p.hasBattedAt5 = true;
+      p.hasBattedAt6 = true;
+    }
+    if (p.id === "rishabh-pant") {
+      p.hasBattedAt3 = true;
+      p.hasBattedAt4 = true;
+      p.hasBattedAt5 = true;
+      p.hasBattedAt6 = true;
+    }
+    if (p.id === "nitish-rana") {
+      p.hasBattedAt3 = true;
+      p.hasBattedAt4 = true;
+      p.hasBattedAt5 = true;
+      p.hasBattedAt6 = false;
+    }
+    if (p.id === "tilak-varma") {
+      p.isOpener = false;
+    }
+    if (p.id === "ryan-rickelton") {
+      p.isOpener = true;
+      p.hasBattedAt3 = true;
+      p.hasBattedAt4 = false;
+      p.hasBattedAt5 = false;
+      p.hasBattedAt6 = false;
+    }
+    if (p.id === "cameron-green") {
+      p.isOpener = true;
+      p.hasBattedAt3 = true;
+      p.hasBattedAt4 = true;
+      p.hasBattedAt5 = true;
+      p.hasBattedAt6 = true;
+    }
+    if (p.id === "tim-seifert") {
+      p.hasBattedAt4 = false;
+      p.hasBattedAt5 = false;
+      p.hasBattedAt6 = false;
+    }
+    if (p.id === "shreyas-iyer") {
+      p.hasBattedAt3 = false;
+      p.hasBattedAt4 = true;
+    }
+    if (p.id === "dhruv-jurel") {
+      p.hasBattedAt3 = true;
+    }
+    if (p.id === "josh-inglis") {
+      p.hasBattedAt3 = true;
+      p.hasBattedAt4 = true;
+      p.hasBattedAt5 = true;
+      p.hasBattedAt6 = true;
+    }
+    if (p.id === "mitchell-marsh") {
+      p.isOpener = true;
+      p.hasBattedAt3 = true;
+      p.hasBattedAt4 = true;
+      p.hasBattedAt5 = true;
+      p.hasBattedAt6 = true;
+    }
+    if (p.id === "rajat-patidar") {
+      p.hasBattedAt3 = false;
+    }
+    if (p.id === "suryansh-shedge") {
+      p.hasBattedAt3 = false;
+      p.hasBattedAt4 = false;
+      p.hasBattedAt5 = false;
+    }
+    if (p.id === "ayush-badoni") {
+      p.hasBattedAt6 = true;
+    }
+    if (p.id === "prabhsimran-singh") {
+      p.hasBattedAt3 = false;
+      p.hasBattedAt4 = false;
+      p.hasBattedAt5 = false;
+      p.hasBattedAt6 = false;
+    }
+    if (p.id === "aiden-markram") {
+      p.hasBattedAt3 = true;
+      p.hasBattedAt4 = true;
+      p.hasBattedAt5 = true;
+      p.hasBattedAt6 = true;
+    }
+    if (p.id === "devdutt-padikkal") {
+      p.hasBattedAt5 = true;
+    }
+    if (p.id === "romario-shepherd") {
+      p.hasBattedAt3 = false;
+      p.hasBattedAt4 = false;
     }
   });
   
@@ -264,13 +438,32 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
   const isFinisherType = (p: import("@/lib/types").Player) => 
     !!(p.isFinisher || ((p.battingAggression ?? 0) >= 85 && !p.isOpener && (p.currentBatting ?? 0) >= 65));
 
+  const comparePlayersForLineup = (a: import("@/lib/types").Player, b: import("@/lib/types").Player): number => {
+    const rateA = playerRating(a);
+    const rateB = playerRating(b);
+    if (rateB !== rateA) {
+      return rateB - rateA;
+    }
+    const isARA = getEffectiveRole(a) === "All-Rounder" ? 1 : 0;
+    const isARB = getEffectiveRole(b) === "All-Rounder" ? 1 : 0;
+    if (isARB !== isARA) {
+      return isARB - isARA;
+    }
+    const isFinA = isFinisherType(a) ? 1 : 0;
+    const isFinB = isFinisherType(b) ? 1 : 0;
+    if (isFinB !== isFinA) {
+      return isFinB - isFinA;
+    }
+    return 0;
+  };
+
   let selected: import("@/lib/types").Player[] = [];
   let remaining = [...squad];
 
   // 1. Select 2 Openers
   let openers = remaining
     .filter(p => p.isOpener)
-    .sort((a, b) => playerRating(b) - playerRating(a));
+    .sort(comparePlayersForLineup);
   
   let selectedOpeners: import("@/lib/types").Player[] = [];
   if (openers.length >= 2) {
@@ -279,12 +472,12 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
     selectedOpeners.push(openers[0]);
     const nextBest = remaining
       .filter(p => p.id !== openers[0].id && (getEffectiveRole(p) === "Batsman" || getEffectiveRole(p) === "WK-Batsman"))
-      .sort((a, b) => playerRating(b) - playerRating(a))[0];
+      .sort(comparePlayersForLineup)[0];
     if (nextBest) selectedOpeners.push(nextBest);
   } else {
     const bestBatters = remaining
       .filter(p => getEffectiveRole(p) === "Batsman" || getEffectiveRole(p) === "WK-Batsman")
-      .sort((a, b) => playerRating(b) - playerRating(a));
+      .sort(comparePlayersForLineup);
     selectedOpeners = bestBatters.slice(0, 2);
   }
 
@@ -296,7 +489,7 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
   // 2. Include the highest rated wicketkeeper (who is not already an opener)
   const bestKeeper = remaining
     .filter(isKeeper)
-    .sort((a, b) => playerRating(b) - playerRating(a))[0];
+    .sort(comparePlayersForLineup)[0];
   if (bestKeeper) {
     selected.push(bestKeeper);
     remaining = remaining.filter(p => p.id !== bestKeeper.id);
@@ -337,7 +530,7 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
   if (needSecondAllRounder && countARs() < 2) {
     const bestAR = remaining
       .filter(p => getEffectiveRole(p) === "All-Rounder" && countOverseas() + (p.nationality === "Overseas" ? 1 : 0) <= 4)
-      .sort((a, b) => playerRating(b) - playerRating(a))[0];
+      .sort(comparePlayersForLineup)[0];
     if (bestAR) {
       selected.push(bestAR);
       remaining = remaining.filter(p => p.id !== bestAR.id);
@@ -350,7 +543,7 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
     return r === "Pace Bowler" || r === "Spin Bowler";
   }).length;
 
-  remaining.sort((a, b) => playerRating(b) - playerRating(a));
+  remaining.sort(comparePlayersForLineup);
 
   for (const p of remaining) {
     if (selected.length >= 12) break;
@@ -369,6 +562,19 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
     }
   }
 
+  if (selected.length < 12) {
+    for (const p of remaining) {
+      if (selected.length >= 12) break;
+      if (!selected.some(s => s.id === p.id)) {
+        const isOS = p.nationality === "Overseas" ? 1 : 0;
+        if (countOverseas() + isOS <= 4) {
+          selected.push(p);
+        }
+      }
+    }
+  }
+
+  // Absolute emergency fallback if we still can't reach 12 due to OS limit (e.g. squad has < 8 domestic players)
   if (selected.length < 12) {
     for (const p of remaining) {
       if (selected.length >= 12) break;
@@ -484,6 +690,99 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
     }
   }
 
+
+  // 7. Bowling Option Minimum Rule:
+  // "if there are only 3 full-time bowlers and 2 all-rounders with bowling below 80 then there needs to be another bowling option.
+  // However if it is easier change an all-rounder to select an all-rounder with a bowling rating above 80 again without breaking any other selection rules"
+  const getFullTimeBowlersCount = (list: import("@/lib/types").Player[]) => list.filter(p => {
+    const role = getEffectiveRole(p);
+    return role === "Pace Bowler" || role === "Spin Bowler";
+  }).length;
+
+  const getAllRoundersCount = (list: import("@/lib/types").Player[]) => list.filter(p => {
+    return getEffectiveRole(p) === "All-Rounder";
+  }).length;
+
+  const getWeakAllRoundersCount = (list: import("@/lib/types").Player[]) => list.filter(p => {
+    return getEffectiveRole(p) === "All-Rounder" && (p.currentBowling ?? 0) < 80;
+  }).length;
+
+  const ftBowlers = getFullTimeBowlersCount(selected);
+  const totalARs = getAllRoundersCount(selected);
+  const weakARsCount = getWeakAllRoundersCount(selected);
+
+  if (ftBowlers === 3 && totalARs === 2 && weakARsCount === 2) {
+    const selectedKeepers = selected.filter(isKeeper);
+    const onlyKeeperId = selectedKeepers.length === 1 ? selectedKeepers[0].id : null;
+    const currentOSCount = selected.filter(p => p.nationality === "Overseas").length;
+
+    const weakSelectedARs = selected
+      .filter(p => getEffectiveRole(p) === "All-Rounder" && (p.currentBowling ?? 0) < 80)
+      .sort((a, b) => playerRating(a) - playerRating(b));
+
+    const strongUnselectedARs = remaining
+      .filter(p => getEffectiveRole(p) === "All-Rounder" && (p.currentBowling ?? 0) >= 80)
+      .sort((a, b) => playerRating(b) - playerRating(a));
+
+    let option1Success = false;
+    for (const weakAR of weakSelectedARs) {
+      if (option1Success) break;
+      for (const strongAR of strongUnselectedARs) {
+        const nextOSCount = currentOSCount - (weakAR.nationality === "Overseas" ? 1 : 0) + (strongAR.nationality === "Overseas" ? 1 : 0);
+        const currentOpenersCount = selected.filter(p => p.isOpener).length;
+        const nextOpenersCount = currentOpenersCount - (weakAR.isOpener ? 1 : 0) + (strongAR.isOpener ? 1 : 0);
+
+        if (nextOSCount <= 4 && nextOpenersCount >= 2 && weakAR.id !== onlyKeeperId) {
+          selected = selected.filter(s => s.id !== weakAR.id);
+          selected.push(strongAR);
+          remaining = remaining.filter(r => r.id !== strongAR.id);
+          remaining.push(weakAR);
+          option1Success = true;
+          break;
+        }
+      }
+    }
+
+    if (!option1Success) {
+      const currentOSCountOpt2 = selected.filter(p => p.nationality === "Overseas").length;
+      const currentOpenersCountOpt2 = selected.filter(p => p.isOpener).length;
+
+      const nonBowlerBatters = selected
+        .filter(p => {
+          const isBowler = getEffectiveRole(p) === "Pace Bowler" || getEffectiveRole(p) === "Spin Bowler" || getEffectiveRole(p) === "All-Rounder";
+          const isOnlyKeeper = p.id === onlyKeeperId;
+          const isOpener = p.isOpener;
+          return !isBowler && !isOnlyKeeper && !isOpener;
+        })
+        .sort((a, b) => playerRating(a) - playerRating(b));
+
+      const unselectedBowlerOptions = remaining
+        .filter(p => {
+          const isBowler = getEffectiveRole(p) === "Pace Bowler" || getEffectiveRole(p) === "Spin Bowler" || getEffectiveRole(p) === "All-Rounder";
+          return isBowler;
+        })
+        .sort((a, b) => playerRating(b) - playerRating(a));
+
+      let option2Success = false;
+      for (const worstNonBowler of nonBowlerBatters) {
+        if (option2Success) break;
+        for (const bowlerOpt of unselectedBowlerOptions) {
+          const nextOSCount = currentOSCountOpt2 - (worstNonBowler.nationality === "Overseas" ? 1 : 0) + (bowlerOpt.nationality === "Overseas" ? 1 : 0);
+          const nextOpenersCount = currentOpenersCountOpt2 - (worstNonBowler.isOpener ? 1 : 0) + (bowlerOpt.isOpener ? 1 : 0);
+
+          if (nextOSCount <= 4 && nextOpenersCount >= 2) {
+            selected = selected.filter(s => s.id !== worstNonBowler.id);
+            selected.push(bowlerOpt);
+            remaining = remaining.filter(r => r.id !== bowlerOpt.id);
+            remaining.push(worstNonBowler);
+            option2Success = true;
+            break;
+          }
+        }
+      }
+    }
+  }
+
   // Arrange the lineup:
   // - 2 openers
   // - Batsmen who aren't finishers, ranked highest to lowest
@@ -513,24 +812,99 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
 
   const finalOpenersIds = finalOpeners.map(f => f.id);
   const remainingTen = selected.filter(p => !finalOpenersIds.includes(p.id));
+  let pool = [...remainingTen];
 
-  const batters = remainingTen.filter(p => (getEffectiveRole(p) === "Batsman" || getEffectiveRole(p) === "WK-Batsman") && !isFinisherType(p))
+  const getPlayerForSlot345 = (
+    subPool: import("@/lib/types").Player[],
+    flagKey: "hasBattedAt3" | "hasBattedAt4" | "hasBattedAt5"
+  ): import("@/lib/types").Player | undefined => {
+    const isPureBatter = (p: import("@/lib/types").Player) => {
+      const role = getEffectiveRole(p);
+      return role === "Batsman" || role === "WK-Batsman";
+    };
+    const isAllRounder = (p: import("@/lib/types").Player) => {
+      return getEffectiveRole(p) === "All-Rounder";
+    };
+
+    // 1. Pure batters with the flag
+    let candidates = subPool.filter(p => isPureBatter(p) && p[flagKey] === true)
+      .sort((a, b) => playerRating(b) - playerRating(a));
+    if (candidates.length > 0) return candidates[0];
+
+    // 2. All-rounders with the flag
+    candidates = subPool.filter(p => isAllRounder(p) && p[flagKey] === true)
+      .sort((a, b) => playerRating(b) - playerRating(a));
+    if (candidates.length > 0) return candidates[0];
+
+    // 3. Pure batters without the flag
+    candidates = subPool.filter(p => isPureBatter(p))
+      .sort((a, b) => playerRating(b) - playerRating(a));
+    if (candidates.length > 0) return candidates[0];
+
+    // 4. All-rounders without the flag
+    candidates = subPool.filter(p => isAllRounder(p))
+      .sort((a, b) => playerRating(b) - playerRating(a));
+    if (candidates.length > 0) return candidates[0];
+
+    // 5. Fallback
+    candidates = [...subPool].sort((a, b) => playerRating(b) - playerRating(a));
+    return candidates[0];
+  };
+
+  const getPlayerForSlot6 = (
+    subPool: import("@/lib/types").Player[]
+  ): import("@/lib/types").Player | undefined => {
+    const isBatterCandidate = (p: import("@/lib/types").Player) => {
+      const role = getEffectiveRole(p);
+      return role === "Batsman" || role === "WK-Batsman" || role === "All-Rounder";
+    };
+
+    let candidates = subPool.filter(p => isBatterCandidate(p) && p.hasBattedAt6 === true)
+      .sort((a, b) => playerRating(b) - playerRating(a));
+    if (candidates.length > 0) return candidates[0];
+
+    candidates = subPool.filter(isBatterCandidate)
+      .sort((a, b) => playerRating(b) - playerRating(a));
+    if (candidates.length > 0) return candidates[0];
+
+    candidates = [...subPool].sort((a, b) => playerRating(b) - playerRating(a));
+    return candidates[0];
+  };
+
+  // Find p3
+  const p3 = getPlayerForSlot345(pool, "hasBattedAt3");
+  if (p3) pool = pool.filter(p => p.id !== p3.id);
+
+  // Find p4
+  const p4 = getPlayerForSlot345(pool, "hasBattedAt4");
+  if (p4) pool = pool.filter(p => p.id !== p4.id);
+
+  // Find p5
+  const p5 = getPlayerForSlot345(pool, "hasBattedAt5");
+  if (p5) pool = pool.filter(p => p.id !== p5.id);
+
+  // Find p6
+  const p6 = getPlayerForSlot6(pool);
+  if (p6) pool = pool.filter(p => p.id !== p6.id);
+
+  const middleOrder = [p3, p4, p5, p6].filter(Boolean);
+
+  const batters = pool.filter(p => (getEffectiveRole(p) === "Batsman" || getEffectiveRole(p) === "WK-Batsman") && !isFinisherType(p))
     .sort((a, b) => playerRating(b) - playerRating(a));
 
-  const finishers = remainingTen.filter(p => isFinisherType(p) && getEffectiveRole(p) !== "Pace Bowler" && getEffectiveRole(p) !== "Spin Bowler")
+  const finishers = pool.filter(p => isFinisherType(p) && getEffectiveRole(p) !== "Pace Bowler" && getEffectiveRole(p) !== "Spin Bowler")
     .sort((a, b) => playerRating(b) - playerRating(a));
 
-  const allrounders = remainingTen.filter(p => getEffectiveRole(p) === "All-Rounder" && !isFinisherType(p))
+  const allrounders = pool.filter(p => getEffectiveRole(p) === "All-Rounder" && !isFinisherType(p))
     .sort((a, b) => (b.currentBatting ?? 0) - (a.currentBatting ?? 0));
 
-  const pacers = remainingTen.filter(p => getEffectiveRole(p) === "Pace Bowler")
-    .sort((a, b) => playerRating(b) - playerRating(a));
+  const bowlers = pool.filter(p => {
+    const role = getEffectiveRole(p);
+    return role === "Pace Bowler" || role === "Spin Bowler";
+  }).sort((a, b) => (b.currentBatting ?? 0) - (a.currentBatting ?? 0));
 
-  const spinners = remainingTen.filter(p => getEffectiveRole(p) === "Spin Bowler")
-    .sort((a, b) => playerRating(b) - playerRating(a));
-
-  const merged = [...finalOpeners, ...batters, ...finishers, ...allrounders, ...pacers, ...spinners];
-  const leftover = remainingTen.filter(p => !merged.some(m => m.id === p.id));
+  const merged = [...finalOpeners, ...middleOrder, ...batters, ...finishers, ...allrounders, ...bowlers];
+  const leftover = pool.filter(p => !merged.some(m => m.id === p.id));
 
   const finalLineup = [...merged, ...leftover];
 

@@ -132,10 +132,9 @@ function getPotentialMult(p: Player): number {
   return mult;
 }
 
-type RoleGroup = "BAT" | "WK" | "AR" | "PACE" | "SPIN";
+type RoleGroup = "BAT" | "AR" | "PACE" | "SPIN";
 
 function roleGroupOf(p: Player): RoleGroup {
-  if (p.role === "WK-Batsman") return "WK";
   if (p.role === "All-Rounder") return "AR";
   if (p.role === "Pace Bowler") return "PACE";
   if (p.role === "Spin Bowler") return "SPIN";
@@ -167,11 +166,17 @@ interface SquadComp {
   openers: number; keepers: number; finishers: number;
   qualityPace: number; qualitySpin: number; leaders: number;
 
-  // New constraints properties
   premiumIndians: number;
   premiumOverseas: number;
   premiumWKs: number;
   wks76: number;
+  ftKeepersOver78: number;
+  keepersSlot1Satisfied: boolean;
+  keepersSlot2Satisfied: boolean;
+  keepersSlot3Satisfied: boolean;
+  keepersTotalFullTime: number;
+  keepersPartTimeUsedFor2or3: number;
+  indianBattersWKs76: number;
   battingIndians78: number;
   bowlingIndians77: number;
   spinners75: number;
@@ -232,7 +237,10 @@ function getSquadComp(squad: Player[]): SquadComp {
   const spinAllRounders75 = squad.filter(p => isSpinAllRounder(p) && (p.currentBowling ?? 0) > 75).length;
   const totalSpinners75 = spinners75 + spinAllRounders75;
 
-    const wks76 = squad.filter(p => isFullTimeKeeper(p) && ratingOf(p) > 76).length;
+  const wks76 = squad.filter(p => isFullTimeKeeper(p) && ratingOf(p) > 76).length;
+  const ftKeepersOver78 = squad.filter(p => isFullTimeKeeper(p) && ratingOf(p) > 78).length;
+  const kComp = analyzeSquadKeepers(squad);
+  const indianBattersWKs76 = squad.filter(p => p.nationality === "Indian" && (p.role === "Batsman" || p.role === "WK-Batsman") && ratingOf(p) > 76).length;
 
   return {
     batters:     squad.filter(p => p.role === "Batsman").length,
@@ -254,6 +262,13 @@ function getSquadComp(squad: Player[]): SquadComp {
     premiumOverseas,
     premiumWKs,
     wks76,
+    ftKeepersOver78,
+    keepersSlot1Satisfied: kComp.slot1Satisfied,
+    keepersSlot2Satisfied: kComp.slot2Satisfied,
+    keepersSlot3Satisfied: kComp.slot3Satisfied,
+    keepersTotalFullTime: kComp.totalFullTime,
+    keepersPartTimeUsedFor2or3: kComp.partTimeUsedFor2or3,
+    indianBattersWKs76,
     battingIndians78,
     bowlingIndians77,
     spinners75,
@@ -342,6 +357,67 @@ function getQuirks(team: Team): TeamQuirks {
 // live valuation, so an AI's bidding reflects a coherent team-building idea.
 // Returns roughly 0 (no interest) … 1 (solid regular) … 2+ (must-have target).
 // ---------------------------------------------------------------------------
+function analyzeSquadKeepers(squad: Player[]) {
+  const fullTimeKeepers = squad.filter(isFullTimeKeeper);
+  const partTimeKeepers = squad.filter(p => isKeeper(p) && !isFullTimeKeeper(p));
+
+  const sortedFullTime = [...fullTimeKeepers].sort((a, b) => ratingOf(b) - ratingOf(a));
+  const sortedPartTime = [...partTimeKeepers].sort((a, b) => ratingOf(b) - ratingOf(a));
+
+  let slot1Satisfied = false;
+  let slot2Satisfied = false;
+  let slot3Satisfied = false;
+  let ptUsed = 0;
+
+  const ftPool = [...sortedFullTime];
+  const ptPool = [...sortedPartTime];
+
+  // Slot 1: >80, MUST be a full-time keeper
+  const ftIdx80 = ftPool.findIndex(p => ratingOf(p) > 80);
+  if (ftIdx80 !== -1) {
+    slot1Satisfied = true;
+    ftPool.splice(ftIdx80, 1);
+  }
+
+  // Slot 2: >77 (can be part-time)
+  const ftIdx77 = ftPool.findIndex(p => ratingOf(p) > 77);
+  if (ftIdx77 !== -1) {
+    slot2Satisfied = true;
+    ftPool.splice(ftIdx77, 1);
+  } else {
+    const ptIdx77 = ptPool.findIndex(p => ratingOf(p) > 77);
+    if (ptIdx77 !== -1) {
+      slot2Satisfied = true;
+      ptPool.splice(ptIdx77, 1);
+      ptUsed++;
+    }
+  }
+
+  // Slot 3: >74 (can be part-time, but 2nd and 3rd cannot BOTH be part-time)
+  if (ptUsed >= 1) {
+    const ftIdx74 = ftPool.findIndex(p => ratingOf(p) > 74);
+    if (ftIdx74 !== -1) {
+      slot3Satisfied = true;
+      ftPool.splice(ftIdx74, 1);
+    }
+  } else {
+    const ftIdx74 = ftPool.findIndex(p => ratingOf(p) > 74);
+    if (ftIdx74 !== -1) {
+      slot3Satisfied = true;
+      ftPool.splice(ftIdx74, 1);
+    } else {
+      const ptIdx74 = ptPool.findIndex(p => ratingOf(p) > 74);
+      if (ptIdx74 !== -1) {
+        slot3Satisfied = true;
+        ptPool.splice(ptIdx74, 1);
+        ptUsed++;
+      }
+    }
+  }
+
+  return { slot1Satisfied, slot2Satisfied, slot3Satisfied, totalFullTime: fullTimeKeepers.length, partTimeUsedFor2or3: ptUsed };
+}
+
 const BAT_ROLES = ["Batsman", "WK-Batsman"];
 const BOWL_ROLES = ["Pace Bowler", "Spin Bowler"];
 
@@ -411,6 +487,10 @@ function computePlayerFit(
   if (player.nationality === "Indian" && rating > 78) {
     if ((comp.premiumIndians ?? 0) < 8) fit += u(0.35, 0.55);
   }
+  // Enforce 5+ Indian batters + wicketkeepers over 76 rated (not including all-rounders)
+  if (player.nationality === "Indian" && (player.role === "Batsman" || player.role === "WK-Batsman") && rating > 76) {
+    if ((comp.indianBattersWKs76 ?? 0) < 5) fit += u(2.20, 3.50);
+  }
   if (player.nationality === "Overseas" && rating > 78) {
     if ((comp.overseas ?? 0) >= 5) {
       // Once you reach 5 overseas players reduce the need for higher-rated overseas players
@@ -421,11 +501,32 @@ function computePlayerFit(
       }
     }
   }
-  if (isKeeper(player) && rating > 78) {
-    if ((comp.premiumWKs ?? 0) < 1) fit += u(0.40, 0.60);
+  // Keeper target & stockpiling checks
+  if (isFullTimeKeeper(player)) {
+    if (comp.keepersTotalFullTime >= 4) {
+      fit *= 0.05; // Prevent stockpiling more than 4 full-time keepers
+    }
   }
-  if (isFullTimeKeeper(player) && rating > 76) {
-    if ((comp.wks76 ?? 0) < 2) fit += u(1.50, 2.20);
+
+  if (isKeeper(player)) {
+    const isFT = isFullTimeKeeper(player);
+    const pRating = ratingOf(player);
+
+    if (pRating > 80 && !comp.keepersSlot1Satisfied) {
+      fit += isFT ? u(1.80, 2.50) : u(1.20, 1.80);
+    } else if (pRating > 77 && !comp.keepersSlot2Satisfied) {
+      if (isFT) {
+        fit += u(1.40, 2.00);
+      } else if (comp.keepersPartTimeUsedFor2or3 === 0) {
+        fit += u(1.00, 1.50);
+      }
+    } else if (pRating > 74 && !comp.keepersSlot3Satisfied) {
+      if (isFT) {
+        fit += u(1.10, 1.60);
+      } else if (comp.keepersPartTimeUsedFor2or3 === 0) {
+        fit += u(0.80, 1.20);
+      }
+    }
   }
 
   // 5 batting Indians with rating > 78 and 4 bowling Indians with rating > 77.
@@ -454,6 +555,12 @@ function computePlayerFit(
   } else if (isSpinAllRounder(player)) {
     if ((player.currentBowling ?? 0) > 75 && (comp.totalSpinners75 ?? 0) < 3) {
       fit += u(0.30, 0.50);
+    }
+  }
+
+  if (isFullTimeKeeper(player) && ratingOf(player) > 79) {
+    if ((comp.ftKeepersOver78 ?? 0) >= 2) {
+      fit *= 0.80; // Reduced valuation if team already has 2 full-time keepers > 78 in squad
     }
   }
 
@@ -590,8 +697,9 @@ function getTeamPlan(team: Team, allPlayers: Record<string, Player>): TeamPlan {
   return plan;
 }
 function getRoleExcess(role: string, comp: SquadComp): number {
-  if (role === "WK-Batsman")  return comp.wks         - RULES.wks;
-  if (role === "Batsman")     return comp.batters      - RULES.batters;
+  if (role === "WK-Batsman" || role === "Batsman") {
+    return (comp.batters + comp.wks) - (RULES.batters + RULES.wks);
+  }
   if (role === "Pace Bowler") return comp.pacers       - RULES.pacers;
   if (role === "Spin Bowler") return comp.spinners     - RULES.spinners;
   if (role === "All-Rounder") return comp.allrounders  - RULES.allrounders;

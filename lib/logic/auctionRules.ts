@@ -112,7 +112,8 @@ function getRating(p: Player): number {
 }
 
 function getRoleGroup(p: Player): "WK" | "BAT" | "AR" | "PACE" | "SPIN" {
-  if (p.isWicketkeeper || p.isPartTimeWk || p.role === "WK-Batsman") {
+  const isFullTime = (p.isWicketkeeper || p.role === "WK-Batsman") && !p.isPartTimeWk;
+  if (isFullTime) {
     return "WK";
   }
   if (p.role === "All-Rounder") {

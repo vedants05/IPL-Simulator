@@ -153,7 +153,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 1200
       }
-    ]
+    ],
+    "hasBattedAt3": false,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "rinku-singh",
@@ -230,7 +234,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 1300
       }
-    ]
+    ],
+    "hasBattedAt3": false,
+    "hasBattedAt4": false,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "cameron-green",
@@ -256,7 +264,7 @@ export const PLAYERS: Player[] = [
     "battingAggression": 85,
     "isWicketkeeper": false,
     "isPartTimeWk": false,
-    "isOpener": false,
+    "isOpener": true,
     "isFinisher": false,
     "attributes": {
       "technique": 16,
@@ -307,7 +315,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 2520
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "matheesha-pathirana",
@@ -438,7 +450,7 @@ export const PLAYERS: Player[] = [
         "innings": 68,
         "runs": 2004,
         "average": 27.4,
-        "strikeRate": 149.0,
+        "strikeRate": 149,
         "fifties": 5,
         "hundreds": 1
       },
@@ -515,7 +527,7 @@ export const PLAYERS: Player[] = [
         "innings": 93,
         "runs": 3616,
         "average": 36.9,
-        "strikeRate": 151.0,
+        "strikeRate": 151,
         "fifties": 10,
         "hundreds": 3
       },
@@ -523,7 +535,7 @@ export const PLAYERS: Player[] = [
         "matches": 68,
         "wickets": 128,
         "economy": 7.5,
-        "average": 25.0,
+        "average": 25,
         "bestFigures": "4/19"
       }
     },
@@ -538,7 +550,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 200
       }
-    ]
+    ],
+    "hasBattedAt3": false,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "kartik-tyagi",
@@ -692,7 +708,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 200
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": false
   },
   {
     "id": "rahul-tripathi",
@@ -746,7 +766,7 @@ export const PLAYERS: Player[] = [
         "innings": 90,
         "runs": 3377,
         "average": 35.6,
-        "strikeRate": 149.0,
+        "strikeRate": 149,
         "fifties": 9,
         "hundreds": 2
       },
@@ -769,7 +789,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 75
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "rovman-powell",
@@ -846,7 +870,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 150
       }
-    ]
+    ],
+    "hasBattedAt3": false,
+    "hasBattedAt4": false,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "akash-deep",
@@ -1077,7 +1105,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 150
       }
-    ]
+    ],
+    "hasBattedAt3": false,
+    "hasBattedAt4": false,
+    "hasBattedAt5": false,
+    "hasBattedAt6": false
   },
   {
     "id": "ramandeep-singh",
@@ -1131,7 +1163,7 @@ export const PLAYERS: Player[] = [
         "innings": 87,
         "runs": 3188,
         "average": 34.6,
-        "strikeRate": 151.0,
+        "strikeRate": 151,
         "fifties": 9,
         "hundreds": 2
       },
@@ -1154,7 +1186,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 400
       }
-    ]
+    ],
+    "hasBattedAt3": false,
+    "hasBattedAt4": false,
+    "hasBattedAt5": false,
+    "hasBattedAt6": false
   },
   {
     "id": "vaibhav-arora",
@@ -1308,7 +1344,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 150
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "angkrish-raghuvanshi",
@@ -1385,7 +1425,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 300
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": false,
+    "hasBattedAt5": false,
+    "hasBattedAt6": false
   },
   {
     "id": "manish-pandey",
@@ -1462,7 +1506,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 75
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "blessing-muzarabani",
@@ -1616,7 +1664,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 40
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": false,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "prashant-solanki",
@@ -1842,7 +1894,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 300
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": false
   },
   {
     "id": "sarthak-ranjan",
@@ -1973,7 +2029,7 @@ export const PLAYERS: Player[] = [
         "innings": 73,
         "runs": 2282,
         "average": 29.2,
-        "strikeRate": 130.0,
+        "strikeRate": 130,
         "fifties": 6,
         "hundreds": 1
       },
@@ -1981,7 +2037,7 @@ export const PLAYERS: Player[] = [
         "matches": 63,
         "wickets": 110,
         "economy": 7.7,
-        "average": 26.0,
+        "average": 26,
         "bestFigures": "4/19"
       }
     },
@@ -2127,7 +2183,7 @@ export const PLAYERS: Player[] = [
         "innings": 97,
         "runs": 3902,
         "average": 38.2,
-        "strikeRate": 156.0,
+        "strikeRate": 156,
         "fifties": 11,
         "hundreds": 3
       },
@@ -2150,7 +2206,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 1635
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "rohit-sharma",
@@ -2204,7 +2264,7 @@ export const PLAYERS: Player[] = [
         "innings": 97,
         "runs": 3902,
         "average": 38.2,
-        "strikeRate": 154.0,
+        "strikeRate": 154,
         "fifties": 11,
         "hundreds": 3
       },
@@ -2227,7 +2287,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 1600
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "hardik-pandya",
@@ -2281,7 +2345,7 @@ export const PLAYERS: Player[] = [
         "innings": 98,
         "runs": 3986,
         "average": 38.7,
-        "strikeRate": 154.0,
+        "strikeRate": 154,
         "fifties": 11,
         "hundreds": 3
       },
@@ -2304,7 +2368,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 1635
       }
-    ]
+    ],
+    "hasBattedAt3": false,
+    "hasBattedAt4": false,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "trent-boult",
@@ -2435,7 +2503,7 @@ export const PLAYERS: Player[] = [
         "innings": 96,
         "runs": 3818,
         "average": 37.8,
-        "strikeRate": 146.0,
+        "strikeRate": 146,
         "fifties": 10,
         "hundreds": 3
       },
@@ -2458,7 +2526,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 800
       }
-    ]
+    ],
+    "hasBattedAt3": false,
+    "hasBattedAt4": true,
+    "hasBattedAt5": false,
+    "hasBattedAt6": true
   },
   {
     "id": "will-jacks",
@@ -2512,7 +2584,7 @@ export const PLAYERS: Player[] = [
         "innings": 93,
         "runs": 3616,
         "average": 36.9,
-        "strikeRate": 154.0,
+        "strikeRate": 154,
         "fifties": 10,
         "hundreds": 3
       },
@@ -2535,7 +2607,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 525
       }
-    ]
+    ],
+    "hasBattedAt3": false,
+    "hasBattedAt4": false,
+    "hasBattedAt5": false,
+    "hasBattedAt6": true
   },
   {
     "id": "ryan-rickelton",
@@ -2561,7 +2637,7 @@ export const PLAYERS: Player[] = [
     "battingAggression": 88,
     "isWicketkeeper": true,
     "isPartTimeWk": false,
-    "isOpener": false,
+    "isOpener": true,
     "isFinisher": false,
     "attributes": {
       "technique": 16,
@@ -2589,7 +2665,7 @@ export const PLAYERS: Player[] = [
         "innings": 93,
         "runs": 3616,
         "average": 36.9,
-        "strikeRate": 154.0,
+        "strikeRate": 154,
         "fifties": 10,
         "hundreds": 3
       },
@@ -2612,7 +2688,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 100
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": false,
+    "hasBattedAt5": false,
+    "hasBattedAt6": false
   },
   {
     "id": "allah-ghazanfar",
@@ -2751,7 +2831,7 @@ export const PLAYERS: Player[] = [
         "matches": 72,
         "wickets": 144,
         "economy": 7.3,
-        "average": 24.0,
+        "average": 24,
         "bestFigures": "4/19"
       }
     },
@@ -2819,8 +2899,8 @@ export const PLAYERS: Player[] = [
         "matches": 96,
         "innings": 91,
         "runs": 3456,
-        "average": 36.0,
-        "strikeRate": 154.0,
+        "average": 36,
+        "strikeRate": 154,
         "fifties": 9,
         "hundreds": 2
       },
@@ -2843,7 +2923,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 260
       }
-    ]
+    ],
+    "hasBattedAt3": false,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "deepak-chahar",
@@ -2997,7 +3081,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 525
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": false,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "shardul-thakur",
@@ -3128,7 +3216,7 @@ export const PLAYERS: Player[] = [
         "innings": 86,
         "runs": 3112,
         "average": 34.2,
-        "strikeRate": 149.0,
+        "strikeRate": 149,
         "fifties": 8,
         "hundreds": 2
       },
@@ -3136,7 +3224,7 @@ export const PLAYERS: Player[] = [
         "matches": 50,
         "wickets": 69,
         "economy": 8.3,
-        "average": 29.0,
+        "average": 29,
         "bestFigures": "4/19"
       }
     },
@@ -3146,7 +3234,11 @@ export const PLAYERS: Player[] = [
         "season": "2025",
         "price": 170
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": false
   },
   {
     "id": "mayank-markande",
@@ -3300,7 +3392,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 30
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "robin-minz",
@@ -3354,7 +3450,7 @@ export const PLAYERS: Player[] = [
         "innings": 80,
         "runs": 2716,
         "average": 31.9,
-        "strikeRate": 151.0,
+        "strikeRate": 151,
         "fifties": 7,
         "hundreds": 2
       },
@@ -3377,7 +3473,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 65
       }
-    ]
+    ],
+    "hasBattedAt3": false,
+    "hasBattedAt4": true,
+    "hasBattedAt5": false,
+    "hasBattedAt6": true
   },
   {
     "id": "danish-malewar",
@@ -3824,7 +3924,7 @@ export const PLAYERS: Player[] = [
         "matches": 58,
         "wickets": 94,
         "economy": 7.9,
-        "average": 27.0,
+        "average": 27,
         "bestFigures": "4/19"
       }
     },
@@ -3983,7 +4083,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 100
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "mitchell-santner",
@@ -4060,7 +4164,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 200
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "raj-angad-bawa",
@@ -4191,7 +4299,7 @@ export const PLAYERS: Player[] = [
         "innings": 102,
         "runs": 4285,
         "average": 40.1,
-        "strikeRate": 155.0,
+        "strikeRate": 155,
         "fifties": 12,
         "hundreds": 3
       },
@@ -4214,7 +4322,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 2100
       }
-    ]
+    ],
+    "hasBattedAt3": false,
+    "hasBattedAt4": true,
+    "hasBattedAt5": false,
+    "hasBattedAt6": false
   },
   {
     "id": "josh-hazlewood",
@@ -4345,7 +4457,7 @@ export const PLAYERS: Player[] = [
         "innings": 99,
         "runs": 4072,
         "average": 39.1,
-        "strikeRate": 157.0,
+        "strikeRate": 157,
         "fifties": 11,
         "hundreds": 3
       },
@@ -4368,7 +4480,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 1150
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": false,
+    "hasBattedAt6": false
   },
   {
     "id": "rajat-patidar",
@@ -4422,7 +4538,7 @@ export const PLAYERS: Player[] = [
         "innings": 102,
         "runs": 4285,
         "average": 40.1,
-        "strikeRate": 154.0,
+        "strikeRate": 154,
         "fifties": 12,
         "hundreds": 3
       },
@@ -4445,7 +4561,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 1100
       }
-    ]
+    ],
+    "hasBattedAt3": false,
+    "hasBattedAt4": false,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "bhuvneshwar-kumar",
@@ -4599,7 +4719,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 300
       }
-    ]
+    ],
+    "hasBattedAt3": false,
+    "hasBattedAt4": false,
+    "hasBattedAt5": false,
+    "hasBattedAt6": true
   },
   {
     "id": "venkatesh-iyer",
@@ -4661,7 +4785,7 @@ export const PLAYERS: Player[] = [
         "matches": 58,
         "wickets": 94,
         "economy": 7.9,
-        "average": 27.0,
+        "average": 27,
         "bestFigures": "4/19"
       }
     },
@@ -4676,7 +4800,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 700
       }
-    ]
+    ],
+    "hasBattedAt3": false,
+    "hasBattedAt4": false,
+    "hasBattedAt5": false,
+    "hasBattedAt6": false
   },
   {
     "id": "jitesh-sharma",
@@ -4730,7 +4858,7 @@ export const PLAYERS: Player[] = [
         "innings": 89,
         "runs": 3299,
         "average": 35.1,
-        "strikeRate": 150.0,
+        "strikeRate": 150,
         "fifties": 9,
         "hundreds": 2
       },
@@ -4753,7 +4881,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 1100
       }
-    ]
+    ],
+    "hasBattedAt3": false,
+    "hasBattedAt4": false,
+    "hasBattedAt5": false,
+    "hasBattedAt6": true
   },
   {
     "id": "nuwan-thushara",
@@ -4815,7 +4947,7 @@ export const PLAYERS: Player[] = [
         "matches": 72,
         "wickets": 144,
         "economy": 7.3,
-        "average": 24.0,
+        "average": 24,
         "bestFigures": "4/19"
       }
     },
@@ -4884,7 +5016,7 @@ export const PLAYERS: Player[] = [
         "innings": 89,
         "runs": 3299,
         "average": 35.1,
-        "strikeRate": 145.0,
+        "strikeRate": 145,
         "fifties": 9,
         "hundreds": 2
       },
@@ -4907,7 +5039,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 575
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": false,
+    "hasBattedAt5": false,
+    "hasBattedAt6": true
   },
   {
     "id": "rasikh-salam",
@@ -5046,7 +5182,7 @@ export const PLAYERS: Player[] = [
         "matches": 72,
         "wickets": 144,
         "economy": 7.3,
-        "average": 24.0,
+        "average": 24,
         "bestFigures": "4/19"
       }
     },
@@ -5114,8 +5250,8 @@ export const PLAYERS: Player[] = [
         "matches": 96,
         "innings": 91,
         "runs": 3456,
-        "average": 36.0,
-        "strikeRate": 155.0,
+        "average": 36,
+        "strikeRate": 155,
         "fifties": 9,
         "hundreds": 2
       },
@@ -5123,7 +5259,7 @@ export const PLAYERS: Player[] = [
         "matches": 63,
         "wickets": 110,
         "economy": 7.7,
-        "average": 26.0,
+        "average": 26,
         "bestFigures": "4/19"
       }
     },
@@ -5138,7 +5274,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 150
       }
-    ]
+    ],
+    "hasBattedAt3": false,
+    "hasBattedAt4": false,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "devdutt-padikkal",
@@ -5192,7 +5332,7 @@ export const PLAYERS: Player[] = [
         "innings": 86,
         "runs": 3112,
         "average": 34.2,
-        "strikeRate": 150.0,
+        "strikeRate": 150,
         "fifties": 8,
         "hundreds": 2
       },
@@ -5215,7 +5355,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 200
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": false
   },
   {
     "id": "suyash-sharma",
@@ -5418,7 +5562,7 @@ export const PLAYERS: Player[] = [
         "innings": 85,
         "runs": 3038,
         "average": 33.8,
-        "strikeRate": 154.0,
+        "strikeRate": 154,
         "fifties": 8,
         "hundreds": 2
       },
@@ -5441,7 +5585,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 75
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "jacob-bethell",
@@ -5495,7 +5643,7 @@ export const PLAYERS: Player[] = [
         "innings": 84,
         "runs": 2964,
         "average": 33.3,
-        "strikeRate": 151.0,
+        "strikeRate": 151,
         "fifties": 8,
         "hundreds": 2
       },
@@ -5518,7 +5666,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 260
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "swapnil-singh",
@@ -5572,7 +5724,7 @@ export const PLAYERS: Player[] = [
         "innings": 83,
         "runs": 2891,
         "average": 32.9,
-        "strikeRate": 145.0,
+        "strikeRate": 145,
         "fifties": 8,
         "hundreds": 2
       },
@@ -5595,7 +5747,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 50
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "vicky-ostwal",
@@ -5657,7 +5813,7 @@ export const PLAYERS: Player[] = [
         "matches": 63,
         "wickets": 110,
         "economy": 7.7,
-        "average": 26.0,
+        "average": 26,
         "bestFigures": "4/19"
       }
     },
@@ -5734,7 +5890,7 @@ export const PLAYERS: Player[] = [
         "matches": 63,
         "wickets": 110,
         "economy": 7.7,
-        "average": 26.0,
+        "average": 26,
         "bestFigures": "4/19"
       }
     },
@@ -5803,7 +5959,7 @@ export const PLAYERS: Player[] = [
         "innings": 75,
         "runs": 2412,
         "average": 30.2,
-        "strikeRate": 151.0,
+        "strikeRate": 151,
         "fifties": 6,
         "hundreds": 2
       },
@@ -5888,7 +6044,7 @@ export const PLAYERS: Player[] = [
         "matches": 63,
         "wickets": 110,
         "economy": 7.7,
-        "average": 26.0,
+        "average": 26,
         "bestFigures": "4/19"
       }
     },
@@ -6034,7 +6190,7 @@ export const PLAYERS: Player[] = [
         "innings": 72,
         "runs": 2218,
         "average": 28.8,
-        "strikeRate": 151.0,
+        "strikeRate": 151,
         "fifties": 6,
         "hundreds": 1
       },
@@ -6188,7 +6344,7 @@ export const PLAYERS: Player[] = [
         "innings": 102,
         "runs": 4285,
         "average": 40.1,
-        "strikeRate": 156.0,
+        "strikeRate": 156,
         "fifties": 12,
         "hundreds": 3
       },
@@ -6211,7 +6367,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 1650
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": false,
+    "hasBattedAt5": false,
+    "hasBattedAt6": false
   },
   {
     "id": "jos-buttler",
@@ -6288,7 +6448,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 1575
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": false,
+    "hasBattedAt5": false,
+    "hasBattedAt6": false
   },
   {
     "id": "rashid-khan",
@@ -6342,7 +6506,7 @@ export const PLAYERS: Player[] = [
         "innings": 83,
         "runs": 2891,
         "average": 32.9,
-        "strikeRate": 154.0,
+        "strikeRate": 154,
         "fifties": 8,
         "hundreds": 2
       },
@@ -6442,7 +6606,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 850
       }
-    ]
+    ],
+    "hasBattedAt3": false,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "mohammed-siraj",
@@ -6596,7 +6764,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 200
       }
-    ]
+    ],
+    "hasBattedAt3": false,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "prasidh-krishna",
@@ -6658,7 +6830,7 @@ export const PLAYERS: Player[] = [
         "matches": 72,
         "wickets": 144,
         "economy": 7.3,
-        "average": 24.0,
+        "average": 24,
         "bestFigures": "4/19"
       }
     },
@@ -6735,7 +6907,7 @@ export const PLAYERS: Player[] = [
         "matches": 72,
         "wickets": 144,
         "economy": 7.3,
-        "average": 24.0,
+        "average": 24,
         "bestFigures": "4/19"
       }
     },
@@ -6827,7 +6999,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 320
       }
-    ]
+    ],
+    "hasBattedAt3": false,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "kusal-mendis",
@@ -6899,7 +7075,11 @@ export const PLAYERS: Player[] = [
         "season": "2025",
         "price": 75
       }
-    ]
+    ],
+    "hasBattedAt3": false,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "rahul-tewatia",
@@ -6953,7 +7133,7 @@ export const PLAYERS: Player[] = [
         "innings": 89,
         "runs": 3299,
         "average": 35.1,
-        "strikeRate": 151.0,
+        "strikeRate": 151,
         "fifties": 9,
         "hundreds": 2
       },
@@ -6961,7 +7141,7 @@ export const PLAYERS: Player[] = [
         "matches": 63,
         "wickets": 110,
         "economy": 7.7,
-        "average": 26.0,
+        "average": 26,
         "bestFigures": "4/19"
       }
     },
@@ -6976,7 +7156,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 400
       }
-    ]
+    ],
+    "hasBattedAt3": false,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "tom-banton",
@@ -7053,7 +7237,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 200
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": false,
+    "hasBattedAt5": false,
+    "hasBattedAt6": false
   },
   {
     "id": "jason-holder",
@@ -7130,7 +7318,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 700
       }
-    ]
+    ],
+    "hasBattedAt3": false,
+    "hasBattedAt4": false,
+    "hasBattedAt5": false,
+    "hasBattedAt6": false
   },
   {
     "id": "shahrukh-khan",
@@ -7184,7 +7376,7 @@ export const PLAYERS: Player[] = [
         "innings": 87,
         "runs": 3188,
         "average": 34.6,
-        "strikeRate": 150.0,
+        "strikeRate": 150,
         "fifties": 9,
         "hundreds": 2
       },
@@ -7207,7 +7399,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 400
       }
-    ]
+    ],
+    "hasBattedAt3": false,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "ishant-sharma",
@@ -7415,7 +7611,7 @@ export const PLAYERS: Player[] = [
         "innings": 85,
         "runs": 3038,
         "average": 33.8,
-        "strikeRate": 150.0,
+        "strikeRate": 150,
         "fifties": 8,
         "hundreds": 2
       },
@@ -7438,7 +7634,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 30
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": false
   },
   {
     "id": "karim-janat",
@@ -7510,7 +7710,11 @@ export const PLAYERS: Player[] = [
         "season": "2025",
         "price": 75
       }
-    ]
+    ],
+    "hasBattedAt3": false,
+    "hasBattedAt4": true,
+    "hasBattedAt5": false,
+    "hasBattedAt6": false
   },
   {
     "id": "kumar-kushagra",
@@ -7564,7 +7768,7 @@ export const PLAYERS: Player[] = [
         "innings": 84,
         "runs": 2964,
         "average": 33.3,
-        "strikeRate": 151.0,
+        "strikeRate": 151,
         "fifties": 8,
         "hundreds": 2
       },
@@ -7587,7 +7791,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 65
       }
-    ]
+    ],
+    "hasBattedAt3": false,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "jayant-yadav",
@@ -7726,7 +7934,7 @@ export const PLAYERS: Player[] = [
         "matches": 68,
         "wickets": 128,
         "economy": 7.5,
-        "average": 25.0,
+        "average": 25,
         "bestFigures": "4/19"
       }
     },
@@ -7818,7 +8026,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 130
       }
-    ]
+    ],
+    "hasBattedAt3": false,
+    "hasBattedAt4": true,
+    "hasBattedAt5": false,
+    "hasBattedAt6": false
   },
   {
     "id": "kulwant-khejroliya",
@@ -7952,7 +8164,7 @@ export const PLAYERS: Player[] = [
         "matches": 63,
         "wickets": 110,
         "economy": 7.7,
-        "average": 26.0,
+        "average": 26,
         "bestFigures": "4/19"
       }
     },
@@ -7967,7 +8179,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 30
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "gurnoor-singh-brar",
@@ -8029,7 +8245,7 @@ export const PLAYERS: Player[] = [
         "matches": 63,
         "wickets": 110,
         "economy": 7.7,
-        "average": 26.0,
+        "average": 26,
         "bestFigures": "4/19"
       }
     },
@@ -8324,7 +8540,7 @@ export const PLAYERS: Player[] = [
         "innings": 103,
         "runs": 4374,
         "average": 40.5,
-        "strikeRate": 151.0,
+        "strikeRate": 151,
         "fifties": 12,
         "hundreds": 3
       },
@@ -8347,7 +8563,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 110
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": false,
+    "hasBattedAt6": false
   },
   {
     "id": "jofra-archer",
@@ -8478,7 +8698,7 @@ export const PLAYERS: Player[] = [
         "innings": 99,
         "runs": 4072,
         "average": 39.1,
-        "strikeRate": 156.0,
+        "strikeRate": 156,
         "fifties": 11,
         "hundreds": 3
       },
@@ -8501,7 +8721,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 1800
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": false,
+    "hasBattedAt6": false
   },
   {
     "id": "ravindra-jadeja",
@@ -8554,8 +8778,8 @@ export const PLAYERS: Player[] = [
         "matches": 96,
         "innings": 91,
         "runs": 3456,
-        "average": 36.0,
-        "strikeRate": 150.0,
+        "average": 36,
+        "strikeRate": 150,
         "fifties": 9,
         "hundreds": 2
       },
@@ -8563,7 +8787,7 @@ export const PLAYERS: Player[] = [
         "matches": 76,
         "wickets": 162,
         "economy": 7.1,
-        "average": 23.0,
+        "average": 23,
         "bestFigures": "4/19"
       }
     },
@@ -8578,7 +8802,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 1400
       }
-    ]
+    ],
+    "hasBattedAt3": false,
+    "hasBattedAt4": false,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "riyan-parag",
@@ -8655,7 +8883,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 1400
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "sam-curran",
@@ -8708,7 +8940,7 @@ export const PLAYERS: Player[] = [
         "matches": 96,
         "innings": 91,
         "runs": 3456,
-        "average": 36.0,
+        "average": 36,
         "strikeRate": 152.5,
         "fifties": 9,
         "hundreds": 2
@@ -8732,7 +8964,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 240
       }
-    ]
+    ],
+    "hasBattedAt3": false,
+    "hasBattedAt4": false,
+    "hasBattedAt5": false,
+    "hasBattedAt6": false
   },
   {
     "id": "ravi-bishnoi",
@@ -8958,7 +9194,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 1100
       }
-    ]
+    ],
+    "hasBattedAt3": false,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "dhruv-jurel",
@@ -9012,7 +9252,7 @@ export const PLAYERS: Player[] = [
         "innings": 97,
         "runs": 3902,
         "average": 38.2,
-        "strikeRate": 150.0,
+        "strikeRate": 150,
         "fifties": 11,
         "hundreds": 3
       },
@@ -9035,7 +9275,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 1400
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": false,
+    "hasBattedAt6": false
   },
   {
     "id": "fazalhaq-farooqi",
@@ -9169,7 +9413,7 @@ export const PLAYERS: Player[] = [
         "matches": 72,
         "wickets": 144,
         "economy": 7.3,
-        "average": 24.0,
+        "average": 24,
         "bestFigures": "4/19"
       }
     },
@@ -9246,7 +9490,7 @@ export const PLAYERS: Player[] = [
         "matches": 72,
         "wickets": 144,
         "economy": 7.3,
-        "average": 24.0,
+        "average": 24,
         "bestFigures": "4/19"
       }
     },
@@ -9400,7 +9644,7 @@ export const PLAYERS: Player[] = [
         "matches": 68,
         "wickets": 128,
         "economy": 7.5,
-        "average": 25.0,
+        "average": 25,
         "bestFigures": "4/19"
       }
     },
@@ -9492,7 +9736,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 30
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": false,
+    "hasBattedAt6": false
   },
   {
     "id": "adam-milne",
@@ -9646,7 +9894,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 100
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "ravi-singh",
@@ -9723,7 +9975,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 95
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "kuldeep-sen",
@@ -9785,7 +10041,7 @@ export const PLAYERS: Player[] = [
         "matches": 68,
         "wickets": 128,
         "economy": 7.5,
-        "average": 25.0,
+        "average": 25,
         "bestFigures": "4/19"
       }
     },
@@ -9872,7 +10128,11 @@ export const PLAYERS: Player[] = [
         "season": "2025",
         "price": 75
       }
-    ]
+    ],
+    "hasBattedAt3": false,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "kwena-maphaka",
@@ -10103,7 +10363,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 580
       }
-    ]
+    ],
+    "hasBattedAt3": false,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "kumar-kartikeya",
@@ -10252,7 +10516,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 30
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "sushant-mishra",
@@ -10391,7 +10659,7 @@ export const PLAYERS: Player[] = [
         "matches": 63,
         "wickets": 110,
         "economy": 7.7,
-        "average": 26.0,
+        "average": 26,
         "bestFigures": "4/19"
       }
     },
@@ -10483,7 +10751,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 1500
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "nicholas-pooran",
@@ -10560,7 +10832,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 2100
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "mohammed-shami",
@@ -10714,7 +10990,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 200
       }
-    ]
+    ],
+    "hasBattedAt3": false,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": false
   },
   {
     "id": "mitchell-marsh",
@@ -10740,7 +11020,7 @@ export const PLAYERS: Player[] = [
     "battingAggression": 82,
     "isWicketkeeper": false,
     "isPartTimeWk": false,
-    "isOpener": false,
+    "isOpener": true,
     "isFinisher": false,
     "attributes": {
       "technique": 16,
@@ -10768,7 +11048,7 @@ export const PLAYERS: Player[] = [
         "innings": 96,
         "runs": 3818,
         "average": 37.8,
-        "strikeRate": 151.0,
+        "strikeRate": 151,
         "fifties": 10,
         "hundreds": 3
       },
@@ -10791,7 +11071,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 340
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "anrich-nortje",
@@ -10853,7 +11137,7 @@ export const PLAYERS: Player[] = [
         "matches": 72,
         "wickets": 144,
         "economy": 7.3,
-        "average": 24.0,
+        "average": 24,
         "bestFigures": "4/19"
       }
     },
@@ -10930,7 +11214,7 @@ export const PLAYERS: Player[] = [
         "matches": 72,
         "wickets": 144,
         "economy": 7.3,
-        "average": 24.0,
+        "average": 24,
         "bestFigures": "4/19"
       }
     },
@@ -11048,7 +11332,7 @@ export const PLAYERS: Player[] = [
     "battingAggression": 85,
     "isWicketkeeper": true,
     "isPartTimeWk": false,
-    "isOpener": false,
+    "isOpener": true,
     "isFinisher": false,
     "attributes": {
       "technique": 17,
@@ -11099,7 +11383,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 860
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "aiden-markram",
@@ -11161,7 +11449,7 @@ export const PLAYERS: Player[] = [
         "matches": 63,
         "wickets": 110,
         "economy": 7.7,
-        "average": 26.0,
+        "average": 26,
         "bestFigures": "4/19"
       }
     },
@@ -11176,7 +11464,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 200
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "mohsin-khan",
@@ -11330,7 +11622,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 240
       }
-    ]
+    ],
+    "hasBattedAt3": false,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "ayush-badoni",
@@ -11384,7 +11680,7 @@ export const PLAYERS: Player[] = [
         "innings": 86,
         "runs": 3112,
         "average": 34.2,
-        "strikeRate": 149.0,
+        "strikeRate": 149,
         "fifties": 8,
         "hundreds": 2
       },
@@ -11392,7 +11688,7 @@ export const PLAYERS: Player[] = [
         "matches": 63,
         "wickets": 110,
         "economy": 7.7,
-        "average": 26.0,
+        "average": 26,
         "bestFigures": "4/19"
       }
     },
@@ -11407,7 +11703,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 400
       }
-    ]
+    ],
+    "hasBattedAt3": false,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "abdul-samad",
@@ -11469,7 +11769,7 @@ export const PLAYERS: Player[] = [
         "matches": 58,
         "wickets": 94,
         "economy": 7.9,
-        "average": 27.0,
+        "average": 27,
         "bestFigures": "4/19"
       }
     },
@@ -11484,7 +11784,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 420
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": false
   },
   {
     "id": "matthew-breetzke",
@@ -11561,7 +11865,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 75
       }
-    ]
+    ],
+    "hasBattedAt3": false,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "manimaran-siddharth",
@@ -11792,7 +12100,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 30
       }
-    ]
+    ],
+    "hasBattedAt3": false,
+    "hasBattedAt4": true,
+    "hasBattedAt5": false,
+    "hasBattedAt6": true
   },
   {
     "id": "akash-singh",
@@ -11923,7 +12235,7 @@ export const PLAYERS: Player[] = [
         "innings": 80,
         "runs": 2716,
         "average": 31.9,
-        "strikeRate": 151.0,
+        "strikeRate": 151,
         "fifties": 7,
         "hundreds": 2
       },
@@ -11946,7 +12258,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 30
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "prince-yadav",
@@ -12008,7 +12324,7 @@ export const PLAYERS: Player[] = [
         "matches": 72,
         "wickets": 144,
         "economy": 7.3,
-        "average": 24.0,
+        "average": 24,
         "bestFigures": "4/19"
       }
     },
@@ -12100,7 +12416,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 220
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": false
   },
   {
     "id": "arjun-tendulkar",
@@ -12254,7 +12574,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 260
       }
-    ]
+    ],
+    "hasBattedAt3": false,
+    "hasBattedAt4": false,
+    "hasBattedAt5": true,
+    "hasBattedAt6": false
   },
   {
     "id": "naman-tiwari",
@@ -12408,7 +12732,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 1400
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "heinrich-klaasen",
@@ -12461,8 +12789,8 @@ export const PLAYERS: Player[] = [
         "matches": 109,
         "innings": 104,
         "runs": 4464,
-        "average": 41.0,
-        "strikeRate": 156.0,
+        "average": 41,
+        "strikeRate": 156,
         "fifties": 12,
         "hundreds": 3
       },
@@ -12485,7 +12813,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 2300
       }
-    ]
+    ],
+    "hasBattedAt3": false,
+    "hasBattedAt4": false,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "travis-head",
@@ -12562,7 +12894,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 1400
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": false,
+    "hasBattedAt6": false
   },
   {
     "id": "pat-cummins",
@@ -12624,7 +12960,7 @@ export const PLAYERS: Player[] = [
         "matches": 76,
         "wickets": 162,
         "economy": 7.1,
-        "average": 23.0,
+        "average": 23,
         "bestFigures": "4/19"
       }
     },
@@ -12639,7 +12975,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 1800
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "ishan-kishan",
@@ -12716,7 +13056,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 1125
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "harshal-patel",
@@ -12778,7 +13122,7 @@ export const PLAYERS: Player[] = [
         "matches": 72,
         "wickets": 144,
         "economy": 7.3,
-        "average": 24.0,
+        "average": 24,
         "bestFigures": "4/19"
       }
     },
@@ -12847,7 +13191,7 @@ export const PLAYERS: Player[] = [
         "innings": 92,
         "runs": 3536,
         "average": 36.5,
-        "strikeRate": 151.0,
+        "strikeRate": 151,
         "fifties": 10,
         "hundreds": 2
       },
@@ -12870,7 +13214,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 75
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": false,
+    "hasBattedAt6": false
   },
   {
     "id": "nitish-kumar-reddy",
@@ -12924,7 +13272,7 @@ export const PLAYERS: Player[] = [
         "innings": 90,
         "runs": 3377,
         "average": 35.6,
-        "strikeRate": 151.0,
+        "strikeRate": 151,
         "fifties": 9,
         "hundreds": 2
       },
@@ -12932,7 +13280,7 @@ export const PLAYERS: Player[] = [
         "matches": 68,
         "wickets": 128,
         "economy": 7.5,
-        "average": 25.0,
+        "average": 25,
         "bestFigures": "4/19"
       }
     },
@@ -12947,7 +13295,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 600
       }
-    ]
+    ],
+    "hasBattedAt3": false,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "liam-livingstone",
@@ -13000,8 +13352,8 @@ export const PLAYERS: Player[] = [
         "matches": 96,
         "innings": 91,
         "runs": 3456,
-        "average": 36.0,
-        "strikeRate": 149.0,
+        "average": 36,
+        "strikeRate": 149,
         "fifties": 9,
         "hundreds": 2
       },
@@ -13024,7 +13376,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 1300
       }
-    ]
+    ],
+    "hasBattedAt3": false,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "brydon-carse",
@@ -13078,7 +13434,7 @@ export const PLAYERS: Player[] = [
         "innings": 66,
         "runs": 1885,
         "average": 26.6,
-        "strikeRate": 149.0,
+        "strikeRate": 149,
         "fifties": 5,
         "hundreds": 1
       },
@@ -13317,7 +13673,7 @@ export const PLAYERS: Player[] = [
         "matches": 68,
         "wickets": 128,
         "economy": 7.5,
-        "average": 25.0,
+        "average": 25,
         "bestFigures": "4/19"
       }
     },
@@ -13540,7 +13896,7 @@ export const PLAYERS: Player[] = [
         "innings": 80,
         "runs": 2716,
         "average": 31.9,
-        "strikeRate": 151.0,
+        "strikeRate": 151,
         "fifties": 7,
         "hundreds": 2
       },
@@ -13563,7 +13919,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 30
       }
-    ]
+    ],
+    "hasBattedAt3": false,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "harsh-dubey",
@@ -13625,7 +13985,7 @@ export const PLAYERS: Player[] = [
         "matches": 68,
         "wickets": 128,
         "economy": 7.5,
-        "average": 25.0,
+        "average": 25,
         "bestFigures": "4/19"
       }
     },
@@ -13717,7 +14077,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 150
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": false,
+    "hasBattedAt6": false
   },
   {
     "id": "smaran-ravichandran",
@@ -13771,7 +14135,7 @@ export const PLAYERS: Player[] = [
         "innings": 77,
         "runs": 2509,
         "average": 30.6,
-        "strikeRate": 151.0,
+        "strikeRate": 151,
         "fifties": 7,
         "hundreds": 2
       },
@@ -13794,7 +14158,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 30
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "shivang-kumar",
@@ -13856,7 +14224,7 @@ export const PLAYERS: Player[] = [
         "matches": 68,
         "wickets": 128,
         "economy": 7.5,
-        "average": 25.0,
+        "average": 25,
         "bestFigures": "4/19"
       }
     },
@@ -14010,7 +14378,7 @@ export const PLAYERS: Player[] = [
         "matches": 58,
         "wickets": 94,
         "economy": 7.9,
-        "average": 27.0,
+        "average": 27,
         "bestFigures": "4/19"
       }
     },
@@ -14395,7 +14763,7 @@ export const PLAYERS: Player[] = [
         "matches": 76,
         "wickets": 162,
         "economy": 7.1,
-        "average": 23.0,
+        "average": 23,
         "bestFigures": "4/19"
       }
     },
@@ -14464,7 +14832,7 @@ export const PLAYERS: Player[] = [
         "innings": 97,
         "runs": 3902,
         "average": 38.2,
-        "strikeRate": 150.0,
+        "strikeRate": 150,
         "fifties": 11,
         "hundreds": 3
       },
@@ -14472,7 +14840,7 @@ export const PLAYERS: Player[] = [
         "matches": 54,
         "wickets": 81,
         "economy": 8.1,
-        "average": 28.0,
+        "average": 28,
         "bestFigures": "4/19"
       }
     },
@@ -14487,7 +14855,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 2675
       }
-    ]
+    ],
+    "hasBattedAt3": false,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "lockie-ferguson",
@@ -14626,7 +14998,7 @@ export const PLAYERS: Player[] = [
         "matches": 68,
         "wickets": 128,
         "economy": 7.5,
-        "average": 25.0,
+        "average": 25,
         "bestFigures": "4/19"
       }
     },
@@ -14641,7 +15013,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 1100
       }
-    ]
+    ],
+    "hasBattedAt3": false,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "marco-jansen",
@@ -14718,7 +15094,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 700
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "shashank-singh",
@@ -14795,7 +15175,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 550
       }
-    ]
+    ],
+    "hasBattedAt3": false,
+    "hasBattedAt4": false,
+    "hasBattedAt5": false,
+    "hasBattedAt6": true
   },
   {
     "id": "prabhsimran-singh",
@@ -14872,7 +15256,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 400
       }
-    ]
+    ],
+    "hasBattedAt3": false,
+    "hasBattedAt4": false,
+    "hasBattedAt5": false,
+    "hasBattedAt6": false
   },
   {
     "id": "nehal-wadhera",
@@ -14926,7 +15314,7 @@ export const PLAYERS: Player[] = [
         "innings": 89,
         "runs": 3299,
         "average": 35.1,
-        "strikeRate": 149.0,
+        "strikeRate": 149,
         "fifties": 9,
         "hundreds": 2
       },
@@ -14934,7 +15322,7 @@ export const PLAYERS: Player[] = [
         "matches": 68,
         "wickets": 128,
         "economy": 7.5,
-        "average": 25.0,
+        "average": 25,
         "bestFigures": "4/19"
       }
     },
@@ -14949,7 +15337,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 420
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "harpreet-brar",
@@ -15180,7 +15572,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 380
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "azmatullah-omarzai",
@@ -15257,7 +15653,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 240
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "vijaykumar-vyshak",
@@ -15542,7 +15942,7 @@ export const PLAYERS: Player[] = [
         "innings": 90,
         "runs": 3377,
         "average": 35.6,
-        "strikeRate": 151.0,
+        "strikeRate": 151,
         "fifties": 9,
         "hundreds": 2
       },
@@ -15565,7 +15965,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 300
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "musheer-khan",
@@ -15642,7 +16046,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 30
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": false,
+    "hasBattedAt6": false
   },
   {
     "id": "vishnu-vinod",
@@ -15719,7 +16127,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 95
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": false
   },
   {
     "id": "pravin-dubey",
@@ -15873,7 +16285,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 30
       }
-    ]
+    ],
+    "hasBattedAt3": false,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "suryansh-shedge",
@@ -15950,7 +16366,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 30
       }
-    ]
+    ],
+    "hasBattedAt3": false,
+    "hasBattedAt4": false,
+    "hasBattedAt5": false,
+    "hasBattedAt6": true
   },
   {
     "id": "mitchell-owen",
@@ -16027,7 +16447,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 300
       }
-    ]
+    ],
+    "hasBattedAt3": false,
+    "hasBattedAt4": true,
+    "hasBattedAt5": false,
+    "hasBattedAt6": false
   },
   {
     "id": "pyla-avinash",
@@ -16166,7 +16590,7 @@ export const PLAYERS: Player[] = [
         "matches": 58,
         "wickets": 94,
         "economy": 7.9,
-        "average": 27.0,
+        "average": 27,
         "bestFigures": "4/19"
       }
     },
@@ -16258,7 +16682,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 1800
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": false,
+    "hasBattedAt6": false
   },
   {
     "id": "sanju-samson",
@@ -16335,7 +16763,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 1800
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": false,
+    "hasBattedAt6": false
   },
   {
     "id": "noor-ahmad",
@@ -16489,7 +16921,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 1200
       }
-    ]
+    ],
+    "hasBattedAt3": false,
+    "hasBattedAt4": false,
+    "hasBattedAt5": false,
+    "hasBattedAt6": true
   },
   {
     "id": "rahul-chahar",
@@ -16696,7 +17132,7 @@ export const PLAYERS: Player[] = [
         "matches": 96,
         "innings": 91,
         "runs": 3456,
-        "average": 36.0,
+        "average": 36,
         "strikeRate": 152.5,
         "fifties": 9,
         "hundreds": 2
@@ -16720,7 +17156,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 400
       }
-    ]
+    ],
+    "hasBattedAt3": false,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "matt-henry",
@@ -16951,7 +17391,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 150
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "sarfaraz-khan",
@@ -17028,7 +17472,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 75
       }
-    ]
+    ],
+    "hasBattedAt3": false,
+    "hasBattedAt4": false,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "anshul-kamboj",
@@ -17259,7 +17707,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 1420
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": false,
+    "hasBattedAt5": false,
+    "hasBattedAt6": false
   },
   {
     "id": "prashant-veer",
@@ -17321,7 +17773,7 @@ export const PLAYERS: Player[] = [
         "matches": 68,
         "wickets": 128,
         "economy": 7.5,
-        "average": 25.0,
+        "average": 25,
         "bestFigures": "4/19"
       }
     },
@@ -17336,7 +17788,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 1420
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": false
   },
   {
     "id": "dewald-brevis",
@@ -17390,7 +17846,7 @@ export const PLAYERS: Player[] = [
         "innings": 89,
         "runs": 3299,
         "average": 35.1,
-        "strikeRate": 154.0,
+        "strikeRate": 154,
         "fifties": 9,
         "hundreds": 2
       },
@@ -17413,7 +17869,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 220
       }
-    ]
+    ],
+    "hasBattedAt3": false,
+    "hasBattedAt4": false,
+    "hasBattedAt5": true,
+    "hasBattedAt6": false
   },
   {
     "id": "mukesh-choudhary",
@@ -17721,7 +18181,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 75
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": false,
+    "hasBattedAt6": false
   },
   {
     "id": "urvil-patel",
@@ -17775,7 +18239,7 @@ export const PLAYERS: Player[] = [
         "innings": 89,
         "runs": 3299,
         "average": 35.1,
-        "strikeRate": 151.0,
+        "strikeRate": 151,
         "fifties": 9,
         "hundreds": 2
       },
@@ -17798,7 +18262,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 30
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": false,
+    "hasBattedAt6": false
   },
   {
     "id": "aman-hakim-khan",
@@ -17875,7 +18343,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 40
       }
-    ]
+    ],
+    "hasBattedAt3": false,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "dian-forrester",
@@ -17947,7 +18419,11 @@ export const PLAYERS: Player[] = [
         "season": "2025",
         "price": 150
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "macneil-noronha",
@@ -18019,7 +18495,11 @@ export const PLAYERS: Player[] = [
         "season": "2025",
         "price": 30
       }
-    ]
+    ],
+    "hasBattedAt3": false,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "kuldip-yadav",
@@ -18081,7 +18561,7 @@ export const PLAYERS: Player[] = [
         "matches": 63,
         "wickets": 110,
         "economy": 7.7,
-        "average": 26.0,
+        "average": 26,
         "bestFigures": "4/19"
       }
     },
@@ -18245,7 +18725,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 1000
       }
-    ]
+    ],
+    "hasBattedAt3": false,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "kl-rahul",
@@ -18299,7 +18783,7 @@ export const PLAYERS: Player[] = [
         "innings": 101,
         "runs": 4198,
         "average": 39.6,
-        "strikeRate": 154.0,
+        "strikeRate": 154,
         "fifties": 11,
         "hundreds": 3
       },
@@ -18322,7 +18806,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 1400
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": false,
+    "hasBattedAt6": false
   },
   {
     "id": "mitchell-starc",
@@ -18384,7 +18872,7 @@ export const PLAYERS: Player[] = [
         "matches": 76,
         "wickets": 162,
         "economy": 7.1,
-        "average": 23.0,
+        "average": 23,
         "bestFigures": "4/19"
       }
     },
@@ -18476,7 +18964,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 1650
       }
-    ]
+    ],
+    "hasBattedAt3": false,
+    "hasBattedAt4": false,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "david-miller",
@@ -18553,7 +19045,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 200
       }
-    ]
+    ],
+    "hasBattedAt3": false,
+    "hasBattedAt4": false,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "t-natarajan",
@@ -18769,7 +19265,7 @@ export const PLAYERS: Player[] = [
         "matches": 72,
         "wickets": 144,
         "economy": 7.3,
-        "average": 24.0,
+        "average": 24,
         "bestFigures": "4/19"
       }
     },
@@ -18838,7 +19334,7 @@ export const PLAYERS: Player[] = [
         "innings": 93,
         "runs": 3616,
         "average": 36.9,
-        "strikeRate": 150.0,
+        "strikeRate": 150,
         "fifties": 10,
         "hundreds": 3
       },
@@ -18861,7 +19357,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 400
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": false,
+    "hasBattedAt5": false,
+    "hasBattedAt6": false
   },
   {
     "id": "nitish-rana",
@@ -18938,7 +19438,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 420
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": false
   },
   {
     "id": "kyle-jamieson",
@@ -19069,7 +19573,7 @@ export const PLAYERS: Player[] = [
         "innings": 89,
         "runs": 3299,
         "average": 35.1,
-        "strikeRate": 150.0,
+        "strikeRate": 150,
         "fifties": 9,
         "hundreds": 2
       },
@@ -19092,7 +19596,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 75
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "ashutosh-sharma",
@@ -19154,7 +19662,7 @@ export const PLAYERS: Player[] = [
         "matches": 63,
         "wickets": 110,
         "economy": 7.7,
-        "average": 26.0,
+        "average": 26,
         "bestFigures": "4/19"
       }
     },
@@ -19169,7 +19677,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 380
       }
-    ]
+    ],
+    "hasBattedAt3": false,
+    "hasBattedAt4": false,
+    "hasBattedAt5": false,
+    "hasBattedAt6": true
   },
   {
     "id": "abishek-porel",
@@ -19223,7 +19735,7 @@ export const PLAYERS: Player[] = [
         "innings": 85,
         "runs": 3038,
         "average": 33.8,
-        "strikeRate": 150.0,
+        "strikeRate": 150,
         "fifties": 8,
         "hundreds": 2
       },
@@ -19246,7 +19758,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 400
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "auqib-nabi",
@@ -19400,7 +19916,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 50
       }
-    ]
+    ],
+    "hasBattedAt3": false,
+    "hasBattedAt4": false,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "dushmantha-chameera",
@@ -19539,7 +20059,7 @@ export const PLAYERS: Player[] = [
         "matches": 68,
         "wickets": 128,
         "economy": 7.5,
-        "average": 25.0,
+        "average": 25,
         "bestFigures": "4/19"
       }
     },
@@ -19554,7 +20074,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 75
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "sameer-rizvi",
@@ -19631,7 +20155,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 95
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "vipraj-nigam",
@@ -19770,7 +20298,7 @@ export const PLAYERS: Player[] = [
         "matches": 63,
         "wickets": 110,
         "economy": 7.7,
-        "average": 26.0,
+        "average": 26,
         "bestFigures": "4/19"
       }
     },
@@ -19839,7 +20367,7 @@ export const PLAYERS: Player[] = [
         "innings": 81,
         "runs": 2786,
         "average": 32.4,
-        "strikeRate": 145.0,
+        "strikeRate": 145,
         "fifties": 7,
         "hundreds": 2
       },
@@ -19862,7 +20390,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 30
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "madhav-tiwari",
@@ -20016,7 +20548,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 30
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "devon-conway",
@@ -20070,7 +20606,7 @@ export const PLAYERS: Player[] = [
         "innings": 87,
         "runs": 3188,
         "average": 34.6,
-        "strikeRate": 150.0,
+        "strikeRate": 150,
         "fifties": 9,
         "hundreds": 2
       },
@@ -20088,7 +20624,11 @@ export const PLAYERS: Player[] = [
         "season": "2025",
         "price": 625
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "steve-smith",
@@ -20150,7 +20690,7 @@ export const PLAYERS: Player[] = [
         "matches": 54,
         "wickets": 81,
         "economy": 8.1,
-        "average": 28.0,
+        "average": 28,
         "bestFigures": "4/19"
       }
     },
@@ -20160,7 +20700,11 @@ export const PLAYERS: Player[] = [
         "season": "2025",
         "price": 0
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": false
   },
   {
     "id": "daryl-mitchell",
@@ -20366,7 +20910,7 @@ export const PLAYERS: Player[] = [
         "matches": 68,
         "wickets": 128,
         "economy": 7.5,
-        "average": 25.0,
+        "average": 25,
         "bestFigures": "4/19"
       }
     },
@@ -20430,7 +20974,7 @@ export const PLAYERS: Player[] = [
         "innings": 86,
         "runs": 3112,
         "average": 34.2,
-        "strikeRate": 151.0,
+        "strikeRate": 151,
         "fifties": 8,
         "hundreds": 2
       },
@@ -20448,7 +20992,11 @@ export const PLAYERS: Player[] = [
         "season": "2025",
         "price": 0
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": false,
+    "hasBattedAt5": true,
+    "hasBattedAt6": false
   },
   {
     "id": "gerald-coetzee",
@@ -20726,7 +21274,7 @@ export const PLAYERS: Player[] = [
         "matches": 68,
         "wickets": 128,
         "economy": 7.5,
-        "average": 25.0,
+        "average": 25,
         "bestFigures": "4/19"
       }
     },
@@ -20736,7 +21284,11 @@ export const PLAYERS: Player[] = [
         "season": "2025",
         "price": 0
       }
-    ]
+    ],
+    "hasBattedAt3": false,
+    "hasBattedAt4": false,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "dan-lawrence",
@@ -20790,7 +21342,7 @@ export const PLAYERS: Player[] = [
         "innings": 89,
         "runs": 3299,
         "average": 35.1,
-        "strikeRate": 150.0,
+        "strikeRate": 150,
         "fifties": 9,
         "hundreds": 2
       },
@@ -20798,7 +21350,7 @@ export const PLAYERS: Player[] = [
         "matches": 58,
         "wickets": 94,
         "economy": 7.9,
-        "average": 27.0,
+        "average": 27,
         "bestFigures": "4/19"
       }
     },
@@ -20808,7 +21360,11 @@ export const PLAYERS: Player[] = [
         "season": "2025",
         "price": 0
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "wiaan-mulder",
@@ -20870,7 +21426,7 @@ export const PLAYERS: Player[] = [
         "matches": 68,
         "wickets": 128,
         "economy": 7.5,
-        "average": 25.0,
+        "average": 25,
         "bestFigures": "4/19"
       }
     },
@@ -20880,7 +21436,11 @@ export const PLAYERS: Player[] = [
         "season": "2025",
         "price": 75
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "taskin-ahmed",
@@ -21150,7 +21710,7 @@ export const PLAYERS: Player[] = [
         "innings": 87,
         "runs": 3188,
         "average": 34.6,
-        "strikeRate": 154.0,
+        "strikeRate": 154,
         "fifties": 9,
         "hundreds": 2
       },
@@ -21168,7 +21728,11 @@ export const PLAYERS: Player[] = [
         "season": "2025",
         "price": 200
       }
-    ]
+    ],
+    "hasBattedAt3": false,
+    "hasBattedAt4": false,
+    "hasBattedAt5": false,
+    "hasBattedAt6": false
   },
   {
     "id": "deepak-hooda",
@@ -21222,7 +21786,7 @@ export const PLAYERS: Player[] = [
         "innings": 86,
         "runs": 3112,
         "average": 34.2,
-        "strikeRate": 150.0,
+        "strikeRate": 150,
         "fifties": 8,
         "hundreds": 2
       },
@@ -21240,7 +21804,11 @@ export const PLAYERS: Player[] = [
         "season": "2025",
         "price": 170
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "karn-sharma",
@@ -21302,7 +21870,7 @@ export const PLAYERS: Player[] = [
         "matches": 68,
         "wickets": 128,
         "economy": 7.5,
-        "average": 25.0,
+        "average": 25,
         "bestFigures": "4/19"
       }
     },
@@ -21438,7 +22006,7 @@ export const PLAYERS: Player[] = [
         "innings": 84,
         "runs": 2964,
         "average": 33.3,
-        "strikeRate": 145.0,
+        "strikeRate": 145,
         "fifties": 8,
         "hundreds": 2
       },
@@ -21456,7 +22024,11 @@ export const PLAYERS: Player[] = [
         "season": "2025",
         "price": 50
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": false,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "vijay-shankar",
@@ -21528,7 +22100,11 @@ export const PLAYERS: Player[] = [
         "season": "2025",
         "price": 120
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": false,
+    "hasBattedAt5": true,
+    "hasBattedAt6": false
   },
   {
     "id": "ayush-mhatre",
@@ -21605,7 +22181,11 @@ export const PLAYERS: Player[] = [
         "season": "2026",
         "price": 30
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": false,
+    "hasBattedAt5": false,
+    "hasBattedAt6": false
   },
   {
     "id": "yashvardhan-dalal",
@@ -21731,7 +22311,7 @@ export const PLAYERS: Player[] = [
         "innings": 77,
         "runs": 2509,
         "average": 30.6,
-        "strikeRate": 144.0,
+        "strikeRate": 144,
         "fifties": 7,
         "hundreds": 2
       },
@@ -21739,7 +22319,7 @@ export const PLAYERS: Player[] = [
         "matches": 45,
         "wickets": 56,
         "economy": 8.5,
-        "average": 30.0,
+        "average": 30,
         "bestFigures": "4/19"
       }
     },
@@ -21811,7 +22391,7 @@ export const PLAYERS: Player[] = [
         "matches": 58,
         "wickets": 94,
         "economy": 7.9,
-        "average": 27.0,
+        "average": 27,
         "bestFigures": "4/19"
       }
     },
@@ -21875,7 +22455,7 @@ export const PLAYERS: Player[] = [
         "innings": 74,
         "runs": 2346,
         "average": 29.7,
-        "strikeRate": 152.0,
+        "strikeRate": 152,
         "fifties": 6,
         "hundreds": 1
       },
@@ -21955,7 +22535,7 @@ export const PLAYERS: Player[] = [
         "matches": 63,
         "wickets": 110,
         "economy": 7.7,
-        "average": 26.0,
+        "average": 26,
         "bestFigures": "4/19"
       }
     },
@@ -22019,7 +22599,7 @@ export const PLAYERS: Player[] = [
         "innings": 78,
         "runs": 2577,
         "average": 31.1,
-        "strikeRate": 139.0,
+        "strikeRate": 139,
         "fifties": 7,
         "hundreds": 2
       },
@@ -22235,7 +22815,7 @@ export const PLAYERS: Player[] = [
         "innings": 73,
         "runs": 2282,
         "average": 29.2,
-        "strikeRate": 142.0,
+        "strikeRate": 142,
         "fifties": 6,
         "hundreds": 1
       },
@@ -22243,7 +22823,7 @@ export const PLAYERS: Player[] = [
         "matches": 50,
         "wickets": 69,
         "economy": 8.3,
-        "average": 29.0,
+        "average": 29,
         "bestFigures": "4/19"
       }
     },
@@ -22379,7 +22959,7 @@ export const PLAYERS: Player[] = [
         "innings": 86,
         "runs": 3112,
         "average": 34.2,
-        "strikeRate": 155.0,
+        "strikeRate": 155,
         "fifties": 8,
         "hundreds": 2
       },
@@ -22397,7 +22977,11 @@ export const PLAYERS: Player[] = [
         "season": "2025",
         "price": 0
       }
-    ]
+    ],
+    "hasBattedAt3": false,
+    "hasBattedAt4": false,
+    "hasBattedAt5": false,
+    "hasBattedAt6": false
   },
   {
     "id": "jewel-andrew",
@@ -22451,7 +23035,7 @@ export const PLAYERS: Player[] = [
         "innings": 81,
         "runs": 2786,
         "average": 32.4,
-        "strikeRate": 150.0,
+        "strikeRate": 150,
         "fifties": 7,
         "hundreds": 2
       },
@@ -22531,7 +23115,7 @@ export const PLAYERS: Player[] = [
         "matches": 63,
         "wickets": 110,
         "economy": 7.7,
-        "average": 26.0,
+        "average": 26,
         "bestFigures": "4/19"
       }
     },
@@ -22541,7 +23125,11 @@ export const PLAYERS: Player[] = [
         "season": "2025",
         "price": 0
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "matthew-forde",
@@ -22603,7 +23191,7 @@ export const PLAYERS: Player[] = [
         "matches": 68,
         "wickets": 128,
         "economy": 7.5,
-        "average": 25.0,
+        "average": 25,
         "bestFigures": "4/19"
       }
     },
@@ -22685,7 +23273,11 @@ export const PLAYERS: Player[] = [
         "season": "2025",
         "price": 0
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": false
   },
   {
     "id": "ali-naseer",
@@ -22901,7 +23493,11 @@ export const PLAYERS: Player[] = [
         "season": "2025",
         "price": 0
       }
-    ]
+    ],
+    "hasBattedAt3": false,
+    "hasBattedAt4": true,
+    "hasBattedAt5": false,
+    "hasBattedAt6": true
   },
   {
     "id": "swastik-chikara",
@@ -22955,7 +23551,7 @@ export const PLAYERS: Player[] = [
         "innings": 80,
         "runs": 2716,
         "average": 31.9,
-        "strikeRate": 155.0,
+        "strikeRate": 155,
         "fifties": 7,
         "hundreds": 2
       },
@@ -23099,7 +23695,7 @@ export const PLAYERS: Player[] = [
         "innings": 74,
         "runs": 2346,
         "average": 29.7,
-        "strikeRate": 145.0,
+        "strikeRate": 145,
         "fifties": 6,
         "hundreds": 1
       },
@@ -23251,7 +23847,7 @@ export const PLAYERS: Player[] = [
         "matches": 58,
         "wickets": 94,
         "economy": 7.9,
-        "average": 27.0,
+        "average": 27,
         "bestFigures": "4/19"
       }
     },
@@ -23261,7 +23857,11 @@ export const PLAYERS: Player[] = [
         "season": "2025",
         "price": 30
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "saumy-pandey",
@@ -23477,7 +24077,11 @@ export const PLAYERS: Player[] = [
         "season": "2025",
         "price": 0
       }
-    ]
+    ],
+    "hasBattedAt3": true,
+    "hasBattedAt4": true,
+    "hasBattedAt5": true,
+    "hasBattedAt6": true
   },
   {
     "id": "tazeem-ali",
@@ -23755,7 +24359,7 @@ export const PLAYERS: Player[] = [
         "matches": 50,
         "wickets": 69,
         "economy": 8.3,
-        "average": 29.0,
+        "average": 29,
         "bestFigures": "4/19"
       }
     },
@@ -23971,7 +24575,7 @@ export const PLAYERS: Player[] = [
         "matches": 58,
         "wickets": 94,
         "economy": 7.9,
-        "average": 27.0,
+        "average": 27,
         "bestFigures": "4/19"
       }
     },
@@ -24107,7 +24711,7 @@ export const PLAYERS: Player[] = [
         "innings": 81,
         "runs": 2786,
         "average": 32.4,
-        "strikeRate": 154.0,
+        "strikeRate": 154,
         "fifties": 7,
         "hundreds": 2
       },
@@ -24187,7 +24791,7 @@ export const PLAYERS: Player[] = [
         "matches": 50,
         "wickets": 69,
         "economy": 8.3,
-        "average": 29.0,
+        "average": 29,
         "bestFigures": "4/19"
       }
     },
@@ -24259,7 +24863,7 @@ export const PLAYERS: Player[] = [
         "matches": 58,
         "wickets": 94,
         "economy": 7.9,
-        "average": 27.0,
+        "average": 27,
         "bestFigures": "4/19"
       }
     },
@@ -24395,7 +24999,7 @@ export const PLAYERS: Player[] = [
         "innings": 79,
         "runs": 2646,
         "average": 31.5,
-        "strikeRate": 155.0,
+        "strikeRate": 155,
         "fifties": 7,
         "hundreds": 2
       },
@@ -24683,7 +25287,7 @@ export const PLAYERS: Player[] = [
         "innings": 78,
         "runs": 2577,
         "average": 31.1,
-        "strikeRate": 151.0,
+        "strikeRate": 151,
         "fifties": 7,
         "hundreds": 2
       },
@@ -24755,7 +25359,7 @@ export const PLAYERS: Player[] = [
         "innings": 79,
         "runs": 2646,
         "average": 31.5,
-        "strikeRate": 150.0,
+        "strikeRate": 150,
         "fifties": 7,
         "hundreds": 2
       },
@@ -25043,7 +25647,7 @@ export const PLAYERS: Player[] = [
         "innings": 77,
         "runs": 2509,
         "average": 30.6,
-        "strikeRate": 130.0,
+        "strikeRate": 130,
         "fifties": 7,
         "hundreds": 2
       },
@@ -25051,7 +25655,7 @@ export const PLAYERS: Player[] = [
         "matches": 63,
         "wickets": 110,
         "economy": 7.7,
-        "average": 26.0,
+        "average": 26,
         "bestFigures": "4/19"
       }
     },
@@ -25115,7 +25719,7 @@ export const PLAYERS: Player[] = [
         "innings": 75,
         "runs": 2412,
         "average": 30.2,
-        "strikeRate": 145.0,
+        "strikeRate": 145,
         "fifties": 6,
         "hundreds": 2
       },
@@ -25187,7 +25791,7 @@ export const PLAYERS: Player[] = [
         "innings": 79,
         "runs": 2646,
         "average": 31.5,
-        "strikeRate": 150.0,
+        "strikeRate": 150,
         "fifties": 7,
         "hundreds": 2
       },
@@ -25267,7 +25871,7 @@ export const PLAYERS: Player[] = [
         "matches": 63,
         "wickets": 110,
         "economy": 7.7,
-        "average": 26.0,
+        "average": 26,
         "bestFigures": "4/19"
       }
     },
@@ -25411,7 +26015,7 @@ export const PLAYERS: Player[] = [
         "matches": 58,
         "wickets": 94,
         "economy": 7.9,
-        "average": 27.0,
+        "average": 27,
         "bestFigures": "4/19"
       }
     },

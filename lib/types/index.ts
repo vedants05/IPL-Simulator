@@ -87,6 +87,10 @@ export interface Player {
   isPartTimeWk?: boolean;
   isOpener?: boolean;
   isFinisher?: boolean;
+  hasBattedAt3?: boolean;
+  hasBattedAt4?: boolean;
+  hasBattedAt5?: boolean;
+  hasBattedAt6?: boolean;
 }
 
 export interface BoardObjective {
