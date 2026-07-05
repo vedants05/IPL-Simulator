@@ -91,6 +91,7 @@ export interface Player {
   hasBattedAt4?: boolean;
   hasBattedAt5?: boolean;
   hasBattedAt6?: boolean;
+  onlyOpensOrBenched?: boolean;
 }
 
 export interface BoardObjective {

@@ -6,9 +6,16 @@ import { createClient } from "@supabase/supabase-js";
 import { PLAYERS_SEED } from "../data/players";
 import { Player, IPLHistoryEntry } from "../types";
 
+import WebSocket from "ws";
+
 const supabase = createClient(
   "https://qnmmplezmitcllovbyur.supabase.co",
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFubW1wbGV6bWl0Y2xsb3ZieXVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI4MzIxMDQsImV4cCI6MjA5ODQwODEwNH0.w6OHOuz8O92tYXmvTuOmO1SnBuuqx_VzixN_jW5KTsA"
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFubW1wbGV6bWl0Y2xsb3ZieXVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI4MzIxMDQsImV4cCI6MjA5ODQwODEwNH0.w6OHOuz8O92tYXmvTuOmO1SnBuuqx_VzixN_jW5KTsA",
+  {
+    realtime: {
+      transport: WebSocket as any
+    }
+  }
 );
 
 async function seed() {
@@ -69,7 +76,7 @@ async function seed() {
 
   for (let i = 0; i < playerRows.length; i += 50) {
     const batch = playerRows.slice(i, i + 50);
-    const { error } = await supabase.from("players").insert(batch);
+    const { error } = await supabase.from("players").upsert(batch);
     if (error) {
       console.error(`Error inserting batch at ${i}:`, error.message);
       process.exit(1);
@@ -89,7 +96,7 @@ async function seed() {
 
   for (let i = 0; i < historyRows.length; i += 100) {
     const batch = historyRows.slice(i, i + 100);
-    const { error } = await supabase.from("ipl_history").insert(batch);
+    const { error } = await supabase.from("ipl_history").upsert(batch, { onConflict: "player_id,season" });
     if (error) {
       console.error(`Error inserting history batch at ${i}:`, error.message);
       process.exit(1);

@@ -132,9 +132,10 @@ function getPotentialMult(p: Player): number {
   return mult;
 }
 
-type RoleGroup = "BAT" | "AR" | "PACE" | "SPIN";
+type RoleGroup = "BAT" | "WK" | "AR" | "PACE" | "SPIN";
 
 function roleGroupOf(p: Player): RoleGroup {
+  if (isKeeper(p)) return "WK";
   if (p.role === "All-Rounder") return "AR";
   if (p.role === "Pace Bowler") return "PACE";
   if (p.role === "Spin Bowler") return "SPIN";
@@ -425,7 +426,8 @@ function computePlayerFit(
   player: Player,
   team: Team,
   comp: SquadComp,
-  quirks: TeamQuirks
+  quirks: TeamQuirks,
+  hasFTKeeper77Plus = false
 ): number {
   const dna = team.dna;
   const rating = ratingOf(player);
@@ -459,6 +461,9 @@ function computePlayerFit(
   // 6. Specialist attributes vs concrete guideline gaps
   if (player.isOpener && comp.openers < quirks.openersTarget) fit += u(0.10, 0.24);
   if (isKeeper(player) && comp.keepers < quirks.keepersTarget) fit += u(0.12, 0.28);
+  if (isFullTimeKeeper(player) && ratingOf(player) >= 77 && !hasFTKeeper77Plus) {
+    fit += u(3.5, 5.0); // Hard requirement boost
+  }
   if ((player.captaincy ?? 0) >= 78 && comp.leaders < 2) fit += u(0.10, 0.24);
   if (isFinisherType(player) && comp.finishers < quirks.finisherTarget) {
     const aggNorm = clamp(((player.battingAggression ?? 70) - 70) / 29, 0, 1);
@@ -662,11 +667,17 @@ function getTeamPlan(team: Team, allPlayers: Record<string, Player>): TeamPlan {
   const targetSquad = clamp(Math.round(u(24.0, 25.4)), 24, 25);
   const toBuy = clamp(targetSquad - comp.total, 6, 25);
 
+  const hasFTKeeper77Plus = squad.some(p => isFullTimeKeeper(p) && ratingOf(p) >= 77);
+
   // Score & rank the pool for this franchise (all stats × ideology × needs).
   const scored = pool
     .map(p => {
-      const fit = computePlayerFit(p, team, comp, quirks);
-      return { p, fit, val: intrinsicValue(p, team, comp, quirks, fit) };
+      const fit = computePlayerFit(p, team, comp, quirks, hasFTKeeper77Plus);
+      let val = intrinsicValue(p, team, comp, quirks, fit);
+      if (isFullTimeKeeper(p) && ratingOf(p) >= 77 && !hasFTKeeper77Plus) {
+        val = Math.max(val * 1.8, 300);
+      }
+      return { p, fit, val };
     })
     .sort((a, b) => (b.fit * b.val) - (a.fit * a.val));
 
@@ -755,7 +766,9 @@ export function computeTeamValuation(
   const excess = getRoleExcess(player.role, comp);
   const needsBodies = comp.total < plan.targetSquad;
   const planned = plan.maxBid[player.id];
-  const fit = computePlayerFit(player, team, comp, quirks);
+  const hasFTKeeper77Plus = squad.some(p => isFullTimeKeeper(p) && ratingOf(p) >= 77);
+  const isTargetFTKeeper = isFullTimeKeeper(player) && ratingOf(player) >= 77;
+  const fit = computePlayerFit(player, team, comp, quirks, hasFTKeeper77Plus);
   const highValue = ratingOf(player) >= 80 || (player.reputation ?? 0) >= 8;
 
   // ── Interest gate ─────────────────────────────────────────────────────────
@@ -764,21 +777,24 @@ export function computeTeamValuation(
   // only when a role is heavily overstacked (and he's not a planned target).
   const slotsLeft = plan.targetSquad - comp.total;
   if (planned === undefined) {
-    if (!needsBodies && !highValue) return 0;
+    if (!needsBodies && !highValue && !(isTargetFTKeeper && !hasFTKeeper77Plus)) return 0;
     // Role-stacking limit relaxes when the squad is well short of a full 25 —
     // a team that still needs many bodies takes the best available even if the
     // role is a little crowded, so everyone fills out to 25.
     const excessLimit = slotsLeft >= 6 ? 3 : slotsLeft >= 3 ? 4 : 6;
-    if (excess >= excessLimit && !highValue) return 0;
+    if (excess >= excessLimit && !highValue && !(isTargetFTKeeper && !hasFTKeeper77Plus)) return 0;
     // Weak-fit filler is ignored while there's still real squad-building to do.
-    const fitFloor = highValue ? 0.28 : slotsLeft >= 8 ? 0.50 : slotsLeft >= 4 ? 0.34 : 0.18;
+    const fitFloor = (highValue || (isTargetFTKeeper && !hasFTKeeper77Plus)) ? 0.28 : slotsLeft >= 8 ? 0.50 : slotsLeft >= 4 ? 0.34 : 0.18;
     if (fit < fitFloor) return 0;
   }
 
   // ── Market-anchored value for EVERY interested team ───────────────────────
   let base = intrinsicValue(player, team, comp, quirks, fit);
 
-  if (planned !== undefined) {
+  if (isTargetFTKeeper && !hasFTKeeper77Plus) {
+    // If lacking a 77+ full-time keeper, value this player extremely highly
+    base = Math.max(base * 1.8, 300);
+  } else if (planned !== undefined) {
     // Shortlist premium — pay a touch above market for pre-formed targets.
     base = Math.max(base, planned) * u(1.0, 1.10);
   } else {
@@ -809,14 +825,18 @@ export function computeTeamValuation(
   // cheap enough to still round out the squad.
   const marquee = ratingOf(player) >= 84 || (player.reputation ?? 0) >= 9;
   let concentration: number;
-  if (marquee)                 concentration = u(3.2, 5.2);
+  if (isTargetFTKeeper && !hasFTKeeper77Plus) {
+    concentration = u(4.5, 6.5);
+  } else if (marquee)                 concentration = u(3.2, 5.2);
   else if (planned !== undefined) concentration = u(2.2, 3.4);
   else if (highValue)          concentration = u(1.7, 2.7);
   else if (fit >= 0.72)        concentration = u(1.0, 1.6);
   else                         concentration = u(0.55, 1.00);
   // A near-empty squad shouldn't hand its whole purse to lot one even so.
   let affordabilityCap = Math.min(avgPerSlot * concentration, team.remainingPurse * (ratingOf(player) >= 84 ? 0.60 : 0.50));
-  if (ratingOf(player) >= 84) {
+  if (isTargetFTKeeper && !hasFTKeeper77Plus) {
+    affordabilityCap = Math.min(avgPerSlot * concentration, team.remainingPurse * 0.75); // Spend up to 75% of remaining purse
+  } else if (ratingOf(player) >= 84) {
     affordabilityCap *= u(1.15, 1.30);
   }
 
@@ -880,6 +900,17 @@ export function canAIBidAtAmount(
   if (squad.length >= RULES.maxTotal) return false;
 
   const reserve = minimumReserveLakhs(team, allPlayers);
+  const hasFTKeeper77 = squad.some(p => isFullTimeKeeper(p) && ratingOf(p) >= 77);
+  if (!hasFTKeeper77 && !(isFullTimeKeeper(player) && ratingOf(player) >= 77)) {
+    const remainingKeepers = ctx.remainingPlayerIds
+      .map(id => allPlayers[id])
+      .filter(p => p && p.id !== player.id && isFullTimeKeeper(p) && ratingOf(p) >= 77);
+    if (remainingKeepers.length > 0) {
+      const minBase = Math.min(...remainingKeepers.map(p => p.basePrice || 20));
+      const keeperReserve = Math.max(150, minBase);
+      if (team.remainingPurse - nextBid < reserve + keeperReserve) return false;
+    }
+  }
   if (team.remainingPurse - nextBid < reserve) return false;
 
   const valuation = getLotValuation(lotId, team, player, allPlayers, ctx);
