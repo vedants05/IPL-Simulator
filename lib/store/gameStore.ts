@@ -149,7 +149,7 @@ export const useGameStore = create<Store>()(
         const teamsMap: Record<string, Team> = {};
         TEAMS_SEED.forEach((t) => {
           const teamPlayers = PLAYERS_SEED.filter((p: Player) => 
-            p.iplHistory?.some((h) => h.season === "2026" && h.teamId === t.id)
+            p.currentTeamId === t.id
           );
           teamsMap[t.id] = {
             ...t,
