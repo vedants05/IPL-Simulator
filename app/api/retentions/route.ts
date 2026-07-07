@@ -1,13 +1,19 @@
 import { fetchPlayersFromSupabase } from "../../../lib/supabase/fetchPlayers";
-import { TEAMS_SEED } from "../../../lib/data/teams";
+import { fetchTeamsFromSupabase } from "../../../lib/supabase/fetchTeams";
 import { decideAIRetentions, estimateRetentionWorth } from "../../../lib/logic/auctionEngine";
 import { NextResponse } from "next/server";
 
+// Reads live data from Supabase — compute per request, don't prerender at build.
+export const dynamic = "force-dynamic";
+
 export async function GET() {
-  const players = await fetchPlayersFromSupabase();
+  const [players, teams] = await Promise.all([
+    fetchPlayersFromSupabase(),
+    fetchTeamsFromSupabase(),
+  ]);
   const playersMap = Object.fromEntries(players.map(p => [p.id, p]));
 
-  const results = TEAMS_SEED.map(team => {
+  const results = teams.map(team => {
     const squad = players.filter(p => p.currentTeamId === team.id);
     const isCapped = (p: any) => p.isCapped || p.nationality === "Overseas";
 

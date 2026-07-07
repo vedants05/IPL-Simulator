@@ -12,7 +12,7 @@ import {
   BidEntry,
 } from "@/lib/types";
 import { fetchPlayersFromSupabase } from "@/lib/supabase/fetchPlayers";
-import { TEAMS_SEED } from "@/lib/data/teams";
+import { fetchTeamsFromSupabase } from "@/lib/supabase/fetchTeams";
 import {
   buildAuctionSets,
   getNextBidAmount,
@@ -141,15 +141,18 @@ export const useGameStore = create<Store>()(
 
       // ----- Actions -----
       initNewGame: async (userTeamId) => {
-        const fetchedPlayers = await fetchPlayersFromSupabase();
-        
+        const [fetchedPlayers, fetchedTeams] = await Promise.all([
+          fetchPlayersFromSupabase(),
+          fetchTeamsFromSupabase(),
+        ]);
+
         const playersMap: Record<string, Player> = {};
         fetchedPlayers.forEach((p: Player) => {
           playersMap[p.id] = { ...p, currentTeamId: null, isRetained: false, retainedByTeamId: null };
         });
 
         const teamsMap: Record<string, Team> = {};
-        TEAMS_SEED.forEach((t) => {
+        fetchedTeams.forEach((t) => {
           const teamPlayers = fetchedPlayers.filter((p: Player) => 
             p.currentTeamId === t.id
           );
@@ -368,17 +371,7 @@ export const useGameStore = create<Store>()(
         const { auction, players, teams } = get();
         if (!auction || auction.phase !== "live") return;
 
-        // Sync teams colors with updated TEAMS_SEED
         const updatedTeams = { ...teams };
-        TEAMS_SEED.forEach((t) => {
-          if (updatedTeams[t.id]) {
-            updatedTeams[t.id] = {
-              ...updatedTeams[t.id],
-              primaryColor: t.primaryColor,
-              secondaryColor: t.secondaryColor,
-            };
-          }
-        });
 
         let activeSets = auction.sets;
         if (!activeSets || activeSets.length === 0) {
@@ -1098,17 +1091,6 @@ export const useGameStore = create<Store>()(
       }),
       merge: (persisted, current) => {
         const p = persisted as Partial<Store>;
-        if (p.teams) {
-          for (const [id, team] of Object.entries(p.teams)) {
-            const seed = TEAMS_SEED.find(t => t.id === id);
-            if (!team.dna) {
-              if (seed) team.dna = seed.dna;
-            } else if (!team.dna.segmentFocus && seed?.dna.segmentFocus) {
-              // Older saves predate teamLogic.csv segment focus — patch it in
-              team.dna.segmentFocus = seed.dna.segmentFocus;
-            }
-          }
-        }
         return { ...current, ...p };
       },
     }

@@ -1,8 +1,9 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useGameStore } from "@/lib/store/gameStore";
-import { TEAMS_SEED } from "@/lib/data/teams";
+import { fetchTeamsFromSupabase } from "@/lib/supabase/fetchTeams";
+import { Team } from "@/lib/types";
 
 export default function SetupPage() {
   const router = useRouter();
@@ -10,6 +11,18 @@ export default function SetupPage() {
   const [step, setStep] = useState<"team" | "confirm">("team");
   const [selectedTeam, setSelectedTeam] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [teams, setTeams] = useState<Team[]>([]);
+  const [teamsLoading, setTeamsLoading] = useState(true);
+
+  useEffect(() => {
+    fetchTeamsFromSupabase()
+      .then(setTeams)
+      .catch((err) => {
+        console.error(err);
+        alert("Failed to load team data from Supabase. Please refresh.");
+      })
+      .finally(() => setTeamsLoading(false));
+  }, []);
 
   async function handleStart() {
     if (!selectedTeam) return;
@@ -24,7 +37,7 @@ export default function SetupPage() {
     }
   }
 
-  const chosenTeam = TEAMS_SEED.find((t) => t.id === selectedTeam);
+  const chosenTeam = teams.find((t) => t.id === selectedTeam);
 
   return (
     <div className="min-h-screen bg-bg text-text-primary flex flex-col">
@@ -55,8 +68,14 @@ export default function SetupPage() {
                 </p>
               </div>
 
+              {teamsLoading && (
+                <div className="font-space-mono text-[12px] text-text-secondary mb-8 tracking-wider">
+                  LOADING TEAMS…
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-3 mb-8">
-                {TEAMS_SEED.map((team) => {
+                {teams.map((team) => {
                   const isSelected = selectedTeam === team.id;
                   return (
                     <button
