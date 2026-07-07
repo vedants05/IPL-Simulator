@@ -2,9 +2,6 @@
 import { useState } from "react";
 import { Player } from "@/lib/types";
 import { useGameStore } from "@/lib/store/gameStore";
-import { PLAYERS } from "@/lib/data/players";
-
-const PLAYERS_MAP = new Map(PLAYERS.map((p) => [p.id, p]));
 
 interface Props {
   player: Player;
@@ -70,13 +67,13 @@ function RatingBar({
 
 export default function PlayerCard({ player, soldPrice, collapsible = true }: Props) {
   const [showDetails, setShowDetails] = useState(false);
-  const { teams } = useGameStore();
+  const { teams, players } = useGameStore();
 
-  const seedP = PLAYERS_MAP.get(player.id);
-  const isWk = player.isWicketkeeper ?? seedP?.isWicketkeeper;
-  const isPtWk = player.isPartTimeWk ?? seedP?.isPartTimeWk;
-  const isOpener = player.isOpener ?? seedP?.isOpener;
-  const isFinisher = player.isFinisher ?? seedP?.isFinisher;
+  const storeP = players?.[player.id];
+  const isWk = player.isWicketkeeper ?? storeP?.isWicketkeeper;
+  const isPtWk = player.isPartTimeWk ?? storeP?.isPartTimeWk;
+  const isOpener = player.isOpener ?? storeP?.isOpener;
+  const isFinisher = player.isFinisher ?? storeP?.isFinisher;
 
   const isFullTimeWk = isWk && !isPtWk;
   const isExpanded = !collapsible || showDetails;
@@ -98,6 +95,42 @@ export default function PlayerCard({ player, soldPrice, collapsible = true }: Pr
   const validHistory = player.iplHistory.filter(
     (g) => g.teamId && g.teamId.toUpperCase() !== "UNSOLD" && g.teamId.trim() !== ""
   );
+
+  const groupedHistory: { yearsLabel: string; teamId: string; price: number }[] = [];
+  if (validHistory && validHistory.length > 0) {
+    const sorted = [...validHistory].sort((a, b) => parseInt(a.season) - parseInt(b.season));
+    let currentGroup: { startYear: number; endYear: number; teamId: string; price: number } | null = null;
+    for (const item of sorted) {
+      const year = parseInt(item.season);
+      if (isNaN(year)) continue;
+      if (!currentGroup) {
+        currentGroup = { startYear: year, endYear: year, teamId: item.teamId, price: item.price };
+      } else {
+        if (year === currentGroup.endYear + 1 && item.teamId === currentGroup.teamId && item.price === currentGroup.price) {
+          currentGroup.endYear = year;
+        } else {
+          groupedHistory.push({
+            yearsLabel: currentGroup.startYear === currentGroup.endYear
+              ? `${currentGroup.startYear}`
+              : `${currentGroup.startYear}-${String(currentGroup.endYear).slice(-2)}`,
+            teamId: currentGroup.teamId,
+            price: currentGroup.price
+          });
+          currentGroup = { startYear: year, endYear: year, teamId: item.teamId, price: item.price };
+        }
+      }
+    }
+    if (currentGroup) {
+      groupedHistory.push({
+        yearsLabel: currentGroup.startYear === currentGroup.endYear
+          ? `${currentGroup.startYear}`
+          : `${currentGroup.startYear}-${String(currentGroup.endYear).slice(-2)}`,
+        teamId: currentGroup.teamId,
+        price: currentGroup.price
+      });
+    }
+    groupedHistory.reverse();
+  }
 
   return (
     <div className="flex flex-col bg-surface overflow-hidden">
@@ -264,36 +297,36 @@ export default function PlayerCard({ player, soldPrice, collapsible = true }: Pr
             </div>
             <RatingBar
               label="Reputation"
-              current={(player.reputation ?? seedP?.reputation ?? 5) * 10}
-              potential={(player.reputation ?? seedP?.reputation ?? 5) * 10}
+              current={(player.reputation ?? storeP?.reputation ?? 5) * 10}
+              potential={(player.reputation ?? storeP?.reputation ?? 5) * 10}
               color="#8b5cf6"
             />
             <RatingBar
               label="Captaincy"
-              current={player.captaincy ?? seedP?.captaincy ?? 50}
-              potential={player.captaincy ?? seedP?.captaincy ?? 50}
+              current={player.captaincy ?? storeP?.captaincy ?? 50}
+              potential={player.captaincy ?? storeP?.captaincy ?? 50}
               color="#0284c7"
             />
             <RatingBar
               label="Batting Aggression"
-              current={player.battingAggression ?? seedP?.battingAggression ?? 50}
-              potential={player.battingAggression ?? seedP?.battingAggression ?? 50}
+              current={player.battingAggression ?? storeP?.battingAggression ?? 50}
+              potential={player.battingAggression ?? storeP?.battingAggression ?? 50}
               color="#f97316"
             />
           </div>
 
           {/* IPL History (Valid Teams Only) */}
-          {validHistory.length > 0 && (
+          {groupedHistory.length > 0 && (
             <div className="px-6 py-4" style={{ borderBottom: "1px solid rgba(22,19,15,.15)" }}>
               <div className="font-space-mono font-bold text-[9px] tracking-widest text-text-secondary mb-3 uppercase">
                 IPL History
               </div>
               <div className="flex flex-col gap-2">
-                {validHistory.map((g, i) => (
+                {groupedHistory.map((g, i) => (
                   <div key={i} className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <span className="font-space-mono text-[9px] text-text-secondary w-[68px]">
-                        {g.season}
+                        {g.yearsLabel}
                       </span>
                       <span className="font-barlow font-semibold text-[12px] text-text-primary">{g.teamId}</span>
                     </div>

@@ -1,15 +1,16 @@
 #!/usr/bin/env tsx
 /**
- * Reads database.csv → writes lib/data/players.ts → seeds Supabase
+ * Reads IPLMainGameDatabase.csv → writes lib/data/players.ts → seeds Supabase
  * Run: npx tsx scripts/build-players.ts
  */
 
 import * as fs from "fs";
 import * as path from "path";
 import { createClient } from "@supabase/supabase-js";
+import WebSocket from "ws";
 
 const ROOT = process.cwd();
-const CSV_PATH = path.join(ROOT, "database.csv");
+const CSV_PATH = path.join(ROOT, "IPLMainGameDatabase.csv");
 const OUT_PATH = path.join(ROOT, "lib", "data", "players.ts");
 
 import WebSocket from "ws";
@@ -47,377 +48,6 @@ const ROLE_MAP: Record<string, string> = {
   "Wicketkeeper-Batter": "WK-Batsman",
 };
 
-// ---- Overrides & History Load ----
-const OVERRIDES: Record<string, { teamId: string; season: string; price: number }[]> = {
-  "varun-chakravarthy": [
-    { teamId: "PBKS", season: "2019", price: 840 },
-    { teamId: "KKR", season: "2020", price: 400 },
-    { teamId: "KKR", season: "2021", price: 400 },
-    { teamId: "KKR", season: "2022", price: 800 },
-    { teamId: "KKR", season: "2023", price: 800 },
-    { teamId: "KKR", season: "2024", price: 800 },
-    { teamId: "KKR", season: "2025", price: 1200 },
-    { teamId: "KKR", season: "2026", price: 1200 }
-  ],
-  "sunil-narine": [
-    { teamId: "KKR", season: "2019", price: 1250 },
-    { teamId: "KKR", season: "2020", price: 1250 },
-    { teamId: "KKR", season: "2021", price: 1250 },
-    { teamId: "KKR", season: "2022", price: 600 },
-    { teamId: "KKR", season: "2023", price: 600 },
-    { teamId: "KKR", season: "2024", price: 600 },
-    { teamId: "KKR", season: "2025", price: 1200 },
-    { teamId: "KKR", season: "2026", price: 1200 }
-  ],
-  "rinku-singh": [
-    { teamId: "KKR", season: "2019", price: 80 },
-    { teamId: "KKR", season: "2020", price: 80 },
-    { teamId: "KKR", season: "2021", price: 80 },
-    { teamId: "KKR", season: "2022", price: 55 },
-    { teamId: "KKR", season: "2023", price: 55 },
-    { teamId: "KKR", season: "2024", price: 55 },
-    { teamId: "KKR", season: "2025", price: 1300 },
-    { teamId: "KKR", season: "2026", price: 1300 }
-  ],
-  "cameron-green": [
-    { teamId: "MI", season: "2023", price: 1750 },
-    { teamId: "MI", season: "2024", price: 1750 },
-    { teamId: "KKR", season: "2025", price: 2520 },
-    { teamId: "KKR", season: "2026", price: 2520 }
-  ],
-  "matheesha-pathirana": [
-    { teamId: "CSK", season: "2022", price: 20 },
-    { teamId: "CSK", season: "2023", price: 20 },
-    { teamId: "CSK", season: "2024", price: 20 },
-    { teamId: "KKR", season: "2025", price: 1800 },
-    { teamId: "KKR", season: "2026", price: 1800 }
-  ],
-  "jasprit-bumrah": [
-    { teamId: "MI", season: "2019", price: 700 },
-    { teamId: "MI", season: "2020", price: 700 },
-    { teamId: "MI", season: "2021", price: 700 },
-    { teamId: "MI", season: "2022", price: 1200 },
-    { teamId: "MI", season: "2023", price: 1200 },
-    { teamId: "MI", season: "2024", price: 1200 },
-    { teamId: "MI", season: "2025", price: 1800 },
-    { teamId: "MI", season: "2026", price: 1800 }
-  ],
-  "suryakumar-yadav": [
-    { teamId: "MI", season: "2019", price: 320 },
-    { teamId: "MI", season: "2020", price: 320 },
-    { teamId: "MI", season: "2021", price: 320 },
-    { teamId: "MI", season: "2022", price: 800 },
-    { teamId: "MI", season: "2023", price: 800 },
-    { teamId: "MI", season: "2024", price: 800 },
-    { teamId: "MI", season: "2025", price: 1635 },
-    { teamId: "MI", season: "2026", price: 1635 }
-  ],
-  "rohit-sharma": [
-    { teamId: "MI", season: "2019", price: 1500 },
-    { teamId: "MI", season: "2020", price: 1500 },
-    { teamId: "MI", season: "2021", price: 1500 },
-    { teamId: "MI", season: "2022", price: 1600 },
-    { teamId: "MI", season: "2023", price: 1600 },
-    { teamId: "MI", season: "2024", price: 1600 },
-    { teamId: "MI", season: "2025", price: 1630 },
-    { teamId: "MI", season: "2026", price: 1600 }
-  ],
-  "hardik-pandya": [
-    { teamId: "MI", season: "2019", price: 1100 },
-    { teamId: "MI", season: "2020", price: 1100 },
-    { teamId: "MI", season: "2021", price: 1100 },
-    { teamId: "GT", season: "2022", price: 1500 },
-    { teamId: "GT", season: "2023", price: 1500 },
-    { teamId: "MI", season: "2024", price: 1500 },
-    { teamId: "MI", season: "2025", price: 1635 },
-    { teamId: "MI", season: "2026", price: 1635 }
-  ],
-  "trent-boult": [
-    { teamId: "DC", season: "2019", price: 320 },
-    { teamId: "MI", season: "2020", price: 320 },
-    { teamId: "MI", season: "2021", price: 320 },
-    { teamId: "RR", season: "2022", price: 800 },
-    { teamId: "RR", season: "2023", price: 800 },
-    { teamId: "RR", season: "2024", price: 800 },
-    { teamId: "MI", season: "2025", price: 1250 },
-    { teamId: "MI", season: "2026", price: 1250 }
-  ],
-  "virat-kohli": [
-    { teamId: "RCB", season: "2019", price: 1700 },
-    { teamId: "RCB", season: "2020", price: 1700 },
-    { teamId: "RCB", season: "2021", price: 1700 },
-    { teamId: "RCB", season: "2022", price: 1500 },
-    { teamId: "RCB", season: "2023", price: 1500 },
-    { teamId: "RCB", season: "2024", price: 1500 },
-    { teamId: "RCB", season: "2025", price: 2100 },
-    { teamId: "RCB", season: "2026", price: 2100 }
-  ],
-  "shubman-gill": [
-    { teamId: "KKR", season: "2019", price: 180 },
-    { teamId: "KKR", season: "2020", price: 180 },
-    { teamId: "KKR", season: "2021", price: 180 },
-    { teamId: "GT", season: "2022", price: 800 },
-    { teamId: "GT", season: "2023", price: 800 },
-    { teamId: "GT", season: "2024", price: 800 },
-    { teamId: "GT", season: "2025", price: 1650 },
-    { teamId: "GT", season: "2026", price: 1650 }
-  ],
-  "rashid-khan": [
-    { teamId: "SRH", season: "2019", price: 900 },
-    { teamId: "SRH", season: "2020", price: 900 },
-    { teamId: "SRH", season: "2021", price: 900 },
-    { teamId: "GT", season: "2022", price: 1500 },
-    { teamId: "GT", season: "2023", price: 1500 },
-    { teamId: "GT", season: "2024", price: 1500 },
-    { teamId: "GT", season: "2025", price: 1800 },
-    { teamId: "GT", season: "2026", price: 1800 }
-  ],
-  "rishabh-pant": [
-    { teamId: "DC", season: "2019", price: 1500 },
-    { teamId: "DC", season: "2020", price: 1500 },
-    { teamId: "DC", season: "2021", price: 1500 },
-    { teamId: "DC", season: "2022", price: 1600 },
-    { teamId: "DC", season: "2023", price: 1600 },
-    { teamId: "DC", season: "2024", price: 1600 },
-    { teamId: "LSG", season: "2025", price: 2700 },
-    { teamId: "LSG", season: "2026", price: 2700 }
-  ],
-  "kl-rahul": [
-    { teamId: "PBKS", season: "2019", price: 1100 },
-    { teamId: "PBKS", season: "2020", price: 1100 },
-    { teamId: "PBKS", season: "2021", price: 1100 },
-    { teamId: "LSG", season: "2022", price: 1700 },
-    { teamId: "LSG", season: "2023", price: 1700 },
-    { teamId: "LSG", season: "2024", price: 1700 },
-    { teamId: "DC", season: "2025", price: 1400 },
-    { teamId: "DC", season: "2026", price: 1400 }
-  ],
-  "shreyas-iyer": [
-    { teamId: "DC", season: "2019", price: 700 },
-    { teamId: "DC", season: "2020", price: 700 },
-    { teamId: "DC", season: "2021", price: 700 },
-    { teamId: "KKR", season: "2022", price: 1225 },
-    { teamId: "KKR", season: "2023", price: 1225 },
-    { teamId: "KKR", season: "2024", price: 1225 },
-    { teamId: "PBKS", season: "2025", price: 2675 },
-    { teamId: "PBKS", season: "2026", price: 2675 }
-  ],
-  "ravindra-jadeja": [
-    { teamId: "CSK", season: "2019", price: 700 },
-    { teamId: "CSK", season: "2020", price: 700 },
-    { teamId: "CSK", season: "2021", price: 700 },
-    { teamId: "CSK", season: "2022", price: 1600 },
-    { teamId: "CSK", season: "2023", price: 1600 },
-    { teamId: "CSK", season: "2024", price: 1600 },
-    { teamId: "RR", season: "2025", price: 1400 },
-    { teamId: "RR", season: "2026", price: 1400 }
-  ],
-  "yuzvendra-chahal": [
-    { teamId: "RCB", season: "2019", price: 600 },
-    { teamId: "RCB", season: "2020", price: 600 },
-    { teamId: "RCB", season: "2021", price: 600 },
-    { teamId: "RR", season: "2022", price: 650 },
-    { teamId: "RR", season: "2023", price: 650 },
-    { teamId: "RR", season: "2024", price: 650 },
-    { teamId: "PBKS", season: "2025", price: 1800 },
-    { teamId: "PBKS", season: "2026", price: 1800 }
-  ],
-  "ruturaj-gaikwad": [
-    { teamId: "CSK", season: "2019", price: 20 },
-    { teamId: "CSK", season: "2020", price: 20 },
-    { teamId: "CSK", season: "2021", price: 20 },
-    { teamId: "CSK", season: "2022", price: 600 },
-    { teamId: "CSK", season: "2023", price: 600 },
-    { teamId: "CSK", season: "2024", price: 600 },
-    { teamId: "CSK", season: "2025", price: 1800 },
-    { teamId: "CSK", season: "2026", price: 1800 }
-  ],
-  "sanju-samson": [
-    { teamId: "RR", season: "2019", price: 800 },
-    { teamId: "RR", season: "2020", price: 800 },
-    { teamId: "RR", season: "2021", price: 800 },
-    { teamId: "RR", season: "2022", price: 1400 },
-    { teamId: "RR", season: "2023", price: 1400 },
-    { teamId: "RR", season: "2024", price: 1400 },
-    { teamId: "CSK", season: "2025", price: 1800 },
-    { teamId: "CSK", season: "2026", price: 1800 }
-  ],
-  "ms-dhoni": [
-    { teamId: "CSK", season: "2019", price: 1500 },
-    { teamId: "CSK", season: "2020", price: 1500 },
-    { teamId: "CSK", season: "2021", price: 1500 },
-    { teamId: "CSK", season: "2022", price: 1200 },
-    { teamId: "CSK", season: "2023", price: 1200 },
-    { teamId: "CSK", season: "2024", price: 1200 },
-    { teamId: "CSK", season: "2025", price: 400 },
-    { teamId: "CSK", season: "2026", price: 400 }
-  ],
-  "quinton-de-kock": [
-    { teamId: "MI", season: "2019", price: 280 },
-    { teamId: "MI", season: "2020", price: 280 },
-    { teamId: "MI", season: "2021", price: 280 },
-    { teamId: "LSG", season: "2022", price: 675 },
-    { teamId: "LSG", season: "2023", price: 675 },
-    { teamId: "LSG", season: "2024", price: 675 },
-    { teamId: "MI", season: "2025", price: 100 },
-    { teamId: "MI", season: "2026", price: 100 }
-  ],
-  "jos-buttler": [
-    { teamId: "RR", season: "2019", price: 440 },
-    { teamId: "RR", season: "2020", price: 440 },
-    { teamId: "RR", season: "2021", price: 440 },
-    { teamId: "RR", season: "2022", price: 1000 },
-    { teamId: "RR", season: "2023", price: 1000 },
-    { teamId: "RR", season: "2024", price: 1000 },
-    { teamId: "RCB", season: "2025", price: 1575 },
-    { teamId: "RCB", season: "2026", price: 1575 }
-  ],
-  "ishan-kishan": [
-    { teamId: "MI", season: "2019", price: 620 },
-    { teamId: "MI", season: "2020", price: 620 },
-    { teamId: "MI", season: "2021", price: 620 },
-    { teamId: "MI", season: "2022", price: 1525 },
-    { teamId: "MI", season: "2023", price: 1525 },
-    { teamId: "MI", season: "2024", price: 1525 },
-    { teamId: "SRH", season: "2025", price: 1125 },
-    { teamId: "SRH", season: "2026", price: 1125 }
-  ],
-  "mitchell-starc": [
-    { teamId: "KKR", season: "2019", price: 2475 },
-    { teamId: "KKR", season: "2020", price: 2475 },
-    { teamId: "KKR", season: "2021", price: 2475 },
-    { teamId: "KKR", season: "2022", price: 2475 },
-    { teamId: "KKR", season: "2023", price: 2475 },
-    { teamId: "KKR", season: "2024", price: 2475 },
-    { teamId: "DC", season: "2025", price: 1175 },
-    { teamId: "DC", season: "2026", price: 1175 }
-  ],
-  "pat-cummins": [
-    { teamId: "KKR", season: "2019", price: 1550 },
-    { teamId: "KKR", season: "2020", price: 1550 },
-    { teamId: "KKR", season: "2021", price: 1550 },
-    { teamId: "KKR", season: "2022", price: 725 },
-    { teamId: "KKR", season: "2023", price: 725 },
-    { teamId: "SRH", season: "2024", price: 2050 },
-    { teamId: "SRH", season: "2025", price: 1800 },
-    { teamId: "SRH", season: "2026", price: 1800 }
-  ],
-  "heinrich-klaasen": [
-    { teamId: "RCB", season: "2019", price: 50 },
-    { teamId: "RCB", season: "2020", price: 50 },
-    { teamId: "RCB", season: "2021", price: 50 },
-    { teamId: "SRH", season: "2022", price: 525 },
-    { teamId: "SRH", season: "2023", price: 525 },
-    { teamId: "SRH", season: "2024", price: 525 },
-    { teamId: "SRH", season: "2025", price: 2300 },
-    { teamId: "SRH", season: "2026", price: 2300 }
-  ],
-  "nicholas-pooran": [
-    { teamId: "PBKS", season: "2019", price: 420 },
-    { teamId: "PBKS", season: "2020", price: 420 },
-    { teamId: "PBKS", season: "2021", price: 420 },
-    { teamId: "SRH", season: "2022", price: 1075 },
-    { teamId: "LSG", season: "2023", price: 1600 },
-    { teamId: "LSG", season: "2024", price: 1600 },
-    { teamId: "LSG", season: "2025", price: 2100 },
-    { teamId: "LSG", season: "2026", price: 2100 }
-  ],
-  "andre-russell": [
-    { teamId: "KKR", season: "2019", price: 850 },
-    { teamId: "KKR", season: "2020", price: 850 },
-    { teamId: "KKR", season: "2021", price: 850 },
-    { teamId: "KKR", season: "2022", price: 1200 },
-    { teamId: "KKR", season: "2023", price: 1200 },
-    { teamId: "KKR", season: "2024", price: 1200 },
-    { teamId: "KKR", season: "2025", price: 1200 },
-    { teamId: "KKR", season: "2026", price: 1200 }
-  ],
-  "glenn-maxwell": [
-    { teamId: "PBKS", season: "2019", price: 1075 },
-    { teamId: "PBKS", season: "2020", price: 1075 },
-    { teamId: "RCB", season: "2021", price: 1425 },
-    { teamId: "RCB", season: "2022", price: 1100 },
-    { teamId: "RCB", season: "2023", price: 1100 },
-    { teamId: "RCB", season: "2024", price: 1100 },
-    { teamId: "PBKS", season: "2025", price: 420 },
-    { teamId: "PBKS", season: "2026", price: 420 }
-  ],
-  "marcus-stoinis": [
-    { teamId: "RCB", season: "2019", price: 110 },
-    { teamId: "DC", season: "2020", price: 480 },
-    { teamId: "DC", season: "2021", price: 480 },
-    { teamId: "LSG", season: "2022", price: 920 },
-    { teamId: "LSG", season: "2023", price: 920 },
-    { teamId: "LSG", season: "2024", price: 920 },
-    { teamId: "PBKS", season: "2025", price: 1100 },
-    { teamId: "PBKS", season: "2026", price: 1100 }
-  ],
-  "liam-livingstone": [
-    { teamId: "RR", season: "2019", price: 75 },
-    { teamId: "RR", season: "2020", price: 75 },
-    { teamId: "RR", season: "2021", price: 75 },
-    { teamId: "PBKS", season: "2022", price: 1150 },
-    { teamId: "PBKS", season: "2023", price: 1150 },
-    { teamId: "PBKS", season: "2024", price: 1150 },
-    { teamId: "RCB", season: "2025", price: 875 },
-    { teamId: "RCB", season: "2026", price: 875 }
-  ],
-  "kuldeep-yadav": [
-    { teamId: "KKR", season: "2019", price: 580 },
-    { teamId: "KKR", season: "2020", price: 580 },
-    { teamId: "KKR", season: "2021", price: 580 },
-    { teamId: "DC", season: "2022", price: 200 },
-    { teamId: "DC", season: "2023", price: 200 },
-    { teamId: "DC", season: "2024", price: 200 },
-    { teamId: "DC", season: "2025", price: 1325 },
-    { teamId: "DC", season: "2026", price: 1325 }
-  ],
-  "axar-patel": [
-    { teamId: "DC", season: "2019", price: 500 },
-    { teamId: "DC", season: "2020", price: 500 },
-    { teamId: "DC", season: "2021", price: 500 },
-    { teamId: "DC", season: "2022", price: 900 },
-    { teamId: "DC", season: "2023", price: 900 },
-    { teamId: "DC", season: "2024", price: 900 },
-    { teamId: "DC", season: "2025", price: 1650 },
-    { teamId: "DC", season: "2026", price: 1650 }
-  ],
-  "abhishek-sharma": [
-    { teamId: "SRH", season: "2019", price: 55 },
-    { teamId: "SRH", season: "2020", price: 55 },
-    { teamId: "SRH", season: "2021", price: 55 },
-    { teamId: "SRH", season: "2022", price: 650 },
-    { teamId: "SRH", season: "2023", price: 650 },
-    { teamId: "SRH", season: "2024", price: 650 },
-    { teamId: "SRH", season: "2025", price: 1400 },
-    { teamId: "SRH", season: "2026", price: 1400 }
-  ],
-  "travis-head": [
-    { teamId: "SRH", season: "2019", price: 680 },
-    { teamId: "SRH", season: "2020", price: 680 },
-    { teamId: "SRH", season: "2021", price: 680 },
-    { teamId: "SRH", season: "2022", price: 680 },
-    { teamId: "SRH", season: "2023", price: 680 },
-    { teamId: "SRH", season: "2024", price: 680 },
-    { teamId: "SRH", season: "2025", price: 1400 },
-    { teamId: "SRH", season: "2026", price: 1400 }
-  ]
-};
-
-const originalHistoryMap = new Map<string, any[]>();
-try {
-  const playersPath = path.join(ROOT, "lib", "data", "players.ts");
-  if (fs.existsSync(playersPath)) {
-    const { PLAYERS_SEED } = require(playersPath);
-    for (const p of PLAYERS_SEED) {
-      originalHistoryMap.set(p.id, p.iplHistory);
-    }
-    console.log(`Loaded ${originalHistoryMap.size} players' histories from existing file`);
-  }
-} catch (e) {
-  console.log("Failed to load existing histories:", e);
-}
-
 // ---- Helpers ----
 function toSlug(name: string): string {
   return name.toLowerCase().replace(/[.\s]+/g, "-").replace(/[^a-z0-9-]/g, "").replace(/-+/g, "-").replace(/^-|-$/g, "");
@@ -434,14 +64,18 @@ function salaryToStar(salary: number): number {
   return 1.5;
 }
 
-function starToBase(star: number): number {
-  if (star >= 5.0) return 200;
-  if (star >= 4.5) return 150;
-  if (star >= 4.0) return 100;
-  if (star >= 3.5) return 75;
-  if (star >= 3.0) return 50;
-  if (star >= 2.5) return 30;
-  return 20;
+function calculateBasePrice(isCapped: boolean, star: number): number {
+  if (isCapped) {
+    if (star >= 5.0) return 200;
+    if (star >= 4.5) return 150;
+    if (star >= 4.0) return 100;
+    if (star >= 3.5) return 75;
+    return 50;
+  } else {
+    if (star >= 3.5) return 50;
+    if (star >= 2.5) return 40;
+    return 30;
+  }
 }
 
 function bowlStyle(bowlType: string, bowlHand: string): string | null {
@@ -497,40 +131,6 @@ function genPotential(curBat: number, potBat: number, curBowl: number, potBowl: 
   return "Established";
 }
 
-function genBatStats(bat: number, age: number, isCapped: boolean) {
-  if (bat <= 0) return { matches: 0, innings: 0, runs: 0, average: 0, strikeRate: 0, fifties: 0, hundreds: 0 };
-  const m   = isCapped ? Math.max(25, (age - 18) * 6) : Math.max(8, (age - 18) * 2);
-  const avg = 12 + (bat / 100) * 32;
-  const sr  = 108 + (bat / 100) * 57;
-  const inn = Math.round(m * 0.87);
-  const runs = Math.round(inn * avg);
-  return {
-    matches: m, innings: inn, runs,
-    average: Math.round(avg * 10) / 10,
-    strikeRate: Math.round(sr * 10) / 10,
-    fifties: Math.floor(runs / 360),
-    hundreds: Math.floor(runs / 1300),
-  };
-}
-
-function genBowlStats(bowl: number, age: number, isCapped: boolean) {
-  if (bowl <= 0) return { matches: 0, wickets: 0, economy: 0, average: 0, bestFigures: "0/0" };
-  const m      = isCapped ? Math.max(20, (age - 18) * 5) : Math.max(5, (age - 18) * 2);
-  const wpm    = 0.6 + (bowl / 100) * 1.8;
-  const wickets = Math.round(m * wpm);
-  const econ   = 8.8 - (bowl / 100) * 2.5;
-  const avg    = 36  - (bowl / 100) * 17;
-  const bw     = Math.min(6, Math.floor(2 + (bowl / 100) * 4));
-  const br     = 15 + Math.floor((100 - bowl) / 10) * 2;
-  return {
-    matches: m, wickets,
-    economy: Math.round(econ * 100) / 100,
-    average: Math.round(avg * 100) / 100,
-    bestFigures: `${bw}/${br}`,
-  };
-}
-
-// ---- CSV Parsing ----
 function parseCSVLine(line: string): string[] {
   const result: string[] = [];
   let cur = "", inQ = false;
@@ -549,16 +149,37 @@ function parseCSVLine(line: string): string[] {
   return result;
 }
 
-const rawLines = fs.readFileSync(CSV_PATH, "utf-8")
-  .replace(/\r/g, "")
-  .split("\n")
-  .filter(l => l.trim());
+function parseHistoryValue(season: string, val: string): { teamId: string; season: string; price: number } | null {
+  val = val.trim();
+  if (!val || val === "--" || val === "" || val.toLowerCase().startsWith("unsold")) return null;
+  
+  const teamMatch = val.match(/^([A-Z]+)/i);
+  if (!teamMatch) return null;
+  const teamId = teamMatch[1].toUpperCase();
+  
+  const priceMatch = val.match(/\(([\d.]+)\s*(Cr|L)\)/i);
+  let price = 20; 
+  if (priceMatch) {
+    const num = parseFloat(priceMatch[1]);
+    const unit = priceMatch[2].toLowerCase();
+    price = unit === "cr" ? Math.round(num * 100) : Math.round(num);
+  }
+  return { teamId, season, price };
+}
 
-const dataLines = rawLines.slice(1); // skip header
+// ---- Main Seeding Execution ----
+async function main() {
+  if (!fs.existsSync(CSV_PATH)) {
+    console.error(`Error: Could not find CSV file at ${CSV_PATH}`);
+    process.exit(1);
+  }
 
-// ---- Build players ----
-const seenIds = new Set<string>();
+  const rawLines = fs.readFileSync(CSV_PATH, "utf-8")
+    .replace(/\r/g, "")
+    .split("\n")
+    .filter(l => l.trim());
 
+<<<<<<< HEAD
 const players = dataLines
   .map(line => parseCSVLine(line))
   .filter(cols => cols[0] && cols[1] && TEAM_MAP[cols[0]])
@@ -582,43 +203,159 @@ const players = dataLines
     const hasBattedAt5 = cols[17] === "TRUE";
     const hasBattedAt6 = cols[18] === "TRUE";
     const onlyOpensOrBenched = cols[19] === "TRUE";
+=======
+  const headers = parseCSVLine(rawLines[0]);
+
+  // Dynamically map headers to column indices
+  const idxTeam = headers.indexOf("Team");
+  const idxName = headers.indexOf("Player Name");
+  const idxAge = headers.indexOf("Age");
+  const idxNationality = headers.indexOf("Nationality");
+  const idxRole = headers.indexOf("Primary Role");
+  const idxSalary = headers.indexOf("IPL 2026 Salary (Cr)");
+  const idxOverseas = headers.indexOf("Overseas Status");
+  const idxStatus = headers.indexOf("Status");
+  const idxBowlType = headers.indexOf("Bowling Type (Spinner/Pacer/NA)");
+  const idxBowlHand = headers.indexOf("Bowling Hand");
+  const idxBatHand = headers.findIndex(h => h.includes("Batting Hand"));
+  const idxCurBat = headers.indexOf("Current Batting");
+  const idxPotBat = headers.indexOf("Potential Batting");
+  const idxCurBowl = headers.indexOf("Current Bowling");
+  const idxPotBowl = headers.indexOf("Potential Bowling");
+  const idxReputation = headers.indexOf("Reputation");
+  const idxAggression = headers.indexOf("Batting Aggression (1-99)");
+  const idxKeep = headers.indexOf("Can they keep wickets?");
+  const idxPartKeep = headers.indexOf("Are they a part time wicketkeeper?");
+  const idxOpener = headers.indexOf("Opener?");
+  const idxFinisher = headers.indexOf("Finisher?");
+  const idxCore = headers.indexOf("Core Batter");
+  const idxOnlyOpener = headers.indexOf("Only Opener");
+  const idxCaptaincy = headers.indexOf("Captaincy");
+  const idxBatted3 = headers.indexOf("hasBattedAt3");
+  const idxBatted4 = headers.indexOf("hasBattedAt4");
+  const idxBatted5 = headers.indexOf("hasBattedAt5");
+  const idxBatted6 = headers.indexOf("hasBattedAt6");
+  const idxBatted7 = headers.indexOf("hasBattedAt7");
+
+  // T20 Stats
+  const idxT20Games = headers.indexOf("T20 Games");
+  const idxT20BatInns = headers.indexOf("T20 Batting Innings");
+  const idxT20BatAvg = headers.indexOf("T20 batting average");
+  const idxT20Runs = headers.indexOf("T20 runs");
+  const idxT20SR = headers.indexOf("T20 strike rate");
+  const idxT20BowlInns = headers.indexOf("T20 bowling innings");
+  const idxT20BowlAvg = headers.indexOf("T20 bowling average");
+  const idxT20Wickets = headers.indexOf("T20 wickets");
+  const idxT20WKCatches = headers.indexOf("T20 WK Catches");
+  const idxT20WKStumpings = headers.indexOf("T20 WK Stumpings");
+
+  // IPL Stats
+  const idxIPLGames = headers.indexOf("IPL games");
+  const idxIPLRuns = headers.indexOf("IPL runs");
+  const idxIPLAvg = headers.indexOf("IPL average");
+  const idxIPLSR = headers.indexOf("IPL strike rate");
+  const idxIPLBowlInns = headers.indexOf("IPL bowling innings");
+  const idxIPLBowlAvg = headers.indexOf("IPL bowling average");
+  const idxIPLWickets = headers.indexOf("IPL wickets");
+
+  const dataLines = rawLines.slice(1);
+  const seenIds = new Set<string>();
+
+  const players = dataLines.map(line => {
+    const cols = parseCSVLine(line);
+    const rawTeam = cols[idxTeam] || "";
+    const teamId = TEAM_MAP[rawTeam] || null;
+    const name = cols[idxName];
+    const age = parseInt(cols[idxAge]) || 0;
+    const salary = parseFloat(cols[idxSalary]) || 0;
+    const nat = cols[idxOverseas] === "Overseas" ? "Overseas" : "Indian";
+    const isCapped = cols[idxStatus] === "Capped";
+    const role = ROLE_MAP[cols[idxRole]] ?? "Batsman";
+    const bowlType = cols[idxBowlType] || "NA";
+    const bowlHand = cols[idxBowlHand] || "";
+    const batHand = (cols[idxBatHand] || "").includes("LHB") || (cols[idxBatHand] || "").toLowerCase().includes("left") ? "Left-hand" : "Right-hand";
+    const curBat = parseInt(cols[idxCurBat]) || 0;
+    const potBat = parseInt(cols[idxPotBat]) || 0;
+    const curBowl = parseInt(cols[idxCurBowl]) || 0;
+    const potBowl = parseInt(cols[idxPotBowl]) || 0;
+    const reputation = parseInt(cols[idxReputation]) || 5;
+    const isWicketkeeper = cols[idxKeep]?.toLowerCase() === "yes";
+    const isPartTimeWk = cols[idxPartKeep]?.toLowerCase() === "yes";
+    const isOpener = cols[idxOpener]?.toLowerCase() === "yes";
+    const isFinisher = cols[idxFinisher]?.toLowerCase() === "yes";
+    const isCoreBatter = cols[idxCore]?.toLowerCase() === "yes";
+    const onlyOpensOrBenched = cols[idxOnlyOpener]?.toLowerCase() === "yes";
+    const captaincy = parseInt(cols[idxCaptaincy]) || 50;
+    const battingAggression = parseInt(cols[idxAggression]) || 50;
+    const hasBattedAt3 = cols[idxBatted3]?.toUpperCase() === "TRUE";
+    const hasBattedAt4 = cols[idxBatted4]?.toUpperCase() === "TRUE";
+    const hasBattedAt5 = cols[idxBatted5]?.toUpperCase() === "TRUE";
+    const hasBattedAt6 = cols[idxBatted6]?.toUpperCase() === "TRUE";
+    const hasBattedAt7 = cols[idxBatted7]?.toUpperCase() === "TRUE";
+>>>>>>> refs/remotes/origin/main
 
     const star = salaryToStar(salary);
-    const base = starToBase(star);
+    const base = calculateBasePrice(isCapped, star);
 
-    // unique ID — if clash, suffix with team
     let id = toSlug(name);
-    if (seenIds.has(id)) id = `${id}-${teamId.toLowerCase()}`;
+    if (seenIds.has(id)) {
+      id = `${id}-${(teamId || "unsold").toLowerCase()}`;
+    }
     seenIds.add(id);
 
-    // Augment history: fill from startYear (2019) to 2026
-    let iplHistory: { teamId: string; season: string; price: number }[] = [];
-    const baseHistory = OVERRIDES[id] || originalHistoryMap.get(id) || [{ teamId, season: "2026", price: Math.round(salary * 100) }];
-    
+    // Parse History from columns
+    const baseHistory: { teamId: string; season: string; price: number }[] = [];
+    const seasons = [
+      "2026", "2025", "2024", "2023", "2022", "2021", "2020", "2019", "2018", "2017", "2016", "2015", "2014", "2013", "2012", "2011", "2010", "2009", "2008"
+    ];
+    for (const season of seasons) {
+      const colIdx = headers.indexOf(`${season} Team (Salary)`);
+      if (colIdx !== -1 && cols[colIdx]) {
+        const hist = parseHistoryValue(season, cols[colIdx]);
+        if (hist) baseHistory.push(hist);
+      }
+    }
+
+    // Fill missing history entries from 2019 to 2026
+    const iplHistory: { teamId: string; season: string; price: number }[] = [];
     const startYear = 2019;
+    const fallbackTeam = teamId || "UNSOLD";
+    const fallbackPrice = Math.round(salary * 100) || 20;
+
     for (let y = startYear; y <= 2026; y++) {
       const yearStr = String(y);
       const existing = baseHistory.find(h => h.season === yearStr);
       if (existing) {
-        iplHistory.push({ teamId: existing.teamId, season: yearStr, price: existing.price });
+        iplHistory.push(existing);
       } else {
-        // Find the closest year in baseHistory
-        let closest = baseHistory[0];
-        let minDiff = Math.abs(parseInt(closest.season) - y);
-        for (const h of baseHistory) {
-          const diff = Math.abs(parseInt(h.season) - y);
-          if (diff < minDiff || (diff === minDiff && parseInt(h.season) > parseInt(closest.season))) {
-            minDiff = diff;
-            closest = h;
-          }
-        }
-        iplHistory.push({ teamId: closest.teamId, season: yearStr, price: closest.price });
+        iplHistory.push({ teamId: "UNSOLD", season: yearStr, price: 0 });
       }
     }
-    
-    if (iplHistory.length === 0) {
-      iplHistory.push({ teamId, season: "2026", price: Math.round(salary * 100) });
-    }
+
+    // Parse Career Stats directly from spreadsheet row
+    const t20Games = parseInt(cols[idxT20Games]) || 0;
+    const t20BatInns = parseInt(cols[idxT20BatInns]) || 0;
+    const t20Runs = parseInt(cols[idxT20Runs]) || 0;
+    const t20Wickets = parseInt(cols[idxT20Wickets]) || 0;
+    const t20BowlInns = parseInt(cols[idxT20BowlInns]) || 0;
+
+    const batting = {
+      matches: t20Games,
+      innings: t20BatInns,
+      runs: t20Runs,
+      average: parseFloat(cols[idxT20BatAvg]) || 0.0,
+      strikeRate: parseFloat(cols[idxT20SR]) || 0.0,
+      fifties: Math.floor(t20Runs / 360),
+      hundreds: Math.floor(t20Runs / 1300),
+    };
+
+    const bowling = {
+      matches: t20BowlInns > 0 ? t20BowlInns : t20Games,
+      wickets: t20Wickets,
+      economy: Math.round((8.8 - (curBowl / 100) * 2.5) * 100) / 100,
+      average: parseFloat(cols[idxT20BowlAvg]) || 0.0,
+      bestFigures: `${Math.min(6, Math.floor(2 + (curBowl / 100) * 4))}/${15 + Math.floor((100 - curBowl) / 10) * 2}`,
+    };
 
     return {
       id, name, age,
@@ -635,24 +372,41 @@ const players = dataLines
       potential: genPotential(curBat, potBat, curBowl, potBowl, age),
       attributes: genAttrs(curBat, curBowl, bowlType),
       careerStats: {
-        batting: genBatStats(curBat, age, isCapped),
-        bowling: genBowlStats(curBowl, age, isCapped),
+        batting,
+        bowling,
       },
       iplHistory,
       currentBatting: curBat,
       potentialBatting: potBat,
       currentBowling: curBowl,
       potentialBowling: potBowl,
+<<<<<<< HEAD
+=======
+      reputation,
+      isWicketkeeper,
+      isPartTimeWk,
+      isOpener,
+      isFinisher,
+      isCoreBatter,
+      onlyOpensOrBenched,
+      captaincy,
+      battingAggression,
+>>>>>>> refs/remotes/origin/main
       hasBattedAt3,
       hasBattedAt4,
       hasBattedAt5,
       hasBattedAt6,
+<<<<<<< HEAD
       onlyOpensOrBenched,
+=======
+      hasBattedAt7
+>>>>>>> refs/remotes/origin/main
     };
   });
 
-console.log(`Parsed ${players.length} players`);
+  console.log(`Parsed ${players.length} players`);
 
+<<<<<<< HEAD
 // ---- Write players.ts ----
 function q(v: unknown): string {
   if (v === null) return "null";
@@ -745,17 +499,23 @@ async function seedSupabase() {
       process.exit(1);
     }
     console.log(`  Players ${i + 1}–${i + batch.length} inserted`);
+=======
+  // ---- Write players.ts ----
+  function q(v: unknown): string {
+    if (v === null) return "null";
+    if (typeof v === "string") return `"${v.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+    if (typeof v === "boolean" || typeof v === "number") return String(v);
+    return String(v);
+>>>>>>> refs/remotes/origin/main
   }
 
-  const histRows = players.flatMap(p =>
-    p.iplHistory.map(h => ({
-      player_id: p.id,
-      team_id: h.teamId,
-      season: h.season,
-      price: h.price,
-    }))
-  );
+  const outputLines: string[] = [
+    `import type { Player } from "@/lib/types";`,
+    ``,
+    `export const PLAYERS: Player[] = [`,
+  ];
 
+<<<<<<< HEAD
   for (let i = 0; i < histRows.length; i += 100) {
     const batch = histRows.slice(i, i + 100);
     const { error } = await supabase.from("ipl_history").upsert(batch, { onConflict: "player_id,season" });
@@ -763,9 +523,114 @@ async function seedSupabase() {
       console.error(`Error inserting history at ${i}:`, error.message);
       process.exit(1);
     }
+=======
+  for (const p of players) {
+    const a = p.attributes;
+    const bs = p.careerStats.batting;
+    const bw = p.careerStats.bowling;
+    const histStr = p.iplHistory.map(h => `{ teamId: ${q(h.teamId)}, season: ${q(h.season)}, price: ${h.price} }`).join(", ");
+    outputLines.push(
+      `  { id: ${q(p.id)}, name: ${q(p.name)}, age: ${p.age}, nationality: ${q(p.nationality)}, role: ${q(p.role)}, battingStyle: ${q(p.battingStyle)}, bowlingStyle: ${q(p.bowlingStyle)}, starRating: ${p.starRating}, basePrice: ${p.basePrice}, isCapped: ${p.isCapped}, isRetained: false, retainedByTeamId: null, currentTeamId: ${q(p.currentTeamId)}, potential: ${q(p.potential)}, currentBatting: ${p.currentBatting}, potentialBatting: ${p.potentialBatting}, currentBowling: ${p.currentBowling}, potentialBowling: ${p.potentialBowling}, reputation: ${p.name === "Sunil Narine" ? 10 : p.reputation}, captaincy: ${p.captaincy}, battingAggression: ${p.battingAggression}, isWicketkeeper: ${p.isWicketkeeper}, isPartTimeWk: ${p.isPartTimeWk}, isOpener: ${p.isOpener}, isFinisher: ${p.isFinisher}, isCoreBatter: ${(p as any).isCoreBatter}, onlyOpensOrBenched: ${(p as any).onlyOpensOrBenched}, hasBattedAt3: ${p.hasBattedAt3}, hasBattedAt4: ${p.hasBattedAt4}, hasBattedAt5: ${p.hasBattedAt5}, hasBattedAt6: ${p.hasBattedAt6}, hasBattedAt7: ${p.hasBattedAt7}, attributes: { technique: ${a.technique}, power: ${a.power}, timing: ${a.timing}, placement: ${a.placement}, running: ${a.running}, pace: ${a.pace}, swing: ${a.swing}, seam: ${a.seam}, spin: ${a.spin}, flight: ${a.flight}, accuracy: ${a.accuracy}, variation: ${a.variation}, catching: ${a.catching}, throwing: ${a.throwing}, agility: ${a.agility}, composure: ${a.composure}, leadership: ${a.leadership}, determination: ${a.determination} }, careerStats: { batting: { matches: ${bs.matches}, innings: ${bs.innings}, runs: ${bs.runs}, average: ${bs.average}, strikeRate: ${bs.strikeRate}, fifties: ${bs.fifties}, hundreds: ${bs.hundreds} }, bowling: { matches: ${bw.matches}, wickets: ${bw.wickets}, economy: ${bw.economy}, average: ${bw.average}, bestFigures: ${q(bw.bestFigures)} } }, iplHistory: [${histStr}] },`
+    );
+>>>>>>> refs/remotes/origin/main
   }
 
-  console.log(`✓ Supabase seeded: ${players.length} players, ${histRows.length} history rows`);
+  outputLines.push(`];`);
+  outputLines.push(``);
+  outputLines.push(`export const PLAYERS_SEED: Player[] = PLAYERS;`);
+  outputLines.push(`export const PLAYERS_MAP: Record<string, Player> = Object.fromEntries(PLAYERS.map(p => [p.id, p]));`);
+
+  fs.writeFileSync(OUT_PATH, outputLines.join("\n"), "utf-8");
+  console.log(`✓ Written lib/data/players.ts`);
+
+  // ---- Seed Supabase ----
+  try {
+    console.log("Clearing existing Supabase data...");
+    await supabase.from("ipl_history").delete().neq("id", 0);
+    await supabase.from("players").delete().neq("id", "");
+
+    const playerRows = players.map(p => ({
+      id: p.id,
+      name: p.name,
+      age: p.age,
+      nationality: p.nationality,
+      role: p.role,
+      batting_style: p.battingStyle,
+      bowling_style: p.bowlingStyle,
+      star_rating: p.starRating,
+      base_price: p.basePrice,
+      is_capped: p.isCapped,
+      current_team_id: p.currentTeamId,
+      potential: p.potential,
+      has_batted_at_3: p.hasBattedAt3 === true,
+      has_batted_at_4: p.hasBattedAt4 === true,
+      has_batted_at_5: p.hasBattedAt5 === true,
+      has_batted_at_6: p.hasBattedAt6 === true,
+      has_batted_at_7: p.hasBattedAt7 === true,
+      is_opener: p.isOpener === true,
+      attr_technique:    p.attributes.technique,
+      attr_power:        p.attributes.power,
+      attr_timing:       p.attributes.timing,
+      attr_placement:    p.attributes.placement,
+      attr_running:      p.attributes.running,
+      attr_pace:         p.attributes.pace,
+      attr_swing:        p.attributes.swing,
+      attr_seam:         p.attributes.seam,
+      attr_spin:         p.attributes.spin,
+      attr_flight:       p.attributes.flight,
+      attr_accuracy:     p.attributes.accuracy,
+      attr_variation:    p.attributes.variation,
+      attr_catching:     p.attributes.catching,
+      attr_throwing:     p.attributes.throwing,
+      attr_agility:      p.attributes.agility,
+      attr_composure:    p.attributes.composure,
+      attr_leadership:   p.attributes.leadership,
+      attr_determination: p.attributes.determination,
+      bat_matches:     p.careerStats.batting.matches,
+      bat_innings:     p.careerStats.batting.innings,
+      bat_runs:        p.careerStats.batting.runs,
+      bat_average:     p.careerStats.batting.average,
+      bat_strike_rate: p.careerStats.batting.strikeRate,
+      bat_fifties:     p.careerStats.batting.fifties,
+      bat_hundreds:    p.careerStats.batting.hundreds,
+      bowl_matches:    p.careerStats.bowling.matches,
+      bowl_wickets:    p.careerStats.bowling.wickets,
+      bowl_economy:    p.careerStats.bowling.economy,
+      bowl_average:    p.careerStats.bowling.average,
+      bowl_best_figures: p.careerStats.bowling.bestFigures,
+    }));
+
+    for (let i = 0; i < playerRows.length; i += 50) {
+      const batch = playerRows.slice(i, i + 50);
+      const { error } = await supabase.from("players").insert(batch);
+      if (error) {
+        console.warn(`Warning seeding players at batch ${i}: ${error.message} (Will continue locally regardless)`);
+      } else {
+        console.log(`  Players ${i + 1}–${i + batch.length} inserted`);
+      }
+    }
+
+    const histRows = players.flatMap(p =>
+      p.iplHistory.map(h => ({
+        player_id: p.id,
+        team_id: h.teamId,
+        season: h.season,
+        price: h.price,
+      }))
+    );
+
+    for (let i = 0; i < histRows.length; i += 100) {
+      const batch = histRows.slice(i, i + 100);
+      const { error } = await supabase.from("ipl_history").insert(batch);
+      if (error) {
+        console.warn(`Warning inserting history at ${i}: ${error.message}`);
+      }
+    }
+
+    console.log(`✓ Supabase sync attempt completed`);
+  } catch (supabaseError: any) {
+    console.warn("Supabase database sync failed, but local data generation succeeded:", supabaseError.message);
+  }
 }
 
-seedSupabase().catch(console.error);
+main().catch(console.error);
