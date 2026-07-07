@@ -272,29 +272,68 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
   const countPacers = (list: import("@/lib/types").Player[]) => list.filter(p => p.role === "Pace Bowler").length;
 
   const hasEliteARBowler = squad.some(p => p.role === "All-Rounder" && (p.currentBowling ?? 0) >= 80);
-  const maxPacers = hasEliteARBowler ? 4 : 5;
+  const hasOkARBowlers = squad.filter(p => p.role === "All-Rounder").length >= 2 && squad.some(p => p.role === "All-Rounder" && (p.currentBowling ?? 0) >= 75);
+  const maxPacers = 5;
+  // Cap is 3 out-and-out bowlers if the starting lineup has 4+ All-Rounders;
+  // otherwise 4 if there's an elite AR bowler (>=80) OR 2+ ok AR bowlers (>=75) in the squad, else 5.
+  const getMaxOutAndOut = (lineup: import("@/lib/types").Player[]) => {
+    const lineupARCount = lineup.filter(p => p.role === "All-Rounder").length;
+    return lineupARCount >= 4 ? 3 : (hasEliteARBowler || hasOkARBowlers ? 4 : 5);
+  };
 
   // 1. Select 2 Openers
+  const specialPairs = [
+    ["virat-kohli", "phil-salt"],
+    ["sunil-narine", "finn-allen"],
+    ["yashasvi-jaiswal", "vaibhav-suryavanshi"],
+    ["travis-head", "abhishek-sharma"],
+    ["shubman-gill", "sai-sudharsan"]
+  ];
+
+  const chosenOpeners: import("@/lib/types").Player[] = [];
+
+  const activePair = specialPairs.find(pair =>
+    squad.some(p => p.id === pair[0]) && squad.some(p => p.id === pair[1])
+  );
+
+  if (activePair) {
+    const p1 = virtualSquad.find(p => p.id === activePair[0])!;
+    const p2 = virtualSquad.find(p => p.id === activePair[1])!;
+    const nextOSCount = (p1.nationality === "Overseas" ? 1 : 0) + (p2.nationality === "Overseas" ? 1 : 0);
+    const nextOutAndOut = (isOutAndOut(p1) ? 1 : 0) + (isOutAndOut(p2) ? 1 : 0);
+    const nextPacers = (p1.role === "Pace Bowler" ? 1 : 0) + (p2.role === "Pace Bowler" ? 1 : 0);
+
+    if (nextOSCount <= 4 && nextOutAndOut <= getMaxOutAndOut([...chosenOpeners]) && nextPacers <= maxPacers) {
+      chosenOpeners.push(p1, p2);
+    }
+  }
+
   const openersPool = remaining
     .filter(p => p.isOpener)
     .sort((a, b) => rating(b) - rating(a));
 
-  const chosenOpeners: import("@/lib/types").Player[] = [];
   for (const op of openersPool) {
     if (chosenOpeners.length >= 2) break;
     const isOS = op.nationality === "Overseas";
     const nextOSCount = countOS(chosenOpeners) + (isOS ? 1 : 0);
     const nextOutAndOut = countOutAndOut(chosenOpeners) + (isOutAndOut(op) ? 1 : 0);
     const nextPacers = countPacers(chosenOpeners) + (op.role === "Pace Bowler" ? 1 : 0);
-    if (nextOSCount <= 4 && nextOutAndOut <= 5 && nextPacers <= maxPacers) {
+    if (nextOSCount <= 4 && nextOutAndOut <= getMaxOutAndOut(chosenOpeners) && nextPacers <= maxPacers) {
       chosenOpeners.push(op);
     }
   }
 
   // If we don't have 2 openers, fill with the highest rated non-openers (as fallbacks)
-  const remainingNonOpeners = remaining
+  let remainingNonOpeners = remaining
     .filter(p => !chosenOpeners.some(o => o.id === p.id))
+    .filter(p => p.role === "Batsman" || p.role === "WK-Batsman" || p.role === "All-Rounder")
     .sort((a, b) => rating(b) - rating(a));
+
+  if (remainingNonOpeners.length === 0) {
+    remainingNonOpeners = remaining
+      .filter(p => !chosenOpeners.some(o => o.id === p.id))
+      .sort((a, b) => rating(b) - rating(a));
+  }
 
   while (chosenOpeners.length < 2 && remainingNonOpeners.length > 0) {
     const nextOpener = remainingNonOpeners.shift()!;
@@ -302,7 +341,7 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
     const nextOSCount = countOS(chosenOpeners) + (isOS ? 1 : 0);
     const nextOutAndOut = countOutAndOut(chosenOpeners) + (isOutAndOut(nextOpener) ? 1 : 0);
     const nextPacers = countPacers(chosenOpeners) + (nextOpener.role === "Pace Bowler" ? 1 : 0);
-    if (nextOSCount <= 4 && nextOutAndOut <= 5 && nextPacers <= maxPacers) {
+    if (nextOSCount <= 4 && nextOutAndOut <= getMaxOutAndOut(chosenOpeners) && nextPacers <= maxPacers) {
       chosenOpeners.push(nextOpener);
     }
   }
@@ -323,16 +362,21 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
       .filter(isKeeper)
       .sort((a, b) => rating(b) - rating(a));
 
-    for (const keeper of keeperPool) {
-      const isOS = keeper.nationality === "Overseas";
-      const nextOSCount = countOS(selected) + (isOS ? 1 : 0);
-      const nextOutAndOut = countOutAndOut(selected) + (isOutAndOut(keeper) ? 1 : 0);
-      const nextPacers = countPacers(selected) + (keeper.role === "Pace Bowler" ? 1 : 0);
-      if (nextOSCount <= 4 && nextOutAndOut <= 5 && nextPacers <= maxPacers) {
-        selected.push(keeper);
-        remaining = remaining.filter(p => p.id !== keeper.id);
-        break;
+    if (keeperPool.length > 0) {
+      let selectedKeeper = keeperPool.find(keeper => {
+        const isOS = keeper.nationality === "Overseas";
+        const nextOSCount = countOS(selected) + (isOS ? 1 : 0);
+        const nextOutAndOut = countOutAndOut(selected) + (isOutAndOut(keeper) ? 1 : 0);
+        const nextPacers = countPacers(selected) + (keeper.role === "Pace Bowler" ? 1 : 0);
+        return nextOSCount <= 4 && nextOutAndOut <= getMaxOutAndOut(selected) && nextPacers <= maxPacers;
+      });
+
+      if (!selectedKeeper) {
+        selectedKeeper = keeperPool[0];
       }
+
+      selected.push(selectedKeeper);
+      remaining = remaining.filter(p => p.id !== selectedKeeper.id);
     }
   }
 
@@ -349,10 +393,32 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
       const nextOSCount = countOS(selected) + (isOS ? 1 : 0);
       const nextOutAndOut = countOutAndOut(selected) + (isOutAndOut(spin) ? 1 : 0);
       const nextPacers = countPacers(selected) + (spin.role === "Pace Bowler" ? 1 : 0);
-      if (nextOSCount <= 4 && nextOutAndOut <= 5 && nextPacers <= maxPacers) {
+      if (nextOSCount <= 4 && nextOutAndOut <= getMaxOutAndOut(selected) && nextPacers <= maxPacers) {
         selected.push(spin);
         remaining = remaining.filter(p => p.id !== spin.id);
         break;
+      }
+    }
+  }
+
+  // Ensure at least 3 out-and-out bowlers are selected (if available in the squad)
+  const squadOutAndOutCount = virtualSquad.filter(isOutAndOut).length;
+  const targetOutAndOut = Math.min(3, squadOutAndOutCount);
+  if (countOutAndOut(selected) < targetOutAndOut) {
+    const outAndOutPool = remaining
+      .filter(isOutAndOut)
+      .sort((a, b) => rating(b) - rating(a));
+
+    for (const bowler of outAndOutPool) {
+      if (countOutAndOut(selected) >= targetOutAndOut) break;
+      if (selected.length >= 12) break;
+      const isOS = bowler.nationality === "Overseas";
+      const nextOSCount = countOS(selected) + (isOS ? 1 : 0);
+      const nextOutAndOut = countOutAndOut(selected) + (isOutAndOut(bowler) ? 1 : 0);
+      const nextPacers = countPacers(selected) + (bowler.role === "Pace Bowler" ? 1 : 0);
+      if (nextOSCount <= 4 && nextOutAndOut <= getMaxOutAndOut(selected) && nextPacers <= maxPacers) {
+        selected.push(bowler);
+        remaining = remaining.filter(p => p.id !== bowler.id);
       }
     }
   }
@@ -373,7 +439,7 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
     const nextOSCount = countOS(selected) + (isOS ? 1 : 0);
     const nextOutAndOut = countOutAndOut(selected) + (isOutAndOut(bowler) ? 1 : 0);
     const nextPacers = countPacers(selected) + (bowler.role === "Pace Bowler" ? 1 : 0);
-    if (nextOSCount <= 4 && nextOutAndOut <= 5 && nextPacers <= maxPacers) {
+    if (nextOSCount <= 4 && nextOutAndOut <= getMaxOutAndOut(selected) && nextPacers <= maxPacers) {
       selected.push(bowler);
       remaining = remaining.filter(p => p.id !== bowler.id);
     }
@@ -391,7 +457,7 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
     const nextOSCount = countOS(selected) + (isOS ? 1 : 0);
     const nextOutAndOut = countOutAndOut(selected) + (isOutAndOut(bowler) ? 1 : 0);
     const nextPacers = countPacers(selected) + (bowler.role === "Pace Bowler" ? 1 : 0);
-    if (nextOSCount <= 4 && nextOutAndOut <= 5 && nextPacers <= maxPacers) {
+    if (nextOSCount <= 4 && nextOutAndOut <= getMaxOutAndOut(selected) && nextPacers <= maxPacers) {
       selected.push(bowler);
       remaining = remaining.filter(p => p.id !== bowler.id);
     }
@@ -406,14 +472,14 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
     const nextOSCount = countOS(selected) + (isOS ? 1 : 0);
     const nextOutAndOut = countOutAndOut(selected) + (isOutAndOut(p) ? 1 : 0);
     const nextPacers = countPacers(selected) + (p.role === "Pace Bowler" ? 1 : 0);
-    if (nextOSCount <= 4 && nextOutAndOut <= 5 && nextPacers <= maxPacers) {
+    if (nextOSCount <= 4 && nextOutAndOut <= getMaxOutAndOut(selected) && nextPacers <= maxPacers) {
       selected.push(p);
     }
   }
 
   // 5. Force-fill to 12 if squad has 12+ players but OS limit or bowler limit blocked us
   if (selected.length < 12 && squad.length >= 12) {
-    const leftover = squad.filter(p => !selected.some(s => s.id === p.id)).sort((a, b) => rating(b) - rating(a));
+    const leftover = squad.filter(p => !selected.some(s => s.id === p.id) && !p.onlyOpensOrBenched).sort((a, b) => rating(b) - rating(a));
     for (const p of leftover) {
       if (selected.length >= 12) break;
       selected.push(p);
@@ -427,7 +493,7 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
       .sort((a, b) => rating(a) - rating(b)); // replace lowest first
 
     for (const targetPlayer of under75Players) {
-      const bench = virtualSquad.filter(p => !selected.some(s => s.id === p.id));
+      const bench = virtualSquad.filter(p => !selected.some(s => s.id === p.id) && !p.onlyOpensOrBenched);
       
       // Find highest-rated overseas player on the bench who is better than targetPlayer
       const overseasBenchCandidates = bench
@@ -439,6 +505,20 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
 
       // Identify the 4 overseas players currently in the team
       const currentOSList = selected.filter(p => p.nationality === "Overseas");
+
+      // If the XII currently has LESS than 4 Overseas players, we can directly replace the target player!
+      if (currentOSList.length < 4) {
+        const hypotheticalSelected = selected.map(p => p.id === targetPlayer.id ? overseasBenchPlayer : p);
+        const nextOSCount = countOS(hypotheticalSelected);
+        const nextOutAndOut = countOutAndOut(hypotheticalSelected);
+        const nextPacers = countPacers(hypotheticalSelected);
+
+        if (nextOSCount <= 4 && nextOutAndOut <= getMaxOutAndOut(hypotheticalSelected) && nextPacers <= maxPacers) {
+          selected = hypotheticalSelected;
+          break;
+        }
+      }
+
       const swapCandidates: {
         osPlayer: import("@/lib/types").Player;
         counterpart: import("@/lib/types").Player;
@@ -472,8 +552,8 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
             counterpart = sorted[0];
             diff = (osPlayer.currentBatting ?? 0) - (counterpart.currentBatting ?? 0);
           }
-        } else if (isSpinner(osPlayer)) {
-          const matchingRoleBench = indianBench.filter(isSpinner);
+        } else if (osPlayer.role === "Spin Bowler") {
+          const matchingRoleBench = indianBench.filter(p => p.role === "Spin Bowler");
           if (matchingRoleBench.length > 0) {
             const sorted = matchingRoleBench.sort((a, b) => 
               Math.abs((a.currentBowling ?? 0) - (osPlayer.currentBowling ?? 0)) - 
@@ -508,7 +588,19 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
         }
 
         if (counterpart && diff <= 3) {
-          swapCandidates.push({ osPlayer, counterpart, diff });
+          // Check limits on the hypothetical post-swap team configuration
+          const hypotheticalSelected = selected.map(p => p.id === osPlayer.id ? counterpart! : p);
+          
+          // Replace target player with the new overseas bench player in our hypothetical XII
+          const postSwapSelected = hypotheticalSelected.map(p => p.id === targetPlayer.id ? overseasBenchPlayer : p);
+          
+          const nextOSCount = countOS(postSwapSelected);
+          const nextOutAndOut = countOutAndOut(postSwapSelected);
+          const nextPacers = countPacers(postSwapSelected);
+
+          if (nextOSCount <= 4 && nextOutAndOut <= getMaxOutAndOut(postSwapSelected) && nextPacers <= maxPacers) {
+            swapCandidates.push({ osPlayer, counterpart, diff });
+          }
         }
       }
 
@@ -563,7 +655,34 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
     return false;
   };
 
-  // Reusable assignment function starting from a specific position downwards
+  // ===========================================================================
+  // ASSIGNMENT MODE: "SEQUENTIAL" (position-by-position, top-down)
+  // To switch back to constraint-based (most-constrained-first), comment out
+  // the SEQUENTIAL block below and uncomment the CONSTRAINT-BASED block.
+  // ===========================================================================
+
+  // ---------------------------------------------------------------------------
+  // SEQUENTIAL MODE (ACTIVE)
+  // Goes position 3 → 4 → 5 → 6 → 7 in order.
+  // For each slot:
+  //   1. Pick the highest-rated player who prefers this slot.
+  //   2. If none prefer it, pick the highest-rated player who has NO remaining
+  //      preferred slots still open (i.e., all their preferred positions in the
+  //      remaining slots have already been filled). This prevents players from
+  //      being dumped into slots they can't play when they still have options.
+  //   3. If all remaining players still have future preferred slots, skip and
+  //      come back at the end (filled greedily then).
+  // ---------------------------------------------------------------------------
+  // ===========================================================================
+  // ASSIGNMENT MODE: "HYBRID" (sequential position-by-position with look-ahead constraint checking)
+  // Goes position 3 → 4 → 5 → 6 → 7 in order.
+  // For each slot, it:
+  //   1. Checks candidates who prefer the slot, sorted by batting rating descending.
+  //   2. Performs a look-ahead check: skips a candidate if assigning them leaves
+  //      any other remaining player with zero preferred options in the remaining slots.
+  //   3. Falls back to rating descending if constraints are satisfied, ensuring
+  //      that if both players can play 5 and 7, the higher-rated one lands at 5.
+  // ===========================================================================
   const assignLineupFrom = (
     startPos: number,
     currentLineup: import("@/lib/types").Player[],
@@ -571,83 +690,226 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
   ): import("@/lib/types").Player[] => {
     let unassigned = [...pool];
     const lineup = [...currentLineup];
-    let currentPos = startPos;
 
-    // 2. Core Batters (Positions startPos downwards, up to position 7)
-    while (currentPos <= 7) {
-      const corePool = unassigned.filter(p => 
-        p.isCoreBatter && 
-        !p.isFinisher && 
-        (p.role === "Batsman" || p.role === "WK-Batsman" || p.role === "All-Rounder")
-      );
+    const getSatisfiableSlots = (p: import("@/lib/types").Player, slots: number[]) =>
+      slots.filter(s => prefersPosition(p, s));
 
-      if (corePool.length === 0) break;
+    const assignSequentialWithConstraints = (
+      slots: number[],
+      players: import("@/lib/types").Player[]
+    ): Record<number, import("@/lib/types").Player> => {
+      const assignments: Record<number, import("@/lib/types").Player> = {};
+      let remainingPlayers = [...players];
 
-      const matchingPref = corePool.filter(p => prefersPosition(p, currentPos));
-      let chosen: import("@/lib/types").Player;
-      if (matchingPref.length > 0) {
-        chosen = matchingPref.sort((a, b) => getBatRating(b) - getBatRating(a))[0];
-      } else {
-        chosen = corePool.sort((a, b) => getBatRating(b) - getBatRating(a))[0];
+      for (let i = 0; i < slots.length; i++) {
+        const slot = slots[i];
+        const remainingSlots = slots.slice(i + 1);
+
+        // Find all players who prefer this slot
+        const candidates = remainingPlayers
+          .filter(p => prefersPosition(p, slot))
+          .sort((a, b) => getBatRating(b) - getBatRating(a));
+
+        let chosen: import("@/lib/types").Player | undefined = undefined;
+
+        // Try to find a candidate where assigning them doesn't strand any other player
+        for (const candidate of candidates) {
+          let strandsAnyone = false;
+          if (getBatRating(candidate) <= 80) {
+            for (const other of remainingPlayers) {
+              if (other.id === candidate.id) continue;
+
+              const wasSatisfiable = getSatisfiableSlots(other, slots.slice(i)).length > 0;
+              const willBeSatisfiable = getSatisfiableSlots(other, remainingSlots).length > 0;
+
+              if (wasSatisfiable && !willBeSatisfiable) {
+                strandsAnyone = true;
+                break;
+              }
+            }
+          }
+
+          if (!strandsAnyone) {
+            chosen = candidate;
+            break;
+          }
+        }
+
+        // If all candidates would strand someone, or no one prefers this slot,
+        // fall back to the highest rated player who prefers this slot
+        if (!chosen && candidates.length > 0) {
+          chosen = candidates[0];
+        }
+
+        // If still no player found, fall back to the highest rated player overall
+        if (!chosen && remainingPlayers.length > 0) {
+          const sorted = [...remainingPlayers].sort((a, b) => getBatRating(b) - getBatRating(a));
+          chosen = sorted[0];
+        }
+
+        if (chosen) {
+          assignments[slot] = chosen;
+          remainingPlayers = remainingPlayers.filter(p => p.id !== chosen.id);
+        }
       }
 
-      lineup.push(chosen);
-      unassigned = unassigned.filter(p => p.id !== chosen.id);
-      currentPos++;
-    }
-
-    // 3. Finishers (Continuing from currentPos down to position 7)
-    while (currentPos <= 7) {
-      const finishersPool = unassigned.filter(p => p.isFinisher);
-
-      if (finishersPool.length === 0) break;
-
-      const matchingPref = finishersPool.filter(p => prefersPosition(p, currentPos));
-      let chosen: import("@/lib/types").Player;
-      if (matchingPref.length > 0) {
-        chosen = matchingPref.sort((a, b) => getBatRating(b) - getBatRating(a))[0];
-      } else {
-        chosen = finishersPool.sort((a, b) => getBatRating(b) - getBatRating(a))[0];
+      // Fill remaining empty slots with any unassigned players
+      for (const slot of slots) {
+        if (!assignments[slot] && remainingPlayers.length > 0) {
+          const sorted = [...remainingPlayers].sort((a, b) => getBatRating(b) - getBatRating(a));
+          assignments[slot] = sorted[0];
+          remainingPlayers = remainingPlayers.filter(p => p.id !== sorted[0].id);
+        }
       }
 
-      lineup.push(chosen);
-      unassigned = unassigned.filter(p => p.id !== chosen.id);
-      currentPos++;
+      return assignments;
+    };
+
+    // --- PHASE 1: Core Batters (positions startPos → 7) ---
+    const corePool = unassigned.filter(p =>
+      p.isCoreBatter &&
+      !p.isFinisher &&
+      (p.role === "Batsman" || p.role === "WK-Batsman" || p.role === "All-Rounder")
+    );
+    const maxCoreSlots = Math.max(0, 8 - startPos);
+    const coreSlotsCount = Math.min(corePool.length, maxCoreSlots);
+    const coreSlots = Array.from({ length: coreSlotsCount }, (_, i) => startPos + i);
+
+    const coreAssignments = assignSequentialWithConstraints(coreSlots, corePool);
+    const assignedCoreIds = new Set(Object.values(coreAssignments).map(p => p.id));
+    unassigned = unassigned.filter(p => !assignedCoreIds.has(p.id));
+
+    let nextPos = startPos + coreSlotsCount;
+
+    // --- PHASE 2: Finishers (positions nextPos → 7) ---
+    const finishersPool = unassigned.filter(p => p.isFinisher);
+    const maxFinisherSlots = Math.max(0, 8 - nextPos);
+    const finisherSlotsCount = Math.min(finishersPool.length, maxFinisherSlots);
+    const finisherSlots = Array.from({ length: finisherSlotsCount }, (_, i) => nextPos + i);
+
+    const finisherAssignments = assignSequentialWithConstraints(finisherSlots, finishersPool);
+    const assignedFinisherIds = new Set(Object.values(finisherAssignments).map(p => p.id));
+    unassigned = unassigned.filter(p => !assignedFinisherIds.has(p.id));
+
+    nextPos += finisherSlotsCount;
+
+    // Push the assignments in order
+    for (let pos = startPos; pos < nextPos; pos++) {
+      const chosen = coreAssignments[pos] || finisherAssignments[pos];
+      if (chosen) {
+        lineup.push(chosen);
+      }
     }
 
-    // 4. Remaining players after Position 7
+    // --- PHASE 3: Remaining players after position 7 ---
     const hasBatting = unassigned.filter(p => getBatRating(p) > 0)
       .sort((a, b) => getBatRating(b) - getBatRating(a));
-
     const zeroBatting = unassigned.filter(p => getBatRating(p) <= 0)
-      .sort((a, b) => getBowlRating(a) - getBowlRating(b)); // lowest to highest bowling
+      .sort((a, b) => getBowlRating(a) - getBowlRating(b));
 
-    const finalRemainder = [...hasBatting, ...zeroBatting];
-    lineup.push(...finalRemainder);
-
+    lineup.push(...hasBatting, ...zeroBatting);
     return lineup;
   };
+
+  // ---------------------------------------------------------------------------
+  // CONSTRAINT-BASED MODE (INACTIVE — uncomment to re-enable)
+  // Assigns most-constrained players (fewest preferred slots) first.
+  // To activate: comment out the SEQUENTIAL block above and uncomment below.
+  // ---------------------------------------------------------------------------
+  /*
+  const assignConstrained = (
+    slots: number[],
+    players: import("@/lib/types").Player[]
+  ): Record<number, import("@/lib/types").Player> => {
+    const assignments: Record<number, import("@/lib/types").Player> = {};
+    const sortedPlayers = [...players].sort((a, b) => {
+      const aPrefCount = slots.filter(s => prefersPosition(a, s)).length;
+      const bPrefCount = slots.filter(s => prefersPosition(b, s)).length;
+      if (aPrefCount !== bPrefCount) return aPrefCount - bPrefCount;
+      return getBatRating(b) - getBatRating(a);
+    });
+    for (const p of sortedPlayers) {
+      let assignedSlot = slots.find(s => prefersPosition(p, s) && !assignments[s]);
+      if (assignedSlot === undefined) assignedSlot = slots.find(s => !assignments[s]);
+      if (assignedSlot !== undefined) assignments[assignedSlot] = p;
+    }
+    return assignments;
+  };
+
+  const assignLineupFrom = (
+    startPos: number,
+    currentLineup: import("@/lib/types").Player[],
+    pool: import("@/lib/types").Player[]
+  ): import("@/lib/types").Player[] => {
+    let unassigned = [...pool];
+    const lineup = [...currentLineup];
+    const corePool = unassigned.filter(p =>
+      p.isCoreBatter && !p.isFinisher &&
+      (p.role === "Batsman" || p.role === "WK-Batsman" || p.role === "All-Rounder")
+    );
+    const coreSlotsToFill = Math.min(corePool.length, Math.max(0, 8 - startPos));
+    const coreSlots = Array.from({ length: coreSlotsToFill }, (_, i) => startPos + i);
+    const coreAssignments = assignConstrained(coreSlots, corePool);
+    const assignedCoreIds = new Set(Object.values(coreAssignments).map(p => p.id));
+    unassigned = unassigned.filter(p => !assignedCoreIds.has(p.id));
+    let nextPos = startPos + coreSlotsToFill;
+    const finishersPool = unassigned.filter(p => p.isFinisher);
+    const finisherSlotsToFill = Math.min(finishersPool.length, Math.max(0, 8 - nextPos));
+    const finisherSlots = Array.from({ length: finisherSlotsToFill }, (_, i) => nextPos + i);
+    const finisherAssignments = assignConstrained(finisherSlots, finishersPool);
+    const assignedFinisherIds = new Set(Object.values(finisherAssignments).map(p => p.id));
+    unassigned = unassigned.filter(p => !assignedFinisherIds.has(p.id));
+    nextPos += finisherSlotsToFill;
+    for (let pos = startPos; pos < nextPos; pos++) {
+      const chosen = coreAssignments[pos] || finisherAssignments[pos];
+      if (chosen) lineup.push(chosen);
+    }
+    const hasBatting = unassigned.filter(p => getBatRating(p) > 0).sort((a, b) => getBatRating(b) - getBatRating(a));
+    const zeroBatting = unassigned.filter(p => getBatRating(p) <= 0).sort((a, b) => getBowlRating(a) - getBowlRating(b));
+    lineup.push(...hasBatting, ...zeroBatting);
+    return lineup;
+  };
+  */
 
   // Generate initial draft lineup
   const initialOpeners: import("@/lib/types").Player[] = [];
   let draftUnassigned = [...selected];
 
-  // 1. Openers (Positions 1 & 2)
-  const openersList = draftUnassigned
-    .filter(p => p.isOpener)
-    .sort((a, b) => getBatRating(b) - getBatRating(a));
+  // Check special pairs for forced opening assignment
+  const lineupSpecialPairs = [
+    ["virat-kohli", "phil-salt"],
+    ["sunil-narine", "finn-allen"],
+    ["yashasvi-jaiswal", "vaibhav-suryavanshi"],
+    ["travis-head", "abhishek-sharma"],
+    ["shubman-gill", "sai-sudharsan"]
+  ];
 
-  for (const op of openersList) {
-    if (initialOpeners.length >= 2) break;
-    initialOpeners.push(op);
-  }
+  const lineupActivePair = lineupSpecialPairs.find(pair =>
+    draftUnassigned.some(p => p.id === pair[0]) && draftUnassigned.some(p => p.id === pair[1])
+  );
 
-  const remainingSortedByBat = [...draftUnassigned]
-    .filter(p => !initialOpeners.some(f => f.id === p.id))
-    .sort((a, b) => getBatRating(b) - getBatRating(a));
+  if (lineupActivePair) {
+    const p1 = draftUnassigned.find(p => p.id === lineupActivePair[0])!;
+    const p2 = draftUnassigned.find(p => p.id === lineupActivePair[1])!;
+    initialOpeners.push(p1, p2);
+  } else {
+    // 1. Openers (Positions 1 & 2)
+    const openersList = draftUnassigned
+      .filter(p => p.isOpener)
+      .sort((a, b) => getBatRating(b) - getBatRating(a));
 
-  while (initialOpeners.length < 2 && remainingSortedByBat.length > 0) {
-    initialOpeners.push(remainingSortedByBat.shift()!);
+    for (const op of openersList) {
+      if (initialOpeners.length >= 2) break;
+      initialOpeners.push(op);
+    }
+
+    const remainingSortedByBat = [...draftUnassigned]
+      .filter(p => !initialOpeners.some(f => f.id === p.id))
+      .sort((a, b) => getBatRating(b) - getBatRating(a));
+
+    while (initialOpeners.length < 2 && remainingSortedByBat.length > 0) {
+      initialOpeners.push(remainingSortedByBat.shift()!);
+    }
   }
 
   for (const op of initialOpeners) {
@@ -756,7 +1018,159 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
     }
   }
 
+  // --- BENCH ALL-ROUNDER SWAP FOR WEAK BATTER AT POSITION 8 ---
+  // If pos 8 has a non-finisher batter rated < 78, try to replace them with the
+  // highest-rated bench All-Rounder that satisfies the OS and bowler-cap rules.
+  {
+    const pos8Weak = mappedLineup[7];
+    if (
+      pos8Weak &&
+      !pos8Weak.isFinisher &&
+      (pos8Weak.currentBatting ?? 0) < 78 &&
+      (pos8Weak.role === "Batsman" || pos8Weak.role === "WK-Batsman")
+    ) {
+      const benchARs = squad
+        .filter(p => !mappedLineup.some(m => m?.id === p.id) && p.role === "All-Rounder")
+        .sort((a, b) =>
+          Math.max(b.currentBatting ?? 0, b.currentBowling ?? 0) -
+          Math.max(a.currentBatting ?? 0, a.currentBowling ?? 0)
+        );
+
+      for (const ar of benchARs) {
+        const hypo = [...mappedLineup];
+        hypo[7] = ar;
+        const nextOSCount = countOS(hypo);
+        const nextOutAndOut = countOutAndOut(hypo);
+        const nextPacers = countPacers(hypo);
+        if (nextOSCount <= 4 && nextOutAndOut <= getMaxOutAndOut(hypo) && nextPacers <= maxPacers) {
+          mappedLineup[7] = ar;
+          break;
+        }
+      }
+    }
+  }
+
+  // --- HIGH-RATED BATTER PROMOTION ---
+  // If a non-bowler with currentBatting > 81 ends up at position 8 (index 7),
+  // swap them with the lowest batting-rated player in positions 3–7 (indices 2–6),
+  // as long as that player's batting rating is lower.
+  const pos8Player = mappedLineup[7];
+  if (
+    pos8Player &&
+    (pos8Player.currentBatting ?? 0) > 81 &&
+    pos8Player.role !== "Pace Bowler" &&
+    pos8Player.role !== "Spin Bowler"
+  ) {
+    let lowestIdx = -1;
+    let lowestBatRating = pos8Player.currentBatting ?? 0;
+
+    for (let i = 2; i <= 6; i++) {
+      const candidate = mappedLineup[i];
+      if (!candidate) continue;
+      const batR = candidate.currentBatting ?? 0;
+      if (batR < lowestBatRating) {
+        lowestBatRating = batR;
+        lowestIdx = i;
+      }
+    }
+
+    if (lowestIdx !== -1) {
+      const temp = mappedLineup[7];
+      mappedLineup[7] = mappedLineup[lowestIdx];
+      mappedLineup[lowestIdx] = temp;
+    }
+  }
+
+  // --- BENCH BATTER UPGRADE FOR WEAK BATTER AT POSITION 8 ---
+  // Before trying an AR, check if a bench batter (Batsman/WK-Batsman) can improve
+  // position 8. Candidates are sorted by rating desc, tiebroken by battingAggression
+  // desc. Only swaps if the candidate is strictly better than the current player
+  // (higher rating, or same rating but higher aggression). Falls through to the AR
+  // rule below if no eligible upgrade exists.
+  {
+    const pos8Weak = mappedLineup[7];
+    if (
+      pos8Weak &&
+      !pos8Weak.isFinisher &&
+      (pos8Weak.currentBatting ?? 0) < 78 &&
+      (pos8Weak.role === "Batsman" || pos8Weak.role === "WK-Batsman")
+    ) {
+      const currentBatR = pos8Weak.currentBatting ?? 0;
+      const currentAgg = pos8Weak.battingAggression ?? 0;
+      const currentMaxOO = getMaxOutAndOut(mappedLineup);
+
+      const benchBatters = squad
+        .filter(p =>
+          !mappedLineup.some(m => m?.id === p.id) &&
+          !p.onlyOpensOrBenched &&
+          (p.role === "Batsman" || p.role === "WK-Batsman")
+        )
+        .sort((a, b) => {
+          const rDiff = (b.currentBatting ?? 0) - (a.currentBatting ?? 0);
+          if (rDiff !== 0) return rDiff;
+          return (b.battingAggression ?? 0) - (a.battingAggression ?? 0);
+        });
+
+      for (const batter of benchBatters) {
+        const benchBatR = batter.currentBatting ?? 0;
+        const benchAgg = batter.battingAggression ?? 0;
+
+        // Only upgrade if strictly better; if equal or worse, stop looking
+        if (benchBatR < currentBatR) break;
+        if (benchBatR === currentBatR && benchAgg <= currentAgg) continue;
+
+        const hypo = [...mappedLineup];
+        hypo[7] = batter;
+        const nextOSCount = countOS(hypo);
+        const nextOutAndOut = countOutAndOut(hypo);
+        const nextPacers = countPacers(hypo);
+        if (nextOSCount <= 4 && nextOutAndOut <= currentMaxOO && nextPacers <= maxPacers) {
+          mappedLineup[7] = batter;
+          break;
+        }
+      }
+    }
+  }
+
+  // --- BENCH ALL-ROUNDER SWAP FOR WEAK BATTER AT POSITION 8 ---
+
+  // Runs last. If pos 8 still has a non-finisher batter rated < 78, try to replace
+  // them with the highest-rated bench All-Rounder that satisfies the OS and bowler-cap
+  // rules. The bowler cap is evaluated on the pre-swap lineup so that adding an AR
+  // does not retroactively tighten the cap against itself.
+  {
+    const pos8Weak = mappedLineup[7];
+    if (
+      pos8Weak &&
+      !pos8Weak.isFinisher &&
+      (pos8Weak.currentBatting ?? 0) < 78 &&
+      (pos8Weak.role === "Batsman" || pos8Weak.role === "WK-Batsman")
+    ) {
+      const currentMaxOO = getMaxOutAndOut(mappedLineup);
+      const benchARs = squad
+        .filter(p => !mappedLineup.some(m => m?.id === p.id) && !p.onlyOpensOrBenched && p.role === "All-Rounder" && Math.max(p.currentBatting ?? 0, p.currentBowling ?? 0) > 74)
+        .sort((a, b) =>
+          Math.max(b.currentBatting ?? 0, b.currentBowling ?? 0) -
+          Math.max(a.currentBatting ?? 0, a.currentBowling ?? 0)
+        );
+
+      for (const ar of benchARs) {
+        const hypo = [...mappedLineup];
+        hypo[7] = ar;
+        const nextOSCount = countOS(hypo);
+        const nextOutAndOut = countOutAndOut(hypo);
+        const nextPacers = countPacers(hypo);
+        if (nextOSCount <= 4 && nextOutAndOut <= currentMaxOO && nextPacers <= maxPacers) {
+          mappedLineup[7] = ar;
+          break;
+        }
+      }
+    }
+  }
+
   return mappedLineup;
+
+
 }
 
 

@@ -9,11 +9,19 @@ export default function SetupPage() {
   const initNewGame = useGameStore((s) => s.initNewGame);
   const [step, setStep] = useState<"team" | "confirm">("team");
   const [selectedTeam, setSelectedTeam] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  function handleStart() {
+  async function handleStart() {
     if (!selectedTeam) return;
-    initNewGame(selectedTeam);
-    router.push("/game/auction");
+    setLoading(true);
+    try {
+      await initNewGame(selectedTeam);
+      router.push("/game/auction");
+    } catch (err) {
+      console.error(err);
+      alert("Failed to load player data from Supabase. Please try again.");
+      setLoading(false);
+    }
   }
 
   const chosenTeam = TEAMS_SEED.find((t) => t.id === selectedTeam);
@@ -169,16 +177,18 @@ export default function SetupPage() {
               <div className="flex gap-3">
                 <button
                   onClick={() => setStep("team")}
+                  disabled={loading}
                   className="flex-1 font-space-mono font-bold text-[11px] tracking-widest text-text-secondary py-4
-                    border-2 border-border hover:bg-surface transition-colors"
+                    border-2 border-border hover:bg-surface disabled:opacity-50 transition-colors"
                 >
                   ← BACK
                 </button>
                 <button
                   onClick={handleStart}
-                  className="flex-1 bg-border text-accent font-anton text-[18px] tracking-wide py-4 hover:bg-black transition-colors"
+                  disabled={loading}
+                  className="flex-1 bg-border text-accent font-anton text-[18px] tracking-wide py-4 hover:bg-black disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
-                  BEGIN SEASON →
+                  {loading ? "LOADING..." : "BEGIN SEASON →"}
                 </button>
               </div>
             </div>

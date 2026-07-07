@@ -62,14 +62,18 @@ function salaryToStar(salary: number): number {
   return 1.5;
 }
 
-function starToBase(star: number): number {
-  if (star >= 5.0) return 200;
-  if (star >= 4.5) return 150;
-  if (star >= 4.0) return 100;
-  if (star >= 3.5) return 75;
-  if (star >= 3.0) return 50;
-  if (star >= 2.5) return 30;
-  return 20;
+function calculateBasePrice(isCapped: boolean, star: number): number {
+  if (isCapped) {
+    if (star >= 5.0) return 200;
+    if (star >= 4.5) return 150;
+    if (star >= 4.0) return 100;
+    if (star >= 3.5) return 75;
+    return 50;
+  } else {
+    if (star >= 3.5) return 50;
+    if (star >= 2.5) return 40;
+    return 30;
+  }
 }
 
 function bowlStyle(bowlType: string, bowlHand: string): string | null {
@@ -263,7 +267,7 @@ async function main() {
     const hasBattedAt7 = cols[idxBatted7]?.toUpperCase() === "TRUE";
 
     const star = salaryToStar(salary);
-    const base = starToBase(star);
+    const base = calculateBasePrice(isCapped, star);
 
     let id = toSlug(name);
     if (seenIds.has(id)) {
@@ -296,20 +300,7 @@ async function main() {
       if (existing) {
         iplHistory.push(existing);
       } else {
-        if (baseHistory.length > 0) {
-          let closest = baseHistory[0];
-          let minDiff = Math.abs(parseInt(closest.season) - y);
-          for (const h of baseHistory) {
-            const diff = Math.abs(parseInt(h.season) - y);
-            if (diff < minDiff) {
-              minDiff = diff;
-              closest = h;
-            }
-          }
-          iplHistory.push({ teamId: closest.teamId, season: yearStr, price: closest.price });
-        } else {
-          iplHistory.push({ teamId: fallbackTeam, season: yearStr, price: fallbackPrice });
-        }
+        iplHistory.push({ teamId: "UNSOLD", season: yearStr, price: 0 });
       }
     }
 

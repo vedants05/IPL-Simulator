@@ -11,7 +11,7 @@ import {
   SkipSetResultItem,
   BidEntry,
 } from "@/lib/types";
-import { PLAYERS_SEED } from "@/lib/data/players";
+import { fetchPlayersFromSupabase } from "@/lib/supabase/fetchPlayers";
 import { TEAMS_SEED } from "@/lib/data/teams";
 import {
   buildAuctionSets,
@@ -52,7 +52,7 @@ interface GameStateAdditions {
 }
 
 interface GameActions {
-  initNewGame: (userTeamId: string) => void;
+  initNewGame: (userTeamId: string) => Promise<void>;
   retainPlayer: (playerId: string) => void;
   releaseRetention: (playerId: string) => void;
   confirmRetentions: () => void;
@@ -140,15 +140,17 @@ export const useGameStore = create<Store>()(
       skipSetSummary: null,
 
       // ----- Actions -----
-      initNewGame: (userTeamId) => {
+      initNewGame: async (userTeamId) => {
+        const fetchedPlayers = await fetchPlayersFromSupabase();
+        
         const playersMap: Record<string, Player> = {};
-        PLAYERS_SEED.forEach((p: Player) => {
+        fetchedPlayers.forEach((p: Player) => {
           playersMap[p.id] = { ...p, currentTeamId: null, isRetained: false, retainedByTeamId: null };
         });
 
         const teamsMap: Record<string, Team> = {};
         TEAMS_SEED.forEach((t) => {
-          const teamPlayers = PLAYERS_SEED.filter((p: Player) => 
+          const teamPlayers = fetchedPlayers.filter((p: Player) => 
             p.currentTeamId === t.id
           );
           teamsMap[t.id] = {

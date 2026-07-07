@@ -1,13 +1,14 @@
-import { PLAYERS_SEED } from "../../../lib/data/players";
+import { fetchPlayersFromSupabase } from "../../../lib/supabase/fetchPlayers";
 import { TEAMS_SEED } from "../../../lib/data/teams";
 import { decideAIRetentions, estimateRetentionWorth } from "../../../lib/logic/auctionEngine";
 import { NextResponse } from "next/server";
 
 export async function GET() {
-  const playersMap = Object.fromEntries(PLAYERS_SEED.map(p => [p.id, p]));
+  const players = await fetchPlayersFromSupabase();
+  const playersMap = Object.fromEntries(players.map(p => [p.id, p]));
 
   const results = TEAMS_SEED.map(team => {
-    const squad = PLAYERS_SEED.filter(p => p.currentTeamId === team.id);
+    const squad = players.filter(p => p.currentTeamId === team.id);
     const isCapped = (p: any) => p.isCapped || p.nationality === "Overseas";
 
     const valuations = squad.map(p => ({

@@ -178,6 +178,14 @@ interface SquadComp {
   spinners79: number;
   spinAllRounders75: number;
   totalSpinners75: number;
+  openers75: number;
+  coreBatters75: number;
+  pacers78: number;
+  spinners76: number;
+
+  // Added batting slot coverage properties
+  uncoveredBattingSlots: string[];
+  overseasMiddleOrderCount: number;
 }
 
 // IPL structural rules — these are fixed (league rules, not preferences)
@@ -185,6 +193,60 @@ const RULES = {
   batters: 5, wks: 2, allrounders: 2, spinners: 2, pacers: 3,
   minTotal: 18, maxTotal: 25, maxOverseas: 8, minSalaryPerSlot: 30,
 };
+
+function getBattingSlotsCoverage(squad: Player[]): {
+  assignment: Record<string, string>;
+  uncovered: string[];
+} {
+  const players = squad.filter(p => ratingOf(p) >= 75).sort((a, b) => ratingOf(b) - ratingOf(a));
+  const slots = ["opener1", "opener2", "slot3", "slot4", "slot5", "slot6", "slot7", "slot8"];
+
+  const isEligible = (p: Player, slot: string): boolean => {
+    if (slot === "opener1" || slot === "opener2") return !!p.isOpener;
+    if (slot === "slot3") return !!p.hasBattedAt3;
+    if (slot === "slot4") return !!p.hasBattedAt4;
+    if (slot === "slot5") return !!p.hasBattedAt5;
+    if (slot === "slot6") return !!p.hasBattedAt6;
+    if (slot === "slot7") return !!p.hasBattedAt7;
+    if (slot === "slot8") return p.role === "Batsman" || p.role === "WK-Batsman" || p.role === "All-Rounder";
+    return false;
+  };
+
+  const match: Record<string, string> = {}; // slot -> player.id
+
+  const findPath = (playerId: string, visited: Set<string>): boolean => {
+    const player = players.find(p => p.id === playerId);
+    if (!player) return false;
+
+    for (const slot of slots) {
+      if (isEligible(player, slot) && !visited.has(slot)) {
+        visited.add(slot);
+        const currentMatch = match[slot];
+        if (currentMatch) {
+          const currentMatchPlayer = players.find(p => p.id === currentMatch);
+          if (currentMatchPlayer && ratingOf(currentMatchPlayer) > 80) {
+            continue; // Exception: do not displace players rated > 80
+          }
+        }
+        if (!currentMatch || findPath(currentMatch, visited)) {
+          match[slot] = playerId;
+          return true;
+        }
+      }
+    }
+    return false;
+  };
+
+  for (const player of players) {
+    findPath(player.id, new Set<string>());
+  }
+
+  const uncovered = slots.filter(s => !match[s]);
+  return {
+    assignment: match,
+    uncovered
+  };
+}
 
 function getSquadComp(squad: Player[]): SquadComp {
   const premiumIndians = squad.filter(p => p.nationality === "Indian" && ratingOf(p) > 78).length;
@@ -234,6 +296,20 @@ function getSquadComp(squad: Player[]): SquadComp {
 
     const wks76 = squad.filter(p => isFullTimeKeeper(p) && ratingOf(p) > 76).length;
 
+  const { assignment, uncovered } = getBattingSlotsCoverage(squad);
+  let overseasMiddleOrderCount = 0;
+  const playerMap = new Map(squad.map(p => [p.id, p]));
+  const middleSlots = ["slot3", "slot4", "slot5", "slot6", "slot7"];
+  for (const slot of middleSlots) {
+    const pId = assignment[slot];
+    if (pId) {
+      const p = playerMap.get(pId);
+      if (p && p.nationality === "Overseas") {
+        overseasMiddleOrderCount++;
+      }
+    }
+  }
+
   return {
     batters:     squad.filter(p => p.role === "Batsman").length,
     wks:         squad.filter(p => p.role === "WK-Batsman").length,
@@ -260,6 +336,12 @@ function getSquadComp(squad: Player[]): SquadComp {
     spinners79,
     spinAllRounders75,
     totalSpinners75,
+    openers75: squad.filter(p => !!p.isOpener && ratingOf(p) >= 75).length,
+    coreBatters75: squad.filter(p => !!p.isCoreBatter && ratingOf(p) >= 75).length,
+    pacers78: squad.filter(p => p.role === "Pace Bowler" && (p.currentBowling ?? 0) >= 78).length,
+    spinners76: squad.filter(p => p.role === "Spin Bowler" && (p.currentBowling ?? 0) >= 76).length,
+    uncoveredBattingSlots: uncovered,
+    overseasMiddleOrderCount,
   };
 }
 
@@ -421,11 +503,46 @@ function computePlayerFit(
       }
     }
   }
-  if (isKeeper(player) && rating > 78) {
-    if ((comp.premiumWKs ?? 0) < 1) fit += u(0.40, 0.60);
+  if (isKeeper(player)) {
+    if ((comp.wks ?? 0) < 1) {
+      fit += u(2.00, 2.80);
+    }
   }
-  if (isFullTimeKeeper(player) && rating > 76) {
-    if ((comp.wks76 ?? 0) < 2) fit += u(1.50, 2.20);
+  if (isFullTimeKeeper(player) && rating >= 76) {
+    if ((comp.wks76 ?? 0) < 2) {
+      fit += u(1.80, 2.60);
+    }
+  }
+
+  // Opener requirements: At least 3 players who can open and 2 openers above 75 rated
+  if (player.isOpener) {
+    if ((comp.openers ?? 0) < 3) {
+      fit += u(1.50, 2.20);
+    }
+    if (rating >= 75 && (comp.openers75 ?? 0) < 2) {
+      fit += u(1.80, 2.60);
+    }
+  }
+
+  // Core Batter requirements: At least 4 core batters above 75 rated
+  if (player.isCoreBatter && rating >= 75) {
+    if ((comp.coreBatters75 ?? 0) < 4) {
+      fit += u(1.80, 2.60);
+    }
+  }
+
+  // Pacer requirements: At least 3 pacers rated 78+ (over 77)
+  if (player.role === "Pace Bowler" && (player.currentBowling ?? 0) >= 78) {
+    if ((comp.pacers78 ?? 0) < 3) {
+      fit += u(1.80, 2.60);
+    }
+  }
+
+  // Spinner requirements: At least 2 spinners rated 76+ (over 75)
+  if (player.role === "Spin Bowler" && (player.currentBowling ?? 0) >= 76) {
+    if ((comp.spinners76 ?? 0) < 2) {
+      fit += u(1.80, 2.60);
+    }
   }
 
   // 5 batting Indians with rating > 78 and 4 bowling Indians with rating > 77.
@@ -451,9 +568,41 @@ function computePlayerFit(
         fit += u(0.30, 0.50);
       }
     }
-  } else if (isSpinAllRounder(player)) {
-    if ((player.currentBowling ?? 0) > 75 && (comp.totalSpinners75 ?? 0) < 3) {
-      fit += u(0.30, 0.50);
+  }
+
+  // 12. Batting Slots Coverage and Overseas middle-order limits
+  if (rating >= 75) {
+    const playerEligibleSlots = [];
+    if (player.isOpener) {
+      playerEligibleSlots.push("opener1", "opener2");
+    }
+    if (player.hasBattedAt3) playerEligibleSlots.push("slot3");
+    if (player.hasBattedAt4) playerEligibleSlots.push("slot4");
+    if (player.hasBattedAt5) playerEligibleSlots.push("slot5");
+    if (player.hasBattedAt6) playerEligibleSlots.push("slot6");
+    if (player.hasBattedAt7) playerEligibleSlots.push("slot7");
+    if (player.role === "Batsman" || player.role === "WK-Batsman" || player.role === "All-Rounder") {
+      playerEligibleSlots.push("slot8");
+    }
+
+    const coversMissingSlot = playerEligibleSlots.some(slot =>
+      comp.uncoveredBattingSlots && comp.uncoveredBattingSlots.includes(slot)
+    );
+
+    if (coversMissingSlot) {
+      fit += u(0.80, 1.20);
+    }
+  }
+
+  if (player.nationality === "Overseas") {
+    const isMiddleOrderCapable = !!(player.hasBattedAt3 || player.hasBattedAt4 || player.hasBattedAt5 || player.hasBattedAt6 || player.hasBattedAt7);
+    if (isMiddleOrderCapable) {
+      if ((comp.overseasMiddleOrderCount ?? 0) >= 2) {
+        fit *= 0.10;
+      }
+      if (comp.overseas >= 3) {
+        fit *= 0.50;
+      }
     }
   }
 
@@ -509,17 +658,34 @@ function intrinsicValue(
   team: Team,
   comp: SquadComp,
   quirks: TeamQuirks,
-  fitOverride?: number
+  fitOverride?: number,
+  avgPerSlot?: number
 ): number {
   const fit = fitOverride ?? computePlayerFit(player, team, comp, quirks);
   const effQ = effectiveQuality(player);
   const anchor = qualityToBaseLakhs(effQ);
 
-  // Central valuation sits near the market anchor (premium ≈ 1.0 for a solid
-  // fit), so the SECOND-highest bid — the clearing price — lands near anchor
-  // rather than running to the ceiling and gutting the rest of the budget.
-  const premium = clamp(0.55 + fit * 0.46, 0.36, 1.24);
-  const raw = anchor * premium * quirks.temperament * getPotentialMult(player);
+  let premium = 0.55 + fit * 0.46;
+  const rating = ratingOf(player);
+  const needsOpeners = player.isOpener && ((comp.openers ?? 0) < 3 || (rating >= 75 && (comp.openers75 ?? 0) < 2));
+  const needsCoreBatters = player.isCoreBatter && rating >= 75 && (comp.coreBatters75 ?? 0) < 4;
+  const needsPacers = player.role === "Pace Bowler" && (player.currentBowling ?? 0) >= 78 && (comp.pacers78 ?? 0) < 3;
+  const needsSpinners = player.role === "Spin Bowler" && (player.currentBowling ?? 0) >= 76 && (comp.spinners76 ?? 0) < 2;
+  const needsAnyWK = isKeeper(player) && (comp.wks ?? 0) < 1;
+  const needsWKs76 = isFullTimeKeeper(player) && rating >= 76 && (comp.wks76 ?? 0) < 2;
+  
+  let targetMaxPremium = (needsOpeners || needsCoreBatters || needsPacers || needsSpinners || needsAnyWK || needsWKs76) ? 2.20 : 1.24;
+  if (avgPerSlot !== undefined && avgPerSlot < 250) {
+    // Scale maxPremium down linearly from targetMaxPremium to 1.10 as avgPerSlot goes from 250 Lakhs down to 100 Lakhs
+    const factor = Math.max(0, Math.min(1, (avgPerSlot - 100) / 150));
+    targetMaxPremium = 1.10 + (targetMaxPremium - 1.10) * factor;
+  }
+
+  premium = clamp(premium, 0.36, targetMaxPremium);
+  let raw = anchor * premium * quirks.temperament * getPotentialMult(player);
+  if (isKeeper(player)) {
+    raw *= rating >= 80 ? 1.45 : 1.25;
+  }
   return applyQualityCeiling(raw, anchor, effQ, player);
 }
 
@@ -554,12 +720,13 @@ function getTeamPlan(team: Team, allPlayers: Record<string, Player>): TeamPlan {
   // Teams aim to fill out a full squad (24-25) — depth wins tournaments.
   const targetSquad = clamp(Math.round(u(24.0, 25.4)), 24, 25);
   const toBuy = clamp(targetSquad - comp.total, 6, 25);
+  const avgPerSlot = team.remainingPurse / toBuy;
 
   // Score & rank the pool for this franchise (all stats × ideology × needs).
   const scored = pool
     .map(p => {
       const fit = computePlayerFit(p, team, comp, quirks);
-      return { p, fit, val: intrinsicValue(p, team, comp, quirks, fit) };
+      return { p, fit, val: intrinsicValue(p, team, comp, quirks, fit, avgPerSlot) };
     })
     .sort((a, b) => (b.fit * b.val) - (a.fit * a.val));
 
@@ -579,6 +746,15 @@ function getTeamPlan(team: Team, allPlayers: Record<string, Player>): TeamPlan {
     maxBid[s.p.id] = Math.round(s.val);
     spend += expectedCost;
     primaries++;
+  }
+
+  // Wicketkeeper Shortlist Guarantee: If the team lacks a premium (80+) keeper, force shortlist at least one
+  const hasPremiumKeeper = squad.some(p => isKeeper(p) && ratingOf(p) >= 80);
+  if (!hasPremiumKeeper) {
+    const bestPoolKeeper = scored.find(s => isKeeper(s.p) && ratingOf(s.p) >= 80);
+    if (bestPoolKeeper && !maxBid[bestPoolKeeper.p.id]) {
+      maxBid[bestPoolKeeper.p.id] = Math.round(bestPoolKeeper.val * 1.30);
+    }
   }
 
   const depthSlots = Math.max(1, toBuy - primaries);
@@ -621,6 +797,13 @@ function applyQualityCeiling(raw: number, base: number, quality: number, player?
     carry = u(0.35, 0.55);
   }
 
+  // --- TEMP: WICKETKEEPER CEILING BOOST ---
+  if (player && isKeeper(player)) {
+    ceilMult *= u(1.30, 1.50);
+    carry = u(0.35, 0.55);
+  }
+  // ----------------------------------------
+
   const softCeil = base * ceilMult;
   const capped = raw > softCeil ? softCeil + (raw - softCeil) * carry : raw;
   return Math.min(capped, hardCap);
@@ -635,6 +818,23 @@ export function computeTeamValuation(
   allPlayers: Record<string, Player>,
   ctx: AuctionContext
 ): number {
+  // --- MID-AUCTION RE-PLANNING RULE ---
+  if (ctx && ctx.soldPlayerIds) {
+    const existingPlan = _teamPlans[team.id];
+    if (existingPlan) {
+      const lostTarget = Object.keys(existingPlan.maxBid).some(targetId => {
+        const isSold = ctx.soldPlayerIds.includes(targetId);
+        const isMine = team.squad.includes(targetId);
+        return isSold && !isMine;
+      });
+      const isInterval = ctx.soldPlayerIds.length > 0 && ctx.soldPlayerIds.length % 15 === 0;
+
+      if (lostTarget || isInterval) {
+        delete _teamPlans[team.id];
+      }
+    }
+  }
+
   const squad  = team.squad.map(id => allPlayers[id]).filter(Boolean);
   const comp   = getSquadComp(squad);
   const quirks = getQuirks(team);
@@ -646,8 +846,34 @@ export function computeTeamValuation(
 
   const excess = getRoleExcess(player.role, comp);
   const needsBodies = comp.total < plan.targetSquad;
-  const planned = plan.maxBid[player.id];
-  const fit = computePlayerFit(player, team, comp, quirks);
+
+  const slotsToFill = Math.max(1, plan.targetSquad - comp.total);
+  const avgPerSlot = team.remainingPurse / slotsToFill;
+
+  let planned = plan.maxBid[player.id];
+  let fit = computePlayerFit(player, team, comp, quirks);
+
+  // Emergency Shortlist Bypass: If a team has 0 keepers and this player is a keeper,
+  // treat them as a planned target to bypass the unplanned price penalty
+  if (planned === undefined && isKeeper(player) && (comp.wks ?? 0) < 1) {
+    planned = Math.round(intrinsicValue(player, team, comp, quirks, fit, avgPerSlot) * 1.15);
+  }
+
+  // Scarcity Boost for critical roles (Wicketkeepers and Premium Spinners)
+  if (ctx && ctx.remainingPlayerIds) {
+    const remainingPlayers = ctx.remainingPlayerIds.map(id => allPlayers[id]).filter(Boolean);
+    if (isKeeper(player) && (comp.wks ?? 0) < 2) {
+      const remainingKeepers = remainingPlayers.filter(isKeeper).length;
+      if (remainingKeepers <= 4) fit += 1.20;
+      else if (remainingKeepers <= 8) fit += 0.60;
+    }
+    if (player.role === "Spin Bowler" && ratingOf(player) >= 76 && (comp.spinners76 ?? 0) < 2) {
+      const remainingSpinners = remainingPlayers.filter(p => p.role === "Spin Bowler" && ratingOf(p) >= 76).length;
+      if (remainingSpinners <= 4) fit += 1.20;
+      else if (remainingSpinners <= 8) fit += 0.60;
+    }
+  }
+
   const highValue = ratingOf(player) >= 80 || (player.reputation ?? 0) >= 8;
 
   // ── Interest gate ─────────────────────────────────────────────────────────
@@ -668,7 +894,7 @@ export function computeTeamValuation(
   }
 
   // ── Market-anchored value for EVERY interested team ───────────────────────
-  let base = intrinsicValue(player, team, comp, quirks, fit);
+  let base = intrinsicValue(player, team, comp, quirks, fit, avgPerSlot);
 
   if (planned !== undefined) {
     // Shortlist premium — pay a touch above market for pre-formed targets.
@@ -692,8 +918,7 @@ export function computeTeamValuation(
   // depth ~0.6×. Because the fair share recomputes after every buy, a team
   // that splurges on a star automatically has less per slot for the rest, so
   // it can never overspend into a short squad — it fills all the way to 25.
-  const slotsToFill = Math.max(1, plan.targetSquad - comp.total);
-  const avgPerSlot = team.remainingPurse / slotsToFill;
+
   // Concentrations average near 1.0 across a full build so money and slots run
   // out together — the team fills all the way to a full 25 rather than blowing
   // the purse on a handful of stars. Genuine marquee names (85+ rating) concentrate
