@@ -87,18 +87,12 @@ export interface Player {
   isPartTimeWk?: boolean;
   isOpener?: boolean;
   isFinisher?: boolean;
-<<<<<<< HEAD
-=======
   isCoreBatter?: boolean;
->>>>>>> refs/remotes/origin/main
   hasBattedAt3?: boolean;
   hasBattedAt4?: boolean;
   hasBattedAt5?: boolean;
   hasBattedAt6?: boolean;
-<<<<<<< HEAD
-=======
   hasBattedAt7?: boolean;
->>>>>>> refs/remotes/origin/main
   onlyOpensOrBenched?: boolean;
 }
 

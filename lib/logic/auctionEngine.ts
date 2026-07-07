@@ -135,7 +135,7 @@ function getPotentialMult(p: Player): number {
 type RoleGroup = "BAT" | "WK" | "AR" | "PACE" | "SPIN";
 
 function roleGroupOf(p: Player): RoleGroup {
-  if (isKeeper(p)) return "WK";
+  if (p.role === "WK-Batsman") return "WK";
   if (p.role === "All-Rounder") return "AR";
   if (p.role === "Pace Bowler") return "PACE";
   if (p.role === "Spin Bowler") return "SPIN";
@@ -167,17 +167,11 @@ interface SquadComp {
   openers: number; keepers: number; finishers: number;
   qualityPace: number; qualitySpin: number; leaders: number;
 
+  // New constraints properties
   premiumIndians: number;
   premiumOverseas: number;
   premiumWKs: number;
   wks76: number;
-  ftKeepersOver78: number;
-  keepersSlot1Satisfied: boolean;
-  keepersSlot2Satisfied: boolean;
-  keepersSlot3Satisfied: boolean;
-  keepersTotalFullTime: number;
-  keepersPartTimeUsedFor2or3: number;
-  indianBattersWKs76: number;
   battingIndians78: number;
   bowlingIndians77: number;
   spinners75: number;
@@ -300,10 +294,7 @@ function getSquadComp(squad: Player[]): SquadComp {
   const spinAllRounders75 = squad.filter(p => isSpinAllRounder(p) && (p.currentBowling ?? 0) > 75).length;
   const totalSpinners75 = spinners75 + spinAllRounders75;
 
-  const wks76 = squad.filter(p => isFullTimeKeeper(p) && ratingOf(p) > 76).length;
-  const ftKeepersOver78 = squad.filter(p => isFullTimeKeeper(p) && ratingOf(p) > 78).length;
-  const kComp = analyzeSquadKeepers(squad);
-  const indianBattersWKs76 = squad.filter(p => p.nationality === "Indian" && (p.role === "Batsman" || p.role === "WK-Batsman") && ratingOf(p) > 76).length;
+    const wks76 = squad.filter(p => isFullTimeKeeper(p) && ratingOf(p) > 76).length;
 
   const { assignment, uncovered } = getBattingSlotsCoverage(squad);
   let overseasMiddleOrderCount = 0;
@@ -339,13 +330,6 @@ function getSquadComp(squad: Player[]): SquadComp {
     premiumOverseas,
     premiumWKs,
     wks76,
-    ftKeepersOver78,
-    keepersSlot1Satisfied: kComp.slot1Satisfied,
-    keepersSlot2Satisfied: kComp.slot2Satisfied,
-    keepersSlot3Satisfied: kComp.slot3Satisfied,
-    keepersTotalFullTime: kComp.totalFullTime,
-    keepersPartTimeUsedFor2or3: kComp.partTimeUsedFor2or3,
-    indianBattersWKs76,
     battingIndians78,
     bowlingIndians77,
     spinners75,
@@ -440,67 +424,6 @@ function getQuirks(team: Team): TeamQuirks {
 // live valuation, so an AI's bidding reflects a coherent team-building idea.
 // Returns roughly 0 (no interest) … 1 (solid regular) … 2+ (must-have target).
 // ---------------------------------------------------------------------------
-function analyzeSquadKeepers(squad: Player[]) {
-  const fullTimeKeepers = squad.filter(isFullTimeKeeper);
-  const partTimeKeepers = squad.filter(p => isKeeper(p) && !isFullTimeKeeper(p));
-
-  const sortedFullTime = [...fullTimeKeepers].sort((a, b) => ratingOf(b) - ratingOf(a));
-  const sortedPartTime = [...partTimeKeepers].sort((a, b) => ratingOf(b) - ratingOf(a));
-
-  let slot1Satisfied = false;
-  let slot2Satisfied = false;
-  let slot3Satisfied = false;
-  let ptUsed = 0;
-
-  const ftPool = [...sortedFullTime];
-  const ptPool = [...sortedPartTime];
-
-  // Slot 1: >80, MUST be a full-time keeper
-  const ftIdx80 = ftPool.findIndex(p => ratingOf(p) > 80);
-  if (ftIdx80 !== -1) {
-    slot1Satisfied = true;
-    ftPool.splice(ftIdx80, 1);
-  }
-
-  // Slot 2: >77 (can be part-time)
-  const ftIdx77 = ftPool.findIndex(p => ratingOf(p) > 77);
-  if (ftIdx77 !== -1) {
-    slot2Satisfied = true;
-    ftPool.splice(ftIdx77, 1);
-  } else {
-    const ptIdx77 = ptPool.findIndex(p => ratingOf(p) > 77);
-    if (ptIdx77 !== -1) {
-      slot2Satisfied = true;
-      ptPool.splice(ptIdx77, 1);
-      ptUsed++;
-    }
-  }
-
-  // Slot 3: >74 (can be part-time, but 2nd and 3rd cannot BOTH be part-time)
-  if (ptUsed >= 1) {
-    const ftIdx74 = ftPool.findIndex(p => ratingOf(p) > 74);
-    if (ftIdx74 !== -1) {
-      slot3Satisfied = true;
-      ftPool.splice(ftIdx74, 1);
-    }
-  } else {
-    const ftIdx74 = ftPool.findIndex(p => ratingOf(p) > 74);
-    if (ftIdx74 !== -1) {
-      slot3Satisfied = true;
-      ftPool.splice(ftIdx74, 1);
-    } else {
-      const ptIdx74 = ptPool.findIndex(p => ratingOf(p) > 74);
-      if (ptIdx74 !== -1) {
-        slot3Satisfied = true;
-        ptPool.splice(ptIdx74, 1);
-        ptUsed++;
-      }
-    }
-  }
-
-  return { slot1Satisfied, slot2Satisfied, slot3Satisfied, totalFullTime: fullTimeKeepers.length, partTimeUsedFor2or3: ptUsed };
-}
-
 const BAT_ROLES = ["Batsman", "WK-Batsman"];
 const BOWL_ROLES = ["Pace Bowler", "Spin Bowler"];
 
@@ -508,8 +431,7 @@ function computePlayerFit(
   player: Player,
   team: Team,
   comp: SquadComp,
-  quirks: TeamQuirks,
-  hasFTKeeper77Plus = false
+  quirks: TeamQuirks
 ): number {
   const dna = team.dna;
   const rating = ratingOf(player);
@@ -543,9 +465,6 @@ function computePlayerFit(
   // 6. Specialist attributes vs concrete guideline gaps
   if (player.isOpener && comp.openers < quirks.openersTarget) fit += u(0.10, 0.24);
   if (isKeeper(player) && comp.keepers < quirks.keepersTarget) fit += u(0.12, 0.28);
-  if (isFullTimeKeeper(player) && ratingOf(player) >= 77 && !hasFTKeeper77Plus) {
-    fit += u(3.5, 5.0); // Hard requirement boost
-  }
   if ((player.captaincy ?? 0) >= 78 && comp.leaders < 2) fit += u(0.10, 0.24);
   if (isFinisherType(player) && comp.finishers < quirks.finisherTarget) {
     const aggNorm = clamp(((player.battingAggression ?? 70) - 70) / 29, 0, 1);
@@ -574,10 +493,6 @@ function computePlayerFit(
   if (player.nationality === "Indian" && rating > 78) {
     if ((comp.premiumIndians ?? 0) < 8) fit += u(0.35, 0.55);
   }
-  // Enforce 5+ Indian batters + wicketkeepers over 76 rated (not including all-rounders)
-  if (player.nationality === "Indian" && (player.role === "Batsman" || player.role === "WK-Batsman") && rating > 76) {
-    if ((comp.indianBattersWKs76 ?? 0) < 5) fit += u(2.20, 3.50);
-  }
   if (player.nationality === "Overseas" && rating > 78) {
     if ((comp.overseas ?? 0) >= 5) {
       // Once you reach 5 overseas players reduce the need for higher-rated overseas players
@@ -588,33 +503,6 @@ function computePlayerFit(
       }
     }
   }
-<<<<<<< HEAD
-  // Keeper target & stockpiling checks
-  if (isFullTimeKeeper(player)) {
-    if (comp.keepersTotalFullTime >= 4) {
-      fit *= 0.05; // Prevent stockpiling more than 4 full-time keepers
-    }
-  }
-
-  if (isKeeper(player)) {
-    const isFT = isFullTimeKeeper(player);
-    const pRating = ratingOf(player);
-
-    if (pRating > 80 && !comp.keepersSlot1Satisfied) {
-      fit += isFT ? u(1.80, 2.50) : u(1.20, 1.80);
-    } else if (pRating > 77 && !comp.keepersSlot2Satisfied) {
-      if (isFT) {
-        fit += u(1.40, 2.00);
-      } else if (comp.keepersPartTimeUsedFor2or3 === 0) {
-        fit += u(1.00, 1.50);
-      }
-    } else if (pRating > 74 && !comp.keepersSlot3Satisfied) {
-      if (isFT) {
-        fit += u(1.10, 1.60);
-      } else if (comp.keepersPartTimeUsedFor2or3 === 0) {
-        fit += u(0.80, 1.20);
-      }
-=======
   if (isKeeper(player)) {
     if ((comp.wks ?? 0) < 1) {
       fit += u(2.00, 2.80);
@@ -654,7 +542,6 @@ function computePlayerFit(
   if (player.role === "Spin Bowler" && (player.currentBowling ?? 0) >= 76) {
     if ((comp.spinners76 ?? 0) < 2) {
       fit += u(1.80, 2.60);
->>>>>>> refs/remotes/origin/main
     }
   }
 
@@ -716,12 +603,6 @@ function computePlayerFit(
       if (comp.overseas >= 3) {
         fit *= 0.50;
       }
-    }
-  }
-
-  if (isFullTimeKeeper(player) && ratingOf(player) > 79) {
-    if ((comp.ftKeepersOver78 ?? 0) >= 2) {
-      fit *= 0.80; // Reduced valuation if team already has 2 full-time keepers > 78 in squad
     }
   }
 
@@ -841,22 +722,11 @@ function getTeamPlan(team: Team, allPlayers: Record<string, Player>): TeamPlan {
   const toBuy = clamp(targetSquad - comp.total, 6, 25);
   const avgPerSlot = team.remainingPurse / toBuy;
 
-  const hasFTKeeper77Plus = squad.some(p => isFullTimeKeeper(p) && ratingOf(p) >= 77);
-
   // Score & rank the pool for this franchise (all stats × ideology × needs).
   const scored = pool
     .map(p => {
-<<<<<<< HEAD
-      const fit = computePlayerFit(p, team, comp, quirks, hasFTKeeper77Plus);
-      let val = intrinsicValue(p, team, comp, quirks, fit);
-      if (isFullTimeKeeper(p) && ratingOf(p) >= 77 && !hasFTKeeper77Plus) {
-        val = Math.max(val * 1.8, 300);
-      }
-      return { p, fit, val };
-=======
       const fit = computePlayerFit(p, team, comp, quirks);
       return { p, fit, val: intrinsicValue(p, team, comp, quirks, fit, avgPerSlot) };
->>>>>>> refs/remotes/origin/main
     })
     .sort((a, b) => (b.fit * b.val) - (a.fit * a.val));
 
@@ -896,9 +766,8 @@ function getTeamPlan(team: Team, allPlayers: Record<string, Player>): TeamPlan {
   return plan;
 }
 function getRoleExcess(role: string, comp: SquadComp): number {
-  if (role === "WK-Batsman" || role === "Batsman") {
-    return (comp.batters + comp.wks) - (RULES.batters + RULES.wks);
-  }
+  if (role === "WK-Batsman")  return comp.wks         - RULES.wks;
+  if (role === "Batsman")     return comp.batters      - RULES.batters;
   if (role === "Pace Bowler") return comp.pacers       - RULES.pacers;
   if (role === "Spin Bowler") return comp.spinners     - RULES.spinners;
   if (role === "All-Rounder") return comp.allrounders  - RULES.allrounders;
@@ -977,12 +846,6 @@ export function computeTeamValuation(
 
   const excess = getRoleExcess(player.role, comp);
   const needsBodies = comp.total < plan.targetSquad;
-<<<<<<< HEAD
-  const planned = plan.maxBid[player.id];
-  const hasFTKeeper77Plus = squad.some(p => isFullTimeKeeper(p) && ratingOf(p) >= 77);
-  const isTargetFTKeeper = isFullTimeKeeper(player) && ratingOf(player) >= 77;
-  const fit = computePlayerFit(player, team, comp, quirks, hasFTKeeper77Plus);
-=======
 
   const slotsToFill = Math.max(1, plan.targetSquad - comp.total);
   const avgPerSlot = team.remainingPurse / slotsToFill;
@@ -1011,7 +874,6 @@ export function computeTeamValuation(
     }
   }
 
->>>>>>> refs/remotes/origin/main
   const highValue = ratingOf(player) >= 80 || (player.reputation ?? 0) >= 8;
 
   // ── Interest gate ─────────────────────────────────────────────────────────
@@ -1020,24 +882,21 @@ export function computeTeamValuation(
   // only when a role is heavily overstacked (and he's not a planned target).
   const slotsLeft = plan.targetSquad - comp.total;
   if (planned === undefined) {
-    if (!needsBodies && !highValue && !(isTargetFTKeeper && !hasFTKeeper77Plus)) return 0;
+    if (!needsBodies && !highValue) return 0;
     // Role-stacking limit relaxes when the squad is well short of a full 25 —
     // a team that still needs many bodies takes the best available even if the
     // role is a little crowded, so everyone fills out to 25.
     const excessLimit = slotsLeft >= 6 ? 3 : slotsLeft >= 3 ? 4 : 6;
-    if (excess >= excessLimit && !highValue && !(isTargetFTKeeper && !hasFTKeeper77Plus)) return 0;
+    if (excess >= excessLimit && !highValue) return 0;
     // Weak-fit filler is ignored while there's still real squad-building to do.
-    const fitFloor = (highValue || (isTargetFTKeeper && !hasFTKeeper77Plus)) ? 0.28 : slotsLeft >= 8 ? 0.50 : slotsLeft >= 4 ? 0.34 : 0.18;
+    const fitFloor = highValue ? 0.28 : slotsLeft >= 8 ? 0.50 : slotsLeft >= 4 ? 0.34 : 0.18;
     if (fit < fitFloor) return 0;
   }
 
   // ── Market-anchored value for EVERY interested team ───────────────────────
   let base = intrinsicValue(player, team, comp, quirks, fit, avgPerSlot);
 
-  if (isTargetFTKeeper && !hasFTKeeper77Plus) {
-    // If lacking a 77+ full-time keeper, value this player extremely highly
-    base = Math.max(base * 1.8, 300);
-  } else if (planned !== undefined) {
+  if (planned !== undefined) {
     // Shortlist premium — pay a touch above market for pre-formed targets.
     base = Math.max(base, planned) * u(1.0, 1.10);
   } else {
@@ -1067,18 +926,14 @@ export function computeTeamValuation(
   // cheap enough to still round out the squad.
   const marquee = ratingOf(player) >= 84 || (player.reputation ?? 0) >= 9;
   let concentration: number;
-  if (isTargetFTKeeper && !hasFTKeeper77Plus) {
-    concentration = u(4.5, 6.5);
-  } else if (marquee)                 concentration = u(3.2, 5.2);
+  if (marquee)                 concentration = u(3.2, 5.2);
   else if (planned !== undefined) concentration = u(2.2, 3.4);
   else if (highValue)          concentration = u(1.7, 2.7);
   else if (fit >= 0.72)        concentration = u(1.0, 1.6);
   else                         concentration = u(0.55, 1.00);
   // A near-empty squad shouldn't hand its whole purse to lot one even so.
   let affordabilityCap = Math.min(avgPerSlot * concentration, team.remainingPurse * (ratingOf(player) >= 84 ? 0.60 : 0.50));
-  if (isTargetFTKeeper && !hasFTKeeper77Plus) {
-    affordabilityCap = Math.min(avgPerSlot * concentration, team.remainingPurse * 0.75); // Spend up to 75% of remaining purse
-  } else if (ratingOf(player) >= 84) {
+  if (ratingOf(player) >= 84) {
     affordabilityCap *= u(1.15, 1.30);
   }
 
@@ -1142,17 +997,6 @@ export function canAIBidAtAmount(
   if (squad.length >= RULES.maxTotal) return false;
 
   const reserve = minimumReserveLakhs(team, allPlayers);
-  const hasFTKeeper77 = squad.some(p => isFullTimeKeeper(p) && ratingOf(p) >= 77);
-  if (!hasFTKeeper77 && !(isFullTimeKeeper(player) && ratingOf(player) >= 77)) {
-    const remainingKeepers = ctx.remainingPlayerIds
-      .map(id => allPlayers[id])
-      .filter(p => p && p.id !== player.id && isFullTimeKeeper(p) && ratingOf(p) >= 77);
-    if (remainingKeepers.length > 0) {
-      const minBase = Math.min(...remainingKeepers.map(p => p.basePrice || 20));
-      const keeperReserve = Math.max(150, minBase);
-      if (team.remainingPurse - nextBid < reserve + keeperReserve) return false;
-    }
-  }
   if (team.remainingPurse - nextBid < reserve) return false;
 
   const valuation = getLotValuation(lotId, team, player, allPlayers, ctx);

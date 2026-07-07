@@ -13,8 +13,6 @@ const ROOT = process.cwd();
 const CSV_PATH = path.join(ROOT, "IPLMainGameDatabase.csv");
 const OUT_PATH = path.join(ROOT, "lib", "data", "players.ts");
 
-import WebSocket from "ws";
-
 // ---- Supabase ----
 const supabase = createClient(
   "https://qnmmplezmitcllovbyur.supabase.co",
@@ -179,31 +177,6 @@ async function main() {
     .split("\n")
     .filter(l => l.trim());
 
-<<<<<<< HEAD
-const players = dataLines
-  .map(line => parseCSVLine(line))
-  .filter(cols => cols[0] && cols[1] && TEAM_MAP[cols[0]])
-  .map(cols => {
-    const teamId  = TEAM_MAP[cols[0]];
-    const name    = cols[1];
-    const age     = parseInt(cols[3]) || 0;
-    const salary  = parseFloat(cols[4]) || 0;
-    const nat     = cols[5] === "Indian" ? "Indian" : "Overseas";
-    const isCapped = cols[6] === "Capped";
-    const role    = ROLE_MAP[cols[7]] ?? "Batsman";
-    const bowlType = cols[8] || "NA";
-    const bowlHand = cols[9] || "";
-    const batHand  = cols[10] === "LHB" ? "Left-hand" : "Right-hand";
-    const curBat   = parseInt(cols[11]) || 0;
-    const potBat   = parseInt(cols[12]) || 0;
-    const curBowl  = parseInt(cols[13]) || 0;
-    const potBowl  = parseInt(cols[14]) || 0;
-    const hasBattedAt3 = cols[15] === "TRUE";
-    const hasBattedAt4 = cols[16] === "TRUE";
-    const hasBattedAt5 = cols[17] === "TRUE";
-    const hasBattedAt6 = cols[18] === "TRUE";
-    const onlyOpensOrBenched = cols[19] === "TRUE";
-=======
   const headers = parseCSVLine(rawLines[0]);
 
   // Dynamically map headers to column indices
@@ -292,7 +265,6 @@ const players = dataLines
     const hasBattedAt5 = cols[idxBatted5]?.toUpperCase() === "TRUE";
     const hasBattedAt6 = cols[idxBatted6]?.toUpperCase() === "TRUE";
     const hasBattedAt7 = cols[idxBatted7]?.toUpperCase() === "TRUE";
->>>>>>> refs/remotes/origin/main
 
     const star = salaryToStar(salary);
     const base = calculateBasePrice(isCapped, star);
@@ -380,8 +352,6 @@ const players = dataLines
       potentialBatting: potBat,
       currentBowling: curBowl,
       potentialBowling: potBowl,
-<<<<<<< HEAD
-=======
       reputation,
       isWicketkeeper,
       isPartTimeWk,
@@ -391,122 +361,22 @@ const players = dataLines
       onlyOpensOrBenched,
       captaincy,
       battingAggression,
->>>>>>> refs/remotes/origin/main
       hasBattedAt3,
       hasBattedAt4,
       hasBattedAt5,
       hasBattedAt6,
-<<<<<<< HEAD
-      onlyOpensOrBenched,
-=======
       hasBattedAt7
->>>>>>> refs/remotes/origin/main
     };
   });
 
   console.log(`Parsed ${players.length} players`);
 
-<<<<<<< HEAD
-// ---- Write players.ts ----
-function q(v: unknown): string {
-  if (v === null) return "null";
-  if (typeof v === "string") return `"${v.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
-  if (typeof v === "boolean" || typeof v === "number") return String(v);
-  return String(v);
-}
-
-const lines: string[] = [
-  `import type { Player } from "@/lib/types";`,
-  ``,
-  `export const PLAYERS: Player[] = [`,
-];
-
-for (const p of players) {
-  const a = p.attributes;
-  const bs = p.careerStats.batting;
-  const bw = p.careerStats.bowling;
-  const histStr = p.iplHistory.map(h => `{ teamId: ${q(h.teamId)}, season: ${q(h.season)}, price: ${h.price} }`).join(", ");
-  lines.push(
-    `  { id: ${q(p.id)}, name: ${q(p.name)}, age: ${p.age}, nationality: ${q(p.nationality)}, role: ${q(p.role)}, battingStyle: ${q(p.battingStyle)}, bowlingStyle: ${q(p.bowlingStyle)}, starRating: ${p.starRating}, basePrice: ${p.basePrice}, isCapped: ${p.isCapped}, isRetained: false, retainedByTeamId: null, currentTeamId: ${q(p.currentTeamId)}, potential: ${q(p.potential)}, currentBatting: ${p.currentBatting}, potentialBatting: ${p.potentialBatting}, currentBowling: ${p.currentBowling}, potentialBowling: ${p.potentialBowling}, hasBattedAt3: ${(p as any).hasBattedAt3 === true}, hasBattedAt4: ${(p as any).hasBattedAt4 === true}, hasBattedAt5: ${(p as any).hasBattedAt5 === true}, hasBattedAt6: ${(p as any).hasBattedAt6 === true}, onlyOpensOrBenched: ${(p as any).onlyOpensOrBenched === true}, attributes: { technique: ${a.technique}, power: ${a.power}, timing: ${a.timing}, placement: ${a.placement}, running: ${a.running}, pace: ${a.pace}, swing: ${a.swing}, seam: ${a.seam}, spin: ${a.spin}, flight: ${a.flight}, accuracy: ${a.accuracy}, variation: ${a.variation}, catching: ${a.catching}, throwing: ${a.throwing}, agility: ${a.agility}, composure: ${a.composure}, leadership: ${a.leadership}, determination: ${a.determination} }, careerStats: { batting: { matches: ${bs.matches}, innings: ${bs.innings}, runs: ${bs.runs}, average: ${bs.average}, strikeRate: ${bs.strikeRate}, fifties: ${bs.fifties}, hundreds: ${bs.hundreds} }, bowling: { matches: ${bw.matches}, wickets: ${bw.wickets}, economy: ${bw.economy}, average: ${bw.average}, bestFigures: ${q(bw.bestFigures)} } }, iplHistory: [${histStr}] },`
-  );
-}
-
-lines.push(`];`);
-lines.push(``);
-lines.push(`export const PLAYERS_SEED: Player[] = PLAYERS;`);
-lines.push(``);
-lines.push(`export const PLAYERS_MAP: Record<string, Player> = Object.fromEntries(PLAYERS.map(p => [p.id, p]));`);
-
-fs.writeFileSync(OUT_PATH, lines.join("\n"), "utf-8");
-console.log(`✓ Written lib/data/players.ts`);
-
-// ---- Seed Supabase ----
-async function seedSupabase() {
-  console.log("Clearing existing Supabase data...");
-  await supabase.from("ipl_history").delete().neq("id", 0);
-  await supabase.from("players").delete().neq("id", "");
-
-  const playerRows = players.map(p => ({
-    id: p.id,
-    name: p.name,
-    age: p.age,
-    nationality: p.nationality,
-    role: p.role,
-    batting_style: p.battingStyle,
-    bowling_style: p.bowlingStyle,
-    star_rating: p.starRating,
-    base_price: p.basePrice,
-    is_capped: p.isCapped,
-    current_team_id: p.currentTeamId,
-    potential: p.potential,
-    attr_technique:    p.attributes.technique,
-    attr_power:        p.attributes.power,
-    attr_timing:       p.attributes.timing,
-    attr_placement:    p.attributes.placement,
-    attr_running:      p.attributes.running,
-    attr_pace:         p.attributes.pace,
-    attr_swing:        p.attributes.swing,
-    attr_seam:         p.attributes.seam,
-    attr_spin:         p.attributes.spin,
-    attr_flight:       p.attributes.flight,
-    attr_accuracy:     p.attributes.accuracy,
-    attr_variation:    p.attributes.variation,
-    attr_catching:     p.attributes.catching,
-    attr_throwing:     p.attributes.throwing,
-    attr_agility:      p.attributes.agility,
-    attr_composure:    p.attributes.composure,
-    attr_leadership:   p.attributes.leadership,
-    attr_determination: p.attributes.determination,
-    bat_matches:     p.careerStats.batting.matches,
-    bat_innings:     p.careerStats.batting.innings,
-    bat_runs:        p.careerStats.batting.runs,
-    bat_average:     p.careerStats.batting.average,
-    bat_strike_rate: p.careerStats.batting.strikeRate,
-    bat_fifties:     p.careerStats.batting.fifties,
-    bat_hundreds:    p.careerStats.batting.hundreds,
-    bowl_matches:    p.careerStats.bowling.matches,
-    bowl_wickets:    p.careerStats.bowling.wickets,
-    bowl_economy:    p.careerStats.bowling.economy,
-    bowl_average:    p.careerStats.bowling.average,
-    bowl_best_figures: p.careerStats.bowling.bestFigures,
-  }));
-
-  for (let i = 0; i < playerRows.length; i += 50) {
-    const batch = playerRows.slice(i, i + 50);
-    const { error } = await supabase.from("players").upsert(batch);
-    if (error) {
-      console.error(`Error at batch ${i}:`, error.message);
-      process.exit(1);
-    }
-    console.log(`  Players ${i + 1}–${i + batch.length} inserted`);
-=======
   // ---- Write players.ts ----
   function q(v: unknown): string {
     if (v === null) return "null";
     if (typeof v === "string") return `"${v.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
     if (typeof v === "boolean" || typeof v === "number") return String(v);
     return String(v);
->>>>>>> refs/remotes/origin/main
   }
 
   const outputLines: string[] = [
@@ -515,15 +385,6 @@ async function seedSupabase() {
     `export const PLAYERS: Player[] = [`,
   ];
 
-<<<<<<< HEAD
-  for (let i = 0; i < histRows.length; i += 100) {
-    const batch = histRows.slice(i, i + 100);
-    const { error } = await supabase.from("ipl_history").upsert(batch, { onConflict: "player_id,season" });
-    if (error) {
-      console.error(`Error inserting history at ${i}:`, error.message);
-      process.exit(1);
-    }
-=======
   for (const p of players) {
     const a = p.attributes;
     const bs = p.careerStats.batting;
@@ -532,7 +393,6 @@ async function seedSupabase() {
     outputLines.push(
       `  { id: ${q(p.id)}, name: ${q(p.name)}, age: ${p.age}, nationality: ${q(p.nationality)}, role: ${q(p.role)}, battingStyle: ${q(p.battingStyle)}, bowlingStyle: ${q(p.bowlingStyle)}, starRating: ${p.starRating}, basePrice: ${p.basePrice}, isCapped: ${p.isCapped}, isRetained: false, retainedByTeamId: null, currentTeamId: ${q(p.currentTeamId)}, potential: ${q(p.potential)}, currentBatting: ${p.currentBatting}, potentialBatting: ${p.potentialBatting}, currentBowling: ${p.currentBowling}, potentialBowling: ${p.potentialBowling}, reputation: ${p.name === "Sunil Narine" ? 10 : p.reputation}, captaincy: ${p.captaincy}, battingAggression: ${p.battingAggression}, isWicketkeeper: ${p.isWicketkeeper}, isPartTimeWk: ${p.isPartTimeWk}, isOpener: ${p.isOpener}, isFinisher: ${p.isFinisher}, isCoreBatter: ${(p as any).isCoreBatter}, onlyOpensOrBenched: ${(p as any).onlyOpensOrBenched}, hasBattedAt3: ${p.hasBattedAt3}, hasBattedAt4: ${p.hasBattedAt4}, hasBattedAt5: ${p.hasBattedAt5}, hasBattedAt6: ${p.hasBattedAt6}, hasBattedAt7: ${p.hasBattedAt7}, attributes: { technique: ${a.technique}, power: ${a.power}, timing: ${a.timing}, placement: ${a.placement}, running: ${a.running}, pace: ${a.pace}, swing: ${a.swing}, seam: ${a.seam}, spin: ${a.spin}, flight: ${a.flight}, accuracy: ${a.accuracy}, variation: ${a.variation}, catching: ${a.catching}, throwing: ${a.throwing}, agility: ${a.agility}, composure: ${a.composure}, leadership: ${a.leadership}, determination: ${a.determination} }, careerStats: { batting: { matches: ${bs.matches}, innings: ${bs.innings}, runs: ${bs.runs}, average: ${bs.average}, strikeRate: ${bs.strikeRate}, fifties: ${bs.fifties}, hundreds: ${bs.hundreds} }, bowling: { matches: ${bw.matches}, wickets: ${bw.wickets}, economy: ${bw.economy}, average: ${bw.average}, bestFigures: ${q(bw.bestFigures)} } }, iplHistory: [${histStr}] },`
     );
->>>>>>> refs/remotes/origin/main
   }
 
   outputLines.push(`];`);
