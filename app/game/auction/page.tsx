@@ -287,7 +287,8 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
     ["sunil-narine", "finn-allen"],
     ["yashasvi-jaiswal", "vaibhav-suryavanshi"],
     ["travis-head", "abhishek-sharma"],
-    ["shubman-gill", "sai-sudharsan"]
+    ["shubman-gill", "sai-sudharsan"],
+    ["prabhsimran-singh", "priyansh-arya"]
   ];
 
   const chosenOpeners: import("@/lib/types").Player[] = [];
@@ -508,14 +509,21 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
 
       // If the XII currently has LESS than 4 Overseas players, we can directly replace the target player!
       if (currentOSList.length < 4) {
-        const hypotheticalSelected = selected.map(p => p.id === targetPlayer.id ? overseasBenchPlayer : p);
-        const nextOSCount = countOS(hypotheticalSelected);
-        const nextOutAndOut = countOutAndOut(hypotheticalSelected);
-        const nextPacers = countPacers(hypotheticalSelected);
+        // SAFETY: Do not remove targetPlayer if they are the only keeper in selected
+        const isTargetKeeper = isKeeper(targetPlayer);
+        const selectedKeepersCount = selected.filter(isKeeper).length;
+        const incomingIsKeeper = isKeeper(overseasBenchPlayer);
+        
+        if (!isTargetKeeper || selectedKeepersCount > 1 || incomingIsKeeper) {
+          const hypotheticalSelected = selected.map(p => p.id === targetPlayer.id ? overseasBenchPlayer : p);
+          const nextOSCount = countOS(hypotheticalSelected);
+          const nextOutAndOut = countOutAndOut(hypotheticalSelected);
+          const nextPacers = countPacers(hypotheticalSelected);
 
-        if (nextOSCount <= 4 && nextOutAndOut <= getMaxOutAndOut(hypotheticalSelected) && nextPacers <= maxPacers) {
-          selected = hypotheticalSelected;
-          break;
+          if (nextOSCount <= 4 && nextOutAndOut <= getMaxOutAndOut(hypotheticalSelected) && nextPacers <= maxPacers) {
+            selected = hypotheticalSelected;
+            break;
+          }
         }
       }
 
@@ -631,12 +639,30 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
           return Math.random() - 0.5;
         });
 
-        const bestSwap = swapCandidates[0];
+        // SAFETY: Loop and find the first swap candidate that doesn't leave the XII without a wicketkeeper
+        let bestSwap = null;
+        for (const candidate of swapCandidates) {
+          const isTargetKeeper = isKeeper(targetPlayer);
+          const selectedKeepersCount = selected.filter(isKeeper).length;
+          
+          // The candidate would swap out `candidate.osPlayer` for `candidate.counterpart` (Indian),
+          // AND swap out `targetPlayer` for `overseasBenchPlayer`.
+          // We check if this resulting XII will still have a keeper.
+          const hypotheticalLineup = selected.map(p => p.id === candidate.osPlayer.id ? candidate.counterpart : p);
+          const postSwapLineup = hypotheticalLineup.map(p => p.id === targetPlayer.id ? overseasBenchPlayer : p);
+          
+          if (postSwapLineup.some(isKeeper)) {
+            bestSwap = candidate;
+            break;
+          }
+        }
         
-        // Execute swaps in selected array
-        selected = selected.map(p => p.id === bestSwap.osPlayer.id ? bestSwap.counterpart : p);
-        selected = selected.map(p => p.id === targetPlayer.id ? overseasBenchPlayer : p);
-        break; // Swap executed, stop.
+        if (bestSwap) {
+          // Execute swaps in selected array
+          selected = selected.map(p => p.id === bestSwap.osPlayer.id ? bestSwap.counterpart : p);
+          selected = selected.map(p => p.id === targetPlayer.id ? overseasBenchPlayer : p);
+          break; // Swap executed, stop.
+        }
       }
     }
   }
@@ -881,7 +907,8 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
     ["sunil-narine", "finn-allen"],
     ["yashasvi-jaiswal", "vaibhav-suryavanshi"],
     ["travis-head", "abhishek-sharma"],
-    ["shubman-gill", "sai-sudharsan"]
+    ["shubman-gill", "sai-sudharsan"],
+    ["prabhsimran-singh", "priyansh-arya"]
   ];
 
   const lineupActivePair = lineupSpecialPairs.find(pair =>
@@ -1057,6 +1084,7 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
   const pos8Player = mappedLineup[7];
   if (
     pos8Player &&
+    !pos8Player.isFinisher &&
     (pos8Player.currentBatting ?? 0) > 81 &&
     pos8Player.role !== "Pace Bowler" &&
     pos8Player.role !== "Spin Bowler"
@@ -1162,6 +1190,47 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
         const nextPacers = countPacers(hypo);
         if (nextOSCount <= 4 && nextOutAndOut <= currentMaxOO && nextPacers <= maxPacers) {
           mappedLineup[7] = ar;
+          break;
+        }
+      }
+    }
+  }
+
+  // --- POSITION 9 (index 8) OUT-AND-OUT BATTER SUBSTITUTE RULE ---
+  // If the player at position 9 (index 8) is a pure/out-and-out batter (Batsman or WK-Batsman),
+  // substitute them with the highest-rated All-Rounder or Bowler on the bench.
+  // Must respect OS limits, out-and-out/pacer limits, and ensure we do not leave the XII without a keeper.
+  {
+    const pos9Player = mappedLineup[8];
+    if (
+      pos9Player &&
+      (pos9Player.role === "Batsman" || pos9Player.role === "WK-Batsman")
+    ) {
+      const currentMaxOO = getMaxOutAndOut(mappedLineup);
+      
+      // Find eligible All-Rounders or Bowlers on the bench
+      const benchSubstitutes = squad
+        .filter(p => 
+          !mappedLineup.some(m => m?.id === p.id) && 
+          !p.onlyOpensOrBenched && 
+          (p.role === "All-Rounder" || p.role === "Pace Bowler" || p.role === "Spin Bowler")
+        )
+        .sort((a, b) => playerRating(b) - playerRating(a));
+
+      for (const sub of benchSubstitutes) {
+        const hypo = [...mappedLineup];
+        hypo[8] = sub;
+
+        // Check if substitution retains a keeper in the lineup
+        const hasKeeper = hypo.some(isKeeper);
+        if (!hasKeeper) continue;
+
+        const nextOSCount = countOS(hypo);
+        const nextOutAndOut = countOutAndOut(hypo);
+        const nextPacers = countPacers(hypo);
+
+        if (nextOSCount <= 4 && nextOutAndOut <= currentMaxOO && nextPacers <= maxPacers) {
+          mappedLineup[8] = sub;
           break;
         }
       }

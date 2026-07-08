@@ -47,7 +47,7 @@ function clamp(v: number, lo: number, hi: number): number {
 // Player helpers — read the extended database fields with safe fallbacks
 // ---------------------------------------------------------------------------
 
-function ratingOf(p: Player): number {
+export function ratingOf(p: Player): number {
   return Math.max(p.currentBatting ?? 0, p.currentBowling ?? 0);
 }
 
@@ -56,7 +56,7 @@ function repOf(p: Player): number {
   return p.reputation ?? 5;
 }
 
-function isKeeper(p: Player): boolean {
+export function isKeeper(p: Player): boolean {
   return !!(p.isWicketkeeper || p.isPartTimeWk || p.role === "WK-Batsman");
 }
 
@@ -989,6 +989,23 @@ export function canAIBidAtAmount(
   if (!canTeamAffordBid(team, nextBid)) return false;
 
   const squad = team.squad.map(id => allPlayers[id]).filter(Boolean);
+
+  // ---- WICKETKEEPER-OPENER EXCLUSION RULE ----
+  const isOpenerWK = isKeeper(player) && (player.isOpener || player.onlyOpensOrBenched);
+  if (isOpenerWK) {
+    const specialOpenersIds = [
+      "sunil-narine", "finn-allen", "yashasvi-jaiswal", "vaibhav-suryavanshi",
+      "travis-head", "abhishek-sharma", "shubman-gill", "sai-sudharsan",
+      "prabhsimran-singh", "priyansh-arya"
+    ];
+    const specialOpenersInTeam = team.squad.filter(id => specialOpenersIds.includes(id)).length;
+    const playerRating = ratingOf(player);
+    const openersAboveRating = squad.filter(p => p.isOpener && ratingOf(p) > playerRating).length;
+
+    if (specialOpenersInTeam >= 2 || openersAboveRating >= 2) {
+      return false;
+    }
+  }
 
   if (player.nationality === "Overseas") {
     const overseas = squad.filter(p => p.nationality === "Overseas").length;

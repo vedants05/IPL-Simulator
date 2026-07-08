@@ -40,6 +40,8 @@ import {
   decideAIRetentions,
   AuctionContext,
   getLotValuation,
+  ratingOf,
+  isKeeper,
 } from "@/lib/logic/auctionEngine";
 
 // ---------------------------------------------------------------------------
@@ -56,6 +58,7 @@ interface GameActions {
   retainPlayer: (playerId: string) => void;
   releaseRetention: (playerId: string) => void;
   confirmRetentions: () => void;
+  autoRetainPlayers: () => void;
   startAuction: () => void;
   placeBid: (teamId: string, amount: number) => void;
   passBid: () => void;
@@ -79,6 +82,7 @@ interface GameActions {
   decreaseSpeed: () => void;
   skipCurrentSet: () => void;
   skipAllAuction: () => void;
+  skipToAcceleratedAuction: () => void;
   dismissSkipSetSummary: () => void;
 }
 
@@ -116,6 +120,72 @@ function pickNextLot(sets: AuctionSet[]): { setIndex: number; playerIndex: numbe
 
 function allSetsComplete(sets: AuctionSet[]): boolean {
   return sets.every((s) => s.isCompleted);
+}
+
+function canTeamBidDuringSkip(
+  t: Team,
+  p: Player,
+  nextBid: number,
+  playerId: string,
+  newPlayers: Record<string, Player>,
+  ctx: AuctionContext,
+  userTeamId: string
+): boolean {
+  if (t.id === userTeamId) {
+    const { canBid } = canTeamBidOnPlayer(t, p);
+    if (!canBid) return false;
+    if (!canTeamAffordBid(t, nextBid)) return false;
+
+    const squad = t.squad.map(id => newPlayers[id]).filter(Boolean);
+
+    // ---- WICKETKEEPER-OPENER EXCLUSION RULE ----
+    const isOpenerWK = isKeeper(p) && (p.isOpener || p.onlyOpensOrBenched);
+    if (isOpenerWK) {
+      const specialOpenersIds = [
+        "sunil-narine", "finn-allen", "yashasvi-jaiswal", "vaibhav-suryavanshi",
+        "travis-head", "abhishek-sharma", "shubman-gill", "sai-sudharsan",
+        "prabhsimran-singh", "priyansh-arya"
+      ];
+      const specialOpenersInTeam = t.squad.filter(id => specialOpenersIds.includes(id)).length;
+      const playerRating = ratingOf(p);
+      const openersAboveRating = squad.filter(x => x.isOpener && ratingOf(x) > playerRating).length;
+
+      if (specialOpenersInTeam >= 2 || openersAboveRating >= 2) {
+        return false;
+      }
+    }
+
+    if (p.nationality === "Overseas") {
+      const overseas = squad.filter(x => x.nationality === "Overseas").length;
+      if (overseas >= 8) return false;
+    }
+
+    const currentSquadSize = squad.length;
+    if (currentSquadSize >= 18) {
+      if (currentSquadSize >= t.maxSquadSize - 1) return false;
+    } else {
+      if (currentSquadSize >= t.maxSquadSize) return false;
+    }
+
+    if (currentSquadSize < 18) {
+      const slotsNeeded = 18 - currentSquadSize;
+      const neededReserve = (slotsNeeded - 1) * 20;
+      if (t.remainingPurse - nextBid < neededReserve) return false;
+    } else {
+      if (t.remainingPurse >= 200) {
+        if (t.remainingPurse - nextBid < 200) return false;
+      }
+      if (t.remainingPurse - nextBid < 0) return false;
+    }
+
+    const valuation = getLotValuation(playerId, t, p, newPlayers, ctx);
+    if (valuation === 0) return false;
+    if (nextBid > valuation) return false;
+
+    return true;
+  } else {
+    return canAIBidAtAmount(t, p, nextBid, playerId, newPlayers, ctx);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -265,6 +335,49 @@ export const useGameStore = create<Store>()(
             [playerId]: { ...player, isRetained: false, retainedByTeamId: null },
           },
         }));
+      },
+
+      autoRetainPlayers: () => {
+        const { teams, userTeamId, players } = get();
+        const team = teams[userTeamId];
+        if (!team) return;
+
+        const resetTeams = { ...teams };
+        const resetPlayers = { ...players };
+
+        team.retainedPlayers.forEach((pid) => {
+          const p = resetPlayers[pid];
+          if (p) resetPlayers[pid] = { ...p, isRetained: false, retainedByTeamId: null };
+        });
+
+        resetTeams[userTeamId] = {
+          ...team,
+          retainedPlayers: [],
+          remainingPurse: TOTAL_PURSE_LAKHS,
+          spentAmount: 0,
+        };
+
+        const autoRetainedIds = decideAIRetentions(resetTeams[userTeamId], resetPlayers);
+
+        autoRetainedIds.forEach((pid) => {
+          const p = resetPlayers[pid];
+          if (p) resetPlayers[pid] = { ...p, isRetained: true, retainedByTeamId: userTeamId };
+        });
+
+        const newTotalCost = calculateTotalRetentionCost(autoRetainedIds, resetPlayers);
+
+        set({
+          teams: {
+            ...teams,
+            [userTeamId]: {
+              ...team,
+              retainedPlayers: autoRetainedIds,
+              remainingPurse: TOTAL_PURSE_LAKHS - newTotalCost,
+              spentAmount: newTotalCost,
+            },
+          },
+          players: resetPlayers,
+        });
       },
 
       confirmRetentions: () => {
@@ -825,28 +938,51 @@ export const useGameStore = create<Store>()(
           updatedPurses[t.id] = { remaining: t.remainingPurse, squadCount: t.squad.length };
         });
 
-        set({
-          teams: newTeams,
-          players: newPlayers,
-          isPaused: true,
-          skipSetSummary: {
-            setIndex: auction.currentSetIndex,
-            setName: currentSet.name,
-            results,
-          },
-          auction: {
-            ...auction,
-            sets: updatedSets,
-            currentLotIndex,
-            soldPlayerIds: newSoldIds,
-            unsoldPlayerIds: newUnsoldIds,
-            saleHistory: newSaleHistory,
-            teamPurses: updatedPurses,
-            soldFlash: null,
-            unsoldFlash: null,
-            rtm: null,
-          },
-        });
+        if (auction.isAcceleratedPhase) {
+          set({
+            teams: newTeams,
+            players: newPlayers,
+            isPaused: false,
+            skipSetSummary: null,
+            auction: {
+              ...auction,
+              sets: updatedSets,
+              phase: "completed",
+              currentLotIndex,
+              currentPlayer: null,
+              soldPlayerIds: newSoldIds,
+              unsoldPlayerIds: newUnsoldIds,
+              saleHistory: newSaleHistory,
+              teamPurses: updatedPurses,
+              soldFlash: null,
+              unsoldFlash: null,
+              rtm: null,
+            },
+          });
+        } else {
+          set({
+            teams: newTeams,
+            players: newPlayers,
+            isPaused: true,
+            skipSetSummary: {
+              setIndex: auction.currentSetIndex,
+              setName: currentSet.name,
+              results,
+            },
+            auction: {
+              ...auction,
+              sets: updatedSets,
+              currentLotIndex,
+              soldPlayerIds: newSoldIds,
+              unsoldPlayerIds: newUnsoldIds,
+              saleHistory: newSaleHistory,
+              teamPurses: updatedPurses,
+              soldFlash: null,
+              unsoldFlash: null,
+              rtm: null,
+            },
+          });
+        }
       },
 
       skipAllAuction: () => {
@@ -905,7 +1041,7 @@ export const useGameStore = create<Store>()(
 
             const interested = Object.values(newTeams).filter((t) => {
               if (t.id === highBidderTeamId) return false;
-              return canAIBidAtAmount(t, player, nextBid, player.id, newPlayers, ctx);
+              return canTeamBidDuringSkip(t, player, nextBid, player.id, newPlayers, ctx, userTeamId);
             });
 
             if (interested.length === 0) break;
@@ -1058,6 +1194,237 @@ export const useGameStore = create<Store>()(
         });
       },
 
+      skipToAcceleratedAuction: () => {
+        const state = get();
+        const { auction, players, teams, userTeamId } = state;
+        if (!auction || auction.phase !== "live") return;
+
+        _hammerLotId = null;
+
+        const newTeams = { ...teams };
+        const newPlayers = { ...players };
+        let newSoldIds = [...(auction.soldPlayerIds ?? [])];
+        let newUnsoldIds = [...(auction.unsoldPlayerIds ?? [])];
+        let newSaleHistory = [...(auction.saleHistory ?? [])];
+        let currentLotIndex = auction.currentLotIndex;
+        const totalLots = auction.allPlayerIds.length;
+
+        const remainingPlayerIds: string[] = [];
+
+        const currentSet = auction.sets[auction.currentSetIndex];
+        if (currentSet && !currentSet.isCompleted) {
+          remainingPlayerIds.push(...currentSet.playerIds.slice(currentSet.currentIndex));
+        }
+
+        for (let i = auction.currentSetIndex + 1; i < auction.sets.length; i++) {
+          remainingPlayerIds.push(...auction.sets[i].playerIds);
+        }
+
+        const simulateOne = (playerId: string) => {
+          const player = newPlayers[playerId];
+          if (!player) return;
+
+          resetLotCache();
+
+          const ctx: AuctionContext = {
+            remainingPlayerIds: auction.allPlayerIds.filter(
+              (id) => !newSoldIds.includes(id) && id !== player.id
+            ),
+            soldPlayerIds: newSoldIds,
+            currentLotIndex,
+            totalLots,
+          };
+
+          let currentBid = player.basePrice;
+          let highBidderTeamId: string | null = null;
+          let biddingHistory: BidEntry[] = [];
+
+          let iterations = 0;
+          const MAX_ITER = 300;
+          while (iterations < MAX_ITER) {
+            iterations++;
+            const nextBid = getNextBidAmount(currentBid);
+
+            const interested = Object.values(newTeams).filter((t) => {
+              if (t.id === highBidderTeamId) return false;
+              return canTeamBidDuringSkip(t, player, nextBid, player.id, newPlayers, ctx, userTeamId);
+            });
+
+            if (interested.length === 0) break;
+
+            const bidder = pickBiddingTeam(interested, player, player.id, newPlayers, ctx);
+            if (!bidder) break;
+
+            currentBid = nextBid;
+            highBidderTeamId = bidder.id;
+            biddingHistory = [{ teamId: bidder.id, amount: nextBid, timestamp: Date.now() }, ...biddingHistory];
+          }
+
+          if (!highBidderTeamId) {
+            newUnsoldIds.push(player.id);
+          } else {
+            let finalWinnerId = highBidderTeamId;
+            let finalPrice = currentBid;
+            let usedRtm = false;
+
+            const rtmTeamId = findRTMEligibleTeam(player, newTeams, highBidderTeamId, currentBid);
+
+            if (rtmTeamId) {
+              const rtmTeam = newTeams[rtmTeamId];
+              const aiOrigValuation = getCachedValuation(rtmTeamId) || getLotValuation(player.id, rtmTeam, player, newPlayers, ctx);
+              const loyaltyBonus = 1.0 + (rtmTeam?.dna.loyalty ?? 50) / 100 * 0.25;
+
+              if (aiOrigValuation * loyaltyBonus > currentBid && rtmTeam.remainingPurse >= currentBid) {
+                const winnerTeam = newTeams[highBidderTeamId];
+                const aiWinnerValuation = getCachedValuation(highBidderTeamId) || getLotValuation(player.id, winnerTeam, player, newPlayers, ctx);
+
+                if (aiWinnerValuation > currentBid * 1.05 && winnerTeam.remainingPurse >= currentBid * 1.05) {
+                  let counterAmount = currentBid;
+                  const target = Math.min(aiWinnerValuation, Math.round(currentBid * 1.25));
+                  while (counterAmount < target) counterAmount = getNextBidAmount(counterAmount);
+                  if (counterAmount <= currentBid) counterAmount = getNextBidAmount(currentBid);
+
+                  if (aiOrigValuation * loyaltyBonus >= counterAmount && rtmTeam.remainingPurse >= counterAmount) {
+                    finalWinnerId = rtmTeamId;
+                    finalPrice = counterAmount;
+                    usedRtm = true;
+                  } else {
+                    finalWinnerId = highBidderTeamId;
+                    finalPrice = counterAmount;
+                  }
+                } else {
+                  finalWinnerId = rtmTeamId;
+                  finalPrice = currentBid;
+                  usedRtm = true;
+                }
+              }
+            }
+
+            const winnerTeam = newTeams[finalWinnerId];
+            if (winnerTeam) {
+              newTeams[finalWinnerId] = {
+                ...winnerTeam,
+                squad: [...winnerTeam.squad, player.id],
+                remainingPurse: winnerTeam.remainingPurse - finalPrice,
+                spentAmount: winnerTeam.spentAmount + finalPrice,
+                rtmCardsUsed: usedRtm ? winnerTeam.rtmCardsUsed + 1 : winnerTeam.rtmCardsUsed,
+                overseasPlayersCurrent:
+                  player.nationality === "Overseas"
+                    ? winnerTeam.overseasPlayersCurrent + 1
+                    : winnerTeam.overseasPlayersCurrent,
+              };
+            }
+
+            const updatedHistory = [
+              ...player.iplHistory.filter((h) => h.season !== "2027"),
+              { teamId: finalWinnerId, season: "2027", price: finalPrice, isRtm: usedRtm },
+            ];
+
+            newPlayers[player.id] = {
+              ...player,
+              currentTeamId: finalWinnerId,
+              iplHistory: updatedHistory,
+            };
+
+            newSoldIds.push(player.id);
+
+            newSaleHistory.push({
+              playerId: player.id,
+              teamId: finalWinnerId,
+              price: finalPrice,
+              lot: currentLotIndex,
+              bids: biddingHistory,
+            });
+          }
+          currentLotIndex++;
+        };
+
+        remainingPlayerIds.forEach(simulateOne);
+
+        const updatedSets = auction.sets.map((s) => ({
+          ...s,
+          currentIndex: s.playerIds.length,
+          isCompleted: true,
+        }));
+
+        _lastAccelUnsoldCount = newUnsoldIds.length;
+        const unsoldPlayers = newUnsoldIds
+          .map((id) => newPlayers[id])
+          .filter(Boolean)
+          .map((p) => ({ ...p, basePrice: Math.max(20, Math.floor(p.basePrice / 2)) }));
+
+        const updatedPurses: Record<string, { remaining: number; squadCount: number }> = {};
+        Object.values(newTeams).forEach((t) => {
+          updatedPurses[t.id] = { remaining: t.remainingPurse, squadCount: t.squad.length };
+        });
+
+        if (unsoldPlayers.length > 0) {
+          const acceleratedSets = [{
+            id: "accelerated",
+            name: "Accelerated Auction",
+            playerIds: unsoldPlayers.map((p) => p.id),
+            currentIndex: 0,
+            isCompleted: false,
+          }];
+
+          const firstPlayer = unsoldPlayers[0];
+
+          unsoldPlayers.forEach((p) => {
+            newPlayers[p.id] = p;
+          });
+
+          set({
+            teams: newTeams,
+            players: newPlayers,
+            isPaused: true,
+            skipSetSummary: null,
+            auction: {
+              ...auction,
+              sets: acceleratedSets,
+              currentSetIndex: 0,
+              currentLotIndex,
+              currentPlayer: firstPlayer,
+              currentBid: firstPlayer.basePrice,
+              currentHighBidderTeamId: null,
+              biddingHistory: [],
+              timerSeconds: 10,
+              isAcceleratedPhase: true,
+              unsoldPlayerIds: [],
+              soldPlayerIds: newSoldIds,
+              saleHistory: newSaleHistory,
+              teamPurses: updatedPurses,
+              soldFlash: null,
+              unsoldFlash: null,
+              rtm: null,
+            },
+          });
+
+          resetLotCache();
+          scheduleAIBids(firstPlayer);
+        } else {
+          set({
+            teams: newTeams,
+            players: newPlayers,
+            isPaused: false,
+            skipSetSummary: null,
+            auction: {
+              ...auction,
+              sets: updatedSets,
+              phase: "completed",
+              currentLotIndex,
+              currentPlayer: null,
+              soldPlayerIds: newSoldIds,
+              unsoldPlayerIds: [],
+              saleHistory: newSaleHistory,
+              teamPurses: updatedPurses,
+              soldFlash: null,
+              unsoldFlash: null,
+              rtm: null,
+            },
+          });
+        }
+      },
+
       resetGame: () => {
         set({
           saveId: "",
@@ -1073,7 +1440,7 @@ export const useGameStore = create<Store>()(
       },
     }),
     {
-      name: "ipl-simulator-save-v3",
+      name: "ipl-simulator-save-v5",
       storage: createJSONStorage(() => localStorage),
       partialize: (state) => ({
         saveId: state.saveId,
@@ -1574,6 +1941,11 @@ function advanceToNextLot() {
  *   5. Schedule the next round — stops naturally when no team wants to bid
  */
 function scheduleAIBids(player: Player) {
+  if (_aiBidsTimeoutId) {
+    clearTimeout(_aiBidsTimeoutId);
+    _aiBidsTimeoutId = null;
+  }
+
   const state = useGameStore.getState();
   const { auction } = state;
   if (!auction?.currentPlayer) return;
@@ -1583,7 +1955,8 @@ function scheduleAIBids(player: Player) {
   const speed = state.speed;
   const speedAdjustedDelay = delay / speed;
 
-  setTimeout(() => {
+  _aiBidsTimeoutId = setTimeout(() => {
+    _aiBidsTimeoutId = null;
     const s = useGameStore.getState();
     const { auction: a, teams, players: allPlayers, userTeamId } = s;
 
@@ -1593,7 +1966,7 @@ function scheduleAIBids(player: Player) {
     if (a.rtm || a.soldFlash || a.unsoldFlash) return;
 
     if (s.isPaused) {
-      setTimeout(() => scheduleAIBids(player), 500);
+      scheduleAIBids(player);
       return;
     }
 
@@ -1636,6 +2009,7 @@ function scheduleAIBids(player: Player) {
 // (race between timer fire + PASS click, or rapid PASS double-click)
 // ---------------------------------------------------------------------------
 let _hammerLotId: string | null = null;
+let _aiBidsTimeoutId: NodeJS.Timeout | null = null;
 
 // Tracks the unsold count entering the current accelerated round, so repeated
 // accelerated rounds stop once a whole pass clears no one.

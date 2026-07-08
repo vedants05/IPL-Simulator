@@ -25,10 +25,15 @@ export default function NavBar() {
     decreaseSpeed,
     skipCurrentSet,
     skipAllAuction,
+    skipToAcceleratedAuction,
   } = useGameStore();
 
   const [showConfirm, setShowConfirm] = useState(false);
   const [wasPausedBeforeConfirm, setWasPausedBeforeConfirm] = useState(false);
+
+  const [showConfirmAccel, setShowConfirmAccel] = useState(false);
+  const [wasPausedBeforeConfirmAccel, setWasPausedBeforeConfirmAccel] = useState(false);
+
   const [showConfirmAll, setShowConfirmAll] = useState(false);
   const [wasPausedBeforeConfirmAll, setWasPausedBeforeConfirmAll] = useState(false);
 
@@ -46,6 +51,24 @@ export default function NavBar() {
   const handleCancel = () => {
     setShowConfirm(false);
     if (!wasPausedBeforeConfirm) {
+      setPaused(false);
+    }
+  };
+
+  const handleSkipAccelPress = () => {
+    setWasPausedBeforeConfirmAccel(isPaused);
+    setPaused(true);
+    setShowConfirmAccel(true);
+  };
+
+  const handleConfirmAccel = () => {
+    setShowConfirmAccel(false);
+    skipToAcceleratedAuction();
+  };
+
+  const handleCancelAccel = () => {
+    setShowConfirmAccel(false);
+    if (!wasPausedBeforeConfirmAccel) {
       setPaused(false);
     }
   };
@@ -192,6 +215,77 @@ export default function NavBar() {
                 </>
               )}
             </div>
+
+            {/* Skip to Accelerated Button */}
+            {auction && !auction.isAcceleratedPhase && (
+              <div className="relative flex items-center">
+                <button
+                  onClick={handleSkipAccelPress}
+                  className="px-3 rounded font-space-mono font-bold text-[10px] tracking-wider uppercase transition-all duration-150 flex items-center justify-center h-[28px] cursor-pointer hover:bg-[#1d55c4] hover:text-white hover:scale-105 active:scale-95"
+                  style={{
+                    border: "1.5px solid #16130f",
+                    backgroundColor: "var(--team-bid-bg, #111622)",
+                    backgroundImage: "var(--team-bid-tinge)",
+                    color: "#ffffff",
+                  }}
+                  title="Simulate all regular sets and skip straight to the Accelerated Auction"
+                >
+                  ⏭ Skip to Accelerated
+                </button>
+
+                {showConfirmAccel && (
+                  <>
+                    {/* Invisible overlay for clicking outside */}
+                    <div
+                      className="fixed inset-0 z-40 cursor-default"
+                      onClick={handleCancelAccel}
+                    />
+                    {/* Small confirmation tile */}
+                    <div
+                      className="absolute right-0 top-full mt-2 w-64 p-4 z-50 rounded shadow-xl text-left border-2 flex flex-col gap-3 font-space-mono animate-in fade-in slide-in-from-top-2 duration-150"
+                      style={{
+                        backgroundColor: "var(--surface, #efece3)",
+                        color: "var(--ink, #16130f)",
+                        borderColor: "var(--ink, #16130f)",
+                      }}
+                    >
+                      <div className="flex flex-col gap-1.5">
+                        <div className="text-[10px] font-bold tracking-wider uppercase text-danger flex items-center gap-1">
+                          ⚠️ Skip to Accelerated?
+                        </div>
+                        <p className="text-[10px] leading-normal font-bold">
+                          Skip all remaining regular sets?
+                        </p>
+                        <p className="text-[9px] leading-normal opacity-85 font-medium">
+                          This will instantly simulate the remaining regular lots and take you straight to the start of the Accelerated phase.
+                        </p>
+                      </div>
+
+                      <div className="flex gap-2">
+                        <button
+                          onClick={handleConfirmAccel}
+                          className="flex-1 h-[26px] rounded font-bold text-[9px] uppercase tracking-wider transition-all cursor-pointer bg-danger text-white hover:bg-red-600 active:scale-95 flex items-center justify-center"
+                          style={{
+                            border: "1.5px solid var(--ink, #16130f)",
+                          }}
+                        >
+                          Confirm
+                        </button>
+                        <button
+                          onClick={handleCancelAccel}
+                          className="flex-1 h-[26px] rounded font-bold text-[9px] uppercase tracking-wider transition-all cursor-pointer bg-transparent text-[#16130f] hover:bg-black/5 active:scale-95 flex items-center justify-center"
+                          style={{
+                            border: "1.5px solid var(--ink, #16130f)",
+                          }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
 
             {/* Skip All Button */}
             <div className="relative flex items-center">

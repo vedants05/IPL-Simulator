@@ -16,6 +16,8 @@ export default function RetentionPhase() {
   const releaseRetention = useGameStore((s) => s.releaseRetention);
   const confirmRetentions = useGameStore((s) => s.confirmRetentions);
 
+  const autoRetainPlayers = useGameStore((s) => s.autoRetainPlayers);
+
   const userTeam = teams[userTeamId];
   if (!userTeam) return null;
 
@@ -209,7 +211,13 @@ export default function RetentionPhase() {
           </div>
 
           {/* Confirm button */}
-          <div className="p-4 border-t-2 border-border bg-surface">
+          <div className="p-4 border-t-2 border-border bg-surface flex flex-col gap-2">
+            <button
+              onClick={autoRetainPlayers}
+              className="w-full bg-[#16130f]/5 border border-border text-text-primary font-space-mono font-bold text-[11px] tracking-wider py-2.5 rounded-[3px] hover:bg-border hover:text-accent transition-colors"
+            >
+              🪄 AUTO-SELECT RETENTIONS
+            </button>
             <button
               onClick={confirmRetentions}
               className="w-full bg-border text-accent font-anton text-[18px] tracking-wide py-4 hover:bg-black transition-colors"
@@ -217,7 +225,7 @@ export default function RetentionPhase() {
               CONFIRM & GO TO AUCTION →
             </button>
             {retainedIds.length === 0 && (
-              <p className="font-space-mono text-[9px] text-text-secondary text-center mt-2 tracking-wider">
+              <p className="font-space-mono text-[9px] text-text-secondary text-center mt-1 tracking-wider">
                 Proceeding with 0 retentions · {MAX_TOTAL_RETENTIONS} RTM cards
               </p>
             )}
