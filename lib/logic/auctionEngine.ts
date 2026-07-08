@@ -595,13 +595,18 @@ function computePlayerFit(
   }
 
   if (player.nationality === "Overseas") {
-    const isMiddleOrderCapable = !!(player.hasBattedAt3 || player.hasBattedAt4 || player.hasBattedAt5 || player.hasBattedAt6 || player.hasBattedAt7);
-    if (isMiddleOrderCapable) {
-      if ((comp.overseasMiddleOrderCount ?? 0) >= 2) {
-        fit *= 0.10;
-      }
-      if (comp.overseas >= 3) {
-        fit *= 0.50;
+    const isPrimaryBowler = player.role === "Pace Bowler" || player.role === "Spin Bowler" || 
+      (player.role === "All-Rounder" && (player.currentBowling ?? 0) >= (player.currentBatting ?? 0));
+    
+    if (!isPrimaryBowler) {
+      const isMiddleOrderCapable = !!(player.hasBattedAt3 || player.hasBattedAt4 || player.hasBattedAt5 || player.hasBattedAt6 || player.hasBattedAt7);
+      if (isMiddleOrderCapable) {
+        if ((comp.overseasMiddleOrderCount ?? 0) >= 2) {
+          fit *= 0.40;
+        }
+        if (comp.overseas >= 3) {
+          fit *= 0.60;
+        }
       }
     }
   }
@@ -853,9 +858,26 @@ export function computeTeamValuation(
   let planned = plan.maxBid[player.id];
   let fit = computePlayerFit(player, team, comp, quirks);
 
-  // Emergency Shortlist Bypass: If a team has 0 keepers and this player is a keeper,
+  // Market correction: Rival Released Superstar Check
+  const formerTeamId = player.iplHistory.find(h => h.season === "2026")?.teamId;
+  let isRivalReleasedSuperstar = false;
+  if (formerTeamId && formerTeamId !== team.id && ratingOf(player) >= 82) {
+    const formerTeamRetainedCount = Object.values(allPlayers).filter(
+      p => p.isRetained && p.retainedByTeamId === formerTeamId
+    ).length;
+    if (formerTeamRetainedCount <= 2) {
+      isRivalReleasedSuperstar = true;
+    }
+  }
+
+  if (isRivalReleasedSuperstar) {
+    fit += u(0.60, 0.90);
+  }
+
+  // Emergency Shortlist Bypass: If a team has < 2 keepers and this player is a keeper,
   // treat them as a planned target to bypass the unplanned price penalty
-  if (planned === undefined && isKeeper(player) && (comp.wks ?? 0) < 1) {
+  const isEmergencyWK = isKeeper(player) && (comp.wks ?? 0) < 2;
+  if (planned === undefined && isEmergencyWK) {
     planned = Math.round(intrinsicValue(player, team, comp, quirks, fit, avgPerSlot) * 1.15);
   }
 
@@ -882,7 +904,7 @@ export function computeTeamValuation(
   // only when a role is heavily overstacked (and he's not a planned target).
   const slotsLeft = plan.targetSquad - comp.total;
   if (planned === undefined) {
-    if (!needsBodies && !highValue) return 0;
+    if (!needsBodies && !highValue && !isEmergencyWK) return 0;
     // Role-stacking limit relaxes when the squad is well short of a full 25 —
     // a team that still needs many bodies takes the best available even if the
     // role is a little crowded, so everyone fills out to 25.
@@ -890,7 +912,7 @@ export function computeTeamValuation(
     if (excess >= excessLimit && !highValue) return 0;
     // Weak-fit filler is ignored while there's still real squad-building to do.
     const fitFloor = highValue ? 0.28 : slotsLeft >= 8 ? 0.50 : slotsLeft >= 4 ? 0.34 : 0.18;
-    if (fit < fitFloor) return 0;
+    if (fit < fitFloor && !isEmergencyWK) return 0;
   }
 
   // ── Market-anchored value for EVERY interested team ───────────────────────
@@ -908,6 +930,10 @@ export function computeTeamValuation(
   // Depth floor: while the squad still needs bodies, keep the bid off the
   // floor so squad-building depth clears for a sensible price, not scraps.
   if (needsBodies) base = Math.max(base, plan.depthValue * u(0.70, 1.10));
+
+  if (isRivalReleasedSuperstar) {
+    base *= u(1.35, 1.70); // Boost valuation to drive up the bidding war
+  }
 
   // ── Live scatter so identical squads still diverge in the room ────────────
   base *= lognormal(u(0.09, 0.18));
@@ -927,6 +953,7 @@ export function computeTeamValuation(
   const marquee = ratingOf(player) >= 84 || (player.reputation ?? 0) >= 9;
   let concentration: number;
   if (marquee)                 concentration = u(3.2, 5.2);
+  else if (isRivalReleasedSuperstar) concentration = u(2.8, 4.4); // Boost concentration for rival superstars
   else if (planned !== undefined) concentration = u(2.2, 3.4);
   else if (highValue)          concentration = u(1.7, 2.7);
   else if (fit >= 0.72)        concentration = u(1.0, 1.6);
@@ -935,6 +962,10 @@ export function computeTeamValuation(
   let affordabilityCap = Math.min(avgPerSlot * concentration, team.remainingPurse * (ratingOf(player) >= 84 ? 0.60 : 0.50));
   if (ratingOf(player) >= 84) {
     affordabilityCap *= u(1.15, 1.30);
+  }
+  if (isRivalReleasedSuperstar) {
+    const purseLimit = team.remainingPurse * (ratingOf(player) >= 84 ? 0.72 : 0.64);
+    affordabilityCap = Math.min(avgPerSlot * concentration, purseLimit) * u(1.15, 1.35);
   }
 
   // Absolute franchise cap — no one player eats the whole purse
@@ -993,17 +1024,32 @@ export function canAIBidAtAmount(
   // ---- WICKETKEEPER-OPENER EXCLUSION RULE ----
   const isOpenerWK = isKeeper(player) && (player.isOpener || player.onlyOpensOrBenched);
   if (isOpenerWK) {
-    const specialOpenersIds = [
-      "sunil-narine", "finn-allen", "yashasvi-jaiswal", "vaibhav-suryavanshi",
-      "travis-head", "abhishek-sharma", "shubman-gill", "sai-sudharsan",
-      "prabhsimran-singh", "priyansh-arya"
+    const specialPairs = [
+      ["sunil-narine", "finn-allen"],
+      ["yashasvi-jaiswal", "vaibhav-suryavanshi"],
+      ["travis-head", "abhishek-sharma"],
+      ["shubman-gill", "sai-sudharsan"],
+      ["prabhsimran-singh", "priyansh-arya"]
     ];
-    const specialOpenersInTeam = team.squad.filter(id => specialOpenersIds.includes(id)).length;
+    const hasSpecialPair = specialPairs.some(pair => 
+      team.squad.includes(pair[0]) && team.squad.includes(pair[1])
+    );
     const playerRating = ratingOf(player);
     const openersAboveRating = squad.filter(p => p.isOpener && ratingOf(p) > playerRating).length;
 
-    if (specialOpenersInTeam >= 2 || openersAboveRating >= 2) {
-      return false;
+    if (hasSpecialPair || openersAboveRating >= 2) {
+      const isBenchedOpenerOnly = !!player.onlyOpensOrBenched;
+      const teamKeeperCount = squad.filter(isKeeper).length;
+      
+      const remainingKeepers = ctx && ctx.remainingPlayerIds
+        ? ctx.remainingPlayerIds.map(id => allPlayers[id]).filter(p => p && isKeeper(p))
+        : [];
+      const otherKeepersCount = remainingKeepers.filter(p => p.id !== player.id).length;
+      const noOtherRealisticKeepers = otherKeepersCount <= 2 || teamKeeperCount === 0;
+
+      if (isBenchedOpenerOnly || !noOtherRealisticKeepers) {
+        return false;
+      }
     }
   }
 
@@ -1202,7 +1248,7 @@ export function decideAIRetentions(
 
       if (totalSpend + slabCost > spendCap) {
         if (cornerstone) continue; // never let a cheaper non-icon block the queue
-        break;
+        continue;
       }
 
       if (cornerstone) {

@@ -288,5 +288,9 @@ export function findRTMEligibleTeam(
   if (player.nationality === "Overseas" && team.overseasPlayersCurrent >= team.overseasPlayersMax) return null;
   if (team.squad.length >= team.maxSquadSize) return null;
   if (requiredPurse !== undefined && team.remainingPurse < requiredPurse) return null;
+  if (requiredPurse !== undefined) {
+    const reserve = Math.max(0, team.minSquadSize - team.squad.length - 1) * 30;
+    if (team.remainingPurse - requiredPurse < reserve) return null;
+  }
   return h2026.teamId;
 }

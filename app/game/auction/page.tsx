@@ -272,7 +272,7 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
   const countPacers = (list: import("@/lib/types").Player[]) => list.filter(p => p.role === "Pace Bowler").length;
 
   const hasEliteARBowler = squad.some(p => p.role === "All-Rounder" && (p.currentBowling ?? 0) >= 80);
-  const hasOkARBowlers = squad.filter(p => p.role === "All-Rounder").length >= 2 && squad.some(p => p.role === "All-Rounder" && (p.currentBowling ?? 0) >= 75);
+  const hasOkARBowlers = squad.filter(p => p.role === "All-Rounder" && (p.currentBowling ?? 0) >= 75).length >= 2;
   const maxPacers = 5;
   // Cap is 3 out-and-out bowlers if the starting lineup has 4+ All-Rounders;
   // otherwise 4 if there's an elite AR bowler (>=80) OR 2+ ok AR bowlers (>=75) in the squad, else 5.
@@ -304,7 +304,7 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
     const nextOutAndOut = (isOutAndOut(p1) ? 1 : 0) + (isOutAndOut(p2) ? 1 : 0);
     const nextPacers = (p1.role === "Pace Bowler" ? 1 : 0) + (p2.role === "Pace Bowler" ? 1 : 0);
 
-    if (nextOSCount <= 4 && nextOutAndOut <= getMaxOutAndOut([...chosenOpeners]) && nextPacers <= maxPacers) {
+    if (nextOSCount <= 4 && nextOutAndOut <= getMaxOutAndOut([p1, p2]) && nextPacers <= maxPacers) {
       chosenOpeners.push(p1, p2);
     }
   }
@@ -319,7 +319,7 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
     const nextOSCount = countOS(chosenOpeners) + (isOS ? 1 : 0);
     const nextOutAndOut = countOutAndOut(chosenOpeners) + (isOutAndOut(op) ? 1 : 0);
     const nextPacers = countPacers(chosenOpeners) + (op.role === "Pace Bowler" ? 1 : 0);
-    if (nextOSCount <= 4 && nextOutAndOut <= getMaxOutAndOut(chosenOpeners) && nextPacers <= maxPacers) {
+    if (nextOSCount <= 4 && nextOutAndOut <= getMaxOutAndOut([...chosenOpeners, op]) && nextPacers <= maxPacers) {
       chosenOpeners.push(op);
     }
   }
@@ -342,7 +342,7 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
     const nextOSCount = countOS(chosenOpeners) + (isOS ? 1 : 0);
     const nextOutAndOut = countOutAndOut(chosenOpeners) + (isOutAndOut(nextOpener) ? 1 : 0);
     const nextPacers = countPacers(chosenOpeners) + (nextOpener.role === "Pace Bowler" ? 1 : 0);
-    if (nextOSCount <= 4 && nextOutAndOut <= getMaxOutAndOut(chosenOpeners) && nextPacers <= maxPacers) {
+    if (nextOSCount <= 4 && nextOutAndOut <= getMaxOutAndOut([...chosenOpeners, nextOpener]) && nextPacers <= maxPacers) {
       chosenOpeners.push(nextOpener);
     }
   }
@@ -369,11 +369,46 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
         const nextOSCount = countOS(selected) + (isOS ? 1 : 0);
         const nextOutAndOut = countOutAndOut(selected) + (isOutAndOut(keeper) ? 1 : 0);
         const nextPacers = countPacers(selected) + (keeper.role === "Pace Bowler" ? 1 : 0);
-        return nextOSCount <= 4 && nextOutAndOut <= getMaxOutAndOut(selected) && nextPacers <= maxPacers;
+        return nextOSCount <= 4 && nextOutAndOut <= getMaxOutAndOut([...selected, keeper]) && nextPacers <= maxPacers;
       });
 
       if (!selectedKeeper) {
         selectedKeeper = keeperPool[0];
+
+        // Resolve violations: swap out an overseas or conflicting player to make space
+        const isOS = selectedKeeper.nationality === "Overseas";
+        const nextOSCount = countOS(selected) + (isOS ? 1 : 0);
+        const nextOutAndOut = countOutAndOut(selected) + (isOutAndOut(selectedKeeper) ? 1 : 0);
+        const nextPacers = countPacers(selected) + (selectedKeeper.role === "Pace Bowler" ? 1 : 0);
+
+        const violatesOS = nextOSCount > 4;
+        const violatesOutAndOut = nextOutAndOut > getMaxOutAndOut([...selected, selectedKeeper]);
+        const violatesPacers = nextPacers > maxPacers;
+
+        if (violatesOS || violatesOutAndOut || violatesPacers) {
+          for (let i = 0; i < selected.length; i++) {
+            const playerToReplace = selected[i];
+            if (isKeeper(playerToReplace)) continue;
+            
+            const replacementCandidates = remaining.filter(rep => {
+              const hypoSelected = selected.map(p => p.id === playerToReplace.id ? rep : p);
+              hypoSelected.push(selectedKeeper);
+              
+              const testOS = countOS(hypoSelected);
+              const testOutAndOut = countOutAndOut(hypoSelected);
+              const testPacers = countPacers(hypoSelected);
+              return testOS <= 4 && testOutAndOut <= getMaxOutAndOut(hypoSelected) && testPacers <= maxPacers;
+            }).sort((a, b) => rating(b) - rating(a));
+
+            if (replacementCandidates.length > 0) {
+              const bestRep = replacementCandidates[0];
+              selected = selected.map(p => p.id === playerToReplace.id ? bestRep : p);
+              remaining = remaining.filter(p => p.id !== bestRep.id);
+              remaining.push(playerToReplace);
+              break;
+            }
+          }
+        }
       }
 
       selected.push(selectedKeeper);
@@ -394,7 +429,7 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
       const nextOSCount = countOS(selected) + (isOS ? 1 : 0);
       const nextOutAndOut = countOutAndOut(selected) + (isOutAndOut(spin) ? 1 : 0);
       const nextPacers = countPacers(selected) + (spin.role === "Pace Bowler" ? 1 : 0);
-      if (nextOSCount <= 4 && nextOutAndOut <= getMaxOutAndOut(selected) && nextPacers <= maxPacers) {
+      if (nextOSCount <= 4 && nextOutAndOut <= getMaxOutAndOut([...selected, spin]) && nextPacers <= maxPacers) {
         selected.push(spin);
         remaining = remaining.filter(p => p.id !== spin.id);
         break;
@@ -417,7 +452,7 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
       const nextOSCount = countOS(selected) + (isOS ? 1 : 0);
       const nextOutAndOut = countOutAndOut(selected) + (isOutAndOut(bowler) ? 1 : 0);
       const nextPacers = countPacers(selected) + (bowler.role === "Pace Bowler" ? 1 : 0);
-      if (nextOSCount <= 4 && nextOutAndOut <= getMaxOutAndOut(selected) && nextPacers <= maxPacers) {
+      if (nextOSCount <= 4 && nextOutAndOut <= getMaxOutAndOut([...selected, bowler]) && nextPacers <= maxPacers) {
         selected.push(bowler);
         remaining = remaining.filter(p => p.id !== bowler.id);
       }
@@ -440,7 +475,7 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
     const nextOSCount = countOS(selected) + (isOS ? 1 : 0);
     const nextOutAndOut = countOutAndOut(selected) + (isOutAndOut(bowler) ? 1 : 0);
     const nextPacers = countPacers(selected) + (bowler.role === "Pace Bowler" ? 1 : 0);
-    if (nextOSCount <= 4 && nextOutAndOut <= getMaxOutAndOut(selected) && nextPacers <= maxPacers) {
+    if (nextOSCount <= 4 && nextOutAndOut <= getMaxOutAndOut([...selected, bowler]) && nextPacers <= maxPacers) {
       selected.push(bowler);
       remaining = remaining.filter(p => p.id !== bowler.id);
     }
@@ -458,7 +493,7 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
     const nextOSCount = countOS(selected) + (isOS ? 1 : 0);
     const nextOutAndOut = countOutAndOut(selected) + (isOutAndOut(bowler) ? 1 : 0);
     const nextPacers = countPacers(selected) + (bowler.role === "Pace Bowler" ? 1 : 0);
-    if (nextOSCount <= 4 && nextOutAndOut <= getMaxOutAndOut(selected) && nextPacers <= maxPacers) {
+    if (nextOSCount <= 4 && nextOutAndOut <= getMaxOutAndOut([...selected, bowler]) && nextPacers <= maxPacers) {
       selected.push(bowler);
       remaining = remaining.filter(p => p.id !== bowler.id);
     }
@@ -473,7 +508,7 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
     const nextOSCount = countOS(selected) + (isOS ? 1 : 0);
     const nextOutAndOut = countOutAndOut(selected) + (isOutAndOut(p) ? 1 : 0);
     const nextPacers = countPacers(selected) + (p.role === "Pace Bowler" ? 1 : 0);
-    if (nextOSCount <= 4 && nextOutAndOut <= getMaxOutAndOut(selected) && nextPacers <= maxPacers) {
+    if (nextOSCount <= 4 && nextOutAndOut <= getMaxOutAndOut([...selected, p]) && nextPacers <= maxPacers) {
       selected.push(p);
     }
   }
@@ -487,13 +522,14 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
     }
   }
 
-  // --- SMART OVERSEAS / SUB-75 REPLACEMENT RULE ---
+  // --- SMART OVERSEAS / SUB-78 REPLACEMENT RULE ---
   if (selected.length === 12) {
-    const under75Players = selected
-      .filter(p => rating(p) < 75)
+    const originalBowling70Count = getBowling70Count(selected);
+    const under78Players = selected
+      .filter(p => rating(p) < 78)
       .sort((a, b) => rating(a) - rating(b)); // replace lowest first
 
-    for (const targetPlayer of under75Players) {
+    for (const targetPlayer of under78Players) {
       const bench = virtualSquad.filter(p => !selected.some(s => s.id === p.id) && !p.onlyOpensOrBenched);
       
       // Find highest-rated overseas player on the bench who is better than targetPlayer
@@ -507,8 +543,8 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
       // Identify the 4 overseas players currently in the team
       const currentOSList = selected.filter(p => p.nationality === "Overseas");
 
-      // If the XII currently has LESS than 4 Overseas players, we can directly replace the target player!
-      if (currentOSList.length < 4) {
+      // If the XII currently has LESS than 4 Overseas players OR the target player is already Overseas (direct swap), we can replace them!
+      if (currentOSList.length < 4 || targetPlayer.nationality === "Overseas") {
         // SAFETY: Do not remove targetPlayer if they are the only keeper in selected
         const isTargetKeeper = isKeeper(targetPlayer);
         const selectedKeepersCount = selected.filter(isKeeper).length;
@@ -519,8 +555,10 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
           const nextOSCount = countOS(hypotheticalSelected);
           const nextOutAndOut = countOutAndOut(hypotheticalSelected);
           const nextPacers = countPacers(hypotheticalSelected);
+          const testBowling70Count = getBowling70Count(hypotheticalSelected);
+          const bowlingCountIsSafe = testBowling70Count >= 5 || testBowling70Count >= originalBowling70Count;
 
-          if (nextOSCount <= 4 && nextOutAndOut <= getMaxOutAndOut(hypotheticalSelected) && nextPacers <= maxPacers) {
+          if (nextOSCount <= 4 && nextOutAndOut <= getMaxOutAndOut(hypotheticalSelected) && nextPacers <= maxPacers && bowlingCountIsSafe) {
             selected = hypotheticalSelected;
             break;
           }
@@ -605,8 +643,10 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
           const nextOSCount = countOS(postSwapSelected);
           const nextOutAndOut = countOutAndOut(postSwapSelected);
           const nextPacers = countPacers(postSwapSelected);
+          const testBowling70Count = getBowling70Count(postSwapSelected);
+          const bowlingCountIsSafe = testBowling70Count >= 5 || testBowling70Count >= originalBowling70Count;
 
-          if (nextOSCount <= 4 && nextOutAndOut <= getMaxOutAndOut(postSwapSelected) && nextPacers <= maxPacers) {
+          if (nextOSCount <= 4 && nextOutAndOut <= getMaxOutAndOut(postSwapSelected) && nextPacers <= maxPacers && bowlingCountIsSafe) {
             swapCandidates.push({ osPlayer, counterpart, diff });
           }
         }
@@ -1174,7 +1214,6 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
       (pos8Weak.currentBatting ?? 0) < 78 &&
       (pos8Weak.role === "Batsman" || pos8Weak.role === "WK-Batsman")
     ) {
-      const currentMaxOO = getMaxOutAndOut(mappedLineup);
       const benchARs = squad
         .filter(p => !mappedLineup.some(m => m?.id === p.id) && !p.onlyOpensOrBenched && p.role === "All-Rounder" && Math.max(p.currentBatting ?? 0, p.currentBowling ?? 0) > 74)
         .sort((a, b) =>
@@ -1188,7 +1227,7 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
         const nextOSCount = countOS(hypo);
         const nextOutAndOut = countOutAndOut(hypo);
         const nextPacers = countPacers(hypo);
-        if (nextOSCount <= 4 && nextOutAndOut <= currentMaxOO && nextPacers <= maxPacers) {
+        if (nextOSCount <= 4 && nextOutAndOut <= getMaxOutAndOut(hypo) && nextPacers <= maxPacers) {
           mappedLineup[7] = ar;
           break;
         }
@@ -1206,8 +1245,6 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
       pos9Player &&
       (pos9Player.role === "Batsman" || pos9Player.role === "WK-Batsman")
     ) {
-      const currentMaxOO = getMaxOutAndOut(mappedLineup);
-      
       // Find eligible All-Rounders or Bowlers on the bench
       const benchSubstitutes = squad
         .filter(p => 
@@ -1229,7 +1266,7 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
         const nextOutAndOut = countOutAndOut(hypo);
         const nextPacers = countPacers(hypo);
 
-        if (nextOSCount <= 4 && nextOutAndOut <= currentMaxOO && nextPacers <= maxPacers) {
+        if (nextOSCount <= 4 && nextOutAndOut <= getMaxOutAndOut(hypo) && nextPacers <= maxPacers) {
           mappedLineup[8] = sub;
           break;
         }
@@ -1388,7 +1425,7 @@ function TeamSquadCard({
               return (
                 <div key={p.id} className="flex justify-between items-center text-[10px] py-[1px] border-b border-[#16130f]/5 last:border-0 leading-tight">
                   <div className="flex items-center gap-1 min-w-0">
-                    <span className="text-[8px] font-space-mono text-[#16130f]/50 w-3.5 shrink-0">{idx + 1}</span>
+                    <span className="text-[8px] font-space-mono text-[#16130f]/50 w-3.5 shrink-0">{idx === 11 ? "I.S." : idx + 1}</span>
                     <span className="font-medium text-[#16130f] truncate" title={p.name}>
                       {p.name}{isCaptain ? " (C)" : ""}
                     </span>

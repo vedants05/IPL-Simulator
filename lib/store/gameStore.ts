@@ -141,16 +141,20 @@ function canTeamBidDuringSkip(
     // ---- WICKETKEEPER-OPENER EXCLUSION RULE ----
     const isOpenerWK = isKeeper(p) && (p.isOpener || p.onlyOpensOrBenched);
     if (isOpenerWK) {
-      const specialOpenersIds = [
-        "sunil-narine", "finn-allen", "yashasvi-jaiswal", "vaibhav-suryavanshi",
-        "travis-head", "abhishek-sharma", "shubman-gill", "sai-sudharsan",
-        "prabhsimran-singh", "priyansh-arya"
+      const specialPairs = [
+        ["sunil-narine", "finn-allen"],
+        ["yashasvi-jaiswal", "vaibhav-suryavanshi"],
+        ["travis-head", "abhishek-sharma"],
+        ["shubman-gill", "sai-sudharsan"],
+        ["prabhsimran-singh", "priyansh-arya"]
       ];
-      const specialOpenersInTeam = t.squad.filter(id => specialOpenersIds.includes(id)).length;
+      const hasSpecialPair = specialPairs.some(pair => 
+        t.squad.includes(pair[0]) && t.squad.includes(pair[1])
+      );
       const playerRating = ratingOf(p);
       const openersAboveRating = squad.filter(x => x.isOpener && ratingOf(x) > playerRating).length;
 
-      if (specialOpenersInTeam >= 2 || openersAboveRating >= 2) {
+      if (hasSpecialPair || openersAboveRating >= 2) {
         return false;
       }
     }
@@ -814,9 +818,13 @@ export const useGameStore = create<Store>()(
             const nextBid = getNextBidAmount(currentBid);
 
             const interested = Object.values(newTeams).filter((t) => {
-              if (t.id === userTeamId) return false;
               if (t.id === highBidderTeamId) return false;
-              return canAIBidAtAmount(t, player, nextBid, player.id, newPlayers, ctx);
+              if (auction.isAcceleratedPhase) {
+                return canAIBidAtAmount(t, player, nextBid, player.id, newPlayers, ctx);
+              } else {
+                if (t.id === userTeamId) return false;
+                return canAIBidAtAmount(t, player, nextBid, player.id, newPlayers, ctx);
+              }
             });
 
             if (interested.length === 0) break;
@@ -857,7 +865,8 @@ export const useGameStore = create<Store>()(
                   while (counterAmount < target) counterAmount = getNextBidAmount(counterAmount);
                   if (counterAmount <= currentBid) counterAmount = getNextBidAmount(currentBid);
 
-                  if (aiOrigValuation * loyaltyBonus >= counterAmount && rtmTeam.remainingPurse >= counterAmount) {
+                  const reserve = Math.max(0, rtmTeam.minSquadSize - rtmTeam.squad.length - 1) * 30;
+                  if (aiOrigValuation * loyaltyBonus >= counterAmount && rtmTeam.remainingPurse - counterAmount >= reserve) {
                     finalWinnerId = rtmTeamId;
                     finalPrice = counterAmount;
                     usedRtm = true;
@@ -1078,7 +1087,8 @@ export const useGameStore = create<Store>()(
                   while (counterAmount < target) counterAmount = getNextBidAmount(counterAmount);
                   if (counterAmount <= currentBid) counterAmount = getNextBidAmount(currentBid);
 
-                  if (aiOrigValuation * loyaltyBonus >= counterAmount && rtmTeam.remainingPurse >= counterAmount) {
+                  const reserve = Math.max(0, rtmTeam.minSquadSize - rtmTeam.squad.length - 1) * 30;
+                  if (aiOrigValuation * loyaltyBonus >= counterAmount && rtmTeam.remainingPurse - counterAmount >= reserve) {
                     finalWinnerId = rtmTeamId;
                     finalPrice = counterAmount;
                     usedRtm = true;
@@ -1284,7 +1294,8 @@ export const useGameStore = create<Store>()(
                   while (counterAmount < target) counterAmount = getNextBidAmount(counterAmount);
                   if (counterAmount <= currentBid) counterAmount = getNextBidAmount(currentBid);
 
-                  if (aiOrigValuation * loyaltyBonus >= counterAmount && rtmTeam.remainingPurse >= counterAmount) {
+                  const reserve = Math.max(0, rtmTeam.minSquadSize - rtmTeam.squad.length - 1) * 30;
+                  if (aiOrigValuation * loyaltyBonus >= counterAmount && rtmTeam.remainingPurse - counterAmount >= reserve) {
                     finalWinnerId = rtmTeamId;
                     finalPrice = counterAmount;
                     usedRtm = true;
