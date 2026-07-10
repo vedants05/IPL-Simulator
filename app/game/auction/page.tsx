@@ -292,14 +292,15 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
   const countOutAndOut = (list: import("@/lib/types").Player[]) => list.filter(isOutAndOut).length;
   const countPacers = (list: import("@/lib/types").Player[]) => list.filter(p => p.role === "Pace Bowler").length;
 
-  const hasEliteARBowler = squad.some(p => p.role === "All-Rounder" && (p.currentBowling ?? 0) >= 80);
-  const hasOkARBowlers = squad.filter(p => p.role === "All-Rounder" && (p.currentBowling ?? 0) >= 75).length >= 2;
   const maxPacers = 5;
-  // Cap is 3 out-and-out bowlers if the starting lineup has 4+ All-Rounders;
-  // otherwise 4 if there's an elite AR bowler (>=80) OR 2+ ok AR bowlers (>=75) in the squad, else 5.
+  // Cap is 3 out-and-out bowlers if the lineup has 4+ All-Rounders;
+  // otherwise 4 if the lineup itself contains an elite AR bowler (>=80) OR 2+ ok AR bowlers (>=75), else 5.
+  // Deliberately uses the passed-in lineup so benched ARs don't inflate the cap.
   const getMaxOutAndOut = (lineup: import("@/lib/types").Player[]) => {
     const lineupARCount = lineup.filter(p => p.role === "All-Rounder").length;
-    return lineupARCount >= 4 ? 3 : (hasEliteARBowler || hasOkARBowlers ? 4 : 5);
+    const lineupHasEliteAR = lineup.some(p => p.role === "All-Rounder" && (p.currentBowling ?? 0) >= 80);
+    const lineupHasOkARs = lineup.filter(p => p.role === "All-Rounder" && (p.currentBowling ?? 0) >= 75).length >= 2;
+    return lineupARCount >= 4 ? 3 : (lineupHasEliteAR || lineupHasOkARs ? 4 : 5);
   };
 
   // 1. Select 2 Openers
@@ -315,17 +316,15 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
   const chosenOpeners: import("@/lib/types").Player[] = [];
 
   const activePair = specialPairs.find(pair =>
-    squad.some(p => p.id === pair[0]) && squad.some(p => p.id === pair[1])
+    squad.some(p => p.id.startsWith(pair[0])) && squad.some(p => p.id.startsWith(pair[1]))
   );
 
   if (activePair) {
-    const p1 = virtualSquad.find(p => p.id === activePair[0])!;
-    const p2 = virtualSquad.find(p => p.id === activePair[1])!;
-    const nextOSCount = (p1.nationality === "Overseas" ? 1 : 0) + (p2.nationality === "Overseas" ? 1 : 0);
-    const nextOutAndOut = (isOutAndOut(p1) ? 1 : 0) + (isOutAndOut(p2) ? 1 : 0);
-    const nextPacers = (p1.role === "Pace Bowler" ? 1 : 0) + (p2.role === "Pace Bowler" ? 1 : 0);
-
-    if (nextOSCount <= 4 && nextOutAndOut <= getMaxOutAndOut([p1, p2]) && nextPacers <= maxPacers) {
+    // Special pairs are always forced as openers — no cap check needed at this stage
+    // (the two openers alone can never meaningfully violate a bowler cap).
+    const p1 = virtualSquad.find(p => p.id.startsWith(activePair[0]))!;
+    const p2 = virtualSquad.find(p => p.id.startsWith(activePair[1]))!;
+    if (p1 && p2) {
       chosenOpeners.push(p1, p2);
     }
   }
@@ -538,8 +537,9 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
   }
 
   // 5. Force-fill to 12 if squad has 12+ players but OS limit or bowler limit blocked us
+  // Uses virtualSquad so role-based cap checks remain consistent with prior phases.
   if (selected.length < 12 && squad.length >= 12) {
-    const leftover = squad.filter(p => !selected.some(s => s.id === p.id) && !p.onlyOpensOrBenched).sort((a, b) => rating(b) - rating(a));
+    const leftover = virtualSquad.filter(p => !selected.some(s => s.id === p.id) && !p.onlyOpensOrBenched).sort((a, b) => rating(b) - rating(a));
     // First pass: add players who do not violate the 4 Overseas limit
     for (const p of leftover) {
       if (selected.length >= 12) break;
@@ -555,6 +555,41 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
       if (!selected.some(s => s.id === p.id)) {
         selected.push(p);
       }
+    }
+  }
+
+  // --- MINIMUM BATTER GUARD ---
+  // Ensure the XII contains at least 4 genuine batters (Batsman or WK-Batsman).
+  // If not, swap out the lowest-rated non-keeper, non-batter player for the best
+  // available bench batter, respecting the OS cap.
+  {
+    const countGenuineBatters = (list: import("@/lib/types").Player[]) =>
+      list.filter(p => p.role === "Batsman" || p.role === "WK-Batsman").length;
+
+    while (countGenuineBatters(selected) < 4) {
+      const benchBatters = virtualSquad
+        .filter(p => !selected.some(s => s.id === p.id) && !p.onlyOpensOrBenched &&
+          (p.role === "Batsman" || p.role === "WK-Batsman"))
+        .sort((a, b) => rating(b) - rating(a));
+
+      if (benchBatters.length === 0) break;
+
+      // Find the lowest-rated non-keeper, non-batter in selected to replace
+      const evictionCandidates = selected
+        .filter(p => p.role !== "Batsman" && p.role !== "WK-Batsman" && !isKeeper(p))
+        .sort((a, b) => rating(a) - rating(b));
+
+      if (evictionCandidates.length === 0) break;
+
+      const toEvict = evictionCandidates[0];
+      const bestBatter = benchBatters.find(b => {
+        const hypo = selected.map(p => p.id === toEvict.id ? b : p);
+        return countOS(hypo) <= 4;
+      });
+
+      if (!bestBatter) break;
+
+      selected = selected.map(p => p.id === toEvict.id ? bestBatter : p);
     }
   }
 
@@ -762,11 +797,8 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
         
         if (indianOpenerInSelected) {
           // Case 1: Indian opener is already in selected.
-          // We can simply swap the low-rated playing osOpener with the higher-rated bestBenchOS.
-          // This keeps the OS count the same and keeps the squad size at 12.
+          // Swap the low-rated playing osOpener with the higher-rated bestBenchOS.
           selected = selected.map(p => p.id === osOpener.id ? bestBenchOS : p);
-          remaining = remaining.filter(p => p.id !== bestBenchOS.id);
-          remaining.push(osOpener);
         } else {
           // Case 2: Indian opener is on the bench.
           const benchIndianOpeners = virtualSquad
@@ -776,23 +808,14 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
           if (benchIndianOpeners.length > 0) {
             const bestBenchIndianOpener = benchIndianOpeners[0];
 
-            // We want to remove osOpener (Overseas) and the lowest-rated non-keeper, non-essential player in selected,
-            // and add bestBenchIndianOpener (Indian) and bestBenchOS (Overseas) to selected.
             const eligibleForRemoval = selected
               .filter(p => p.id !== osOpener.id && !isKeeper(p) && !isOutAndOut(p))
               .sort((a, b) => rating(a) - rating(b));
 
             if (eligibleForRemoval.length > 0) {
               const lowestPlayer = eligibleForRemoval[0];
-
-              // Replace osOpener with bestBenchIndianOpener
               selected = selected.map(p => p.id === osOpener.id ? bestBenchIndianOpener : p);
-              // Replace lowestPlayer with bestBenchOS
               selected = selected.map(p => p.id === lowestPlayer.id ? bestBenchOS : p);
-
-              // Update remaining pool
-              remaining = remaining.filter(p => p.id !== bestBenchIndianOpener.id && p.id !== bestBenchOS.id);
-              remaining.push(osOpener, lowestPlayer);
             }
           }
         }
@@ -814,34 +837,7 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
     return false;
   };
 
-  // ===========================================================================
-  // ASSIGNMENT MODE: "SEQUENTIAL" (position-by-position, top-down)
-  // To switch back to constraint-based (most-constrained-first), comment out
-  // the SEQUENTIAL block below and uncomment the CONSTRAINT-BASED block.
-  // ===========================================================================
-
-  // ---------------------------------------------------------------------------
-  // SEQUENTIAL MODE (ACTIVE)
-  // Goes position 3 → 4 → 5 → 6 → 7 in order.
-  // For each slot:
-  //   1. Pick the highest-rated player who prefers this slot.
-  //   2. If none prefer it, pick the highest-rated player who has NO remaining
-  //      preferred slots still open (i.e., all their preferred positions in the
-  //      remaining slots have already been filled). This prevents players from
-  //      being dumped into slots they can't play when they still have options.
-  //   3. If all remaining players still have future preferred slots, skip and
-  //      come back at the end (filled greedily then).
-  // ---------------------------------------------------------------------------
-  // ===========================================================================
-  // ASSIGNMENT MODE: "HYBRID" (sequential position-by-position with look-ahead constraint checking)
-  // Goes position 3 → 4 → 5 → 6 → 7 in order.
-  // For each slot, it:
-  //   1. Checks candidates who prefer the slot, sorted by batting rating descending.
-  //   2. Performs a look-ahead check: skips a candidate if assigning them leaves
-  //      any other remaining player with zero preferred options in the remaining slots.
-  //   3. Falls back to rating descending if constraints are satisfied, ensuring
-  //      that if both players can play 5 and 7, the higher-rated one lands at 5.
-  // ===========================================================================
+  // --- LINEUP ASSIGNMENT (positions 3–7, sequential with constraint look-ahead) ---
   const assignLineupFrom = (
     startPos: number,
     currentLineup: import("@/lib/types").Player[],
@@ -987,12 +983,12 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
   ];
 
   const lineupActivePair = lineupSpecialPairs.find(pair =>
-    draftUnassigned.some(p => p.id === pair[0]) && draftUnassigned.some(p => p.id === pair[1])
+    draftUnassigned.some(p => p.id.startsWith(pair[0])) && draftUnassigned.some(p => p.id.startsWith(pair[1]))
   );
 
   if (lineupActivePair) {
-    const p1 = draftUnassigned.find(p => p.id === lineupActivePair[0])!;
-    const p2 = draftUnassigned.find(p => p.id === lineupActivePair[1])!;
+    const p1 = draftUnassigned.find(p => p.id.startsWith(lineupActivePair[0]))!;
+    const p2 = draftUnassigned.find(p => p.id.startsWith(lineupActivePair[1]))!;
     initialOpeners.push(p1, p2);
   } else {
     // 1. Openers (Positions 1 & 2)
@@ -1099,8 +1095,10 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
     finalLineup = assignLineupFrom(targetIdx + 1, lockedLineup, remainingPool);
   }
 
-  // Map back to the original squad players (restoring their real roles for UI purposes)
+  // Map back to the original squad players (restoring their real roles for UI purposes).
+  // virtualLineup retains the virtual roles for accurate cap checks in post-processing swap rules.
   const mappedLineup = finalLineup.map(vp => squad.find(s => s.id === vp.id)!);
+  const virtualLineup = finalLineup.map(vp => virtualSquad.find(s => s.id === vp.id)!);
 
   // --- BATTING ORDER FIT OPTIMIZATION ---
   // Iteratively swap pairs in the top 7 if it improves overall position suitability.
@@ -1111,6 +1109,15 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
     return prefersPosition(p, pos);
   };
 
+  // If a special pair was forced into positions 1 & 2, lock them there so the
+  // suitability swap loop cannot move them (their isOpener flag may be false).
+  const lockedOpenerIds = lineupActivePair
+    ? new Set([
+        mappedLineup[0]?.id,
+        mappedLineup[1]?.id,
+      ].filter(Boolean) as string[])
+    : new Set<string>();
+
   let improved = true;
   while (improved) {
     improved = false;
@@ -1119,6 +1126,9 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
         const pI = mappedLineup[i];
         const pJ = mappedLineup[j];
         if (!pI || !pJ) continue;
+
+        // Never swap a locked special-pair opener out of positions 0 or 1
+        if ((i < 2 && lockedOpenerIds.has(pI.id)) || (j < 2 && lockedOpenerIds.has(pJ.id))) continue;
 
         // Current suitability score for these two positions (excluding position 8 from core preference counting)
         const currentI = (i < 7 && getLineupPosPref(pI, i + 1)) ? 1 : 0;
@@ -1378,18 +1388,22 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
         .sort((a, b) => playerRating(b) - playerRating(a));
 
       for (const sub of benchSubstitutes) {
-        const hypo = [...mappedLineup];
-        hypo[8] = sub;
+        const hypoMapped = [...mappedLineup];
+        hypoMapped[8] = sub;
 
         // Check if substitution retains a keeper in the lineup
-        const hasKeeper = hypo.some(isKeeper);
-        if (!hasKeeper) continue;
+        if (!hypoMapped.some(isKeeper)) continue;
 
-        const nextOSCount = countOS(hypo);
-        const nextOutAndOut = countOutAndOut(hypo);
-        const nextPacers = countPacers(hypo);
+        // Cap checks use virtual roles for accuracy (bowling ARs count as bowlers)
+        const virtualSub = virtualSquad.find(p => p.id === sub.id) ?? sub;
+        const hypoVirtual = [...virtualLineup];
+        hypoVirtual[8] = virtualSub;
 
-        if (nextOSCount <= 4 && nextOutAndOut <= getMaxOutAndOut(hypo) && nextPacers <= maxPacers) {
+        const nextOSCount = countOS(hypoVirtual);
+        const nextOutAndOut = countOutAndOut(hypoVirtual);
+        const nextPacers = countPacers(hypoVirtual);
+
+        if (nextOSCount <= 4 && nextOutAndOut <= getMaxOutAndOut(hypoVirtual) && nextPacers <= maxPacers) {
           mappedLineup[8] = sub;
           break;
         }
@@ -1415,18 +1429,24 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
       if (isPos10Keeper && keepersInLineup <= 1) {
         // skip — swapping out would leave lineup with no keeper
       } else {
-        const currentOSCount = countOS(mappedLineup);
+        // Cap checks use virtual roles for accuracy (bowling ARs count as bowlers)
+        const currentOSCount = countOS(virtualLineup);
+        const currentOutAndOut = countOutAndOut(virtualLineup);
+        const currentPacers = countPacers(virtualLineup);
 
         const benchSubstitutes = squad
           .filter(p => {
             if (mappedLineup.some(m => m?.id === p.id)) return false;
             if (p.onlyOpensOrBenched) return false;
             if (!(p.role === "All-Rounder" || p.role === "Pace Bowler" || p.role === "Spin Bowler")) return false;
-            // Safety 2: check overseas cap
-            const subIsOS = p.nationality === "Overseas";
-            const pos10IsOS = pos10Player.nationality === "Overseas";
+            const virtualSub = virtualSquad.find(v => v.id === p.id) ?? p;
+            const pos10Virtual = virtualLineup[9];
+            const subIsOS = virtualSub.nationality === "Overseas";
+            const pos10IsOS = pos10Virtual?.nationality === "Overseas";
             const nextOSCount = currentOSCount - (pos10IsOS ? 1 : 0) + (subIsOS ? 1 : 0);
-            return nextOSCount <= 4;
+            const nextOutAndOut = currentOutAndOut - (pos10Virtual && isOutAndOut(pos10Virtual) ? 1 : 0) + (isOutAndOut(virtualSub) ? 1 : 0);
+            const nextPacers = currentPacers - (pos10Virtual?.role === "Pace Bowler" ? 1 : 0) + (virtualSub.role === "Pace Bowler" ? 1 : 0);
+            return nextOSCount <= 4 && nextOutAndOut <= getMaxOutAndOut([...virtualLineup.slice(0,9), virtualSub, ...virtualLineup.slice(10)]) && nextPacers <= maxPacers;
           })
           .sort((a, b) => playerRating(b) - playerRating(a));
 

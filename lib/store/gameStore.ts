@@ -149,7 +149,7 @@ function canTeamBidDuringSkip(
         ["prabhsimran-singh", "priyansh-arya"]
       ];
       const hasSpecialPair = specialPairs.some(pair => 
-        t.squad.includes(pair[0]) && t.squad.includes(pair[1])
+        t.squad.some(id => id.startsWith(pair[0])) && t.squad.some(id => id.startsWith(pair[1]))
       );
       const playerRating = ratingOf(p);
       const openersAboveRating = squad.filter(x => x.isOpener && ratingOf(x) > playerRating).length;
@@ -172,13 +172,20 @@ function canTeamBidDuringSkip(
       if (currentSquadSize >= t.maxSquadSize) return false;
     }
 
+    const slotsTo22 = Math.max(0, 22 - currentSquadSize);
+    const fillerReserve = (slotsTo22 - 1) * 30;
+
     if (currentSquadSize < minSquad) {
       const slotsNeeded = minSquad - currentSquadSize;
-      const neededReserve = (slotsNeeded - 1) * 20;
+      const neededReserve = Math.max((slotsNeeded - 1) * 30, fillerReserve);
       if (t.remainingPurse - nextBid < neededReserve) return false;
     } else {
-      if (t.remainingPurse >= 200) {
-        if (t.remainingPurse - nextBid < 200) return false;
+      // Even if above minSquad, check if we need to reserve for remaining slots up to 22
+      if (t.remainingPurse - nextBid < fillerReserve) return false;
+
+      // Lower cushion from 200 Lakhs to 50 Lakhs to prevent bidding lockouts for cheap backups
+      if (t.remainingPurse >= 50 && nextBid >= 50) {
+        if (t.remainingPurse - nextBid < 50) return false;
       }
       if (t.remainingPurse - nextBid < 0) return false;
     }
@@ -807,6 +814,7 @@ export const useGameStore = create<Store>()(
             soldPlayerIds: newSoldIds,
             currentLotIndex,
             totalLots,
+            isAcceleratedPhase: auction.isAcceleratedPhase,
           };
 
           let currentBid = player.basePrice;
@@ -1042,6 +1050,7 @@ export const useGameStore = create<Store>()(
             soldPlayerIds: newSoldIds,
             currentLotIndex,
             totalLots,
+            isAcceleratedPhase: auction.isAcceleratedPhase,
           };
 
           let currentBid = player.basePrice;
@@ -1245,6 +1254,7 @@ export const useGameStore = create<Store>()(
             soldPlayerIds: newSoldIds,
             currentLotIndex,
             totalLots,
+            isAcceleratedPhase: auction.isAcceleratedPhase,
           };
 
           let currentBid = player.basePrice;
@@ -1624,6 +1634,7 @@ function simulateRemainingBids(player: Player) {
     soldPlayerIds: auction.soldPlayerIds,
     currentLotIndex: auction.currentLotIndex,
     totalLots,
+    isAcceleratedPhase: auction.isAcceleratedPhase,
   };
 
   let iterations = 0;
@@ -1992,6 +2003,7 @@ function scheduleAIBids(player: Player) {
       soldPlayerIds: a.soldPlayerIds,
       currentLotIndex: a.currentLotIndex,
       totalLots,
+      isAcceleratedPhase: a.isAcceleratedPhase,
     };
 
     // Collect AI teams that both CAN and WANT to bid
@@ -2035,7 +2047,7 @@ function ensureMinimumSquadSizes(
   const isIndianBatter = (p: Player) => p.nationality === "Indian" && (p.role === "Batsman" || p.role === "WK-Batsman");
   const ratingOf = (p: Player) => Math.max(p.currentBatting ?? 0, p.currentBowling ?? 0);
 
-  const getMinSize = (t: Team) => t.id === userTeamId ? 19 : t.minSquadSize;
+  const getMinSize = (t: Team) => 22;
 
   const getBowlersCount = (t: Team) => t.squad.map(id => players[id]).filter(p => p && (p.role === "Pace Bowler" || p.role === "Spin Bowler")).length;
   const getKeepersCount = (t: Team) => t.squad.map(id => players[id]).filter(p => p && isWK(p)).length;
@@ -2180,7 +2192,9 @@ function ensureMinimumSquadSizes(
 
       team.squad.push(candidate.id);
       const cost = candidate.basePrice ?? 30;
-      team.remainingPurse = Math.max(0, team.remainingPurse - cost);
+      const actualCost = Math.min(team.remainingPurse, cost);
+      team.remainingPurse = Math.max(0, team.remainingPurse - actualCost);
+      team.spentAmount += actualCost;
 
       players[candidate.id] = {
         ...candidate,

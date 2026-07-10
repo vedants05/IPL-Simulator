@@ -22,6 +22,7 @@ export interface AuctionContext {
   soldPlayerIds: string[];
   currentLotIndex: number;
   totalLots: number;
+  isAcceleratedPhase?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -830,7 +831,14 @@ function getTeamPlan(team: Team, allPlayers: Record<string, Player>): TeamPlan {
   // Teams aim to fill out a full squad (24-25) — depth wins tournaments.
   // If purse is low, dynamically scale target squad size smoothly down to at least minSquad + 3
   // (22 for AI, 21 for user) to keep target squad sizes high while maintaining slot safety.
+  const minSquad = team.minSquadSize ?? 18;
+  const floorTarget = minSquad + 3; // 22 for AI/user initially
   let targetSquad = 25;
+  if (team.remainingPurse < 3000) {
+    // Scale target squad down from 25 to floorTarget as purse goes from 3000 Lakhs down to 500 Lakhs
+    const factor = Math.max(0, Math.min(1, (team.remainingPurse - 500) / 2500));
+    targetSquad = Math.round(floorTarget + (25 - floorTarget) * factor);
+  }
   const toBuy = clamp(targetSquad - comp.total, 1, 25);
   const avgPerSlot = team.remainingPurse / toBuy;
 
@@ -1033,22 +1041,25 @@ export function computeTeamValuation(
   // only when a role is heavily overstacked (and he's not a planned target).
   const slotsLeft = plan.targetSquad - comp.total;
   const needsMinSquad = comp.total < 18;
+  
+  const progress = (ctx && ctx.currentLotIndex && ctx.totalLots) ? (ctx.currentLotIndex / ctx.totalLots) : 0;
+  const isLateAuction = progress >= 0.60 || (ctx && ctx.isAcceleratedPhase);
+  const isCheapFiller = rating >= 70 && (player.basePrice ?? 30) <= 50;
+  const allowLateFiller = isLateAuction && isCheapFiller;
+
   if (planned === undefined && !needsMinSquad) {
-    if (!needsBodies && !highValue && !isEmergency) return 0;
+    if (!needsBodies && !highValue && !isEmergency && !allowLateFiller) return 0;
     // Role-stacking limit relaxes when the squad is well short of a full 25 —
     // a team that still needs many bodies takes the best available even if the
     // role is a little crowded, so everyone fills out to 25.
     const excessLimit = slotsLeft >= 6 ? 3 : slotsLeft >= 3 ? 4 : 6;
-    if (excess >= excessLimit && !highValue) return 0;
+    if (excess >= excessLimit && !highValue && !allowLateFiller) return 0;
     // Weak-fit filler is ignored while there's still real squad-building to do.
     let fitFloor = highValue ? 0.28 : slotsLeft >= 8 ? 0.50 : slotsLeft >= 4 ? 0.34 : 0.18;
-    if (ctx && ctx.currentLotIndex && ctx.totalLots) {
-      const progress = ctx.currentLotIndex / ctx.totalLots;
-      if (progress >= 0.50 && ratingOf(player) < 75) {
-        fitFloor = 0.10; // Relaxed interest gate for cheap fillers in second half
-      }
+    if (isLateAuction && rating < 75) {
+      fitFloor = 0.05; // Extremely relaxed fit floor for late auction fillers
     }
-    if (fit < fitFloor && !isEmergency) return 0;
+    if (fit < fitFloor && !isEmergency && !allowLateFiller) return 0;
   }
 
   // ── Market-anchored value for EVERY interested team ───────────────────────
@@ -1084,6 +1095,11 @@ export function computeTeamValuation(
 
   if (isRivalReleasedSuperstar) {
     base *= u(1.35, 1.70); // Boost valuation to drive up the bidding war
+  }
+
+  // Penalty for low-rated overseas players (precious slot shouldn't be wasted on rating < 75)
+  if (player.nationality === "Overseas" && rating < 75) {
+    base *= 0.50;
   }
 
   // ── Live scatter so identical squads still diverge in the room ────────────
@@ -1303,7 +1319,7 @@ export function canAIBidAtAmount(
       ["prabhsimran-singh", "priyansh-arya"]
     ];
     const hasSpecialPair = specialPairs.some(pair => 
-      team.squad.includes(pair[0]) && team.squad.includes(pair[1])
+      team.squad.some(id => id.startsWith(pair[0])) && team.squad.some(id => id.startsWith(pair[1]))
     );
     const playerRating = ratingOf(player);
     const openersAboveRating = squad.filter(p => p.isOpener && ratingOf(p) > playerRating).length;

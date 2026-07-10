@@ -299,7 +299,9 @@ export function canTeamAffordBid(team: Team, bidAmount: number, players?: Record
     slotsNeeded = Math.max(0, minSquad - team.squad.length, roleSlotsNeeded) - 1;
   }
   const reservePerSlot = (team.squad.length >= 16) ? 15 : 30; // Lower reserve from 30L to 15L for final slots to prevent bidding blockages
-  const reserve = Math.max(0, slotsNeeded) * reservePerSlot;
+  const fillerSlotsNeeded = Math.max(0, 22 - team.squad.length - 1);
+  const fillerReserve = fillerSlotsNeeded * 30; // Reserve 30L per slot to reach 22 players
+  const reserve = Math.max(Math.max(0, slotsNeeded) * reservePerSlot, fillerReserve);
   return team.remainingPurse - bidAmount >= reserve;
 }
 
