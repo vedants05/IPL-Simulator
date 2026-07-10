@@ -38,6 +38,8 @@ export default function NavBar() {
   const [showConfirmAll, setShowConfirmAll] = useState(false);
   const [wasPausedBeforeConfirmAll, setWasPausedBeforeConfirmAll] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showHowToPlay, setShowHowToPlay] = useState(false);
+  const [activeTile, setActiveTile] = useState(0);
   const [isDarkMode, setIsDarkMode] = useState(false);
 
   useEffect(() => {
@@ -483,11 +485,209 @@ export default function NavBar() {
                     </span>
                   </button>
                 </div>
+                <div className="flex flex-col gap-2 border-t border-[var(--ink)]/15 pt-2">
+                  <span className="text-[9px] font-bold text-text-secondary uppercase tracking-wider">
+                    Guides
+                  </span>
+                  <button
+                    onClick={() => {
+                      setShowSettings(false);
+                      setPaused(true);
+                      setShowHowToPlay(true);
+                    }}
+                    className="w-full flex items-center justify-between px-3 py-1.5 rounded border border-[var(--ink)] hover:bg-[var(--ink)]/5 text-[10px] font-bold cursor-pointer transition-all active:scale-[0.98]"
+                  >
+                    <span>📖 How to Play</span>
+                  </button>
+                </div>
               </div>
             </>
           )}
         </div>
       </div>
+
+      {showHowToPlay && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div
+            className="w-full max-w-lg p-6 border-2 border-[var(--ink)] flex flex-col gap-6 font-barlow relative"
+            style={{
+              backgroundColor: "var(--surface, #ffffff)",
+              color: "var(--ink, #111622)",
+              boxShadow: "8px 8px 0px 0px var(--ink)",
+            }}
+          >
+            {/* Close button */}
+            <button
+              onClick={() => setShowHowToPlay(false)}
+              className="absolute right-4 top-4 w-8 h-8 flex items-center justify-center rounded border-2 border-[var(--ink)] font-bold text-[14px] hover:bg-red-600 hover:text-white transition-all duration-150 cursor-pointer active:scale-95 bg-[var(--surface)]"
+              style={{ color: "var(--ink)", borderColor: "var(--ink)" }}
+            >
+              ✕
+            </button>
+
+            {/* Header */}
+            <div>
+              <h2 className="font-anton text-[28px] leading-none text-text-primary uppercase tracking-wide">
+                📖 Guide (Tile {activeTile + 1}/5)
+              </h2>
+              <p className="text-[11px] text-text-secondary font-space-mono mt-1 uppercase tracking-wider">
+                Auction Paused · Swipe or click to read rules
+              </p>
+            </div>
+
+            {/* Active Tile Display */}
+            <div className="min-h-[220px] flex flex-col">
+              {activeTile === 0 && (
+                <div
+                  className="border-2 border-[var(--ink)] p-4 flex-1 flex flex-col gap-3"
+                  style={{
+                    backgroundColor: "var(--surface, #ffffff)",
+                    color: "var(--ink, #111622)",
+                    borderColor: "var(--ink)",
+                    boxShadow: "4px 4px 0px 0px var(--ink)",
+                  }}
+                >
+                  <div className="font-anton text-[16px] text-[#1d55c4] uppercase tracking-wide border-b border-[var(--ink)]/15 pb-1 flex items-center gap-1.5">
+                    🔨 Auction Engine
+                  </div>
+                  <ul className="text-[12px] flex flex-col gap-2 list-disc pl-4 leading-relaxed text-inherit">
+                    <li><strong>Bidding</strong>: Bid against 9 other teams. Click the bid button to raise by the current increment.</li>
+                    <li><strong>Budget</strong>: Total purse of <strong>₹120 Crore</strong>. Keep track of your remaining budget.</li>
+                    <li><strong>RTM Card</strong>: Use Right to Match cards to reclaim former players at their final auction price.</li>
+                    <li><strong>Accelerated Round</strong>: Once the main sets finish, select key players to bring up for rapid bidding.</li>
+                  </ul>
+                </div>
+              )}
+
+              {activeTile === 1 && (
+                <div
+                  className="border-2 border-[var(--ink)] p-4 flex-1 flex flex-col gap-3"
+                  style={{
+                    backgroundColor: "var(--surface, #ffffff)",
+                    color: "var(--ink, #111622)",
+                    borderColor: "var(--ink)",
+                    boxShadow: "4px 4px 0px 0px var(--ink)",
+                  }}
+                >
+                  <div className="font-anton text-[16px] text-orange-500 uppercase tracking-wide border-b border-[var(--ink)]/15 pb-1 flex items-center gap-1.5">
+                    🃏 Right to Match (RTM) Card
+                  </div>
+                  <ul className="text-[12px] flex flex-col gap-2 list-disc pl-4 leading-relaxed text-inherit">
+                    <li><strong>Concept</strong>: Buy back a player who played for your franchise last season by matching the final winning bid.</li>
+                    <li><strong>RTM Limit</strong>: Every team gets <strong>6</strong> total RTM/Retention slots. The RTM cards available equal <code>6 minus your pre-auction retentions</code>.</li>
+                    <li><strong>Prompt</strong>: When one of your former players is sold to another team, you will be prompted to exercise an RTM.</li>
+                    <li><strong>Counter-Bid</strong>: The winning bidder gets one final chance to raise their bid. If they do, you must match the new raised bid.</li>
+                  </ul>
+                </div>
+              )}
+
+              {activeTile === 2 && (
+                <div
+                  className="border-2 border-[var(--ink)] p-4 flex-1 flex flex-col gap-3"
+                  style={{
+                    backgroundColor: "var(--surface, #ffffff)",
+                    color: "var(--ink, #111622)",
+                    borderColor: "var(--ink)",
+                    boxShadow: "4px 4px 0px 0px var(--ink)",
+                  }}
+                >
+                  <div className="font-anton text-[16px] text-red-600 uppercase tracking-wide border-b border-[var(--ink)]/15 pb-1 flex items-center gap-1.5">
+                    🚨 Hard Constraints
+                  </div>
+                  <ul className="text-[12px] flex flex-col gap-2 list-disc pl-4 leading-relaxed text-inherit">
+                    <li><strong>Squad Size</strong>: Minimum of <strong>18</strong> players and a maximum of <strong>25</strong> players.</li>
+                    <li><strong>Overseas Players</strong>: Maximum of <strong>8</strong> overseas players in your 25-man squad.</li>
+                    <li><strong>Playing XI</strong>: Matchday XI/XII can feature a maximum of <strong>4 overseas</strong> players.</li>
+                  </ul>
+                </div>
+              )}
+
+              {activeTile === 3 && (
+                <div
+                  className="border-2 border-[var(--ink)] p-4 flex-1 flex flex-col gap-3"
+                  style={{
+                    backgroundColor: "var(--surface, #ffffff)",
+                    color: "var(--ink, #111622)",
+                    borderColor: "var(--ink)",
+                    boxShadow: "4px 4px 0px 0px var(--ink)",
+                  }}
+                >
+                  <div className="font-anton text-[16px] text-green-600 uppercase tracking-wide border-b border-[var(--ink)]/15 pb-1 flex items-center gap-1.5">
+                    🎯 Recommended Squad Size
+                  </div>
+                  <ul className="text-[12px] flex flex-col gap-2 list-disc pl-4 leading-relaxed text-inherit">
+                    <li><strong>Bowler Depth</strong>: Minimum of <strong>5</strong> bowlers (with at least <strong>2 spinners</strong> and <strong>4 Indian</strong> bowlers).</li>
+                    <li><strong>Indian Batters</strong>: Minimum of <strong>6</strong> Indian batters (with at least <strong>4 rated &gt;77</strong> and <strong>6 rated &gt;75</strong>).</li>
+                    <li><strong>Auto-Fill Fallback</strong>: If you finish the auction short of these, cheaper uncapped players are automatically signed to fill slots.</li>
+                  </ul>
+                </div>
+              )}
+
+              {activeTile === 4 && (
+                <div
+                  className="border-2 border-[var(--ink)] p-4 flex-1 flex flex-col gap-3"
+                  style={{
+                    backgroundColor: "var(--surface, #ffffff)",
+                    color: "var(--ink, #111622)",
+                    borderColor: "var(--ink)",
+                    boxShadow: "4px 4px 0px 0px var(--ink)",
+                  }}
+                >
+                  <div className="font-anton text-[16px] text-purple-600 uppercase tracking-wide border-b border-[var(--ink)]/15 pb-1 flex items-center gap-1.5">
+                    💱 Bidding & Value Systems
+                  </div>
+                  <ul className="text-[12px] flex flex-col gap-2 list-disc pl-4 leading-relaxed text-inherit">
+                    <li><strong>Lakh (L)</strong>: 1 Lakh = 100,000 Rupees. Base prices start at ₹20L–₹50L.</li>
+                    <li><strong>Crore (Cr)</strong>: 1 Crore = 100 Lakhs = 10,000,000 Rupees. Star players go for ₹5 Cr – ₹15 Cr.</li>
+                    <li><strong>Bid Increments</strong>: The raise amount escalates automatically as the player's price rises:
+                      <ul className="list-disc pl-6 mt-1 flex flex-col gap-1 text-[11px] opacity-90">
+                        <li>Under ₹1 Cr: Raises by <strong>₹5 Lakhs</strong> per bid</li>
+                        <li>₹1 Cr – ₹2 Cr: Raises by <strong>₹10 Lakhs</strong> per bid</li>
+                        <li>₹2 Cr – ₹5 Cr: Raises by <strong>₹20 Lakhs</strong> per bid</li>
+                        <li>Above ₹5 Cr: Raises by <strong>₹25 Lakhs</strong> per bid</li>
+                      </ul>
+                    </li>
+                  </ul>
+                </div>
+              )}
+            </div>
+
+            {/* Navigation and Dot Indicators */}
+            <div className="flex items-center justify-between gap-4 mt-2 border-t border-[var(--ink)]/15 pt-4">
+              <button
+                onClick={() => setActiveTile((prev) => Math.max(0, prev - 1))}
+                disabled={activeTile === 0}
+                className={`px-4 py-1.5 border-2 border-[var(--ink)] font-anton uppercase text-[11px] transition-all cursor-pointer ${
+                  activeTile === 0 ? "opacity-35 cursor-not-allowed" : "hover:bg-[var(--ink)] hover:text-[var(--surface)] active:scale-95 bg-[var(--surface)]"
+                }`}
+                style={{ color: "var(--ink)", borderColor: "var(--ink)" }}
+              >
+                ← Back
+              </button>
+
+              <div className="flex items-center gap-1.5">
+                {[0, 1, 2, 3, 4].map((idx) => (
+                  <span
+                    key={idx}
+                    className="w-2.5 h-2.5 border border-[var(--ink)] rounded-full transition-all"
+                    style={{
+                      backgroundColor: activeTile === idx ? "var(--ink)" : "transparent",
+                    }}
+                  />
+                ))}
+              </div>
+
+              <button
+                onClick={() => (activeTile === 4 ? setShowHowToPlay(false) : setActiveTile((prev) => prev + 1))}
+                className="px-4 py-1.5 border-2 border-[var(--ink)] font-anton uppercase text-[11px] hover:bg-[var(--ink)] hover:text-[var(--surface)] transition-all active:scale-95 cursor-pointer bg-[var(--surface)]"
+                style={{ color: "var(--ink)", borderColor: "var(--ink)" }}
+              >
+                {activeTile === 4 ? "Close" : "Next →"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </nav>
   );
 }

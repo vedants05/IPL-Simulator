@@ -71,7 +71,7 @@ export default function AuctionPage() {
       {/* Header bar */}
       <div
         className="flex items-center justify-between px-[22px] py-[14px] shrink-0"
-        style={{ borderBottom: "2px solid #16130f" }}
+        style={{ borderBottom: "2px solid var(--ink)" }}
       >
         <div className="flex items-center gap-[14px]">
           <div
@@ -98,7 +98,7 @@ export default function AuctionPage() {
             className="px-[11px] py-[7px] hover:brightness-95 transition-all flex items-center justify-center rounded-[5px]"
             style={{
               background: "linear-gradient(var(--team-primary-tint), var(--team-primary-tint)), #1f9d57",
-              border: "1.5px solid #16130f",
+              border: "1.5px solid var(--ink)",
             }}
           >
             <span className="font-space-mono font-bold text-[10px] tracking-wider text-white leading-none">
@@ -110,7 +110,7 @@ export default function AuctionPage() {
             className="px-[11px] py-[7px] hover:brightness-95 transition-all flex items-center justify-center rounded-[5px]"
             style={{
               background: "linear-gradient(var(--team-primary-tint), var(--team-primary-tint)), #d6492f",
-              border: "1.5px solid #16130f",
+              border: "1.5px solid var(--ink)",
             }}
           >
             <span className="font-space-mono font-bold text-[10px] tracking-wider text-white leading-none">
@@ -122,7 +122,7 @@ export default function AuctionPage() {
             className="px-[11px] py-[7px] hover:brightness-95 transition-all flex items-center justify-center rounded-[5px]"
             style={{
               backgroundColor: "var(--team-primary-tint, #efece3)",
-              border: "1.5px solid #16130f",
+              border: "1.5px solid var(--ink)",
             }}
           >
             <span className="font-space-mono font-bold text-[10px] tracking-wider text-text-primary leading-none">
@@ -138,7 +138,7 @@ export default function AuctionPage() {
         {/* Zone 1: Team Purse (top) + Sold Log (bottom) — 220px */}
         <div
           className="w-[220px] shrink-0 flex flex-col relative"
-          style={{ borderRight: "2px solid #16130f" }}
+          style={{ borderRight: "2px solid var(--ink)" }}
         >
           <TeamPurseList />
           <MiniSoldLog />
@@ -153,8 +153,8 @@ export default function AuctionPage() {
           <div className="flex-1 flex flex-col overflow-hidden">
             {/* Active Set Banner */}
             <div
-              className="h-[36px] px-6 flex items-center justify-between shrink-0 bg-surface text-[#16130f]"
-              style={{ borderBottom: "2px solid #16130f" }}
+              className="h-[36px] px-6 flex items-center justify-between shrink-0 bg-surface text-[var(--ink)]"
+              style={{ borderBottom: "2px solid var(--ink)" }}
             >
               <div className="flex items-center gap-2.5">
                 <span className="font-space-mono font-bold text-[9px] tracking-widest uppercase bg-[#16130f] text-white px-2 py-0.5 rounded-[3px]">
@@ -207,7 +207,7 @@ export default function AuctionPage() {
         {/* Zone 3: Live Bids — 256px */}
         <div
           className="w-[256px] shrink-0 flex flex-col overflow-hidden"
-          style={{ borderLeft: "2px solid #16130f" }}
+          style={{ borderLeft: "2px solid var(--ink)" }}
         >
           <BidHistory />
         </div>
@@ -215,7 +215,7 @@ export default function AuctionPage() {
         {/* Zone 4: Your Squad — 264px */}
         <div
           className="w-[264px] shrink-0 flex flex-col relative z-30"
-          style={{ borderLeft: "2px solid #16130f" }}
+          style={{ borderLeft: "2px solid var(--ink)" }}
         >
           <UserSquad />
         </div>
@@ -970,65 +970,7 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
     return lineup;
   };
 
-  // ---------------------------------------------------------------------------
-  // CONSTRAINT-BASED MODE (INACTIVE — uncomment to re-enable)
-  // Assigns most-constrained players (fewest preferred slots) first.
-  // To activate: comment out the SEQUENTIAL block above and uncomment below.
-  // ---------------------------------------------------------------------------
-  /*
-  const assignConstrained = (
-    slots: number[],
-    players: import("@/lib/types").Player[]
-  ): Record<number, import("@/lib/types").Player> => {
-    const assignments: Record<number, import("@/lib/types").Player> = {};
-    const sortedPlayers = [...players].sort((a, b) => {
-      const aPrefCount = slots.filter(s => prefersPosition(a, s)).length;
-      const bPrefCount = slots.filter(s => prefersPosition(b, s)).length;
-      if (aPrefCount !== bPrefCount) return aPrefCount - bPrefCount;
-      return getBatRating(b) - getBatRating(a);
-    });
-    for (const p of sortedPlayers) {
-      let assignedSlot = slots.find(s => prefersPosition(p, s) && !assignments[s]);
-      if (assignedSlot === undefined) assignedSlot = slots.find(s => !assignments[s]);
-      if (assignedSlot !== undefined) assignments[assignedSlot] = p;
-    }
-    return assignments;
-  };
 
-  const assignLineupFrom = (
-    startPos: number,
-    currentLineup: import("@/lib/types").Player[],
-    pool: import("@/lib/types").Player[]
-  ): import("@/lib/types").Player[] => {
-    let unassigned = [...pool];
-    const lineup = [...currentLineup];
-    const corePool = unassigned.filter(p =>
-      p.isCoreBatter && !p.isFinisher &&
-      (p.role === "Batsman" || p.role === "WK-Batsman" || p.role === "All-Rounder")
-    );
-    const coreSlotsToFill = Math.min(corePool.length, Math.max(0, 8 - startPos));
-    const coreSlots = Array.from({ length: coreSlotsToFill }, (_, i) => startPos + i);
-    const coreAssignments = assignConstrained(coreSlots, corePool);
-    const assignedCoreIds = new Set(Object.values(coreAssignments).map(p => p.id));
-    unassigned = unassigned.filter(p => !assignedCoreIds.has(p.id));
-    let nextPos = startPos + coreSlotsToFill;
-    const finishersPool = unassigned.filter(p => p.isFinisher);
-    const finisherSlotsToFill = Math.min(finishersPool.length, Math.max(0, 8 - nextPos));
-    const finisherSlots = Array.from({ length: finisherSlotsToFill }, (_, i) => nextPos + i);
-    const finisherAssignments = assignConstrained(finisherSlots, finishersPool);
-    const assignedFinisherIds = new Set(Object.values(finisherAssignments).map(p => p.id));
-    unassigned = unassigned.filter(p => !assignedFinisherIds.has(p.id));
-    nextPos += finisherSlotsToFill;
-    for (let pos = startPos; pos < nextPos; pos++) {
-      const chosen = coreAssignments[pos] || finisherAssignments[pos];
-      if (chosen) lineup.push(chosen);
-    }
-    const hasBatting = unassigned.filter(p => getBatRating(p) > 0).sort((a, b) => getBatRating(b) - getBatRating(a));
-    const zeroBatting = unassigned.filter(p => getBatRating(p) <= 0).sort((a, b) => getBowlRating(a) - getBowlRating(b));
-    lineup.push(...hasBatting, ...zeroBatting);
-    return lineup;
-  };
-  */
 
   // Generate initial draft lineup
   const initialOpeners: import("@/lib/types").Player[] = [];
@@ -1548,13 +1490,13 @@ function TeamSquadCard({
     <div className="relative flex flex-col items-stretch gap-y-4 lg:gap-y-0">
       {/* Main Squad Card (Takes full column width) */}
       <div
-        style={{ border: isUser ? "3px solid #16130f" : "2px solid #16130f" }}
+        style={{ border: isUser ? "3px solid var(--ink)" : "2px solid var(--ink)" }}
         className="w-full flex flex-col bg-surface2 z-0 relative"
       >
         {/* Team header — franchise colours */}
         <div
           className="px-4 py-3 flex items-center justify-between shrink-0"
-          style={{ backgroundColor: team.primaryColor, color: team.secondaryColor, borderBottom: "2px solid #16130f" }}
+          style={{ backgroundColor: team.primaryColor, color: team.secondaryColor, borderBottom: "2px solid var(--ink)" }}
         >
           <div className="flex items-center gap-2.5 min-w-0">
             <div
