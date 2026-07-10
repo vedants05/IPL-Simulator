@@ -54,7 +54,7 @@ export default function SquadPage() {
                 <div className="font-space-mono font-bold text-[9px] tracking-widest text-text-secondary uppercase mb-2">
                   {label}
                 </div>
-                <div style={{ border: "2px solid #16130f" }}>
+                <div style={{ border: "2px solid var(--ink)" }}>
                   {group.map((p, i) => (
                     <div
                       key={p.id}
@@ -73,7 +73,7 @@ export default function SquadPage() {
                             OS
                           </span>
                         )}
-                        <div className="font-space-mono text-[9px] text-text-secondary bg-[#16130f]/5 px-2 py-[2px] rounded font-bold">
+                        <div className="font-space-mono text-[9px] text-text-secondary bg-[var(--ink)]/5 px-2 py-[2px] rounded font-bold">
                           RTG: {Math.max(p.currentBatting || 0, p.currentBowling || 0)}
                         </div>
                       </div>

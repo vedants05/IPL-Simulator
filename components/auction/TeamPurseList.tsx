@@ -63,7 +63,7 @@ export default function TeamPurseList() {
     // popout (which opens off to the left via right-full) stays visible.
     <div className="flex-1 flex flex-col relative min-h-0">
       <div className="flex-1 overflow-y-auto min-h-0">
-        <div className="px-4 h-[36px] flex items-center shrink-0 sticky top-0 bg-bg z-10" style={{ borderBottom: "2px solid #16130f" }}>
+        <div className="px-4 h-[36px] flex items-center shrink-0 sticky top-0 bg-bg z-10" style={{ borderBottom: "2px solid var(--ink)" }}>
           <span className="font-space-mono font-bold text-[10px] tracking-[.14em] text-text-primary uppercase">
             Purse / <span className="text-[12px] font-sans font-bold">₹</span>Cr
           </span>
@@ -111,7 +111,7 @@ export default function TeamPurseList() {
                     className="font-space-mono font-bold text-[8px] tracking-wider shrink-0 px-1.5 py-0.5 rounded-[2px]"
                     style={{
                       backgroundColor: "rgba(22,19,15,.12)",
-                      color: "#5a5348",
+                      color: "var(--text-secondary, #5a5348)",
                     }}
                   >
                     {rtmLeft}RTM
@@ -139,7 +139,7 @@ export default function TeamPurseList() {
                     style={{ borderBottom: "1px solid rgba(22,19,15,.14)", backgroundColor: "rgba(22,19,15,.04)" }}
                   >
                     <span className="font-space-mono text-[9px] tracking-wider text-text-secondary uppercase">RTM Cards</span>
-                    <span className="font-barlow-condensed font-bold text-[14px]" style={{ color: rtmLeft > 0 ? "#1f9d57" : "#5a5348" }}>
+                    <span className="font-barlow-condensed font-bold text-[14px]" style={{ color: rtmLeft > 0 ? "#1f9d57" : "var(--text-secondary, #5a5348)" }}>
                       {rtmLeft} / {team.rtmCardsTotal}
                     </span>
                   </div>
@@ -159,13 +159,27 @@ export default function TeamPurseList() {
                       const isRtm = !!p.iplHistory.find((h) => h.season === "2027")?.isRtm;
 
                       let rowBg = undefined;
-                      let rowBorder = "1px solid rgba(22,19,15,.08)";
+                      let rowBorder = "1px solid var(--hairline)";
                       if (isSelected) {
                         rowBg = `${team.primaryColor}26`;
                         rowBorder = `1px solid ${team.primaryColor}55`;
                       } else if (wasRetained) {
-                        rowBg = `${team.primaryColor}14`;
-                        rowBorder = `1px solid ${team.primaryColor}2e`;
+                        let borderCol = team.primaryColor;
+                        let bgCol = `${team.primaryColor}14`;
+
+                        const isDark = typeof document !== "undefined" && document.documentElement.classList.contains("dark");
+                        if (isDark) {
+                          if (team.shortName === "GT") {
+                            borderCol = "#e5b842";
+                            bgCol = "rgba(229, 184, 66, 0.1)";
+                          } else if (team.shortName === "LSG") {
+                            borderCol = "#00a0e3";
+                            bgCol = "rgba(0, 160, 227, 0.1)";
+                          }
+                        }
+
+                        rowBg = bgCol;
+                        rowBorder = `1px solid ${borderCol}2e`;
                       }
 
                       return (
@@ -179,14 +193,14 @@ export default function TeamPurseList() {
                               setSelectedTeamId(team.id);
                             }
                           }}
-                          className="flex items-center justify-between px-5 py-[5px] hover:bg-black/5 cursor-pointer transition-colors duration-150 group select-none"
+                          className="flex items-center justify-between px-5 py-[5px] hover:bg-[var(--ink)]/5 cursor-pointer transition-colors duration-150 group select-none"
                           style={{
                             borderBottom: rowBorder,
                             backgroundColor: rowBg,
                           }}
                           title="Click to view player file"
                         >
-                          <span className="font-barlow font-medium text-[11px] text-text-primary group-hover:text-black group-hover:underline truncate flex-1 min-w-0 flex items-center gap-1.5 flex-wrap">
+                          <span className="font-barlow font-medium text-[11px] text-text-primary group-hover:text-[var(--team-primary)] group-hover:underline truncate flex-1 min-w-0 flex items-center gap-1.5 flex-wrap">
                             <span>{p.name}</span>
                             {priceStr && <span className="text-[9.5px] text-text-secondary font-mono font-medium">{priceStr}</span>}
                             {isRtm && <span className="text-[7.5px] font-space-mono font-extrabold bg-[#1d55c4]/15 text-[#1d55c4] px-1 rounded-[2px] tracking-wide uppercase leading-none py-0.5 shrink-0">RTM</span>}
@@ -220,7 +234,7 @@ export default function TeamPurseList() {
       {selectedPlayer && (
         <div
           ref={popoutRef}
-          className="absolute right-full top-0 mr-0 w-[380px] max-h-[85vh] bg-surface border-2 border-[#16130f] shadow-2xl z-[100] rounded-l-[4px] flex flex-col overflow-hidden text-[#16130f]"
+          className="absolute right-full top-0 mr-0 w-[380px] max-h-[85vh] bg-surface border-2 border-[var(--ink)] shadow-2xl z-[100] rounded-l-[4px] flex flex-col overflow-hidden text-[var(--ink)]"
         >
           {/* Header in the clicked team's colours */}
           <div
@@ -228,7 +242,7 @@ export default function TeamPurseList() {
             style={{
               backgroundColor: selectedTeam?.primaryColor ?? "#111622",
               color: selectedTeam?.secondaryColor ?? "#ffffff",
-              borderBottom: "2px solid #16130f",
+              borderBottom: "2px solid var(--ink)",
             }}
           >
             <div className="flex items-center gap-2 min-w-0">
@@ -259,7 +273,7 @@ export default function TeamPurseList() {
           <div className="flex-1 overflow-y-auto">
             {(() => {
               const sale = auction?.saleHistory.find((s: any) => s.playerId === selectedPlayer.id);
-              const salary = sale?.price ?? selectedPlayer.iplHistory.find((h) => h.season === "2027")?.price ?? selectedPlayer.iplHistory[selectedPlayer.iplHistory.length - 1]?.price ?? selectedPlayer.basePrice;
+              const salary = sale?.price ?? selectedPlayer.iplHistory.find((h) => h.season === "2027")?.price ?? selectedPlayer.iplHistory.find((h) => h.teamId !== "UNSOLD" && h.price > 0)?.price ?? selectedPlayer.basePrice;
               return <PlayerCard player={selectedPlayer} soldPrice={salary} collapsible={false} />;
             })()}
           </div>

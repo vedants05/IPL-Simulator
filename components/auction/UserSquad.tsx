@@ -53,7 +53,7 @@ export default function UserSquad() {
       {/* Header */}
       <div
         className="px-4 h-[36px] flex items-center shrink-0"
-        style={{ borderBottom: "2px solid #16130f" }}
+        style={{ borderBottom: "2px solid var(--ink)" }}
       >
         <div className="flex items-center gap-2">
           <div
@@ -71,7 +71,7 @@ export default function UserSquad() {
       {/* Stats bar */}
       <div
         className="flex shrink-0"
-        style={{ borderBottom: "2px solid #16130f" }}
+        style={{ borderBottom: "2px solid var(--ink)" }}
       >
         {[
           { label: "PLAYERS", value: `${squadPlayers.length}/25` },
@@ -120,19 +120,33 @@ export default function UserSquad() {
                   const isRtm = !!p.iplHistory.find((h) => h.season === "2027")?.isRtm;
 
                   let rowBg = undefined;
-                  let rowBorder = "1px solid rgba(22,19,15,.08)";
+                  let rowBorder = "1px solid var(--hairline)";
                   if (isSelected) {
-                    rowBg = "rgba(22, 19, 15, 0.08)";
+                    rowBg = "var(--surface)";
                   } else if (wasRetained) {
-                    rowBg = `${userTeam.primaryColor}18`;
-                    rowBorder = `1px solid ${userTeam.primaryColor}33`;
+                    let borderCol = userTeam.primaryColor;
+                    let bgCol = `${userTeam.primaryColor}18`;
+
+                    const isDark = typeof document !== "undefined" && document.documentElement.classList.contains("dark");
+                    if (isDark) {
+                      if (userTeam.shortName === "GT") {
+                        borderCol = "#e5b842";
+                        bgCol = "rgba(229, 184, 66, 0.1)";
+                      } else if (userTeam.shortName === "LSG") {
+                        borderCol = "#00a0e3";
+                        bgCol = "rgba(0, 160, 227, 0.1)";
+                      }
+                    }
+
+                    rowBg = bgCol;
+                    rowBorder = `1px solid ${borderCol}33`;
                   }
 
                   return (
                     <div
                       key={p.id}
                       onClick={() => setSelectedPlayer(isSelected ? null : p)}
-                      className="flex items-center justify-between px-3 py-[6px] hover:bg-black/5 cursor-pointer transition-colors duration-150 group select-none"
+                      className="flex items-center justify-between px-3 py-[6px] hover:bg-[var(--ink)]/5 cursor-pointer transition-colors duration-150 group select-none"
                       style={{
                         borderBottom: rowBorder,
                         backgroundColor: rowBg,
@@ -140,7 +154,7 @@ export default function UserSquad() {
                       title="Click to view player file"
                     >
                       <div className="min-w-0 flex-1">
-                        <div className="font-barlow font-semibold text-[11.5px] text-text-primary group-hover:text-black group-hover:underline truncate leading-tight flex items-center gap-1.5 flex-wrap">
+                        <div className="font-barlow font-semibold text-[11.5px] text-text-primary group-hover:text-[var(--team-primary)] group-hover:underline truncate leading-tight flex items-center gap-1.5 flex-wrap">
                           <span>{p.name}</span>
                           {priceStr && <span className="text-[9px] text-text-secondary font-mono font-medium">{priceStr}</span>}
                           {isRtm && <span className="text-[7.5px] font-space-mono font-extrabold bg-[#1d55c4]/15 text-[#1d55c4] px-1 rounded-[2px] tracking-wide uppercase leading-none py-0.5 shrink-0">RTM</span>}
@@ -173,7 +187,7 @@ export default function UserSquad() {
       {/* Purse footer: REMAINING container box */}
       <div
         className="shrink-0 h-[52px] px-4 flex justify-between items-center"
-        style={{ borderTop: "2px solid #16130f" }}
+        style={{ borderTop: "2px solid var(--ink)" }}
       >
         <span className="font-space-mono text-[9px] tracking-widest text-text-secondary uppercase">REMAINING</span>
         <span className="font-anton text-[20px] text-success leading-none">
@@ -185,7 +199,7 @@ export default function UserSquad() {
       {selectedPlayer && (
         <div
           ref={popoutRef}
-          className="absolute right-full top-0 mr-0 w-[380px] max-h-[85vh] bg-surface border-2 border-[#16130f] shadow-2xl z-[100] rounded-l-[4px] flex flex-col overflow-hidden text-[#16130f]"
+          className="absolute right-full top-0 mr-0 w-[380px] max-h-[85vh] bg-surface border-2 border-[var(--ink)] shadow-2xl z-[100] rounded-l-[4px] flex flex-col overflow-hidden text-[var(--ink)]"
         >
           {/* Popout Header matching team theme */}
           <div
@@ -193,7 +207,7 @@ export default function UserSquad() {
             style={{
               backgroundColor: "var(--team-bid-bg, #111622)",
               backgroundImage: "var(--team-bid-tinge)",
-              borderBottom: "2px solid #16130f",
+              borderBottom: "2px solid var(--ink)",
               color: "var(--team-bid-text, #ffffff)",
             }}
           >
@@ -218,7 +232,7 @@ export default function UserSquad() {
           <div className="flex-1 overflow-y-auto">
             {(() => {
               const sale = auction?.saleHistory.find((s: any) => s.playerId === selectedPlayer.id);
-              const salary = sale?.price ?? selectedPlayer.iplHistory.find((h) => h.season === "2027")?.price ?? selectedPlayer.iplHistory[selectedPlayer.iplHistory.length - 1]?.price ?? selectedPlayer.basePrice;
+              const salary = sale?.price ?? selectedPlayer.iplHistory.find((h) => h.season === "2027")?.price ?? selectedPlayer.iplHistory.find((h) => h.teamId !== "UNSOLD" && h.price > 0)?.price ?? selectedPlayer.basePrice;
               return <PlayerCard player={selectedPlayer} soldPrice={salary} collapsible={false} />;
             })()}
           </div>

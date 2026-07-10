@@ -24,8 +24,31 @@
   /* neutral base */
   --base-bg: #f4f1ea;
   --surface: #efece3;
+  --surface2: #ffffff;
   --ink: #16130f;
   --hairline: #eee9dd;
+  --text-secondary: #8a8378;
+  --marquee: #fff6d6;
+  --modal-footer: #e6e2d6;
+}
+
+.dark {
+  --background: #0f111a;
+  --foreground: #e5e7eb;
+
+  --app-base-bg: #0b0d13;
+  --chrome-nav-active: #e5e7eb;
+  --chrome-nav-muted: #9ca3af;
+
+  /* neutral base */
+  --base-bg: #0f111a;
+  --surface: #171a25;
+  --surface2: #1c202d;
+  --ink: #e5e7eb;
+  --hairline: #222638;
+  --text-secondary: #9ca3af;
+  --marquee: #2a2717;
+  --modal-footer: #11131c;
 }
 
 body {

@@ -126,7 +126,7 @@ function getPotentialMult(p: Player): number {
   }
   if (cur <= 82) {
     const penaltyFactor = clamp((cur - 76) / 6, 0, 1); // 76 -> 0.0, 82 -> 1.0 (steeper)
-    const potentialScaling = 0.20 + 0.50 * penaltyFactor; // 76 -> 0.20, 82 -> 0.70
+    const potentialScaling = cur < 72 ? 0.05 : (0.20 + 0.50 * penaltyFactor); // Heavily discount under 72
     mult = 1.0 + (mult - 1.0) * potentialScaling;
   }
   return mult;
@@ -172,6 +172,7 @@ interface SquadComp {
   premiumOverseas: number;
   premiumWKs: number;
   wks76: number;
+  qualityKeepers: number;
   battingIndians78: number;
   bowlingIndians77: number;
   spinners75: number;
@@ -182,10 +183,16 @@ interface SquadComp {
   coreBatters75: number;
   pacers78: number;
   spinners76: number;
+  elitePacersCount: number;
 
   // Added batting slot coverage properties
   uncoveredBattingSlots: string[];
   overseasMiddleOrderCount: number;
+
+  // Added Indian specific hard minimum counters
+  indianBatters74: number;
+  indianBatters77: number;
+  indianBowlers: number;
 }
 
 // IPL structural rules — these are fixed (league rules, not preferences)
@@ -310,6 +317,11 @@ function getSquadComp(squad: Player[]): SquadComp {
     }
   }
 
+  const isIndianBatter = (p: Player) => p.nationality === "Indian" && (p.role === "Batsman" || p.role === "WK-Batsman");
+  const indianBatters74 = squad.filter(p => isIndianBatter(p) && ratingOf(p) > 74).length;
+  const indianBatters77 = squad.filter(p => isIndianBatter(p) && ratingOf(p) > 77).length;
+  const indianBowlers = squad.filter(p => p.nationality === "Indian" && (p.role === "Pace Bowler" || p.role === "Spin Bowler")).length;
+
   return {
     batters:     squad.filter(p => p.role === "Batsman").length,
     wks:         squad.filter(p => p.role === "WK-Batsman").length,
@@ -330,6 +342,7 @@ function getSquadComp(squad: Player[]): SquadComp {
     premiumOverseas,
     premiumWKs,
     wks76,
+    qualityKeepers: squad.filter(p => isKeeper(p) && ratingOf(p) >= 77).length,
     battingIndians78,
     bowlingIndians77,
     spinners75,
@@ -342,6 +355,11 @@ function getSquadComp(squad: Player[]): SquadComp {
     spinners76: squad.filter(p => p.role === "Spin Bowler" && (p.currentBowling ?? 0) >= 76).length,
     uncoveredBattingSlots: uncovered,
     overseasMiddleOrderCount,
+    elitePacersCount: squad.filter(p => p.role === "Pace Bowler" && ratingOf(p) >= 80).length,
+    
+    indianBatters74,
+    indianBatters77,
+    indianBowlers,
   };
 }
 
@@ -504,8 +522,11 @@ function computePlayerFit(
     }
   }
   if (isKeeper(player)) {
-    if ((comp.wks ?? 0) < 1) {
+    if ((comp.keepers ?? 0) < 2) {
       fit += u(2.00, 2.80);
+    }
+    if (rating >= 77 && (comp.qualityKeepers ?? 0) === 0) {
+      fit += u(1.80, 2.50);
     }
   }
   if (isFullTimeKeeper(player) && rating >= 76) {
@@ -545,13 +566,28 @@ function computePlayerFit(
     }
   }
 
-  // 5 batting Indians with rating > 78 and 4 bowling Indians with rating > 77.
   if (player.nationality === "Indian") {
     const isBattingPrimarily = (player.currentBatting ?? 0) >= (player.currentBowling ?? 0);
     if (isBattingPrimarily && (player.currentBatting ?? 0) > 78) {
       if ((comp.battingIndians78 ?? 0) < 5) fit += u(0.35, 0.55);
     } else if (!isBattingPrimarily && (player.currentBowling ?? 0) > 77) {
       if ((comp.bowlingIndians77 ?? 0) < 4) fit += u(0.35, 0.55);
+    }
+  }
+
+  // Indian specific hard minimum targets (5 batters > 74, 3 batters > 77, 4 bowlers)
+  const isIndBatter = player.nationality === "Indian" && (player.role === "Batsman" || player.role === "WK-Batsman");
+  if (isIndBatter) {
+    if (rating > 77 && (comp.indianBatters77 ?? 0) < 3) {
+      fit += u(1.80, 2.60);
+    }
+    if (rating > 74 && (comp.indianBatters74 ?? 0) < 5) {
+      fit += u(1.50, 2.20);
+    }
+  }
+  if (player.nationality === "Indian" && (player.role === "Pace Bowler" || player.role === "Spin Bowler")) {
+    if ((comp.indianBowlers ?? 0) < 4) {
+      fit += u(1.60, 2.40);
     }
   }
 
@@ -628,10 +664,17 @@ function effectiveQuality(player: Player): number {
   
   // High potential superstars get elevated to elite brackets
   const pot = potentialOf(player);
-  if (pot >= 88 && player.age <= 25) {
+  if (pot >= 88 && player.age <= 25 && rating >= 72) {
     const penaltyFactor = clamp((rating - 76) / 7, 0, 1);
     const penalty = 6 - 5 * penaltyFactor; // 76 or below -> 6, 82 -> 1.71 (rounds to 2), 83 -> 1
     q = Math.max(q, Math.round(pot - penalty));
+  }
+
+  // Twilight Veteran Penalty: For players over 35 with a rating of 81 or below,
+  // apply a progressive quality tier penalty representing their declining prime.
+  if (player.age > 35 && rating < 82) {
+    const penalty = 3 + (player.age - 36) * 1.5; // 3 points off at 36, 4.5 at 37, 6 at 38...
+    q = Math.max(40, q - penalty);
   }
   
   return Math.min(97, q);
@@ -639,18 +682,18 @@ function effectiveQuality(player: Player): number {
 
 function qualityToBaseLakhs(quality: number): number {
   if (quality >= 85) {
-    return 1350 + ((quality - 85) / 12) * 800;
+    return 1280 + ((quality - 85) / 12) * 770;
   }
   if (quality >= 75) {
-    return 780 + ((quality - 75) / 10) * 570;
+    return 460 + ((quality - 75) / 10) * 820;
   }
   if (quality >= 65) {
-    return 220 + ((quality - 65) / 10) * 560;
+    return 150 + ((quality - 65) / 10) * 310;
   }
   if (quality >= 55) {
-    return 100 + ((quality - 55) / 10) * 120;
+    return 50 + ((quality - 55) / 10) * 100;
   }
-  return Math.max(20, 20 + ((quality - 30) / 25) * 80);
+  return Math.max(20, 20 + ((quality - 30) / 25) * 30);
 }
 
 // ---------------------------------------------------------------------------
@@ -672,14 +715,21 @@ function intrinsicValue(
 
   let premium = 0.55 + fit * 0.46;
   const rating = ratingOf(player);
+  const isIndBatter = player.nationality === "Indian" && (player.role === "Batsman" || player.role === "WK-Batsman");
   const needsOpeners = player.isOpener && ((comp.openers ?? 0) < 3 || (rating >= 75 && (comp.openers75 ?? 0) < 2));
   const needsCoreBatters = player.isCoreBatter && rating >= 75 && (comp.coreBatters75 ?? 0) < 4;
   const needsPacers = player.role === "Pace Bowler" && (player.currentBowling ?? 0) >= 78 && (comp.pacers78 ?? 0) < 3;
   const needsSpinners = player.role === "Spin Bowler" && (player.currentBowling ?? 0) >= 76 && (comp.spinners76 ?? 0) < 2;
-  const needsAnyWK = isKeeper(player) && (comp.wks ?? 0) < 1;
+  const needsAnyWK = isKeeper(player) && (comp.keepers ?? 0) < 2;
+  const needsQualityWK = isKeeper(player) && ratingOf(player) >= 77 && (comp.qualityKeepers ?? 0) === 0;
   const needsWKs76 = isFullTimeKeeper(player) && rating >= 76 && (comp.wks76 ?? 0) < 2;
+  const needsIndianBatter77 = isIndBatter && rating >= 77 && (comp.indianBatters77 ?? 0) < 3;
+  const needsIndianBatter74 = isIndBatter && rating >= 74 && (comp.indianBatters74 ?? 0) < 5;
+  const needsIndianBowler = player.nationality === "Indian" && (player.role === "Pace Bowler" || player.role === "Spin Bowler") && (comp.indianBowlers ?? 0) < 4;
   
-  let targetMaxPremium = (needsOpeners || needsCoreBatters || needsPacers || needsSpinners || needsAnyWK || needsWKs76) ? 2.20 : 1.24;
+  const isPremiumCappedAR = player.role === "All-Rounder" && rating >= 80 && player.isCapped;
+  const isElitePacer = player.role === "Pace Bowler" && rating >= 80;
+  let targetMaxPremium = (needsOpeners || needsCoreBatters || needsPacers || needsSpinners || needsAnyWK || needsQualityWK || needsWKs76 || isPremiumCappedAR || isElitePacer || needsIndianBatter77 || needsIndianBatter74 || needsIndianBowler) ? 2.20 : 1.24;
   if (avgPerSlot !== undefined && avgPerSlot < 250) {
     // Scale maxPremium down linearly from targetMaxPremium to 1.10 as avgPerSlot goes from 250 Lakhs down to 100 Lakhs
     const factor = Math.max(0, Math.min(1, (avgPerSlot - 100) / 150));
@@ -691,7 +741,62 @@ function intrinsicValue(
   if (isKeeper(player)) {
     raw *= rating >= 80 ? 1.45 : 1.25;
   }
-  return applyQualityCeiling(raw, anchor, effQ, player);
+  if (isPremiumCappedAR) {
+    raw *= 1.35; // All-Rounder base premium boost
+  }
+  if (isElitePacer) {
+    if (comp.elitePacersCount >= 2) {
+      raw *= player.nationality === "Indian" ? 0.75 : 0.65; // Milder penalty for scarce Indian pacers, steeper for Overseas
+    } else {
+      raw *= player.nationality === "Indian" ? 1.30 : 1.12; // Higher bonus for Indian, lower for Overseas
+    }
+  }
+
+  // Bowler Stock Stack Penalty: If the team already has 3 or more pacers/spinners (of any rating),
+  // apply a valuation discount for the 4th bowler onwards to discourage hoarding.
+  if (player.role === "Pace Bowler" && comp.pacers >= 3) {
+    const stackPenalty = comp.pacers === 3 ? 0.75 : 0.55;
+    raw *= stackPenalty;
+  }
+  if (player.role === "Spin Bowler" && comp.spinners >= 3) {
+    const stackPenalty = comp.spinners === 3 ? 0.75 : 0.55;
+    raw *= stackPenalty;
+  }
+  if ((player.role === "Pace Bowler" || player.role === "Spin Bowler") && rating < 76 && !player.isRetained) {
+    raw *= 0.65; // 35% discount for secondary/filler bowlers
+  }
+
+  // Twilight Veteran longevity penalty: For players over 35 with a rating of 81 or below,
+  // apply a progressive valuation discount representing declining longevity (25% off at 36,
+  // plus 5% more for every additional year, capped at 50% max discount).
+  if (player.age > 35 && rating < 82) {
+    const discount = Math.min(0.50, 0.25 + (player.age - 36) * 0.05);
+    raw *= (1 - discount);
+  }
+  
+  // Discount raw/low-ability players (<72) who have a high potential gap
+  if (rating < 72) {
+    const gap = Math.max(0, potentialOf(player) - rating);
+    if (gap >= 8) {
+      raw *= 0.75; // 25% discount for raw potential without current ability
+    }
+  }
+
+  // Depth Discount: if squad size >= 16, bid more conservatively on non-marquee targets to keep depth players cheap
+  const isMarquee = ratingOf(player) >= 84 || (player.reputation ?? 0) >= 9 || (player.role === "Pace Bowler" && ratingOf(player) >= 80);
+  if (comp.total >= 16 && !isMarquee) {
+    raw *= 0.85; // 15% discount on depth targets
+  }
+  
+  let finalVal = applyQualityCeiling(raw, anchor, effQ, player);
+  
+  // Cap low-rated (<=74) or uncapped overseas players to at most 1 Cr above their base price
+  if (player.nationality === "Overseas" && (!player.isCapped || rating <= 74)) {
+    const baseLakhs = player.basePrice ?? 50;
+    finalVal = Math.min(finalVal, baseLakhs + 100);
+  }
+  
+  return finalVal;
 }
 
 // ---------------------------------------------------------------------------
@@ -723,8 +828,10 @@ function getTeamPlan(team: Team, allPlayers: Record<string, Player>): TeamPlan {
   );
 
   // Teams aim to fill out a full squad (24-25) — depth wins tournaments.
-  const targetSquad = clamp(Math.round(u(24.0, 25.4)), 24, 25);
-  const toBuy = clamp(targetSquad - comp.total, 6, 25);
+  // If purse is low, dynamically scale target squad size smoothly down to at least minSquad + 3
+  // (22 for AI, 21 for user) to keep target squad sizes high while maintaining slot safety.
+  let targetSquad = 25;
+  const toBuy = clamp(targetSquad - comp.total, 1, 25);
   const avgPerSlot = team.remainingPurse / toBuy;
 
   // Score & rank the pool for this franchise (all stats × ideology × needs).
@@ -824,7 +931,12 @@ export function computeTeamValuation(
   ctx: AuctionContext
 ): number {
   // --- MID-AUCTION RE-PLANNING RULE ---
-  if (ctx && ctx.soldPlayerIds) {
+  // Delete the cached team plan if they lost a shortlist target, at regular intervals,
+  // or if their purse is low (< 10 Cr) so their target squad size and slot budgets
+  // dynamically scale down to reflect their actual late-auction constraints.
+  if (team.remainingPurse < 1000) {
+    delete _teamPlans[team.id];
+  } else if (ctx && ctx.soldPlayerIds) {
     const existingPlan = _teamPlans[team.id];
     if (existingPlan) {
       const lostTarget = Object.keys(existingPlan.maxBid).some(targetId => {
@@ -844,10 +956,22 @@ export function computeTeamValuation(
   const comp   = getSquadComp(squad);
   const quirks = getQuirks(team);
   const plan   = getTeamPlan(team, allPlayers);
+  const rating = ratingOf(player);
 
   // Overseas / squad-full hard stops (the eligibility gate re-checks these too)
   if (comp.total >= RULES.maxTotal) return 0;
   if (player.nationality === "Overseas" && comp.overseas >= RULES.maxOverseas) return 0;
+
+  // Wicketkeeper hard caps for AI teams (max 4 out-and-out keepers, max 3 overseas keepers)
+  if (isFullTimeKeeper(player)) {
+    const fullTimeKeepers = squad.filter(isFullTimeKeeper).length;
+    if (fullTimeKeepers >= 4) return 0;
+
+    if (player.nationality === "Overseas") {
+      const overseasKeepers = squad.filter(p => isFullTimeKeeper(p) && p.nationality === "Overseas").length;
+      if (overseasKeepers >= 3) return 0;
+    }
+  }
 
   const excess = getRoleExcess(player.role, comp);
   const needsBodies = comp.total < plan.targetSquad;
@@ -874,17 +998,22 @@ export function computeTeamValuation(
     fit += u(0.60, 0.90);
   }
 
-  // Emergency Shortlist Bypass: If a team has < 2 keepers and this player is a keeper,
+  // Emergency Shortlist Bypass: If a team has critical role deficits,
   // treat them as a planned target to bypass the unplanned price penalty
-  const isEmergencyWK = isKeeper(player) && (comp.wks ?? 0) < 2;
-  if (planned === undefined && isEmergencyWK) {
+  const isIndBatter = player.nationality === "Indian" && (player.role === "Batsman" || player.role === "WK-Batsman");
+  const isEmergencyWK = (isKeeper(player) && (comp.keepers ?? 0) < 2) || (isKeeper(player) && ratingOf(player) >= 77 && (comp.qualityKeepers ?? 0) === 0);
+  const isEmergencyIndBowler = player.nationality === "Indian" && (player.role === "Pace Bowler" || player.role === "Spin Bowler") && (comp.indianBowlers ?? 0) < 4;
+  const isEmergencyIndBatter = isIndBatter && ((ratingOf(player) > 77 && (comp.indianBatters77 ?? 0) < 3) || (ratingOf(player) > 74 && (comp.indianBatters74 ?? 0) < 5));
+  
+  const isEmergency = isEmergencyWK || isEmergencyIndBowler || isEmergencyIndBatter;
+  if (planned === undefined && isEmergency) {
     planned = Math.round(intrinsicValue(player, team, comp, quirks, fit, avgPerSlot) * 1.15);
   }
 
   // Scarcity Boost for critical roles (Wicketkeepers and Premium Spinners)
   if (ctx && ctx.remainingPlayerIds) {
     const remainingPlayers = ctx.remainingPlayerIds.map(id => allPlayers[id]).filter(Boolean);
-    if (isKeeper(player) && (comp.wks ?? 0) < 2) {
+    if (isKeeper(player) && (comp.keepers ?? 0) < 2) {
       const remainingKeepers = remainingPlayers.filter(isKeeper).length;
       if (remainingKeepers <= 4) fit += 1.20;
       else if (remainingKeepers <= 8) fit += 0.60;
@@ -903,16 +1032,23 @@ export function computeTeamValuation(
   // OR he's a genuine quality asset worth having on the books. It backs off
   // only when a role is heavily overstacked (and he's not a planned target).
   const slotsLeft = plan.targetSquad - comp.total;
-  if (planned === undefined) {
-    if (!needsBodies && !highValue && !isEmergencyWK) return 0;
+  const needsMinSquad = comp.total < 18;
+  if (planned === undefined && !needsMinSquad) {
+    if (!needsBodies && !highValue && !isEmergency) return 0;
     // Role-stacking limit relaxes when the squad is well short of a full 25 —
     // a team that still needs many bodies takes the best available even if the
     // role is a little crowded, so everyone fills out to 25.
     const excessLimit = slotsLeft >= 6 ? 3 : slotsLeft >= 3 ? 4 : 6;
     if (excess >= excessLimit && !highValue) return 0;
     // Weak-fit filler is ignored while there's still real squad-building to do.
-    const fitFloor = highValue ? 0.28 : slotsLeft >= 8 ? 0.50 : slotsLeft >= 4 ? 0.34 : 0.18;
-    if (fit < fitFloor && !isEmergencyWK) return 0;
+    let fitFloor = highValue ? 0.28 : slotsLeft >= 8 ? 0.50 : slotsLeft >= 4 ? 0.34 : 0.18;
+    if (ctx && ctx.currentLotIndex && ctx.totalLots) {
+      const progress = ctx.currentLotIndex / ctx.totalLots;
+      if (progress >= 0.50 && ratingOf(player) < 75) {
+        fitFloor = 0.10; // Relaxed interest gate for cheap fillers in second half
+      }
+    }
+    if (fit < fitFloor && !isEmergency) return 0;
   }
 
   // ── Market-anchored value for EVERY interested team ───────────────────────
@@ -927,6 +1063,21 @@ export function computeTeamValuation(
     base *= clamp(0.64 + fit * 0.40, 0.50, 1.08);
   }
 
+  // Progress-based Valuation Discount: past 75% progress (e.g. Set 6+ or accelerated sets),
+  // decrease valuations gradually to 50% discount at >=100% progress.
+  if (ctx && ctx.currentLotIndex && ctx.totalLots) {
+    const progress = ctx.currentLotIndex / ctx.totalLots;
+    if (progress >= 0.75) {
+      const factor = Math.min(1.0, (progress - 0.75) / 0.25);
+      const discount = 1.0 - 0.50 * factor;
+      base *= discount;
+    }
+  }
+
+  if (needsBodies) {
+    base = Math.max(base, player.basePrice);
+  }
+
   // Depth floor: while the squad still needs bodies, keep the bid off the
   // floor so squad-building depth clears for a sensible price, not scraps.
   if (needsBodies) base = Math.max(base, plan.depthValue * u(0.70, 1.10));
@@ -936,7 +1087,9 @@ export function computeTeamValuation(
   }
 
   // ── Live scatter so identical squads still diverge in the room ────────────
-  base *= lognormal(u(0.09, 0.18));
+  const isPrimary = rating >= 75 && rating <= 84;
+  const scatterSigma = isPrimary ? u(0.18, 0.28) : u(0.09, 0.18); // Wider scatter for primary players
+  base *= lognormal(scatterSigma);
 
   // ── Budget-per-slot concentration ─────────────────────────────────────────
   // Self-balancing squad economics: the team spends this many "fair shares"
@@ -950,7 +1103,10 @@ export function computeTeamValuation(
   // the purse on a handful of stars. Genuine marquee names (85+ rating) concentrate
   // hardest, so several teams bid them into the ₹12-18 Cr range, while depth stays
   // cheap enough to still round out the squad.
-  const marquee = ratingOf(player) >= 84 || (player.reputation ?? 0) >= 9;
+  const isElitePacerOption = player.role === "Pace Bowler" && ratingOf(player) >= 80;
+  const marquee = ratingOf(player) >= 84 || 
+                  (player.reputation ?? 0) >= 9 || 
+                  (isElitePacerOption && comp.elitePacersCount < 2);
   let concentration: number;
   if (marquee)                 concentration = u(3.2, 5.2);
   else if (isRivalReleasedSuperstar) concentration = u(2.8, 4.4); // Boost concentration for rival superstars
@@ -958,18 +1114,123 @@ export function computeTeamValuation(
   else if (highValue)          concentration = u(1.7, 2.7);
   else if (fit >= 0.72)        concentration = u(1.0, 1.6);
   else                         concentration = u(0.55, 1.00);
+
+  // Premium Capped All-Rounder Youth/Potential concentration boost
+  const isPremiumYoungAR = player.role === "All-Rounder" && 
+                           player.isCapped && 
+                           ratingOf(player) >= 80 && 
+                           player.age <= 28 && 
+                           potentialOf(player) >= 84;
+  if (isPremiumYoungAR && !marquee) {
+    concentration *= u(1.28, 1.48); // Boost concentration headroom to permit bids in the ₹8-13.5 Cr range
+  }
+
+  // Reduce concentration for secondary/filler bowlers (rating < 76)
+  const isSecondaryBowler = (player.role === "Pace Bowler" || player.role === "Spin Bowler") && ratingOf(player) < 76;
+  if (isSecondaryBowler && planned === undefined) {
+    concentration *= u(0.60, 0.80); // Keep them cheap
+  }
+
+  // Depth Discount: if squad size >= 16, bid more conservatively on non-marquee targets to keep depth players cheap
+  if (squad.length >= 16 && !marquee && planned === undefined) {
+    concentration *= u(0.70, 0.90); // 10% to 30% discount on bidding concentration
+  }
+
+  // Filler Discount: if player rating < 74 and they are not an emergency target, scale concentration down heavily to keep them cheap
+  const isFiller = ratingOf(player) < 74;
+  if (isFiller && !isEmergency && planned === undefined) {
+    concentration *= u(0.40, 0.60);
+  }
+
   // A near-empty squad shouldn't hand its whole purse to lot one even so.
-  let affordabilityCap = Math.min(avgPerSlot * concentration, team.remainingPurse * (ratingOf(player) >= 84 ? 0.60 : 0.50));
-  if (ratingOf(player) >= 84) {
+  let affordabilityCap = Math.min(avgPerSlot * concentration, team.remainingPurse * (marquee ? 0.60 : 0.50));
+  if (marquee) {
     affordabilityCap *= u(1.15, 1.30);
   }
   if (isRivalReleasedSuperstar) {
-    const purseLimit = team.remainingPurse * (ratingOf(player) >= 84 ? 0.72 : 0.64);
+    const purseLimit = team.remainingPurse * (marquee ? 0.72 : 0.64);
     affordabilityCap = Math.min(avgPerSlot * concentration, purseLimit) * u(1.15, 1.35);
+  }
+
+  // Budget Exhaustion Guard: If the team still needs bodies and their calculated affordability cap
+  // is below the player's base price or the actual average remaining budget per required slot,
+  // allow them to bid at least that amount (as long as they can afford it under the Purse Reserve Rule)
+  // to prevent finishing with unspent budgets and short squads.
+  if (needsBodies) {
+    const bowlersCount = squad.filter(p => p.role === "Pace Bowler" || p.role === "Spin Bowler").length;
+    const minSquad = team.minSquadSize ?? 18;
+    const requiredSlotsLeft = Math.max(1, minSquad - comp.total, 5 - bowlersCount);
+    const minAvgPerSlot = team.remainingPurse / requiredSlotsLeft;
+    const floorCap = Math.max(player.basePrice, minAvgPerSlot);
+    if (affordabilityCap < floorCap) {
+      affordabilityCap = floorCap;
+    }
+  }
+
+  // Dynamic Surplus Spending: If a team has a low remaining purse (< 12 Cr) and is looking at a quality player (rating >= 70),
+  // they shouldn't let slot-budgeting (avgPerSlot) limit them too much. Instead, allow them to spend a portion
+  // of their surplus budget (purse minus reserve for other slots) proportional to the player's quality.
+  if (team.remainingPurse < 1200) {
+    const reserveForOtherSlots = (slotsToFill - 1) * 30;
+    const maxSpendable = Math.max(0, team.remainingPurse - reserveForOtherSlots);
+    const qualityFactor = clamp((rating - 70) / 14, 0, 1);
+    if (qualityFactor > 0) {
+      affordabilityCap = Math.max(affordabilityCap, maxSpendable * qualityFactor);
+    }
+  }
+
+  // Progressive Superstar Lift: If the player is a capped player, scale their bidding ceiling
+  // progressively based on rating.
+  // - <= 85 rating: 0% lift (normal slot-budgeting cap)
+  // - 86 rating: 15% lift towards the superstar cap
+  // - 87 rating: 40% lift towards the superstar cap
+  // - >= 88 rating (or reputation = 10): 100% lift (up to 65% purse for Indian, 45% for Overseas)
+  const isCappedPlayer = player.isCapped || player.nationality === "Overseas";
+  let superstarFactor = 0;
+  if (isCappedPlayer) {
+    if ((player.reputation ?? 5) === 10) {
+      superstarFactor = 1.0;
+    } else {
+      if (rating >= 88) {
+        superstarFactor = 1.0;
+      } else if (rating === 87) {
+        superstarFactor = 0.40;
+      } else if (rating === 86) {
+        superstarFactor = 0.15;
+      } else {
+        superstarFactor = 0.0;
+      }
+    }
+  }
+
+  if (superstarFactor > 0) {
+    const superstarMult = player.nationality === "Indian" ? 0.65 : 0.45;
+    const superstarCap = team.remainingPurse * superstarMult;
+    if (superstarCap > affordabilityCap) {
+      affordabilityCap = affordabilityCap + (superstarCap - affordabilityCap) * superstarFactor;
+    }
   }
 
   // Absolute franchise cap — no one player eats the whole purse
   const absCap = team.totalPurse * (0.20 + (team.dna.commitmentToTargets / 100) * 0.09) * u(0.92, 1.08);
+
+  // Special Opener Pair Lockout: If the team already has an elite special opener pair,
+  // and the player is an opener who cannot play in the middle order, they do not need them at all.
+  if (player.isOpener && player.onlyOpensOrBenched) {
+    const specialPairs = [
+      ["sunil-narine", "finn-allen"],
+      ["vaibhav-suryavanshi", "yashasvi-jaiswal"],
+      ["travis-head", "abhishek-sharma"],
+      ["shubman-gill", "sai-sudharsan"],
+      ["prabhsimran-singh", "priyansh-arya"]
+    ];
+    const hasSpecialPair = specialPairs.some(pair => 
+      team.squad.includes(pair[0]) && team.squad.includes(pair[1])
+    );
+    if (hasSpecialPair) {
+      return 0;
+    }
+  }
 
   const value = Math.min(base, affordabilityCap, absCap, team.remainingPurse);
   return Math.round(Math.max(0, value));
@@ -1000,8 +1261,18 @@ export function getLotValuation(
 // ---------------------------------------------------------------------------
 export function minimumReserveLakhs(team: Team, allPlayers: Record<string, Player>): number {
   const squad = team.squad.map(id => allPlayers[id]).filter(Boolean);
-  const slotsNeeded = Math.max(0, RULES.minTotal - squad.length - 1);
-  return slotsNeeded * RULES.minSalaryPerSlot;
+  const bowlersCount = squad.filter(p => p.role === "Pace Bowler" || p.role === "Spin Bowler").length;
+  const keepersCount = squad.filter(isKeeper).length;
+  const spinnersCount = squad.filter(p => p.role === "Spin Bowler").length;
+  const minSquad = team.minSquadSize ?? 18;
+
+  const needsBowlers = Math.max(0, 5 - bowlersCount);
+  const needsKeepers = keepersCount < 1 ? 1 : 0;
+  const needsSpinners = Math.max(0, 2 - spinnersCount);
+
+  const roleSlotsNeeded = Math.max(needsBowlers, needsSpinners) + needsKeepers;
+  const slotsNeeded = Math.max(0, minSquad - squad.length, roleSlotsNeeded) - 1;
+  return Math.max(0, slotsNeeded) * RULES.minSalaryPerSlot;
 }
 
 // ---------------------------------------------------------------------------
@@ -1015,9 +1286,9 @@ export function canAIBidAtAmount(
   allPlayers: Record<string, Player>,
   ctx: AuctionContext
 ): boolean {
-  const { canBid } = canTeamBidOnPlayer(team, player);
+  const { canBid } = canTeamBidOnPlayer(team, player, allPlayers);
   if (!canBid) return false;
-  if (!canTeamAffordBid(team, nextBid)) return false;
+  if (!canTeamAffordBid(team, nextBid, allPlayers)) return false;
 
   const squad = team.squad.map(id => allPlayers[id]).filter(Boolean);
 
@@ -1058,6 +1329,33 @@ export function canAIBidAtAmount(
     if (overseas >= RULES.maxOverseas) return false;
   }
   if (squad.length >= RULES.maxTotal) return false;
+
+  // Wicketkeeper hard caps for AI teams (max 4 out-and-out keepers, max 3 overseas keepers)
+  if (isFullTimeKeeper(player)) {
+    const fullTimeKeepers = squad.filter(isFullTimeKeeper).length;
+    if (fullTimeKeepers >= 4) return false;
+
+    if (player.nationality === "Overseas") {
+      const overseasKeepers = squad.filter(p => isFullTimeKeeper(p) && p.nationality === "Overseas").length;
+      if (overseasKeepers >= 3) return false;
+    }
+  }
+
+  // Special Opener Pair Lockout: If the team already has an elite special opener pair,
+  // and the player is an opener who cannot play in the middle order, they do not need them.
+  if (player.isOpener && player.onlyOpensOrBenched) {
+    const specialPairs = [
+      ["sunil-narine", "finn-allen"],
+      ["vaibhav-suryavanshi", "yashasvi-jaiswal"],
+      ["travis-head", "abhishek-sharma"],
+      ["shubman-gill", "sai-sudharsan"],
+      ["prabhsimran-singh", "priyansh-arya"]
+    ];
+    const hasSpecialPair = specialPairs.some(pair => 
+      team.squad.includes(pair[0]) && team.squad.includes(pair[1])
+    );
+    if (hasSpecialPair) return false;
+  }
 
   const reserve = minimumReserveLakhs(team, allPlayers);
   if (team.remainingPurse - nextBid < reserve) return false;

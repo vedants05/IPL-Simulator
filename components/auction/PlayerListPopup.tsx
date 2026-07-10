@@ -71,7 +71,7 @@ function PlayerRow({
           )}
           <span
             className="font-barlow-condensed font-bold text-[14px]"
-            style={{ color: type === "sold" ? "#1f9d57" : type === "unsold" ? "#d6492f" : "#16130f" }}
+            style={{ color: type === "sold" ? "#1f9d57" : type === "unsold" ? "#d6492f" : "var(--ink)" }}
           >
             {type === "sold" && soldPrice != null
               ? crore(soldPrice)
@@ -133,7 +133,7 @@ export default function PlayerListPopup({
         className="w-full flex flex-col rounded-[8px] overflow-hidden shadow-2xl transition-colors duration-200 bg-surface"
         style={{
           maxWidth: "680px",
-          border: "2px solid #16130f",
+          border: "2px solid var(--ink)",
           maxHeight: "calc(100vh - 80px)",
         }}
         onClick={(e) => e.stopPropagation()}
@@ -141,7 +141,7 @@ export default function PlayerListPopup({
         {/* Header */}
         <div
           className="flex items-center justify-between px-6 py-4 shrink-0 transition-colors duration-200"
-          style={{ backgroundColor: "var(--team-bid-bg, #1b2133)", borderBottom: "2px solid #16130f" }}
+          style={{ backgroundColor: "var(--team-bid-bg, #1b2133)", borderBottom: "2px solid var(--ink)" }}
         >
           <div>
             <div className="font-space-mono font-bold text-[9px] tracking-[.16em] uppercase mb-1" style={{ color: "var(--team-accent, #1d55c4)" }}>

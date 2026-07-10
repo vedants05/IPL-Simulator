@@ -11,6 +11,7 @@ export default function BidPanel() {
   const auction = useGameStore((s) => s.auction);
   const teams = useGameStore((s) => s.teams);
   const userTeamId = useGameStore((s) => s.userTeamId);
+  const players = useGameStore((s) => s.players);
   const placeBid = useGameStore((s) => s.placeBid);
   const passBid = useGameStore((s) => s.passBid);
 
@@ -64,9 +65,9 @@ export default function BidPanel() {
   const isUserHighBidder = auction.currentHighBidderTeamId === userTeamId;
 
   const { canBid, reason: cantBidReason } = userTeam
-    ? canTeamBidOnPlayer(userTeam, player)
+    ? canTeamBidOnPlayer(userTeam, player, players)
     : { canBid: false, reason: "No team" };
-  const canAfford = userTeam ? canTeamAffordBid(userTeam, nextBid) : false;
+  const canAfford = userTeam ? canTeamAffordBid(userTeam, nextBid, players) : false;
   const bidDisabled = !canBid || !canAfford || isUserHighBidder;
   const passDisabled = isUserHighBidder || !!auction.soldFlash || !!auction.unsoldFlash || !!auction.rtm;
 
@@ -164,7 +165,7 @@ export default function BidPanel() {
       )}
 
       {/* Action Bar: Main CTA Block + Separate White PASS Action Button Block */}
-      <div className="flex shrink-0" style={{ borderTop: "2px solid #16130f" }}>
+      <div className="flex shrink-0" style={{ borderTop: "2px solid var(--ink)" }}>
         <button
           onClick={() => placeBid(userTeamId, nextBid)}
           disabled={bidDisabled}
@@ -178,7 +179,7 @@ export default function BidPanel() {
           onClick={passBid}
           disabled={passDisabled}
           title={passDisabled ? "You're the highest bidder" : "Pass on this lot"}
-          className="w-[148px] shrink-0 bg-white font-space-mono font-bold text-[12px] tracking-widest text-[#16130f]
+          className="w-[148px] shrink-0 bg-surface2 font-space-mono font-bold text-[12px] tracking-widest text-[var(--ink)]
             hover:bg-surface disabled:opacity-30 disabled:cursor-not-allowed transition-colors uppercase border-l-2 border-border"
         >
           {isUserHighBidder ? "Winning" : "Pass"}

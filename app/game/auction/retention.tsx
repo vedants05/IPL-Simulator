@@ -1,4 +1,5 @@
 "use client";
+import { useState, useEffect } from "react";
 import { useGameStore } from "@/lib/store/gameStore";
 import {
   formatPrice,
@@ -11,6 +12,17 @@ import {
 } from "@/lib/logic/auctionRules";
 
 export default function RetentionPhase() {
+  const [isDark, setIsDark] = useState(false);
+
+  useEffect(() => {
+    setIsDark(document.documentElement.classList.contains("dark"));
+    const observer = new MutationObserver(() => {
+      setIsDark(document.documentElement.classList.contains("dark"));
+    });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
+  }, []);
+
   const { teams, players, userTeamId } = useGameStore();
   const retainPlayer = useGameStore((s) => s.retainPlayer);
   const releaseRetention = useGameStore((s) => s.releaseRetention);
@@ -58,7 +70,7 @@ export default function RetentionPhase() {
 
       <div className="flex overflow-hidden" style={{ height: "calc(100vh - 140px)" }}>
         {/* Player list */}
-        <div className="flex-1 overflow-y-auto" style={{ borderRight: "2px solid #16130f" }}>
+        <div className="flex-1 overflow-y-auto" style={{ borderRight: "2px solid var(--hairline)" }}>
           <div className="border-b-2 border-border px-6 py-3 bg-surface">
             <span className="font-space-mono font-bold text-[10px] tracking-widest text-text-secondary uppercase">
               {userTeam.name} — {squadPlayers.length} players
@@ -85,7 +97,10 @@ export default function RetentionPhase() {
               >
                 <div className="flex items-center gap-4">
                   {isRetained ? (
-                    <div className="w-7 h-7 rounded-full bg-border flex items-center justify-center font-space-mono font-bold text-[11px] text-accent shrink-0">
+                    <div
+                      className="w-7 h-7 rounded-full flex items-center justify-center font-space-mono font-bold text-[11px] shrink-0"
+                      style={{ backgroundColor: "var(--team-primary, var(--ink))", color: "var(--team-accent-text, #ffffff)" }}
+                    >
                       {slot}
                     </div>
                   ) : (
@@ -103,7 +118,7 @@ export default function RetentionPhase() {
                 </div>
 
                 <div className="flex items-center gap-5">
-                  <div className="font-space-mono text-[9px] text-text-secondary bg-[#16130f]/5 px-2 py-[2px] rounded font-bold">
+                  <div className="font-space-mono text-[9px] text-text-secondary bg-[var(--ink)]/5 px-2 py-[2px] rounded font-bold">
                     RTG: {Math.max(player.currentBatting || 0, player.currentBowling || 0)}
                   </div>
 
@@ -168,7 +183,7 @@ export default function RetentionPhase() {
               </div>
             )}
 
-            <div className="border-t-2 border-border pt-4 mt-4 flex flex-col gap-2">
+            <div className="border-t-2 border-hairline pt-4 mt-4 flex flex-col gap-2">
               <div className="flex justify-between text-[12px]">
                 <span className="font-barlow text-text-secondary">Total Purse</span>
                 <span className="font-barlow-condensed font-bold text-[14px] text-text-primary">{formatPrice(TOTAL_PURSE_LAKHS)}</span>
@@ -177,7 +192,7 @@ export default function RetentionPhase() {
                 <span className="font-barlow text-text-secondary">Deductions</span>
                 <span className="font-barlow-condensed font-bold text-[14px] text-danger">-{formatPrice(totalCost)}</span>
               </div>
-              <div className="flex justify-between border-t-2 border-border pt-3 mt-1">
+              <div className="flex justify-between border-t-2 border-hairline pt-3 mt-1">
                 <span className="font-barlow font-semibold text-[13px] text-text-primary">Auction Purse</span>
                 <span className="font-barlow-condensed font-bold text-[18px] text-success">{formatPrice(purseAfter)}</span>
               </div>
@@ -185,21 +200,21 @@ export default function RetentionPhase() {
 
             {/* Slot counters */}
             <div className="mt-4 flex gap-3">
-              <div className="flex-1 border border-border p-3 rounded-[3px]">
+              <div className="flex-1 border border-hairline p-3 rounded-[3px]">
                 <div className="font-space-mono text-[8px] tracking-wider text-text-secondary mb-1">CAPPED/OS</div>
-                <div className="font-barlow-condensed font-bold text-[18px]" style={{ color: cappedCount >= MAX_CAPPED_RETENTIONS ? "#d6492f" : "#16130f" }}>
+                <div className="font-barlow-condensed font-bold text-[18px]" style={{ color: cappedCount >= MAX_CAPPED_RETENTIONS ? "#d6492f" : "var(--ink)" }}>
                   {cappedCount}/{MAX_CAPPED_RETENTIONS}
                 </div>
               </div>
-              <div className="flex-1 border border-border p-3 rounded-[3px]">
+              <div className="flex-1 border border-hairline p-3 rounded-[3px]">
                 <div className="font-space-mono text-[8px] tracking-wider text-text-secondary mb-1">UNCAPPED</div>
-                <div className="font-barlow-condensed font-bold text-[18px]" style={{ color: uncappedCount >= MAX_UNCAPPED_RETENTIONS ? "#d6492f" : "#16130f" }}>
+                <div className="font-barlow-condensed font-bold text-[18px]" style={{ color: uncappedCount >= MAX_UNCAPPED_RETENTIONS ? "#d6492f" : "var(--ink)" }}>
                   {uncappedCount}/{MAX_UNCAPPED_RETENTIONS}
                 </div>
               </div>
             </div>
 
-            <div className="mt-4 border-t border-border/30 pt-4">
+            <div className="mt-4 border-t border-hairline/30 pt-4">
               <div className="font-space-mono font-bold text-[9px] tracking-widest text-text-secondary mb-2 uppercase">RTM Cards</div>
               <div className="font-barlow-condensed font-bold text-[28px] text-text-primary">
                 {rtmCards}
@@ -211,16 +226,24 @@ export default function RetentionPhase() {
           </div>
 
           {/* Confirm button */}
-          <div className="p-4 border-t-2 border-border bg-surface flex flex-col gap-2">
+          <div className="p-4 border-t-2 border-hairline bg-surface flex flex-col gap-2">
             <button
               onClick={autoRetainPlayers}
-              className="w-full bg-[#16130f]/5 border border-border text-text-primary font-space-mono font-bold text-[11px] tracking-wider py-2.5 rounded-[3px] hover:bg-border hover:text-accent transition-colors"
+              style={{
+                borderColor: isDark ? "#222638" : "rgba(22, 19, 15, 0.22)",
+                backgroundColor: isDark ? "rgba(255, 255, 255, 0.05)" : "rgba(22, 19, 15, 0.05)"
+              }}
+              className="w-full border text-text-primary font-space-mono font-bold text-[11px] tracking-wider py-2.5 rounded-[3px] hover:bg-[var(--ink)] hover:text-[var(--background)] transition-colors"
             >
               🪄 AUTO-SELECT RETENTIONS
             </button>
             <button
               onClick={confirmRetentions}
-              className="w-full bg-border text-accent font-anton text-[18px] tracking-wide py-4 hover:bg-black transition-colors"
+              className="w-full font-anton text-[18px] tracking-wide py-4 hover:brightness-110 active:scale-[0.97] transition-all border-2 border-border"
+              style={{
+                backgroundColor: "var(--team-cta-bg, var(--ink))",
+                color: "var(--team-cta-text, #ffffff)",
+              }}
             >
               CONFIRM & GO TO AUCTION →
             </button>

@@ -20,7 +20,7 @@ export default function SkipSetSummaryModal() {
   const headerText = theme?.overlayText ?? "#ffffff";
   const accent = theme?.accent ?? "#ffc72c";
   const ctaBg = theme?.ctaBg ?? accent;
-  const ctaText = theme?.ctaText ?? "#16130f";
+  const ctaText = theme?.ctaText ?? "var(--ink)";
 
   const soldCount = results.filter((r) => r.status === "sold").length;
 
@@ -31,7 +31,7 @@ export default function SkipSetSummaryModal() {
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-lg bg-[#efece3] border-2 border-[#16130f] shadow-2xl rounded-[10px] flex flex-col overflow-hidden text-[#16130f] max-h-[85vh] cursor-default"
+        className="w-full max-w-lg bg-[var(--surface)] border-2 border-[var(--ink)] shadow-2xl rounded-[10px] flex flex-col overflow-hidden text-[var(--ink)] max-h-[85vh] cursor-default"
       >
         {/* Header — dark team overlay gradient with subtle dot texture (matches SOLD screen) */}
         <div
@@ -39,7 +39,7 @@ export default function SkipSetSummaryModal() {
           style={{
             backgroundImage: `${headerGradient}, radial-gradient(rgba(255,255,255,0.08) 1.2px, transparent 1.4px)`,
             backgroundSize: "100% 100%, 13px 13px",
-            borderBottom: "2px solid #16130f",
+            borderBottom: "2px solid var(--ink)",
           }}
         >
           <div className="flex items-start justify-between gap-4">
@@ -92,15 +92,15 @@ export default function SkipSetSummaryModal() {
             return (
               <div
                 key={`${item.player.id}-${index}`}
-                className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-[6px] hover:bg-[#16130f]/[0.04] transition-colors"
+                className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-[6px] hover:bg-[var(--ink)]/[0.04] transition-colors"
                 style={{ borderBottom: index < results.length - 1 ? "1px solid rgba(22,19,15,.08)" : undefined }}
               >
                 {/* Player info */}
                 <div className="min-w-0 flex-1 flex items-center gap-2">
-                  <span className="font-barlow font-bold text-[15px] text-[#16130f] truncate leading-tight">
+                  <span className="font-barlow font-bold text-[15px] text-[var(--ink)] truncate leading-tight">
                     {item.player.name}
                   </span>
-                  <span className="font-space-mono font-bold text-[8px] tracking-wider text-[#5a5348] uppercase bg-[#16130f]/[0.06] px-1.5 py-0.5 rounded-[3px] shrink-0">
+                  <span className="font-space-mono font-bold text-[8px] tracking-wider text-[var(--text-secondary)] uppercase bg-[var(--ink)]/[0.06] px-1.5 py-0.5 rounded-[3px] shrink-0">
                     {item.player.role}
                   </span>
                   {item.player.nationality === "Overseas" && (
@@ -115,7 +115,7 @@ export default function SkipSetSummaryModal() {
                   {isSold ? (
                     <>
                       {item.usedRtm && (
-                        <span className="font-space-mono font-bold text-[8px] tracking-widest uppercase text-[#16130f]/60 border border-[#16130f]/15 px-1.5 py-0.5 rounded-[3px]">
+                        <span className="font-space-mono font-bold text-[8px] tracking-widest uppercase text-[var(--ink)]/60 border border-[var(--ink)]/15 px-1.5 py-0.5 rounded-[3px]">
                           RTM
                         </span>
                       )}
@@ -125,7 +125,7 @@ export default function SkipSetSummaryModal() {
                       >
                         {team!.shortName}
                       </span>
-                      <span className="font-anton text-[13px] text-[#16130f] px-2 py-1 -ml-1.5 bg-[#16130f]/[0.06] rounded-r-[5px]">
+                      <span className="font-anton text-[13px] text-[var(--ink)] px-2 py-1 -ml-1.5 bg-[var(--ink)]/[0.06] rounded-r-[5px]">
                         {crore(item.price!)}
                       </span>
                     </>
@@ -141,14 +141,14 @@ export default function SkipSetSummaryModal() {
         </div>
 
         {/* Footer */}
-        <div className="px-5 py-3.5 bg-[#e6e2d6] border-t-2 border-[#16130f] flex items-center justify-end gap-4 shrink-0">
+        <div className="px-5 py-3.5 bg-[var(--modal-footer)] border-t-2 border-[var(--ink)] flex items-center justify-end gap-4 shrink-0">
           <button
             onClick={dismissSkipSetSummary}
             className="font-anton text-[15px] px-6 py-2 tracking-wide rounded-[6px] cursor-pointer transition-all duration-150 hover:brightness-110 active:scale-[0.97]"
             style={{
               backgroundColor: ctaBg,
               color: ctaText,
-              border: "1.5px solid #16130f",
+              border: "1.5px solid var(--ink)",
             }}
           >
             NEXT SET →

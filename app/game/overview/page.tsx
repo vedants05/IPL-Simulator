@@ -43,14 +43,14 @@ export default function OverviewPage() {
           <div
             key={stat.label}
             className="flex-1 flex flex-col items-center justify-center py-5 px-4"
-            style={i < stats.length - 1 ? { borderRight: "2px solid #16130f" } : {}}
+            style={i < stats.length - 1 ? { borderRight: "2px solid var(--ink)" } : {}}
           >
             <div className="font-space-mono text-[9px] tracking-widest text-text-secondary mb-2 uppercase">
               {stat.label}
             </div>
             <div
               className="font-barlow-condensed font-bold text-[22px] leading-none"
-              style={{ color: stat.highlight ? "#1f9d57" : "#16130f" }}
+              style={{ color: stat.highlight ? "#1f9d57" : "var(--ink)" }}
             >
               {stat.value}
             </div>
@@ -59,7 +59,7 @@ export default function OverviewPage() {
       </div>
 
       {/* Squad table */}
-      <div style={{ border: "2px solid #16130f" }}>
+      <div style={{ border: "2px solid var(--ink)" }}>
         <div className="px-5 py-3 bg-border">
           <span className="font-space-mono font-bold text-[10px] tracking-widest text-accent uppercase">
             Current Squad

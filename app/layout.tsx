@@ -38,6 +38,21 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       lang="en"
       className={`${anton.variable} ${barlow.variable} ${barlowCondensed.variable} ${spaceMono.variable}`}
     >
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              try {
+                if (localStorage.getItem('theme') === 'dark') {
+                  document.documentElement.classList.add('dark');
+                } else {
+                  document.documentElement.classList.remove('dark');
+                }
+              } catch (_) {}
+            `,
+          }}
+        />
+      </head>
       <body className="antialiased bg-bg text-text-primary font-barlow">
         {children}
       </body>

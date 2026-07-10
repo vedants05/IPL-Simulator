@@ -49,14 +49,14 @@ export default function MiniSoldLog() {
         width: "220px",
         height: "280px",
         zIndex: selectedSale ? 40 : 10,
-        border: "2px solid #16130f",
-        backgroundColor: "var(--app-base-bg, #f4f1ea)",
+        border: "2px solid var(--ink)",
+        backgroundColor: "var(--app-base-bg, var(--background))",
       }}
     >
       {/* Header */}
       <div
         className="flex items-center justify-between px-4 py-2 shrink-0 select-none"
-        style={{ borderBottom: "2px solid #16130f" }}
+        style={{ borderBottom: "2px solid var(--ink)" }}
       >
         <span className="font-space-mono font-bold text-[10px] tracking-widest text-text-primary uppercase">
           Sold Log
@@ -90,7 +90,7 @@ export default function MiniSoldLog() {
                   backgroundColor: isSelected ? "rgba(22, 19, 15, 0.08)" : undefined,
                 }}
               >
-                <span className="font-bold text-[16px] leading-none text-[#5a5348] w-[14px] text-center shrink-0">
+                <span className="font-bold text-[16px] leading-none text-[var(--text-secondary, #5a5348)] w-[14px] text-center shrink-0">
                   •
                 </span>
                 <div className="flex-1 min-w-0">
@@ -107,7 +107,7 @@ export default function MiniSoldLog() {
                     </span>
                   </div>
                 </div>
-                <span className="font-barlow-condensed font-bold text-[12px] text-[#16130f] shrink-0">
+                <span className="font-barlow-condensed font-bold text-[12px] text-[var(--ink)] shrink-0">
                   {crore(sale.price)}
                 </span>
               </button>
@@ -119,7 +119,7 @@ export default function MiniSoldLog() {
       {/* Expanded detail popout overlay on right */}
       {selectedSale && selectedPlayer && (
         <div
-          className="absolute left-full ml-0 w-[260px] h-[280px] flex flex-col bg-[#f4f1ea] border-2 border-[#16130f] p-3 shadow-2xl z-50 rounded-[4px] text-[#16130f]"
+          className="absolute left-full ml-0 w-[260px] h-[280px] flex flex-col bg-[var(--background)] border-2 border-[var(--ink)] p-3 shadow-2xl z-50 rounded-[4px] text-[var(--ink)]"
           style={{ top: "-2px" }}
         >
           <div className="flex justify-between items-start mb-2 shrink-0">

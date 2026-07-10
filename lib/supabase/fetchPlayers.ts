@@ -1,7 +1,7 @@
 import { supabase } from "./client";
 import { Player, Nationality, Role, Potential } from "../types";
 
-const TEAM_MAP: Record<string, string> = {
+export const TEAM_MAP: Record<string, string> = {
   "Kolkata Knight Riders": "KKR",
   "Mumbai Indians": "MI",
   "Royal Challengers Bengaluru": "RCB",
@@ -14,7 +14,7 @@ const TEAM_MAP: Record<string, string> = {
   "Delhi Capitals": "DC",
 };
 
-const ROLE_MAP: Record<string, string> = {
+export const ROLE_MAP: Record<string, string> = {
   "Batter": "Batsman",
   "Bowler (Pace)": "Pace Bowler",
   "Bowler (Spinner)": "Spin Bowler",
@@ -22,7 +22,7 @@ const ROLE_MAP: Record<string, string> = {
   "Wicketkeeper-Batter": "WK-Batsman",
 };
 
-function toSlug(name: string): string {
+export function toSlug(name: string): string {
   return name
     .toLowerCase()
     .replace(/[.\s]+/g, "-")
@@ -31,32 +31,39 @@ function toSlug(name: string): string {
     .replace(/^-|-$/g, "");
 }
 
-function salaryToStar(salary: number): number {
-  if (salary >= 16) return 5.0;
-  if (salary >= 11) return 4.5;
-  if (salary >= 7)  return 4.0;
-  if (salary >= 4)  return 3.5;
-  if (salary >= 2)  return 3.0;
-  if (salary >= 1)  return 2.5;
-  if (salary >= 0.5) return 2.0;
-  return 1.5;
-}
-
-function calculateBasePrice(isCapped: boolean, star: number): number {
+export function calculateBasePrice(
+  isCapped: boolean,
+  nat: string,
+  rating: number,
+  reputation: number
+): number {
   if (isCapped) {
-    if (star >= 5.0) return 200;
-    if (star >= 4.5) return 150;
-    if (star >= 4.0) return 100;
-    if (star >= 3.5) return 75;
+    // Capped Overseas (International) Rules
+    if (nat === "Overseas") {
+      if (reputation >= 7 || rating >= 78) {
+        return 200; // 2 Cr
+      }
+      return 100; // 1 Cr
+    }
+
+    // Capped Indian Rules
+    if (rating >= 82 || reputation >= 8) return 200;
+    if (rating >= 79 || reputation >= 7) return 150;
+    if (rating >= 77 || reputation >= 6) return 100;
+    if (rating >= 74 || reputation >= 5) return 75;
     return 50;
   } else {
-    if (star >= 3.5) return 50;
-    if (star >= 2.5) return 40;
+    // Uncapped Rules (Indian & Overseas)
+    // Global floor check (rating >= 77 must be at least 1 Cr)
+    if (rating >= 77) return 100;
+
+    if (rating >= 74 || reputation >= 5) return 50;
+    if (rating >= 70 || reputation >= 4) return 40;
     return 30;
   }
 }
 
-function bowlStyle(bowlType: string | null, bowlHand: string | null): string | null {
+export function bowlStyle(bowlType: string | null, bowlHand: string | null): string | null {
   if (!bowlType || bowlType === "NA") return null;
   const hand = (bowlHand || "").toLowerCase();
   const isLeft = hand.includes("left");
@@ -70,7 +77,7 @@ function toAttr(score: number, fallback = 7): number {
   return Math.max(1, Math.min(20, Math.round(score / 5)));
 }
 
-function genAttrs(bat: number, bowl: number, bowlType: string | null) {
+export function genAttrs(bat: number, bowl: number, bowlType: string | null) {
   const bv = toAttr(bat);
   const wv = toAttr(bowl);
   const isPacer   = bowlType === "Pacer";
@@ -99,7 +106,7 @@ function genAttrs(bat: number, bowl: number, bowlType: string | null) {
   };
 }
 
-function genPotential(curBat: number, potBat: number, curBowl: number, potBowl: number, age: number): Potential {
+export function genPotential(curBat: number, potBat: number, curBowl: number, potBowl: number, age: number): Potential {
   const maxCur = Math.max(curBat, curBowl);
   const maxPot = Math.max(potBat, potBowl);
   const gap    = maxPot - maxCur;
@@ -109,16 +116,7 @@ function genPotential(curBat: number, potBat: number, curBowl: number, potBowl: 
   return "Established";
 }
 
-export async function fetchPlayersFromSupabase(): Promise<Player[]> {
-  const { data, error } = await supabase
-    .from("players")
-    .select("*")
-    .order("name", { ascending: true });
-
-  if (error) {
-    throw new Error(`Failed to fetch players from Supabase: ${error.message}`);
-  }
-
+export function mapRowsToPlayers(data: any[]): Player[] {
   const seenIds = new Set<string>();
 
   return data.map((row: any) => {
@@ -142,21 +140,25 @@ export async function fetchPlayersFromSupabase(): Promise<Player[]> {
     const reputation = parseInt(row.reputation) || 5;
     const isWicketkeeper = row.can_keep_wickets === true;
     const isPartTimeWk = row.part_time_wicketkeeper === true;
-    const isOpener = row.opener === true;
+    const isOpener = name === "Ayush Mhatre" ? true : row.opener === true;
     const isFinisher = row.finisher === true;
-    const isCoreBatter = row.core_batter === true;
+    const isAnukul = name === "Anukul Roy";
+    const isCoreBatter = isAnukul ? false : row.core_batter === true;
     const onlyOpensOrBenched = row.only_opener === true;
     const captaincy = parseInt(row.captaincy) || 50;
     const battingAggression = parseInt(row.batting_aggression) || 50;
     
-    const hasBattedAt3 = row.has_batted_at_3 === true;
-    const hasBattedAt4 = row.has_batted_at_4 === true;
-    const hasBattedAt5 = row.has_batted_at_5 === true;
-    const hasBattedAt6 = row.has_batted_at_6 === true;
-    const hasBattedAt7 = row.has_batted_at_7 === true;
+    const isRahane = name === "Ajinkya Rahane";
+    const isPhillips = name === "Glenn Phillips";
+    const hasBattedAt3 = isPhillips ? true : row.has_batted_at_3 === true;
+    const hasBattedAt4 = isRahane ? false : row.has_batted_at_4 === true;
+    const hasBattedAt5 = isRahane ? false : row.has_batted_at_5 === true;
+    const hasBattedAt6 = isRahane ? false : row.has_batted_at_6 === true;
+    const hasBattedAt7 = isRahane ? false : row.has_batted_at_7 === true;
 
-    const star = salaryToStar(salary);
-    const base = calculateBasePrice(isCapped, star);
+    const playerRating = Math.max(curBat, curBowl);
+    const star = Math.max(1.5, Math.min(5.0, Math.round((playerRating - 45) / 8 * 2) / 2));
+    const base = calculateBasePrice(isCapped, nat, playerRating, reputation);
 
     let id = toSlug(name);
     if (seenIds.has(id)) {
@@ -254,4 +256,20 @@ export async function fetchPlayersFromSupabase(): Promise<Player[]> {
       hasBattedAt7,
     };
   });
+}
+export async function fetchPlayersFromSupabase(): Promise<Player[]> {
+  // If running in browser context, call our Next.js API route as a wrapper proxy
+  if (typeof window !== "undefined") {
+    const res = await fetch("/api/players");
+    if (!res.ok) throw new Error("Browser API fetch players failed");
+    return await res.json();
+  }
+
+  const { data, error } = await supabase
+    .from("players")
+    .select("*")
+    .order("name", { ascending: true });
+
+  if (error) throw error;
+  return mapRowsToPlayers(data);
 }

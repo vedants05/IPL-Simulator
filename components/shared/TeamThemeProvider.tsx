@@ -18,9 +18,10 @@ export function applyTeamTheme(teamCode: string) {
   const rgb = hexToRgb(theme.accent);
   const accentText = readableOn(theme.accent);
 
-  root.style.setProperty("--app-base-bg", "#efece3");
-  root.style.setProperty("--chrome-nav-active", theme.navActive);
-  root.style.setProperty("--chrome-nav-muted", theme.navMuted);
+  const isDark = document.documentElement.classList.contains("dark");
+  root.style.setProperty("--app-base-bg", "var(--surface)");
+  root.style.setProperty("--chrome-nav-active", isDark ? "var(--foreground)" : theme.navActive);
+  root.style.setProperty("--chrome-nav-muted", isDark ? "var(--chrome-nav-muted)" : theme.navMuted);
   root.style.setProperty("--team-primary", theme.accent);
   root.style.setProperty("--team-accent", theme.accent);
   root.style.setProperty("--team-accent-text", accentText);
@@ -35,7 +36,7 @@ export function applyTeamTheme(teamCode: string) {
   root.style.setProperty("--team-cta-text", theme.ctaText);
 
   root.setAttribute("data-team", theme.code);
-  document.body.style.backgroundColor = "#efece3";
+  document.body.style.backgroundColor = "var(--surface)";
 }
 
 export default function TeamThemeProvider({ children }: { children: React.ReactNode }) {

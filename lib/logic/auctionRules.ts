@@ -240,7 +240,13 @@ export function buildAuctionSets(players: Player[], isAccelerated = false): Auct
   }));
 }
 
-export function canTeamBidOnPlayer(team: Team, player: Player): { canBid: boolean; reason?: string } {
+const isKeeper = (p: Player) => !!(p.isWicketkeeper || p.isPartTimeWk || p.role === "WK-Batsman");
+
+export function canTeamBidOnPlayer(
+  team: Team,
+  player: Player,
+  allPlayers?: Record<string, Player>
+): { canBid: boolean; reason?: string } {
   if (team.squad.length >= team.maxSquadSize) {
     return { canBid: false, reason: "Squad is full (25/25)" };
   }
@@ -249,20 +255,89 @@ export function canTeamBidOnPlayer(team: Team, player: Player): { canBid: boolea
     return { canBid: false, reason: "Overseas cap reached (8/8)" };
   }
 
+  if (player.role === "All-Rounder" && allPlayers) {
+    const squadPlayers = team.squad.map(id => allPlayers[id]).filter(Boolean);
+    const allRoundersCount = squadPlayers.filter(p => p.role === "All-Rounder").length;
+    if (allRoundersCount >= 6) {
+      return { canBid: false, reason: "All-rounder limit reached (6/6)" };
+    }
+  }
+
   return { canBid: true };
 }
 
-export function canTeamAffordBid(team: Team, bidAmount: number): boolean {
-  return team.remainingPurse >= bidAmount;
+export function canTeamAffordBid(team: Team, bidAmount: number, players?: Record<string, Player>): boolean {
+  // Purse Reserve Rule: must keep at least 30 Lakhs for each remaining slot to reach the minimum players
+  // AND satisfy the 5 specialist bowler requirement, 2 spinners, 2 keepers, 4 Indian bowlers, and 5 Indian batters > 74 (with 3 > 77).
+  const minSquad = team.minSquadSize ?? 18;
+  let slotsNeeded = Math.max(0, minSquad - team.squad.length - 1);
+  if (players) {
+    const squadPlayers = team.squad.map(id => players[id]).filter(Boolean);
+    const bowlersCount = squadPlayers.filter(p => p.role === "Pace Bowler" || p.role === "Spin Bowler").length;
+    const keepersCount = squadPlayers.filter(isKeeper).length;
+    const spinnersCount = squadPlayers.filter(p => p.role === "Spin Bowler").length;
+    
+    const isIndianBatter = (p: Player) => p.nationality === "Indian" && (p.role === "Batsman" || p.role === "WK-Batsman");
+    const ratingOf = (p: Player) => Math.max(p.currentBatting ?? 0, p.currentBowling ?? 0);
+    
+    const indianBowlersCount = squadPlayers.filter(p => p.nationality === "Indian" && (p.role === "Pace Bowler" || p.role === "Spin Bowler")).length;
+    const indianBatters74Count = squadPlayers.filter(p => isIndianBatter(p) && ratingOf(p) > 74).length;
+    const indianBatters77Count = squadPlayers.filter(p => isIndianBatter(p) && ratingOf(p) > 77).length;
+
+    const needsBowlers = Math.max(0, 5 - bowlersCount);
+    const needsKeepers = keepersCount < 2 ? 2 - keepersCount : 0;
+    const needsSpinners = Math.max(0, 2 - spinnersCount);
+    const needsIndianBowlers = Math.max(0, 4 - indianBowlersCount);
+    const needsIndianBatters77 = Math.max(0, 3 - indianBatters77Count);
+    const needsIndianBatters74 = Math.max(0, 5 - indianBatters74Count);
+    
+    const totalIndianBattersSlotsNeeded = Math.max(needsIndianBatters74, needsIndianBatters77);
+    const bowlerSlotsNeeded = Math.max(needsBowlers, needsSpinners, needsIndianBowlers);
+    const batterKeeperSlotsNeeded = Math.max(needsKeepers, totalIndianBattersSlotsNeeded);
+
+    const roleSlotsNeeded = bowlerSlotsNeeded + batterKeeperSlotsNeeded;
+    slotsNeeded = Math.max(0, minSquad - team.squad.length, roleSlotsNeeded) - 1;
+  }
+  const reservePerSlot = (team.squad.length >= 16) ? 15 : 30; // Lower reserve from 30L to 15L for final slots to prevent bidding blockages
+  const reserve = Math.max(0, slotsNeeded) * reservePerSlot;
+  return team.remainingPurse - bidAmount >= reserve;
 }
 
 export function getSquadConstraintWarnings(team: Team, players: Record<string, Player>): string[] {
   const warnings: string[] = [];
   const squadPlayers = team.squad.map((id) => players[id]).filter(Boolean);
 
-  const wks = squadPlayers.filter((p) => p.role === "WK-Batsman").length;
+  const wks = squadPlayers.filter(isKeeper).length;
   if (wks < 2) {
     warnings.push(`Need at least 2 wicket-keepers (have ${wks})`);
+  }
+
+  const bowlersCount = squadPlayers.filter(p => p.role === "Pace Bowler" || p.role === "Spin Bowler").length;
+  if (bowlersCount < 5) {
+    warnings.push(`Need at least 5 specialist bowlers (have ${bowlersCount})`);
+  }
+
+  const spinnersCount = squadPlayers.filter(p => p.role === "Spin Bowler").length;
+  if (spinnersCount < 2) {
+    warnings.push(`Need at least 2 specialist spinners (have ${spinnersCount})`);
+  }
+
+  const indianBowlersCount = squadPlayers.filter(p => p.nationality === "Indian" && (p.role === "Pace Bowler" || p.role === "Spin Bowler")).length;
+  if (indianBowlersCount < 4) {
+    warnings.push(`Need at least 4 Indian out-and-out bowlers (have ${indianBowlersCount})`);
+  }
+
+  const isIndianBatter = (p: Player) => p.nationality === "Indian" && (p.role === "Batsman" || p.role === "WK-Batsman");
+  const ratingOf = (p: Player) => Math.max(p.currentBatting ?? 0, p.currentBowling ?? 0);
+
+  const indianBatters74Count = squadPlayers.filter(p => isIndianBatter(p) && ratingOf(p) > 74).length;
+  if (indianBatters74Count < 5) {
+    warnings.push(`Need at least 5 Indian batters/WKs rated >74 (have ${indianBatters74Count})`);
+  }
+
+  const indianBatters77Count = squadPlayers.filter(p => isIndianBatter(p) && ratingOf(p) > 77).length;
+  if (indianBatters77Count < 3) {
+    warnings.push(`Need at least 3 Indian batters/WKs rated >77 (have ${indianBatters77Count})`);
   }
 
   if (team.squad.length < team.minSquadSize) {

@@ -10,19 +10,19 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        bg: "#f4f1ea",
-        surface: "#efece3",
-        surface2: "#ffffff",
-        border: "#16130f",
-        "text-primary": "#16130f",
-        "text-secondary": "#8a8378",
+        bg: "var(--background)",
+        surface: "var(--surface)",
+        surface2: "var(--surface2)",
+        border: "var(--ink)",
+        "text-primary": "var(--ink)",
+        "text-secondary": "var(--text-secondary)",
         accent: "#ffc400",
         "accent-hover": "#000000",
         success: "#1f9d57",
         danger: "#d6492f",
         gold: "#d6492f",
         "gold-light": "#ec1c24",
-        marquee: "#fff6d6",
+        marquee: "var(--marquee)",
         muted: "#b3ac9e",
       },
       fontFamily: {

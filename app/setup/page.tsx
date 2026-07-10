@@ -13,6 +13,31 @@ export default function SetupPage() {
   const [loading, setLoading] = useState(false);
   const [teams, setTeams] = useState<Team[]>([]);
   const [teamsLoading, setTeamsLoading] = useState(true);
+  const [showSettings, setShowSettings] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(false);
+
+  useEffect(() => {
+    const savedTheme = localStorage.getItem("theme");
+    const isDark = savedTheme === "dark";
+    setIsDarkMode(isDark);
+    if (isDark) {
+      document.documentElement.classList.add("dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+    }
+  }, []);
+
+  const handleToggleDarkMode = () => {
+    const nextDark = !isDarkMode;
+    setIsDarkMode(nextDark);
+    if (nextDark) {
+      document.documentElement.classList.add("dark");
+      localStorage.setItem("theme", "dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+      localStorage.setItem("theme", "light");
+    }
+  };
 
   useEffect(() => {
     fetchTeamsFromSupabase()
@@ -42,13 +67,67 @@ export default function SetupPage() {
   return (
     <div className="min-h-screen bg-bg text-text-primary flex flex-col">
       {/* Top bar */}
-      <div className="border-b-2 border-border px-8 py-5 flex items-baseline gap-4">
-        <span className="font-anton text-[28px] leading-none text-text-primary uppercase">
-          IPL Manager
-        </span>
-        <span className="font-space-mono font-bold text-[10px] tracking-[.14em] text-text-secondary uppercase">
-          2027 Season
-        </span>
+      <div className="border-b-2 border-hairline px-8 py-5 flex items-center justify-between bg-surface shrink-0">
+        <div className="flex items-baseline gap-4">
+          <span className="font-anton text-[28px] leading-none text-text-primary uppercase">
+            IPL Manager
+          </span>
+          <span className="font-space-mono font-bold text-[10px] tracking-[.14em] text-text-secondary uppercase">
+            2027 Season
+          </span>
+        </div>
+
+        {/* Settings Button */}
+        <div className="relative flex items-center">
+          <button
+            onClick={() => setShowSettings(!showSettings)}
+            className="w-[28px] h-[28px] rounded border-[1.5px] border-[var(--ink)] hover:bg-[var(--ink)]/5 flex items-center justify-center cursor-pointer transition-all duration-150 hover:scale-105 active:scale-95"
+            style={{
+              backgroundColor: "var(--surface)",
+              color: "var(--ink)",
+            }}
+            title="Open Settings"
+          >
+            ⚙️
+          </button>
+
+          {showSettings && (
+            <>
+              {/* Invisible overlay for clicking outside */}
+              <div
+                className="fixed inset-0 z-40 cursor-default"
+                onClick={() => setShowSettings(false)}
+              />
+              {/* Settings Dropdown Panel */}
+              <div
+                className="absolute right-0 top-full mt-2 w-56 p-4 z-50 rounded shadow-xl text-left border-2 flex flex-col gap-3 font-space-mono animate-in fade-in slide-in-from-top-2 duration-150"
+                style={{
+                  backgroundColor: "var(--surface)",
+                  color: "var(--ink)",
+                  borderColor: "var(--ink)",
+                }}
+              >
+                <div className="text-[10px] font-bold tracking-wider uppercase border-b border-[var(--ink)]/15 pb-1">
+                  ⚙️ Settings
+                </div>
+                <div className="flex flex-col gap-2">
+                  <span className="text-[9px] font-bold text-text-secondary uppercase tracking-wider">
+                    Color Theme
+                  </span>
+                  <button
+                    onClick={handleToggleDarkMode}
+                    className="w-full flex items-center justify-between px-3 py-1.5 rounded border border-[var(--ink)] hover:bg-[var(--ink)]/5 text-[10px] font-bold cursor-pointer transition-all active:scale-[0.98]"
+                  >
+                    <span>{isDarkMode ? "🌙 Dark Mode" : "☀️ Light Mode"}</span>
+                    <span className="text-[9px] tracking-wide opacity-75">
+                      {isDarkMode ? "Enabled" : "Disabled"}
+                    </span>
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
       <div className="flex-1 flex flex-col items-center justify-center px-8 py-10">
@@ -83,8 +162,8 @@ export default function SetupPage() {
                       onClick={() => setSelectedTeam(team.id)}
                       className="text-left p-5 transition-all"
                       style={{
-                        border: isSelected ? "2px solid #16130f" : "2px solid rgba(22,19,15,.2)",
-                        backgroundColor: isSelected ? "#fff6d6" : "#ffffff",
+                        border: isSelected ? "2px solid var(--ink)" : "2px solid var(--hairline)",
+                        backgroundColor: isSelected ? "var(--marquee)" : "var(--surface2)",
                       }}
                     >
                       <div className="flex items-center gap-3 mb-3">
@@ -126,8 +205,12 @@ export default function SetupPage() {
                 <button
                   onClick={() => selectedTeam && setStep("confirm")}
                   disabled={!selectedTeam}
-                  className="bg-border text-accent font-anton text-[18px] tracking-wide px-10 py-4
-                    hover:bg-black disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  className="font-anton text-[18px] tracking-wide px-10 py-4 border-2 border-border
+                    hover:brightness-110 active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                  style={{
+                    backgroundColor: chosenTeam ? chosenTeam.primaryColor : "var(--ink)",
+                    color: chosenTeam ? chosenTeam.secondaryColor : "var(--background)",
+                  }}
                 >
                   NEXT: CONFIRM →
                 </button>
@@ -147,10 +230,10 @@ export default function SetupPage() {
               </div>
 
               {/* Team card */}
-              <div className="border-2 border-border mb-5">
+              <div className="border-2 border-border mb-5 bg-surface2">
                 <div
                   className="flex items-center gap-5 p-6"
-                  style={{ borderBottom: "2px solid #16130f" }}
+                  style={{ borderBottom: "2px solid var(--ink)" }}
                 >
                   <div
                     className="w-16 h-16 rounded-full flex items-center justify-center text-xl font-bold shrink-0"
@@ -205,7 +288,11 @@ export default function SetupPage() {
                 <button
                   onClick={handleStart}
                   disabled={loading}
-                  className="flex-1 bg-border text-accent font-anton text-[18px] tracking-wide py-4 hover:bg-black disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  className="flex-grow font-anton text-[18px] tracking-wide py-4 border-2 border-border hover:brightness-110 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{
+                    backgroundColor: chosenTeam.primaryColor,
+                    color: chosenTeam.secondaryColor,
+                  }}
                 >
                   {loading ? "LOADING..." : "BEGIN SEASON →"}
                 </button>

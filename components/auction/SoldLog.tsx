@@ -71,7 +71,7 @@ export default function SoldLog() {
                 {/* Price */}
                 <span
                   className="font-barlow-condensed font-bold text-[14px] shrink-0"
-                  style={{ color: isMarquee ? "#d6492f" : "#16130f" }}
+                  style={{ color: isMarquee ? "#d6492f" : "var(--ink)" }}
                 >
                   {crore(sale.price)}
                 </span>

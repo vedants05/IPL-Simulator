@@ -19,7 +19,7 @@ export default function BidHistory() {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="px-4 h-[36px] flex items-center justify-between shrink-0" style={{ borderBottom: "2px solid #16130f" }}>
+      <div className="px-4 h-[36px] flex items-center justify-between shrink-0" style={{ borderBottom: "2px solid var(--ink)" }}>
         <div className="flex items-center gap-2">
           <div
             className="w-2 h-2 rounded-full shrink-0 transition-colors duration-200"
@@ -55,7 +55,7 @@ export default function BidHistory() {
                   isTop
                     ? {
                         backgroundColor: "rgba(22, 19, 15, 0.06)",
-                        border: "1.5px solid #16130f",
+                        border: "1.5px solid var(--ink)",
                         borderRadius: "6px",
                         boxSizing: "border-box",
                       }
@@ -75,7 +75,7 @@ export default function BidHistory() {
                 </div>
                 <span
                   className="font-barlow-condensed font-bold text-[15px] shrink-0 ml-2"
-                  style={{ color: isTop ? "#16130f" : "#5a5348" }}
+                  style={{ color: isTop ? "var(--ink)" : "var(--text-secondary, #5a5348)" }}
                 >
                   {crore(entry.amount)}
                 </span>
@@ -95,7 +95,7 @@ export default function BidHistory() {
       {/* Structural Guardrail: Exact layout at bottom of Live Bids column containing "YOUR NEXT BID" container box */}
       <div
         className="shrink-0 h-[52px] px-4 flex items-center justify-between transition-colors duration-200"
-        style={{ borderTop: "2px solid #16130f", backgroundColor: "var(--app-base-bg, #f4f1ea)" }}
+        style={{ borderTop: "2px solid var(--ink)", backgroundColor: "var(--app-base-bg, var(--background))" }}
       >
         <span className="font-space-mono text-[9px] tracking-widest text-text-secondary uppercase">
           YOUR NEXT BID

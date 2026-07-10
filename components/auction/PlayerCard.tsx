@@ -137,7 +137,7 @@ export default function PlayerCard({ player, soldPrice, collapsible = true }: Pr
       {/* Player header banner */}
       <div
         className="px-6 py-4 flex flex-col gap-2 shrink-0"
-        style={{ borderBottom: "2px solid #16130f" }}
+        style={{ borderBottom: "2px solid var(--ink)" }}
       >
         <div className="flex justify-between items-start">
           <div className="min-w-0 flex-1 pr-4">
@@ -162,8 +162,8 @@ export default function PlayerCard({ player, soldPrice, collapsible = true }: Pr
               {soldPrice !== undefined
                 ? crore(soldPrice)
                 : player.currentTeamId
-                ? crore(player.iplHistory.find((h) => h.season === "2027")?.price ?? player.iplHistory[player.iplHistory.length - 1]?.price ?? player.basePrice)
-                : crore(player.basePrice)}
+                 ? crore(player.iplHistory.find((h) => h.season === "2027")?.price ?? player.iplHistory.find((h) => h.teamId !== "UNSOLD" && h.price > 0)?.price ?? player.basePrice)
+                 : crore(player.basePrice)}
             </span>
           </div>
         </div>
@@ -172,59 +172,59 @@ export default function PlayerCard({ player, soldPrice, collapsible = true }: Pr
         <div className="flex items-center justify-between gap-2 mt-1">
           <div className="flex items-center gap-1.5 flex-wrap flex-1 min-w-0">
             {/* 1. Role */}
-            <span className="font-space-mono font-bold text-[9px] tracking-widest px-2 py-[3px] rounded-[3px] border border-[#16130f] text-[#16130f] bg-transparent uppercase">
+            <span className="font-space-mono font-bold text-[9px] tracking-widest px-2 py-[3px] rounded-[3px] border border-[var(--ink)] text-[var(--ink)] bg-transparent uppercase">
               {roleLabel}
             </span>
 
             {/* 2. Bowling style */}
             {player.bowlingStyle && (
-              <span className="font-space-mono font-bold text-[9px] tracking-widest px-2 py-[3px] rounded-[3px] border border-[#16130f] text-[#16130f] bg-transparent uppercase">
+              <span className="font-space-mono font-bold text-[9px] tracking-widest px-2 py-[3px] rounded-[3px] border border-[var(--ink)] text-[var(--ink)] bg-transparent uppercase">
                 {player.bowlingStyle.toUpperCase()}
               </span>
             )}
 
             {/* 3. Specialty Tabs: PART-TIME WK or WK, OPENER, FINISHER */}
             {isPtWk ? (
-              <span className="font-space-mono font-bold text-[9px] tracking-widest px-2 py-[3px] rounded-[3px] border border-[#16130f] text-[#16130f] bg-transparent uppercase">
+              <span className="font-space-mono font-bold text-[9px] tracking-widest px-2 py-[3px] rounded-[3px] border border-[var(--ink)] text-[var(--ink)] bg-transparent uppercase">
                 PART-TIME WK
               </span>
             ) : isFullTimeWk ? (
-              <span className="font-space-mono font-bold text-[9px] tracking-widest px-2 py-[3px] rounded-[3px] border border-[#16130f] text-[#16130f] bg-transparent uppercase">
+              <span className="font-space-mono font-bold text-[9px] tracking-widest px-2 py-[3px] rounded-[3px] border border-[var(--ink)] text-[var(--ink)] bg-transparent uppercase">
                 WK
               </span>
             ) : null}
 
             {isOpener && (
-              <span className="font-space-mono font-bold text-[9px] tracking-widest px-2 py-[3px] rounded-[3px] border border-[#16130f] text-[#16130f] bg-transparent uppercase">
+              <span className="font-space-mono font-bold text-[9px] tracking-widest px-2 py-[3px] rounded-[3px] border border-[var(--ink)] text-[var(--ink)] bg-transparent uppercase">
                 OPENER
               </span>
             )}
 
             {isFinisher && (
-              <span className="font-space-mono font-bold text-[9px] tracking-widest px-2 py-[3px] rounded-[3px] border border-[#16130f] text-[#16130f] bg-transparent uppercase">
+              <span className="font-space-mono font-bold text-[9px] tracking-widest px-2 py-[3px] rounded-[3px] border border-[var(--ink)] text-[var(--ink)] bg-transparent uppercase">
                 FINISHER
               </span>
             )}
 
             {/* 4. Overseas */}
             {player.nationality === "Overseas" && (
-              <span className="font-space-mono font-bold text-[9px] tracking-widest px-2 py-[3px] rounded-[3px] border border-[#16130f] text-[#16130f] bg-transparent uppercase">
+              <span className="font-space-mono font-bold text-[9px] tracking-widest px-2 py-[3px] rounded-[3px] border border-[var(--ink)] text-[var(--ink)] bg-transparent uppercase">
                 OVERSEAS
               </span>
             )}
 
             {/* 5. Capped / Age */}
-            <span className="font-space-mono font-bold text-[9px] tracking-widest px-2 py-[3px] rounded-[3px] border border-[#16130f] text-[#16130f] bg-transparent uppercase">
+            <span className="font-space-mono font-bold text-[9px] tracking-widest px-2 py-[3px] rounded-[3px] border border-[var(--ink)] text-[var(--ink)] bg-transparent uppercase">
               {player.isCapped ? "CAPPED" : "UNCAPPED"} · AGE {player.age}
             </span>
 
             {/* 6. RHB / LHB */}
-            <span className="font-space-mono font-bold text-[9px] tracking-widest px-2 py-[3px] rounded-[3px] border border-[#16130f] text-[#16130f] bg-transparent uppercase">
+            <span className="font-space-mono font-bold text-[9px] tracking-widest px-2 py-[3px] rounded-[3px] border border-[var(--ink)] text-[var(--ink)] bg-transparent uppercase">
               {player.battingStyle === "Right-hand" ? "RHB" : "LHB"}
             </span>
 
             {/* 7. Potential */}
-            <span className="font-space-mono font-bold text-[9px] tracking-widest px-2 py-[3px] rounded-[3px] border border-[#16130f] text-[#16130f] bg-transparent uppercase">
+            <span className="font-space-mono font-bold text-[9px] tracking-widest px-2 py-[3px] rounded-[3px] border border-[var(--ink)] text-[var(--ink)] bg-transparent uppercase">
               {player.potential.toUpperCase()}
             </span>
           </div>
@@ -235,11 +235,11 @@ export default function PlayerCard({ player, soldPrice, collapsible = true }: Pr
               onClick={() => setShowDetails((v) => !v)}
               className={`shrink-0 flex items-center gap-1.5 px-3 py-[5px] font-space-mono font-bold text-[9px] tracking-widest transition-all duration-150 cursor-pointer ${
                 showDetails
-                  ? "bg-[#16130f] text-white hover:bg-[#332c25]"
-                  : "bg-transparent text-[#16130f] hover:bg-[#16130f] hover:text-white"
+                  ? "bg-[var(--ink)] text-white hover:bg-[#332c25]"
+                  : "bg-transparent text-[var(--ink)] hover:bg-[var(--ink)] hover:text-white"
               }`}
               style={{
-                border: "1.5px solid #16130f",
+                border: "1.5px solid var(--ink)",
                 borderRadius: "3px",
               }}
             >
@@ -251,7 +251,7 @@ export default function PlayerCard({ player, soldPrice, collapsible = true }: Pr
       </div>
 
       {/* Stats strip */}
-      <div className="flex shrink-0" style={{ borderBottom: "2px solid #16130f" }}>
+      <div className="flex shrink-0" style={{ borderBottom: "2px solid var(--ink)" }}>
         {statCells.map((cell, i) => (
           <div
             key={cell.label}
@@ -271,7 +271,7 @@ export default function PlayerCard({ player, soldPrice, collapsible = true }: Pr
       {/* Ratings — Batting & Bowling */}
       <div
         className="px-6 py-4 flex flex-col gap-4 shrink-0"
-        style={{ borderBottom: "2px solid #16130f" }}
+        style={{ borderBottom: "2px solid var(--ink)" }}
       >
         <RatingBar
           label="Batting"
@@ -289,7 +289,7 @@ export default function PlayerCard({ player, soldPrice, collapsible = true }: Pr
 
       {/* Additional stats — shown when expanded or when non-collapsible */}
       {isExpanded && (
-        <div className="shrink-0" style={{ borderBottom: "2px solid #16130f" }}>
+        <div className="shrink-0" style={{ borderBottom: "2px solid var(--ink)" }}>
           {/* Traits & Personality Ratings */}
           <div className="px-6 py-4 flex flex-col gap-3" style={{ borderBottom: "1px solid rgba(22,19,15,.15)" }}>
             <div className="font-space-mono font-bold text-[9px] tracking-widest text-text-secondary uppercase">

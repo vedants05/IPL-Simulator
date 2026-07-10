@@ -1,8 +1,9 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useGameStore } from "@/lib/store/gameStore";
+import { applyTeamTheme } from "./TeamThemeProvider";
 
 const NAV_ITEMS = [
   { label: "Overview", href: "/game/overview" },
@@ -36,6 +37,34 @@ export default function NavBar() {
 
   const [showConfirmAll, setShowConfirmAll] = useState(false);
   const [wasPausedBeforeConfirmAll, setWasPausedBeforeConfirmAll] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(false);
+
+  useEffect(() => {
+    const savedTheme = localStorage.getItem("theme");
+    const isDark = savedTheme === "dark";
+    setIsDarkMode(isDark);
+    if (isDark) {
+      document.documentElement.classList.add("dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+    }
+  }, []);
+
+  const handleToggleDarkMode = () => {
+    const nextDark = !isDarkMode;
+    setIsDarkMode(nextDark);
+    if (nextDark) {
+      document.documentElement.classList.add("dark");
+      localStorage.setItem("theme", "dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+      localStorage.setItem("theme", "light");
+    }
+    if (userTeamId) {
+      applyTeamTheme(userTeamId);
+    }
+  };
 
   const handleSkipPress = () => {
     setWasPausedBeforeConfirm(isPaused);
@@ -105,7 +134,7 @@ export default function NavBar() {
           </div>
           <span
             className="font-space-mono font-bold text-[11px] tracking-widest uppercase transition-colors duration-200"
-            style={{ color: "var(--chrome-nav-active, #16130f)" }}
+            style={{ color: "var(--chrome-nav-active, var(--ink))" }}
           >
             {userTeam.name}
           </span>
@@ -125,8 +154,8 @@ export default function NavBar() {
                   : "hover:bg-surface"
                 }`}
               style={{
-                color: active ? "var(--chrome-nav-active, #16130f)" : "var(--chrome-nav-muted, #8a92a3)",
-                borderBottomColor: active ? "var(--team-accent, #16130f)" : "transparent",
+                color: active ? "var(--chrome-nav-active, var(--ink))" : "var(--chrome-nav-muted, #8a92a3)",
+                borderBottomColor: active ? "var(--team-accent, var(--ink))" : "transparent",
               }}
             >
               {item.label}
@@ -149,7 +178,7 @@ export default function NavBar() {
                 onClick={handleSkipPress}
                 className="px-3 rounded font-space-mono font-bold text-[10px] tracking-wider uppercase transition-all duration-150 flex items-center justify-center h-[28px] cursor-pointer hover:bg-[#1d55c4] hover:text-white hover:scale-105 active:scale-95"
                 style={{
-                  border: "1.5px solid #16130f",
+                  border: "1.5px solid var(--ink)",
                   backgroundColor: "var(--team-bid-bg, #111622)",
                   backgroundImage: "var(--team-bid-tinge)",
                   color: "#ffffff",
@@ -170,9 +199,9 @@ export default function NavBar() {
                   <div
                     className="absolute right-0 top-full mt-2 w-64 p-4 z-50 rounded shadow-xl text-left border-2 flex flex-col gap-3 font-space-mono animate-in fade-in slide-in-from-top-2 duration-150"
                     style={{
-                      backgroundColor: "var(--surface, #efece3)",
-                      color: "var(--ink, #16130f)",
-                      borderColor: "var(--ink, #16130f)",
+                      backgroundColor: "var(--surface, var(--surface))",
+                      color: "var(--ink, var(--ink))",
+                      borderColor: "var(--ink, var(--ink))",
                     }}
                   >
                     <div className="flex flex-col gap-1.5">
@@ -196,16 +225,16 @@ export default function NavBar() {
                         onClick={handleConfirm}
                         className="flex-1 h-[26px] rounded font-bold text-[9px] uppercase tracking-wider transition-all cursor-pointer bg-danger text-white hover:bg-red-600 active:scale-95 flex items-center justify-center"
                         style={{
-                          border: "1.5px solid var(--ink, #16130f)",
+                          border: "1.5px solid var(--ink, var(--ink))",
                         }}
                       >
                         Confirm
                       </button>
                       <button
                         onClick={handleCancel}
-                        className="flex-1 h-[26px] rounded font-bold text-[9px] uppercase tracking-wider transition-all cursor-pointer bg-transparent text-[#16130f] hover:bg-black/5 active:scale-95 flex items-center justify-center"
+                        className="flex-1 h-[26px] rounded font-bold text-[9px] uppercase tracking-wider transition-all cursor-pointer bg-transparent text-[var(--ink)] hover:bg-black/5 active:scale-95 flex items-center justify-center"
                         style={{
-                          border: "1.5px solid var(--ink, #16130f)",
+                          border: "1.5px solid var(--ink, var(--ink))",
                         }}
                       >
                         Cancel
@@ -223,7 +252,7 @@ export default function NavBar() {
                   onClick={handleSkipAccelPress}
                   className="px-3 rounded font-space-mono font-bold text-[10px] tracking-wider uppercase transition-all duration-150 flex items-center justify-center h-[28px] cursor-pointer hover:bg-[#1d55c4] hover:text-white hover:scale-105 active:scale-95"
                   style={{
-                    border: "1.5px solid #16130f",
+                    border: "1.5px solid var(--ink)",
                     backgroundColor: "var(--team-bid-bg, #111622)",
                     backgroundImage: "var(--team-bid-tinge)",
                     color: "#ffffff",
@@ -244,9 +273,9 @@ export default function NavBar() {
                     <div
                       className="absolute right-0 top-full mt-2 w-64 p-4 z-50 rounded shadow-xl text-left border-2 flex flex-col gap-3 font-space-mono animate-in fade-in slide-in-from-top-2 duration-150"
                       style={{
-                        backgroundColor: "var(--surface, #efece3)",
-                        color: "var(--ink, #16130f)",
-                        borderColor: "var(--ink, #16130f)",
+                        backgroundColor: "var(--surface, var(--surface))",
+                        color: "var(--ink, var(--ink))",
+                        borderColor: "var(--ink, var(--ink))",
                       }}
                     >
                       <div className="flex flex-col gap-1.5">
@@ -266,16 +295,16 @@ export default function NavBar() {
                           onClick={handleConfirmAccel}
                           className="flex-1 h-[26px] rounded font-bold text-[9px] uppercase tracking-wider transition-all cursor-pointer bg-danger text-white hover:bg-red-600 active:scale-95 flex items-center justify-center"
                           style={{
-                            border: "1.5px solid var(--ink, #16130f)",
+                            border: "1.5px solid var(--ink, var(--ink))",
                           }}
                         >
                           Confirm
                         </button>
                         <button
                           onClick={handleCancelAccel}
-                          className="flex-1 h-[26px] rounded font-bold text-[9px] uppercase tracking-wider transition-all cursor-pointer bg-transparent text-[#16130f] hover:bg-black/5 active:scale-95 flex items-center justify-center"
+                          className="flex-1 h-[26px] rounded font-bold text-[9px] uppercase tracking-wider transition-all cursor-pointer bg-transparent text-[var(--ink)] hover:bg-black/5 active:scale-95 flex items-center justify-center"
                           style={{
-                            border: "1.5px solid var(--ink, #16130f)",
+                            border: "1.5px solid var(--ink, var(--ink))",
                           }}
                         >
                           Cancel
@@ -293,7 +322,7 @@ export default function NavBar() {
                 onClick={handleSkipAllPress}
                 className="px-3 rounded font-space-mono font-bold text-[10px] tracking-wider uppercase transition-all duration-150 flex items-center justify-center h-[28px] cursor-pointer hover:bg-danger hover:text-white hover:scale-105 active:scale-95"
                 style={{
-                  border: "1.5px solid #16130f",
+                  border: "1.5px solid var(--ink)",
                   backgroundColor: "var(--team-bid-bg, #111622)",
                   backgroundImage: "var(--team-bid-tinge)",
                   color: "#ffffff",
@@ -314,9 +343,9 @@ export default function NavBar() {
                   <div
                     className="absolute right-0 top-full mt-2 w-64 p-4 z-50 rounded shadow-xl text-left border-2 flex flex-col gap-3 font-space-mono animate-in fade-in slide-in-from-top-2 duration-150"
                     style={{
-                      backgroundColor: "var(--surface, #efece3)",
-                      color: "var(--ink, #16130f)",
-                      borderColor: "var(--ink, #16130f)",
+                      backgroundColor: "var(--surface, var(--surface))",
+                      color: "var(--ink, var(--ink))",
+                      borderColor: "var(--ink, var(--ink))",
                     }}
                   >
                     <div className="flex flex-col gap-1.5">
@@ -336,16 +365,16 @@ export default function NavBar() {
                         onClick={handleConfirmAll}
                         className="flex-1 h-[26px] rounded font-bold text-[9px] uppercase tracking-wider transition-all cursor-pointer bg-danger text-white hover:bg-red-600 active:scale-95 flex items-center justify-center"
                         style={{
-                          border: "1.5px solid var(--ink, #16130f)",
+                          border: "1.5px solid var(--ink, var(--ink))",
                         }}
                       >
                         Confirm
                       </button>
                       <button
                         onClick={handleCancelAll}
-                        className="flex-1 h-[26px] rounded font-bold text-[9px] uppercase tracking-wider transition-all cursor-pointer bg-transparent text-[#16130f] hover:bg-black/5 active:scale-95 flex items-center justify-center"
+                        className="flex-1 h-[26px] rounded font-bold text-[9px] uppercase tracking-wider transition-all cursor-pointer bg-transparent text-[var(--ink)] hover:bg-black/5 active:scale-95 flex items-center justify-center"
                         style={{
-                          border: "1.5px solid var(--ink, #16130f)",
+                          border: "1.5px solid var(--ink, var(--ink))",
                         }}
                       >
                         Cancel
@@ -361,7 +390,7 @@ export default function NavBar() {
               style={{
                 backgroundColor: "var(--team-bid-bg, #111622)",
                 backgroundImage: "var(--team-bid-tinge)",
-                border: "1.5px solid #16130f",
+                border: "1.5px solid var(--ink)",
               }}
             >
               <button
@@ -395,7 +424,7 @@ export default function NavBar() {
                   : "hover:bg-[#1d55c4] hover:text-white hover:scale-105 active:scale-95"
               }`}
               style={{
-                border: "1.5px solid #16130f",
+                border: "1.5px solid var(--ink)",
                 backgroundColor: isPaused ? undefined : "var(--team-bid-bg, #111622)",
                 backgroundImage: isPaused ? undefined : "var(--team-bid-tinge)",
                 color: "#ffffff",
@@ -405,6 +434,59 @@ export default function NavBar() {
             </button>
           </>
         )}
+
+        {/* Settings Button */}
+        <div className="relative flex items-center">
+          <button
+            onClick={() => setShowSettings(!showSettings)}
+            className="w-[28px] h-[28px] rounded border-[1.5px] border-[var(--ink)] hover:bg-[#1d55c4] hover:text-white flex items-center justify-center cursor-pointer transition-all duration-150 hover:scale-105 active:scale-95"
+            style={{
+              backgroundColor: "var(--team-bid-bg, #111622)",
+              backgroundImage: "var(--team-bid-tinge)",
+              color: "#ffffff",
+            }}
+            title="Open Settings"
+          >
+            ⚙️
+          </button>
+
+          {showSettings && (
+            <>
+              {/* Invisible overlay for clicking outside */}
+              <div
+                className="fixed inset-0 z-40 cursor-default"
+                onClick={() => setShowSettings(false)}
+              />
+              {/* Settings Dropdown Panel */}
+              <div
+                className="absolute right-0 top-full mt-2 w-56 p-4 z-50 rounded shadow-xl text-left border-2 flex flex-col gap-3 font-space-mono animate-in fade-in slide-in-from-top-2 duration-150"
+                style={{
+                  backgroundColor: "var(--surface, var(--surface))",
+                  color: "var(--ink, var(--ink))",
+                  borderColor: "var(--ink, var(--ink))",
+                }}
+              >
+                <div className="text-[10px] font-bold tracking-wider uppercase border-b border-[var(--ink)]/15 pb-1">
+                  ⚙️ Settings
+                </div>
+                <div className="flex flex-col gap-2">
+                  <span className="text-[9px] font-bold text-text-secondary uppercase tracking-wider">
+                    Color Theme
+                  </span>
+                  <button
+                    onClick={handleToggleDarkMode}
+                    className="w-full flex items-center justify-between px-3 py-1.5 rounded border border-[var(--ink)] hover:bg-[var(--ink)]/5 text-[10px] font-bold cursor-pointer transition-all active:scale-[0.98]"
+                  >
+                    <span>{isDarkMode ? "🌙 Dark Mode" : "☀️ Light Mode"}</span>
+                    <span className="text-[9px] tracking-wide opacity-75">
+                      {isDarkMode ? "Enabled" : "Disabled"}
+                    </span>
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
       </div>
     </nav>
   );

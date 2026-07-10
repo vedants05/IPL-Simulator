@@ -17,6 +17,17 @@ import SkipSetSummaryModal from "@/components/auction/SkipSetSummaryModal";
 type PopupTab = "sold" | "unsold" | "left" | null;
 
 export default function AuctionPage() {
+  const [isDark, setIsDark] = useState(false);
+
+  useEffect(() => {
+    setIsDark(document.documentElement.classList.contains("dark"));
+    const observer = new MutationObserver(() => {
+      setIsDark(document.documentElement.classList.contains("dark"));
+    });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
+  }, []);
+
   const { auction, teams, userTeamId } = useGameStore();
   const startAuction = useGameStore((s) => s.startAuction);
   const [activePopup, setActivePopup] = useState<PopupTab>(null);
@@ -63,7 +74,13 @@ export default function AuctionPage() {
         style={{ borderBottom: "2px solid #16130f" }}
       >
         <div className="flex items-center gap-[14px]">
-          <div className="flex items-center gap-2 bg-border px-[9px] py-[5px] rounded-[3px]">
+          <div
+            style={{
+              backgroundColor: isDark ? "#1c202d" : "#16130f",
+              borderColor: isDark ? "#222638" : "transparent"
+            }}
+            className="flex items-center gap-2 border px-[9px] py-[5px] rounded-[3px]"
+          >
             <div
               className="w-[7px] h-[7px] rounded-full bg-accent shrink-0"
               style={{ animation: "liveblink 1.4s infinite" }}
@@ -164,7 +181,11 @@ export default function AuctionPage() {
                   </p>
                   <button
                     onClick={startAuction}
-                    className="bg-border text-accent font-anton text-[21px] tracking-wide px-10 py-5 hover:bg-black transition-colors"
+                    style={{
+                      backgroundColor: isDark ? "#1c202d" : "#16130f",
+                      borderColor: isDark ? "#222638" : "transparent"
+                    }}
+                    className="text-accent font-anton text-[21px] tracking-wide px-10 py-5 hover:bg-black transition-colors border"
                   >
                     START AUCTION
                   </button>
@@ -364,7 +385,8 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
       .sort((a, b) => rating(b) - rating(a));
 
     if (keeperPool.length > 0) {
-      let selectedKeeper = keeperPool.find(keeper => {
+      let selectedKeeper: import("@/lib/types").Player;
+      const foundKeeper = keeperPool.find(keeper => {
         const isOS = keeper.nationality === "Overseas";
         const nextOSCount = countOS(selected) + (isOS ? 1 : 0);
         const nextOutAndOut = countOutAndOut(selected) + (isOutAndOut(keeper) ? 1 : 0);
@@ -372,8 +394,10 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
         return nextOSCount <= 4 && nextOutAndOut <= getMaxOutAndOut([...selected, keeper]) && nextPacers <= maxPacers;
       });
 
-      if (!selectedKeeper) {
-        selectedKeeper = keeperPool[0];
+      if (foundKeeper) {
+        selectedKeeper = foundKeeper;
+      } else {
+        selectedKeeper = keeperPool[0] as import("@/lib/types").Player;
 
         // Resolve violations: swap out an overseas or conflicting player to make space
         const isOS = selectedKeeper.nationality === "Overseas";
@@ -516,9 +540,21 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
   // 5. Force-fill to 12 if squad has 12+ players but OS limit or bowler limit blocked us
   if (selected.length < 12 && squad.length >= 12) {
     const leftover = squad.filter(p => !selected.some(s => s.id === p.id) && !p.onlyOpensOrBenched).sort((a, b) => rating(b) - rating(a));
+    // First pass: add players who do not violate the 4 Overseas limit
     for (const p of leftover) {
       if (selected.length >= 12) break;
-      selected.push(p);
+      const isOS = p.nationality === "Overseas";
+      const nextOSCount = countOS(selected) + (isOS ? 1 : 0);
+      if (nextOSCount <= 4) {
+        selected.push(p);
+      }
+    }
+    // Second pass: if still under 12 (extreme fallback), add anyone remaining
+    for (const p of leftover) {
+      if (selected.length >= 12) break;
+      if (!selected.some(s => s.id === p.id)) {
+        selected.push(p);
+      }
     }
   }
 
@@ -702,6 +738,63 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
           selected = selected.map(p => p.id === bestSwap.osPlayer.id ? bestSwap.counterpart : p);
           selected = selected.map(p => p.id === targetPlayer.id ? overseasBenchPlayer : p);
           break; // Swap executed, stop.
+        }
+      }
+    }
+  }
+
+  // --- SMART OVERSEAS OPENER / BENCH STAR SUBSTITUTION RULE ---
+  // Find if there is an overseas opener who is not a wicketkeeper in the selected XII.
+  const osOpener = selected.find(p => p.nationality === "Overseas" && p.isOpener && !isKeeper(p));
+  if (osOpener) {
+    // Find the highest-rated overseas batter on the bench (not in selected)
+    const benchOSBatters = virtualSquad
+      .filter(p => !selected.some(s => s.id === p.id) && p.nationality === "Overseas" && (p.role === "Batsman" || p.role === "WK-Batsman" || p.role === "All-Rounder"))
+      .sort((a, b) => rating(b) - rating(a));
+
+    if (benchOSBatters.length > 0) {
+      const bestBenchOS = benchOSBatters[0];
+
+      // Only proceed if the benched overseas player is higher rated than the playing overseas opener
+      if (rating(osOpener) < rating(bestBenchOS)) {
+        // Find an Indian opener in the squad (either playing or on the bench)
+        const indianOpenerInSelected = selected.find(p => p.nationality === "Indian" && p.isOpener);
+        
+        if (indianOpenerInSelected) {
+          // Case 1: Indian opener is already in selected.
+          // We can simply swap the low-rated playing osOpener with the higher-rated bestBenchOS.
+          // This keeps the OS count the same and keeps the squad size at 12.
+          selected = selected.map(p => p.id === osOpener.id ? bestBenchOS : p);
+          remaining = remaining.filter(p => p.id !== bestBenchOS.id);
+          remaining.push(osOpener);
+        } else {
+          // Case 2: Indian opener is on the bench.
+          const benchIndianOpeners = virtualSquad
+            .filter(p => !selected.some(s => s.id === p.id) && p.nationality === "Indian" && p.isOpener)
+            .sort((a, b) => rating(b) - rating(a));
+
+          if (benchIndianOpeners.length > 0) {
+            const bestBenchIndianOpener = benchIndianOpeners[0];
+
+            // We want to remove osOpener (Overseas) and the lowest-rated non-keeper, non-essential player in selected,
+            // and add bestBenchIndianOpener (Indian) and bestBenchOS (Overseas) to selected.
+            const eligibleForRemoval = selected
+              .filter(p => p.id !== osOpener.id && !isKeeper(p) && !isOutAndOut(p))
+              .sort((a, b) => rating(a) - rating(b));
+
+            if (eligibleForRemoval.length > 0) {
+              const lowestPlayer = eligibleForRemoval[0];
+
+              // Replace osOpener with bestBenchIndianOpener
+              selected = selected.map(p => p.id === osOpener.id ? bestBenchIndianOpener : p);
+              // Replace lowestPlayer with bestBenchOS
+              selected = selected.map(p => p.id === lowestPlayer.id ? bestBenchOS : p);
+
+              // Update remaining pool
+              remaining = remaining.filter(p => p.id !== bestBenchIndianOpener.id && p.id !== bestBenchOS.id);
+              remaining.push(osOpener, lowestPlayer);
+            }
+          }
         }
       }
     }
@@ -1067,6 +1160,60 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
   // Map back to the original squad players (restoring their real roles for UI purposes)
   const mappedLineup = finalLineup.map(vp => squad.find(s => s.id === vp.id)!);
 
+  // --- BATTING ORDER FIT OPTIMIZATION ---
+  // Iteratively swap pairs in the top 7 if it improves overall position suitability.
+  // Suitability is defined as playing in a preferred slot. If suitability is tied,
+  // we prefer the higher-rated batter to bat higher in the order.
+  const getLineupPosPref = (p: import("@/lib/types").Player, pos: number): boolean => {
+    if (pos === 1 || pos === 2) return !!p.isOpener;
+    return prefersPosition(p, pos);
+  };
+
+  let improved = true;
+  while (improved) {
+    improved = false;
+    for (let i = 0; i < 7; i++) {
+      for (let j = i + 1; j < 8; j++) {
+        const pI = mappedLineup[i];
+        const pJ = mappedLineup[j];
+        if (!pI || !pJ) continue;
+
+        // Current suitability score for these two positions (excluding position 8 from core preference counting)
+        const currentI = (i < 7 && getLineupPosPref(pI, i + 1)) ? 1 : 0;
+        const currentJ = (j < 7 && getLineupPosPref(pJ, j + 1)) ? 1 : 0;
+        const currentSuitability = currentI + currentJ;
+
+        // Swapped suitability score
+        const swapI = (i < 7 && getLineupPosPref(pJ, i + 1)) ? 1 : 0;
+        const swapJ = (j < 7 && getLineupPosPref(pI, j + 1)) ? 1 : 0;
+        const swapSuitability = swapI + swapJ;
+
+        let shouldSwap = false;
+        if (swapSuitability > currentSuitability) {
+          shouldSwap = true;
+        } else if (swapSuitability === currentSuitability) {
+          // If suitability is tied, ensure the higher-rated batter bats higher (lower index)
+          const ratingI = getBatRating(pI);
+          const ratingJ = getBatRating(pJ);
+          if (ratingJ > ratingI) {
+            // Only swap if it doesn't degrade the higher-rated player's positioning
+            // (e.g. don't demote a higher-rated player to a slot they don't prefer if they were in a preferred slot)
+            const wouldHurtJ = (j < 7 && getLineupPosPref(pJ, j + 1)) && !(i < 7 && getLineupPosPref(pJ, i + 1));
+            if (!wouldHurtJ) {
+              shouldSwap = true;
+            }
+          }
+        }
+
+        if (shouldSwap) {
+          mappedLineup[i] = pJ;
+          mappedLineup[j] = pI;
+          improved = true;
+        }
+      }
+    }
+  }
+
   // --- END OF DECISION SWAP FOR PURE BATTER AT POSITION 8 ---
   // Position 8 corresponds to index 7
   if (mappedLineup[7] && mappedLineup[7].role === "Batsman") {
@@ -1083,6 +1230,40 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
         mappedLineup[5] = temp2;
       }
     }
+  }
+
+  // --- POSITION 6 ALL-ROUNDER DEMOTION RULE ---
+  // If we have an All-Rounder at Position 6 (index 5) and batters at Position 7 (index 6)
+  // and Position 8 (index 7), and the All-Rounder has a lower batting rating than both batters,
+  // move both batters up and demote the All-Rounder to Position 8.
+  if (
+    mappedLineup[5] && mappedLineup[5].role === "All-Rounder" &&
+    mappedLineup[6] && (mappedLineup[6].role === "Batsman" || mappedLineup[6].role === "WK-Batsman") &&
+    mappedLineup[7] && (mappedLineup[7].role === "Batsman" || mappedLineup[7].role === "WK-Batsman")
+  ) {
+    const rating6 = getBatRating(mappedLineup[5]);
+    const rating7 = getBatRating(mappedLineup[6]);
+    const rating8 = getBatRating(mappedLineup[7]);
+
+    if (rating6 < rating7 && rating6 < rating8) {
+      const temp = mappedLineup[5];
+      mappedLineup[5] = mappedLineup[6]; // Pos 7 moves to Pos 6
+      mappedLineup[6] = mappedLineup[7]; // Pos 8 moves to Pos 7
+      mappedLineup[7] = temp;             // All-Rounder moves to Pos 8
+    }
+  }
+
+  // --- POSITION 6 ALL-ROUNDER VS POSITION 7 CORE BATTER SWAP ---
+  // If we have an All-Rounder at Position 6 (index 5) and a pure batter at Position 7 (index 6)
+  // who is a core batter, promote the core batter above the All-Rounder.
+  if (
+    mappedLineup[5] && mappedLineup[5].role === "All-Rounder" &&
+    mappedLineup[6] && (mappedLineup[6].role === "Batsman" || mappedLineup[6].role === "WK-Batsman") &&
+    mappedLineup[6].isCoreBatter
+  ) {
+    const temp = mappedLineup[5];
+    mappedLineup[5] = mappedLineup[6];
+    mappedLineup[6] = temp;
   }
 
   // --- BENCH ALL-ROUNDER SWAP FOR WEAK BATTER AT POSITION 8 ---
@@ -1274,6 +1455,46 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
     }
   }
 
+  // --- POSITION 10 (index 9) BATTER SUBSTITUTE RULE ---
+  // If there is a batter (Batsman or WK-Batsman) at position 10 (index 9),
+  // swap them out for the best available bowler or all-rounder on the bench.
+  // Safety rules:
+  //   1. Never swap out the player if they are the only keeper in the lineup.
+  //   2. Only bring in a sub whose nationality won't push overseas count above 4.
+  {
+    const pos10Player = mappedLineup[9];
+    if (
+      pos10Player &&
+      (pos10Player.role === "Batsman" || pos10Player.role === "WK-Batsman")
+    ) {
+      // Safety 1: don't remove the only keeper
+      const isPos10Keeper = isKeeper(pos10Player);
+      const keepersInLineup = mappedLineup.filter(p => p && isKeeper(p)).length;
+      if (isPos10Keeper && keepersInLineup <= 1) {
+        // skip — swapping out would leave lineup with no keeper
+      } else {
+        const currentOSCount = countOS(mappedLineup);
+
+        const benchSubstitutes = squad
+          .filter(p => {
+            if (mappedLineup.some(m => m?.id === p.id)) return false;
+            if (p.onlyOpensOrBenched) return false;
+            if (!(p.role === "All-Rounder" || p.role === "Pace Bowler" || p.role === "Spin Bowler")) return false;
+            // Safety 2: check overseas cap
+            const subIsOS = p.nationality === "Overseas";
+            const pos10IsOS = pos10Player.nationality === "Overseas";
+            const nextOSCount = currentOSCount - (pos10IsOS ? 1 : 0) + (subIsOS ? 1 : 0);
+            return nextOSCount <= 4;
+          })
+          .sort((a, b) => playerRating(b) - playerRating(a));
+
+        if (benchSubstitutes.length > 0) {
+          mappedLineup[9] = benchSubstitutes[0];
+        }
+      }
+    }
+  }
+
   return mappedLineup;
 
 
@@ -1291,6 +1512,17 @@ function TeamSquadCard({
   isUser: boolean;
   positionIndex: number;
 }) {
+  const [isDark, setIsDark] = useState(false);
+
+  useEffect(() => {
+    setIsDark(document.documentElement.classList.contains("dark"));
+    const observer = new MutationObserver(() => {
+      setIsDark(document.documentElement.classList.contains("dark"));
+    });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
+  }, []);
+
   const squad = Array.from(new Set(team.squad)).map((id) => players[id]).filter(Boolean);
   const overseas = squad.filter((p) => p.nationality === "Overseas").length;
   const lineup = selectPotentialLineup(squad);
@@ -1378,9 +1610,60 @@ function TeamSquadCard({
                     const isRtm = sale?.isRtm;
                     const priceStr = price ? `(₹${(price / 100).toFixed(1)}Cr)` : "";
 
-                    const bgStyle = wasRetained 
-                      ? { backgroundColor: `${team.primaryColor}18`, borderColor: team.primaryColor }
-                      : { backgroundColor: "rgba(22,19,15,0.05)", borderColor: "rgba(22,19,15,0.1)" };
+                    // Determine if primaryColor is too dark to stand out in dark mode.
+                    // Parse the hex to a rough luminance value and boost if needed.
+                    const hexToLuminance = (hex: string) => {
+                      const h = hex.replace("#", "");
+                      const r = parseInt(h.slice(0,2), 16);
+                      const g = parseInt(h.slice(2,4), 16);
+                      const b = parseInt(h.slice(4,6), 16);
+                      return 0.299 * r + 0.587 * g + 0.114 * b; // perceived brightness 0–255
+                    };
+
+                    // Per-team dark-mode accent overrides for neon stand-out colours
+                    const darkModeAccents: Record<string, { bg: string; border: string }> = {
+                      "#3B215F": { bg: "rgba(224, 86, 255, 0.28)", border: "#d85dfa" }, // KKR purple → neon purple
+                      "#1B2133": { bg: "rgba(28, 65, 140, 0.45)", border: "#2d6bc4" },  // GT navy → deep GT navy
+                    };
+
+                    const lum = hexToLuminance(team.primaryColor);
+                    const tooDarkForDark = lum < 60;
+
+                    const bgStyle = (() => {
+                      if (isDark) {
+                        if (wasRetained) {
+                          if (tooDarkForDark && darkModeAccents[team.primaryColor]) {
+                            return {
+                              backgroundColor: darkModeAccents[team.primaryColor].bg,
+                              borderColor: darkModeAccents[team.primaryColor].border,
+                            };
+                          }
+                          return { 
+                            backgroundColor: `${team.primaryColor}33`, 
+                            borderColor: team.primaryColor 
+                          };
+                        } else {
+                          // Make purchased (non-retained) player boxes visible in dark mode
+                          return { 
+                            backgroundColor: "rgba(255, 255, 255, 0.08)", 
+                            borderColor: "rgba(255, 255, 255, 0.18)" 
+                          };
+                        }
+                      } else {
+                        // Light mode matches original styling
+                        if (wasRetained) {
+                          return { 
+                            backgroundColor: `${team.primaryColor}18`, 
+                            borderColor: team.primaryColor 
+                          };
+                        } else {
+                          return { 
+                            backgroundColor: "rgba(22, 19, 15, 0.05)", 
+                            borderColor: "rgba(22, 19, 15, 0.1)" 
+                          };
+                        }
+                      }
+                    })();
 
                     return (
                       <span
@@ -1407,14 +1690,14 @@ function TeamSquadCard({
       {/* Floating Potential XII Tile */}
       {lineup.length > 0 && (
         <div
-          style={{ backgroundColor: "#ffffff" }}
-          className={`w-full lg:w-[170px] shrink-0 p-2.5 border-2 border-[#16130f] shadow-xl flex flex-col gap-1.5 transition-all duration-200 lg:hover:-translate-y-1 hover:shadow-2xl z-10
+          style={{ backgroundColor: "var(--surface)" }}
+          className={`w-full lg:w-[170px] shrink-0 p-2.5 border-2 border-[var(--ink)] shadow-xl flex flex-col gap-1.5 transition-all duration-200 lg:hover:-translate-y-1 hover:shadow-2xl z-10
             ${isLeftCol 
               ? "lg:absolute lg:right-full lg:mr-5 lg:top-0 rounded lg:rounded-r-none" 
               : "lg:absolute lg:left-full lg:ml-5 lg:top-0 rounded lg:rounded-l-none"}
           `}
         >
-          <div className="font-space-mono text-[8.5px] tracking-widest text-[#16130f] uppercase font-bold border-b border-[#16130f]/15 pb-1 flex items-center justify-between">
+          <div className="font-space-mono text-[8.5px] tracking-widest text-[var(--ink)] uppercase font-bold border-b border-[var(--ink)]/15 pb-1 flex items-center justify-between">
             <span>★ Potential XII</span>
             <span className="text-[8px] opacity-75">{lineup.filter(p => p.nationality === "Overseas").length} OS</span>
           </div>
@@ -1423,16 +1706,16 @@ function TeamSquadCard({
               const isWK = p.id === primaryWkId;
               const isCaptain = p.id === captainId;
               return (
-                <div key={p.id} className="flex justify-between items-center text-[10px] py-[1px] border-b border-[#16130f]/5 last:border-0 leading-tight">
+                <div key={p.id} className="flex justify-between items-center text-[10px] py-[1px] border-b border-[var(--ink)]/5 last:border-0 leading-tight">
                   <div className="flex items-center gap-1 min-w-0">
-                    <span className="text-[8px] font-space-mono text-[#16130f]/50 w-3.5 shrink-0">{idx === 11 ? "I.S." : idx + 1}</span>
-                    <span className="font-medium text-[#16130f] truncate" title={p.name}>
+                    <span className="text-[8px] font-space-mono text-[var(--ink)]/50 w-3.5 shrink-0">{idx + 1}</span>
+                    <span className="font-medium text-[var(--ink)] truncate" title={p.name}>
                       {p.name}{isCaptain ? " (C)" : ""}
                     </span>
                     {p.nationality === "Overseas" && <span className="text-[7px] text-[#1d55c4] font-extrabold shrink-0" title="Overseas Player">OS</span>}
                     {isWK && <span className="text-[7px] text-danger font-extrabold shrink-0" title="Wicketkeeper">WK</span>}
                   </div>
-                  <span className="font-bold text-[#16130f]/75 text-[8.5px] pl-1 shrink-0">{playerRating(p)}</span>
+                  <span className="font-bold text-[var(--ink)]/75 text-[8.5px] pl-1 shrink-0">{playerRating(p)}</span>
                 </div>
               );
             })}
