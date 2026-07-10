@@ -1,4 +1,5 @@
 "use client";
+import { ArrowRight } from "lucide-react";
 import { useGameStore } from "@/lib/store/gameStore";
 import { TEAM_THEMES } from "@/lib/theme/teams";
 
@@ -151,7 +152,7 @@ export default function SkipSetSummaryModal() {
               border: "1.5px solid var(--ink)",
             }}
           >
-            NEXT SET →
+            NEXT SET <ArrowRight size={14} className="inline ml-1" />
           </button>
         </div>
       </div>

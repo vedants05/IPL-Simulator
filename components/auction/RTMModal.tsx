@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { AlertTriangle } from "lucide-react";
 import { useGameStore } from "@/lib/store/gameStore";
 import { getNextBidAmount } from "@/lib/logic/auctionRules";
 
@@ -74,8 +75,8 @@ export default function RTMModal() {
             </div>
 
             {!canAfford && (
-              <div className="font-space-mono text-[10px] text-red-600 font-bold mb-3 uppercase">
-                ⚠️ Insufficient purse ({crore(userTeam?.remainingPurse ?? 0)}) to match {crore(baseAmount)}.
+              <div className="font-space-mono text-[10px] text-red-600 font-bold mb-3 uppercase flex items-center gap-1">
+                <AlertTriangle size={12} className="inline shrink-0" /> Insufficient purse ({crore(userTeam?.remainingPurse ?? 0)}) to match {crore(baseAmount)}.
               </div>
             )}
 
@@ -164,8 +165,8 @@ export default function RTMModal() {
             </div>
 
             {!canAffordCounter && (
-              <div className="font-space-mono text-[10px] text-red-600 font-bold mb-3 uppercase">
-                ⚠️ Insufficient purse ({crore(userTeam?.remainingPurse ?? 0)}) for {crore(currentCounter)}.
+              <div className="font-space-mono text-[10px] text-red-600 font-bold mb-3 uppercase flex items-center gap-1">
+                <AlertTriangle size={12} className="inline shrink-0" /> Insufficient purse ({crore(userTeam?.remainingPurse ?? 0)}) for {crore(currentCounter)}.
               </div>
             )}
 
@@ -237,8 +238,8 @@ export default function RTMModal() {
             </div>
 
             {!canAffordMatch && (
-              <div className="font-space-mono text-[10px] text-red-600 font-bold mb-3 uppercase">
-                ⚠️ Insufficient purse ({crore(userTeam?.remainingPurse ?? 0)}) to match {crore(raisedAmount)}.
+              <div className="font-space-mono text-[10px] text-red-600 font-bold mb-3 uppercase flex items-center gap-1">
+                <AlertTriangle size={12} className="inline shrink-0" /> Insufficient purse ({crore(userTeam?.remainingPurse ?? 0)}) to match {crore(raisedAmount)}.
               </div>
             )}
 

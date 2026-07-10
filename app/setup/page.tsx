@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useGameStore } from "@/lib/store/gameStore";
 import { fetchTeamsFromSupabase } from "@/lib/supabase/fetchTeams";
 import { Team } from "@/lib/types";
+import { Settings, Moon, Sun } from "lucide-react";
 
 export default function SetupPage() {
   const router = useRouter();
@@ -88,7 +89,7 @@ export default function SetupPage() {
             }}
             title="Open Settings"
           >
-            ⚙️
+            <Settings size={13} />
           </button>
 
           {showSettings && (
@@ -107,22 +108,45 @@ export default function SetupPage() {
                   borderColor: "var(--ink)",
                 }}
               >
-                <div className="text-[10px] font-bold tracking-wider uppercase border-b border-[var(--ink)]/15 pb-1">
-                  ⚙️ Settings
+                <div className="text-[10px] font-bold tracking-wider uppercase border-b border-[var(--ink)]/15 pb-1 flex items-center gap-1.5">
+                  <Settings size={11} className="inline" /> Settings
                 </div>
                 <div className="flex flex-col gap-2">
                   <span className="text-[9px] font-bold text-text-secondary uppercase tracking-wider">
                     Color Theme
                   </span>
-                  <button
-                    onClick={handleToggleDarkMode}
-                    className="w-full flex items-center justify-between px-3 py-1.5 rounded border border-[var(--ink)] hover:bg-[var(--ink)]/5 text-[10px] font-bold cursor-pointer transition-all active:scale-[0.98]"
-                  >
-                    <span>{isDarkMode ? "🌙 Dark Mode" : "☀️ Light Mode"}</span>
-                    <span className="text-[9px] tracking-wide opacity-75">
-                      {isDarkMode ? "Enabled" : "Disabled"}
+                  <div className="flex items-center justify-between px-3 py-1.5 rounded border border-[var(--ink)]">
+                    <span className="flex items-center gap-1.5 text-[10px] font-bold">
+                      {isDarkMode ? <Moon size={11} className="inline" /> : <Sun size={11} className="inline" />}
+                      {isDarkMode ? "Dark Mode" : "Light Mode"}
                     </span>
-                  </button>
+                    <button
+                      onClick={handleToggleDarkMode}
+                      role="switch"
+                      aria-checked={isDarkMode}
+                      className="relative flex items-center cursor-pointer shrink-0 transition-all active:scale-95"
+                      style={{
+                        width: 44, height: 22, borderRadius: 11,
+                        backgroundColor: isDarkMode ? "var(--ink)" : "#d1d5db",
+                        border: "1.5px solid var(--ink)",
+                        transition: "background-color 0.25s ease",
+                        padding: 2,
+                      }}
+                    >
+                      <Sun size={10} className="absolute left-[4px] text-yellow-400 pointer-events-none" style={{ opacity: isDarkMode ? 0.3 : 1, transition: "opacity 0.2s" }} />
+                      <Moon size={10} className="absolute right-[4px] text-blue-300 pointer-events-none" style={{ opacity: isDarkMode ? 1 : 0.3, transition: "opacity 0.2s" }} />
+                      <span
+                        className="absolute rounded-full shadow-sm"
+                        style={{
+                          width: 16, height: 16,
+                          backgroundColor: isDarkMode ? "#1d55c4" : "#ffffff",
+                          top: "50%", transform: "translateY(-50%)",
+                          left: isDarkMode ? "calc(100% - 18px)" : 2,
+                          transition: "left 0.25s ease, background-color 0.25s ease",
+                        }}
+                      />
+                    </button>
+                  </div>
                 </div>
               </div>
             </>
@@ -153,48 +177,42 @@ export default function SetupPage() {
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-3 mb-8">
+              <div className="grid grid-cols-5 gap-3 mb-8">
                 {teams.map((team) => {
                   const isSelected = selectedTeam === team.id;
                   return (
                     <button
                       key={team.id}
                       onClick={() => setSelectedTeam(team.id)}
-                      className="text-left p-5 transition-all"
+                      className="relative flex flex-col items-center text-center p-4 gap-3 transition-all duration-150 hover:scale-[1.03] active:scale-[0.97]"
                       style={{
-                        border: isSelected ? "2px solid var(--ink)" : "2px solid var(--hairline)",
+                        border: isSelected ? `2px solid ${team.primaryColor}` : "2px solid var(--hairline)",
                         backgroundColor: isSelected ? "var(--marquee)" : "var(--surface2)",
+                        boxShadow: isSelected ? `0 0 0 1px ${team.primaryColor}` : "none",
                       }}
                     >
-                      <div className="flex items-center gap-3 mb-3">
-                        <div
-                          className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-[12px] shrink-0"
+                      {/* Selected tick */}
+                      {isSelected && (
+                        <span
+                          className="absolute top-2 right-2 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold"
                           style={{ backgroundColor: team.primaryColor, color: team.secondaryColor }}
                         >
-                          {team.shortName}
-                        </div>
-                        <div>
-                          <div className="font-barlow font-bold text-[14px] text-text-primary">{team.name}</div>
-                          <div className="font-space-mono text-[9px] text-text-secondary tracking-wider">
-                            {team.homeGround}
-                          </div>
-                        </div>
-                        {isSelected && (
-                          <div className="ml-auto w-5 h-5 bg-border rounded-full flex items-center justify-center">
-                            <span className="text-accent text-[11px] font-bold">✓</span>
-                          </div>
-                        )}
+                          ✓
+                        </span>
+                      )}
+                      {/* Team badge */}
+                      <div
+                        className="w-12 h-12 rounded-full flex items-center justify-center font-bold text-[13px] shrink-0 shadow-sm"
+                        style={{ backgroundColor: team.primaryColor, color: team.secondaryColor }}
+                      >
+                        {team.shortName}
                       </div>
-                      <p className="font-barlow text-[12px] text-text-secondary leading-relaxed mb-2">
-                        {team.description}
-                      </p>
-                      <div className="flex gap-4">
-                        <span className="font-space-mono text-[9px] tracking-wider text-text-secondary">
-                          FAN BASE: <span className="text-text-primary font-bold">{team.fanBase.toUpperCase()}</span>
-                        </span>
-                        <span className="font-space-mono text-[9px] tracking-wider text-text-secondary">
-                          PRESTIGE: <span className="text-text-primary font-bold">{team.prestige}/10</span>
-                        </span>
+                      {/* Team name */}
+                      <div>
+                        <div className="font-barlow font-bold text-[12px] text-text-primary leading-tight">{team.name}</div>
+                        <div className="font-space-mono text-[8px] text-text-secondary tracking-wider mt-0.5">
+                          {team.homeGround}
+                        </div>
                       </div>
                     </button>
                   );
@@ -251,9 +269,6 @@ export default function SetupPage() {
                   </div>
                 </div>
                 <div className="p-6">
-                  <p className="font-barlow text-[13px] text-text-secondary mb-4">
-                    {chosenTeam.description}
-                  </p>
                   <div className="flex gap-5">
                     <div>
                       <div className="font-space-mono text-[9px] tracking-widest text-text-secondary uppercase mb-1">Starting Purse</div>

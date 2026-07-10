@@ -1,5 +1,6 @@
 "use client";
 import { useState, useRef, useEffect } from "react";
+import { ChevronUp, ChevronDown } from "lucide-react";
 import { useGameStore } from "@/lib/store/gameStore";
 import { Player } from "@/lib/types";
 import PlayerCard from "./PlayerCard";
@@ -122,8 +123,8 @@ export default function TeamPurseList() {
                 >
                   {crore(remaining)}
                 </span>
-                <span className="font-space-mono text-[9px] text-text-secondary shrink-0">
-                  {isOpen ? "▲" : "▼"}
+                <span className="text-text-secondary shrink-0 flex items-center">
+                  {isOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
                 </span>
               </button>
 

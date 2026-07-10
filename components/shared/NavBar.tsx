@@ -4,6 +4,23 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useGameStore } from "@/lib/store/gameStore";
 import { applyTeamTheme } from "./TeamThemeProvider";
+import {
+  AlertTriangle,
+  SkipForward,
+  Play,
+  Pause,
+  Settings,
+  Moon,
+  Sun,
+  BookOpen,
+  Zap,
+  RefreshCw,
+  ShieldAlert,
+  Users,
+  TrendingUp,
+  ArrowLeft,
+  ArrowRight,
+} from "lucide-react";
 
 const NAV_ITEMS = [
   { label: "Overview", href: "/game/overview" },
@@ -178,7 +195,7 @@ export default function NavBar() {
             <div className="relative flex items-center">
               <button
                 onClick={handleSkipPress}
-                className="px-3 rounded font-space-mono font-bold text-[10px] tracking-wider uppercase transition-all duration-150 flex items-center justify-center h-[28px] cursor-pointer hover:bg-[#1d55c4] hover:text-white hover:scale-105 active:scale-95"
+                className="px-3 rounded font-space-mono font-bold text-[10px] tracking-wider uppercase transition-all duration-150 flex items-center justify-center gap-1.5 h-[28px] cursor-pointer hover:bg-[#1d55c4] hover:text-white hover:scale-105 active:scale-95"
                 style={{
                   border: "1.5px solid var(--ink)",
                   backgroundColor: "var(--team-bid-bg, #111622)",
@@ -187,7 +204,7 @@ export default function NavBar() {
                 }}
                 title="Skip remaining players in current set"
               >
-                ⏭ Skip Set
+                <SkipForward size={12} className="inline" /> Skip Set
               </button>
 
               {showConfirm && (
@@ -208,7 +225,7 @@ export default function NavBar() {
                   >
                     <div className="flex flex-col gap-1.5">
                       <div className="text-[10px] font-bold tracking-wider uppercase text-danger flex items-center gap-1">
-                        ⚠️ Skip Set?
+                        <AlertTriangle size={12} className="inline" /> Skip Set?
                       </div>
                       <p className="text-[10px] leading-normal font-bold">
                         Skip all remaining players in{" "}
@@ -252,7 +269,7 @@ export default function NavBar() {
               <div className="relative flex items-center">
                 <button
                   onClick={handleSkipAccelPress}
-                  className="px-3 rounded font-space-mono font-bold text-[10px] tracking-wider uppercase transition-all duration-150 flex items-center justify-center h-[28px] cursor-pointer hover:bg-[#1d55c4] hover:text-white hover:scale-105 active:scale-95"
+                  className="px-3 rounded font-space-mono font-bold text-[10px] tracking-wider uppercase transition-all duration-150 flex items-center justify-center gap-1.5 h-[28px] cursor-pointer hover:bg-[#1d55c4] hover:text-white hover:scale-105 active:scale-95"
                   style={{
                     border: "1.5px solid var(--ink)",
                     backgroundColor: "var(--team-bid-bg, #111622)",
@@ -261,7 +278,7 @@ export default function NavBar() {
                   }}
                   title="Simulate all regular sets and skip straight to the Accelerated Auction"
                 >
-                  ⏭ Skip to Accelerated
+                  <SkipForward size={12} className="inline" /> Skip to Accelerated
                 </button>
 
                 {showConfirmAccel && (
@@ -282,7 +299,7 @@ export default function NavBar() {
                     >
                       <div className="flex flex-col gap-1.5">
                         <div className="text-[10px] font-bold tracking-wider uppercase text-danger flex items-center gap-1">
-                          ⚠️ Skip to Accelerated?
+                          <AlertTriangle size={12} className="inline" /> Skip to Accelerated?
                         </div>
                         <p className="text-[10px] leading-normal font-bold">
                           Skip all remaining regular sets?
@@ -322,7 +339,7 @@ export default function NavBar() {
             <div className="relative flex items-center">
               <button
                 onClick={handleSkipAllPress}
-                className="px-3 rounded font-space-mono font-bold text-[10px] tracking-wider uppercase transition-all duration-150 flex items-center justify-center h-[28px] cursor-pointer hover:bg-danger hover:text-white hover:scale-105 active:scale-95"
+                className="px-3 rounded font-space-mono font-bold text-[10px] tracking-wider uppercase transition-all duration-150 flex items-center justify-center gap-1.5 h-[28px] cursor-pointer hover:bg-danger hover:text-white hover:scale-105 active:scale-95"
                 style={{
                   border: "1.5px solid var(--ink)",
                   backgroundColor: "var(--team-bid-bg, #111622)",
@@ -331,7 +348,7 @@ export default function NavBar() {
                 }}
                 title="Skip and simulate the rest of the entire auction"
               >
-                ⏩ Skip All
+                <SkipForward size={12} className="inline" /> Skip All
               </button>
 
               {showConfirmAll && (
@@ -352,7 +369,7 @@ export default function NavBar() {
                   >
                     <div className="flex flex-col gap-1.5">
                       <div className="text-[10px] font-bold tracking-wider uppercase text-danger flex items-center gap-1">
-                        ⚠️ Skip Entire Auction?
+                        <AlertTriangle size={12} className="inline" /> Skip Entire Auction?
                       </div>
                       <p className="text-[10px] leading-normal font-bold">
                         Simulate and skip the entire rest of the Mega Auction?
@@ -420,7 +437,7 @@ export default function NavBar() {
 
             <button
               onClick={togglePaused}
-              className={`px-3.5 rounded font-space-mono font-bold text-[10px] tracking-wider uppercase transition-all duration-150 flex items-center justify-center h-[28px] cursor-pointer ${
+              className={`px-3.5 rounded font-space-mono font-bold text-[10px] tracking-wider uppercase transition-all duration-150 flex items-center justify-center gap-1.5 h-[28px] cursor-pointer ${
                 isPaused
                   ? "bg-danger text-white hover:bg-red-600 hover:scale-105 active:scale-95 animate-pulse"
                   : "hover:bg-[#1d55c4] hover:text-white hover:scale-105 active:scale-95"
@@ -432,7 +449,7 @@ export default function NavBar() {
                 color: "#ffffff",
               }}
             >
-              {isPaused ? "▶ Resume" : "❚❚ Pause"}
+              {isPaused ? <><Play size={11} className="inline" /> Resume</> : <><Pause size={11} className="inline" /> Pause</>}
             </button>
           </>
         )}
@@ -449,7 +466,7 @@ export default function NavBar() {
             }}
             title="Open Settings"
           >
-            ⚙️
+            <Settings size={14} />
           </button>
 
           {showSettings && (
@@ -468,22 +485,53 @@ export default function NavBar() {
                   borderColor: "var(--ink, var(--ink))",
                 }}
               >
-                <div className="text-[10px] font-bold tracking-wider uppercase border-b border-[var(--ink)]/15 pb-1">
-                  ⚙️ Settings
+                <div className="text-[10px] font-bold tracking-wider uppercase border-b border-[var(--ink)]/15 pb-1 flex items-center gap-1.5">
+                  <Settings size={11} className="inline" /> Settings
                 </div>
                 <div className="flex flex-col gap-2">
                   <span className="text-[9px] font-bold text-text-secondary uppercase tracking-wider">
                     Color Theme
                   </span>
-                  <button
-                    onClick={handleToggleDarkMode}
-                    className="w-full flex items-center justify-between px-3 py-1.5 rounded border border-[var(--ink)] hover:bg-[var(--ink)]/5 text-[10px] font-bold cursor-pointer transition-all active:scale-[0.98]"
-                  >
-                    <span>{isDarkMode ? "🌙 Dark Mode" : "☀️ Light Mode"}</span>
-                    <span className="text-[9px] tracking-wide opacity-75">
-                      {isDarkMode ? "Enabled" : "Disabled"}
+                  <div className="flex items-center justify-between px-3 py-1.5 rounded border border-[var(--ink)]">
+                    <span className="flex items-center gap-1.5 text-[10px] font-bold">
+                      {isDarkMode ? <Moon size={11} className="inline" /> : <Sun size={11} className="inline" />}
+                      {isDarkMode ? "Dark Mode" : "Light Mode"}
                     </span>
-                  </button>
+                    {/* Sliding toggle switch */}
+                    <button
+                      onClick={handleToggleDarkMode}
+                      role="switch"
+                      aria-checked={isDarkMode}
+                      className="relative flex items-center cursor-pointer shrink-0 transition-all active:scale-95"
+                      style={{
+                        width: 44,
+                        height: 22,
+                        borderRadius: 11,
+                        backgroundColor: isDarkMode ? "var(--ink)" : "#d1d5db",
+                        border: "1.5px solid var(--ink)",
+                        transition: "background-color 0.25s ease",
+                        padding: 2,
+                      }}
+                      title={isDarkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
+                    >
+                      {/* Icons on the track */}
+                      <Sun size={10} className="absolute left-[4px] text-yellow-400 pointer-events-none" style={{ opacity: isDarkMode ? 0.3 : 1, transition: "opacity 0.2s" }} />
+                      <Moon size={10} className="absolute right-[4px] text-blue-300 pointer-events-none" style={{ opacity: isDarkMode ? 1 : 0.3, transition: "opacity 0.2s" }} />
+                      {/* Sliding pill */}
+                      <span
+                        className="absolute rounded-full shadow-sm"
+                        style={{
+                          width: 16,
+                          height: 16,
+                          backgroundColor: isDarkMode ? "#1d55c4" : "#ffffff",
+                          top: "50%",
+                          transform: "translateY(-50%)",
+                          left: isDarkMode ? "calc(100% - 18px)" : 2,
+                          transition: "left 0.25s ease, background-color 0.25s ease",
+                        }}
+                      />
+                    </button>
+                  </div>
                 </div>
                 <div className="flex flex-col gap-2 border-t border-[var(--ink)]/15 pt-2">
                   <span className="text-[9px] font-bold text-text-secondary uppercase tracking-wider">
@@ -497,7 +545,9 @@ export default function NavBar() {
                     }}
                     className="w-full flex items-center justify-between px-3 py-1.5 rounded border border-[var(--ink)] hover:bg-[var(--ink)]/5 text-[10px] font-bold cursor-pointer transition-all active:scale-[0.98]"
                   >
-                    <span>📖 How to Play</span>
+                    <span className="flex items-center gap-1.5">
+                      <BookOpen size={11} className="inline" /> How to Play
+                    </span>
                   </button>
                 </div>
               </div>
@@ -527,8 +577,8 @@ export default function NavBar() {
 
             {/* Header */}
             <div>
-              <h2 className="font-anton text-[28px] leading-none text-text-primary uppercase tracking-wide">
-                📖 Guide (Tile {activeTile + 1}/5)
+              <h2 className="font-anton text-[28px] leading-none text-text-primary uppercase tracking-wide flex items-center gap-2">
+                <BookOpen size={22} className="inline" /> Guide (Tile {activeTile + 1}/5)
               </h2>
               <p className="text-[11px] text-text-secondary font-space-mono mt-1 uppercase tracking-wider">
                 Auction Paused · Swipe or click to read rules
@@ -548,7 +598,7 @@ export default function NavBar() {
                   }}
                 >
                   <div className="font-anton text-[16px] text-[#1d55c4] uppercase tracking-wide border-b border-[var(--ink)]/15 pb-1 flex items-center gap-1.5">
-                    🔨 Auction Engine
+                    <Zap size={15} className="inline" /> Auction Engine
                   </div>
                   <ul className="text-[12px] flex flex-col gap-2 list-disc pl-4 leading-relaxed text-inherit">
                     <li><strong>Bidding</strong>: Bid against 9 other teams. Click the bid button to raise by the current increment.</li>
@@ -570,7 +620,7 @@ export default function NavBar() {
                   }}
                 >
                   <div className="font-anton text-[16px] text-orange-500 uppercase tracking-wide border-b border-[var(--ink)]/15 pb-1 flex items-center gap-1.5">
-                    🃏 Right to Match (RTM) Card
+                    <RefreshCw size={15} className="inline" /> Right to Match (RTM) Card
                   </div>
                   <ul className="text-[12px] flex flex-col gap-2 list-disc pl-4 leading-relaxed text-inherit">
                     <li><strong>Concept</strong>: Buy back a player who played for your franchise last season by matching the final winning bid.</li>
@@ -592,7 +642,7 @@ export default function NavBar() {
                   }}
                 >
                   <div className="font-anton text-[16px] text-red-600 uppercase tracking-wide border-b border-[var(--ink)]/15 pb-1 flex items-center gap-1.5">
-                    🚨 Hard Constraints
+                    <ShieldAlert size={15} className="inline" /> Hard Constraints
                   </div>
                   <ul className="text-[12px] flex flex-col gap-2 list-disc pl-4 leading-relaxed text-inherit">
                     <li><strong>Squad Size</strong>: Minimum of <strong>18</strong> players and a maximum of <strong>25</strong> players.</li>
@@ -613,7 +663,7 @@ export default function NavBar() {
                   }}
                 >
                   <div className="font-anton text-[16px] text-green-600 uppercase tracking-wide border-b border-[var(--ink)]/15 pb-1 flex items-center gap-1.5">
-                    🎯 Recommended Squad Size
+                    <Users size={15} className="inline" /> Recommended Squad Size
                   </div>
                   <ul className="text-[12px] flex flex-col gap-2 list-disc pl-4 leading-relaxed text-inherit">
                     <li><strong>Bowler Depth</strong>: Minimum of <strong>5</strong> bowlers (with at least <strong>2 spinners</strong> and <strong>4 Indian</strong> bowlers).</li>
@@ -634,7 +684,7 @@ export default function NavBar() {
                   }}
                 >
                   <div className="font-anton text-[16px] text-purple-600 uppercase tracking-wide border-b border-[var(--ink)]/15 pb-1 flex items-center gap-1.5">
-                    💱 Bidding & Value Systems
+                    <TrendingUp size={15} className="inline" /> Bidding &amp; Value Systems
                   </div>
                   <ul className="text-[12px] flex flex-col gap-2 list-disc pl-4 leading-relaxed text-inherit">
                     <li><strong>Lakh (L)</strong>: 1 Lakh = 100,000 Rupees. Base prices start at ₹20L–₹50L.</li>
@@ -657,12 +707,12 @@ export default function NavBar() {
               <button
                 onClick={() => setActiveTile((prev) => Math.max(0, prev - 1))}
                 disabled={activeTile === 0}
-                className={`px-4 py-1.5 border-2 border-[var(--ink)] font-anton uppercase text-[11px] transition-all cursor-pointer ${
+                className={`px-4 py-1.5 border-2 border-[var(--ink)] font-anton uppercase text-[11px] transition-all cursor-pointer flex items-center gap-1.5 ${
                   activeTile === 0 ? "opacity-35 cursor-not-allowed" : "hover:bg-[var(--ink)] hover:text-[var(--surface)] active:scale-95 bg-[var(--surface)]"
                 }`}
                 style={{ color: "var(--ink)", borderColor: "var(--ink)" }}
               >
-                ← Back
+                <ArrowLeft size={13} className="inline" /> Back
               </button>
 
               <div className="flex items-center gap-1.5">
@@ -679,10 +729,10 @@ export default function NavBar() {
 
               <button
                 onClick={() => (activeTile === 4 ? setShowHowToPlay(false) : setActiveTile((prev) => prev + 1))}
-                className="px-4 py-1.5 border-2 border-[var(--ink)] font-anton uppercase text-[11px] hover:bg-[var(--ink)] hover:text-[var(--surface)] transition-all active:scale-95 cursor-pointer bg-[var(--surface)]"
+                className="px-4 py-1.5 border-2 border-[var(--ink)] font-anton uppercase text-[11px] hover:bg-[var(--ink)] hover:text-[var(--surface)] transition-all active:scale-95 cursor-pointer bg-[var(--surface)] flex items-center gap-1.5"
                 style={{ color: "var(--ink)", borderColor: "var(--ink)" }}
               >
-                {activeTile === 4 ? "Close" : "Next →"}
+                {activeTile === 4 ? "Close" : <>Next <ArrowRight size={13} className="inline" /></>}
               </button>
             </div>
           </div>

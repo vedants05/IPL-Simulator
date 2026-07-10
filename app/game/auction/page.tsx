@@ -593,14 +593,14 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
     }
   }
 
-  // --- SMART OVERSEAS / SUB-78 REPLACEMENT RULE ---
+  // --- SMART OVERSEAS / SUB-76 REPLACEMENT RULE ---
   if (selected.length === 12) {
     const originalBowling70Count = getBowling70Count(selected);
-    const under78Players = selected
-      .filter(p => rating(p) < 78)
+    const under76Players = selected
+      .filter(p => rating(p) <= 76)
       .sort((a, b) => rating(a) - rating(b)); // replace lowest first
 
-    for (const targetPlayer of under78Players) {
+    for (const targetPlayer of under76Players) {
       const bench = virtualSquad.filter(p => !selected.some(s => s.id === p.id) && !p.onlyOpensOrBenched);
       
       // Find highest-rated overseas player on the bench who is better than targetPlayer
@@ -1025,7 +1025,7 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
   // Evaluate Position 3 (index 2) eligibility
   let pos3Eligible = false;
   let pos3BestFinisher: import("@/lib/types").Player | null = null;
-  if (finalLineup[2] && (finalLineup[2].currentBatting ?? 0) < 78) {
+  if (finalLineup[2] && (finalLineup[2].currentBatting ?? 0) <= 76) {
     const currentRating = finalLineup[2].currentBatting ?? 0;
     const candidates = finalLineup.slice(3).filter(p => 
       p.isFinisher && 
@@ -1042,7 +1042,7 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
   // Evaluate Position 4 (index 3) eligibility
   let pos4Eligible = false;
   let pos4BestFinisher: import("@/lib/types").Player | null = null;
-  if (finalLineup[3] && (finalLineup[3].currentBatting ?? 0) < 78) {
+  if (finalLineup[3] && (finalLineup[3].currentBatting ?? 0) <= 76) {
     const currentRating = finalLineup[3].currentBatting ?? 0;
     const candidates = finalLineup.slice(4).filter(p => 
       p.isFinisher && 
@@ -1219,14 +1219,14 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
   }
 
   // --- BENCH ALL-ROUNDER SWAP FOR WEAK BATTER AT POSITION 8 ---
-  // If pos 8 has a non-finisher batter rated < 78, try to replace them with the
+  // If pos 8 has a non-finisher batter rated <= 76, try to replace them with the
   // highest-rated bench All-Rounder that satisfies the OS and bowler-cap rules.
   {
     const pos8Weak = mappedLineup[7];
     if (
       pos8Weak &&
       !pos8Weak.isFinisher &&
-      (pos8Weak.currentBatting ?? 0) < 78 &&
+      (pos8Weak.currentBatting ?? 0) <= 76 &&
       (pos8Weak.role === "Batsman" || pos8Weak.role === "WK-Batsman")
     ) {
       const benchARs = squad
@@ -1293,7 +1293,7 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
     if (
       pos8Weak &&
       !pos8Weak.isFinisher &&
-      (pos8Weak.currentBatting ?? 0) < 78 &&
+      (pos8Weak.currentBatting ?? 0) <= 76 &&
       (pos8Weak.role === "Batsman" || pos8Weak.role === "WK-Batsman")
     ) {
       const currentBatR = pos8Weak.currentBatting ?? 0;
@@ -1335,7 +1335,7 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
 
   // --- BENCH ALL-ROUNDER SWAP FOR WEAK BATTER AT POSITION 8 ---
 
-  // Runs last. If pos 8 still has a non-finisher batter rated < 78, try to replace
+  // Runs last. If pos 8 still has a non-finisher batter rated <= 76, try to replace
   // them with the highest-rated bench All-Rounder that satisfies the OS and bowler-cap
   // rules. The bowler cap is evaluated on the pre-swap lineup so that adding an AR
   // does not retroactively tighten the cap against itself.
@@ -1344,7 +1344,7 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
     if (
       pos8Weak &&
       !pos8Weak.isFinisher &&
-      (pos8Weak.currentBatting ?? 0) < 78 &&
+      (pos8Weak.currentBatting ?? 0) <= 76 &&
       (pos8Weak.role === "Batsman" || pos8Weak.role === "WK-Batsman")
     ) {
       const benchARs = squad

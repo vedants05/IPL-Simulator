@@ -54,9 +54,9 @@ export default function RetentionPhase() {
   const uncappedCount = retainedIds.length - cappedCount;
 
   return (
-    <div className="min-h-screen bg-bg text-text-primary">
+    <div className="h-[calc(100vh-3rem)] flex flex-col bg-bg text-text-primary overflow-hidden">
       {/* Header */}
-      <div className="border-b-2 border-border px-8 py-6">
+      <div className="border-b-2 border-border px-8 py-6 shrink-0">
         <div className="font-space-mono font-bold text-[10px] tracking-[.16em] text-text-secondary mb-2 uppercase">
           Mega Auction 2027 · Pre-Season
         </div>
@@ -68,7 +68,7 @@ export default function RetentionPhase() {
         </p>
       </div>
 
-      <div className="flex overflow-hidden" style={{ height: "calc(100vh - 140px)" }}>
+      <div className="flex flex-1 overflow-hidden">
         {/* Player list */}
         <div className="flex-1 overflow-y-auto" style={{ borderRight: "2px solid var(--hairline)" }}>
           <div className="border-b-2 border-border px-6 py-3 bg-surface">
@@ -152,7 +152,7 @@ export default function RetentionPhase() {
         </div>
 
         {/* Summary sidebar */}
-        <div className="w-[280px] shrink-0 flex flex-col">
+        <div className="w-[280px] shrink-0 flex flex-col overflow-hidden">
           <div className="flex-1 overflow-y-auto p-5">
             <div className="font-space-mono font-bold text-[9px] tracking-widest text-text-secondary mb-4 uppercase">
               Retention Summary
@@ -226,7 +226,7 @@ export default function RetentionPhase() {
           </div>
 
           {/* Confirm button */}
-          <div className="p-4 border-t-2 border-hairline bg-surface flex flex-col gap-2">
+          <div className="p-4 border-t-2 border-hairline bg-surface flex flex-col gap-2 shrink-0">
             <button
               onClick={autoRetainPlayers}
               style={{
