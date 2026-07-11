@@ -10,15 +10,18 @@ import {
   SkipSetSummary,
   SkipSetResultItem,
   BidEntry,
+  AuctionTargetPriority,
 } from "@/lib/types";
 import { fetchPlayersFromSupabase } from "@/lib/supabase/fetchPlayers";
 import { fetchTeamsFromSupabase } from "@/lib/supabase/fetchTeams";
 import {
   buildAuctionSets,
   getNextBidAmount,
+  roundDownToLegalBid,
   canTeamBidOnPlayer,
   canTeamAffordBid,
   TOTAL_PURSE_LAKHS,
+  MAX_AUCTION_TARGETS,
   calculateTotalRetentionCost,
   getPlayerRetentionCost,
   MAX_CAPPED_RETENTIONS,
@@ -51,6 +54,8 @@ interface GameStateAdditions {
   isPaused: boolean;
   speed: number;
   skipSetSummary: SkipSetSummary | null;
+  auctionTargets: Record<string, number>;
+  auctionTargetPriorities: Record<string, AuctionTargetPriority>;
 }
 
 interface GameActions {
@@ -84,6 +89,8 @@ interface GameActions {
   skipAllAuction: () => void;
   skipToAcceleratedAuction: () => void;
   dismissSkipSetSummary: () => void;
+  setAuctionTarget: (playerId: string, maxBidLakhs: number, priority?: AuctionTargetPriority) => void;
+  removeAuctionTarget: (playerId: string) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -122,6 +129,52 @@ function allSetsComplete(sets: AuctionSet[]): boolean {
   return sets.every((s) => s.isCompleted);
 }
 
+function removeResolvedAuctionTargets<T>(
+  targets: Record<string, T>,
+  resolvedPlayerIds: Iterable<string>
+): Record<string, T> {
+  const remainingTargets = { ...targets };
+  Array.from(resolvedPlayerIds).forEach((playerId) => delete remainingTargets[playerId]);
+  return remainingTargets;
+}
+
+function getTargetBidBlockReason(
+  team: Team,
+  player: Player,
+  bidAmount: number,
+  players: Record<string, Player>,
+  boughtEarlierInSkip: boolean,
+  protectedTargetReserve = 0
+): string | null {
+  if (team.remainingPurse - bidAmount < protectedTargetReserve) {
+    return "Funds reserved for higher-priority targets";
+  }
+  if (boughtEarlierInSkip && !canTeamAffordBid(team, bidAmount, players)) {
+    return "Insufficient Purse remaining after earlier skipped purchases";
+  }
+
+  if (team.squad.length >= team.maxSquadSize) return "Max Squad Size Reached";
+  if (player.nationality === "Overseas" && team.overseasPlayersCurrent >= team.overseasPlayersMax) {
+    return "Hit Overseas Limit";
+  }
+  if (team.remainingPurse < bidAmount) return "Insufficient Purse";
+  if (!canTeamAffordBid(team, bidAmount, players)) {
+    const squad = team.squad.map((id) => players[id]).filter(Boolean);
+    const isKeeperPlayer = (p: Player) => !!(p.isWicketkeeper || p.isPartTimeWk || p.role === "WK-Batsman");
+    const bowlers = squad.filter((p) => p.role === "Pace Bowler" || p.role === "Spin Bowler").length;
+    const spinners = squad.filter((p) => p.role === "Spin Bowler").length;
+    const keepers = squad.filter(isKeeperPlayer).length;
+    const indianBowlers = squad.filter((p) => p.nationality === "Indian" && (p.role === "Pace Bowler" || p.role === "Spin Bowler")).length;
+    const rating = (p: Player) => Math.max(p.currentBatting ?? 0, p.currentBowling ?? 0);
+    const indianBatters = squad.filter((p) => p.nationality === "Indian" && (p.role === "Batsman" || p.role === "WK-Batsman"));
+    const missingRoles = bowlers < 5 || spinners < 2 || keepers < 2 || indianBowlers < 4 ||
+      indianBatters.filter((p) => rating(p) > 74).length < 5 ||
+      indianBatters.filter((p) => rating(p) > 77).length < 3;
+    return missingRoles ? "Other roles required" : "Insufficient Purse - You need to purchase more players!";
+  }
+  return null;
+}
+
 function canTeamBidDuringSkip(
   t: Team,
   p: Player,
@@ -129,12 +182,16 @@ function canTeamBidDuringSkip(
   playerId: string,
   newPlayers: Record<string, Player>,
   ctx: AuctionContext,
-  userTeamId: string
+  userTeamId: string,
+  targetMaxBid?: number,
+  protectedTargetReserve = 0
 ): boolean {
   if (t.id === userTeamId) {
-    const { canBid } = canTeamBidOnPlayer(t, p, newPlayers);
+    const { canBid } = canTeamBidOnPlayer(t, p, newPlayers, false);
     if (!canBid) return false;
     if (!canTeamAffordBid(t, nextBid, newPlayers)) return false;
+    if (t.remainingPurse - nextBid < protectedTargetReserve) return false;
+    if (targetMaxBid !== undefined) return nextBid <= targetMaxBid;
 
     const squad = t.squad.map(id => newPlayers[id]).filter(Boolean);
 
@@ -200,6 +257,39 @@ function canTeamBidDuringSkip(
   }
 }
 
+function getProtectedTargetReserve(
+  currentPlayerId: string,
+  pendingTargetIds: Set<string>,
+  targets: Record<string, number>,
+  priorities: Record<string, AuctionTargetPriority>,
+  team: Team,
+  players: Record<string, Player>
+): number {
+  const rank: Record<AuctionTargetPriority, number> = { low: 0, medium: 1, high: 2 };
+  const currentPriority = priorities[currentPlayerId] ?? "medium";
+  return Array.from(pendingTargetIds).reduce((reserve, playerId) => {
+    const priority = priorities[playerId] ?? "medium";
+    if (rank[priority] <= rank[currentPriority]) return reserve;
+    const player = players[playerId];
+    if (!player) return reserve;
+    if (!canTeamBidOnPlayer(team, player, players, false).canBid) return reserve;
+    if (!canTeamAffordBid(team, player.basePrice, players)) return reserve;
+    return reserve + (targets[playerId] ?? 0);
+  }, 0);
+}
+
+function canAffordTargetRtm(
+  team: Team,
+  amount: number,
+  players: Record<string, Player>,
+  isUserTeam: boolean,
+  priority: AuctionTargetPriority,
+  protectedReserve: number
+): boolean {
+  if (!canTeamAffordBid(team, amount, players)) return false;
+  return !isUserTeam || priority === "high" || team.remainingPurse - amount >= protectedReserve;
+}
+
 // ---------------------------------------------------------------------------
 // Store
 // ---------------------------------------------------------------------------
@@ -220,6 +310,8 @@ export const useGameStore = create<Store>()(
       isPaused: false,
       speed: 1,
       skipSetSummary: null,
+      auctionTargets: {},
+      auctionTargetPriorities: {},
 
       // ----- Actions -----
       initNewGame: async (userTeamId) => {
@@ -244,7 +336,7 @@ export const useGameStore = create<Store>()(
             retainedPlayers: [],
             remainingPurse: TOTAL_PURSE_LAKHS,
             spentAmount: 0,
-            minSquadSize: 19,
+            minSquadSize: t.id === userTeamId ? 18 : 22,
           };
         });
 
@@ -257,6 +349,8 @@ export const useGameStore = create<Store>()(
           players: playersMap,
           teams: teamsMap,
           userTeamId,
+          auctionTargets: {},
+          auctionTargetPriorities: {},
           auction: {
             type: "mega",
             season: 2026,
@@ -547,7 +641,7 @@ export const useGameStore = create<Store>()(
         const team = teams[teamId];
         if (!team) return;
 
-        const { canBid } = canTeamBidOnPlayer(team, auction.currentPlayer, players);
+        const { canBid } = canTeamBidOnPlayer(team, auction.currentPlayer, players, teamId !== get().userTeamId);
         if (!canBid) return;
         if (!canTeamAffordBid(team, amount, players)) return;
 
@@ -771,9 +865,35 @@ export const useGameStore = create<Store>()(
         advanceToNextLot();
       },
 
+      setAuctionTarget: (playerId, maxBidLakhs, priority = "medium") => {
+        const { players, teams, userTeamId, auctionTargets } = get();
+        const player = players[playerId];
+        const userTeam = teams[userTeamId];
+        if (!player || !Number.isFinite(maxBidLakhs) || maxBidLakhs < player.basePrice) return;
+        if (!userTeam) return;
+        if (!canTeamBidOnPlayer(userTeam, player, players, false).canBid) return;
+        if (!canTeamAffordBid(userTeam, player.basePrice, players)) return;
+        if (auctionTargets[playerId] === undefined && Object.keys(auctionTargets).length >= MAX_AUCTION_TARGETS) return;
+        const legalMaxBid = roundDownToLegalBid(player.basePrice, maxBidLakhs);
+        set((state) => ({
+          auctionTargets: { ...state.auctionTargets, [playerId]: legalMaxBid },
+          auctionTargetPriorities: { ...state.auctionTargetPriorities, [playerId]: priority },
+        }));
+      },
+
+      removeAuctionTarget: (playerId) => {
+        set((state) => {
+          const auctionTargets = { ...state.auctionTargets };
+          const auctionTargetPriorities = { ...state.auctionTargetPriorities };
+          delete auctionTargets[playerId];
+          delete auctionTargetPriorities[playerId];
+          return { auctionTargets, auctionTargetPriorities };
+        });
+      },
+
       skipCurrentSet: () => {
         const state = get();
-        const { auction, players, teams, userTeamId } = state;
+        const { auction, players, teams, userTeamId, auctionTargets, auctionTargetPriorities } = state;
         if (!auction || auction.phase !== "live") return;
 
         const currentSet = auction.sets[auction.currentSetIndex];
@@ -791,6 +911,11 @@ export const useGameStore = create<Store>()(
         const setPlayerIds = currentSet.playerIds;
         const startIndex = currentSet.currentIndex;
         const playersToAuctionIds = setPlayerIds.slice(startIndex);
+        const pendingTargetIds = new Set(
+          Object.keys(auctionTargets).filter(
+            (id) => !auction.soldPlayerIds.includes(id) && !auction.unsoldPlayerIds.includes(id)
+          )
+        );
 
         const results: SkipSetResultItem[] = [];
         const totalLots = auction.sets.reduce((sum, s) => sum + s.playerIds.length, 0);
@@ -798,11 +923,13 @@ export const useGameStore = create<Store>()(
         // The first player in this slice is the one already on the block, so it
         // keeps the current lot number; only subsequent players advance the lot.
         let isFirstProcessed = true;
+        let userPurchasesDuringSkip = 0;
 
         playersToAuctionIds.forEach((playerId) => {
           const player = newPlayers[playerId];
           if (!player) return;
 
+          const isCurrentLiveLot = isFirstProcessed && auction.currentPlayer?.id === player.id;
           if (!isFirstProcessed) currentLotIndex++;
           isFirstProcessed = false;
           resetLotCache();
@@ -817,29 +944,44 @@ export const useGameStore = create<Store>()(
             isAcceleratedPhase: auction.isAcceleratedPhase,
           };
 
-          let currentBid = player.basePrice;
-          let highBidderTeamId: string | null = null;
-          let biddingHistory: BidEntry[] = [];
+          let currentBid = isCurrentLiveLot ? auction.currentBid : player.basePrice;
+          let highBidderTeamId: string | null = isCurrentLiveLot
+            ? auction.currentHighBidderTeamId
+            : null;
+          let biddingHistory: BidEntry[] = isCurrentLiveLot
+            ? [...auction.biddingHistory]
+            : [];
 
           let iterations = 0;
           const MAX_ITER = 300;
+          const targetMaxBid = auctionTargets[player.id];
+          const targetPriority = auctionTargetPriorities[player.id] ?? "medium";
+          pendingTargetIds.delete(player.id);
+          const protectedTargetReserve = getProtectedTargetReserve(
+            player.id, pendingTargetIds, auctionTargets, auctionTargetPriorities, newTeams[userTeamId], newPlayers
+          );
           while (iterations < MAX_ITER) {
             iterations++;
-            const nextBid = getNextBidAmount(currentBid);
+            const nextBid: number = highBidderTeamId ? getNextBidAmount(currentBid) : currentBid;
 
-            const interested = Object.values(newTeams).filter((t) => {
+            const interested: Team[] = Object.values(newTeams).filter((t: Team): boolean => {
               if (t.id === highBidderTeamId) return false;
+              if (t.id === userTeamId) {
+                return targetMaxBid !== undefined && canTeamBidDuringSkip(
+                  t, player, nextBid, player.id, newPlayers, ctx, userTeamId, targetMaxBid, protectedTargetReserve
+                );
+              }
               if (auction.isAcceleratedPhase) {
                 return canAIBidAtAmount(t, player, nextBid, player.id, newPlayers, ctx);
               } else {
-                if (t.id === userTeamId) return false;
                 return canAIBidAtAmount(t, player, nextBid, player.id, newPlayers, ctx);
               }
             });
 
             if (interested.length === 0) break;
 
-            const bidder = pickBiddingTeam(interested, player, player.id, newPlayers, ctx);
+            const bidder: Team | null | undefined = interested.find((team: Team) => team.id === userTeamId && targetMaxBid !== undefined)
+              ?? pickBiddingTeam(interested, player, player.id, newPlayers, ctx);
             if (!bidder) break;
 
             currentBid = nextBid;
@@ -852,6 +994,10 @@ export const useGameStore = create<Store>()(
             results.push({
               player,
               status: "unsold",
+              targetRemainsActive: targetMaxBid !== undefined && !auction.isAcceleratedPhase,
+              targetMissReason: targetMaxBid !== undefined && auction.isAcceleratedPhase
+                ? getTargetBidBlockReason(newTeams[userTeamId], player, player.basePrice, newPlayers, userPurchasesDuringSkip > 0, protectedTargetReserve) ?? "Too expensive"
+                : undefined,
             });
           } else {
             let finalWinnerId = highBidderTeamId;
@@ -860,12 +1006,15 @@ export const useGameStore = create<Store>()(
 
             const rtmTeamId = findRTMEligibleTeam(player, newTeams, highBidderTeamId, currentBid);
 
-            if (rtmTeamId && rtmTeamId !== userTeamId) {
+            if (rtmTeamId) {
               const rtmTeam = newTeams[rtmTeamId];
-              const aiOrigValuation = getCachedValuation(rtmTeamId);
+              const aiOrigValuation = rtmTeamId === userTeamId && targetMaxBid !== undefined
+                ? targetMaxBid
+                : getCachedValuation(rtmTeamId);
               const loyaltyBonus = 1.0 + (rtmTeam?.dna.loyalty ?? 50) / 100 * 0.25;
+              const rtmCeiling = rtmTeamId === userTeamId ? aiOrigValuation : aiOrigValuation * loyaltyBonus;
 
-              if (aiOrigValuation * loyaltyBonus > currentBid && canTeamAffordBid(rtmTeam, currentBid, newPlayers)) {
+              if (rtmCeiling >= currentBid && canAffordTargetRtm(rtmTeam, currentBid, newPlayers, rtmTeamId === userTeamId, targetPriority, protectedTargetReserve)) {
                 const winnerTeam = newTeams[highBidderTeamId];
                 const aiWinnerValuation = getCachedValuation(highBidderTeamId);
 
@@ -875,7 +1024,7 @@ export const useGameStore = create<Store>()(
                   while (counterAmount < target) counterAmount = getNextBidAmount(counterAmount);
                   if (counterAmount <= currentBid) counterAmount = getNextBidAmount(currentBid);
 
-                  if (aiOrigValuation * loyaltyBonus >= counterAmount && canTeamAffordBid(rtmTeam, counterAmount, newPlayers)) {
+                  if (rtmCeiling >= counterAmount && canAffordTargetRtm(rtmTeam, counterAmount, newPlayers, rtmTeamId === userTeamId, targetPriority, protectedTargetReserve)) {
                     finalWinnerId = rtmTeamId;
                     finalPrice = counterAmount;
                     usedRtm = true;
@@ -889,6 +1038,14 @@ export const useGameStore = create<Store>()(
                   usedRtm = true;
                 }
               }
+            }
+
+            // A skipped-auction target is a hard ceiling, including RTM counters.
+            if (finalWinnerId === userTeamId && targetMaxBid !== undefined && rtmTeamId &&
+                (finalPrice > targetMaxBid || (targetPriority !== "high" && newTeams[userTeamId].remainingPurse - finalPrice < protectedTargetReserve))) {
+              finalWinnerId = rtmTeamId;
+              finalPrice = currentBid;
+              usedRtm = true;
             }
 
             const winnerTeam = newTeams[finalWinnerId];
@@ -930,12 +1087,30 @@ export const useGameStore = create<Store>()(
               bids: biddingHistory,
             });
 
+            let targetMissReason: string | undefined;
+            if (targetMaxBid !== undefined && finalWinnerId !== userTeamId) {
+              if (targetPriority !== "high" && newTeams[userTeamId].remainingPurse - finalPrice < protectedTargetReserve) {
+                targetMissReason = "Funds reserved for higher-priority targets";
+              } else if (usedRtm && finalPrice <= targetMaxBid) {
+                targetMissReason = `${newTeams[finalWinnerId]?.name ?? finalWinnerId} exercised RTM`;
+              } else if (finalPrice > targetMaxBid) {
+                targetMissReason = "Too expensive";
+              } else {
+                targetMissReason = getTargetBidBlockReason(
+                  newTeams[userTeamId], player, currentBid, newPlayers, userPurchasesDuringSkip > 0, protectedTargetReserve
+                ) ?? "Too expensive";
+              }
+            }
+
+            if (finalWinnerId === userTeamId) userPurchasesDuringSkip++;
+
             results.push({
               player: newPlayers[player.id],
               status: "sold",
               teamId: finalWinnerId,
               price: finalPrice,
               usedRtm,
+              targetMissReason,
             });
           }
         });
@@ -965,6 +1140,8 @@ export const useGameStore = create<Store>()(
           set({
             teams: newTeams,
             players: newPlayers,
+            auctionTargets: removeResolvedAuctionTargets(auctionTargets, results.map((result) => result.player.id)),
+            auctionTargetPriorities: removeResolvedAuctionTargets(auctionTargetPriorities, results.map((result) => result.player.id)),
             isPaused: false,
             skipSetSummary: null,
             auction: {
@@ -983,9 +1160,14 @@ export const useGameStore = create<Store>()(
             },
           });
         } else {
+          const soldResultIds = results
+            .filter((result) => result.status === "sold")
+            .map((result) => result.player.id);
           set({
             teams: newTeams,
             players: newPlayers,
+            auctionTargets: removeResolvedAuctionTargets(auctionTargets, soldResultIds),
+            auctionTargetPriorities: removeResolvedAuctionTargets(auctionTargetPriorities, soldResultIds),
             isPaused: true,
             skipSetSummary: {
               setIndex: auction.currentSetIndex,
@@ -1010,7 +1192,7 @@ export const useGameStore = create<Store>()(
 
       skipAllAuction: () => {
         const state = get();
-        const { auction, players, teams, userTeamId } = state;
+        const { auction, players, teams, userTeamId, auctionTargets, auctionTargetPriorities } = state;
         if (!auction || auction.phase !== "live") return;
 
         _hammerLotId = null;
@@ -1022,6 +1204,8 @@ export const useGameStore = create<Store>()(
         let newSaleHistory = [...(auction.saleHistory ?? [])];
         let currentLotIndex = auction.currentLotIndex;
         const totalLots = auction.allPlayerIds.length;
+        const targetResults = new Map<string, SkipSetResultItem>();
+        let userPurchasesDuringSkip = 0;
 
         // Gather all remaining players across all remaining sets
         const remainingPlayerIds: string[] = [];
@@ -1037,10 +1221,14 @@ export const useGameStore = create<Store>()(
           remainingPlayerIds.push(...auction.sets[i].playerIds);
         }
 
+        const pendingTargetIds = new Set(remainingPlayerIds.filter((id) => auctionTargets[id] !== undefined));
+        let isFirstProcessed = true;
         const simulateOne = (playerId: string) => {
           const player = newPlayers[playerId];
           if (!player) return;
 
+          const isCurrentLiveLot = isFirstProcessed && auction.currentPlayer?.id === player.id;
+          isFirstProcessed = false;
           resetLotCache();
 
           const ctx: AuctionContext = {
@@ -1053,24 +1241,35 @@ export const useGameStore = create<Store>()(
             isAcceleratedPhase: auction.isAcceleratedPhase,
           };
 
-          let currentBid = player.basePrice;
-          let highBidderTeamId: string | null = null;
-          let biddingHistory: BidEntry[] = [];
+          let currentBid = isCurrentLiveLot ? auction.currentBid : player.basePrice;
+          let highBidderTeamId: string | null = isCurrentLiveLot
+            ? auction.currentHighBidderTeamId
+            : null;
+          let biddingHistory: BidEntry[] = isCurrentLiveLot
+            ? [...auction.biddingHistory]
+            : [];
 
           let iterations = 0;
           const MAX_ITER = 300;
+          const targetMaxBid = auctionTargets[player.id];
+          const targetPriority = auctionTargetPriorities[player.id] ?? "medium";
+          pendingTargetIds.delete(player.id);
+          const protectedTargetReserve = getProtectedTargetReserve(
+            player.id, pendingTargetIds, auctionTargets, auctionTargetPriorities, newTeams[userTeamId], newPlayers
+          );
           while (iterations < MAX_ITER) {
             iterations++;
-            const nextBid = getNextBidAmount(currentBid);
+            const nextBid: number = highBidderTeamId ? getNextBidAmount(currentBid) : currentBid;
 
-            const interested = Object.values(newTeams).filter((t) => {
+            const interested: Team[] = Object.values(newTeams).filter((t: Team): boolean => {
               if (t.id === highBidderTeamId) return false;
-              return canTeamBidDuringSkip(t, player, nextBid, player.id, newPlayers, ctx, userTeamId);
+              return canTeamBidDuringSkip(t, player, nextBid, player.id, newPlayers, ctx, userTeamId, targetMaxBid, protectedTargetReserve);
             });
 
             if (interested.length === 0) break;
 
-            const bidder = pickBiddingTeam(interested, player, player.id, newPlayers, ctx);
+            const bidder: Team | null | undefined = interested.find((team: Team) => team.id === userTeamId && targetMaxBid !== undefined)
+              ?? pickBiddingTeam(interested, player, player.id, newPlayers, ctx);
             if (!bidder) break;
 
             currentBid = nextBid;
@@ -1080,6 +1279,15 @@ export const useGameStore = create<Store>()(
 
           if (!highBidderTeamId) {
             newUnsoldIds.push(player.id);
+            if (targetMaxBid !== undefined) {
+              targetResults.set(player.id, {
+                player,
+                status: "unsold",
+                targetMissReason: getTargetBidBlockReason(
+                  newTeams[userTeamId], player, player.basePrice, newPlayers, userPurchasesDuringSkip > 0, protectedTargetReserve
+                ) ?? "Too expensive",
+              });
+            }
           } else {
             let finalWinnerId = highBidderTeamId;
             let finalPrice = currentBid;
@@ -1089,10 +1297,13 @@ export const useGameStore = create<Store>()(
 
             if (rtmTeamId) {
               const rtmTeam = newTeams[rtmTeamId];
-              const aiOrigValuation = getCachedValuation(rtmTeamId) || getLotValuation(player.id, rtmTeam, player, newPlayers, ctx);
+              const aiOrigValuation = rtmTeamId === userTeamId && targetMaxBid !== undefined
+                ? targetMaxBid
+                : getCachedValuation(rtmTeamId) || getLotValuation(player.id, rtmTeam, player, newPlayers, ctx);
               const loyaltyBonus = 1.0 + (rtmTeam?.dna.loyalty ?? 50) / 100 * 0.25;
+              const rtmCeiling = rtmTeamId === userTeamId ? aiOrigValuation : aiOrigValuation * loyaltyBonus;
 
-              if (aiOrigValuation * loyaltyBonus > currentBid && canTeamAffordBid(rtmTeam, currentBid, newPlayers)) {
+              if (rtmCeiling >= currentBid && canAffordTargetRtm(rtmTeam, currentBid, newPlayers, rtmTeamId === userTeamId, targetPriority, protectedTargetReserve)) {
                 const winnerTeam = newTeams[highBidderTeamId];
                 const aiWinnerValuation = getCachedValuation(highBidderTeamId) || getLotValuation(player.id, winnerTeam, player, newPlayers, ctx);
 
@@ -1102,7 +1313,7 @@ export const useGameStore = create<Store>()(
                   while (counterAmount < target) counterAmount = getNextBidAmount(counterAmount);
                   if (counterAmount <= currentBid) counterAmount = getNextBidAmount(currentBid);
 
-                  if (aiOrigValuation * loyaltyBonus >= counterAmount && canTeamAffordBid(rtmTeam, counterAmount, newPlayers)) {
+                  if (rtmCeiling >= counterAmount && canAffordTargetRtm(rtmTeam, counterAmount, newPlayers, rtmTeamId === userTeamId, targetPriority, protectedTargetReserve)) {
                     finalWinnerId = rtmTeamId;
                     finalPrice = counterAmount;
                     usedRtm = true;
@@ -1116,6 +1327,13 @@ export const useGameStore = create<Store>()(
                   usedRtm = true;
                 }
               }
+            }
+
+            if (finalWinnerId === userTeamId && targetMaxBid !== undefined && rtmTeamId &&
+                (finalPrice > targetMaxBid || (targetPriority !== "high" && newTeams[userTeamId].remainingPurse - finalPrice < protectedTargetReserve))) {
+              finalWinnerId = rtmTeamId;
+              finalPrice = currentBid;
+              usedRtm = true;
             }
 
             const winnerTeam = newTeams[finalWinnerId];
@@ -1153,6 +1371,32 @@ export const useGameStore = create<Store>()(
               lot: currentLotIndex,
               bids: biddingHistory,
             });
+
+            if (targetMaxBid !== undefined) {
+              let targetMissReason: string | undefined;
+              if (finalWinnerId !== userTeamId) {
+                if (targetPriority !== "high" && newTeams[userTeamId].remainingPurse - finalPrice < protectedTargetReserve) {
+                  targetMissReason = "Funds reserved for higher-priority targets";
+                } else if (usedRtm && finalPrice <= targetMaxBid) {
+                  targetMissReason = `${newTeams[finalWinnerId]?.name ?? finalWinnerId} exercised RTM`;
+                } else if (finalPrice > targetMaxBid) {
+                  targetMissReason = "Too expensive";
+                } else {
+                  targetMissReason = getTargetBidBlockReason(
+                    newTeams[userTeamId], player, currentBid, newPlayers, userPurchasesDuringSkip > 0, protectedTargetReserve
+                  ) ?? "Too expensive";
+                }
+              }
+              targetResults.set(player.id, {
+                player: newPlayers[player.id],
+                status: "sold",
+                teamId: finalWinnerId,
+                price: finalPrice,
+                usedRtm,
+                targetMissReason,
+              });
+              if (finalWinnerId === userTeamId) userPurchasesDuringSkip++;
+            }
           }
           currentLotIndex++;
         };
@@ -1174,6 +1418,9 @@ export const useGameStore = create<Store>()(
           const playersToSimulate = unsoldPlayers.map(p => p.id);
           newUnsoldIds = [];
 
+          playersToSimulate.forEach((id) => {
+            if (auctionTargets[id] !== undefined) pendingTargetIds.add(id);
+          });
           playersToSimulate.forEach(simulateOne);
 
           const madeProgress = newUnsoldIds.length < lastAccelUnsoldCount;
@@ -1196,8 +1443,14 @@ export const useGameStore = create<Store>()(
         set({
           teams: newTeams,
           players: newPlayers,
+          auctionTargets: removeResolvedAuctionTargets(auctionTargets, remainingPlayerIds),
+          auctionTargetPriorities: removeResolvedAuctionTargets(auctionTargetPriorities, remainingPlayerIds),
           isPaused: false,
-          skipSetSummary: null,
+          skipSetSummary: targetResults.size > 0 ? {
+            setIndex: -1,
+            setName: "Target Results",
+            results: Array.from(targetResults.values()),
+          } : null,
           auction: {
             ...auction,
             sets: updatedSets,
@@ -1217,7 +1470,7 @@ export const useGameStore = create<Store>()(
 
       skipToAcceleratedAuction: () => {
         const state = get();
-        const { auction, players, teams, userTeamId } = state;
+        const { auction, players, teams, userTeamId, auctionTargets, auctionTargetPriorities } = state;
         if (!auction || auction.phase !== "live") return;
 
         _hammerLotId = null;
@@ -1241,10 +1494,14 @@ export const useGameStore = create<Store>()(
           remainingPlayerIds.push(...auction.sets[i].playerIds);
         }
 
+        const pendingTargetIds = new Set(remainingPlayerIds.filter((id) => auctionTargets[id] !== undefined));
+        let isFirstProcessed = true;
         const simulateOne = (playerId: string) => {
           const player = newPlayers[playerId];
           if (!player) return;
 
+          const isCurrentLiveLot = isFirstProcessed && auction.currentPlayer?.id === player.id;
+          isFirstProcessed = false;
           resetLotCache();
 
           const ctx: AuctionContext = {
@@ -1257,24 +1514,35 @@ export const useGameStore = create<Store>()(
             isAcceleratedPhase: auction.isAcceleratedPhase,
           };
 
-          let currentBid = player.basePrice;
-          let highBidderTeamId: string | null = null;
-          let biddingHistory: BidEntry[] = [];
+          let currentBid = isCurrentLiveLot ? auction.currentBid : player.basePrice;
+          let highBidderTeamId: string | null = isCurrentLiveLot
+            ? auction.currentHighBidderTeamId
+            : null;
+          let biddingHistory: BidEntry[] = isCurrentLiveLot
+            ? [...auction.biddingHistory]
+            : [];
 
           let iterations = 0;
           const MAX_ITER = 300;
+          const targetMaxBid = auctionTargets[player.id];
+          const targetPriority = auctionTargetPriorities[player.id] ?? "medium";
+          pendingTargetIds.delete(player.id);
+          const protectedTargetReserve = getProtectedTargetReserve(
+            player.id, pendingTargetIds, auctionTargets, auctionTargetPriorities, newTeams[userTeamId], newPlayers
+          );
           while (iterations < MAX_ITER) {
             iterations++;
-            const nextBid = getNextBidAmount(currentBid);
+            const nextBid: number = highBidderTeamId ? getNextBidAmount(currentBid) : currentBid;
 
-            const interested = Object.values(newTeams).filter((t) => {
+            const interested: Team[] = Object.values(newTeams).filter((t: Team): boolean => {
               if (t.id === highBidderTeamId) return false;
-              return canTeamBidDuringSkip(t, player, nextBid, player.id, newPlayers, ctx, userTeamId);
+              return canTeamBidDuringSkip(t, player, nextBid, player.id, newPlayers, ctx, userTeamId, targetMaxBid, protectedTargetReserve);
             });
 
             if (interested.length === 0) break;
 
-            const bidder = pickBiddingTeam(interested, player, player.id, newPlayers, ctx);
+            const bidder: Team | null | undefined = interested.find((team: Team) => team.id === userTeamId && targetMaxBid !== undefined)
+              ?? pickBiddingTeam(interested, player, player.id, newPlayers, ctx);
             if (!bidder) break;
 
             currentBid = nextBid;
@@ -1293,10 +1561,13 @@ export const useGameStore = create<Store>()(
 
             if (rtmTeamId) {
               const rtmTeam = newTeams[rtmTeamId];
-              const aiOrigValuation = getCachedValuation(rtmTeamId) || getLotValuation(player.id, rtmTeam, player, newPlayers, ctx);
+              const aiOrigValuation = rtmTeamId === userTeamId && targetMaxBid !== undefined
+                ? targetMaxBid
+                : getCachedValuation(rtmTeamId) || getLotValuation(player.id, rtmTeam, player, newPlayers, ctx);
               const loyaltyBonus = 1.0 + (rtmTeam?.dna.loyalty ?? 50) / 100 * 0.25;
+              const rtmCeiling = rtmTeamId === userTeamId ? aiOrigValuation : aiOrigValuation * loyaltyBonus;
 
-              if (aiOrigValuation * loyaltyBonus > currentBid && canTeamAffordBid(rtmTeam, currentBid, newPlayers)) {
+              if (rtmCeiling >= currentBid && canAffordTargetRtm(rtmTeam, currentBid, newPlayers, rtmTeamId === userTeamId, targetPriority, protectedTargetReserve)) {
                 const winnerTeam = newTeams[highBidderTeamId];
                 const aiWinnerValuation = getCachedValuation(highBidderTeamId) || getLotValuation(player.id, winnerTeam, player, newPlayers, ctx);
 
@@ -1306,7 +1577,7 @@ export const useGameStore = create<Store>()(
                   while (counterAmount < target) counterAmount = getNextBidAmount(counterAmount);
                   if (counterAmount <= currentBid) counterAmount = getNextBidAmount(currentBid);
 
-                  if (aiOrigValuation * loyaltyBonus >= counterAmount && canTeamAffordBid(rtmTeam, counterAmount, newPlayers)) {
+                  if (rtmCeiling >= counterAmount && canAffordTargetRtm(rtmTeam, counterAmount, newPlayers, rtmTeamId === userTeamId, targetPriority, protectedTargetReserve)) {
                     finalWinnerId = rtmTeamId;
                     finalPrice = counterAmount;
                     usedRtm = true;
@@ -1320,6 +1591,13 @@ export const useGameStore = create<Store>()(
                   usedRtm = true;
                 }
               }
+            }
+
+            if (finalWinnerId === userTeamId && targetMaxBid !== undefined && rtmTeamId &&
+                (finalPrice > targetMaxBid || (targetPriority !== "high" && newTeams[userTeamId].remainingPurse - finalPrice < protectedTargetReserve))) {
+              finalWinnerId = rtmTeamId;
+              finalPrice = currentBid;
+              usedRtm = true;
             }
 
             const winnerTeam = newTeams[finalWinnerId];
@@ -1380,6 +1658,7 @@ export const useGameStore = create<Store>()(
         });
 
         if (unsoldPlayers.length > 0) {
+          const soldDuringSkipIds = remainingPlayerIds.filter((id) => newSoldIds.includes(id));
           const acceleratedSets = [{
             id: "accelerated",
             name: "Accelerated Auction",
@@ -1393,6 +1672,8 @@ export const useGameStore = create<Store>()(
           set({
             teams: newTeams,
             players: newPlayers,
+            auctionTargets: removeResolvedAuctionTargets(auctionTargets, soldDuringSkipIds),
+            auctionTargetPriorities: removeResolvedAuctionTargets(auctionTargetPriorities, soldDuringSkipIds),
             isPaused: true,
             skipSetSummary: null,
             auction: {
@@ -1427,6 +1708,8 @@ export const useGameStore = create<Store>()(
           set({
             teams: newTeams,
             players: newPlayers,
+            auctionTargets: removeResolvedAuctionTargets(auctionTargets, remainingPlayerIds),
+            auctionTargetPriorities: removeResolvedAuctionTargets(auctionTargetPriorities, remainingPlayerIds),
             isPaused: false,
             skipSetSummary: null,
             auction: {
@@ -1458,6 +1741,8 @@ export const useGameStore = create<Store>()(
           isSetupComplete: false,
           isPaused: false,
           speed: 1,
+          auctionTargets: {},
+          auctionTargetPriorities: {},
         });
       },
     }),
@@ -1477,10 +1762,17 @@ export const useGameStore = create<Store>()(
         isSetupComplete: state.isSetupComplete,
         isPaused: state.isPaused,
         speed: state.speed,
+        auctionTargets: state.auctionTargets,
+        auctionTargetPriorities: state.auctionTargetPriorities,
       }),
       merge: (persisted, current) => {
         const p = persisted as Partial<Store>;
-        return { ...current, ...p };
+        return {
+          ...current,
+          ...p,
+          auctionTargets: p.auctionTargets ?? {},
+          auctionTargetPriorities: p.auctionTargetPriorities ?? {},
+        };
       },
     }
   )
@@ -1729,6 +2021,8 @@ function hammerFall() {
     return {
       teams: newTeams,
       players: newPlayers,
+      auctionTargets: removeResolvedAuctionTargets(s.auctionTargets, [player.id]),
+      auctionTargetPriorities: removeResolvedAuctionTargets(s.auctionTargetPriorities, [player.id]),
       auction: s.auction ? { ...s.auction, soldPlayerIds: newSoldIds, teamPurses: newPurses } : null,
     };
   });
@@ -1917,6 +2211,8 @@ function advanceToNextLot() {
     useGameStore.setState((s) => ({
       teams: currentTeams,
       players: currentPlayers,
+      auctionTargets: {},
+      auctionTargetPriorities: {},
       auction: s.auction ? { ...s.auction, phase: "completed", currentPlayer: null, soldFlash: null, unsoldFlash: null } : null,
     }));
     return;
@@ -2047,7 +2343,7 @@ function ensureMinimumSquadSizes(
   const isIndianBatter = (p: Player) => p.nationality === "Indian" && (p.role === "Batsman" || p.role === "WK-Batsman");
   const ratingOf = (p: Player) => Math.max(p.currentBatting ?? 0, p.currentBowling ?? 0);
 
-  const getMinSize = (t: Team) => 22;
+  const getMinSize = (t: Team) => (t.id === userTeamId ? 18 : 22);
 
   const getBowlersCount = (t: Team) => t.squad.map(id => players[id]).filter(p => p && (p.role === "Pace Bowler" || p.role === "Spin Bowler")).length;
   const getKeepersCount = (t: Team) => t.squad.map(id => players[id]).filter(p => p && isWK(p)).length;

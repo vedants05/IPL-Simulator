@@ -1,7 +1,9 @@
 "use client";
 import { useState } from "react";
+import { Target, X } from "lucide-react";
 import { useGameStore } from "@/lib/store/gameStore";
-import { Player } from "@/lib/types";
+import { AuctionTargetPriority, Player } from "@/lib/types";
+import { MAX_AUCTION_TARGETS, canTeamAffordBid, canTeamBidOnPlayer } from "@/lib/logic/auctionRules";
 import PlayerCard from "./PlayerCard";
 
 type PopupType = "sold" | "unsold" | "left";
@@ -25,14 +27,46 @@ function PlayerRow({
   soldPrice,
   buyerTeamName,
   buyerColor,
+  targetMax,
+  targetPriority,
+  onSetTarget,
+  onRemoveTarget,
 }: {
   player: Player;
   type: PopupType;
   soldPrice?: number;
   buyerTeamName?: string;
   buyerColor?: string;
+  targetMax?: number;
+  targetPriority?: AuctionTargetPriority;
+  onSetTarget?: (maxBidLakhs: number, priority: AuctionTargetPriority) => void;
+  onRemoveTarget?: () => void;
 }) {
+  const players = useGameStore((state) => state.players);
+  const userTeam = useGameStore((state) => state.teams[state.userTeamId]);
+  const auctionTargets = useGameStore((state) => state.auctionTargets);
   const [isOpen, setIsOpen] = useState(false);
+  const [showTargetEditor, setShowTargetEditor] = useState(false);
+  const [maxBidCrore, setMaxBidCrore] = useState(
+    ((targetMax ?? player.basePrice) / 100).toFixed(2)
+  );
+  const [priority, setPriority] = useState<AuctionTargetPriority>(targetPriority ?? "medium");
+  const parsedMaxLakhs = Number(maxBidCrore) * 100;
+  const invalidLimit = !Number.isFinite(parsedMaxLakhs) || parsedMaxLakhs < player.basePrice;
+  const bidEligibility = userTeam
+    ? canTeamBidOnPlayer(userTeam, player, players, false)
+    : { canBid: false, reason: "No active team" };
+  const canAffordOpeningBid = userTeam
+    ? canTeamAffordBid(userTeam, player.basePrice, players)
+    : false;
+  const impossibleTargetReason = !bidEligibility.canBid
+    ? bidEligibility.reason ?? "Squad rules prevent bidding for this player"
+    : !canAffordOpeningBid
+      ? "Insufficient purse or required squad reserve for the opening bid"
+      : null;
+  const targetLimitReached = targetMax === undefined && Object.keys(auctionTargets ?? {}).length >= MAX_AUCTION_TARGETS;
+  const targetButtonLocked = impossibleTargetReason !== null;
+  const targetButtonDisabled = targetButtonLocked || targetLimitReached;
 
   return (
     <div className="flex flex-col border-b border-border/10">
@@ -63,6 +97,44 @@ function PlayerRow({
         </div>
 
         <div className="flex items-center gap-3 shrink-0 ml-4">
+          {type === "left" && (
+            <button
+              disabled={targetButtonDisabled}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (targetButtonDisabled) return;
+                setMaxBidCrore(((targetMax ?? player.basePrice) / 100).toFixed(2));
+                setPriority(targetPriority ?? "medium");
+                setShowTargetEditor((value) => !value);
+              }}
+              className="flex items-center gap-1 rounded border px-2 py-1 font-space-mono text-[8px] font-bold tracking-wider transition-colors"
+              style={targetMax !== undefined ? {
+                backgroundColor: "var(--team-accent)",
+                borderColor: "var(--team-accent)",
+                color: "var(--team-accent-text)",
+                } : {
+                backgroundColor: targetButtonDisabled ? "rgba(22, 19, 15, 0.06)" : "transparent",
+                borderColor: targetButtonDisabled ? "rgba(22, 19, 15, 0.25)" : "var(--ink)",
+                color: targetButtonDisabled ? "rgba(22, 19, 15, 0.45)" : "var(--ink)",
+              }}
+              title={
+                targetButtonLocked
+                  ? `Cannot mark as target: ${impossibleTargetReason}`
+                  : targetLimitReached
+                    ? `Target limit reached (${MAX_AUCTION_TARGETS}/${MAX_AUCTION_TARGETS})`
+                  : "Set an automatic bid limit for skipped auction simulation"
+              }
+            >
+              <Target size={10} />
+              {targetMax !== undefined
+                ? `${(targetPriority ?? "medium").toUpperCase()} · ${crore(targetMax)}`
+                : targetButtonLocked
+                  ? "UNAVAILABLE"
+                  : targetLimitReached
+                    ? "LIMIT"
+                  : "TARGET"}
+            </button>
+          )}
           {type === "sold" && buyerTeamName && (
             <div className="flex items-center gap-1.5">
               <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: buyerColor ?? "#8a8378" }} />
@@ -83,6 +155,73 @@ function PlayerRow({
         </div>
       </div>
 
+      {type === "left" && showTargetEditor && (
+        <div
+          className="flex items-center gap-3 border-t border-border/20 bg-surface2 px-6 py-3"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="min-w-0 flex-1">
+            <div className="font-space-mono text-[9px] font-bold uppercase tracking-wider text-text-primary">
+              Skip-auction maximum bid
+            </div>
+            <div className="font-barlow text-[10px] text-text-secondary">
+              Only used when you skip. Minimum {crore(player.basePrice)}.
+            </div>
+            {impossibleTargetReason && (
+              <div className="mt-1 font-barlow text-[10px] font-semibold text-danger">
+                Cannot set target: {impossibleTargetReason}
+              </div>
+            )}
+          </div>
+          <select
+            value={priority}
+            onChange={(event) => setPriority(event.target.value as AuctionTargetPriority)}
+            className="h-8 rounded border border-border bg-surface px-2 font-space-mono text-[9px] font-bold uppercase text-text-primary outline-none"
+            aria-label={`Target priority for ${player.name}`}
+          >
+            <option value="high">High</option>
+            <option value="medium">Medium</option>
+            <option value="low">Low</option>
+          </select>
+          <div className="flex items-center overflow-hidden rounded border border-border bg-surface">
+            <span className="px-2 font-space-mono text-[10px] font-bold text-text-secondary">₹</span>
+            <input
+              type="number"
+              min={(player.basePrice / 100).toFixed(2)}
+              step="0.05"
+              value={maxBidCrore}
+              onChange={(e) => setMaxBidCrore(e.target.value)}
+              className="h-8 w-20 bg-transparent px-1 font-space-mono text-[11px] font-bold text-text-primary outline-none"
+              aria-label={`Maximum skipped-auction bid for ${player.name} in crore`}
+            />
+            <span className="pr-2 font-space-mono text-[9px] text-text-secondary">Cr</span>
+          </div>
+          <button
+            disabled={invalidLimit || !!impossibleTargetReason}
+            onClick={() => {
+              onSetTarget?.(parsedMaxLakhs, priority);
+              setShowTargetEditor(false);
+            }}
+            className="h-8 rounded px-3 font-space-mono text-[9px] font-bold uppercase tracking-wider disabled:cursor-not-allowed disabled:opacity-40"
+            style={{ backgroundColor: "var(--team-accent)", color: "var(--team-accent-text)" }}
+          >
+            Save target
+          </button>
+          {targetMax !== undefined && (
+            <button
+              onClick={() => {
+                onRemoveTarget?.();
+                setShowTargetEditor(false);
+              }}
+              className="flex h-8 w-8 items-center justify-center rounded border border-danger text-danger hover:bg-danger hover:text-white"
+              title="Remove target"
+            >
+              <X size={13} />
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Expanded profile dropdown */}
       {isOpen && (
         <div className="bg-surface/50 border-t border-b border-border/20 p-2 overflow-hidden">
@@ -100,7 +239,7 @@ export default function PlayerListPopup({
   type: PopupType;
   onClose: () => void;
 }) {
-  const { auction, players, teams } = useGameStore();
+  const { auction, players, teams, userTeamId, auctionTargets, auctionTargetPriorities, setAuctionTarget, removeAuctionTarget } = useGameStore();
   if (!auction) return null;
 
   const ids =
@@ -116,6 +255,15 @@ export default function PlayerListPopup({
 
   const playerList = ids.map((id) => players[id]).filter(Boolean) as Player[];
   const saleMap = new Map((auction.saleHistory ?? []).map((s) => [s.playerId, s]));
+  const userTeam = teams[userTeamId];
+  const protectedTargetFunds = Object.entries(auctionTargets).reduce((total, [playerId, maxBid]) => {
+    const priority = auctionTargetPriorities[playerId] ?? "medium";
+    const player = players[playerId];
+    if (priority === "low" || !player || !userTeam) return total;
+    if (!canTeamBidOnPlayer(userTeam, player, players, false).canBid) return total;
+    if (!canTeamAffordBid(userTeam, player.basePrice, players)) return total;
+    return total + maxBid;
+  }, 0);
 
   const labelMap: Record<PopupType, string> = {
     sold: "SOLD PLAYERS",
@@ -150,6 +298,12 @@ export default function PlayerListPopup({
             <div className="font-anton text-[30px] leading-none uppercase" style={{ color: "var(--team-bid-text, #ffffff)" }}>
               {playerList.length} Players
             </div>
+            {type === "left" && Object.keys(auctionTargets).length > 0 && (
+              <div className="mt-1 space-y-0.5 font-space-mono text-[8px] font-bold uppercase tracking-wider" style={{ color: "var(--team-bid-muted, #9aa4bc)" }}>
+                <div>{Object.keys(auctionTargets).length} skip target{Object.keys(auctionTargets).length === 1 ? "" : "s"} active</div>
+                <div>High + Medium target ceilings: {crore(protectedTargetFunds)}</div>
+              </div>
+            )}
           </div>
           <button
             onClick={onClose}
@@ -207,6 +361,10 @@ export default function PlayerListPopup({
                       key={p.id}
                       player={p}
                       type={type}
+                      targetMax={auctionTargets[p.id]}
+                      targetPriority={auctionTargetPriorities[p.id]}
+                      onSetTarget={(maxBid, priority) => setAuctionTarget(p.id, maxBid, priority)}
+                      onRemoveTarget={() => removeAuctionTarget(p.id)}
                     />
                   ))}
                 </div>

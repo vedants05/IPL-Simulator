@@ -14,7 +14,8 @@ export default function SkipSetSummaryModal() {
   if (!skipSetSummary) return null;
 
   const userTeam = teams[userTeamId];
-  const { setName, results } = skipSetSummary;
+  const { setIndex, setName, results } = skipSetSummary;
+  const isTargetSummary = setIndex === -1;
 
   const theme = TEAM_THEMES[userTeamId];
   const headerGradient = theme?.overlayGradient ?? "linear-gradient(135deg, #1c180c 0%, #0d0b06 100%)";
@@ -24,6 +25,7 @@ export default function SkipSetSummaryModal() {
   const ctaText = theme?.ctaText ?? "var(--ink)";
 
   const soldCount = results.filter((r) => r.status === "sold").length;
+  const targetsWon = results.filter((r) => r.status === "sold" && r.teamId === userTeamId).length;
 
   return (
     <div
@@ -49,7 +51,7 @@ export default function SkipSetSummaryModal() {
                 className="font-space-mono font-bold text-[10px] tracking-[.28em] uppercase mb-1.5"
                 style={{ color: accent }}
               >
-                Set Complete · Skipped
+                {isTargetSummary ? "Auction Complete · Targets" : "Set Complete · Skipped"}
               </div>
               <h2
                 className="font-anton text-[26px] leading-none uppercase tracking-wide truncate"
@@ -74,10 +76,10 @@ export default function SkipSetSummaryModal() {
           {/* Summary counts */}
           <div className="flex items-center gap-4 mt-3">
             <span className="font-space-mono text-[10px] tracking-widest uppercase" style={{ color: headerText, opacity: 0.85 }}>
-              <span className="font-bold" style={{ color: accent }}>{soldCount}</span> Sold
+              <span className="font-bold" style={{ color: accent }}>{isTargetSummary ? targetsWon : soldCount}</span> {isTargetSummary ? "Won" : "Sold"}
             </span>
             <span className="font-space-mono text-[10px] tracking-widest uppercase" style={{ color: headerText, opacity: 0.85 }}>
-              <span className="font-bold" style={{ color: accent }}>{results.length - soldCount}</span> Unsold
+              <span className="font-bold" style={{ color: accent }}>{isTargetSummary ? results.length - targetsWon : results.length - soldCount}</span> {isTargetSummary ? "Missed" : "Unsold"}
             </span>
             <span className="font-space-mono text-[10px] tracking-widest uppercase ml-auto" style={{ color: headerText, opacity: 0.6 }}>
               {results.length} Players
@@ -113,7 +115,16 @@ export default function SkipSetSummaryModal() {
 
                 {/* Outcome */}
                 <div className="shrink-0 flex items-center gap-1.5">
-                  {isSold ? (
+                  {item.targetMissReason && !item.targetRemainsActive && (
+                    <span className="max-w-[180px] text-right font-space-mono text-[8px] font-bold uppercase tracking-wide text-[#d6492f]">
+                      {item.targetMissReason}
+                    </span>
+                  )}
+                  {item.targetRemainsActive ? (
+                    <span className="font-space-mono font-bold text-[8px] tracking-wide text-[var(--ink)] bg-[var(--ink)]/[0.07] px-2 py-1 rounded-[4px] uppercase">
+                      Unsold — remains targeted
+                    </span>
+                  ) : isSold ? (
                     <>
                       {item.usedRtm && (
                         <span className="font-space-mono font-bold text-[8px] tracking-widest uppercase text-[var(--ink)]/60 border border-[var(--ink)]/15 px-1.5 py-0.5 rounded-[3px]">
@@ -152,7 +163,7 @@ export default function SkipSetSummaryModal() {
               border: "1.5px solid var(--ink)",
             }}
           >
-            NEXT SET <ArrowRight size={14} className="inline ml-1" />
+            {isTargetSummary ? "VIEW AUCTION RESULTS" : "NEXT SET"} <ArrowRight size={14} className="inline ml-1" />
           </button>
         </div>
       </div>

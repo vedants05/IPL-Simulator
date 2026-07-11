@@ -211,6 +211,8 @@ export interface SkipSetResultItem {
   teamId?: string;
   price?: number;
   usedRtm?: boolean;
+  targetMissReason?: string;
+  targetRemainsActive?: boolean;
 }
 
 export interface SkipSetSummary {
@@ -218,6 +220,8 @@ export interface SkipSetSummary {
   setName: string;
   results: SkipSetResultItem[];
 }
+
+export type AuctionTargetPriority = "high" | "medium" | "low";
 
 export interface GameState {
   saveId: string;

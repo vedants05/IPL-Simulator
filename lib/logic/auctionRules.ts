@@ -1,6 +1,7 @@
 import { Player, Team, AuctionSet } from "@/lib/types";
 
 export const TOTAL_PURSE_LAKHS = 12000; // ₹120 crore in lakhs
+export const MAX_AUCTION_TARGETS = 5;
 
 // IPL 2026 mega-auction retention costs
 export const CAPPED_RETENTION_COSTS = [1800, 1400, 1100, 1800, 1400];
@@ -88,6 +89,20 @@ export function getNextBidAmount(currentBid: number): number {
   if (currentBid < 200) return currentBid + 10;
   if (currentBid < 500) return currentBid + 20;
   return currentBid + 25;
+}
+
+export function roundDownToLegalBid(basePrice: number, requestedAmount: number): number {
+  if (requestedAmount <= basePrice) return basePrice;
+  if (requestedAmount < 100) {
+    return Math.max(basePrice, Math.floor(requestedAmount / 5) * 5);
+  }
+  if (requestedAmount < 200) {
+    return Math.max(basePrice, 100 + Math.floor((requestedAmount - 100) / 10) * 10);
+  }
+  if (requestedAmount < 500) {
+    return Math.max(basePrice, 200 + Math.floor((requestedAmount - 200) / 20) * 20);
+  }
+  return Math.max(basePrice, 500 + Math.floor((requestedAmount - 500) / 25) * 25);
 }
 
 export function formatPrice(lakhs: number): string {
@@ -245,7 +260,8 @@ const isKeeper = (p: Player) => !!(p.isWicketkeeper || p.isPartTimeWk || p.role 
 export function canTeamBidOnPlayer(
   team: Team,
   player: Player,
-  allPlayers?: Record<string, Player>
+  allPlayers?: Record<string, Player>,
+  enforceAllRounderLimit = true
 ): { canBid: boolean; reason?: string } {
   if (team.squad.length >= team.maxSquadSize) {
     return { canBid: false, reason: "Squad is full (25/25)" };
@@ -255,7 +271,7 @@ export function canTeamBidOnPlayer(
     return { canBid: false, reason: "Overseas cap reached (8/8)" };
   }
 
-  if (player.role === "All-Rounder" && allPlayers) {
+  if (enforceAllRounderLimit && player.role === "All-Rounder" && allPlayers) {
     const squadPlayers = team.squad.map(id => allPlayers[id]).filter(Boolean);
     const allRoundersCount = squadPlayers.filter(p => p.role === "All-Rounder").length;
     if (allRoundersCount >= 6) {

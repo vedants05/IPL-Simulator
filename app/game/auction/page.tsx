@@ -13,14 +13,31 @@ import SoldAnimation from "@/components/auction/SoldAnimation";
 import UnsoldAnimation from "@/components/auction/UnsoldAnimation";
 import PlayerListPopup from "@/components/auction/PlayerListPopup";
 import SkipSetSummaryModal from "@/components/auction/SkipSetSummaryModal";
+import { Target, X } from "lucide-react";
+import { formatPrice } from "@/lib/logic/auctionRules";
 
 type PopupTab = "sold" | "unsold" | "left" | null;
 
 export default function AuctionPage() {
-  const { auction, teams, userTeamId } = useGameStore();
+  const { auction, teams, userTeamId, auctionTargets } = useGameStore();
   const startAuction = useGameStore((s) => s.startAuction);
   const [activePopup, setActivePopup] = useState<PopupTab>(null);
+  const [showTargetNotice, setShowTargetNotice] = useState(false);
   const setPaused = useGameStore((s) => s.setPaused);
+
+  const currentPlayerId = auction?.currentPlayer?.id;
+  const currentTargetMax = currentPlayerId ? auctionTargets[currentPlayerId] : undefined;
+
+  useEffect(() => {
+    if (!currentPlayerId || currentTargetMax === undefined) {
+      setShowTargetNotice(false);
+      return;
+    }
+
+    setShowTargetNotice(true);
+    const timeout = window.setTimeout(() => setShowTargetNotice(false), 5000);
+    return () => window.clearTimeout(timeout);
+  }, [currentPlayerId, currentTargetMax]);
 
   useEffect(() => {
     if (activePopup) {
@@ -48,7 +65,12 @@ export default function AuctionPage() {
   }
 
   if (auction.phase === "completed") {
-    return <AuctionComplete />;
+    return (
+      <>
+        <AuctionComplete />
+        <SkipSetSummaryModal />
+      </>
+    );
   }
 
   const needsStart = auction.phase === "live" && !auction.currentPlayer;
@@ -57,6 +79,43 @@ export default function AuctionPage() {
 
   return (
     <div className="h-[calc(100vh-3rem)] flex flex-col overflow-hidden bg-bg">
+      {showTargetNotice && auction.currentPlayer && currentTargetMax !== undefined && (
+        <div
+          className="fixed right-5 top-16 z-[90] flex w-[340px] items-start gap-3 rounded-[6px] border-2 p-3 shadow-xl"
+          style={{
+            backgroundColor: "var(--surface)",
+            borderColor: "var(--team-accent, var(--ink))",
+          }}
+          role="status"
+          aria-live="polite"
+        >
+          <div
+            className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
+            style={{ backgroundColor: "var(--team-accent)", color: "var(--team-accent-text)" }}
+          >
+            <Target size={16} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="font-space-mono text-[9px] font-bold uppercase tracking-[.14em] text-text-secondary">
+              Target player is up
+            </div>
+            <div className="mt-0.5 font-barlow text-[14px] font-semibold text-text-primary">
+              You marked {auction.currentPlayer.name} as a target.
+            </div>
+            <div className="mt-1 font-barlow text-[11px] text-text-secondary">
+              Skip bid limit: {formatPrice(currentTargetMax)}. Targets bid automatically only when you use a skip button.
+            </div>
+          </div>
+          <button
+            onClick={() => setShowTargetNotice(false)}
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-text-secondary hover:bg-black/10 hover:text-text-primary"
+            aria-label="Dismiss target notification"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
       {/* Header bar */}
       <div
         className="flex items-center justify-between px-[22px] py-[14px] shrink-0"
@@ -115,7 +174,7 @@ export default function AuctionPage() {
             }}
           >
             <span className="font-space-mono font-bold text-[10px] tracking-wider text-text-primary leading-none">
-              LEFT {totalLeft}
+              REMAINING {totalLeft}
             </span>
           </button>
         </div>
@@ -548,14 +607,14 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
   }
 
   // --- MINIMUM BATTER GUARD ---
-  // Ensure the XII contains at least 4 genuine batters (Batsman or WK-Batsman).
+  // Ensure the XII contains at least 5 genuine batters (Batsman or WK-Batsman).
   // If not, swap out the lowest-rated non-keeper, non-batter player for the best
   // available bench batter, respecting the OS cap.
   {
     const countGenuineBatters = (list: import("@/lib/types").Player[]) =>
       list.filter(p => p.role === "Batsman" || p.role === "WK-Batsman").length;
 
-    while (countGenuineBatters(selected) < 4) {
+    while (countGenuineBatters(selected) < 5) {
       const benchBatters = virtualSquad
         .filter(p => !selected.some(s => s.id === p.id) && !p.onlyOpensOrBenched &&
           (p.role === "Batsman" || p.role === "WK-Batsman"))
