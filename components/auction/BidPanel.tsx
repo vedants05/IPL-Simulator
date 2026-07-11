@@ -83,7 +83,7 @@ export default function BidPanel() {
   return (
     <div className="flex flex-col flex-1 min-h-0">
       {/* Bid stage: Deep stadium neutral with subtle team tinge overlay + halftone energy pattern */}
-      <div className="flex flex-1 min-h-0" style={{ backgroundColor: "var(--team-bid-bg, #111622)" }}>
+      <div className="flex flex-1 min-h-0" style={{ backgroundColor: "var(--team-bid-bg, #111622)" }} data-tour="auction-current-bid">
         {/* Main Active Central Bid Component Container with Halftone Dot Texture + Soft Team Tinge */}
         <div
           className="flex-1 flex flex-col items-center justify-center px-6 py-5 relative transition-colors duration-200"
@@ -165,7 +165,7 @@ export default function BidPanel() {
       )}
 
       {/* Action Bar: Main CTA Block + Separate White PASS Action Button Block */}
-      <div className="flex shrink-0" style={{ borderTop: "2px solid var(--ink)" }}>
+      <div className="flex shrink-0" style={{ borderTop: "2px solid var(--ink)" }} data-tour="auction-bid-button">
         <button
           onClick={() => placeBid(userTeamId, nextBid)}
           disabled={bidDisabled}

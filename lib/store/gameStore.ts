@@ -60,6 +60,7 @@ interface GameStateAdditions {
 
 interface GameActions {
   initNewGame: (userTeamId: string) => Promise<void>;
+  refreshPlayersFromSupabase: () => Promise<void>;
   retainPlayer: (playerId: string) => void;
   releaseRetention: (playerId: string) => void;
   confirmRetentions: () => void;
@@ -374,6 +375,47 @@ export const useGameStore = create<Store>()(
             saleHistory: [],
           },
           isSetupComplete: false,
+        });
+      },
+
+      refreshPlayersFromSupabase: async () => {
+        const fetchedPlayers = await fetchPlayersFromSupabase();
+        const state = get();
+        if (Object.keys(state.players).length === 0) return;
+
+        const refreshedPlayers = { ...state.players };
+        fetchedPlayers.forEach((freshPlayer) => {
+          const savedPlayer = state.players[freshPlayer.id];
+          refreshedPlayers[freshPlayer.id] = savedPlayer
+            ? {
+                ...freshPlayer,
+                currentTeamId: savedPlayer.currentTeamId,
+                isRetained: savedPlayer.isRetained,
+                retainedByTeamId: savedPlayer.retainedByTeamId,
+              }
+            : freshPlayer;
+        });
+
+        const currentPlayerId = state.auction?.currentPlayer?.id;
+        const refreshedCurrentPlayer = currentPlayerId
+          ? refreshedPlayers[currentPlayerId] ?? state.auction?.currentPlayer ?? null
+          : null;
+        const refreshedSummary = state.skipSetSummary
+          ? {
+              ...state.skipSetSummary,
+              results: state.skipSetSummary.results.map((result) => ({
+                ...result,
+                player: refreshedPlayers[result.player.id] ?? result.player,
+              })),
+            }
+          : null;
+
+        set({
+          players: refreshedPlayers,
+          auction: state.auction
+            ? { ...state.auction, currentPlayer: refreshedCurrentPlayer }
+            : null,
+          skipSetSummary: refreshedSummary,
         });
       },
 

@@ -140,7 +140,7 @@ export default function AuctionPage() {
           </span>
         </div>
 
-        <div className="flex gap-[6px]">
+        <div className="flex gap-[6px]" data-tour="auction-player-counts">
           <button
             onClick={() => setActivePopup(activePopup === "sold" ? null : "sold")}
             className="px-[11px] py-[7px] hover:brightness-95 transition-all flex items-center justify-center rounded-[5px]"
@@ -242,7 +242,7 @@ export default function AuctionPage() {
             ) : auction.currentPlayer ? (
               <>
                 {/* Player card — scrollable when Player File is expanded */}
-                <div className="overflow-y-auto" style={{ maxHeight: "calc(100% - 280px)" }}>
+                <div className="overflow-y-auto" style={{ maxHeight: "calc(100% - 280px)" }} data-tour="auction-current-player">
                   <PlayerCard player={auction.currentPlayer} />
                 </div>
                 {/* Bid panel — sits directly below player content, no gap */}
@@ -264,6 +264,7 @@ export default function AuctionPage() {
         <div
           className="w-[264px] shrink-0 flex flex-col relative z-30"
           style={{ borderLeft: "2px solid var(--ink)" }}
+          data-tour="auction-my-squad"
         >
           <UserSquad />
         </div>

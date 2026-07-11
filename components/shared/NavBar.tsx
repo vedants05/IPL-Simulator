@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useGameStore } from "@/lib/store/gameStore";
 import { switchColorMode } from "./TeamThemeProvider";
+import AuctionGuidedTour from "@/components/auction/AuctionGuidedTour";
 import {
   AlertTriangle,
   SkipForward,
@@ -74,6 +75,13 @@ export default function NavBar() {
     const nextDark = !isDarkMode;
     setIsDarkMode(nextDark);
     switchColorMode(nextDark, userTeamId || undefined);
+  };
+
+  const handleSettingsClick = () => {
+    if (!showSettings) {
+      setPaused(true);
+    }
+    setShowSettings((isOpen) => !isOpen);
   };
 
   const handleSkipPress = () => {
@@ -181,7 +189,7 @@ export default function NavBar() {
           <span className="tracking-wider" style={{ color: "var(--chrome-nav-muted)" }}>{currentDate}</span>
         )}
         {isAuctionPage && auction && auction.phase === "live" && (
-          <>
+          <div className="flex items-center gap-4" data-tour="auction-top-controls">
             {/* Skip Set Button */}
             <div className="relative flex items-center">
               <button
@@ -442,13 +450,13 @@ export default function NavBar() {
             >
               {isPaused ? <><Play size={11} className="inline" /> Resume</> : <><Pause size={11} className="inline" /> Pause</>}
             </button>
-          </>
+          </div>
         )}
 
         {/* Settings Button */}
         <div className="relative flex items-center">
           <button
-            onClick={() => setShowSettings(!showSettings)}
+            onClick={handleSettingsClick}
             className="w-[28px] h-[28px] rounded border-[1.5px] border-[var(--ink)] hover:bg-[#1d55c4] hover:text-white flex items-center justify-center cursor-pointer transition-all duration-150 hover:scale-105 active:scale-95"
             style={{
               backgroundColor: "var(--team-bid-bg, #111622)",
@@ -547,7 +555,7 @@ export default function NavBar() {
         </div>
       </div>
 
-      {showHowToPlay && (
+      {false && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
           <div
             className="w-full max-w-lg p-6 border-2 border-[var(--ink)] flex flex-col gap-6 font-barlow relative"
@@ -729,6 +737,7 @@ export default function NavBar() {
           </div>
         </div>
       )}
+      {showHowToPlay && <AuctionGuidedTour onClose={() => setShowHowToPlay(false)} />}
     </nav>
   );
 }

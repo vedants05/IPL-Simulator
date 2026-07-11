@@ -21,6 +21,12 @@ const CATEGORIES: Array<{ label: string; roles: string[]; marquee?: boolean }> =
   { label: "Spinners", roles: ["Spin Bowler"] },
 ];
 
+const TARGET_PRIORITIES: Array<{ value: AuctionTargetPriority; label: string }> = [
+  { value: "high", label: "High" },
+  { value: "medium", label: "Medium" },
+  { value: "low", label: "Low" },
+];
+
 function PlayerRow({
   player,
   type,
@@ -165,7 +171,7 @@ function PlayerRow({
               Skip-auction maximum bid
             </div>
             <div className="font-barlow text-[10px] text-text-secondary">
-              Only used when you skip. Minimum {crore(player.basePrice)}.
+              Choose a priority and maximum bid. Only used when you skip. Minimum {crore(player.basePrice)}.
             </div>
             {impossibleTargetReason && (
               <div className="mt-1 font-barlow text-[10px] font-semibold text-danger">
@@ -173,16 +179,41 @@ function PlayerRow({
               </div>
             )}
           </div>
-          <select
-            value={priority}
-            onChange={(event) => setPriority(event.target.value as AuctionTargetPriority)}
-            className="h-8 rounded border border-border bg-surface px-2 font-space-mono text-[9px] font-bold uppercase text-text-primary outline-none"
+          <div
+            className="flex h-8 overflow-hidden rounded border border-border bg-surface"
+            role="radiogroup"
             aria-label={`Target priority for ${player.name}`}
           >
-            <option value="high">High</option>
-            <option value="medium">Medium</option>
-            <option value="low">Low</option>
-          </select>
+            {TARGET_PRIORITIES.map(({ value, label }) => {
+              const isSelected = priority === value;
+
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  role="radio"
+                  aria-checked={isSelected}
+                  onClick={() => setPriority(value)}
+                  className="flex items-center gap-1.5 border-r border-border px-2.5 font-space-mono text-[9px] font-bold uppercase transition-colors last:border-r-0"
+                  style={isSelected ? {
+                    backgroundColor: "var(--team-accent)",
+                    color: "var(--team-accent-text)",
+                  } : {
+                    color: "var(--ink)",
+                  }}
+                >
+                  <span
+                    aria-hidden="true"
+                    className="flex h-3 w-3 items-center justify-center rounded-full border"
+                    style={{ borderColor: isSelected ? "currentColor" : "var(--border)" }}
+                  >
+                    {isSelected && <span className="h-1.5 w-1.5 rounded-full bg-current" />}
+                  </span>
+                  {label}
+                </button>
+              );
+            })}
+          </div>
           <div className="flex items-center overflow-hidden rounded border border-border bg-surface">
             <span className="px-2 font-space-mono text-[10px] font-bold text-text-secondary">₹</span>
             <input

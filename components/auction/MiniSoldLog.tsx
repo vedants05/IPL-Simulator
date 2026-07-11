@@ -44,6 +44,7 @@ export default function MiniSoldLog() {
   return (
     <div
       ref={cardRef}
+      data-tour="auction-recent-sales"
       className="relative flex flex-col shrink-0"
       style={{
         width: "220px",

@@ -62,7 +62,7 @@ export default function TeamPurseList() {
   return (
     // Outer wrapper is the positioning context and does NOT clip — so the
     // popout (which opens off to the left via right-full) stays visible.
-    <div className="flex-1 flex flex-col relative min-h-0">
+    <div className="flex-1 flex flex-col relative min-h-0" data-tour="auction-team-squads">
       <div className="flex-1 overflow-y-auto min-h-0">
         <div className="px-4 h-[36px] flex items-center shrink-0 sticky top-0 bg-bg z-10" style={{ borderBottom: "2px solid var(--ink)" }}>
           <span className="font-space-mono font-bold text-[10px] tracking-[.14em] text-text-primary uppercase">
