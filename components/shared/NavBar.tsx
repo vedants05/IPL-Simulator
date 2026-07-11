@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useGameStore } from "@/lib/store/gameStore";
-import { applyTeamTheme } from "./TeamThemeProvider";
+import { switchColorMode } from "./TeamThemeProvider";
 import {
   AlertTriangle,
   SkipForward,
@@ -73,16 +73,7 @@ export default function NavBar() {
   const handleToggleDarkMode = () => {
     const nextDark = !isDarkMode;
     setIsDarkMode(nextDark);
-    if (nextDark) {
-      document.documentElement.classList.add("dark");
-      localStorage.setItem("theme", "dark");
-    } else {
-      document.documentElement.classList.remove("dark");
-      localStorage.setItem("theme", "light");
-    }
-    if (userTeamId) {
-      applyTeamTheme(userTeamId);
-    }
+    switchColorMode(nextDark, userTeamId || undefined);
   };
 
   const handleSkipPress = () => {

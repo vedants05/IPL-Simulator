@@ -39,6 +39,27 @@ export function applyTeamTheme(teamCode: string) {
   document.body.style.backgroundColor = "var(--surface)";
 }
 
+let themeTransitionTimer: ReturnType<typeof setTimeout> | null = null;
+
+export function switchColorMode(isDark: boolean, teamCode?: string) {
+  const root = document.documentElement;
+
+  if (themeTransitionTimer) clearTimeout(themeTransitionTimer);
+  root.classList.add("theme-changing");
+
+  // Activate the shared transition before changing any theme values.
+  void root.offsetWidth;
+  root.classList.toggle("dark", isDark);
+  localStorage.setItem("theme", isDark ? "dark" : "light");
+
+  if (teamCode) applyTeamTheme(teamCode);
+
+  themeTransitionTimer = setTimeout(() => {
+    root.classList.remove("theme-changing");
+    themeTransitionTimer = null;
+  }, 220);
+}
+
 export default function TeamThemeProvider({ children }: { children: React.ReactNode }) {
   const userTeamId = useGameStore((s) => s.userTeamId);
 

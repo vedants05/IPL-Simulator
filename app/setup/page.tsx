@@ -5,6 +5,7 @@ import { useGameStore } from "@/lib/store/gameStore";
 import { fetchTeamsFromSupabase } from "@/lib/supabase/fetchTeams";
 import { Team } from "@/lib/types";
 import { Settings, Moon, Sun } from "lucide-react";
+import { switchColorMode } from "@/components/shared/TeamThemeProvider";
 
 export default function SetupPage() {
   const router = useRouter();
@@ -31,13 +32,7 @@ export default function SetupPage() {
   const handleToggleDarkMode = () => {
     const nextDark = !isDarkMode;
     setIsDarkMode(nextDark);
-    if (nextDark) {
-      document.documentElement.classList.add("dark");
-      localStorage.setItem("theme", "dark");
-    } else {
-      document.documentElement.classList.remove("dark");
-      localStorage.setItem("theme", "light");
-    }
+    switchColorMode(nextDark);
   };
 
   useEffect(() => {

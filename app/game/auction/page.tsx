@@ -17,17 +17,6 @@ import SkipSetSummaryModal from "@/components/auction/SkipSetSummaryModal";
 type PopupTab = "sold" | "unsold" | "left" | null;
 
 export default function AuctionPage() {
-  const [isDark, setIsDark] = useState(false);
-
-  useEffect(() => {
-    setIsDark(document.documentElement.classList.contains("dark"));
-    const observer = new MutationObserver(() => {
-      setIsDark(document.documentElement.classList.contains("dark"));
-    });
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
-    return () => observer.disconnect();
-  }, []);
-
   const { auction, teams, userTeamId } = useGameStore();
   const startAuction = useGameStore((s) => s.startAuction);
   const [activePopup, setActivePopup] = useState<PopupTab>(null);
@@ -76,8 +65,8 @@ export default function AuctionPage() {
         <div className="flex items-center gap-[14px]">
           <div
             style={{
-              backgroundColor: isDark ? "#1c202d" : "#16130f",
-              borderColor: isDark ? "#222638" : "transparent"
+              backgroundColor: "var(--auction-status-bg)",
+              borderColor: "var(--auction-status-border)",
             }}
             className="flex items-center gap-2 border px-[9px] py-[5px] rounded-[3px]"
           >
@@ -182,8 +171,8 @@ export default function AuctionPage() {
                   <button
                     onClick={startAuction}
                     style={{
-                      backgroundColor: isDark ? "#1c202d" : "#16130f",
-                      borderColor: isDark ? "#222638" : "transparent"
+                      backgroundColor: "var(--auction-status-bg)",
+                      borderColor: "var(--auction-status-border)",
                     }}
                     className="text-accent font-anton text-[21px] tracking-wide px-10 py-5 hover:bg-black transition-colors border"
                   >

@@ -30,6 +30,8 @@
   --text-secondary: #8a8378;
   --marquee: #fff6d6;
   --modal-footer: #e6e2d6;
+  --auction-status-bg: #16130f;
+  --auction-status-border: transparent;
 }
 
 .dark {
@@ -49,6 +51,8 @@
   --text-secondary: #9ca3af;
   --marquee: #2a2717;
   --modal-footer: #11131c;
+  --auction-status-bg: #1c202d;
+  --auction-status-border: #222638;
 }
 
 body {
@@ -60,6 +64,18 @@ body {
 
 * {
   box-sizing: border-box;
+}
+
+/* Put every theme-sensitive colour on one shared animation clock. */
+html.theme-changing,
+html.theme-changing body,
+html.theme-changing *,
+html.theme-changing *::before,
+html.theme-changing *::after {
+  transition-property: background-color, border-color, color, fill, stroke, box-shadow !important;
+  transition-duration: 220ms !important;
+  transition-timing-function: ease !important;
+  transition-delay: 0ms !important;
 }
 
 ::-webkit-scrollbar {
