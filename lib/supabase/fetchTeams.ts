@@ -464,13 +464,25 @@ const STATIC_TEAMS: Team[] = [
   },
 ];
 
-export async function fetchTeamsFromSupabase(): Promise<Team[]> {
+let serverCachedTeams: Team[] | null = null;
+let clientCachedTeams: Team[] | null = null;
+
+export async function fetchTeamsFromSupabase(forceRefresh = false): Promise<Team[]> {
   try {
     // If running in browser context, call our Next.js API route wrapper
     if (typeof window !== "undefined") {
+      if (clientCachedTeams && !forceRefresh) {
+        return clientCachedTeams;
+      }
       const res = await fetch("/api/teams");
       if (!res.ok) throw new Error("Browser API fetch teams failed");
-      return await res.json();
+      const data = await res.json();
+      clientCachedTeams = data;
+      return data;
+    }
+
+    if (serverCachedTeams && !forceRefresh) {
+      return serverCachedTeams;
     }
 
     if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
@@ -484,7 +496,7 @@ export async function fetchTeamsFromSupabase(): Promise<Team[]> {
 
     if (error) throw error;
 
-    return data.map((row: any): Team => {
+    const mapped = data.map((row: any): Team => {
       const totalPurse = Number(row.total_purse) || 0;
       const boardObjectives: BoardObjective[] = Array.isArray(row.board_objectives)
         ? row.board_objectives
@@ -537,6 +549,9 @@ export async function fetchTeamsFromSupabase(): Promise<Team[]> {
         description: row.description,
       };
     });
+
+    serverCachedTeams = mapped;
+    return mapped;
   } catch (error) {
     console.warn("Supabase fetch teams failed, using static teams configuration:", error);
     return STATIC_TEAMS;

@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useGameStore } from "@/lib/store/gameStore";
 import { fetchTeamsFromSupabase } from "@/lib/supabase/fetchTeams";
+import { fetchPlayersFromSupabase } from "@/lib/supabase/fetchPlayers";
 import { Team } from "@/lib/types";
 import { Settings, Moon, Sun } from "lucide-react";
 import { switchColorMode } from "@/components/shared/TeamThemeProvider";
@@ -43,6 +44,13 @@ export default function SetupPage() {
         alert("Failed to load team data from Supabase. Please refresh.");
       })
       .finally(() => setTeamsLoading(false));
+  }, []);
+
+  useEffect(() => {
+    // Background prefetch to warm cache for instant load on 'Begin Season' click
+    fetchPlayersFromSupabase().catch((err) => {
+      console.warn("Background prefetch of players failed:", err);
+    });
   }, []);
 
   async function handleStart() {

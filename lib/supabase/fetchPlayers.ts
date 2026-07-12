@@ -267,12 +267,24 @@ export function mapRowsToPlayers(data: any[]): Player[] {
     };
   });
 }
-export async function fetchPlayersFromSupabase(): Promise<Player[]> {
+let serverCachedPlayers: Player[] | null = null;
+let clientCachedPlayers: Player[] | null = null;
+
+export async function fetchPlayersFromSupabase(forceRefresh = false): Promise<Player[]> {
   // If running in browser context, call our Next.js API route as a wrapper proxy
   if (typeof window !== "undefined") {
+    if (clientCachedPlayers && !forceRefresh) {
+      return clientCachedPlayers;
+    }
     const res = await fetch("/api/players", { cache: "no-store" });
     if (!res.ok) throw new Error("Browser API fetch players failed");
-    return await res.json();
+    const data = await res.json();
+    clientCachedPlayers = data;
+    return data;
+  }
+
+  if (serverCachedPlayers && !forceRefresh) {
+    return serverCachedPlayers;
   }
 
   const { data, error } = await supabase
@@ -281,5 +293,6 @@ export async function fetchPlayersFromSupabase(): Promise<Player[]> {
     .order("name", { ascending: true });
 
   if (error) throw error;
-  return mapRowsToPlayers(data);
+  serverCachedPlayers = mapRowsToPlayers(data);
+  return serverCachedPlayers;
 }

@@ -202,22 +202,35 @@ function canTeamBidDuringSkip(
   ctx: AuctionContext,
   userTeamId: string,
   targetMaxBid?: number,
-  protectedTargetReserve = 0
+  protectedTargetReserve = 0,
+  isSkipAll = false
 ): boolean {
   if (t.id === userTeamId) {
-    // Skipping must leave the user with one accelerated-auction squad slot and,
-    // once the 18-player minimum is reached, ₹2 Cr. The final ₹50L is a
-    // hard floor for every skipped purchase; manual bidding remains untouched.
-    if (t.squad.length >= 24) return false;
-    if (t.remainingPurse - nextBid < 50) return false;
-    if (t.squad.length >= (t.minSquadSize ?? 18) && t.remainingPurse >= 200 && t.remainingPurse - nextBid < 200) return false;
-    const { canBid } = canTeamBidOnPlayer(t, p, newPlayers, false);
-    if (!canBid) return false;
-    if (!canTeamAffordBid(t, nextBid, newPlayers)) return false;
-    if (t.remainingPurse - nextBid < protectedTargetReserve) return false;
-    if (targetMaxBid !== undefined) return nextBid <= targetMaxBid;
+    if (isSkipAll) {
+      if (t.squad.length >= (t.maxSquadSize ?? 25)) return false;
+      const { canBid } = canTeamBidOnPlayer(t, p, newPlayers, false);
+      if (!canBid) return false;
+      if (!canTeamAffordBid(t, nextBid, newPlayers)) return false;
+      if (t.remainingPurse - nextBid < protectedTargetReserve) return false;
+      if (targetMaxBid !== undefined) {
+        return nextBid <= targetMaxBid;
+      } else {
+        return canAIBidAtAmount(t, p, nextBid, playerId, newPlayers, ctx);
+      }
+    } else {
+      // Skipping must leave the user with one accelerated-auction squad slot and,
+      // once the 18-player minimum is reached, ₹2 Cr. The final ₹50L is a
+      // hard floor for every skipped purchase; manual bidding remains untouched.
+      if (t.squad.length >= 24) return false;
+      if (t.remainingPurse - nextBid < 50) return false;
+      if (t.squad.length >= (t.minSquadSize ?? 18) && t.remainingPurse >= 200 && t.remainingPurse - nextBid < 200) return false;
+      const { canBid } = canTeamBidOnPlayer(t, p, newPlayers, false);
+      if (!canBid) return false;
+      if (!canTeamAffordBid(t, nextBid, newPlayers)) return false;
+      if (t.remainingPurse - nextBid < protectedTargetReserve) return false;
+      if (targetMaxBid !== undefined) return nextBid <= targetMaxBid;
 
-    const squad = t.squad.map(id => newPlayers[id]).filter(Boolean);
+      const squad = t.squad.map(id => newPlayers[id]).filter(Boolean);
 
     // ---- WICKETKEEPER-OPENER EXCLUSION RULE ----
     const isOpenerWK = isKeeper(p) && (p.isOpener || p.onlyOpensOrBenched);
@@ -276,6 +289,7 @@ function canTeamBidDuringSkip(
     if (nextBid > valuation) return false;
 
     return true;
+    }
   } else {
     return canAIBidAtAmount(t, p, nextBid, playerId, newPlayers, ctx);
   }
@@ -478,7 +492,7 @@ export const useGameStore = create<Store>()(
       },
 
       refreshPlayersFromSupabase: async () => {
-        const fetchedPlayers = await fetchPlayersFromSupabase();
+        const fetchedPlayers = await fetchPlayersFromSupabase(true);
         const state = get();
         if (Object.keys(state.players).length === 0) return;
 
@@ -1530,7 +1544,7 @@ export const useGameStore = create<Store>()(
 
             const interested: Team[] = Object.values(newTeams).filter((t: Team): boolean => {
               if (t.id === highBidderTeamId) return false;
-              return canTeamBidDuringSkip(t, player, nextBid, player.id, newPlayers, ctx, userTeamId, targetMaxBid, protectedTargetReserve);
+              return canTeamBidDuringSkip(t, player, nextBid, player.id, newPlayers, ctx, userTeamId, targetMaxBid, protectedTargetReserve, true);
             });
 
             if (interested.length === 0) break;
@@ -1716,7 +1730,7 @@ export const useGameStore = create<Store>()(
 
               const interested: Team[] = Object.values(newTeams).filter((t: Team): boolean => {
                 if (t.id === highBidderTeamId) return false;
-                return canTeamBidDuringSkip(t, player, nextBid, player.id, newPlayers, ctx, userTeamId, targetMaxBid, protectedTargetReserve);
+                return canTeamBidDuringSkip(t, player, nextBid, player.id, newPlayers, ctx, userTeamId, targetMaxBid, protectedTargetReserve, true);
               });
 
               if (interested.length === 0) break;
@@ -1771,8 +1785,8 @@ export const useGameStore = create<Store>()(
           currentPass++;
         }
 
-        // Fill remaining slots to minimum sizes
-        ensureMinimumSquadSizes(newTeams, newPlayers);
+        // Fill remaining slots to target sizes
+        ensureMinimumSquadSizes(newTeams, newPlayers, true);
 
         const updatedPurses: Record<string, { remaining: number; squadCount: number }> = {};
         Object.values(newTeams).forEach((t) => {
@@ -2757,7 +2771,8 @@ let _lastAccelUnsoldCount = Infinity;
 
 function ensureMinimumSquadSizes(
   teams: Record<string, Team>,
-  players: Record<string, Player>
+  players: Record<string, Player>,
+  fillToTarget = false
 ) {
   const userTeamId = useGameStore.getState().userTeamId;
   const isWK = (p: Player) => !!(p.isWicketkeeper || p.isPartTimeWk || p.role === "WK-Batsman");
@@ -2766,7 +2781,7 @@ function ensureMinimumSquadSizes(
   const isSpinBowlingPlayer = (p: Player) => p.role === "Spin Bowler" || /spin|orthodox/i.test(p.bowlingStyle ?? "");
   const ratingOf = (p: Player) => Math.max(p.currentBatting ?? 0, p.currentBowling ?? 0);
 
-  const getMinSize = (_t: Team) => 18;
+  const getMinSize = (t: Team) => fillToTarget ? (t.softSquadTarget ?? 24) : 18;
 
   const getBowlersCount = (t: Team) => t.squad.map(id => players[id]).filter(p => p && (p.role === "Pace Bowler" || p.role === "Spin Bowler")).length;
   const getKeepersCount = (t: Team) => t.squad.map(id => players[id]).filter(p => p && isWK(p)).length;
@@ -2913,8 +2928,13 @@ function ensureMinimumSquadSizes(
         break;
       }
 
-      team.squad.push(candidate.id);
       const cost = candidate.basePrice ?? 30;
+      if (team.squad.length >= 18 && team.remainingPurse < cost) {
+        // If they already have 18 players, they can't buy any more if they can't afford them!
+        break;
+      }
+
+      team.squad.push(candidate.id);
       const actualCost = Math.min(team.remainingPurse, cost);
       team.remainingPurse = Math.max(0, team.remainingPurse - actualCost);
       team.spentAmount += actualCost;
