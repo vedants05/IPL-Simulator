@@ -40,7 +40,9 @@ export default function UnsoldAnimation() {
           {player?.name ?? playerId}
         </div>
         <div className="font-barlow text-[15px] text-text-secondary mb-6">
-          No bids received — re-enters accelerated auction
+          {auction?.isAcceleratedPhase
+            ? "Player goes unsold"
+            : "No bids received — re-enters accelerated auction"}
         </div>
         <div className="mt-8 max-w-xs mx-auto">
           <div

@@ -167,7 +167,8 @@ export function buildAuctionSets(players: Player[], isAccelerated = false): Auct
     const rep = p.reputation ?? 5;
     const repWeight = rating > 78 ? 0.25 : 1.2;
     const indianBowlerPriority = p.nationality === "Indian" && (p.role === "Pace Bowler" || p.role === "Spin Bowler") && rating >= 77;
-    return rating + Math.max(0, pot - rating) * 0.35 + rep * repWeight + (indianBowlerPriority ? (rating >= 80 ? 4.0 : 2.5) : 0);
+    const repBoost = rating <= 76 ? 0 : rep * repWeight;
+    return rating + Math.max(0, pot - rating) * 0.35 + repBoost + (indianBowlerPriority ? (rating >= 80 ? 4.0 : 2.5) : 0);
   };
 
   // Rank a pool by quality and slice into tiers of 10 (A = best 10, B = next
@@ -192,6 +193,14 @@ export function buildAuctionSets(players: Player[], isAccelerated = false): Auct
   const marqueeEligible = playerPool.filter((p) => getRating(p) >= 84);
   const marqueeIds = new Set(marqueeEligible.map((p) => p.id));
   const nonMarquee = playerPool.filter((p) => !marqueeIds.has(p.id));
+  const priorityUncappedIndianBowlers = nonMarquee.filter((p) =>
+    !p.isCapped &&
+    p.nationality === "Indian" &&
+    (p.role === "Pace Bowler" || p.role === "Spin Bowler") &&
+    getRating(p) >= 77
+  );
+  const priorityUncappedIndianBowlerIds = new Set(priorityUncappedIndianBowlers.map((p) => p.id));
+  const regularNonMarquee = nonMarquee.filter((p) => !priorityUncappedIndianBowlerIds.has(p.id));
 
   const rawSets: Array<{ id: string; name: string; pool: Player[] }> = [];
 
@@ -203,6 +212,11 @@ export function buildAuctionSets(players: Player[], isAccelerated = false): Auct
       pool: shuffleArray(chunk),
     });
   });
+
+  // High-rated uncapped Indian bowlers get quality sets of their own. They are
+  // inserted after the first capped-role cycle below: early enough for teams
+  // to have money, but not alongside the opening marquee lots.
+  const priorityBowlerTiers = buildTiers(priorityUncappedIndianBowlers);
 
   // 2. Capped then uncapped, in round-robin tier order: every category's
   // Set A first (best 10 of each role), then every Set B, then C, … so the
@@ -216,7 +230,12 @@ export function buildAuctionSets(players: Player[], isAccelerated = false): Auct
     { code: "SPIN" as const, title: "Spinners" },
   ];
 
-  const addRoundRobinTiers = (pool: Player[], prefix: "capped" | "uncapped") => {
+  const addRoundRobinTiers = (
+    pool: Player[],
+    prefix: "capped" | "uncapped",
+    startTier = 0,
+    endTier = Number.POSITIVE_INFINITY
+  ) => {
     const byRole: Record<string, Player[]> = { BAT: [], AR: [], WK: [], PACE: [], SPIN: [] };
     pool.forEach((p) => byRole[getRoleGroup(p)].push(p));
 
@@ -228,7 +247,7 @@ export function buildAuctionSets(players: Player[], isAccelerated = false): Auct
     });
 
     const titleCase = prefix === "capped" ? "Capped" : "Uncapped";
-    for (let tier = 0; tier < maxTiers; tier++) {
+    for (let tier = startTier; tier < Math.min(maxTiers, endTier); tier++) {
       ROLE_ORDER.forEach(({ code, title }) => {
         const chunk = tiersByRole[code][tier];
         if (!chunk) return; // this role ran out of tiers — skip
@@ -244,8 +263,19 @@ export function buildAuctionSets(players: Player[], isAccelerated = false): Auct
     }
   };
 
-  addRoundRobinTiers(nonMarquee.filter((p) => p.isCapped), "capped");
-  addRoundRobinTiers(nonMarquee.filter((p) => !p.isCapped), "uncapped");
+  const cappedNonMarquee = regularNonMarquee.filter((p) => p.isCapped);
+  addRoundRobinTiers(cappedNonMarquee, "capped", 0, 1);
+  priorityBowlerTiers.forEach((chunk, i) => {
+    rawSets.push({
+      id: priorityBowlerTiers.length === 1 ? "priority_uncapped_indian_bowlers" : `priority_uncapped_indian_bowlers_${i + 1}`,
+      name: priorityBowlerTiers.length === 1
+        ? "High-Rated Uncapped Indian Bowlers"
+        : `High-Rated Uncapped Indian Bowlers Set ${String.fromCharCode(65 + i)}`,
+      pool: shuffleArray(chunk),
+    });
+  });
+  addRoundRobinTiers(cappedNonMarquee, "capped", 1);
+  addRoundRobinTiers(regularNonMarquee.filter((p) => !p.isCapped), "uncapped");
 
   // Format each set name with explicit Set Number (e.g. Set 1: Marquee Set A)
   return rawSets.map((s, i) => ({
@@ -258,6 +288,7 @@ export function buildAuctionSets(players: Player[], isAccelerated = false): Auct
 }
 
 const isKeeper = (p: Player) => !!(p.isWicketkeeper || p.isPartTimeWk || p.role === "WK-Batsman");
+const isFullTimeKeeper = (p: Player) => !!((p.isWicketkeeper || p.role === "WK-Batsman") && !p.isPartTimeWk);
 const isSpinBowlingPlayer = (p: Player) => p.role === "Spin Bowler" || /spin|orthodox/i.test(p.bowlingStyle ?? "");
 
 export function canTeamBidOnPlayer(
@@ -274,18 +305,15 @@ export function canTeamBidOnPlayer(
     return { canBid: false, reason: "Overseas cap reached (8/8)" };
   }
 
-  if (enforceAllRounderLimit && player.role === "All-Rounder" && allPlayers) {
-    const squadPlayers = team.squad.map(id => allPlayers[id]).filter(Boolean);
-    const allRoundersCount = squadPlayers.filter(p => p.role === "All-Rounder").length;
-    if (allRoundersCount >= 6) {
-      return { canBid: false, reason: "All-rounder limit reached (6/6)" };
-    }
-  }
-
   return { canBid: true };
 }
 
-export function canTeamAffordBid(team: Team, bidAmount: number, players?: Record<string, Player>): boolean {
+export function canTeamAffordBid(
+  team: Team,
+  bidAmount: number,
+  players?: Record<string, Player>,
+  compositionMode: "original" | "accelerated-5-plus-5" = "original"
+): boolean {
   // Purse Reserve Rule: must keep at least 30 Lakhs for each remaining slot to reach the minimum players
   // AND satisfy the 5 specialist bowler requirement, 2 spinners, 2 keepers, 4 Indian bowlers, and 5 Indian batters > 74 (with 3 > 77).
   const minSquad = team.minSquadSize ?? 18;
@@ -294,6 +322,30 @@ export function canTeamAffordBid(team: Team, bidAmount: number, players?: Record
     const squadPlayers = team.squad.map(id => players[id]).filter(Boolean);
     const bowlersCount = squadPlayers.filter(p => p.role === "Pace Bowler" || p.role === "Spin Bowler").length;
     const keepersCount = squadPlayers.filter(isKeeper).length;
+
+    if (compositionMode === "accelerated-5-plus-5") {
+      // Accelerated auction: only protect enough purse to finish a legal squad
+      // with 5 specialist bowlers, 5 specialist batters (WKs included), and 1 WK.
+      // There are deliberately no rating, Indian-player, or spinner requirements.
+      const specialistBattersCount = squadPlayers.filter(
+        p => p.role === "Batsman" || p.role === "WK-Batsman"
+      ).length;
+      const bowlerSlotsNeeded = Math.max(0, 5 - bowlersCount);
+      const batterKeeperSlotsNeeded = Math.max(
+        Math.max(0, 5 - specialistBattersCount),
+        Math.max(0, 1 - keepersCount)
+      );
+      const compositionSlotsNeeded = bowlerSlotsNeeded + batterKeeperSlotsNeeded;
+      const protectedSlotsAfterPurchase = Math.max(
+        0,
+        minSquad - team.squad.length - 1,
+        compositionSlotsNeeded - 1
+      );
+
+      return team.remainingPurse - bidAmount >= protectedSlotsAfterPurchase * 50;
+    }
+
+    const fullTimeKeepersCount = squadPlayers.filter(isFullTimeKeeper).length;
     const spinnersCount = squadPlayers.filter(p => p.role === "Spin Bowler").length;
     const qualitySpinOptionsCount = squadPlayers.filter(p => isSpinBowlingPlayer(p) && (p.currentBowling ?? 0) > 74).length;
     
@@ -303,9 +355,16 @@ export function canTeamAffordBid(team: Team, bidAmount: number, players?: Record
     const indianBowlersCount = squadPlayers.filter(p => p.nationality === "Indian" && (p.role === "Pace Bowler" || p.role === "Spin Bowler")).length;
     const indianBatters74Count = squadPlayers.filter(p => isIndianBatter(p) && ratingOf(p) > 74).length;
     const indianBatters77Count = squadPlayers.filter(p => isIndianBatter(p) && ratingOf(p) > 77).length;
+    const qualifiedIndianBowlersCount = squadPlayers.filter(p =>
+      p.nationality === "Indian" &&
+      (p.role === "Pace Bowler" || p.role === "Spin Bowler") &&
+      ratingOf(p) > 73
+    ).length;
+    const qualifiedIndianBattersCount = squadPlayers.filter(p => isIndianBatter(p) && ratingOf(p) > 73).length;
 
     const needsBowlers = Math.max(0, 5 - bowlersCount);
     const needsKeepers = keepersCount < 2 ? 2 - keepersCount : 0;
+    const needsFullTimeKeeper = fullTimeKeepersCount < 1 ? 1 : 0;
     const needsSpinners = Math.max(0, 2 - spinnersCount);
     const needsQualitySpinOptions = Math.max(0, 2 - qualitySpinOptionsCount);
     const needsIndianBowlers = Math.max(0, 4 - indianBowlersCount);
@@ -314,12 +373,12 @@ export function canTeamAffordBid(team: Team, bidAmount: number, players?: Record
     
     const totalIndianBattersSlotsNeeded = Math.max(needsIndianBatters74, needsIndianBatters77);
     const bowlerSlotsNeeded = Math.max(needsBowlers, needsSpinners, needsQualitySpinOptions, needsIndianBowlers);
-    const batterKeeperSlotsNeeded = Math.max(needsKeepers, totalIndianBattersSlotsNeeded);
+    const batterKeeperSlotsNeeded = Math.max(needsKeepers, needsFullTimeKeeper, totalIndianBattersSlotsNeeded);
 
     const roleSlotsNeeded = bowlerSlotsNeeded + batterKeeperSlotsNeeded;
     slotsNeeded = Math.max(0, minSquad - team.squad.length, roleSlotsNeeded) - 1;
   }
-  const reservePerSlot = (team.squad.length >= 16) ? 15 : 30; // Lower reserve from 30L to 15L for final slots to prevent bidding blockages
+  const reservePerSlot = (team.squad.length >= 16) ? 50 : 50; // Required reserve is 50L per slot
   const fillerSlotsNeeded = Math.max(0, minSquad - team.squad.length - 1);
   const fillerReserve = fillerSlotsNeeded * 30; // Hard reserve only for the official 18-player minimum
   const reserve = Math.max(Math.max(0, slotsNeeded) * reservePerSlot, fillerReserve);
@@ -333,6 +392,10 @@ export function getSquadConstraintWarnings(team: Team, players: Record<string, P
   const wks = squadPlayers.filter(isKeeper).length;
   if (wks < 2) {
     warnings.push(`Need at least 2 wicket-keepers (have ${wks})`);
+  }
+  const fullTimeWks = squadPlayers.filter(isFullTimeKeeper).length;
+  if (fullTimeWks < 1) {
+    warnings.push("Need at least 1 out-and-out wicketkeeper");
   }
 
   const bowlersCount = squadPlayers.filter(p => p.role === "Pace Bowler" || p.role === "Spin Bowler").length;

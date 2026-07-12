@@ -16,11 +16,12 @@ import SkipSetSummaryModal from "@/components/auction/SkipSetSummaryModal";
 import { Target, X } from "lucide-react";
 import { formatPrice } from "@/lib/logic/auctionRules";
 import type { Player } from "@/lib/types";
+import { AcceleratedNominationsScreen, AcceleratedPlanningResultsScreen } from "@/components/auction/AcceleratedPlanning";
 
 type PopupTab = "sold" | "unsold" | "left" | null;
 
 export default function AuctionPage() {
-  const { auction, teams, userTeamId, auctionTargets } = useGameStore();
+  const { auction, teams, userTeamId, auctionTargets, acceleratedPlanningState } = useGameStore();
   const startAuction = useGameStore((s) => s.startAuction);
   const [activePopup, setActivePopup] = useState<PopupTab>(null);
   const [showTargetNotice, setShowTargetNotice] = useState(false);
@@ -28,6 +29,21 @@ export default function AuctionPage() {
 
   const currentPlayerId = auction?.currentPlayer?.id;
   const currentTargetMax = currentPlayerId ? auctionTargets[currentPlayerId] : undefined;
+
+  const closePlayerPopup = () => {
+    const keepPaused = activePopup === "left";
+    setActivePopup(null);
+    if (!keepPaused) setPaused(false);
+  };
+
+  const togglePlayerPopup = (tab: Exclude<PopupTab, null>) => {
+    if (activePopup === tab) {
+      closePlayerPopup();
+      return;
+    }
+    setActivePopup(tab);
+    setPaused(true);
+  };
 
   useEffect(() => {
     if (!currentPlayerId || currentTargetMax === undefined) {
@@ -39,14 +55,6 @@ export default function AuctionPage() {
     const timeout = window.setTimeout(() => setShowTargetNotice(false), 5000);
     return () => window.clearTimeout(timeout);
   }, [currentPlayerId, currentTargetMax]);
-
-  useEffect(() => {
-    if (activePopup) {
-      setPaused(true);
-    } else {
-      setPaused(false);
-    }
-  }, [activePopup, setPaused]);
 
   const userTeam = teams[userTeamId];
 
@@ -79,7 +87,7 @@ export default function AuctionPage() {
   const totalLeft = auction.allPlayerIds.length - auction.soldPlayerIds.length - auction.unsoldPlayerIds.length;
 
   return (
-    <div className="h-[calc(100vh-3rem)] flex flex-col overflow-hidden bg-bg">
+    <div className="h-[calc(100vh-3rem)] flex flex-col overflow-hidden bg-bg relative">
       {showTargetNotice && auction.currentPlayer && currentTargetMax !== undefined && (
         <div
           className="fixed right-5 top-16 z-[90] flex w-[340px] items-start gap-3 rounded-[6px] border-2 p-3 shadow-xl"
@@ -143,7 +151,7 @@ export default function AuctionPage() {
 
         <div className="flex gap-[6px]" data-tour="auction-player-counts">
           <button
-            onClick={() => setActivePopup(activePopup === "sold" ? null : "sold")}
+            onClick={() => togglePlayerPopup("sold")}
             className="px-[11px] py-[7px] hover:brightness-95 transition-all flex items-center justify-center rounded-[5px]"
             style={{
               background: "linear-gradient(var(--team-primary-tint), var(--team-primary-tint)), #1f9d57",
@@ -155,7 +163,7 @@ export default function AuctionPage() {
             </span>
           </button>
           <button
-            onClick={() => setActivePopup(activePopup === "unsold" ? null : "unsold")}
+            onClick={() => togglePlayerPopup("unsold")}
             className="px-[11px] py-[7px] hover:brightness-95 transition-all flex items-center justify-center rounded-[5px]"
             style={{
               background: "linear-gradient(var(--team-primary-tint), var(--team-primary-tint)), #d6492f",
@@ -167,7 +175,7 @@ export default function AuctionPage() {
             </span>
           </button>
           <button
-            onClick={() => setActivePopup(activePopup === "left" ? null : "left")}
+            onClick={() => togglePlayerPopup("left")}
             className="px-[11px] py-[7px] hover:brightness-95 transition-all flex items-center justify-center rounded-[5px]"
             style={{
               backgroundColor: "var(--team-primary-tint, #efece3)",
@@ -273,7 +281,20 @@ export default function AuctionPage() {
 
       {/* Player list popup */}
       {activePopup && (
-        <PlayerListPopup type={activePopup} onClose={() => setActivePopup(null)} />
+        <PlayerListPopup type={activePopup} onClose={closePlayerPopup} />
+      )}
+
+      {/* Accelerated Planning Overlays */}
+      {acceleratedPlanningState === "nominating" && (
+        <div className="absolute inset-0 z-40 bg-bg flex flex-col overflow-hidden animate-in fade-in duration-200">
+          <AcceleratedNominationsScreen />
+        </div>
+      )}
+
+      {acceleratedPlanningState === "results" && (
+        <div className="absolute inset-0 z-40 bg-bg flex flex-col overflow-hidden animate-in fade-in duration-200">
+          <AcceleratedPlanningResultsScreen />
+        </div>
       )}
 
       {/* Skip set summary overlay */}
@@ -1507,6 +1528,52 @@ function selectPotentialLineup(squad: import("@/lib/types").Player[]): import("@
     }
   }
 
+  // --- FINAL POSITION 8 WEAK-BATTER REPLACEMENT ---
+  // This is intentionally the last selection rule. If position 8 still holds
+  // a genuine batter below 72 batting, replace them with the best legal player
+  // left in the squad while preserving every Potential XII constraint.
+  {
+    const position8Player = mappedLineup[7];
+    if (
+      position8Player &&
+      (position8Player.role === "Batsman" || position8Player.role === "WK-Batsman") &&
+      (position8Player.currentBatting ?? 0) < 72
+    ) {
+      const originalBowling75Count = getBowling75Count(mappedLineup);
+      const originalBowling70Count = getBowling70Count(mappedLineup);
+      const minimumBowling75 = Math.min(4, originalBowling75Count);
+      const minimumBowling70 = Math.min(5, originalBowling70Count);
+      const countGenuineBatters = (lineup: import("@/lib/types").Player[]) =>
+        lineup.filter(p => p.role === "Batsman" || p.role === "WK-Batsman").length;
+
+      const benchCandidates = squad
+        .filter(candidate =>
+          !mappedLineup.some(selectedPlayer => selectedPlayer?.id === candidate.id) &&
+          !candidate.onlyOpensOrBenched
+        )
+        .sort((a, b) => playerRating(b) - playerRating(a));
+
+      for (const candidate of benchCandidates) {
+        const hypothetical = [...mappedLineup];
+        hypothetical[7] = candidate;
+        const hypotheticalVirtual = hypothetical.map(original =>
+          virtualSquad.find(virtual => virtual.id === original.id) ?? original
+        );
+
+        if (countOS(hypothetical) > 4) continue;
+        if (!hypothetical.some(isKeeper)) continue;
+        if (countGenuineBatters(hypothetical) < 5) continue;
+        if (getBowling75Count(hypothetical) < minimumBowling75) continue;
+        if (getBowling70Count(hypothetical) < minimumBowling70) continue;
+        if (countOutAndOut(hypotheticalVirtual) > getMaxOutAndOut(hypotheticalVirtual)) continue;
+        if (countPacers(hypotheticalVirtual) > maxPacers) continue;
+
+        mappedLineup[7] = candidate;
+        break;
+      }
+    }
+  }
+
   return mappedLineup;
 
 
@@ -1525,6 +1592,7 @@ function TeamSquadCard({
   positionIndex: number;
 }) {
   const [isDark, setIsDark] = useState(false);
+  const auction = useGameStore((state) => state.auction);
 
   useEffect(() => {
     setIsDark(document.documentElement.classList.contains("dark"));
@@ -1618,9 +1686,16 @@ function TeamSquadCard({
                   {group.map((p) => {
                     const wasRetained = team.retainedPlayers.includes(p.id);
                     const sale = p.iplHistory.find((h) => h.season === "2027");
-                    const price = sale?.price ?? p.iplHistory.find((h) => h.season === "2026")?.price;
+                    const auctionSale = [...(auction?.saleHistory ?? [])]
+                      .reverse()
+                      .find((entry) => entry.playerId === p.id);
+                    const price = auctionSale?.price
+                      ?? sale?.price
+                      ?? p.iplHistory.find((h) => h.season === "2026")?.price
+                      ?? p.iplHistory.find((h) => h.teamId !== "UNSOLD" && h.price > 0)?.price
+                      ?? p.basePrice;
                     const isRtm = sale?.isRtm;
-                    const priceStr = price ? `(₹${(price / 100).toFixed(1)}Cr)` : "";
+                    const priceStr = `(₹${(price / 100).toFixed(1)}Cr)`;
 
                     // Determine if primaryColor is too dark to stand out in dark mode.
                     // Parse the hex to a rough luminance value and boost if needed.
@@ -1740,7 +1815,7 @@ function TeamSquadCard({
 
 function AuctionComplete() {
   const { auction, teams, players, userTeamId } = useGameStore();
-  const [summaryTab, setSummaryTab] = useState<"buys" | "unsold">("buys");
+  const [summaryTab] = useState<"buys" | "unsold">("buys");
 
   const userTeam = teams[userTeamId];
 
@@ -1756,20 +1831,30 @@ function AuctionComplete() {
     .filter((p) => p.currentTeamId && p.iplHistory.some((h) => h.season === "2027") && !p.isRetained)
     .map((p) => {
       const sale = p.iplHistory.find((h) => h.season === "2027");
+      const finalAuctionSale = [...(auction?.saleHistory ?? [])]
+        .reverse()
+        .find((entry) => entry.playerId === p.id);
       return {
         player: p,
-        teamId: p.currentTeamId!,
-        price: sale?.price ?? p.basePrice,
+        teamId: finalAuctionSale?.teamId ?? p.currentTeamId!,
+        price: finalAuctionSale?.price ?? sale?.price ?? p.basePrice,
       };
     })
     .sort((a, b) => b.price - a.price);
 
   const topBuys = soldPlayersList.slice(0, 5);
-  const majorUnsoldPlayers: Player[] = (auction?.unsoldPlayerIds ?? [])
-    .map((id) => players[id])
-    .filter((player): player is Player => !!player)
-    .sort((a, b) => playerRating(b) - playerRating(a) || (b.basePrice - a.basePrice))
-    .slice(0, 5);
+  const auctionPlayerIds = new Set(auction?.allPlayerIds ?? []);
+  const rankedUnsoldPlayers: Player[] = Object.values(players)
+    .filter((player): player is Player =>
+      !!player &&
+      !player.currentTeamId &&
+      !player.isRetained &&
+      (auctionPlayerIds.size === 0 || auctionPlayerIds.has(player.id))
+    )
+    .sort((a, b) => playerRating(b) - playerRating(a) || (b.basePrice - a.basePrice));
+  const majorUnsoldIndians = rankedUnsoldPlayers.filter((player) => player.nationality === "Indian").slice(0, 5);
+  const majorUnsoldOverseas = rankedUnsoldPlayers.filter((player) => player.nationality === "Overseas").slice(0, 5);
+  const majorUnsoldPlayers = rankedUnsoldPlayers.slice(0, 5);
   const totalSpentAll = Object.values(teams).reduce((acc, t) => acc + t.spentAmount, 0);
   const totalSold = soldPlayersList.length;
   const avgPrice = totalSold > 0 ? (totalSpentAll / totalSold).toFixed(1) : "0.0";
@@ -1797,7 +1882,7 @@ function AuctionComplete() {
         </div>
 
         {/* Dashboard Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
           {/* User Franchise Performance Card */}
           <div className="bg-surface border-2 border-[#16130f] rounded-[8px] p-5 flex flex-col justify-between shadow-sm">
             <div>
@@ -1906,32 +1991,7 @@ function AuctionComplete() {
 
           {/* Summary tab card */}
           <div className="bg-surface border-2 border-[#16130f] rounded-[8px] p-5 flex flex-col shadow-sm">
-            <div className="flex items-center gap-2 mb-3">
-              <button
-                type="button"
-                onClick={() => setSummaryTab("buys")}
-                className="font-anton text-[18px] tracking-wide uppercase px-3 py-1 rounded-[6px] border transition-colors"
-                style={{
-                  backgroundColor: summaryTab === "buys" ? "var(--team-accent)" : "transparent",
-                  color: summaryTab === "buys" ? "var(--team-accent-text)" : "var(--text-primary)",
-                  borderColor: "var(--ink)",
-                }}
-              >
-                Top 5 Buys
-              </button>
-              <button
-                type="button"
-                onClick={() => setSummaryTab("unsold")}
-                className="font-anton text-[18px] tracking-wide uppercase px-3 py-1 rounded-[6px] border transition-colors"
-                style={{
-                  backgroundColor: summaryTab === "unsold" ? "var(--team-accent)" : "transparent",
-                  color: summaryTab === "unsold" ? "var(--team-accent-text)" : "var(--text-primary)",
-                  borderColor: "var(--ink)",
-                }}
-              >
-                Major Unsold
-              </button>
-            </div>
+            <h3 className="font-anton text-[18px] tracking-wide text-text-primary uppercase mb-3">Top 5 Buys</h3>
 
             <div className="flex-1 flex flex-col justify-center divide-y divide-[#16130f]/10">
               {summaryTab === "buys" ? (
@@ -1993,6 +2053,36 @@ function AuctionComplete() {
                   No major unsold players recorded.
                 </div>
               )}
+            </div>
+          </div>
+
+          {/* Major unsold card */}
+          <div className="bg-surface border-2 border-[#16130f] rounded-[8px] p-5 flex flex-col shadow-sm">
+            <h3 className="font-anton text-[18px] tracking-wide text-text-primary uppercase mb-3">Major Unsold</h3>
+            <div className="grid grid-cols-2 gap-5 flex-1">
+              {([
+                { label: "Indian", players: majorUnsoldIndians },
+                { label: "Overseas", players: majorUnsoldOverseas },
+              ] as const).map((group) => (
+                <div key={group.label} className="min-w-0">
+                  <div className="font-space-mono font-bold text-[9px] tracking-widest text-text-secondary uppercase pb-2 border-b border-[#16130f]/10">
+                    {group.label}
+                  </div>
+                  <div className="divide-y divide-[#16130f]/10">
+                    {group.players.length > 0 ? group.players.map((player, idx) => (
+                      <div key={player.id} className="py-1.5 flex items-center justify-between gap-2 text-xs min-w-0">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span className="font-space-mono font-bold text-[9px] text-text-secondary">#{idx + 1}</span>
+                          <span className="font-semibold text-text-primary truncate">{player.name}</span>
+                        </div>
+                        <span className="font-space-mono text-[9px] text-text-secondary shrink-0">{playerRating(player)}</span>
+                      </div>
+                    )) : (
+                      <div className="font-space-mono text-[9px] text-text-secondary py-3">None</div>
+                    )}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </div>

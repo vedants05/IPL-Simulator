@@ -67,7 +67,14 @@ export default function BidPanel() {
   const { canBid, reason: cantBidReason } = userTeam
     ? canTeamBidOnPlayer(userTeam, player, players, false)
     : { canBid: false, reason: "No team" };
-  const canAfford = userTeam ? canTeamAffordBid(userTeam, nextBid, players) : false;
+  const canAfford = userTeam
+    ? canTeamAffordBid(
+        userTeam,
+        nextBid,
+        players,
+        auction.isAcceleratedPhase ? "accelerated-5-plus-5" : "original"
+      )
+    : false;
   const bidDisabled = !canBid || !canAfford || isUserHighBidder;
   const passDisabled = isUserHighBidder || !!auction.soldFlash || !!auction.unsoldFlash || !!auction.rtm;
 

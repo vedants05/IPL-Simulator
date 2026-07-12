@@ -45,6 +45,10 @@ import {
   getLotValuation,
   ratingOf,
   isKeeper,
+  computePlayerFit,
+  getTeamPlan,
+  getSquadComp,
+  getQuirks,
 } from "@/lib/logic/auctionEngine";
 
 // ---------------------------------------------------------------------------
@@ -56,6 +60,10 @@ interface GameStateAdditions {
   skipSetSummary: SkipSetSummary | null;
   auctionTargets: Record<string, number>;
   auctionTargetPriorities: Record<string, AuctionTargetPriority>;
+  acceleratedPlanningState: 'nominating' | 'results' | null;
+  userAcceleratedTargets: string[];
+  aiAcceleratedTargets: Record<string, string[]>;
+  aiAcceleratedBackups: Record<string, string[]>;
 }
 
 interface GameActions {
@@ -92,6 +100,8 @@ interface GameActions {
   dismissSkipSetSummary: () => void;
   setAuctionTarget: (playerId: string, maxBidLakhs: number, priority?: AuctionTargetPriority) => void;
   removeAuctionTarget: (playerId: string) => void;
+  confirmUserAcceleratedTargets: (targets: string[]) => void;
+  startAcceleratedAuctionFromPlanning: () => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -195,6 +205,12 @@ function canTeamBidDuringSkip(
   protectedTargetReserve = 0
 ): boolean {
   if (t.id === userTeamId) {
+    // Skipping must leave the user with one accelerated-auction squad slot and,
+    // once the 18-player minimum is reached, ₹2 Cr. The final ₹50L is a
+    // hard floor for every skipped purchase; manual bidding remains untouched.
+    if (t.squad.length >= 24) return false;
+    if (t.remainingPurse - nextBid < 50) return false;
+    if (t.squad.length >= (t.minSquadSize ?? 18) && t.remainingPurse >= 200 && t.remainingPurse - nextBid < 200) return false;
     const { canBid } = canTeamBidOnPlayer(t, p, newPlayers, false);
     if (!canBid) return false;
     if (!canTeamAffordBid(t, nextBid, newPlayers)) return false;
@@ -295,7 +311,78 @@ function canAffordTargetRtm(
   protectedReserve: number
 ): boolean {
   if (!canTeamAffordBid(team, amount, players)) return false;
+  if (isUserTeam && team.remainingPurse - amount < 50) return false;
   return !isUserTeam || priority === "high" || team.remainingPurse - amount >= protectedReserve;
+}
+
+function getAIAcceleratedNominationsAndBackups(
+  team: Team,
+  unsoldPlayerIds: string[],
+  allPlayers: Record<string, Player>,
+  auction: any
+): { targets: string[]; backups: string[] } {
+  const quirks = getQuirks(team);
+  const squad = team.squad.map(id => allPlayers[id]).filter(Boolean);
+  const comp = getSquadComp(squad);
+  const plan = getTeamPlan(team, allPlayers);
+  
+  // Calculate remaining open squad spaces (max 25 players)
+  const slotsLeft = Math.max(0, 25 - squad.length);
+  if (slotsLeft <= 0) return { targets: [], backups: [] };
+
+  const ctx: AuctionContext = {
+    remainingPlayerIds: unsoldPlayerIds,
+    soldPlayerIds: auction.soldPlayerIds ?? [],
+    currentLotIndex: auction.currentLotIndex,
+    totalLots: auction.allPlayerIds.length,
+    isAcceleratedPhase: true,
+  };
+
+  const scored = unsoldPlayerIds
+    .map(id => {
+      const p = allPlayers[id];
+      if (!p) return null;
+
+      // 1. Fit Squad Rules: Check if this player can legally be bid on (overseas cap, role limit, squad full)
+      const { canBid } = canTeamBidOnPlayer(team, p, allPlayers);
+      if (!canBid) return null;
+
+      // 2. Budget / Affordability: Check if they can afford this player at base price and have enough reserved for other slots
+      if (!canTeamAffordBid(team, p.basePrice, allPlayers)) return null;
+      if (team.remainingPurse < p.basePrice) return null;
+
+      // 3. Keepers/Bowler constraints check
+      if (p.nationality === "Overseas" && comp.overseas >= 8) return null;
+
+      // 4. Valuation check: Does the team actually value this player at least at base price?
+      const valuation = getLotValuation(p.id, team, p, allPlayers, ctx);
+      if (valuation < p.basePrice) return null;
+
+      // 5. Fit check: Fit score must be positive
+      const fit = computePlayerFit(p, team, comp, quirks);
+      if (fit <= 0) return null;
+
+      const rating = ratingOf(p);
+      const isKeeperPriority = isKeeper(p) && (comp.keepers ?? 0) < 2;
+      const isBowlerPriority = (p.role === "Pace Bowler" || p.role === "Spin Bowler") && rating >= 75;
+      
+      let score = fit * rating;
+      if (isKeeperPriority) score += 50;
+      if (isBowlerPriority) score += 30;
+      // Add extra weight based on how much the team values the player relative to base price
+      score += (valuation / p.basePrice) * 10;
+
+      return { id, score, fit };
+    })
+    .filter((x): x is { id: string; score: number; fit: number } => x !== null);
+
+  scored.sort((a, b) => b.score - a.score);
+
+  // Nominate the best options, capped by available slots and max of 5 nominations
+  const nomCount = Math.min(5, slotsLeft);
+  const targets = scored.slice(0, nomCount).map(x => x.id);
+  const backups = scored.slice(nomCount, nomCount * 2).map(x => x.id);
+  return { targets, backups };
 }
 
 // ---------------------------------------------------------------------------
@@ -320,6 +407,10 @@ export const useGameStore = create<Store>()(
       skipSetSummary: null,
       auctionTargets: {},
       auctionTargetPriorities: {},
+      acceleratedPlanningState: null,
+      userAcceleratedTargets: [],
+      aiAcceleratedTargets: {},
+      aiAcceleratedBackups: {},
 
       // ----- Actions -----
       initNewGame: async (userTeamId) => {
@@ -345,7 +436,7 @@ export const useGameStore = create<Store>()(
             remainingPurse: TOTAL_PURSE_LAKHS,
             spentAmount: 0,
             minSquadSize: 18,
-            softSquadTarget: t.id === userTeamId ? 18 : pickSoftSquadTarget(),
+            softSquadTarget: t.id === userTeamId ? 24 : pickSoftSquadTarget(),
           };
         });
 
@@ -693,7 +784,12 @@ export const useGameStore = create<Store>()(
 
         const { canBid } = canTeamBidOnPlayer(team, auction.currentPlayer, players, teamId !== get().userTeamId);
         if (!canBid) return;
-        if (!canTeamAffordBid(team, amount, players)) return;
+        if (!canTeamAffordBid(
+          team,
+          amount,
+          players,
+          auction.isAcceleratedPhase ? "accelerated-5-plus-5" : "original"
+        )) return;
 
         const updates = processBid(amount, teamId, auction.biddingHistory);
 
@@ -911,8 +1007,13 @@ export const useGameStore = create<Store>()(
       },
 
       dismissSkipSetSummary: () => {
-        set({ skipSetSummary: null, isPaused: false });
-        advanceToNextLot();
+        const state = get();
+        if (state.acceleratedPlanningState) {
+          set({ skipSetSummary: null, isPaused: true });
+        } else {
+          set({ skipSetSummary: null, isPaused: false });
+          advanceToNextLot();
+        }
       },
 
       setAuctionTarget: (playerId, maxBidLakhs, priority = "medium") => {
@@ -941,6 +1042,121 @@ export const useGameStore = create<Store>()(
         });
       },
 
+      confirmUserAcceleratedTargets: (targets) => {
+        const state = get();
+        const { auction, players, teams, userTeamId } = state;
+        if (!auction) return;
+
+        const aiTargets: Record<string, string[]> = {};
+        const aiBackups: Record<string, string[]> = {};
+        Object.values(teams).forEach((team) => {
+          if (team.id === userTeamId) return;
+          const result = getAIAcceleratedNominationsAndBackups(team, auction.unsoldPlayerIds, players, auction);
+          aiTargets[team.id] = result.targets;
+          aiBackups[team.id] = result.backups;
+        });
+
+        set({
+          userAcceleratedTargets: targets,
+          aiAcceleratedTargets: aiTargets,
+          aiAcceleratedBackups: aiBackups,
+          acceleratedPlanningState: 'results',
+        });
+      },
+
+      startAcceleratedAuctionFromPlanning: () => {
+        const state = get();
+        const { auction, players, userAcceleratedTargets, aiAcceleratedTargets, aiAcceleratedBackups } = state;
+        if (!auction) return;
+
+        const allNominatedIds = new Set<string>();
+        userAcceleratedTargets.forEach((id) => allNominatedIds.add(id));
+        Object.values(aiAcceleratedTargets).forEach((ids) => {
+          ids.forEach((id) => allNominatedIds.add(id));
+        });
+        Object.values(aiAcceleratedBackups).forEach((ids) => {
+          ids.forEach((id) => allNominatedIds.add(id));
+        });
+
+        const unsoldPlayers = Array.from(allNominatedIds)
+          .map((id) => players[id])
+          .filter(Boolean)
+          .sort((a, b) => (a.basePrice - b.basePrice) || (ratingOf(b) - ratingOf(a)));
+
+        const updatedAuctionTargets = { ...state.auctionTargets };
+        const updatedAuctionTargetPriorities = { ...state.auctionTargetPriorities };
+        
+        userAcceleratedTargets.forEach((id) => {
+          const p = players[id];
+          if (!p) return;
+          const userTeam = state.teams[state.userTeamId];
+          if (!userTeam) return;
+          
+          const ctx: AuctionContext = {
+            remainingPlayerIds: Array.from(allNominatedIds),
+            soldPlayerIds: auction.soldPlayerIds ?? [],
+            currentLotIndex: auction.currentLotIndex,
+            totalLots: auction.allPlayerIds.length,
+            isAcceleratedPhase: true,
+          };
+          const valuation = getLotValuation(p.id, userTeam, p, players, ctx);
+          
+          updatedAuctionTargets[id] = Math.max(p.basePrice, valuation);
+          updatedAuctionTargetPriorities[id] = "high";
+        });
+
+        if (unsoldPlayers.length > 0) {
+          const acceleratedSets = [{
+            id: "accelerated",
+            name: "Accelerated Auction",
+            playerIds: unsoldPlayers.map((p) => p.id),
+            currentIndex: 0,
+            isCompleted: false,
+          }];
+
+          const firstPlayer = unsoldPlayers[0];
+
+          set((s) => ({
+            acceleratedPlanningState: null,
+            isPaused: false,
+            auctionTargets: updatedAuctionTargets,
+            auctionTargetPriorities: updatedAuctionTargetPriorities,
+            auction: s.auction
+              ? {
+                  ...s.auction,
+                  sets: acceleratedSets,
+                  currentSetIndex: 0,
+                  currentLotIndex: s.auction.currentLotIndex + 1,
+                  currentPlayer: firstPlayer,
+                  currentBid: firstPlayer.basePrice,
+                  currentHighBidderTeamId: null,
+                  biddingHistory: [],
+                  timerSeconds: 10,
+                  isAcceleratedPhase: true,
+                  acceleratedPass: 1,
+                  unsoldPlayerIds: [],
+                  soldFlash: null,
+                  unsoldFlash: null,
+                }
+              : null,
+          }));
+
+          resetLotCache();
+          scheduleAIBids(firstPlayer);
+        } else {
+          set((s) => ({
+            acceleratedPlanningState: null,
+            auction: s.auction
+              ? {
+                  ...s.auction,
+                  phase: "completed",
+                  currentPlayer: null,
+                }
+              : null,
+          }));
+        }
+      },
+
       skipCurrentSet: () => {
         const state = get();
         const { auction, players, teams, userTeamId, auctionTargets, auctionTargetPriorities } = state;
@@ -949,6 +1165,7 @@ export const useGameStore = create<Store>()(
         const currentSet = auction.sets[auction.currentSetIndex];
         if (!currentSet || currentSet.isCompleted) return;
 
+        set({ speed: 1 });
         _hammerLotId = null;
 
         const newTeams = { ...teams };
@@ -1454,37 +1671,109 @@ export const useGameStore = create<Store>()(
         // Simulate all remaining players in regular sets
         remainingPlayerIds.forEach(simulateOne);
 
-        // Simulate accelerated phases
-        let isAccelerated = true;
-        let lastAccelUnsoldCount = newUnsoldIds.length;
-
-        while (isAccelerated && newUnsoldIds.length > 0) {
-          const unsoldPlayers = newUnsoldIds
-            .map((id) => newPlayers[id])
-            .filter(Boolean);
-          
-          if (unsoldPlayers.length === 0) break;
-
-          const playersToSimulate = unsoldPlayers.map(p => p.id);
-          newUnsoldIds = [];
-
-          playersToSimulate.forEach((id) => {
-            if (auctionTargets[id] !== undefined) pendingTargetIds.add(id);
-          });
-          playersToSimulate.forEach(simulateOne);
-
-          const madeProgress = newUnsoldIds.length < lastAccelUnsoldCount;
-          if (!madeProgress) break;
-          lastAccelUnsoldCount = newUnsoldIds.length;
-        }
-
         const updatedSets = auction.sets.map((s) => ({
           ...s,
           currentIndex: s.playerIds.length,
           isCompleted: true,
         }));
 
+        // Now run the automated accelerated simulation loop until no more progress is made
+        let currentPass = 1;
+        let lastUnsoldCount = newUnsoldIds.length;
+        let madeProgress = true;
+
+        while (newUnsoldIds.length > 0 && madeProgress && currentPass === 1) {
+          const playersToSimulate = [...newUnsoldIds];
+          newUnsoldIds = []; // Clear for the current round's unsold players
+          
+          playersToSimulate.forEach((playerId) => {
+            const player = newPlayers[playerId];
+            if (!player) return;
+
+            const ctx: AuctionContext = {
+              remainingPlayerIds: playersToSimulate.filter(id => id !== player.id),
+              soldPlayerIds: newSoldIds,
+              currentLotIndex,
+              totalLots,
+              isAcceleratedPhase: true,
+              acceleratedPass: currentPass,
+            };
+
+            let currentBid = player.basePrice;
+            let highBidderTeamId: string | null = null;
+            let biddingHistory: BidEntry[] = [];
+
+            let iterations = 0;
+            const MAX_ITER = 300;
+            
+            const targetMaxBid = undefined;
+            const targetPriority = "medium";
+            const protectedTargetReserve = 0;
+
+            while (iterations < MAX_ITER) {
+              iterations++;
+              const nextBid: number = highBidderTeamId ? getNextBidAmount(currentBid) : currentBid;
+
+              const interested: Team[] = Object.values(newTeams).filter((t: Team): boolean => {
+                if (t.id === highBidderTeamId) return false;
+                return canTeamBidDuringSkip(t, player, nextBid, player.id, newPlayers, ctx, userTeamId, targetMaxBid, protectedTargetReserve);
+              });
+
+              if (interested.length === 0) break;
+
+              const bidder: Team | null | undefined = pickBiddingTeam(interested, player, player.id, newPlayers, ctx);
+              if (!bidder) break;
+
+              currentBid = nextBid;
+              highBidderTeamId = bidder.id;
+              biddingHistory = [{ teamId: bidder.id, amount: nextBid, timestamp: Date.now() }, ...biddingHistory];
+            }
+
+            if (!highBidderTeamId) {
+              newUnsoldIds.push(player.id);
+            } else {
+              const winnerTeam = newTeams[highBidderTeamId];
+              newTeams[highBidderTeamId] = {
+                ...winnerTeam,
+                squad: [...winnerTeam.squad, player.id],
+                remainingPurse: winnerTeam.remainingPurse - currentBid,
+                spentAmount: winnerTeam.spentAmount + currentBid,
+                overseasPlayersCurrent:
+                  player.nationality === "Overseas"
+                    ? winnerTeam.overseasPlayersCurrent + 1
+                    : winnerTeam.overseasPlayersCurrent,
+              };
+
+              newPlayers[player.id] = {
+                ...player,
+                currentTeamId: highBidderTeamId,
+                iplHistory: [
+                  ...player.iplHistory.filter((h) => h.season !== "2027"),
+                  { teamId: highBidderTeamId, season: "2027", price: currentBid, isRtm: false },
+                ],
+              };
+
+              newSoldIds.push(player.id);
+
+              newSaleHistory.push({
+                playerId: player.id,
+                teamId: highBidderTeamId,
+                price: currentBid,
+                lot: currentLotIndex,
+                bids: biddingHistory,
+              });
+            }
+            currentLotIndex++;
+          });
+
+          madeProgress = newUnsoldIds.length < lastUnsoldCount;
+          lastUnsoldCount = newUnsoldIds.length;
+          currentPass++;
+        }
+
+        // Fill remaining slots to minimum sizes
         ensureMinimumSquadSizes(newTeams, newPlayers);
+
         const updatedPurses: Record<string, { remaining: number; squadCount: number }> = {};
         Object.values(newTeams).forEach((t) => {
           updatedPurses[t.id] = { remaining: t.remainingPurse, squadCount: t.squad.length };
@@ -1493,14 +1782,14 @@ export const useGameStore = create<Store>()(
         set({
           teams: newTeams,
           players: newPlayers,
-          auctionTargets: removeResolvedAuctionTargets(auctionTargets, remainingPlayerIds),
-          auctionTargetPriorities: removeResolvedAuctionTargets(auctionTargetPriorities, remainingPlayerIds),
+          auctionTargets: {},
+          auctionTargetPriorities: {},
           isPaused: false,
-          skipSetSummary: targetResults.size > 0 ? {
-            setIndex: -1,
-            setName: "Target Results",
-            results: Array.from(targetResults.values()),
-          } : null,
+          acceleratedPlanningState: null,
+          userAcceleratedTargets: [],
+          aiAcceleratedTargets: {},
+          aiAcceleratedBackups: {},
+          skipSetSummary: null,
           auction: {
             ...auction,
             sets: updatedSets,
@@ -1513,7 +1802,6 @@ export const useGameStore = create<Store>()(
             teamPurses: updatedPurses,
             soldFlash: null,
             unsoldFlash: null,
-            rtm: null,
           },
         });
       },
@@ -1691,6 +1979,61 @@ export const useGameStore = create<Store>()(
 
         remainingPlayerIds.forEach(simulateOne);
 
+        // The user must enter accelerated planning with the official minimum
+        // squad. Prefer the cheapest unsold legal backups and preserve ₹2 Cr
+        // whenever the available purse makes that possible.
+        const userTeam = newTeams[userTeamId];
+        if (userTeam && userTeam.squad.length < (userTeam.minSquadSize ?? 18)) {
+          const minimum = userTeam.minSquadSize ?? 18;
+          const required = minimum - userTeam.squad.length;
+          const candidates = Array.from(new Set(newUnsoldIds))
+            .map(id => newPlayers[id])
+            .filter((candidate): candidate is Player =>
+              !!candidate && !candidate.currentTeamId &&
+              canTeamBidOnPlayer(newTeams[userTeamId], candidate, newPlayers, false).canBid
+            )
+            .sort((a, b) => (a.basePrice - b.basePrice) || (ratingOf(b) - ratingOf(a)));
+          const cheapestRequired = candidates.slice(0, required);
+          const canPreserveTwoCrore = cheapestRequired.length === required &&
+            cheapestRequired.reduce((total, candidate) => total + candidate.basePrice, 0) <= userTeam.remainingPurse - 200;
+
+          for (const candidate of candidates) {
+            const currentUserTeam = newTeams[userTeamId];
+            if (currentUserTeam.squad.length >= minimum) break;
+            if (candidate.basePrice > currentUserTeam.remainingPurse) continue;
+            if (currentUserTeam.remainingPurse - candidate.basePrice < 50) continue;
+            if (canPreserveTwoCrore && currentUserTeam.remainingPurse - candidate.basePrice < 200) continue;
+            if (!canTeamBidOnPlayer(currentUserTeam, candidate, newPlayers, false).canBid) continue;
+
+            newTeams[userTeamId] = {
+              ...currentUserTeam,
+              squad: [...currentUserTeam.squad, candidate.id],
+              remainingPurse: currentUserTeam.remainingPurse - candidate.basePrice,
+              spentAmount: currentUserTeam.spentAmount + candidate.basePrice,
+              overseasPlayersCurrent: candidate.nationality === "Overseas"
+                ? currentUserTeam.overseasPlayersCurrent + 1
+                : currentUserTeam.overseasPlayersCurrent,
+            };
+            newPlayers[candidate.id] = {
+              ...candidate,
+              currentTeamId: userTeamId,
+              iplHistory: [
+                ...candidate.iplHistory.filter(history => history.season !== "2027"),
+                { teamId: userTeamId, season: "2027", price: candidate.basePrice, isRtm: false },
+              ],
+            };
+            newSoldIds.push(candidate.id);
+            newUnsoldIds = newUnsoldIds.filter(id => id !== candidate.id);
+            newSaleHistory.push({
+              playerId: candidate.id,
+              teamId: userTeamId,
+              price: candidate.basePrice,
+              lot: currentLotIndex++,
+              bids: [{ teamId: userTeamId, amount: candidate.basePrice, timestamp: Date.now() }],
+            });
+          }
+        }
+
         const updatedSets = auction.sets.map((s) => ({
           ...s,
           currentIndex: s.playerIds.length,
@@ -1709,36 +2052,40 @@ export const useGameStore = create<Store>()(
 
         if (unsoldPlayers.length > 0) {
           const soldDuringSkipIds = remainingPlayerIds.filter((id) => newSoldIds.includes(id));
-          const acceleratedSets = [{
-            id: "accelerated",
-            name: "Accelerated Auction",
-            playerIds: unsoldPlayers.map((p) => p.id),
-            currentIndex: 0,
-            isCompleted: false,
-          }];
-
-          const firstPlayer = unsoldPlayers[0];
-
           set({
             teams: newTeams,
             players: newPlayers,
             auctionTargets: removeResolvedAuctionTargets(auctionTargets, soldDuringSkipIds),
             auctionTargetPriorities: removeResolvedAuctionTargets(auctionTargetPriorities, soldDuringSkipIds),
             isPaused: true,
-            skipSetSummary: null,
+            acceleratedPlanningState: 'nominating',
+            userAcceleratedTargets: [],
+            aiAcceleratedTargets: {},
+            aiAcceleratedBackups: {},
+            skipSetSummary: remainingPlayerIds.length > 0 ? {
+              setIndex: -1,
+              setName: "Simulation Results",
+              results: remainingPlayerIds.map((id) => {
+                const p = newPlayers[id];
+                const wasSold = newSoldIds.includes(id);
+                const historyEntry = p.iplHistory.find((h) => h.season === "2027");
+                return {
+                  player: p,
+                  status: wasSold ? "sold" as const : "unsold" as const,
+                  price: wasSold && historyEntry ? historyEntry.price : undefined,
+                  teamId: wasSold && p.currentTeamId ? p.currentTeamId : undefined,
+                  usedRtm: wasSold && historyEntry ? historyEntry.isRtm : false,
+                };
+              }),
+            } : null,
             auction: {
               ...auction,
-              sets: acceleratedSets,
-              currentSetIndex: 0,
+              sets: updatedSets,
+              currentSetIndex: auction.sets.length - 1,
               currentLotIndex,
-              currentPlayer: firstPlayer,
-              currentBid: firstPlayer.basePrice,
-              currentHighBidderTeamId: null,
-              biddingHistory: [],
-              timerSeconds: 10,
-              isAcceleratedPhase: true,
-              unsoldPlayerIds: [],
+              currentPlayer: null,
               soldPlayerIds: newSoldIds,
+              unsoldPlayerIds: newUnsoldIds,
               saleHistory: newSaleHistory,
               teamPurses: updatedPurses,
               soldFlash: null,
@@ -1746,9 +2093,6 @@ export const useGameStore = create<Store>()(
               rtm: null,
             },
           });
-
-          resetLotCache();
-          scheduleAIBids(firstPlayer);
         } else {
           ensureMinimumSquadSizes(newTeams, newPlayers);
           const updatedPurses: Record<string, { remaining: number; squadCount: number }> = {};
@@ -1823,7 +2167,7 @@ export const useGameStore = create<Store>()(
               {
                 ...team,
                 minSquadSize: 18,
-                softSquadTarget: team.softSquadTarget ?? (id === p.userTeamId ? 18 : pickSoftSquadTarget()),
+                softSquadTarget: id === p.userTeamId ? 24 : (team.softSquadTarget ?? pickSoftSquadTarget()),
               },
             ]))
           : current.teams;
@@ -1942,8 +2286,17 @@ function doWinnerKeepsAtCounter(
       ...(s.auction?.teamPurses ?? {}),
       [winnerTeamId]: { remaining: newTeams[winnerTeamId].remainingPurse, squadCount: newTeams[winnerTeamId].squad.length },
     };
+    const storedPlayer = s.players[player.id] ?? player;
+    const updatedHistory = [
+      ...storedPlayer.iplHistory.filter(history => history.season !== "2027"),
+      { teamId: winnerTeamId, season: "2027", price: raisedAmount, isRtm: false },
+    ];
     return {
       teams: newTeams,
+      players: {
+        ...s.players,
+        [player.id]: { ...storedPlayer, currentTeamId: winnerTeamId, iplHistory: updatedHistory },
+      },
       auction: s.auction
         ? {
             ...s.auction,
@@ -2216,11 +2569,19 @@ function advanceToNextLot() {
   const next = pickNextLot(newSets);
 
   if (!next) {
-    // All sets done — run (possibly repeated) accelerated rounds so teams can
-    // keep filling toward a full 25-man squad. Re-run while each round is still
-    // making sales; stop once a whole round clears no one (no more interest).
-    const madeProgress = auction.unsoldPlayerIds.length > 0 &&
-      (!auction.isAcceleratedPhase || auction.unsoldPlayerIds.length < _lastAccelUnsoldCount);
+    if (!auction.isAcceleratedPhase && state.acceleratedPlanningState === null) {
+      useGameStore.setState({
+        acceleratedPlanningState: 'nominating',
+        userAcceleratedTargets: [],
+        aiAcceleratedTargets: {},
+        isPaused: true,
+      });
+      return;
+    }
+
+    // Regular-auction unsold players may enter one accelerated set. Once a
+    // player is unsold in that set, the result is final for this auction.
+    const madeProgress = !auction.isAcceleratedPhase && auction.unsoldPlayerIds.length > 0;
     if (madeProgress) {
       _lastAccelUnsoldCount = auction.unsoldPlayerIds.length;
       const unsoldPlayers = auction.unsoldPlayerIds
@@ -2412,8 +2773,7 @@ function ensureMinimumSquadSizes(
   const getSpinnersCount = (t: Team) => t.squad.map(id => players[id]).filter(p => p && p.role === "Spin Bowler").length;
   const getQualitySpinOptionsCount = (t: Team) => t.squad.map(id => players[id]).filter(p => p && isSpinBowlingPlayer(p) && (p.currentBowling ?? 0) > 74).length;
   const getIndianBowlersCount = (t: Team) => t.squad.map(id => players[id]).filter(p => p && p.nationality === "Indian" && (p.role === "Pace Bowler" || p.role === "Spin Bowler")).length;
-  const getIndianBatters75Count = (t: Team) => t.squad.map(id => players[id]).filter(p => p && isIndianBatter(p) && ratingOf(p) > 75).length;
-  const getIndianBatters77Count = (t: Team) => t.squad.map(id => players[id]).filter(p => p && isIndianBatter(p) && ratingOf(p) > 77).length;
+  const getIndianBattersCount = (t: Team) => t.squad.map(id => players[id]).filter(p => p && isIndianBatter(p)).length;
   
   const shortTeams = Object.values(teams).filter(t => 
     t.squad.length < getMinSize(t) || 
@@ -2422,8 +2782,7 @@ function ensureMinimumSquadSizes(
     getSpinnersCount(t) < 2 ||
     getQualitySpinOptionsCount(t) < 2 ||
     getIndianBowlersCount(t) < 4 ||
-    getIndianBatters75Count(t) < 6 ||
-    getIndianBatters77Count(t) < 4
+    (t.id !== userTeamId && getIndianBattersCount(t) < 5)
   );
   if (shortTeams.length === 0) return;
 
@@ -2451,8 +2810,7 @@ function ensureMinimumSquadSizes(
        getSpinnersCount(team) < 2 ||
        getQualitySpinOptionsCount(team) < 2 ||
        getIndianBowlersCount(team) < 4 ||
-       getIndianBatters75Count(team) < 6 ||
-       getIndianBatters77Count(team) < 4) && 
+       (team.id !== userTeamId && getIndianBattersCount(team) < 5)) && 
       sortedPool.length > 0
     ) {
       const needsBowler = getBowlersCount(team) < 5;
@@ -2460,8 +2818,7 @@ function ensureMinimumSquadSizes(
       const needsSpinner = getSpinnersCount(team) < 2;
       const needsQualitySpinOption = getQualitySpinOptionsCount(team) < 2;
       const needsIndianBowler = getIndianBowlersCount(team) < 4;
-      const needsIndianBatter77 = getIndianBatters77Count(team) < 4;
-      const needsIndianBatter75 = getIndianBatters75Count(team) < 6;
+      const needsIndianBatter = team.id !== userTeamId && getIndianBattersCount(team) < 5;
       
       let candidateIdx = 0;
       let candidate = null;
@@ -2480,16 +2837,19 @@ function ensureMinimumSquadSizes(
         const overseasCount = team.squad.map(id => players[id]).filter(p => p && p.nationality === "Overseas").length;
         const overseasOk = !(tempCandidate.nationality === "Overseas" && overseasCount >= 8);
 
-        const isComputer = team.id !== userTeamId;
-        const fullTimeKeepers = team.squad.map(id => players[id]).filter(p => p && isFullTimeKeeper(p)).length;
-        const overseasKeepers = team.squad.map(id => players[id]).filter(p => p && isFullTimeKeeper(p) && p.nationality === "Overseas").length;
-        
-        const keeperAIConstraintOk = !isComputer || !isFullTimeKeeper(tempCandidate) || (
-          fullTimeKeepers < 4 && 
-          !(tempCandidate.nationality === "Overseas" && overseasKeepers >= 3)
+        const overseasKeeperCount = team.squad.map(id => players[id]).filter(
+          p => p && p.nationality === "Overseas" && isWK(p)
+        ).length;
+        const overseasKeeperOk = !(
+          tempCandidate.nationality === "Overseas" && isWK(tempCandidate) && overseasKeeperCount >= 3
         );
 
-        if (overseasOk && keeperAIConstraintOk) {
+        if (overseasOk && overseasKeeperOk) {
+          if (needsIndianBatter && isIndBatter) {
+            candidate = tempCandidate;
+            sortedPool.splice(candidateIdx, 1);
+            break;
+          }
           if (isIndian77PlusPriority) {
             candidate = tempCandidate;
             sortedPool.splice(candidateIdx, 1);
@@ -2499,31 +2859,23 @@ function ensureMinimumSquadSizes(
             candidate = tempCandidate;
             sortedPool.splice(candidateIdx, 1);
             break;
-          } else if (needsIndianBatter77 && isIndBatter && rating > 77) {
-            candidate = tempCandidate;
-            sortedPool.splice(candidateIdx, 1);
-            break;
-          } else if (needsIndianBatter75 && isIndBatter && rating > 75) {
-            candidate = tempCandidate;
-            sortedPool.splice(candidateIdx, 1);
-            break;
           } else if (needsIndianBowler && isIndBowler) {
             candidate = tempCandidate;
             sortedPool.splice(candidateIdx, 1);
             break;
-          } else if (!needsKeeper && !needsIndianBatter77 && !needsIndianBatter75 && !needsIndianBowler && needsQualitySpinOption && isQualitySpinOption) {
+          } else if (!needsKeeper && !needsIndianBatter && !needsIndianBowler && needsQualitySpinOption && isQualitySpinOption) {
             candidate = tempCandidate;
             sortedPool.splice(candidateIdx, 1);
             break;
-          } else if (!needsKeeper && !needsIndianBatter77 && !needsIndianBatter75 && !needsIndianBowler && !needsQualitySpinOption && needsSpinner && isSpinner) {
+          } else if (!needsKeeper && !needsIndianBatter && !needsIndianBowler && !needsQualitySpinOption && needsSpinner && isSpinner) {
             candidate = tempCandidate;
             sortedPool.splice(candidateIdx, 1);
             break;
-          } else if (!needsKeeper && !needsIndianBatter77 && !needsIndianBatter75 && !needsIndianBowler && !needsQualitySpinOption && !needsSpinner && needsBowler && isBowler) {
+          } else if (!needsKeeper && !needsIndianBatter && !needsIndianBowler && !needsQualitySpinOption && !needsSpinner && needsBowler && isBowler) {
             candidate = tempCandidate;
             sortedPool.splice(candidateIdx, 1);
             break;
-          } else if (!needsKeeper && !needsIndianBatter77 && !needsIndianBatter75 && !needsIndianBowler && !needsQualitySpinOption && !needsSpinner && !needsBowler) {
+          } else if (!needsKeeper && !needsIndianBatter && !needsIndianBowler && !needsQualitySpinOption && !needsSpinner && !needsBowler) {
             candidate = tempCandidate;
             sortedPool.splice(candidateIdx, 1);
             break;
@@ -2540,16 +2892,14 @@ function ensureMinimumSquadSizes(
           const overseasCount = team.squad.map(id => players[id]).filter(p => p && p.nationality === "Overseas").length;
           const overseasOk = !(tempCandidate.nationality === "Overseas" && overseasCount >= 8);
 
-          const isComputer = team.id !== userTeamId;
-          const fullTimeKeepers = team.squad.map(id => players[id]).filter(p => p && isFullTimeKeeper(p)).length;
-          const overseasKeepers = team.squad.map(id => players[id]).filter(p => p && isFullTimeKeeper(p) && p.nationality === "Overseas").length;
-          
-          const keeperAIConstraintOk = !isComputer || !isFullTimeKeeper(tempCandidate) || (
-            fullTimeKeepers < 4 && 
-            !(tempCandidate.nationality === "Overseas" && overseasKeepers >= 3)
+          const overseasKeeperCount = team.squad.map(id => players[id]).filter(
+            p => p && p.nationality === "Overseas" && isWK(p)
+          ).length;
+          const overseasKeeperOk = !(
+            tempCandidate.nationality === "Overseas" && isWK(tempCandidate) && overseasKeeperCount >= 3
           );
 
-          if (overseasOk && keeperAIConstraintOk) {
+          if (overseasOk && overseasKeeperOk) {
             candidate = tempCandidate;
             sortedPool.splice(candidateIdx, 1);
             break;
@@ -2583,3 +2933,7 @@ function ensureMinimumSquadSizes(
 
 export { hammerFall, advanceToNextLot, scheduleAIBids, ensureMinimumSquadSizes };
 export type { }; // keep module boundary
+
+if (typeof globalThis !== "undefined") {
+  (globalThis as any).__getGameStoreState = useGameStore.getState;
+}

@@ -200,6 +200,7 @@ export interface AuctionState {
   currentSetIndex: number;
   teamPurses: Record<string, { remaining: number; squadCount: number }>;
   isAcceleratedPhase: boolean;
+  acceleratedPass?: number;
   rtm: RtmFlow | null;
   soldFlash: { playerId: string; teamId: string; amount: number } | null;
   unsoldFlash: { playerId: string } | null;
