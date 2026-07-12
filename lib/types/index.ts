@@ -148,6 +148,7 @@ export interface Team {
   rtmCardsTotal: number;
   maxSquadSize: number;
   minSquadSize: number;
+  softSquadTarget?: number; // hidden AI planning target; not a hard squad rule
   overseasPlayersCurrent: number;
   overseasPlayersMax: number;
   boardObjectives: BoardObjective[];

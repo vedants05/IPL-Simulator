@@ -15,6 +15,7 @@ import PlayerListPopup from "@/components/auction/PlayerListPopup";
 import SkipSetSummaryModal from "@/components/auction/SkipSetSummaryModal";
 import { Target, X } from "lucide-react";
 import { formatPrice } from "@/lib/logic/auctionRules";
+import type { Player } from "@/lib/types";
 
 type PopupTab = "sold" | "unsold" | "left" | null;
 
@@ -1738,7 +1739,8 @@ function TeamSquadCard({
 }
 
 function AuctionComplete() {
-  const { teams, players, userTeamId } = useGameStore();
+  const { auction, teams, players, userTeamId } = useGameStore();
+  const [summaryTab, setSummaryTab] = useState<"buys" | "unsold">("buys");
 
   const userTeam = teams[userTeamId];
 
@@ -1763,6 +1765,11 @@ function AuctionComplete() {
     .sort((a, b) => b.price - a.price);
 
   const topBuys = soldPlayersList.slice(0, 5);
+  const majorUnsoldPlayers: Player[] = (auction?.unsoldPlayerIds ?? [])
+    .map((id) => players[id])
+    .filter((player): player is Player => !!player)
+    .sort((a, b) => playerRating(b) - playerRating(a) || (b.basePrice - a.basePrice))
+    .slice(0, 5);
   const totalSpentAll = Object.values(teams).reduce((acc, t) => acc + t.spentAmount, 0);
   const totalSold = soldPlayersList.length;
   const avgPrice = totalSold > 0 ? (totalSpentAll / totalSold).toFixed(1) : "0.0";
@@ -1897,42 +1904,93 @@ function AuctionComplete() {
             </div>
           </div>
 
-          {/* Top Buys Card */}
+          {/* Summary tab card */}
           <div className="bg-surface border-2 border-[#16130f] rounded-[8px] p-5 flex flex-col shadow-sm">
-            <h3 className="font-anton text-[18px] tracking-wide text-text-primary uppercase mb-3">
-              TOP 5 EXPENSIVE BUYS
-            </h3>
+            <div className="flex items-center gap-2 mb-3">
+              <button
+                type="button"
+                onClick={() => setSummaryTab("buys")}
+                className="font-anton text-[18px] tracking-wide uppercase px-3 py-1 rounded-[6px] border transition-colors"
+                style={{
+                  backgroundColor: summaryTab === "buys" ? "var(--team-accent)" : "transparent",
+                  color: summaryTab === "buys" ? "var(--team-accent-text)" : "var(--text-primary)",
+                  borderColor: "var(--ink)",
+                }}
+              >
+                Top 5 Buys
+              </button>
+              <button
+                type="button"
+                onClick={() => setSummaryTab("unsold")}
+                className="font-anton text-[18px] tracking-wide uppercase px-3 py-1 rounded-[6px] border transition-colors"
+                style={{
+                  backgroundColor: summaryTab === "unsold" ? "var(--team-accent)" : "transparent",
+                  color: summaryTab === "unsold" ? "var(--team-accent-text)" : "var(--text-primary)",
+                  borderColor: "var(--ink)",
+                }}
+              >
+                Major Unsold
+              </button>
+            </div>
+
             <div className="flex-1 flex flex-col justify-center divide-y divide-[#16130f]/10">
-              {topBuys.map((buy, idx) => {
-                const buyer = teams[buy.teamId];
-                return (
-                  <div key={buy.player.id} className="py-1.5 flex items-center justify-between text-xs">
+              {summaryTab === "buys" ? (
+                topBuys.length > 0 ? topBuys.map((buy, idx) => {
+                  const buyer = teams[buy.teamId];
+                  return (
+                    <div key={buy.player.id} className="py-1.5 flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-2 truncate">
+                        <span className="font-space-mono font-bold text-[10px] text-text-secondary">
+                          #{idx + 1}
+                        </span>
+                        <span className="font-semibold text-text-primary truncate">{buy.player.name}</span>
+                        <span className="font-space-mono text-[8px] bg-[#16130f]/5 px-1.5 py-0.5 rounded text-text-secondary">
+                          {buy.player.role}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0 pl-2">
+                        <span
+                          className="font-anton text-[9px] px-1.5 py-0.5 rounded uppercase"
+                          style={{ backgroundColor: buyer?.primaryColor, color: buyer?.secondaryColor }}
+                        >
+                          {buyer?.shortName}
+                        </span>
+                        <span className="font-bold text-text-primary">
+                          ₹{(buy.price / 100).toFixed(2)} Cr
+                        </span>
+                      </div>
+                    </div>
+                  );
+                }) : (
+                  <div className="text-center font-space-mono text-[10px] text-text-secondary py-4">
+                    No auction sales recorded.
+                  </div>
+                )
+              ) : majorUnsoldPlayers.length > 0 ? (
+                majorUnsoldPlayers.map((player, idx) => (
+                  <div key={player.id} className="py-1.5 flex items-center justify-between text-xs">
                     <div className="flex items-center gap-2 truncate">
                       <span className="font-space-mono font-bold text-[10px] text-text-secondary">
                         #{idx + 1}
                       </span>
-                      <span className="font-semibold text-text-primary truncate">{buy.player.name}</span>
+                      <span className="font-semibold text-text-primary truncate">{player.name}</span>
                       <span className="font-space-mono text-[8px] bg-[#16130f]/5 px-1.5 py-0.5 rounded text-text-secondary">
-                        {buy.player.role}
+                        {player.role}
                       </span>
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0 pl-2">
-                      <span
-                        className="font-anton text-[9px] px-1.5 py-0.5 rounded uppercase"
-                        style={{ backgroundColor: buyer?.primaryColor, color: buyer?.secondaryColor }}
-                      >
-                        {buyer?.shortName}
+                      <span className="font-space-mono text-[9px] text-text-secondary">
+                        Rating {playerRating(player)}
                       </span>
                       <span className="font-bold text-text-primary">
-                        ₹{(buy.price / 100).toFixed(2)} Cr
+                        ₹{(player.basePrice / 100).toFixed(2)} Cr
                       </span>
                     </div>
                   </div>
-                );
-              })}
-              {topBuys.length === 0 && (
+                ))
+              ) : (
                 <div className="text-center font-space-mono text-[10px] text-text-secondary py-4">
-                  No auction sales recorded.
+                  No major unsold players recorded.
                 </div>
               )}
             </div>

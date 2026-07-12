@@ -165,7 +165,9 @@ export function buildAuctionSets(players: Player[], isAccelerated = false): Auct
     const rating = getRating(p);
     const pot = Math.max(p.potentialBatting || 0, p.potentialBowling || 0);
     const rep = p.reputation ?? 5;
-    return rating + Math.max(0, pot - rating) * 0.35 + rep * 1.2;
+    const repWeight = rating > 78 ? 0.25 : 1.2;
+    const indianBowlerPriority = p.nationality === "Indian" && (p.role === "Pace Bowler" || p.role === "Spin Bowler") && rating >= 77;
+    return rating + Math.max(0, pot - rating) * 0.35 + rep * repWeight + (indianBowlerPriority ? (rating >= 80 ? 4.0 : 2.5) : 0);
   };
 
   // Rank a pool by quality and slice into tiers of 10 (A = best 10, B = next
@@ -256,6 +258,7 @@ export function buildAuctionSets(players: Player[], isAccelerated = false): Auct
 }
 
 const isKeeper = (p: Player) => !!(p.isWicketkeeper || p.isPartTimeWk || p.role === "WK-Batsman");
+const isSpinBowlingPlayer = (p: Player) => p.role === "Spin Bowler" || /spin|orthodox/i.test(p.bowlingStyle ?? "");
 
 export function canTeamBidOnPlayer(
   team: Team,
@@ -292,6 +295,7 @@ export function canTeamAffordBid(team: Team, bidAmount: number, players?: Record
     const bowlersCount = squadPlayers.filter(p => p.role === "Pace Bowler" || p.role === "Spin Bowler").length;
     const keepersCount = squadPlayers.filter(isKeeper).length;
     const spinnersCount = squadPlayers.filter(p => p.role === "Spin Bowler").length;
+    const qualitySpinOptionsCount = squadPlayers.filter(p => isSpinBowlingPlayer(p) && (p.currentBowling ?? 0) > 74).length;
     
     const isIndianBatter = (p: Player) => p.nationality === "Indian" && (p.role === "Batsman" || p.role === "WK-Batsman");
     const ratingOf = (p: Player) => Math.max(p.currentBatting ?? 0, p.currentBowling ?? 0);
@@ -303,20 +307,21 @@ export function canTeamAffordBid(team: Team, bidAmount: number, players?: Record
     const needsBowlers = Math.max(0, 5 - bowlersCount);
     const needsKeepers = keepersCount < 2 ? 2 - keepersCount : 0;
     const needsSpinners = Math.max(0, 2 - spinnersCount);
+    const needsQualitySpinOptions = Math.max(0, 2 - qualitySpinOptionsCount);
     const needsIndianBowlers = Math.max(0, 4 - indianBowlersCount);
     const needsIndianBatters77 = Math.max(0, 3 - indianBatters77Count);
     const needsIndianBatters74 = Math.max(0, 5 - indianBatters74Count);
     
     const totalIndianBattersSlotsNeeded = Math.max(needsIndianBatters74, needsIndianBatters77);
-    const bowlerSlotsNeeded = Math.max(needsBowlers, needsSpinners, needsIndianBowlers);
+    const bowlerSlotsNeeded = Math.max(needsBowlers, needsSpinners, needsQualitySpinOptions, needsIndianBowlers);
     const batterKeeperSlotsNeeded = Math.max(needsKeepers, totalIndianBattersSlotsNeeded);
 
     const roleSlotsNeeded = bowlerSlotsNeeded + batterKeeperSlotsNeeded;
     slotsNeeded = Math.max(0, minSquad - team.squad.length, roleSlotsNeeded) - 1;
   }
   const reservePerSlot = (team.squad.length >= 16) ? 15 : 30; // Lower reserve from 30L to 15L for final slots to prevent bidding blockages
-  const fillerSlotsNeeded = Math.max(0, 22 - team.squad.length - 1);
-  const fillerReserve = fillerSlotsNeeded * 30; // Reserve 30L per slot to reach 22 players
+  const fillerSlotsNeeded = Math.max(0, minSquad - team.squad.length - 1);
+  const fillerReserve = fillerSlotsNeeded * 30; // Hard reserve only for the official 18-player minimum
   const reserve = Math.max(Math.max(0, slotsNeeded) * reservePerSlot, fillerReserve);
   return team.remainingPurse - bidAmount >= reserve;
 }

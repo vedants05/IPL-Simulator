@@ -99,6 +99,13 @@ interface GameActions {
 // ---------------------------------------------------------------------------
 type Store = GameState & GameStateAdditions & GameActions;
 
+function pickSoftSquadTarget(): number {
+  const roll = Math.random();
+  if (roll < 0.20) return 23;
+  if (roll < 0.65) return 24;
+  return 25;
+}
+
 // ---------------------------------------------------------------------------
 // Helper: pick next player in sets
 // ---------------------------------------------------------------------------
@@ -225,20 +232,20 @@ function canTeamBidDuringSkip(
     const currentSquadSize = squad.length;
     const minSquad = t.minSquadSize ?? 18;
     if (currentSquadSize >= minSquad) {
-      if (currentSquadSize >= t.maxSquadSize - 1) return false;
+      if (currentSquadSize >= t.maxSquadSize) return false;
     } else {
       if (currentSquadSize >= t.maxSquadSize) return false;
     }
 
-    const slotsTo22 = Math.max(0, 22 - currentSquadSize);
-    const fillerReserve = (slotsTo22 - 1) * 30;
+    const slotsToMinimum = Math.max(0, minSquad - currentSquadSize);
+    const fillerReserve = Math.max(0, slotsToMinimum - 1) * 30;
 
     if (currentSquadSize < minSquad) {
       const slotsNeeded = minSquad - currentSquadSize;
       const neededReserve = Math.max((slotsNeeded - 1) * 30, fillerReserve);
       if (t.remainingPurse - nextBid < neededReserve) return false;
     } else {
-      // Even if above minSquad, check if we need to reserve for remaining slots up to 22
+      // Even if above minSquad, retain the normal affordability checks.
       if (t.remainingPurse - nextBid < fillerReserve) return false;
 
       // Lower cushion from 200 Lakhs to 50 Lakhs to prevent bidding lockouts for cheap backups
@@ -337,7 +344,8 @@ export const useGameStore = create<Store>()(
             retainedPlayers: [],
             remainingPurse: TOTAL_PURSE_LAKHS,
             spentAmount: 0,
-            minSquadSize: t.id === userTeamId ? 18 : 22,
+            minSquadSize: 18,
+            softSquadTarget: t.id === userTeamId ? 18 : pickSoftSquadTarget(),
           };
         });
 
@@ -1809,9 +1817,20 @@ export const useGameStore = create<Store>()(
       }),
       merge: (persisted, current) => {
         const p = persisted as Partial<Store>;
+        const migratedTeams = p.teams
+          ? Object.fromEntries(Object.entries(p.teams).map(([id, team]) => [
+              id,
+              {
+                ...team,
+                minSquadSize: 18,
+                softSquadTarget: team.softSquadTarget ?? (id === p.userTeamId ? 18 : pickSoftSquadTarget()),
+              },
+            ]))
+          : current.teams;
         return {
           ...current,
           ...p,
+          teams: migratedTeams,
           auctionTargets: p.auctionTargets ?? {},
           auctionTargetPriorities: p.auctionTargetPriorities ?? {},
         };
@@ -2383,13 +2402,15 @@ function ensureMinimumSquadSizes(
   const isWK = (p: Player) => !!(p.isWicketkeeper || p.isPartTimeWk || p.role === "WK-Batsman");
   const isFullTimeKeeper = (p: Player) => !!((p.isWicketkeeper || p.role === "WK-Batsman") && !p.isPartTimeWk);
   const isIndianBatter = (p: Player) => p.nationality === "Indian" && (p.role === "Batsman" || p.role === "WK-Batsman");
+  const isSpinBowlingPlayer = (p: Player) => p.role === "Spin Bowler" || /spin|orthodox/i.test(p.bowlingStyle ?? "");
   const ratingOf = (p: Player) => Math.max(p.currentBatting ?? 0, p.currentBowling ?? 0);
 
-  const getMinSize = (t: Team) => (t.id === userTeamId ? 18 : 22);
+  const getMinSize = (_t: Team) => 18;
 
   const getBowlersCount = (t: Team) => t.squad.map(id => players[id]).filter(p => p && (p.role === "Pace Bowler" || p.role === "Spin Bowler")).length;
   const getKeepersCount = (t: Team) => t.squad.map(id => players[id]).filter(p => p && isWK(p)).length;
   const getSpinnersCount = (t: Team) => t.squad.map(id => players[id]).filter(p => p && p.role === "Spin Bowler").length;
+  const getQualitySpinOptionsCount = (t: Team) => t.squad.map(id => players[id]).filter(p => p && isSpinBowlingPlayer(p) && (p.currentBowling ?? 0) > 74).length;
   const getIndianBowlersCount = (t: Team) => t.squad.map(id => players[id]).filter(p => p && p.nationality === "Indian" && (p.role === "Pace Bowler" || p.role === "Spin Bowler")).length;
   const getIndianBatters75Count = (t: Team) => t.squad.map(id => players[id]).filter(p => p && isIndianBatter(p) && ratingOf(p) > 75).length;
   const getIndianBatters77Count = (t: Team) => t.squad.map(id => players[id]).filter(p => p && isIndianBatter(p) && ratingOf(p) > 77).length;
@@ -2399,6 +2420,7 @@ function ensureMinimumSquadSizes(
     getBowlersCount(t) < 5 || 
     getKeepersCount(t) < 2 || 
     getSpinnersCount(t) < 2 ||
+    getQualitySpinOptionsCount(t) < 2 ||
     getIndianBowlersCount(t) < 4 ||
     getIndianBatters75Count(t) < 6 ||
     getIndianBatters77Count(t) < 4
@@ -2427,6 +2449,7 @@ function ensureMinimumSquadSizes(
        getBowlersCount(team) < 5 || 
        getKeepersCount(team) < 2 || 
        getSpinnersCount(team) < 2 ||
+       getQualitySpinOptionsCount(team) < 2 ||
        getIndianBowlersCount(team) < 4 ||
        getIndianBatters75Count(team) < 6 ||
        getIndianBatters77Count(team) < 4) && 
@@ -2435,6 +2458,7 @@ function ensureMinimumSquadSizes(
       const needsBowler = getBowlersCount(team) < 5;
       const needsKeeper = getKeepersCount(team) < 2;
       const needsSpinner = getSpinnersCount(team) < 2;
+      const needsQualitySpinOption = getQualitySpinOptionsCount(team) < 2;
       const needsIndianBowler = getIndianBowlersCount(team) < 4;
       const needsIndianBatter77 = getIndianBatters77Count(team) < 4;
       const needsIndianBatter75 = getIndianBatters75Count(team) < 6;
@@ -2446,10 +2470,12 @@ function ensureMinimumSquadSizes(
         const tempCandidate = sortedPool[candidateIdx];
         const isBowler = tempCandidate.role === "Pace Bowler" || tempCandidate.role === "Spin Bowler";
         const isSpinner = tempCandidate.role === "Spin Bowler";
+        const isQualitySpinOption = isSpinBowlingPlayer(tempCandidate) && (tempCandidate.currentBowling ?? 0) > 74;
         const isWkCandidate = isWK(tempCandidate);
         const isIndBowler = tempCandidate.nationality === "Indian" && isBowler;
         const isIndBatter = isIndianBatter(tempCandidate);
         const rating = ratingOf(tempCandidate);
+        const isIndian77PlusPriority = tempCandidate.nationality === "Indian" && rating >= 77;
         
         const overseasCount = team.squad.map(id => players[id]).filter(p => p && p.nationality === "Overseas").length;
         const overseasOk = !(tempCandidate.nationality === "Overseas" && overseasCount >= 8);
@@ -2464,6 +2490,11 @@ function ensureMinimumSquadSizes(
         );
 
         if (overseasOk && keeperAIConstraintOk) {
+          if (isIndian77PlusPriority) {
+            candidate = tempCandidate;
+            sortedPool.splice(candidateIdx, 1);
+            break;
+          }
           if (needsKeeper && isWkCandidate) {
             candidate = tempCandidate;
             sortedPool.splice(candidateIdx, 1);
@@ -2480,15 +2511,19 @@ function ensureMinimumSquadSizes(
             candidate = tempCandidate;
             sortedPool.splice(candidateIdx, 1);
             break;
-          } else if (!needsKeeper && !needsIndianBatter77 && !needsIndianBatter75 && !needsIndianBowler && needsSpinner && isSpinner) {
+          } else if (!needsKeeper && !needsIndianBatter77 && !needsIndianBatter75 && !needsIndianBowler && needsQualitySpinOption && isQualitySpinOption) {
             candidate = tempCandidate;
             sortedPool.splice(candidateIdx, 1);
             break;
-          } else if (!needsKeeper && !needsIndianBatter77 && !needsIndianBatter75 && !needsIndianBowler && !needsSpinner && needsBowler && isBowler) {
+          } else if (!needsKeeper && !needsIndianBatter77 && !needsIndianBatter75 && !needsIndianBowler && !needsQualitySpinOption && needsSpinner && isSpinner) {
             candidate = tempCandidate;
             sortedPool.splice(candidateIdx, 1);
             break;
-          } else if (!needsKeeper && !needsIndianBatter77 && !needsIndianBatter75 && !needsIndianBowler && !needsSpinner && !needsBowler) {
+          } else if (!needsKeeper && !needsIndianBatter77 && !needsIndianBatter75 && !needsIndianBowler && !needsQualitySpinOption && !needsSpinner && needsBowler && isBowler) {
+            candidate = tempCandidate;
+            sortedPool.splice(candidateIdx, 1);
+            break;
+          } else if (!needsKeeper && !needsIndianBatter77 && !needsIndianBatter75 && !needsIndianBowler && !needsQualitySpinOption && !needsSpinner && !needsBowler) {
             candidate = tempCandidate;
             sortedPool.splice(candidateIdx, 1);
             break;

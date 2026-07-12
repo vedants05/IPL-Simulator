@@ -46,12 +46,22 @@ export function calculateBasePrice(
       return 100; // 1 Cr
     }
 
-    // Capped Indian Rules
-    if (rating >= 82 || reputation >= 8) return 200;
-    if (rating >= 79 || reputation >= 7) return 150;
-    if (rating >= 77 || reputation >= 6) return 100;
-    if (rating >= 74 || reputation >= 5) return 75;
-    return 50;
+    // Capped Indian rules: current ability determines the starting band,
+    // while very high/low reputation can move it by at most one band.
+    const priceBands = [50, 75, 100, 150, 200];
+    let bandIndex = rating >= 82
+      ? 4
+      : rating >= 79
+        ? 3
+        : rating >= 76
+          ? 2
+          : rating >= 73
+            ? 1
+            : 0;
+
+    if (reputation >= 8) bandIndex = Math.min(priceBands.length - 1, bandIndex + 1);
+    if (reputation <= 4) bandIndex = Math.max(0, bandIndex - 1);
+    return priceBands[bandIndex];
   } else {
     // Uncapped Rules (Indian & Overseas)
     // Global floor check (rating >= 77 must be at least 1 Cr)
