@@ -1,5 +1,5 @@
 import { supabase } from "./client";
-import { Player, Nationality, Role, Potential } from "../types";
+import { Player, Nationality, Role, Potential, BowlingType } from "../types";
 
 export const TEAM_MAP: Record<string, string> = {
   "Kolkata Knight Riders": "KKR",
@@ -73,12 +73,10 @@ export function calculateBasePrice(
   }
 }
 
-export function bowlStyle(bowlType: string | null, bowlHand: string | null): string | null {
+export function bowlStyle(bowlType: string | null): BowlingType | null {
   if (!bowlType || bowlType === "NA") return null;
-  const hand = (bowlHand || "").toLowerCase();
-  const isLeft = hand.includes("left");
-  if (bowlType === "Spinner") return isLeft ? "Left-arm Orthodox" : "Right-arm Off-spin";
-  if (bowlType === "Pacer")   return isLeft ? "Left-arm Fast" : "Right-arm Fast";
+  if (bowlType === "Spinner") return "Spinner";
+  if (bowlType === "Pacer") return "Pacer";
   return null;
 }
 
@@ -139,7 +137,6 @@ export function mapRowsToPlayers(data: any[]): Player[] {
     const isCapped = row.status === "Capped";
     const role = (ROLE_MAP[row.primary_role] ?? "Batsman") as Role;
     const bowlType = row.bowling_type || "NA";
-    const bowlHand = row.bowling_hand || "";
     const batHand = (row.batting_hand || "").includes("LHB") || (row.batting_hand || "").toLowerCase().includes("left") ? "Left-hand" : "Right-hand";
     
     const curBat = parseInt(row.current_batting) || 0;
@@ -204,6 +201,15 @@ export function mapRowsToPlayers(data: any[]): Player[] {
     const t20Runs = parseInt(row.t20_runs) || 0;
     const t20Wickets = parseInt(row.t20_wickets) || 0;
     const t20BowlInns = parseInt(row.t20_bowling_innings) || 0;
+    const iplStats = {
+      matches: parseInt(row.ipl_games) || 0,
+      runs: parseInt(row.ipl_runs) || 0,
+      battingAverage: parseFloat(row.ipl_average) || 0,
+      strikeRate: parseFloat(row.ipl_strike_rate) || 0,
+      bowlingInnings: parseInt(row.ipl_bowling_innings) || 0,
+      bowlingAverage: parseFloat(row.ipl_bowling_average) || 0,
+      wickets: parseInt(row.ipl_wickets) || 0,
+    };
 
     const batting = {
       matches: t20Games,
@@ -232,7 +238,7 @@ export function mapRowsToPlayers(data: any[]): Player[] {
       nationality: nat as Nationality,
       role,
       battingStyle: batHand as any,
-      bowlingStyle: bowlStyle(bowlType, bowlHand),
+      bowlingStyle: bowlStyle(bowlType),
       starRating: star,
       basePrice: base,
       isCapped,
@@ -249,6 +255,7 @@ export function mapRowsToPlayers(data: any[]): Player[] {
         batting,
         bowling,
       },
+      iplStats,
       iplHistory,
       reputation,
       captaincy,

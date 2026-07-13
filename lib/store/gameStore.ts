@@ -51,6 +51,32 @@ import {
   getQuirks,
 } from "@/lib/logic/auctionEngine";
 
+export function getSeasonDates(year: number) {
+  if (year === 2026) {
+    return {
+      retentionDate: `${year}-11-15`,
+      auctionDate: `${year}-12-15`
+    };
+  }
+  
+  // Pseudo-random day between 10 and 20 for November
+  const seed1 = Math.abs(Math.sin(year * 1000));
+  const retentionDay = 10 + Math.floor(seed1 * 11); // 10 to 20
+  
+  // Pseudo-random day between 10 and 28 for December
+  const seed2 = Math.abs(Math.sin(year * 2000));
+  let auctionDay = 10 + Math.floor(seed2 * 19); // 10 to 28
+  if (auctionDay === 25) {
+    auctionDay = 24; // Never on the 25th
+  }
+  
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return {
+    retentionDate: `${year}-11-${pad(retentionDay)}`,
+    auctionDate: `${year}-12-${pad(auctionDay)}`
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Store actions interface
 // ---------------------------------------------------------------------------
@@ -408,8 +434,8 @@ export const useGameStore = create<Store>()(
       // ----- State -----
       saveId: "",
       saveCreatedAt: "",
-      currentDate: "2026-10-01",
-      currentSeason: 2027,
+      currentDate: "2026-11-15",
+      currentSeason: 2026,
       auctionCycle: 1,
       players: {},
       teams: {},
@@ -428,6 +454,9 @@ export const useGameStore = create<Store>()(
 
       // ----- Actions -----
       initNewGame: async (userTeamId) => {
+        if (typeof window !== "undefined") {
+          localStorage.removeItem(`ipl_continued_to_season_${userTeamId}`);
+        }
         const [fetchedPlayers, fetchedTeams] = await Promise.all([
           fetchPlayersFromSupabase(),
           fetchTeamsFromSupabase(),
@@ -457,7 +486,7 @@ export const useGameStore = create<Store>()(
         set({
           saveId: uuidv4(),
           saveCreatedAt: new Date().toISOString(),
-          currentDate: "2026-10-01",
+          currentDate: getSeasonDates(2026).retentionDate,
           currentSeason: 2026,
           auctionCycle: 1,
           players: playersMap,
@@ -725,10 +754,12 @@ export const useGameStore = create<Store>()(
         );
 
         const teamPurses = buildInitialTeamPurses(updatedTeams);
+        const dates = getSeasonDates(get().currentSeason);
 
         set((state) => ({
           teams: updatedTeams,
           players: updatedPlayers,
+          currentDate: dates.auctionDate,
           isSetupComplete: true,
           auction: state.auction
             ? {

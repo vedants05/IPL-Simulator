@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
+import { useRouter, usePathname } from "next/navigation";
 import { useGameStore } from "@/lib/store/gameStore";
 import RetentionPhase from "./retention";
 import PlayerCard from "@/components/auction/PlayerCard";
@@ -13,9 +14,10 @@ import SoldAnimation from "@/components/auction/SoldAnimation";
 import UnsoldAnimation from "@/components/auction/UnsoldAnimation";
 import PlayerListPopup from "@/components/auction/PlayerListPopup";
 import SkipSetSummaryModal from "@/components/auction/SkipSetSummaryModal";
-import { Target, X } from "lucide-react";
+import { Lock, Target, X } from "lucide-react";
 import { formatPrice } from "@/lib/logic/auctionRules";
 import type { Player } from "@/lib/types";
+import { SEASON_ACCESS_ENABLED } from "@/lib/config/featureFlags";
 import { AcceleratedNominationsScreen, AcceleratedPlanningResultsScreen } from "@/components/auction/AcceleratedPlanning";
 
 type PopupTab = "sold" | "unsold" | "left" | null;
@@ -1816,6 +1818,27 @@ function TeamSquadCard({
 function AuctionComplete() {
   const { auction, teams, players, userTeamId } = useGameStore();
   const [summaryTab] = useState<"buys" | "unsold">("buys");
+  const [continued, setContinued] = useState(false);
+  const router = useRouter();
+  const pathname = usePathname();
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      if (!SEASON_ACCESS_ENABLED) {
+        localStorage.removeItem(`ipl_continued_to_season_${userTeamId}`);
+        setContinued(false);
+        return;
+      }
+      setContinued(localStorage.getItem(`ipl_continued_to_season_${userTeamId}`) === "true");
+    }
+  }, [userTeamId, pathname]);
+
+  const handleContinue = () => {
+    if (!SEASON_ACCESS_ENABLED) return;
+    localStorage.setItem(`ipl_continued_to_season_${userTeamId}`, "true");
+    localStorage.removeItem(`ipl_career_${userTeamId}`);
+    router.push("/game/overview?tab=home");
+  };
 
   const userTeam = teams[userTeamId];
 
@@ -1826,21 +1849,34 @@ function AuctionComplete() {
     return b.spentAmount - a.spentAmount;
   });
 
-  // Calculate sold players in the current auction season
-  const soldPlayersList = Object.values(players)
-    .filter((p) => p.currentTeamId && p.iplHistory.some((h) => h.season === "2027") && !p.isRetained)
-    .map((p) => {
-      const sale = p.iplHistory.find((h) => h.season === "2027");
-      const finalAuctionSale = [...(auction?.saleHistory ?? [])]
-        .reverse()
-        .find((entry) => entry.playerId === p.id);
-      return {
-        player: p,
-        teamId: finalAuctionSale?.teamId ?? p.currentTeamId!,
-        price: finalAuctionSale?.price ?? sale?.price ?? p.basePrice,
-      };
+  // saleHistory is the authoritative record of auction purchases. Keep only
+  // the final record for a player in case an RTM/counter flow produced an
+  // earlier provisional entry for the same lot.
+  const finalSalesByPlayer = new Map<string, NonNullable<typeof auction>["saleHistory"][number]>();
+  (auction?.saleHistory ?? []).forEach((sale) => finalSalesByPlayer.set(sale.playerId, sale));
+
+  const recordedAuctionSales = Array.from(finalSalesByPlayer.values())
+    .map((sale) => {
+      const player = players[sale.playerId];
+      if (!player || !teams[sale.teamId]) return null;
+      return { player, teamId: sale.teamId, price: sale.price };
     })
-    .sort((a, b) => b.price - a.price);
+    .filter((sale): sale is { player: Player; teamId: string; price: number } => sale !== null);
+
+  // Legacy fallback for saves completed before saleHistory was populated.
+  const auctionSeason = String((auction?.season ?? 2026) + 1);
+  const historyAuctionSales = Object.values(players)
+    .filter((player) => player.currentTeamId && !player.isRetained)
+    .map((player) => {
+      const sale = player.iplHistory.find((entry) => entry.season === auctionSeason && entry.price > 0);
+      return sale && player.currentTeamId
+        ? { player, teamId: player.currentTeamId, price: sale.price }
+        : null;
+    })
+    .filter((sale): sale is { player: Player; teamId: string; price: number } => sale !== null);
+
+  const soldPlayersList = (recordedAuctionSales.length > 0 ? recordedAuctionSales : historyAuctionSales)
+    .sort((a, b) => b.price - a.price || a.player.name.localeCompare(b.player.name));
 
   const topBuys = soldPlayersList.slice(0, 5);
   const auctionPlayerIds = new Set(auction?.allPlayerIds ?? []);
@@ -1869,16 +1905,33 @@ function AuctionComplete() {
   return (
     <div className="min-h-screen bg-bg overflow-y-auto">
       <div className="max-w-6xl mx-auto p-8">
-        <div className="mb-8 text-center">
-          <div className="font-space-mono font-bold text-[10px] tracking-[.16em] text-success mb-2 uppercase">
-            Auction Completed
+        <div className="mb-8 flex flex-col sm:flex-row justify-between items-center border-b-2 border-hairline pb-6 gap-4">
+          <div className="text-center sm:text-left">
+            <div className="font-space-mono font-bold text-[10px] tracking-[.16em] text-success mb-2 uppercase">
+              Auction Completed
+            </div>
+            <h1 className="font-anton text-[48px] leading-none text-text-primary uppercase mb-2">
+              MEGA AUCTION SUMMARY
+            </h1>
+            <p className="font-barlow text-[14px] text-text-secondary">
+              Simulations completed · Franchise squads finalized for Season &apos;27
+            </p>
           </div>
-          <h1 className="font-anton text-[48px] leading-none text-text-primary uppercase mb-2">
-            MEGA AUCTION SUMMARY
-          </h1>
-          <p className="font-barlow text-[14px] text-text-secondary">
-            Simulations completed · Franchise squads finalized for Season &apos;27
-          </p>
+          {!continued && userTeam && (
+            <button
+              onClick={handleContinue}
+              disabled={!SEASON_ACCESS_ENABLED}
+              className="flex items-center gap-2 px-5 py-2 font-space-mono text-[10px] font-bold tracking-widest border-2 rounded-[6px] hover:brightness-110 active:scale-95 transition-all uppercase shrink-0 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:brightness-100 disabled:active:scale-100"
+              style={{
+                backgroundColor: userTeam.primaryColor,
+                color: userTeam.secondaryColor,
+                borderColor: userTeam.primaryColor
+              }}
+            >
+              {!SEASON_ACCESS_ENABLED && <Lock size={12} />}
+              {SEASON_ACCESS_ENABLED ? "Continue to Season →" : "Season Locked"}
+            </button>
+          )}
         </div>
 
         {/* Dashboard Grid */}

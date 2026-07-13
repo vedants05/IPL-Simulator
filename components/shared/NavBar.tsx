@@ -1,10 +1,11 @@
 "use client";
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useGameStore } from "@/lib/store/gameStore";
 import { switchColorMode } from "./TeamThemeProvider";
 import AuctionGuidedTour from "@/components/auction/AuctionGuidedTour";
+import { SEASON_ACCESS_ENABLED } from "@/lib/config/featureFlags";
 import {
   AlertTriangle,
   SkipForward,
@@ -24,8 +25,11 @@ import {
 } from "lucide-react";
 
 const NAV_ITEMS = [
-  { label: "Overview", href: "/game/overview" },
-  { label: "Squad", href: "/game/squad" },
+  { label: "Home", href: "/game/overview?tab=home" },
+  { label: "Squad", href: "/game/overview?tab=squad" },
+  { label: "Scouting", href: "/game/overview?tab=scouting" },
+  { label: "Season", href: "/game/overview?tab=season" },
+  { label: "History", href: "/game/overview?tab=history" },
   { label: "Auction", href: "/game/auction" },
 ];
 
@@ -59,6 +63,16 @@ export default function NavBar() {
   const [showHowToPlay, setShowHowToPlay] = useState(false);
   const [activeTile, setActiveTile] = useState(0);
   const [isDarkMode, setIsDarkMode] = useState(false);
+  const searchParams = useSearchParams();
+  const activeTabFromUrl = searchParams.get("tab") || "home";
+  const [continuedToSeason, setContinuedToSeason] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const val = localStorage.getItem(`ipl_continued_to_season_${userTeamId}`) === "true";
+      setContinuedToSeason(val);
+    }
+  }, [userTeamId, pathname]);
 
   useEffect(() => {
     const savedTheme = localStorage.getItem("theme");
@@ -160,8 +174,16 @@ export default function NavBar() {
       )}
 
       <div className="flex items-center gap-0">
-        {NAV_ITEMS.map((item) => {
-          const active = pathname.startsWith(item.href);
+        {(SEASON_ACCESS_ENABLED && auction?.phase === "completed" && continuedToSeason
+          ? NAV_ITEMS
+          : [ { label: "Auction", href: "/game/auction" } ]
+        ).map((item) => {
+          let active = false;
+          if (item.href === "/game/auction") {
+            active = pathname.startsWith("/game/auction");
+          } else {
+            active = pathname.startsWith("/game/overview") && item.href.includes("tab=" + activeTabFromUrl);
+          }
           return (
             <Link
               key={item.href}

@@ -1,6 +1,7 @@
 export type Nationality = "Indian" | "Overseas";
 export type Role = "Batsman" | "WK-Batsman" | "All-Rounder" | "Pace Bowler" | "Spin Bowler";
 export type BattingStyle = "Right-hand" | "Left-hand";
+export type BowlingType = "Spinner" | "Pacer";
 export type Potential = "Established" | "Promising" | "World Class" | "Wonderkid";
 export type AuctionType = "mini" | "mega";
 export type AuctionPhase = "pre-auction" | "retention" | "live" | "completed";
@@ -51,6 +52,16 @@ export interface CareerStats {
   bowling: BowlingStats;
 }
 
+export interface IPLStats {
+  matches: number;
+  runs: number;
+  battingAverage: number;
+  strikeRate: number;
+  bowlingInnings: number;
+  bowlingAverage: number;
+  wickets: number;
+}
+
 export interface IPLHistoryEntry {
   teamId: string;
   season: string;
@@ -65,9 +76,10 @@ export interface Player {
   nationality: Nationality;
   role: Role;
   battingStyle: BattingStyle;
-  bowlingStyle: string | null;
+  bowlingStyle: BowlingType | null;
   attributes: PlayerAttributes;
   careerStats: CareerStats;
+  iplStats: IPLStats;
   iplHistory: IPLHistoryEntry[];
   basePrice: number;
   isCapped: boolean;
