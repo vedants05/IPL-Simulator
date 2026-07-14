@@ -1,13 +1,19 @@
 "use client";
-import { useState, useEffect, useMemo, useRef, Suspense } from "react";
+import { useState, useEffect, useLayoutEffect, useMemo, useRef, Suspense, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useGameStore } from "@/lib/store/gameStore";
+import { useGameStore, getNextSeasonYear, getSeasonDates } from "@/lib/store/gameStore";
 import { formatPrice } from "@/lib/logic/auctionRules";
+import {
+  addDaysToDateKey,
+  dateKeyToLocalDate,
+  DAY_SIMULATION_INTERVAL_MS,
+  TICKING_CALENDAR_OFFSETS,
+} from "@/lib/logic/careerCalendar";
+import { createDayTicker, type DayTickerController } from "@/lib/logic/dayTicker";
 import { SEASON_ACCESS_ENABLED } from "@/lib/config/featureFlags";
 import type { Player, Team } from "@/lib/types";
 import {
   Inbox as InboxIcon,
-  LayoutDashboard,
   Briefcase,
   Users,
   Sliders,
@@ -114,6 +120,8 @@ interface Match {
   winner?: string;
   commentary?: string[];
   scorecard?: MatchScorecard;
+  date?: string;
+  time?: string;
 }
 
 interface RetentionDeadline {
@@ -125,11 +133,6 @@ interface RetentionDeadline {
 // ============================================================================
 // Static Data Templates
 // ============================================================================
-const CALENDAR_MONTHS = Array.from({ length: 12 }, (_, offset) => {
-  const month = (11 + offset) % 12;
-  const year = 2026 + Math.floor((11 + offset) / 12);
-  return { month, year, label: new Date(year, month).toLocaleString("en-GB", { month: "long" }) };
-});
 
 const generateNextRetentionDeadline = (auctionDate: string): RetentionDeadline => ({
   year: Number(auctionDate.slice(0, 4)) + 1,
@@ -147,6 +150,15 @@ function OverviewPageContent() {
   const router = useRouter();
   const { teams, userTeamId, players, currentDate, currentSeason, auction } = useGameStore();
   const userTeam = teams[userTeamId];
+
+  // Dynamically generate months based on currentSeason
+  const CALENDAR_MONTHS = useMemo(() => {
+    return Array.from({ length: 12 }, (_, offset) => {
+      const month = (11 + offset) % 12;
+      const year = currentSeason + Math.floor((11 + offset) / 12);
+      return { month, year, label: new Date(year, month).toLocaleString("en-GB", { month: "long" }) };
+    });
+  }, [currentSeason]);
 
   // Redirect back to auction if not completed or not continued to season
   useEffect(() => {
@@ -197,8 +209,59 @@ function OverviewPageContent() {
   const [filterRole, setFilterRole] = useState<"all" | "Batsman" | "WK-Batsman" | "All-Rounder" | "Pace Bowler" | "Spin Bowler">("all");
   const [minRating, setMinRating] = useState<number>(60);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const [calendarMonthIndex, setCalendarMonthIndex] = useState(0);
-  const [selectedCalendarDay, setSelectedCalendarDay] = useState<number | null>(15);
+
+  // Day-by-day career ticking simulation states & refs
+  const [isSimulatingDays, setIsSimulatingDays] = useState(false);
+  const [isCalendarClosing, setIsCalendarClosing] = useState(false);
+  const fixturesRef = useRef<Match[]>([]);
+  const playerStatsRef = useRef<Record<string, PlayerStats>>({});
+  const advanceOneDayRef = useRef<() => void>(() => undefined);
+  const dayTickerRef = useRef<DayTickerController | null>(null);
+  const calendarAnimationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const continueButtonRef = useRef<HTMLButtonElement | null>(null);
+  const calendarStopButtonRef = useRef<HTMLButtonElement | null>(null);
+  const wasSimulatingDaysRef = useRef(false);
+
+  if (dayTickerRef.current === null) {
+    dayTickerRef.current = createDayTicker({
+      intervalMs: DAY_SIMULATION_INTERVAL_MS,
+      onTick: () => advanceOneDayRef.current(),
+      onError: (error) => {
+        console.error("Day-by-day simulation stopped unexpectedly:", error);
+        setIsSimulatingDays(false);
+        setToastMessage("Simulation paused because the next day could not be completed.");
+        setTimeout(() => setToastMessage(null), 3000);
+      },
+    });
+  }
+
+  useEffect(() => {
+    fixturesRef.current = fixtures;
+  }, [fixtures]);
+
+  useEffect(() => {
+    playerStatsRef.current = playerStats;
+  }, [playerStats]);
+
+  useEffect(() => {
+    return () => {
+      dayTickerRef.current?.dispose();
+      if (calendarAnimationTimeoutRef.current) clearTimeout(calendarAnimationTimeoutRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (isSimulatingDays) {
+      calendarStopButtonRef.current?.focus();
+    } else if (wasSimulatingDaysRef.current) {
+      continueButtonRef.current?.focus();
+    }
+
+    wasSimulatingDaysRef.current = isSimulatingDays;
+  }, [isSimulatingDays]);
+
+  const [calendarMonthIndex, setCalendarMonthIndex] = useState(3); // Start calendar view at index 3 (March)
+  const [selectedCalendarDay, setSelectedCalendarDay] = useState<number | null>(20); // Start selected calendar day on first match (March 20)
   const [retentionDeadline, setRetentionDeadline] = useState<RetentionDeadline | null>(null);
   const squadOverviewListRef = useRef<HTMLDivElement | null>(null);
   const [visibleSquadOverviewCount, setVisibleSquadOverviewCount] = useState(0);
@@ -207,13 +270,67 @@ function OverviewPageContent() {
   const currentCalendarMonth = CALENDAR_MONTHS[calendarMonthIndex];
   const calendarDaysInMonth = new Date(currentCalendarMonth.year, currentCalendarMonth.month + 1, 0).getDate();
   const calendarFirstWeekday = new Date(currentCalendarMonth.year, currentCalendarMonth.month, 1).getDay();
+  const inGameDate = dateKeyToLocalDate(currentDate);
+  const homeCalendarDaysInMonth = new Date(inGameDate.getFullYear(), inGameDate.getMonth() + 1, 0).getDate();
+  const homeCalendarFirstWeekday = new Date(inGameDate.getFullYear(), inGameDate.getMonth(), 1).getDay();
+
+  // Calculate announcement date (3 weeks before startSaturday)
+  const expectedStartDateObj = new Date(currentSeason + 1, 2, 31);
+  while (expectedStartDateObj.getDay() !== 6) {
+    expectedStartDateObj.setDate(expectedStartDateObj.getDate() - 1);
+  }
+  expectedStartDateObj.setDate(expectedStartDateObj.getDate() - 7); // Second last Saturday of March
+
+  const announcementDate = new Date(expectedStartDateObj);
+  announcementDate.setDate(expectedStartDateObj.getDate() - 21); // 3 weeks before
+
+  const userFriendlyAnnouncementDate = announcementDate.toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric"
+  });
+
+  const formattedAnnouncementDate = `${announcementDate.getFullYear()}-${String(announcementDate.getMonth() + 1).padStart(2, "0")}-${String(announcementDate.getDate()).padStart(2, "0")}`;
+  const seasonStartDateString = `${expectedStartDateObj.getFullYear()}-${String(expectedStartDateObj.getMonth() + 1).padStart(2, "0")}-${String(expectedStartDateObj.getDate()).padStart(2, "0")}`;
+  const auctionDateString = getSeasonDates(currentSeason).auctionDate;
+  const retentionDateString = retentionDeadline
+    ? `${retentionDeadline.year}-${String(retentionDeadline.month + 1).padStart(2, "0")}-${String(retentionDeadline.day).padStart(2, "0")}`
+    : "";
+
+  const isFixturesAnnounced = currentDate >= formattedAnnouncementDate;
+
+  const fixturesByDate = useMemo(() => {
+    const groupedFixtures = new Map<string, Match[]>();
+    if (!isFixturesAnnounced) return groupedFixtures;
+
+    fixtures.forEach((match) => {
+      if (!match.date) return;
+      const matches = groupedFixtures.get(match.date) ?? [];
+      matches.push(match);
+      groupedFixtures.set(match.date, matches);
+    });
+
+    return groupedFixtures;
+  }, [fixtures, isFixturesAnnounced]);
+
+  const getCalendarDayData = (dateString: string) => {
+    const dayMatches = fixturesByDate.get(dateString) ?? [];
+    return {
+      date: dateKeyToLocalDate(dateString),
+      dayMatches,
+      hasAuction: dateString === auctionDateString,
+      hasRetention: dateString === retentionDateString,
+      hasUserMatch: dayMatches.some((match) => match.teamA === userTeamId || match.teamB === userTeamId),
+      isAnnouncement: dateString === formattedAnnouncementDate,
+    };
+  };
 
   useEffect(() => {
     const list = squadOverviewListRef.current;
     if (!list || typeof ResizeObserver === "undefined") return;
 
     const updateVisibleCount = () => {
-      const rowHeight = 32;
+      const rowHeight = 44;
       const overflowLineHeight = 28;
       const totalPlayers = userTeam?.squad.length ?? 0;
       const rowsWithoutOverflowLine = Math.max(0, Math.floor(list.clientHeight / rowHeight));
@@ -258,9 +375,46 @@ function OverviewPageContent() {
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (parsed.fixtures) setFixtures(parsed.fixtures);
-        if (parsed.fixtures) setStandings(calculateStandings(parsed.fixtures));
-        if (parsed.playerStats) setPlayerStats(parsed.playerStats);
+        
+        // Self-healing validation: check if loaded fixtures are valid (no days with > 2 matches, starts on second-last Sat of March)
+        let isValidSchedule = true;
+        if (parsed.fixtures && parsed.fixtures.length === 70) {
+          const expectedStartDate = new Date(currentSeason + 1, 2, 31);
+          while (expectedStartDate.getDay() !== 6) {
+            expectedStartDate.setDate(expectedStartDate.getDate() - 1);
+          }
+          expectedStartDate.setDate(expectedStartDate.getDate() - 7);
+          const expectedDateString = `${expectedStartDate.getFullYear()}-${String(expectedStartDate.getMonth() + 1).padStart(2, "0")}-${String(expectedStartDate.getDate()).padStart(2, "0")}`;
+
+          if (parsed.fixtures[0].date !== expectedDateString) {
+            isValidSchedule = false;
+          } else {
+            const matchCountsByDate: Record<string, number> = {};
+            for (const m of parsed.fixtures) {
+              if (!m.date) { isValidSchedule = false; break; }
+              matchCountsByDate[m.date] = (matchCountsByDate[m.date] || 0) + 1;
+              if (matchCountsByDate[m.date] > 2) {
+                isValidSchedule = false;
+                break;
+              }
+            }
+          }
+        } else {
+          isValidSchedule = false;
+        }
+
+        if (parsed.fixtures && parsed.fixtures.length > 0 && isValidSchedule) {
+          fixturesRef.current = parsed.fixtures;
+          setFixtures(parsed.fixtures);
+          setStandings(calculateStandings(parsed.fixtures));
+        } else {
+          initCareer();
+          return;
+        }
+        if (parsed.playerStats) {
+          playerStatsRef.current = parsed.playerStats;
+          setPlayerStats(parsed.playerStats);
+        }
         if (parsed.inbox) setInbox([]);
         if (parsed.startingXI) setStartingXI(parsed.startingXI);
         if (parsed.impactPlayer) setImpactPlayer(parsed.impactPlayer);
@@ -320,6 +474,8 @@ function OverviewPageContent() {
     const nextRetentionDeadline = generateNextRetentionDeadline(currentDate);
 
     // Set and save
+    fixturesRef.current = GeneratedFixtures;
+    playerStatsRef.current = {};
     setFixtures(GeneratedFixtures);
     setStandings(initialStandings);
     setInbox(initialInbox);
@@ -341,10 +497,324 @@ function OverviewPageContent() {
   
   // Generates a high-quality, deterministic 14-round schedule for 10 teams
   const generateLeagueFixtures = (): Match[] => {
-    return [];
+    if (!userTeam) return [];
+
+    const teamIds = Object.keys(teams);
+    // Deterministic shuffle based on currentSeason to ensure different groups each season
+    const seed = currentSeason;
+    const pseudoRandom = (s: number) => {
+      const x = Math.sin(s) * 10000;
+      return x - Math.floor(x);
+    };
+
+    const shuffled = [...teamIds].sort((a, b) => {
+      const valA = pseudoRandom(seed + a.charCodeAt(0) + (a.charCodeAt(1) || 0));
+      const valB = pseudoRandom(seed + b.charCodeAt(0) + (b.charCodeAt(1) || 0));
+      return valA - valB;
+    });
+
+    const groupA = shuffled.slice(0, 5);
+    const groupB = shuffled.slice(5, 10);
+
+    // Build the pool of matches:
+    // 1. Cross-group matches: 2 fixtures against every team in opposite group.
+    // Group A vs Group B pairs:
+    const crossGroupPairs = new Map<string, { teamA: string; teamB: string }[]>();
+    for (const ta of groupA) {
+      for (const tb of groupB) {
+        const key = ta < tb ? `${ta}_${tb}` : `${tb}_${ta}`;
+        if (!crossGroupPairs.has(key)) {
+          crossGroupPairs.set(key, []);
+        }
+        crossGroupPairs.get(key)!.push({ teamA: ta, teamB: tb });
+        crossGroupPairs.get(key)!.push({ teamA: tb, teamB: ta });
+      }
+    }
+
+    const firstFixtures: { teamA: string; teamB: string }[] = [];
+    const secondFixtures: { teamA: string; teamB: string }[] = [];
+
+    // Distribute cross group matches: first goes to firstFixtures, second goes to secondFixtures
+    crossGroupPairs.forEach((list) => {
+      const pickFirst = pseudoRandom(seed + list[0].teamA.charCodeAt(0) + list[0].teamB.charCodeAt(0)) > 0.5;
+      if (pickFirst) {
+        firstFixtures.push(list[0]);
+        secondFixtures.push(list[1]);
+      } else {
+        firstFixtures.push(list[1]);
+        secondFixtures.push(list[0]);
+      }
+    });
+
+    // 2. In-group matches: 1 fixture against each team in their group
+    const inGroupMatches: { teamA: string; teamB: string }[] = [];
+    for (let i = 0; i < groupA.length; i++) {
+      for (let j = i + 1; j < groupA.length; j++) {
+        const homeFirst = pseudoRandom(seed + i * 7 + j * 13) > 0.5;
+        inGroupMatches.push({
+          teamA: homeFirst ? groupA[i] : groupA[j],
+          teamB: homeFirst ? groupA[j] : groupA[i]
+        });
+      }
+    }
+    for (let i = 0; i < groupB.length; i++) {
+      for (let j = i + 1; j < groupB.length; j++) {
+        const homeFirst = pseudoRandom(seed + i * 11 + j * 17) > 0.5;
+        inGroupMatches.push({
+          teamA: homeFirst ? groupB[i] : groupB[j],
+          teamB: homeFirst ? groupB[j] : groupB[i]
+        });
+      }
+    }
+
+    // In-group matches only play once, so we put them in the first half of the season pool
+    firstFixtures.push(...inGroupMatches);
+
+    const allMatchesPool = [...firstFixtures, ...secondFixtures];
+
+    // Find the second last Saturday of March of the next season year
+    const nextSeasonYear = currentSeason + 1;
+    const startSaturday = new Date(nextSeasonYear, 2, 31); // March 31
+    while (startSaturday.getDay() !== 6) { // 6 = Saturday
+      startSaturday.setDate(startSaturday.getDate() - 1);
+    }
+    startSaturday.setDate(startSaturday.getDate() - 7); // Second last Saturday
+
+    // Helper to calculate exact dayOffset, timeLabel, and dateString for any slot index
+    // - Week 0: Sat (0), Sun (1) (only 1 game on first Sunday), Mon (2), Tue (3), Wed (4), Thu (5), Fri (6) -> 7 slots
+    // - Week 1+: Sat (0), Sun AM (1), Sun PM (1), Mon (2), Tue (3), Wed (4), Thu (5), Fri (6) -> 8 slots
+    const getSlotDetails = (slotIdx: number) => {
+      let dayOffset = 0;
+      let timeLabel = "19:30";
+
+      if (slotIdx < 7) {
+        dayOffset = slotIdx;
+        timeLabel = "19:30";
+      } else {
+        const relativeSlot = slotIdx - 7;
+        const weekIndex = Math.floor(relativeSlot / 8) + 1;
+        const intraWeekSlot = relativeSlot % 8;
+
+        if (intraWeekSlot === 0) {
+          dayOffset = weekIndex * 7 + 0; // Saturday
+          timeLabel = "19:30";
+        } else if (intraWeekSlot === 1) {
+          dayOffset = weekIndex * 7 + 1; // Sunday Morning
+          timeLabel = "15:30";
+        } else if (intraWeekSlot === 2) {
+          dayOffset = weekIndex * 7 + 1; // Sunday Afternoon
+          timeLabel = "19:30";
+        } else {
+          dayOffset = weekIndex * 7 + (intraWeekSlot - 1); // Monday to Friday
+          timeLabel = "19:30";
+        }
+      }
+
+      const matchDate = new Date(startSaturday);
+      matchDate.setDate(startSaturday.getDate() + dayOffset);
+      const dateString = `${matchDate.getFullYear()}-${String(matchDate.getMonth() + 1).padStart(2, "0")}-${String(matchDate.getDate()).padStart(2, "0")}`;
+
+      return { dayOffset, timeLabel, dateString };
+    };
+
+    // Phase 1: Try to schedule with all constraints active (including 3 matches in 5 days)
+    for (let attempt = 0; attempt < 3000; attempt++) {
+      const pool = [...allMatchesPool];
+      
+      // Shuffle the pool
+      for (let i = pool.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [pool[i], pool[j]] = [pool[j], pool[i]];
+      }
+
+      const scheduled: Match[] = [];
+      const playedDays = new Map<string, number[]>();
+      for (const tid of teamIds) {
+        playedDays.set(tid, []);
+      }
+
+      let slotIndex = 0;
+      let success = true;
+
+      while (pool.length > 0) {
+        const { dayOffset, timeLabel, dateString } = getSlotDetails(slotIndex);
+
+        // Try to find a match in the pool that fits the slot constraints
+        let foundIdx = -1;
+        for (let i = 0; i < pool.length; i++) {
+          const m = pool[i];
+          const daysA = playedDays.get(m.teamA)!;
+          const daysB = playedDays.get(m.teamB)!;
+
+          const lastA = daysA.length > 0 ? daysA[daysA.length - 1] : -10;
+          const lastB = daysB.length > 0 ? daysB[daysB.length - 1] : -10;
+
+          // First 5 games (slots 0-4) must have all 10 teams playing once
+          if (slotIndex < 5) {
+            if (daysA.length > 0 || daysB.length > 0) continue;
+          }
+
+          // Back-to-back constraint (must have at least 1 day gap, so dayOffset - last > 1)
+          if (dayOffset - lastA <= 1 || dayOffset - lastB <= 1) continue;
+
+          // Rolling 5-day window constraint: no team plays 3 matches in any 5-day window [dayOffset - 4, dayOffset]
+          const windowStart = dayOffset - 4;
+          const windowEnd = dayOffset - 1;
+          const countA = daysA.filter(d => d >= windowStart && d <= windowEnd).length;
+          const countB = daysB.filter(d => d >= windowStart && d <= windowEnd).length;
+          if (countA >= 2 || countB >= 2) continue;
+
+          // Split fixture constraint: 1st cross-group match in first 7 games, 2nd in last 7 games for both teams
+          const isCross = (groupA.includes(m.teamA) && groupB.includes(m.teamB)) ||
+                          (groupB.includes(m.teamA) && groupA.includes(m.teamB));
+          if (isCross) {
+            const alreadyPlayed = scheduled.some(s => 
+              (s.teamA === m.teamA && s.teamB === m.teamB) || 
+              (s.teamA === m.teamB && s.teamB === m.teamA)
+            );
+            const matchesA = daysA.length;
+            const matchesB = daysB.length;
+
+            if (!alreadyPlayed) {
+              if (matchesA >= 7 || matchesB >= 7) continue;
+            } else {
+              if (matchesA < 7 || matchesB < 7) continue;
+            }
+          }
+
+          foundIdx = i;
+          break;
+        }
+
+        if (foundIdx === -1) {
+          success = false;
+          break; // Try next shuffle
+        }
+
+        const match = pool.splice(foundIdx, 1)[0];
+        playedDays.get(match.teamA)!.push(dayOffset);
+        playedDays.get(match.teamB)!.push(dayOffset);
+
+        scheduled.push({
+          id: `match_${slotIndex}_${nextSeasonYear}_${match.teamA}_${match.teamB}`,
+          round: Math.floor(slotIndex / 5) + 1, // Round 1 to 14
+          teamA: match.teamA,
+          teamB: match.teamB,
+          played: false,
+          date: dateString,
+          time: timeLabel
+        });
+
+        slotIndex++;
+      }
+
+      if (success) {
+        return scheduled;
+      }
+    }
+
+    // Phase 2: Relax the 3-matches-in-5-days constraint, but strictly enforce no back-to-back matches
+    console.warn("Fixture scheduler falling back to relaxed 3-in-5 constraint search...");
+    for (let attempt = 0; attempt < 3000; attempt++) {
+      const pool = [...allMatchesPool];
+      for (let i = pool.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [pool[i], pool[j]] = [pool[j], pool[i]];
+      }
+
+      const scheduled: Match[] = [];
+      const playedDays = new Map<string, number[]>();
+      for (const tid of teamIds) {
+        playedDays.set(tid, []);
+      }
+
+      let slotIndex = 0;
+      let success = true;
+
+      while (pool.length > 0) {
+        const { dayOffset, timeLabel, dateString } = getSlotDetails(slotIndex);
+
+        let foundIdx = -1;
+        for (let i = 0; i < pool.length; i++) {
+          const m = pool[i];
+          const daysA = playedDays.get(m.teamA)!;
+          const daysB = playedDays.get(m.teamB)!;
+
+          const lastA = daysA.length > 0 ? daysA[daysA.length - 1] : -10;
+          const lastB = daysB.length > 0 ? daysB[daysB.length - 1] : -10;
+
+          // First 5 games (slots 0-4) must have all 10 teams playing once
+          if (slotIndex < 5) {
+            if (daysA.length > 0 || daysB.length > 0) continue;
+          }
+
+          // Back-to-back constraint (must have at least 1 day gap, so dayOffset - last > 1)
+          if (dayOffset - lastA <= 1 || dayOffset - lastB <= 1) continue;
+
+          // Split fixture constraint: 1st cross-group match in first 7 games, 2nd in last 7 games for both teams
+          const isCross = (groupA.includes(m.teamA) && groupB.includes(m.teamB)) ||
+                          (groupB.includes(m.teamA) && groupA.includes(m.teamB));
+          if (isCross) {
+            const alreadyPlayed = scheduled.some(s => 
+              (s.teamA === m.teamA && s.teamB === m.teamB) || 
+              (s.teamA === m.teamB && s.teamB === m.teamA)
+            );
+            const matchesA = daysA.length;
+            const matchesB = daysB.length;
+
+            if (!alreadyPlayed) {
+              if (matchesA >= 7 || matchesB >= 7) continue;
+            } else {
+              if (matchesA < 7 || matchesB < 7) continue;
+            }
+          }
+
+          foundIdx = i;
+          break;
+        }
+
+        if (foundIdx === -1) {
+          success = false;
+          break; // Try next shuffle
+        }
+
+        const match = pool.splice(foundIdx, 1)[0];
+        playedDays.get(match.teamA)!.push(dayOffset);
+        playedDays.get(match.teamB)!.push(dayOffset);
+
+        scheduled.push({
+          id: `match_${slotIndex}_${nextSeasonYear}_${match.teamA}_${match.teamB}`,
+          round: Math.floor(slotIndex / 5) + 1, // Round 1 to 14
+          teamA: match.teamA,
+          teamB: match.teamB,
+          played: false,
+          date: dateString,
+          time: timeLabel
+        });
+
+        slotIndex++;
+      }
+
+      if (success) {
+        return scheduled;
+      }
+    }
+
+    // Fallback: This structured fallback is guaranteed to succeed and respects Sunday limits + 1-day rest
+    console.warn("Scheduler using absolute structured fallback...");
+    return allMatchesPool.map((m, idx) => {
+      const { timeLabel, dateString } = getSlotDetails(idx);
+      return {
+        id: `match_${idx}_${nextSeasonYear}_${m.teamA}_${m.teamB}`,
+        round: Math.floor(idx / 5) + 1,
+        teamA: m.teamA,
+        teamB: m.teamB,
+        played: false,
+        date: dateString,
+        time: timeLabel
+      };
+    });
   };
-
-
 
   // Toggle shortlist helper
   const toggleShortlist = (pid: string) => {
@@ -362,8 +832,532 @@ function OverviewPageContent() {
 
   // Play and simulate match logic
   const handleSimulateNextRound = () => {
-    showToast("Match simulation is locked.");
+    if (dayTickerRef.current?.isRunning()) {
+      showToast("Stop the calendar simulation before simulating a round manually.");
+      return;
+    }
+
+    const unplayed = fixtures.filter(f => !f.played).sort((a, b) => a.round - b.round);
+    if (unplayed.length === 0) {
+      showToast("All fixtures of the season are completed!");
+      return;
+    }
+
+    const roundToSim = unplayed[0].round;
+    const roundMatches = fixtures.filter(f => f.round === roundToSim);
+
+    const nextFixtures = [...fixtures];
+    const nextPlayerStats = Object.fromEntries(
+      Object.entries(playerStats).map(([playerId, stats]) => [playerId, { ...stats }]),
+    ) as Record<string, PlayerStats>;
+
+    roundMatches.forEach(match => {
+      const idx = nextFixtures.findIndex(f => f.id === match.id);
+      if (idx === -1 || nextFixtures[idx].played) return;
+
+      const { teamA, teamB } = match;
+
+      const squadA = Object.values(players)
+        .filter(p => p.currentTeamId === teamA)
+        .sort((a, b) => getPlayerRating(b) - getPlayerRating(a))
+        .slice(0, 11);
+      
+      const squadB = Object.values(players)
+        .filter(p => p.currentTeamId === teamB)
+        .sort((a, b) => getPlayerRating(b) - getPlayerRating(a))
+        .slice(0, 11);
+
+      const strengthA = squadA.length > 0 
+        ? squadA.reduce((sum, p) => sum + getPlayerRating(p), 0) / squadA.length
+        : 75;
+      const strengthB = squadB.length > 0
+        ? squadB.reduce((sum, p) => sum + getPlayerRating(p), 0) / squadB.length
+        : 75;
+
+      const probA = Math.max(0.15, Math.min(0.85, 0.5 + (strengthA - strengthB) * 0.025));
+      const teamAWins = Math.random() < probA;
+      const winnerId = teamAWins ? teamA : teamB;
+
+      const baseA = Math.floor(130 + Math.random() * 60 + (strengthA - 75) * 2);
+      const baseB = Math.floor(130 + Math.random() * 60 + (strengthB - 75) * 2);
+
+      let runsA = 0;
+      let wicketsA = 0;
+      let runsB = 0;
+      let wicketsB = 0;
+
+      if (teamAWins) {
+        runsA = Math.max(100, Math.floor(baseA + 15));
+        wicketsA = Math.floor(Math.random() * 8);
+        wicketsB = Math.floor(5 + Math.random() * 6);
+        runsB = Math.max(90, runsA - 1 - Math.floor(Math.random() * 30));
+      } else {
+        runsB = Math.max(100, Math.floor(baseB + 15));
+        wicketsB = Math.floor(Math.random() * 8);
+        wicketsA = Math.floor(5 + Math.random() * 6);
+        runsA = Math.max(90, runsB - 1 - Math.floor(Math.random() * 30));
+      }
+
+      const battingA = squadA.map((p, pIdx) => {
+        const runFactor = pIdx < 3 ? 0.35 : pIdx < 6 ? 0.20 : 0.05;
+        const runs = Math.floor(runsA * runFactor * (0.6 + Math.random() * 0.8));
+        const balls = Math.floor(runs * (0.8 + Math.random() * 0.4));
+        return {
+          id: p.id,
+          name: p.name,
+          runs,
+          balls,
+          wickets: 0,
+          runsConceded: 0,
+          oversBowled: 0,
+        };
+      });
+      const sumBattingA = battingA.reduce((sum, b) => sum + b.runs, 0);
+      const diffA = runsA - sumBattingA;
+      if (diffA !== 0 && battingA.length > 0) {
+        battingA[0].runs = Math.max(0, battingA[0].runs + diffA);
+        battingA[0].balls = Math.max(battingA[0].runs, battingA[0].balls + diffA);
+      }
+
+      const bowlingB = squadB.slice(6, 11).map((p, pIdx) => {
+        const wickets = pIdx === 0 ? Math.min(wicketsA, Math.floor(Math.random() * 3)) : Math.min(wicketsA, Math.floor(Math.random() * 2));
+        const runsConceded = Math.floor((runsA / 5) * (0.7 + Math.random() * 0.6));
+        return {
+          id: p.id,
+          name: p.name,
+          runs: 0,
+          balls: 0,
+          wickets,
+          runsConceded,
+          oversBowled: 4,
+        };
+      });
+      const sumWicketsB = bowlingB.reduce((sum, b) => sum + b.wickets, 0);
+      const diffWicketsB = wicketsA - sumWicketsB;
+      if (diffWicketsB !== 0 && bowlingB.length > 0) {
+        bowlingB[0].wickets = Math.max(0, bowlingB[0].wickets + diffWicketsB);
+      }
+
+      const battingB = squadB.map((p, pIdx) => {
+        const runFactor = pIdx < 3 ? 0.35 : pIdx < 6 ? 0.20 : 0.05;
+        const runs = Math.floor(runsB * runFactor * (0.6 + Math.random() * 0.8));
+        const balls = Math.floor(runs * (0.8 + Math.random() * 0.4));
+        return {
+          id: p.id,
+          name: p.name,
+          runs,
+          balls,
+          wickets: 0,
+          runsConceded: 0,
+          oversBowled: 0,
+        };
+      });
+      const sumBattingB = battingB.reduce((sum, b) => sum + b.runs, 0);
+      const diffB = runsB - sumBattingB;
+      if (diffB !== 0 && battingB.length > 0) {
+        battingB[0].runs = Math.max(0, battingB[0].runs + diffB);
+        battingB[0].balls = Math.max(battingB[0].runs, battingB[0].balls + diffB);
+      }
+
+      const bowlingA = squadA.slice(6, 11).map((p, pIdx) => {
+        const wickets = pIdx === 0 ? Math.min(wicketsB, Math.floor(Math.random() * 3)) : Math.min(wicketsB, Math.floor(Math.random() * 2));
+        const runsConceded = Math.floor((runsB / 5) * (0.7 + Math.random() * 0.6));
+        return {
+          id: p.id,
+          name: p.name,
+          runs: 0,
+          balls: 0,
+          wickets,
+          runsConceded,
+          oversBowled: 4,
+        };
+      });
+      const sumWicketsA = bowlingA.reduce((sum, b) => sum + b.wickets, 0);
+      const diffWicketsA = wicketsB - sumWicketsA;
+      if (diffWicketsA !== 0 && bowlingA.length > 0) {
+        bowlingA[0].wickets = Math.max(0, bowlingA[0].wickets + diffWicketsA);
+      }
+
+      const updateStats = (playerList: any[], teamId: string, isBatting: boolean, countAppearance = false) => {
+        playerList.forEach(p => {
+          if (!nextPlayerStats[p.id]) {
+            nextPlayerStats[p.id] = {
+              id: p.id,
+              name: p.name,
+              teamId,
+              runs: 0,
+              balls: 0,
+              wickets: 0,
+              runsConceded: 0,
+              oversBowled: 0,
+              matches: 0,
+              highestScore: 0,
+              bestBowling: "0/0"
+            };
+          }
+          const ps = nextPlayerStats[p.id];
+          if (countAppearance) ps.matches++;
+          if (isBatting) {
+            ps.runs += p.runs;
+            ps.balls += p.balls;
+            ps.highestScore = Math.max(ps.highestScore, p.runs);
+          } else {
+            ps.wickets += p.wickets;
+            ps.runsConceded += p.runsConceded;
+            ps.oversBowled += p.oversBowled;
+            const currentBestWickets = parseInt(ps.bestBowling.split("/")[0]) || 0;
+            const currentBestRuns = parseInt(ps.bestBowling.split("/")[1]) || 999;
+            if (p.wickets > currentBestWickets || (p.wickets === currentBestWickets && p.runsConceded < currentBestRuns) || ps.bestBowling === "0/0") {
+              ps.bestBowling = `${p.wickets}/${p.runsConceded}`;
+            }
+          }
+        });
+      };
+
+      updateStats(battingA, teamA, true, true);
+      updateStats(bowlingB, teamB, false);
+      updateStats(battingB, teamB, true, true);
+      updateStats(bowlingA, teamA, false);
+
+      nextFixtures[idx] = {
+        ...match,
+        played: true,
+        scoreA: { runs: runsA, wickets: wicketsA, overs: 20 },
+        scoreB: { runs: runsB, wickets: wicketsB, overs: 20 },
+        winner: winnerId,
+        commentary: [
+          `Innings 1: ${teams[teamA]?.name} scored ${runsA}/${wicketsA} in 20 overs.`,
+          `Innings 2: ${teams[teamB]?.name} scored ${runsB}/${wicketsB} in 20 overs.`,
+          `Match Result: ${teams[winnerId]?.name} won the match.`
+        ],
+        scorecard: {
+          inningsA: {
+            batting: battingA.map(b => ({ ...b, id: b.id, name: b.name })),
+            bowling: bowlingA.map(b => ({ ...b, id: b.id, name: b.name })),
+            extras: 4
+          },
+          inningsB: {
+            batting: battingB.map(b => ({ ...b, id: b.id, name: b.name })),
+            bowling: bowlingB.map(b => ({ ...b, id: b.id, name: b.name })),
+            extras: 4
+          }
+        } as any
+      };
+    });
+
+    const nextStandings = calculateStandings(nextFixtures);
+
+    fixturesRef.current = nextFixtures;
+    playerStatsRef.current = nextPlayerStats;
+    setFixtures(nextFixtures);
+    setPlayerStats(nextPlayerStats);
+    setStandings(nextStandings);
+
+    saveCareerState({
+      fixtures: nextFixtures,
+      playerStats: nextPlayerStats,
+      standings: nextStandings
+    });
+
+    showToast(`Round ${roundToSim} simulation completed!`);
   };
+
+  // Day-by-day career ticking simulation actions & helpers
+  const simulateMatchesForDate = (dateStr: string, currentFixtures: Match[], currentPlayerStats: Record<string, PlayerStats>) => {
+    const dayMatches = currentFixtures.filter(f => f.date === dateStr && !f.played);
+    if (dayMatches.length === 0) return { nextFixtures: currentFixtures, nextPlayerStats: currentPlayerStats, simulated: false };
+
+    const nextFixtures = [...currentFixtures];
+    const nextPlayerStats = Object.fromEntries(
+      Object.entries(currentPlayerStats).map(([playerId, stats]) => [playerId, { ...stats }]),
+    ) as Record<string, PlayerStats>;
+
+    dayMatches.forEach(match => {
+      const idx = nextFixtures.findIndex(f => f.id === match.id);
+      if (idx === -1 || nextFixtures[idx].played) return;
+
+      const { teamA, teamB } = match;
+
+      const squadA = Object.values(players)
+        .filter(p => p.currentTeamId === teamA)
+        .sort((a, b) => getPlayerRating(b) - getPlayerRating(a))
+        .slice(0, 11);
+      
+      const squadB = Object.values(players)
+        .filter(p => p.currentTeamId === teamB)
+        .sort((a, b) => getPlayerRating(b) - getPlayerRating(a))
+        .slice(0, 11);
+
+      const strengthA = squadA.length > 0 
+        ? squadA.reduce((sum, p) => sum + getPlayerRating(p), 0) / squadA.length
+        : 75;
+      const strengthB = squadB.length > 0
+        ? squadB.reduce((sum, p) => sum + getPlayerRating(p), 0) / squadB.length
+        : 75;
+
+      const probA = Math.max(0.15, Math.min(0.85, 0.5 + (strengthA - strengthB) * 0.025));
+      const teamAWins = Math.random() < probA;
+      const winnerId = teamAWins ? teamA : teamB;
+
+      const baseA = Math.floor(130 + Math.random() * 60 + (strengthA - 75) * 2);
+      const baseB = Math.floor(130 + Math.random() * 60 + (strengthB - 75) * 2);
+
+      let runsA = 0;
+      let wicketsA = 0;
+      let runsB = 0;
+      let wicketsB = 0;
+
+      if (teamAWins) {
+        runsA = Math.max(100, Math.floor(baseA + 15));
+        wicketsA = Math.floor(Math.random() * 8);
+        wicketsB = Math.floor(5 + Math.random() * 6);
+        runsB = Math.max(90, runsA - 1 - Math.floor(Math.random() * 30));
+      } else {
+        runsB = Math.max(100, Math.floor(baseB + 15));
+        wicketsB = Math.floor(Math.random() * 8);
+        wicketsA = Math.floor(5 + Math.random() * 6);
+        runsA = Math.max(90, runsB - 1 - Math.floor(Math.random() * 30));
+      }
+
+      const battingA = squadA.map((p, pIdx) => {
+        const runFactor = pIdx < 3 ? 0.35 : pIdx < 6 ? 0.20 : 0.05;
+        const runs = Math.floor(runsA * runFactor * (0.6 + Math.random() * 0.8));
+        const balls = Math.floor(runs * (0.8 + Math.random() * 0.4));
+        return {
+          id: p.id,
+          name: p.name,
+          runs,
+          balls,
+          wickets: 0,
+          runsConceded: 0,
+          oversBowled: 0,
+        };
+      });
+      const sumBattingA = battingA.reduce((sum, b) => sum + b.runs, 0);
+      const diffA = runsA - sumBattingA;
+      if (diffA !== 0 && battingA.length > 0) {
+        battingA[0].runs = Math.max(0, battingA[0].runs + diffA);
+        battingA[0].balls = Math.max(battingA[0].runs, battingA[0].balls + diffA);
+      }
+
+      const bowlingB = squadB.slice(6, 11).map((p, pIdx) => {
+        const wickets = pIdx === 0 ? Math.min(wicketsA, Math.floor(Math.random() * 3)) : Math.min(wicketsA, Math.floor(Math.random() * 2));
+        const runsConceded = Math.floor((runsA / 5) * (0.7 + Math.random() * 0.6));
+        return {
+          id: p.id,
+          name: p.name,
+          runs: 0,
+          balls: 0,
+          wickets,
+          runsConceded,
+          oversBowled: 4,
+        };
+      });
+      const sumWicketsB = bowlingB.reduce((sum, b) => sum + b.wickets, 0);
+      const diffWicketsB = wicketsA - sumWicketsB;
+      if (diffWicketsB !== 0 && bowlingB.length > 0) {
+        bowlingB[0].wickets = Math.max(0, bowlingB[0].wickets + diffWicketsB);
+      }
+
+      const battingB = squadB.map((p, pIdx) => {
+        const runFactor = pIdx < 3 ? 0.35 : pIdx < 6 ? 0.20 : 0.05;
+        const runs = Math.floor(runsB * runFactor * (0.6 + Math.random() * 0.8));
+        const balls = Math.floor(runs * (0.8 + Math.random() * 0.4));
+        return {
+          id: p.id,
+          name: p.name,
+          runs,
+          balls,
+          wickets: 0,
+          runsConceded: 0,
+          oversBowled: 0,
+        };
+      });
+      const sumBattingB = battingB.reduce((sum, b) => sum + b.runs, 0);
+      const diffB = runsB - sumBattingB;
+      if (diffB !== 0 && battingB.length > 0) {
+        battingB[0].runs = Math.max(0, battingB[0].runs + diffB);
+        battingB[0].balls = Math.max(battingB[0].runs, battingB[0].balls + diffB);
+      }
+
+      const bowlingA = squadA.slice(6, 11).map((p, pIdx) => {
+        const wickets = pIdx === 0 ? Math.min(wicketsB, Math.floor(Math.random() * 3)) : Math.min(wicketsB, Math.floor(Math.random() * 2));
+        const runsConceded = Math.floor((runsB / 5) * (0.7 + Math.random() * 0.6));
+        return {
+          id: p.id,
+          name: p.name,
+          runs: 0,
+          balls: 0,
+          wickets,
+          runsConceded,
+          oversBowled: 4,
+        };
+      });
+      const sumWicketsA = bowlingA.reduce((sum, b) => sum + b.wickets, 0);
+      const diffWicketsA = wicketsB - sumWicketsA;
+      if (diffWicketsA !== 0 && bowlingA.length > 0) {
+        bowlingA[0].wickets = Math.max(0, bowlingA[0].wickets + diffWicketsA);
+      }
+
+      const updateStats = (playerList: any[], teamId: string, isBatting: boolean, countAppearance = false) => {
+        playerList.forEach(p => {
+          if (!nextPlayerStats[p.id]) {
+            nextPlayerStats[p.id] = {
+              id: p.id,
+              name: p.name,
+              teamId,
+              runs: 0,
+              balls: 0,
+              wickets: 0,
+              runsConceded: 0,
+              oversBowled: 0,
+              matches: 0,
+              highestScore: 0,
+              bestBowling: "0/0"
+            };
+          }
+          const ps = nextPlayerStats[p.id];
+          if (countAppearance) ps.matches++;
+          if (isBatting) {
+            ps.runs += p.runs;
+            ps.balls += p.balls;
+            ps.highestScore = Math.max(ps.highestScore, p.runs);
+          } else {
+            ps.wickets += p.wickets;
+            ps.runsConceded += p.runsConceded;
+            ps.oversBowled += p.oversBowled;
+            const currentBestWickets = parseInt(ps.bestBowling.split("/")[0]) || 0;
+            const currentBestRuns = parseInt(ps.bestBowling.split("/")[1]) || 999;
+            if (p.wickets > currentBestWickets || (p.wickets === currentBestWickets && p.runsConceded < currentBestRuns) || ps.bestBowling === "0/0") {
+              ps.bestBowling = `${p.wickets}/${p.runsConceded}`;
+            }
+          }
+        });
+      };
+
+      updateStats(battingA, teamA, true, true);
+      updateStats(bowlingB, teamB, false);
+      updateStats(battingB, teamB, true, true);
+      updateStats(bowlingA, teamA, false);
+
+      nextFixtures[idx] = {
+        ...match,
+        played: true,
+        scoreA: { runs: runsA, wickets: wicketsA, overs: 20 },
+        scoreB: { runs: runsB, wickets: wicketsB, overs: 20 },
+        winner: winnerId,
+        commentary: [
+          `Innings 1: ${teams[teamA]?.name} scored ${runsA}/${wicketsA} in 20 overs.`,
+          `Innings 2: ${teams[teamB]?.name} scored ${runsB}/${wicketsB} in 20 overs.`,
+          `Match Result: ${teams[winnerId]?.name} won the match.`
+        ],
+        scorecard: {
+          inningsA: {
+            batting: battingA.map(b => ({ ...b, id: b.id, name: b.name })),
+            bowling: bowlingA.map(b => ({ ...b, id: b.id, name: b.name })),
+            extras: 4
+          },
+          inningsB: {
+            batting: battingB.map(b => ({ ...b, id: b.id, name: b.name })),
+            bowling: bowlingB.map(b => ({ ...b, id: b.id, name: b.name })),
+            extras: 4
+          }
+        } as any
+      };
+    });
+
+    return { nextFixtures, nextPlayerStats, simulated: true };
+  };
+
+  const stopSimulating = useCallback(() => {
+    dayTickerRef.current?.stop();
+    setIsCalendarClosing(true);
+    setIsSimulatingDays(false);
+    if (calendarAnimationTimeoutRef.current) clearTimeout(calendarAnimationTimeoutRef.current);
+    calendarAnimationTimeoutRef.current = setTimeout(() => {
+      setIsCalendarClosing(false);
+      calendarAnimationTimeoutRef.current = null;
+    }, 430);
+  }, []);
+
+  const advanceOneDay = () => {
+    const currentDateString = useGameStore.getState().currentDate;
+    const unplayedMatches = fixturesRef.current.filter((match) => !match.played);
+    const overdueFixtureDate = unplayedMatches
+      .map((match) => match.date)
+      .filter((date): date is string => Boolean(date && date <= currentDateString))
+      .sort()[0];
+    const nextDateString = overdueFixtureDate ?? addDaysToDateKey(currentDateString, 1);
+    const isCatchingUpCurrentDate = overdueFixtureDate !== undefined;
+    const userMatchBlocksProgress = unplayedMatches.some(
+      (match) =>
+        Boolean(match.date && match.date <= nextDateString) &&
+        (match.teamA === userTeamId || match.teamB === userTeamId),
+    );
+
+    // User matches require a real result from the future match system. Never
+    // advance beyond their scheduled day or generate a result automatically.
+    if (userMatchBlocksProgress) {
+      useGameStore.setState({ currentDate: nextDateString });
+      stopSimulating();
+      showToast("Paused: Your fixture needs a match result before the calendar can continue.");
+      return;
+    }
+
+    // Milestones pause on the milestone date before another timer is queued.
+    if (!isCatchingUpCurrentDate && nextDateString === retentionDateString) {
+      useGameStore.setState({ currentDate: nextDateString });
+      stopSimulating();
+      showToast("Paused: Retention Deadline today!");
+      return;
+    }
+
+    if (!isCatchingUpCurrentDate && nextDateString === auctionDateString) {
+      useGameStore.setState({ currentDate: nextDateString });
+      stopSimulating();
+      showToast("Paused: Player Auction today!");
+      return;
+    }
+
+    if (!isCatchingUpCurrentDate && nextDateString >= seasonStartDateString && unplayedMatches.length === 0) {
+      stopSimulating();
+      showToast("Paused: All fixtures of the season completed!");
+      return;
+    }
+
+    // Dates advance only; fixtures remain untouched until a future result
+    // system supplies their scorecards.
+    if (!isCatchingUpCurrentDate) {
+      // Commit the date only after that day's match results are safely persisted.
+      useGameStore.setState({ currentDate: nextDateString });
+    }
+  };
+
+  useLayoutEffect(() => {
+    advanceOneDayRef.current = advanceOneDay;
+  });
+
+  const startSimulating = useCallback(() => {
+    if (calendarAnimationTimeoutRef.current) {
+      clearTimeout(calendarAnimationTimeoutRef.current);
+      calendarAnimationTimeoutRef.current = null;
+    }
+    setIsCalendarClosing(false);
+    if (dayTickerRef.current?.start()) {
+      setIsSimulatingDays(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || !dayTickerRef.current?.isRunning()) return;
+      event.preventDefault();
+      stopSimulating();
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [stopSimulating]);
 
   // Calculate league standings from actual group-stage results and scorecards.
   const calculateStandings = (allMatches: Match[]): LeagueStandings[] => {
@@ -560,7 +1554,7 @@ function OverviewPageContent() {
     home: {
       label: "Home",
       icon: InboxIcon,
-      subtabs: ["overview", "inbox", "dashboard", "calendar", "office"]
+      subtabs: ["overview", "inbox", "calendar", "office"]
     },
     squad: {
       label: "Squad",
@@ -646,7 +1640,7 @@ function OverviewPageContent() {
     if (!list || typeof ResizeObserver === "undefined") return;
 
     const updateVisibleCount = () => {
-      const rowHeight = 32;
+      const rowHeight = 44;
       const overflowLineHeight = 28;
       const totalPlayers = bestScoutingPlayers.length;
       if (list.clientHeight <= 0) return;
@@ -692,11 +1686,113 @@ function OverviewPageContent() {
   }
 
   return (
-    <div className="h-[calc(100vh-3rem)] flex overflow-hidden bg-bg relative">
+    <div className="overview-page h-[calc(100vh-3rem)] flex overflow-hidden bg-bg relative">
       {/* Global Toast Alert */}
       {toastMessage && (
         <div className="fixed bottom-6 right-6 z-[100] bg-[var(--ink)] text-bg border border-border/20 px-4 py-3 rounded shadow-lg text-xs font-space-mono font-semibold uppercase tracking-wider animate-in fade-in slide-in-from-bottom-3 duration-200">
           {toastMessage}
+        </div>
+      )}
+
+      {/* Ticking Calendar Overlay */}
+      {(isSimulatingDays || isCalendarClosing) && (
+        <div
+          className={`${isSimulatingDays ? "ticking-calendar-drop" : "ticking-calendar-pull-up"} fixed inset-x-0 top-0 z-[120] flex items-center gap-3 border-b-2 border-border bg-surface px-3 py-3 shadow-2xl sm:px-5`}
+          role="region"
+          aria-label="Day-by-day simulation calendar"
+        >
+          <p className="sr-only" aria-live="polite" aria-atomic="true">
+            Current simulation date: {dateKeyToLocalDate(currentDate).toLocaleDateString("en-GB", { dateStyle: "full" })}
+          </p>
+          {/* Yesterday, today, and the next five days. */}
+          <div className="min-w-0 flex-1 overflow-x-auto px-1 py-1">
+            <div className="mx-auto flex w-max items-center gap-2 sm:gap-3">
+              {TICKING_CALENDAR_OFFSETS.map((offset) => {
+                const tileDateString = addDaysToDateKey(currentDate, offset);
+                const {
+                  date: tileDate,
+                  dayMatches,
+                  hasAuction,
+                  hasRetention,
+                  hasUserMatch,
+                  isAnnouncement,
+                } = getCalendarDayData(tileDateString);
+                const isCurrentDay = offset === 0;
+
+                return (
+                  <div
+                    key={tileDateString}
+                    aria-current={isCurrentDay ? "date" : undefined}
+                    className={`flex size-20 shrink-0 flex-col justify-between rounded-md border-2 p-1.5 text-left transition-all sm:size-24 sm:p-2
+                      ${isCurrentDay
+                        ? "scale-[1.03] border-accent bg-accent/5 shadow-lg ring-2 ring-accent/25"
+                        : isAnnouncement
+                          ? "border-success bg-success/5"
+                          : "border-border bg-surface"}
+                      ${offset < 0 ? "opacity-[0.55]" : ""}`}
+                  >
+                    <div className="flex w-full items-start justify-between gap-1">
+                      <time
+                        dateTime={tileDateString}
+                        aria-label={tileDate.toLocaleDateString("en-GB", { dateStyle: "full" })}
+                        className="font-space-mono text-[10px] font-bold leading-tight text-text-primary sm:text-[11px]"
+                      >
+                        <span className="block text-[7px] uppercase tracking-wide text-text-secondary sm:text-[8px]">
+                          {tileDate.toLocaleDateString("en-GB", { weekday: "short" })}
+                        </span>
+                        {tileDate.getDate()} {tileDate.toLocaleDateString("en-GB", { month: "short" })}
+                      </time>
+                      {hasUserMatch && <span className="mt-1 size-1.5 rounded-full bg-accent animate-pulse" aria-hidden="true" />}
+                    </div>
+
+                    <div className="mt-1 flex w-full flex-grow flex-col justify-end">
+                      {dayMatches.length > 0 && (
+                        <div className="w-full space-y-0.5">
+                          {dayMatches.slice(0, 2).map((match) => {
+                            const isUserGame = match.teamA === userTeamId || match.teamB === userTeamId;
+                            const opponentId = match.teamA === userTeamId ? match.teamB : match.teamA;
+                            const opponent = teams[opponentId];
+
+                            return (
+                              <div
+                                key={match.id}
+                                className={`w-full truncate rounded px-1 py-0.5 text-center font-space-mono text-[8px] font-bold uppercase leading-tight
+                                  ${isUserGame ? "text-white" : "border border-border/40 bg-[#16130f]/5 text-text-primary"}`}
+                                style={isUserGame && userTeam ? { backgroundColor: userTeam.primaryColor, color: userTeam.secondaryColor } : undefined}
+                              >
+                                {isUserGame
+                                  ? `${match.played ? (match.winner === userTeamId ? "W" : "L") : "Playing"} · vs ${opponent?.shortName ?? opponentId}`
+                                  : `${teams[match.teamA]?.shortName ?? match.teamA} v ${teams[match.teamB]?.shortName ?? match.teamB}`}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {(hasAuction || hasRetention || isAnnouncement) && (
+                        <div className="mt-0.5 w-full text-center font-anton text-[8px] uppercase leading-none tracking-wider sm:text-[9px]">
+                          {hasAuction && <span className="block text-success">Auction</span>}
+                          {hasRetention && <span className="block text-danger">Retention</span>}
+                          {isAnnouncement && <span className="block rounded border border-success/30 bg-success/15 py-0.5 text-success">Fixtures</span>}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <button
+            ref={calendarStopButtonRef}
+            type="button"
+            onClick={stopSimulating}
+            className="flex shrink-0 items-center gap-2 rounded bg-danger px-3 py-2.5 font-space-mono text-[10px] font-bold uppercase tracking-wider text-white shadow-md transition-all hover:bg-danger/90 active:scale-95 sm:px-5 sm:text-xs"
+            aria-label="Stop day-by-day simulation (Escape)"
+          >
+            <span className="size-2 rounded-sm bg-white" aria-hidden="true" />
+            Stop <span className="hidden sm:inline">(Esc)</span>
+          </button>
         </div>
       )}
 
@@ -726,11 +1822,17 @@ function OverviewPageContent() {
             })}
           </div>
 
-          <div className="flex items-center gap-4 shrink-0">
-            {/* Quick Stats preview */}
-            <div className="font-space-mono text-[10px] text-text-secondary flex gap-4">
-              <div>ROUND: <span className="font-bold text-text-primary">--</span></div>
-            </div>
+          <div className="flex shrink-0 items-center">
+            {!isSimulatingDays && (
+              <button
+                ref={continueButtonRef}
+                type="button"
+                onClick={startSimulating}
+                className="flex items-center gap-1.5 rounded bg-success px-3.5 py-1.5 font-space-mono text-[9px] font-bold uppercase tracking-wider text-white shadow-sm transition-all hover:bg-success/80 active:scale-95"
+              >
+                <Play className="size-3 fill-current" aria-hidden="true" /> Continue
+              </button>
+            )}
           </div>
         </header>
 
@@ -744,7 +1846,7 @@ function OverviewPageContent() {
             <>
               {/* Home Overview tab */}
               {activeSubTab === "overview" && (
-                <div className="grid h-full min-h-0 grid-cols-[minmax(16rem,0.85fr)_minmax(30rem,1.5fr)_minmax(16rem,0.85fr)] gap-6 overflow-hidden">
+                <div className="grid grid-cols-[minmax(16rem,0.85fr)_minmax(30rem,1.5fr)_minmax(16rem,0.85fr)] gap-6 h-[calc(100vh-200px)] min-h-[500px] overflow-hidden">
                   {/* Inbox column */}
                   <div onClick={() => setActiveSubTab("inbox")} className="bg-surface border-2 border-border hover:border-accent p-5 flex min-h-0 flex-col cursor-pointer transition-colors">
                     <div className="flex justify-between items-start mb-4 border-b border-[#16130f]/10 pb-2 shrink-0">
@@ -753,7 +1855,7 @@ function OverviewPageContent() {
                         {inbox.filter(m => m.unread).length} UNREAD
                       </span>
                     </div>
-                    <div className="space-y-3 overflow-y-auto pr-1">
+                    <div className="space-y-3 overflow-y-auto pr-1 flex-1">
                       {inbox.length === 0 ? (
                         <p className="text-xs font-barlow text-text-secondary py-3">No messages.</p>
                       ) : inbox.map(m => (
@@ -767,12 +1869,14 @@ function OverviewPageContent() {
 
                   {/* Main column */}
                   <div className="grid min-h-0 grid-rows-[1fr_3fr] gap-6">
-                    <div onClick={() => setActiveSubTab("dashboard")} className="bg-surface border-2 border-border hover:border-accent p-5 cursor-pointer transition-colors overflow-hidden">
+                    <div onClick={() => router.push("/game/overview?tab=season&subtab=fixtures")} className="bg-surface border-2 border-border hover:border-accent p-5 cursor-pointer transition-colors overflow-hidden">
                       <div className="flex justify-between items-start mb-3 border-b border-[#16130f]/10 pb-2">
                         <div className="font-anton text-[14px] uppercase text-text-primary">NEXT OPPONENT</div>
                       </div>
-                      {fixtures.filter(f => !f.played && (f.teamA === userTeamId || f.teamB === userTeamId)).length === 0 ? (
-                        <p className="text-xs font-barlow text-text-secondary py-2">No fixtures scheduled.</p>
+                      {!isFixturesAnnounced || fixtures.filter(f => !f.played && (f.teamA === userTeamId || f.teamB === userTeamId)).length === 0 ? (
+                        <p className="text-xs font-barlow text-text-secondary py-2">
+                          {!isFixturesAnnounced ? `Fixtures will be announced on ${userFriendlyAnnouncementDate}.` : "No fixtures scheduled."}
+                        </p>
                       ) : fixtures.filter(f => !f.played && (f.teamA === userTeamId || f.teamB === userTeamId)).slice(0, 1).map(match => {
                         const oppId = match.teamA === userTeamId ? match.teamB : match.teamA;
                         const opp = teams[oppId];
@@ -788,8 +1892,8 @@ function OverviewPageContent() {
                       
                       {/* Mini Month Label */}
                       <div className="font-space-mono text-[8px] text-text-secondary uppercase mb-1.5 flex justify-between">
-                        <span>DECEMBER 2026</span>
-                        <span className="text-success font-bold">ACTIVE</span>
+                        <span>{inGameDate.toLocaleDateString("en-GB", { month: "long", year: "numeric" })}</span>
+                        <span className="text-success font-bold">DAY {inGameDate.getDate()} · ACTIVE</span>
                       </div>
 
                       {/* Mini Weekday Headers */}
@@ -798,27 +1902,43 @@ function OverviewPageContent() {
                       </div>
 
                       {/* Mini Days Grid */}
-                      <div className="grid min-h-0 flex-1 grid-cols-7 grid-rows-5 gap-0.5">
-                        {/* Empty leading cells for Tuesday start in Dec */}
-                        <div className="min-h-0 bg-transparent" />
-                        <div className="min-h-0 bg-transparent" />
-                        
-                        {/* Days 1 to 31 */}
-                        {Array.from({ length: 31 }).map((_, idx) => {
+                      <div className="grid min-h-0 flex-1 grid-cols-7 grid-rows-6 gap-0.5">
+                        {Array.from({ length: homeCalendarFirstWeekday }).map((_, idx) => (
+                          <div key={`mini-empty-${idx}`} className="min-h-0 bg-transparent" />
+                        ))}
+
+                        {Array.from({ length: homeCalendarDaysInMonth }).map((_, idx) => {
                           const day = idx + 1;
-                          const isAuction = day === 15;
+                          const dateString = `${inGameDate.getFullYear()}-${String(inGameDate.getMonth() + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+                          const dayData = getCalendarDayData(dateString);
+                          const isCurrentDay = day === inGameDate.getDate();
+                          const hasEvent = dayData.hasAuction || dayData.hasRetention || dayData.isAnnouncement || dayData.hasUserMatch;
                           
                           let bg = "bg-[#16130f]/5";
                           let text = "text-text-secondary";
-                          if (isAuction) {
+                          if (isCurrentDay) {
+                            bg = "bg-accent text-[var(--ink)] font-bold ring-1 ring-accent";
+                            text = "text-[var(--ink)]";
+                          } else if (dayData.hasAuction) {
                             bg = "bg-success text-white font-bold";
+                          } else if (dayData.hasRetention) {
+                            bg = "bg-danger text-white font-bold";
+                          } else if (hasEvent) {
+                            bg = "bg-accent/20 text-text-primary font-bold";
                           }
                           
                           return (
                             <div
-                              key={`mini-dec-${day}`}
+                              key={`mini-${dateString}`}
                               className={`min-h-0 flex items-center justify-center text-[7px] font-space-mono rounded-sm ${bg} ${text}`}
-                              title={isAuction ? "Auction Day" : undefined}
+                              title={[
+                                dateString,
+                                isCurrentDay ? "Current in-game day" : "",
+                                dayData.hasAuction ? "Auction Day" : "",
+                                dayData.hasRetention ? "Retention Deadline" : "",
+                                dayData.isAnnouncement ? "Fixture Announcement" : "",
+                                dayData.hasUserMatch ? "Your team has a match" : "",
+                              ].filter(Boolean).join(" · ")}
                             >
                               {day}
                             </div>
@@ -852,38 +1972,99 @@ function OverviewPageContent() {
                       </div>
                     </div>
 
-                    <div onClick={() => router.push("/game/overview?tab=season&subtab=fixtures")} className="bg-surface border-2 border-border hover:border-accent p-5 cursor-pointer transition-colors overflow-hidden">
-                      <h3 className="font-anton text-[14px] uppercase text-text-primary border-b border-[#16130f]/10 pb-2 mb-3">NEXT FIXTURES</h3>
-                      <p className="text-xs font-barlow text-text-secondary">No fixtures have been added yet.</p>
+                    <div onClick={() => router.push("/game/overview?tab=season&subtab=fixtures")} className="bg-surface border-2 border-border hover:border-accent p-5 cursor-pointer transition-colors overflow-hidden flex min-h-0 flex-col">
+                      <h3 className="shrink-0 font-anton text-[14px] uppercase text-text-primary border-b border-[#16130f]/10 pb-2 mb-3">NEXT FIXTURES</h3>
+                      <div className="grid min-h-0 flex-1 grid-rows-5">
+                        {(() => {
+                          const userFixtures = fixtures
+                            .filter((fixture) => fixture.teamA === userTeamId || fixture.teamB === userTeamId)
+                            .sort((a, b) => (a.date ?? "").localeCompare(b.date ?? "") || a.round - b.round);
+                          const firstUnplayedIndex = userFixtures.findIndex((fixture) => !fixture.played);
+                          const remainingFixtures = firstUnplayedIndex < 0 ? 0 : userFixtures.length - firstUnplayedIndex;
+                          const windowStart = remainingFixtures <= 5
+                            ? Math.max(0, userFixtures.length - 5)
+                            : Math.max(0, firstUnplayedIndex - 1);
+
+                          return userFixtures.slice(windowStart, windowStart + 5).map((fixture) => {
+                            const opponentId = fixture.teamA === userTeamId ? fixture.teamB : fixture.teamA;
+                            const opponent = teams[opponentId];
+                            const fixtureDate = fixture.date ? dateKeyToLocalDate(fixture.date) : null;
+                            const isNextFixture = firstUnplayedIndex >= 0 && fixture.id === userFixtures[firstUnplayedIndex].id;
+                            const userScore = fixture.teamA === userTeamId ? fixture.scoreA : fixture.scoreB;
+                            const result = fixture.played
+                              ? `${fixture.winner === userTeamId ? "W" : "L"} ${userScore?.runs ?? "-"}/${userScore?.wickets ?? "-"}`
+                              : "-";
+
+                            return (
+                              <div
+                                key={`next-fixture-${fixture.id}`}
+                                className={`grid min-h-0 grid-cols-[2.75rem_minmax(0,1fr)_auto] items-center gap-2 border-b border-[#16130f]/10 px-1.5 text-text-primary ${isNextFixture ? "bg-accent/15 ring-1 ring-inset ring-accent/30" : ""}`}
+                              >
+                                <div className="flex flex-col items-center justify-center leading-none">
+                                  <span className="font-space-mono text-[14px] font-bold">{fixtureDate?.getDate() ?? "-"}</span>
+                                  <span className="mt-0.5 font-space-mono text-[7px] uppercase text-text-secondary">
+                                    {fixtureDate?.toLocaleDateString("en-GB", { month: "short" }) ?? ""}
+                                  </span>
+                                </div>
+                                <span className="truncate text-[10px] font-medium">vs {opponent?.shortName ?? opponentId}</span>
+                                <span className="font-space-mono text-[9px]">{result}</span>
+                              </div>
+                            );
+                          });
+                        })()}
+                      </div>
+                      <div className="hidden">
+                        {(() => {
+                          const userFixtures = fixtures
+                            .filter(f => f.teamA === userTeamId || f.teamB === userTeamId)
+                            .sort((a, b) => (a.date ?? "").localeCompare(b.date ?? "") || a.round - b.round);
+                          const firstUnplayed = userFixtures.findIndex(f => !f.played);
+                          const remaining = firstUnplayed < 0 ? 0 : userFixtures.length - firstUnplayed;
+                          const start = remaining <= 5 ? Math.max(0, userFixtures.length - 5) : Math.max(0, firstUnplayed - 1);
+                          return userFixtures.slice(start, start + 5).map(match => {
+                            const opponentId = match.teamA === userTeamId ? match.teamB : match.teamA;
+                            const opponent = teams[opponentId];
+                            const isNext = !match.played && match.id === userFixtures[firstUnplayed]?.id;
+                            const displayDate = match.date ? dateKeyToLocalDate(match.date) : null;
+                            const result = match.played
+                              ? `${match.winner === userTeamId ? "W" : "L"} · ${match.teamA === userTeamId ? `${match.scoreA?.runs}/${match.scoreA?.wickets}` : `${match.scoreB?.runs}/${match.scoreB?.wickets}`}`
+                              : "-";
+                            const fixtureDate = match.date ? dateKeyToLocalDate(match.date) : null;
+                            return <div key={match.id} className={`grid grid-cols-[1fr_auto] items-center gap-2 border-b border-[#16130f]/10 py-1 text-[10px] ${isNext ? "font-bold text-accent" : "text-text-primary"}`}><span className="truncate">{match.date} · vs {opponent?.shortName ?? opponentId}</span><span className="font-space-mono">{result}</span></div>;
+                          });
+                        })()}
+                      </div>
                     </div>
 
-                    <div onClick={() => router.push("/game/overview?tab=season&subtab=standings")} className="bg-surface border-2 border-border hover:border-accent p-5 pb-6 cursor-pointer transition-colors overflow-hidden">
-                      <div className="w-full">
-                        <h3 className="font-anton text-[14px] uppercase text-text-primary border-b border-[#16130f]/10 pb-2 mb-3">LEAGUE TABLE</h3>
-                        <div className="relative -top-1">
-                          <div className="grid grid-cols-[1fr_1.4rem_1.4rem_3rem_2rem] gap-1 pb-1 text-[8px] font-space-mono font-bold text-text-secondary uppercase">
+                    <div onClick={() => router.push("/game/overview?tab=season&subtab=standings")} className="bg-surface border-2 border-border hover:border-accent p-5 pb-6 cursor-pointer transition-colors overflow-hidden flex min-h-0 flex-col">
+                      <div className="flex min-h-0 w-full flex-1 flex-col">
+                        <h3 className="shrink-0 font-anton text-[14px] uppercase text-text-primary border-b border-[#16130f]/10 pb-2 mb-3">LEAGUE TABLE</h3>
+                        <div className="flex min-h-0 flex-1 flex-col">
+                          <div className="grid shrink-0 grid-cols-[1fr_1.4rem_1.4rem_3rem_2rem] gap-1 pb-1 text-[8px] font-space-mono font-bold text-text-secondary uppercase">
                             <span>Team</span>
                             <span className="text-center">W</span>
                             <span className="text-center">L</span>
                             <span className="text-right">NRR</span>
                             <span className="text-right">Pts</span>
                           </div>
-                          {(() => {
-                        const userPosition = standings.findIndex(row => row.teamId === userTeamId);
-                        const start = userPosition < 4 ? 0 : userPosition < 7 ? 3 : 5;
-                        return standings.slice(start, start + 5).map((row, index) => {
-                          const position = start + index + 1;
-                          return (
-                            <div key={row.teamId} className={`grid grid-cols-[1fr_1.4rem_1.4rem_3rem_2rem] gap-1 py-1 text-[11px] border-b border-[#16130f]/10 ${row.teamId === userTeamId ? "font-bold text-accent" : "text-text-primary"}`}>
-                              <span className="truncate"><span className="font-space-mono text-text-secondary mr-1">{position}.</span>{row.shortName}</span>
-                              <span className="text-center font-space-mono">{row.won}</span>
-                              <span className="text-center font-space-mono">{row.lost}</span>
-                              <span className="text-right font-space-mono">{row.nrr >= 0 ? "+" : ""}{row.nrr.toFixed(2)}</span>
-                              <span className="text-right font-space-mono">{row.points}</span>
-                            </div>
-                          );
-                        });
-                          })()}
+                          <div className="grid min-h-0 flex-1 grid-rows-5">
+                            {(() => {
+                              const userPosition = standings.findIndex(row => row.teamId === userTeamId);
+                              const start = userPosition < 4 ? 0 : userPosition < 7 ? 3 : 5;
+                              return standings.slice(start, start + 5).map((row, index) => {
+                                const position = start + index + 1;
+                                return (
+                                  <div key={row.teamId} className={`grid min-h-0 grid-cols-[1fr_1.4rem_1.4rem_3rem_2rem] items-center gap-1 border-b border-[#16130f]/10 text-[10px] ${row.teamId === userTeamId ? "font-bold text-accent" : "text-text-primary"}`}>
+                                    <span className="truncate"><span className="mr-1 font-space-mono text-text-secondary">{position}.</span>{row.shortName}</span>
+                                    <span className="text-center font-space-mono">{row.won}</span>
+                                    <span className="text-center font-space-mono">{row.lost}</span>
+                                    <span className="text-right font-space-mono">{row.nrr >= 0 ? "+" : ""}{row.nrr.toFixed(2)}</span>
+                                    <span className="text-right font-space-mono">{row.points}</span>
+                                  </div>
+                                );
+                              });
+                            })()}
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -893,7 +2074,7 @@ function OverviewPageContent() {
 
               {/* Inbox page */}
               {activeSubTab === "inbox" && (
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[500px] overflow-hidden">
+                <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 h-[calc(100vh-200px)] min-h-[500px] overflow-hidden">
                   <div className="lg:col-span-1 border-2 border-border bg-surface overflow-y-auto divide-y divide-[#16130f]/10">
                     {inbox.length === 0 ? (
                       <div className="p-8 text-center text-xs font-barlow text-text-secondary">No messages.</div>
@@ -920,7 +2101,7 @@ function OverviewPageContent() {
                     )}
                   </div>
 
-                  <div className="lg:col-span-2 border-2 border-border bg-surface p-6 flex flex-col justify-between overflow-y-auto">
+                  <div className="lg:col-span-3 border-2 border-border bg-surface p-6 flex flex-col justify-between overflow-y-auto h-full">
                     {selectedMsgId ? (
                       (() => {
                         const msg = inbox.find(m => m.id === selectedMsgId);
@@ -952,62 +2133,9 @@ function OverviewPageContent() {
                 </div>
               )}
 
-              {/* Dashboard page */}
-              {activeSubTab === "dashboard" && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* Next Opponent & calendar */}
-                  <div className="flex flex-col gap-6">
-                    <div className="bg-surface border-2 border-border p-5">
-                      <h3 className="font-anton text-[16px] text-text-primary uppercase border-b border-[#16130f]/10 pb-2 mb-4">UPCOMING CALENDAR</h3>
-                      <div className="grid grid-cols-7 gap-2">
-                        {Array.from({ length: 14 }).map((_, i) => {
-                          const round = i + 1;
-                          const playedMatch = fixtures.find(f => f.round === round && (f.teamA === userTeamId || f.teamB === userTeamId) && f.played);
-                          const futureMatch = fixtures.find(f => f.round === round && (f.teamA === userTeamId || f.teamB === userTeamId) && !f.played);
-                          let status = "bg-[#16130f]/5 border-[#16130f]/10";
-                          return (
-                            <div key={round} className={`border p-2 rounded flex flex-col items-center text-center bg-surface border-border`}>
-                              <span className="font-space-mono text-[8px] text-text-secondary">R{round}</span>
-                              <span className="font-anton text-[12px] mt-1 text-text-secondary">
-                                -
-                              </span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                  </div>
-
-                  {/* Quick points table */}
-                  <div className="bg-surface border-2 border-border p-5">
-                    <h3 className="font-anton text-[16px] text-text-primary uppercase border-b border-[#16130f]/10 pb-2 mb-4">QUICK TABLE VIEW</h3>
-                    <div className="divide-y divide-[#16130f]/10">
-                      <div className="grid grid-cols-6 py-2 text-[9px] font-space-mono text-text-secondary uppercase">
-                        <span className="col-span-3">Team</span>
-                        <span className="text-center">P</span>
-                        <span className="text-center">W</span>
-                        <span className="text-center">Pts</span>
-                      </div>
-                      {standings.slice(0, 4).map((row, idx) => (
-                        <div key={row.teamId} className={`grid grid-cols-6 py-2 text-xs font-barlow ${row.teamId === userTeamId ? "font-bold text-accent" : "text-text-primary"}`}>
-                          <span className="col-span-3 truncate flex gap-1.5 items-center">
-                            <span className="font-space-mono text-[9px] text-text-secondary">#{idx + 1}</span>
-                            {row.teamName}
-                          </span>
-                          <span className="text-center">{row.played}</span>
-                          <span className="text-center">{row.won}</span>
-                          <span className="text-center">{row.points}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
-
               {/* Manager office */}
               {activeSubTab === "office" && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-[calc(100vh-200px)] min-h-[500px]">
                   {/* Board expectations & attributes */}
                   <div className="bg-surface border-2 border-border p-5 flex flex-col gap-6">
                     <div>
@@ -1057,7 +2185,7 @@ function OverviewPageContent() {
 
               {/* Calendar page */}
               {activeSubTab === "calendar" && (
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 w-full h-[calc(100vh-215px)] overflow-hidden">
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 w-full h-[calc(100vh-200px)] min-h-[500px] overflow-hidden">
                   {/* Left part: Calendar Grid */}
                   <div className="lg:col-span-2 bg-surface border-2 border-border p-5 flex flex-col h-full overflow-hidden">
                     <div className="flex flex-col h-full">
@@ -1065,7 +2193,7 @@ function OverviewPageContent() {
                       <div className="flex justify-between items-center mb-4 border-b border-[#16130f]/10 pb-3 shrink-0">
                         <div>
                           <h3 className="font-anton text-[20px] text-text-primary uppercase leading-none">{currentSeason + 1} Season Calendar</h3>
-                          <span className="font-space-mono text-[9px] text-text-secondary uppercase mt-1">December 2026 to November 2027</span>
+                          <span className="font-space-mono text-[9px] text-text-secondary uppercase mt-1">December {currentSeason} to November {currentSeason + 1}</span>
                         </div>
                         <div className="flex items-center gap-3 bg-[#16130f]/5 px-3 py-1.5 border border-border rounded">
                           <button
@@ -1115,29 +2243,82 @@ function OverviewPageContent() {
                         {/* Render days */}
                         {Array.from({ length: calendarDaysInMonth }).map((_, idx) => {
                           const day = idx + 1;
-                          const hasAuction = currentCalendarMonth.month === 11 && currentCalendarMonth.year === 2026 && day === 15;
-                          const hasRetentionDeadline = retentionDeadline?.year === currentCalendarMonth.year &&
-                            retentionDeadline.month === currentCalendarMonth.month && retentionDeadline.day === day;
-
                           const isSelected = selectedCalendarDay === day;
+                          const dateString = `${currentCalendarMonth.year}-${String(currentCalendarMonth.month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+                          const {
+                            dayMatches,
+                            hasAuction,
+                            hasRetention: hasRetentionDeadline,
+                            hasUserMatch,
+                            isAnnouncement: isAnnouncementDay,
+                          } = getCalendarDayData(dateString);
 
                           return (
                             <button
                               key={`day-${day}`}
                               onClick={() => setSelectedCalendarDay(day)}
-                              className={`w-full h-full p-2.5 border-2 text-left flex flex-col justify-between transition-colors hover:border-accent rounded-md
+                              className={`w-full h-full p-2 border-2 text-left flex flex-col justify-between transition-colors hover:border-accent rounded-md
                                 ${isSelected ? "border-[var(--ink)] bg-[var(--ink)]/5" : "border-border bg-surface"}
-                                ${hasAuction || hasRetentionDeadline ? "ring-2 ring-accent/30" : ""}`}
+                                ${isAnnouncementDay ? "border-success bg-success/5 ring-2 ring-success/20" : ""}
+                                ${hasAuction || hasRetentionDeadline || hasUserMatch ? "ring-2 ring-accent/30" : ""}`}
                             >
-                              <span className={`font-space-mono text-[11px] font-bold ${isSelected ? "text-[var(--ink)]" : "text-text-primary"}`}>
-                                {day}
-                              </span>
+                              <div className="flex justify-between items-center w-full">
+                                <span className={`font-space-mono text-[11px] font-bold ${isSelected ? "text-[var(--ink)]" : "text-text-primary"}`}>
+                                  {day}
+                                </span>
+                                {hasUserMatch && (
+                                  <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
+                                )}
+                              </div>
+
+                              {/* Mini match labels */}
+                              {dayMatches.length > 0 && (
+                                <div className="mt-1 space-y-0.5 w-full shrink-0">
+                                  {dayMatches.map(m => {
+                                    const isUserGame = m.teamA === userTeamId || m.teamB === userTeamId;
+                                    const opponentId = m.teamA === userTeamId ? m.teamB : m.teamA;
+                                    const opp = teams[opponentId];
+
+                                    return (
+                                      <div
+                                        key={m.id}
+                                        className={`w-full text-[9px] py-1 px-1 rounded text-center truncate font-space-mono font-bold leading-tight uppercase
+                                          ${isUserGame 
+                                            ? "text-white" 
+                                            : "bg-[#16130f]/5 border border-border/40 text-text-primary"}`}
+                                        style={isUserGame && userTeam ? { backgroundColor: userTeam.primaryColor, color: userTeam.secondaryColor } : undefined}
+                                      >
+                                        {isUserGame ? (
+                                          <div className="flex flex-col items-center justify-center gap-1 py-0.5 leading-none">
+                                            <span 
+                                              className="text-[8px] font-extrabold px-1.5 py-0.5 rounded-full border border-white/10 shadow-sm leading-none shrink-0"
+                                              style={opp ? { backgroundColor: opp.primaryColor, color: opp.secondaryColor } : undefined}
+                                            >
+                                              vs {opp?.shortName ?? opponentId}
+                                            </span>
+                                            <span className="text-[7.5px] font-bold mt-0.5 opacity-90">
+                                              {m.played ? "FINAL" : "PLAYING"}
+                                            </span>
+                                          </div>
+                                        ) : (
+                                          <span className="flex items-center justify-center gap-0.5">
+                                            <span style={{ color: teams[m.teamA]?.primaryColor }}>{teams[m.teamA]?.shortName ?? m.teamA}</span>
+                                            <span className="text-text-secondary font-medium"> v </span>
+                                            <span style={{ color: teams[m.teamB]?.primaryColor }}>{teams[m.teamB]?.shortName ?? m.teamB}</span>
+                                          </span>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
 
                               {/* Large, bold, readable event badge */}
-                              {(hasAuction || hasRetentionDeadline) && (
+                              {(hasAuction || hasRetentionDeadline || isAnnouncementDay) && (
                                 <div className="w-full text-[9px] font-anton tracking-wider uppercase mt-1 leading-none">
                                   {hasAuction && <span className="text-success block">AUCTION</span>}
                                   {hasRetentionDeadline && <span className="text-danger block">RETENTION</span>}
+                                  {isAnnouncementDay && <span className="text-success block bg-success/15 border border-success/30 py-1 px-1.5 rounded text-center">FIXTURES</span>}
                                 </div>
                               )}
                             </button>
@@ -1154,18 +2335,129 @@ function OverviewPageContent() {
                         Details: {selectedCalendarDay} {currentCalendarMonth.label} {currentCalendarMonth.year}
                       </h4>
 
-                      {retentionDeadline?.year === currentCalendarMonth.year &&
-                      retentionDeadline.month === currentCalendarMonth.month &&
-                      retentionDeadline.day === selectedCalendarDay ? (
-                        <div className="text-xs font-barlow text-text-secondary py-8 text-center">
-                          <span className="font-space-mono text-[9px] bg-danger/10 text-danger px-2 py-0.5 rounded font-bold uppercase">Deadline</span>
-                          <p className="mt-3">Retention deadline.</p>
-                        </div>
-                      ) : (
-                        <div className="text-xs font-barlow text-text-secondary py-8 text-center">
-                          No calendar events recorded for this day.
-                        </div>
-                      )}
+                      {(() => {
+                        const dateString = `${currentCalendarMonth.year}-${String(currentCalendarMonth.month + 1).padStart(2, "0")}-${String(selectedCalendarDay).padStart(2, "0")}`;
+                        const isRetentionDay = dateString === retentionDateString;
+                        const isAuctionDay = dateString === auctionDateString;
+                        const isAnnouncementDay = dateString === formattedAnnouncementDate;
+
+                        if (!isFixturesAnnounced) {
+                          const isTournamentMonth = currentCalendarMonth.month === 2 || currentCalendarMonth.month === 3 || currentCalendarMonth.month === 4;
+                          return (
+                            <div className="space-y-4">
+                              {isRetentionDay && (
+                                <div className="border border-danger/20 bg-danger/5 rounded p-3">
+                                  <span className="font-space-mono text-[9px] bg-danger text-white px-2 py-0.5 rounded font-bold uppercase">Retention Deadline</span>
+                                  <p className="mt-2 text-xs text-text-secondary">Franchises must submit their retained players list by today.</p>
+                                </div>
+                              )}
+                              {isAuctionDay && (
+                                <div className="border border-success/20 bg-success/5 rounded p-3">
+                                  <span className="font-space-mono text-[9px] bg-success text-white px-2 py-0.5 rounded font-bold uppercase">Player Auction</span>
+                                  <p className="mt-2 text-xs text-text-secondary">The Player Auction takes place today. Teams will complete their squads.</p>
+                                </div>
+                              )}
+                              {isAnnouncementDay && (
+                                <div className="border border-success/20 bg-success/5 rounded p-3">
+                                  <span className="font-space-mono text-[9px] bg-success text-white px-2 py-0.5 rounded font-bold uppercase">Schedule Announcement</span>
+                                  <p className="mt-2 text-xs text-text-secondary">The complete fixture list and match schedule for the new season are officially announced today!</p>
+                                </div>
+                              )}
+                              {isTournamentMonth && !isAnnouncementDay && (
+                                <div className="border border-border/60 bg-[#16130f]/5 rounded p-3 text-center py-6">
+                                  <span className="font-space-mono text-[9px] bg-[#16130f]/10 text-text-secondary px-2 py-0.5 rounded font-bold uppercase">Locked</span>
+                                  <p className="mt-3 text-xs text-text-secondary">League fixtures have not been announced yet.</p>
+                                  <p className="mt-1 text-[11px] font-bold text-accent">Schedule release: {userFriendlyAnnouncementDate}</p>
+                                </div>
+                              )}
+                              {!isRetentionDay && !isAuctionDay && !isAnnouncementDay && !isTournamentMonth && (
+                                <div className="text-xs font-barlow text-text-secondary py-8 text-center">
+                                  No calendar events recorded for this day.
+                                </div>
+                              )}
+                            </div>
+                          );
+                        }
+
+                        const dayMatches = fixturesByDate.get(dateString) ?? [];
+                        if (dayMatches.length === 0 && !isRetentionDay && !isAuctionDay && !isAnnouncementDay) {
+                          return (
+                            <div className="text-xs font-barlow text-text-secondary py-8 text-center">
+                              No calendar events recorded for this day.
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <div className="space-y-4">
+                            {isRetentionDay && (
+                              <div className="border border-danger/20 bg-danger/5 rounded p-3">
+                                <span className="font-space-mono text-[9px] bg-danger text-white px-2 py-0.5 rounded font-bold uppercase">Retention Deadline</span>
+                                <p className="mt-2 text-xs text-text-secondary">Franchises must submit their retained players list by today.</p>
+                              </div>
+                            )}
+                            {isAuctionDay && (
+                              <div className="border border-success/20 bg-success/5 rounded p-3">
+                                <span className="font-space-mono text-[9px] bg-success text-white px-2 py-0.5 rounded font-bold uppercase">Player Auction</span>
+                                <p className="mt-2 text-xs text-text-secondary">The Player Auction takes place today. Teams will complete their squads.</p>
+                              </div>
+                            )}
+                            {isAnnouncementDay && (
+                              <div className="border border-success/20 bg-success/5 rounded p-3">
+                                <span className="font-space-mono text-[9px] bg-success text-white px-2 py-0.5 rounded font-bold uppercase">Schedule Announcement</span>
+                                <p className="mt-2 text-xs text-text-secondary">The complete fixture list and match schedule for the new season are officially announced today!</p>
+                              </div>
+                            )}
+                            {dayMatches.map((m) => {
+                              const isUserGame = m.teamA === userTeamId || m.teamB === userTeamId;
+                              return (
+                                <div
+                                  key={m.id}
+                                  className={`border-2 rounded p-3 flex flex-col justify-between transition-colors
+                                    ${isUserGame ? "border-accent bg-accent/5" : "border-border bg-surface"}`}
+                                >
+                                  <div className="flex justify-between items-center mb-2">
+                                    <span className="font-space-mono text-[9px] font-bold text-text-secondary uppercase">
+                                      Match {m.round} · {m.time}
+                                    </span>
+                                    {isUserGame && (
+                                      <span
+                                        className="font-space-mono text-[8px] font-bold px-1.5 py-0.5 rounded text-white"
+                                        style={userTeam ? { backgroundColor: userTeam.primaryColor, color: userTeam.secondaryColor } : undefined}
+                                      >
+                                        YOUR MATCH
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center justify-between text-xs font-bold text-text-primary gap-4">
+                                    <div className="flex items-center gap-2 flex-1 truncate">
+                                      <span className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold shrink-0" style={{ backgroundColor: teams[m.teamA]?.primaryColor ?? "#ccc", color: teams[m.teamA]?.secondaryColor ?? "#000" }}>
+                                        {teams[m.teamA]?.shortName.slice(0, 3)}
+                                      </span>
+                                      <span className="truncate">{teams[m.teamA]?.name}</span>
+                                    </div>
+                                    <span className="text-text-secondary font-normal font-space-mono text-[9px] shrink-0">vs</span>
+                                    <div className="flex items-center gap-2 flex-row-reverse flex-1 truncate">
+                                      <span className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold shrink-0" style={{ backgroundColor: teams[m.teamB]?.primaryColor ?? "#ccc", color: teams[m.teamB]?.secondaryColor ?? "#000" }}>
+                                        {teams[m.teamB]?.shortName.slice(0, 3)}
+                                      </span>
+                                      <span className="truncate text-right">{teams[m.teamB]?.name}</span>
+                                    </div>
+                                  </div>
+                                  {m.played && m.scoreA && m.scoreB && (
+                                    <div className="mt-3 pt-2 border-t border-border/40 flex justify-between items-center text-xs font-space-mono">
+                                      <span className="text-text-secondary">Result:</span>
+                                      <span className="font-bold text-success">
+                                        {m.winner === userTeamId ? "YOU WON" : `${teams[m.winner ?? ""]?.name} won`}
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
                 </div>
@@ -1180,7 +2472,7 @@ function OverviewPageContent() {
             <>
               {/* Squad Overview tab */}
               {activeSubTab === "overview" && (
-                <div className="grid h-full min-h-0 grid-cols-[2fr_3fr] gap-6 overflow-hidden">
+                <div className="grid grid-cols-1 lg:grid-cols-[2fr_3fr] gap-6 h-[calc(100vh-200px)] min-h-[500px] overflow-hidden">
                   {/* Roster overview */}
                   <div onClick={() => setActiveSubTab("roster")} className="bg-surface border-2 border-border hover:border-accent p-5 flex min-h-0 flex-col cursor-pointer transition-colors overflow-hidden">
                     <div className="flex items-end justify-between border-b border-[#16130f]/10 pb-2 mb-3 shrink-0">
@@ -1189,12 +2481,11 @@ function OverviewPageContent() {
                         {userTeam.squad.length} Players · {userTeam.overseasPlayersCurrent} Overseas
                       </div>
                     </div>
-
-                    <div className="grid grid-cols-[minmax(0,7.5rem)_2rem_5rem_minmax(0,1fr)] gap-1 border-b border-[#16130f]/10 pb-1.5 text-[8px] font-space-mono font-bold text-text-secondary uppercase shrink-0">
+                    <div className="grid grid-cols-[13rem_2.5rem_6.5rem_14rem] justify-start gap-2 border-b border-[#16130f]/10 pb-1.5 text-[8px] font-space-mono font-bold text-text-secondary uppercase shrink-0">
                       <span>Player</span>
                       <span className="text-center">Age</span>
-                      <span>Role</span>
-                      <span className="grid grid-cols-[5.5rem_1rem_5.5rem] justify-center">
+                      <span className="text-center">Role</span>
+                      <span className="grid grid-cols-[5.5rem_3rem_5.5rem] justify-center">
                         <span className="text-center">CA</span>
                         <span aria-hidden="true" />
                         <span className="text-center">PA</span>
@@ -1213,10 +2504,10 @@ function OverviewPageContent() {
                               event.stopPropagation();
                               setDetailedPlayerId(player.id);
                             }}
-                            className="grid h-8 grid-cols-[minmax(0,7.5rem)_2rem_5rem_minmax(0,1fr)] items-center gap-1 border-b border-[#16130f]/10 text-[10px] hover:bg-black/5 dark:hover:bg-white/5"
+                            className="grid h-11 grid-cols-[13rem_2.5rem_6.5rem_14rem] items-center justify-start gap-2 border-b border-[#16130f]/10 text-xs hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer"
                           >
                             <span className="flex min-w-0 items-center gap-1">
-                              <span className="truncate font-semibold text-text-primary">{player.name}</span>
+                              <span className="whitespace-nowrap font-semibold text-text-primary">{player.name}</span>
                               {player.nationality === "Overseas" && (
                                 <span
                                   className="shrink-0 rounded-[2px] px-1 py-0.5 font-space-mono text-[7px] font-bold leading-none text-white"
@@ -1227,8 +2518,8 @@ function OverviewPageContent() {
                               )}
                             </span>
                             <span className="text-center font-space-mono text-text-secondary">{player.age}</span>
-                            <span className="truncate font-space-mono text-[8px] uppercase text-text-secondary">{player.role}</span>
-                            <span className="grid grid-cols-[5.5rem_1rem_5.5rem] items-center justify-center">
+                            <span className="truncate text-center font-space-mono text-xs uppercase text-text-secondary">{player.role}</span>
+                            <span className="grid grid-cols-[5.5rem_3rem_5.5rem] items-center justify-center">
                               {player.role === "All-Rounder" ? (
                                 <>
                                   <span
@@ -1285,8 +2576,8 @@ function OverviewPageContent() {
 
               {/* Roster Overview page */}
               {activeSubTab === "roster" && (
-                <div className="border-2 border-border bg-surface overflow-hidden">
-                  <div className="overflow-x-auto">
+                <div className="border-2 border-border bg-surface h-[calc(100vh-200px)] min-h-[500px] flex flex-col overflow-hidden">
+                  <div className="overflow-x-auto flex-1 overflow-y-auto">
                     <table className="w-full text-left font-barlow text-xs divide-y divide-[#16130f]/10">
                       <thead className="bg-[#16130f]/5 text-[9px] font-space-mono text-text-secondary uppercase">
                         <tr>
@@ -1299,7 +2590,7 @@ function OverviewPageContent() {
                       </thead>
                       <tbody className="divide-y divide-[#16130f]/10">
                         {userTeam.squad.map(id => players[id]).filter(Boolean).map(p => {
-                          const lastAuctionEntry = p.iplHistory.find(h => h.season === "2027");
+                          const lastAuctionEntry = p.iplHistory.find(h => h.season === getNextSeasonYear());
                           const lastAuctionPrice = lastAuctionEntry?.price ?? p.basePrice;
                           const isRtmOrRetained = p.isRetained || lastAuctionEntry?.isRtm;
                           return (
@@ -1334,17 +2625,17 @@ function OverviewPageContent() {
 
               {/* Tactics & Playing XI page */}
               {activeSubTab === "tactics" && (
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-200px)] min-h-[500px] overflow-hidden">
                   {/* Left list: Squad roster selection */}
-                  <div className="lg:col-span-2 bg-surface border-2 border-border p-5">
-                    <div className="flex justify-between items-center border-b border-[#16130f]/10 pb-3 mb-4">
+                  <div className="lg:col-span-2 bg-surface border-2 border-border p-5 flex flex-col h-full overflow-hidden">
+                    <div className="flex justify-between items-center border-b border-[#16130f]/10 pb-3 mb-4 shrink-0">
                       <h3 className="font-anton text-[16px] text-text-primary uppercase">SELECT STARTING XI</h3>
                       <div className="font-space-mono text-[10px] text-text-secondary">
                         Capped: <span className="font-bold text-text-primary">{startingXI.length}/11</span>
                       </div>
                     </div>
 
-                    <div className="space-y-2 max-h-[400px] overflow-y-auto pr-2 divide-y divide-[#16130f]/5">
+                    <div className="space-y-2 flex-1 overflow-y-auto pr-2 divide-y divide-[#16130f]/5">
                       {userTeam.squad.map(id => players[id]).filter(Boolean).map(p => {
                         const inXI = startingXI.includes(p.id);
                         return (
@@ -1458,16 +2749,16 @@ function OverviewPageContent() {
             <>
               {/* Scouting Overview tab */}
               {activeSubTab === "overview" && (
-                <div className="grid h-full min-h-0 grid-cols-2 gap-6 overflow-hidden">
+                <div className="grid grid-cols-2 gap-6 h-[calc(100vh-200px)] min-h-[500px] overflow-hidden">
                   {/* Database search */}
                   <div onClick={() => setActiveSubTab("search")} className="bg-surface border-2 border-border hover:border-accent p-5 flex min-h-0 flex-col cursor-pointer transition-colors overflow-hidden">
                     <h4 className="font-anton text-[14px] uppercase border-b border-[#16130f]/10 pb-2 mb-3 shrink-0">GLOBAL SEARCH</h4>
-                    <div className="grid grid-cols-[minmax(0,7rem)_2rem_2.5rem_4.5rem_minmax(0,1fr)] gap-1 border-b border-[#16130f]/10 pb-1.5 font-space-mono text-[10px] font-bold text-text-secondary uppercase shrink-0">
+                    <div className="grid grid-cols-[minmax(0,8rem)_2rem_2.5rem_5.5rem_minmax(0,1fr)] gap-1 border-b border-[#16130f]/10 pb-1.5 font-space-mono text-[10px] font-bold text-text-secondary uppercase shrink-0">
                       <span>Player</span>
                       <span className="text-center">Age</span>
                       <span className="text-center">Team</span>
                       <span className="text-left">Role</span>
-                      <span className="grid grid-cols-[5.5rem_1rem_5.5rem] justify-center">
+                      <span className="grid grid-cols-[7rem_2rem_7rem] justify-center">
                         <span className="text-center">CA</span>
                         <span aria-hidden="true" />
                         <span className="text-center">PA</span>
@@ -1475,7 +2766,14 @@ function OverviewPageContent() {
                     </div>
                     <div ref={scoutingOverviewListRef} className="relative min-h-0 flex-1 overflow-hidden">
                       {bestScoutingPlayers.slice(0, visibleScoutingOverviewCount).map(player => (
-                        <div key={player.id} className="grid h-8 grid-cols-[minmax(0,7rem)_2rem_2.5rem_4.5rem_minmax(0,1fr)] items-center gap-1 border-b border-[#16130f]/10 text-[10px]">
+                        <div
+                          key={player.id}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setDetailedPlayerId(player.id);
+                          }}
+                          className="grid h-11 grid-cols-[minmax(0,8rem)_2rem_2.5rem_5.5rem_minmax(0,1fr)] items-center gap-1 border-b border-[#16130f]/10 text-xs hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer"
+                        >
                           <span className="flex min-w-0 items-center gap-1">
                             <span className="truncate font-semibold text-text-primary">{player.name}</span>
                             {player.nationality === "Overseas" && (
@@ -1489,7 +2787,7 @@ function OverviewPageContent() {
                           <span className="text-center font-space-mono text-text-secondary">{player.age}</span>
                           <span className="truncate text-center font-space-mono font-bold text-text-secondary">{teams[player.currentTeamId ?? ""]?.shortName ?? "—"}</span>
                           <span className="truncate font-space-mono uppercase text-text-secondary">{player.role}</span>
-                          <span className="grid grid-cols-[5.5rem_1rem_5.5rem] items-center justify-center">
+                          <span className="grid grid-cols-[7rem_2rem_7rem] items-center justify-center">
                             {player.role === "All-Rounder" ? (
                               <>
                                 <span className="text-center font-space-mono font-bold text-text-primary">Bat {player.currentBatting}/Bowl {player.currentBowling}</span>
@@ -1535,7 +2833,7 @@ function OverviewPageContent() {
 
               {/* Player Search page */}
               {activeSubTab === "search" && (
-                <div className="flex flex-col gap-6">
+                <div className="flex flex-col gap-6 h-[calc(100vh-200px)] min-h-[500px] overflow-hidden">
                   {/* Search filters */}
                   <div className="bg-surface border-2 border-border p-5 grid grid-cols-1 md:grid-cols-4 gap-4">
                     <div>
@@ -1590,7 +2888,7 @@ function OverviewPageContent() {
                   </div>
 
                   {/* Results table */}
-                  <div className="border-2 border-border bg-surface overflow-hidden">
+                  <div className="border-2 border-border bg-surface flex-1 overflow-y-auto">
                     <table className="w-full text-left font-barlow text-xs divide-y divide-[#16130f]/10">
                       <thead className="bg-[#16130f]/5 text-[9px] font-space-mono text-text-secondary uppercase">
                         <tr>
@@ -1629,7 +2927,7 @@ function OverviewPageContent() {
 
               {/* Auction Planner page */}
               {activeSubTab === "planner" && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-[calc(100vh-200px)] min-h-[500px]">
                   {/* Cap details */}
                   <div className="bg-surface border-2 border-border p-5">
                     <h3 className="font-anton text-[16px] text-text-primary uppercase border-b border-[#16130f]/10 pb-2 mb-4">CAP LIMIT DETAILS</h3>
@@ -1650,9 +2948,9 @@ function OverviewPageContent() {
                   </div>
 
                   {/* Shortlist list */}
-                  <div className="bg-surface border-2 border-border p-5">
-                    <h3 className="font-anton text-[16px] text-text-primary uppercase border-b border-[#16130f]/10 pb-2 mb-4">SHORTLIST TARGETS</h3>
-                    <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2 divide-y divide-[#16130f]/5">
+                  <div className="bg-surface border-2 border-border p-5 flex flex-col h-full overflow-hidden">
+                    <h3 className="font-anton text-[16px] text-text-primary uppercase border-b border-[#16130f]/10 pb-2 mb-4 font-bold shrink-0">SHORTLIST TARGETS</h3>
+                    <div className="space-y-3 flex-1 overflow-y-auto pr-2 divide-y divide-[#16130f]/5">
                       {shortlist.length === 0 ? (
                         <div className="text-xs font-barlow text-text-secondary p-4 text-center">Shortlist is empty. Add players from player search.</div>
                       ) : (
@@ -1685,17 +2983,24 @@ function OverviewPageContent() {
             <>
               {/* Season Overview tab */}
               {activeSubTab === "overview" && (
-                <div className="grid h-full min-h-0 grid-cols-3 gap-6 overflow-hidden">
+                <div className="grid grid-cols-3 gap-6 h-[calc(100vh-200px)] min-h-[500px] overflow-hidden">
                   {/* Fixtures progress */}
-                  <div onClick={() => setActiveSubTab("fixtures")} className="bg-surface border-2 border-border hover:border-accent p-5 flex min-h-0 flex-col justify-between cursor-pointer transition-colors overflow-hidden">
+                  <div onClick={() => isFixturesAnnounced && setActiveSubTab("fixtures")} className={`bg-surface border-2 border-border p-5 flex min-h-0 flex-col justify-between overflow-hidden transition-colors ${isFixturesAnnounced ? "hover:border-accent cursor-pointer" : "opacity-75"}`}>
                     <div>
                       <h4 className="font-anton text-[14px] uppercase border-b border-[#16130f]/10 pb-2 mb-4">SEASON SCHEDULE</h4>
-                      <div className="font-space-mono text-[10px] space-y-1">
-                        <div>COMPLETED: <span className="font-bold text-text-primary">{fixtures.filter(f=>f.played).length} / 70 Matches</span></div>
-                        <div>USER PLAYED: <span className="font-bold text-text-primary">
-                          {fixtures.filter(f=>f.played && (f.teamA===userTeamId || f.teamB===userTeamId)).length} / 14 Matches
-                        </span></div>
-                      </div>
+                      {isFixturesAnnounced ? (
+                        <div className="font-space-mono text-[10px] space-y-1">
+                          <div>COMPLETED: <span className="font-bold text-text-primary">{fixtures.filter(f=>f.played).length} / 70 Matches</span></div>
+                          <div>USER PLAYED: <span className="font-bold text-text-primary">
+                            {fixtures.filter(f=>f.played && (f.teamA===userTeamId || f.teamB===userTeamId)).length} / 14 Matches
+                          </span></div>
+                        </div>
+                      ) : (
+                        <div className="font-space-mono text-[9px] text-text-secondary space-y-2">
+                          <span className="font-bold text-accent uppercase block font-space-mono text-[8px] bg-accent/10 py-0.5 px-1.5 rounded w-max">Announcing soon</span>
+                          <p className="font-barlow text-xs text-text-secondary">Fixtures will be announced on {userFriendlyAnnouncementDate}.</p>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -1709,9 +3014,12 @@ function OverviewPageContent() {
                       <span className="text-center">NR</span>
                       <span className="text-right">Pts</span>
                     </div>
-                    <div className="min-h-0 flex-1">
+                    <div
+                      className="grid min-h-0 flex-1"
+                      style={{ gridTemplateRows: `repeat(${Math.max(standings.length, 1)}, minmax(0, 1fr))` }}
+                    >
                       {standings.map((row, index) => (
-                        <div key={row.teamId} className={`grid h-9 grid-cols-[minmax(0,1fr)_2rem_2rem_2rem_2.5rem] items-center gap-1 border-b border-[#16130f]/10 text-[10px] ${row.teamId === userTeamId ? "font-bold text-accent" : "text-text-primary"}`}>
+                        <div key={row.teamId} className={`grid min-h-0 grid-cols-[minmax(0,1fr)_2rem_2rem_2rem_2.5rem] items-center gap-1 border-b border-[#16130f]/10 text-[10px] ${row.teamId === userTeamId ? "font-bold text-accent" : "text-text-primary"}`}>
                           <span className="truncate"><span className="mr-1 font-space-mono text-[8px] text-text-secondary">{index + 1}.</span>{row.teamName}</span>
                           <span className="text-center font-space-mono">{row.won}</span>
                           <span className="text-center font-space-mono">{row.lost}</span>
@@ -1737,84 +3045,73 @@ function OverviewPageContent() {
 
               {/* Fixtures & Results page */}
               {activeSubTab === "fixtures" && (
-                <div className="bg-surface border-2 border-border p-5">
-                  <div className="flex justify-between items-center border-b border-[#16130f]/10 pb-3 mb-4">
-                    <h3 className="font-anton text-[16px] text-text-primary uppercase">USER FIXTURES SCHEDULE</h3>
+                <div className="bg-surface border-2 border-border p-5 h-[calc(100vh-200px)] min-h-[500px] flex flex-col overflow-hidden">
+                  <div className="flex justify-between items-center border-b border-[#16130f]/10 pb-3 mb-4 shrink-0">
+                    <h3 className="font-anton text-[16px] text-text-primary uppercase">SEASON FIXTURES &amp; RESULTS</h3>
                   </div>
 
-                  <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 divide-y divide-[#16130f]/5">
-                    {fixtures.filter(f => f.teamA === userTeamId || f.teamB === userTeamId).map(match => {
-                      const opponentId = match.teamA === userTeamId ? match.teamB : match.teamA;
-                      const opp = teams[opponentId];
-                      return (
-                        <div key={match.id} className="py-3 flex items-center justify-between text-xs">
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <span className="font-space-mono text-[9px] bg-accent/15 text-accent px-1.5 py-0.5 rounded font-bold">ROUND {match.round}</span>
-                              <span className="font-bold text-text-primary">{opp?.name}</span>
-                              <span className="text-[10px] text-text-secondary">({match.teamA === userTeamId ? "Home" : "Away"})</span>
-                            </div>
-                            {match.played && (
-                              <div className="font-space-mono text-[9px] text-text-secondary mt-1">
-                                {userTeam.shortName} {match.teamA === userTeamId ? `${match.scoreA?.runs}/${match.scoreA?.wickets}` : `${match.scoreB?.runs}/${match.scoreB?.wickets}`} vs{" "}
-                                {opp?.shortName} {match.teamA === userTeamId ? `${match.scoreB?.runs}/${match.scoreB?.wickets}` : `${match.scoreA?.runs}/${match.scoreA?.wickets}`}
-                              </div>
-                            )}
+                  {!isFixturesAnnounced ? (
+                    <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
+                      <div className="w-16 h-16 rounded-full bg-[#16130f]/5 flex items-center justify-center text-[24px] mb-4">
+                        🔒
+                      </div>
+                      <h4 className="font-anton text-[18px] text-text-primary uppercase tracking-wide">Fixtures Locked</h4>
+                      <p className="font-barlow text-xs text-text-secondary max-w-sm mt-2">
+                        The league fixtures have not been released yet. The schedule announcement is set for:
+                      </p>
+                      <span className="font-space-mono text-xs font-bold text-accent mt-3 bg-accent/5 border border-accent/20 px-3 py-1 rounded">
+                        {userFriendlyAnnouncementDate}
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="space-y-3 flex-1 overflow-y-auto pr-2 divide-y divide-[#16130f]/5">
+                      {[...fixtures].sort((a, b) => (a.date ?? "").localeCompare(b.date ?? "") || a.round - b.round).map(match => {
+                        const teamA = teams[match.teamA];
+                        const teamB = teams[match.teamB];
+                        const result = match.played
+                          ? `${match.winner ? `${teams[match.winner]?.shortName ?? match.winner} won` : "Played"} · ${match.scoreA?.runs ?? "-"}/${match.scoreA?.wickets ?? "-"} - ${match.scoreB?.runs ?? "-"}/${match.scoreB?.wickets ?? "-"}`
+                          : "-";
+                        return (
+                          <div key={match.id} className="grid grid-cols-[9rem_1fr_auto] items-center gap-4 py-3 text-xs">
+                            <span className="font-space-mono text-[10px] text-text-secondary">{match.date ?? "-"}</span>
+                            <span className="font-bold text-text-primary">{teamA?.name ?? match.teamA} vs {teamB?.name ?? match.teamB}</span>
+                            <span className="font-space-mono text-[10px] text-right text-text-secondary">{result}</span>
                           </div>
-                          <div>
-                            {match.played ? (
-                              <button
-                                onClick={() => setActiveScorecard(match)}
-                                className="px-3 py-1 font-space-mono text-[9px] font-bold border border-border rounded hover:bg-black/5 uppercase"
-                              >
-                                Scorecard
-                              </button>
-                            ) : (
-                              roundMatchesReadyToSim(match.round) ? (
-                                <button
-                                  onClick={handleSimulateNextRound}
-                                  className="px-4 py-1.5 font-space-mono text-[9px] font-bold border bg-success text-white border-success rounded uppercase transition-all active:scale-95"
-                                >
-                                  Simulate Match
-                                </button>
-                              ) : (
-                                <span className="font-space-mono text-[9px] text-text-secondary uppercase">Rounds Locked</span>
-                              )
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
 
               {/* Points Table page */}
               {activeSubTab === "standings" && (
-                <div className="border-2 border-border bg-surface overflow-hidden">
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left font-barlow text-xs divide-y divide-[#16130f]/10">
-                      <thead className="bg-[#16130f]/5 text-[9px] font-space-mono text-text-secondary uppercase">
+                <div className="border-2 border-border bg-surface h-[calc(100vh-200px)] min-h-[500px] flex flex-col overflow-hidden">
+                  <div className="min-h-0 flex-1 overflow-x-auto overflow-y-hidden">
+                    <table className="h-full w-full table-fixed text-left font-barlow text-sm divide-y divide-[#16130f]/10">
+                      <thead className="bg-[#16130f]/5 text-[11px] font-space-mono text-text-secondary uppercase tracking-wider">
                         <tr>
-                          <th className="px-6 py-3.5 text-center">Pos</th>
-                          <th className="px-6 py-3.5">Team</th>
-                          <th className="px-6 py-3.5 text-center">P</th>
-                          <th className="px-6 py-3.5 text-center">W</th>
-                          <th className="px-6 py-3.5 text-center">L</th>
-                          <th className="px-6 py-3.5 text-center">Pts</th>
-                          <th className="px-6 py-3.5 text-right">NRR</th>
+                          <th className="px-8 py-[18px] text-center">Pos</th>
+                          <th className="px-8 py-[18px]">Team</th>
+                          <th className="px-8 py-[18px] text-center">P</th>
+                          <th className="px-8 py-[18px] text-center">W</th>
+                          <th className="px-8 py-[18px] text-center">L</th>
+                          <th className="px-8 py-[18px] text-center">NR</th>
+                          <th className="px-8 py-[18px] text-center font-bold">Pts</th>
+                          <th className="px-8 py-[18px] text-right">NRR</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-[#16130f]/10">
                         {standings.map((row, idx) => (
-                          <tr key={row.teamId} className={`hover:bg-black/5 transition-colors ${row.teamId === userTeamId ? "bg-accent/5 font-bold" : ""}`}>
-                            <td className="px-6 py-4 text-center font-bold text-text-secondary font-space-mono">#{idx + 1}</td>
-                            <td className="px-6 py-4 font-semibold text-text-primary">{row.teamName}</td>
-                            <td className="px-6 py-4 text-center font-space-mono">{row.played}</td>
-                            <td className="px-6 py-4 text-center text-success font-space-mono">{row.won}</td>
-                            <td className="px-6 py-4 text-center text-danger font-space-mono">{row.lost}</td>
-                            <td className="px-6 py-4 text-center font-bold font-space-mono text-[13px]">{row.points}</td>
-                            <td className="px-6 py-4 text-right font-space-mono">{row.nrr >= 0 ? "+" : ""}{row.nrr.toFixed(3)}</td>
+                          <tr key={row.teamId} className={`hover:bg-black/5 transition-colors ${row.teamId === userTeamId ? "bg-accent/5 font-bold" : ""}`} style={{ height: `${100 / Math.max(standings.length, 1)}%` }}>
+                            <td className="px-8 py-1 text-center font-bold text-text-secondary font-space-mono text-xs">#{idx + 1}</td>
+                            <td className="px-8 py-1 font-bold text-text-primary text-[15px]">{row.teamName}</td>
+                            <td className="px-8 py-1 text-center font-space-mono text-text-secondary">{row.played}</td>
+                            <td className="px-8 py-1 text-center text-success font-bold font-space-mono">{row.won}</td>
+                            <td className="px-8 py-1 text-center text-danger font-bold font-space-mono">{row.lost}</td>
+                            <td className="px-8 py-1 text-center font-space-mono text-text-secondary">{row.noResults}</td>
+                            <td className="px-8 py-1 text-center font-bold font-space-mono text-base text-text-primary">{row.points}</td>
+                            <td className="px-8 py-1 text-right font-space-mono font-medium text-text-primary">{row.nrr >= 0 ? "+" : ""}{row.nrr.toFixed(3)}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -1825,14 +3122,14 @@ function OverviewPageContent() {
 
               {/* Tournament Stats page */}
               {activeSubTab === "stats" && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-[calc(100vh-200px)] min-h-[500px] overflow-hidden">
                   {/* Orange cap */}
-                  <div className="bg-surface border-2 border-border p-5">
-                    <div className="flex items-center gap-2 mb-4 border-b border-[#16130f]/10 pb-2">
+                  <div className="bg-surface border-2 border-border p-5 flex flex-col h-full overflow-hidden">
+                    <div className="flex items-center gap-2 mb-4 border-b border-[#16130f]/10 pb-2 shrink-0">
                       <div className="w-4 h-4 bg-orange-500 rounded-full" />
                       <h3 className="font-anton text-[16px] text-text-primary uppercase leading-none">ORANGE CAP LEADERBOARD</h3>
                     </div>
-                    <div className="divide-y divide-[#16130f]/10 text-xs">
+                    <div className="divide-y divide-[#16130f]/10 text-xs flex-1 overflow-y-auto pr-2">
                       {orangeCapLeaders.length === 0 ? (
                         <div className="text-center font-barlow text-text-secondary p-8">No stats recorded yet. Simulate rounds first.</div>
                       ) : (
@@ -1853,12 +3150,12 @@ function OverviewPageContent() {
                   </div>
 
                   {/* Purple cap */}
-                  <div className="bg-surface border-2 border-border p-5">
-                    <div className="flex items-center gap-2 mb-4 border-b border-[#16130f]/10 pb-2">
+                  <div className="bg-surface border-2 border-border p-5 flex flex-col h-full overflow-hidden">
+                    <div className="flex items-center gap-2 mb-4 border-b border-[#16130f]/10 pb-2 shrink-0">
                       <div className="w-4 h-4 bg-purple-700 rounded-full" />
                       <h3 className="font-anton text-[16px] text-text-primary uppercase leading-none">PURPLE CAP LEADERBOARD</h3>
                     </div>
-                    <div className="divide-y divide-[#16130f]/10 text-xs">
+                    <div className="divide-y divide-[#16130f]/10 text-xs flex-1 overflow-y-auto pr-2">
                       {purpleCapLeaders.length === 0 ? (
                         <div className="text-center font-barlow text-text-secondary p-8">No stats recorded yet. Simulate rounds first.</div>
                       ) : (
@@ -1888,7 +3185,7 @@ function OverviewPageContent() {
           {activeTab === "history" && (
             <>
               {activeSubTab === "overview" && (
-                <div className="grid h-full min-h-0 grid-cols-2 grid-rows-2 gap-6 overflow-hidden">
+                <div className="grid grid-cols-2 grid-rows-2 gap-6 h-[calc(100vh-200px)] min-h-[500px] overflow-hidden">
                   {[
                     ["clubhistory", "Club History", "Franchise seasons, honours, and milestones recorded during your career."],
                     ["clubfigures", "Club Figures", "Club records and notable contributors recorded during your career."],
@@ -1913,7 +3210,7 @@ function OverviewPageContent() {
               )}
 
               {activeSubTab !== "overview" && (
-                <div className="bg-surface border-2 border-border p-8 text-center">
+                <div className="bg-surface border-2 border-border p-8 text-center h-[calc(100vh-200px)] min-h-[500px] flex flex-col items-center justify-center">
                   <h3 className="font-anton text-[18px] text-text-primary uppercase">{getSubTabLabel(activeSubTab)}</h3>
                   <p className="mt-3 text-xs text-text-secondary">No history has been recorded yet.</p>
                 </div>
@@ -1929,12 +3226,11 @@ function OverviewPageContent() {
           ================================================================== */}
       {detailedPlayer && (
         <div
-          className="fixed inset-0 z-[95] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm animate-in fade-in duration-200"
+          className="fixed inset-0 z-[95] flex items-center justify-center bg-black/70 p-12 backdrop-blur-sm animate-in fade-in duration-200"
           onMouseDown={() => setDetailedPlayerId(null)}
         >
           <div
-            className="flex max-h-[calc(100vh-2rem)] w-full max-w-4xl flex-col overflow-hidden rounded-lg border-2 border-t-4 border-border bg-surface text-text-primary shadow-2xl animate-in zoom-in-95 duration-200"
-            style={{ borderTopColor: teams[detailedPlayer.currentTeamId ?? ""]?.primaryColor ?? "var(--accent)" }}
+            className="flex max-h-[calc(100vh-6rem)] w-full max-w-4xl flex-col overflow-hidden rounded-lg border-2 border-border bg-surface text-text-primary shadow-2xl animate-in zoom-in-95 duration-200"
             onMouseDown={(event) => event.stopPropagation()}
           >
             <div className="flex shrink-0 items-start justify-between border-b-2 border-border bg-surface px-6 py-4">
@@ -1972,7 +3268,13 @@ function OverviewPageContent() {
                     {[
                       ["Nationality", detailedPlayer.nationality],
                       ["Batting", detailedPlayer.battingStyle],
-                      ["Bowling", detailedPlayer.bowlingStyle ?? "DNB"],
+                      ["Bowling", (() => {
+                        if (!detailedPlayer.bowlingStyle) return "DNB";
+                        if (!detailedPlayer.bowlingHand) return detailedPlayer.bowlingStyle;
+                        const hand = detailedPlayer.bowlingHand === "Left-hand" ? "Left handed" : "Right handed";
+                        const type = detailedPlayer.bowlingStyle === "Spinner" ? "spinner" : "pacer";
+                        return `${hand} ${type}`;
+                      })()],
                       ["Status", detailedPlayer.isCapped ? "Capped" : "Uncapped"],
                     ].map(([label, value]) => (
                       <div key={label} className="flex items-center justify-between gap-3 border-b border-border/60 pb-2">

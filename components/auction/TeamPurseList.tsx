@@ -1,7 +1,7 @@
 "use client";
 import { useState, useRef, useEffect } from "react";
 import { ChevronUp, ChevronDown } from "lucide-react";
-import { useGameStore } from "@/lib/store/gameStore";
+import { useGameStore, getNextSeasonYear } from "@/lib/store/gameStore";
 import { Player } from "@/lib/types";
 import PlayerCard from "./PlayerCard";
 
@@ -154,10 +154,10 @@ export default function TeamPurseList() {
                       const isSelected = selectedPlayer?.id === p.id;
                       const wasRetained = team.retainedPlayers.includes(p.id);
                       const sale = auction?.saleHistory.find((s: any) => s.playerId === p.id);
-                      const price = sale?.price ?? p.iplHistory.find((h) => h.season === "2027")?.price ?? p.iplHistory.find((h) => h.season === "2026")?.price;
+                      const price = sale?.price ?? p.iplHistory.find((h) => h.season === getNextSeasonYear())?.price ?? p.iplHistory.find((h) => h.season === "2026")?.price;
                       const priceStr = price ? ` (₹${(price / 100).toFixed(1)}Cr)` : "";
 
-                      const isRtm = !!p.iplHistory.find((h) => h.season === "2027")?.isRtm;
+                      const isRtm = !!p.iplHistory.find((h) => h.season === getNextSeasonYear())?.isRtm;
 
                       let rowBg = undefined;
                       let rowBorder = "1px solid var(--hairline)";
@@ -274,7 +274,7 @@ export default function TeamPurseList() {
           <div className="flex-1 overflow-y-auto">
             {(() => {
               const sale = auction?.saleHistory.find((s: any) => s.playerId === selectedPlayer.id);
-              const salary = sale?.price ?? selectedPlayer.iplHistory.find((h) => h.season === "2027")?.price ?? selectedPlayer.iplHistory.find((h) => h.teamId !== "UNSOLD" && h.price > 0)?.price ?? selectedPlayer.basePrice;
+              const salary = sale?.price ?? selectedPlayer.iplHistory.find((h) => h.season === getNextSeasonYear())?.price ?? selectedPlayer.iplHistory.find((h) => h.teamId !== "UNSOLD" && h.price > 0)?.price ?? selectedPlayer.basePrice;
               return <PlayerCard player={selectedPlayer} soldPrice={salary} collapsible={false} />;
             })()}
           </div>

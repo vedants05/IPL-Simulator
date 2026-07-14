@@ -138,6 +138,7 @@ export function mapRowsToPlayers(data: any[]): Player[] {
     const role = (ROLE_MAP[row.primary_role] ?? "Batsman") as Role;
     const bowlType = row.bowling_type || "NA";
     const batHand = (row.batting_hand || "").includes("LHB") || (row.batting_hand || "").toLowerCase().includes("left") ? "Left-hand" : "Right-hand";
+    const bowlHand = (row.bowling_hand || "").toLowerCase().includes("left") ? "Left-hand" : (row.bowling_hand || "").toLowerCase().includes("right") ? "Right-hand" : null;
     
     const curBat = parseInt(row.current_batting) || 0;
     const potBat = parseInt(row.potential_batting) || 0;
@@ -239,6 +240,7 @@ export function mapRowsToPlayers(data: any[]): Player[] {
       role,
       battingStyle: batHand as any,
       bowlingStyle: bowlStyle(bowlType),
+      bowlingHand: bowlHand,
       starRating: star,
       basePrice: base,
       isCapped,

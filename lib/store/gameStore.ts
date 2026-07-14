@@ -77,6 +77,10 @@ export function getSeasonDates(year: number) {
   };
 }
 
+export function getNextSeasonYear(): string {
+  return String(useGameStore.getState().currentSeason + 1);
+}
+
 // ---------------------------------------------------------------------------
 // Store actions interface
 // ---------------------------------------------------------------------------
@@ -697,8 +701,8 @@ export const useGameStore = create<Store>()(
             if (!p) return;
             const retentionCost = getPlayerRetentionCost(pid, retainedIds, players);
             const updatedHistory = [
-              ...p.iplHistory.filter((h) => h.season !== "2027"),
-              { teamId: team.id, season: "2027", price: retentionCost },
+              ...p.iplHistory.filter((h) => h.season !== getNextSeasonYear()),
+              { teamId: team.id, season: getNextSeasonYear(), price: retentionCost },
             ];
             updatedPlayers[pid] = {
               ...p,
@@ -731,8 +735,8 @@ export const useGameStore = create<Store>()(
           if (!p) return;
           const retentionCost = getPlayerRetentionCost(pid, userTeam.retainedPlayers, players);
           const updatedHistory = [
-            ...p.iplHistory.filter((h) => h.season !== "2027"),
-            { teamId: userTeamId, season: "2027", price: retentionCost },
+            ...p.iplHistory.filter((h) => h.season !== getNextSeasonYear()),
+            { teamId: userTeamId, season: getNextSeasonYear(), price: retentionCost },
           ];
           updatedPlayers[pid] = {
             ...p,
@@ -1375,12 +1379,12 @@ export const useGameStore = create<Store>()(
               };
             }
 
-            // Record the sale under the auction season ("2027"), matching the
+            // Record the sale under the auction season (getNextSeasonYear()), matching the
             // live hammerFall / doRTMTransfer flow so skip-sold and live-sold
             // players have identical, accurate iplHistory.
             const updatedHistory = [
-              ...player.iplHistory.filter((h) => h.season !== "2027"),
-              { teamId: finalWinnerId, season: "2027", price: finalPrice, isRtm: usedRtm },
+              ...player.iplHistory.filter((h) => h.season !== getNextSeasonYear()),
+              { teamId: finalWinnerId, season: getNextSeasonYear(), price: finalPrice, isRtm: usedRtm },
             ];
 
             newPlayers[player.id] = {
@@ -1664,8 +1668,8 @@ export const useGameStore = create<Store>()(
             }
 
             const updatedHistory = [
-              ...player.iplHistory.filter((h) => h.season !== "2027"),
-              { teamId: finalWinnerId, season: "2027", price: finalPrice, isRtm: usedRtm },
+              ...player.iplHistory.filter((h) => h.season !== getNextSeasonYear()),
+              { teamId: finalWinnerId, season: getNextSeasonYear(), price: finalPrice, isRtm: usedRtm },
             ];
 
             newPlayers[player.id] = {
@@ -1793,8 +1797,8 @@ export const useGameStore = create<Store>()(
                 ...player,
                 currentTeamId: highBidderTeamId,
                 iplHistory: [
-                  ...player.iplHistory.filter((h) => h.season !== "2027"),
-                  { teamId: highBidderTeamId, season: "2027", price: currentBid, isRtm: false },
+                  ...player.iplHistory.filter((h) => h.season !== getNextSeasonYear()),
+                  { teamId: highBidderTeamId, season: getNextSeasonYear(), price: currentBid, isRtm: false },
                 ],
               };
 
@@ -1999,8 +2003,8 @@ export const useGameStore = create<Store>()(
             }
 
             const updatedHistory = [
-              ...player.iplHistory.filter((h) => h.season !== "2027"),
-              { teamId: finalWinnerId, season: "2027", price: finalPrice, isRtm: usedRtm },
+              ...player.iplHistory.filter((h) => h.season !== getNextSeasonYear()),
+              { teamId: finalWinnerId, season: getNextSeasonYear(), price: finalPrice, isRtm: usedRtm },
             ];
 
             newPlayers[player.id] = {
@@ -2063,8 +2067,8 @@ export const useGameStore = create<Store>()(
               ...candidate,
               currentTeamId: userTeamId,
               iplHistory: [
-                ...candidate.iplHistory.filter(history => history.season !== "2027"),
-                { teamId: userTeamId, season: "2027", price: candidate.basePrice, isRtm: false },
+                ...candidate.iplHistory.filter(history => history.season !== getNextSeasonYear()),
+                { teamId: userTeamId, season: getNextSeasonYear(), price: candidate.basePrice, isRtm: false },
               ],
             };
             newSoldIds.push(candidate.id);
@@ -2113,7 +2117,7 @@ export const useGameStore = create<Store>()(
               results: remainingPlayerIds.map((id) => {
                 const p = newPlayers[id];
                 const wasSold = newSoldIds.includes(id);
-                const historyEntry = p.iplHistory.find((h) => h.season === "2027");
+                const historyEntry = p.iplHistory.find((h) => h.season === getNextSeasonYear());
                 return {
                   player: p,
                   status: wasSold ? "sold" as const : "unsold" as const,
@@ -2279,8 +2283,8 @@ function doRTMTransfer(
     };
 
     const updatedHistory = [
-      ...player.iplHistory.filter(h => h.season !== "2027"),
-      { teamId: originalTeamId, season: "2027", price: transferPrice, isRtm: true }
+      ...player.iplHistory.filter(h => h.season !== getNextSeasonYear()),
+      { teamId: originalTeamId, season: getNextSeasonYear(), price: transferPrice, isRtm: true }
     ];
     const newPlayers = { ...s.players, [player.id]: { ...player, currentTeamId: originalTeamId, iplHistory: updatedHistory } };
     const newPurses = {
@@ -2333,8 +2337,8 @@ function doWinnerKeepsAtCounter(
     };
     const storedPlayer = s.players[player.id] ?? player;
     const updatedHistory = [
-      ...storedPlayer.iplHistory.filter(history => history.season !== "2027"),
-      { teamId: winnerTeamId, season: "2027", price: raisedAmount, isRtm: false },
+      ...storedPlayer.iplHistory.filter(history => history.season !== getNextSeasonYear()),
+      { teamId: winnerTeamId, season: getNextSeasonYear(), price: raisedAmount, isRtm: false },
     ];
     return {
       teams: newTeams,
@@ -2468,8 +2472,8 @@ function hammerFall() {
           : newTeams[highBidder].overseasPlayersCurrent,
     };
     const updatedHistory = [
-      ...player.iplHistory.filter(h => h.season !== "2027"),
-      { teamId: highBidder, season: "2027", price: soldAmount }
+      ...player.iplHistory.filter(h => h.season !== getNextSeasonYear()),
+      { teamId: highBidder, season: getNextSeasonYear(), price: soldAmount }
     ];
     const newPlayers = { ...s.players, [player.id]: { ...player, currentTeamId: highBidder, iplHistory: updatedHistory } };
     const newPurses = {
@@ -2974,7 +2978,7 @@ function ensureMinimumSquadSizes(
         ...candidate,
         currentTeamId: team.id,
         iplHistory: [
-          { teamId: team.id, season: "2027", price: cost },
+          { teamId: team.id, season: getNextSeasonYear(), price: cost },
           ...(candidate.iplHistory ?? [])
         ]
       };

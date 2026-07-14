@@ -77,6 +77,7 @@ export interface Player {
   role: Role;
   battingStyle: BattingStyle;
   bowlingStyle: BowlingType | null;
+  bowlingHand: "Right-hand" | "Left-hand" | null;
   attributes: PlayerAttributes;
   careerStats: CareerStats;
   iplStats: IPLStats;

@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { useGameStore } from "@/lib/store/gameStore";
+import { useGameStore, getNextSeasonYear } from "@/lib/store/gameStore";
 import RetentionPhase from "./retention";
 import PlayerCard from "@/components/auction/PlayerCard";
 import BidPanel from "@/components/auction/BidPanel";
@@ -1687,7 +1687,7 @@ function TeamSquadCard({
                 <div className="flex flex-wrap gap-1 flex-1">
                   {group.map((p) => {
                     const wasRetained = team.retainedPlayers.includes(p.id);
-                    const sale = p.iplHistory.find((h) => h.season === "2027");
+                    const sale = p.iplHistory.find((h) => h.season === getNextSeasonYear());
                     const auctionSale = [...(auction?.saleHistory ?? [])]
                       .reverse()
                       .find((entry) => entry.playerId === p.id);
@@ -1818,7 +1818,9 @@ function TeamSquadCard({
 function AuctionComplete() {
   const { auction, teams, players, userTeamId } = useGameStore();
   const [summaryTab] = useState<"buys" | "unsold">("buys");
-  const [continued, setContinued] = useState(false);
+  // Keep this unresolved during the first client render. Defaulting to false
+  // briefly exposed the CTA before the persisted season state was loaded.
+  const [continued, setContinued] = useState<boolean | null>(null);
   const router = useRouter();
   const pathname = usePathname();
 
@@ -1917,7 +1919,7 @@ function AuctionComplete() {
               Simulations completed · Franchise squads finalized for Season &apos;27
             </p>
           </div>
-          {!continued && userTeam && (
+          {continued === false && userTeam && (
             <button
               onClick={handleContinue}
               disabled={!SEASON_ACCESS_ENABLED}

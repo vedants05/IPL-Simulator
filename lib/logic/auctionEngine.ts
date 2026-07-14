@@ -24,6 +24,7 @@ export interface AuctionContext {
   totalLots: number;
   isAcceleratedPhase?: boolean;
   acceleratedPass?: number;
+  season?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -1418,7 +1419,8 @@ export function computeTeamValuation(
     const overseasSpend = squad
       .filter(candidate => candidate.nationality === "Overseas")
       .reduce((total, candidate) => {
-        const currentSeasonPrice = candidate.iplHistory.find(history => history.season === "2027")?.price ?? 0;
+        const nextSeasonYear = ctx.season ?? "2027";
+        const currentSeasonPrice = candidate.iplHistory.find(history => history.season === nextSeasonYear)?.price ?? 0;
         return total + currentSeasonPrice;
       }, 0);
     const overseasBudget = team.totalPurse * quirks.overseasBudgetPct;
