@@ -86,6 +86,30 @@ test("ticks once per second and recursively schedules only after each completed 
   assert.equal(scheduler.pendingCount, 1);
 });
 
+test("reads a dynamic interval before every tick", () => {
+  const scheduler = new FakeScheduler();
+  let intervalMs = DAY_SIMULATION_INTERVAL_MS;
+  let ticks = 0;
+  const ticker = createDayTicker({
+    intervalMs: () => intervalMs,
+    onTick: () => {
+      ticks += 1;
+      intervalMs = 500;
+    },
+    schedule: scheduler.schedule,
+    cancel: scheduler.cancel,
+  });
+
+  ticker.start();
+  scheduler.advanceBy(1000);
+
+  assert.equal(ticks, 1);
+  assert.deepEqual(scheduler.scheduledDelays, [1000, 500]);
+
+  scheduler.advanceBy(500);
+  assert.equal(ticks, 2);
+});
+
 test("a duplicate start is rejected without creating a second timer", () => {
   let ticks = 0;
   const { scheduler, ticker } = createHarness(() => {

@@ -154,6 +154,9 @@ export function mapRowsToPlayers(data: any[]): Player[] {
     const isCoreBatter = isAnukul ? false : row.core_batter === true;
     const onlyOpensOrBenched = row.only_opener === true;
     const captaincy = parseInt(row.captaincy) || 50;
+    // The source field is a positive desire flag. A false value means that the
+    // player must not be offered IPL captaincy. Dhoni is explicitly unavailable.
+    const isIplCaptaincyUnavailable = name === "MS Dhoni" || row.ipl_captain_desire === false;
     const battingAggression = parseInt(row.batting_aggression) || 50;
     
     const isRahane = name === "Ajinkya Rahane";
@@ -223,7 +226,7 @@ export function mapRowsToPlayers(data: any[]): Player[] {
     };
 
     const bowling = {
-      matches: t20BowlInns > 0 ? t20BowlInns : t20Games,
+      matches: t20BowlInns,
       wickets: t20Wickets,
       economy: t20BowlInns > 0 && parseFloat(row.t20_bowling_average) > 0 
         ? Math.round((8.8 - (curBowl / 100) * 2.5) * 100) / 100 
@@ -261,6 +264,7 @@ export function mapRowsToPlayers(data: any[]): Player[] {
       iplHistory,
       reputation,
       captaincy,
+      isIplCaptaincyUnavailable,
       battingAggression,
       isWicketkeeper,
       isPartTimeWk,

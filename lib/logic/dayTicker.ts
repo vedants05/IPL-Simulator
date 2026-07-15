@@ -6,7 +6,7 @@ export interface DayTickerController {
 }
 
 interface DayTickerOptions {
-  intervalMs: number;
+  intervalMs: number | (() => number);
   onTick: () => void;
   onError?: (error: unknown) => void;
   schedule?: typeof setTimeout;
@@ -34,6 +34,7 @@ export function createDayTicker({
   };
 
   const queueNextTick = () => {
+    const nextIntervalMs = typeof intervalMs === "function" ? intervalMs() : intervalMs;
     timer = schedule(() => {
       timer = null;
       if (!running) return;
@@ -50,7 +51,7 @@ export function createDayTicker({
       if (running && timer === null) {
         queueNextTick();
       }
-    }, intervalMs);
+    }, nextIntervalMs);
   };
 
   return {

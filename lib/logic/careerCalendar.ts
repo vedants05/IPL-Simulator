@@ -1,4 +1,7 @@
 export const DAY_SIMULATION_INTERVAL_MS = 1000;
+export const FAST_DAY_SIMULATION_INTERVAL_MS = DAY_SIMULATION_INTERVAL_MS / 2;
+export const SKIP_SIMULATION_MAX_SPEED_INTERVAL_MS = 50;
+export const SKIP_SIMULATION_SLOW_INTERVAL_MS = 400;
 
 export const TICKING_CALENDAR_OFFSETS = [-1, 0, 1, 2, 3, 4, 5] as const;
 
@@ -39,4 +42,40 @@ export function addDaysToDateKey(dateKey: string, numberOfDays: number): string 
   const date = dateKeyToLocalDate(dateKey);
   date.setDate(date.getDate() + numberOfDays);
   return localDateToDateKey(date);
+}
+
+export function getDaySimulationIntervalMs(
+  currentDate: string,
+  auctionDate: string,
+  scheduleAnnouncementDate: string,
+): number {
+  return currentDate >= auctionDate && currentDate <= scheduleAnnouncementDate
+    ? FAST_DAY_SIMULATION_INTERVAL_MS
+    : DAY_SIMULATION_INTERVAL_MS;
+}
+
+function daysBetweenDateKeys(startDate: string, endDate: string): number {
+  const start = dateKeyToLocalDate(startDate);
+  const end = dateKeyToLocalDate(endDate);
+  const startUtc = Date.UTC(start.getFullYear(), start.getMonth(), start.getDate());
+  const endUtc = Date.UTC(end.getFullYear(), end.getMonth(), end.getDate());
+  return Math.round((endUtc - startUtc) / 86_400_000);
+}
+
+export function getSkipSimulationIntervalMs(
+  currentDate: string,
+  startDate: string,
+  targetDate: string,
+): number {
+  const totalDays = Math.max(daysBetweenDateKeys(startDate, targetDate), 1);
+  const elapsedDays = Math.min(Math.max(daysBetweenDateKeys(startDate, currentDate), 0), totalDays);
+  const remainingDays = totalDays - elapsedDays;
+  const rampDays = Math.max(1, Math.min(10, Math.floor(totalDays / 3)));
+  const edgeProgress = Math.min(Math.min(elapsedDays, remainingDays) / rampDays, 1);
+  const smoothProgress = edgeProgress * edgeProgress * (3 - 2 * edgeProgress);
+
+  return Math.round(
+    SKIP_SIMULATION_SLOW_INTERVAL_MS
+      - (SKIP_SIMULATION_SLOW_INTERVAL_MS - SKIP_SIMULATION_MAX_SPEED_INTERVAL_MS) * smoothProgress,
+  );
 }

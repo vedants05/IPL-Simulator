@@ -1,17 +1,29 @@
 "use client";
 import { useState, useEffect, useLayoutEffect, useMemo, useRef, Suspense, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useGameStore, getNextSeasonYear, getSeasonDates } from "@/lib/store/gameStore";
+import { useGameStore, getSeasonDates } from "@/lib/store/gameStore";
 import { formatPrice } from "@/lib/logic/auctionRules";
 import {
   addDaysToDateKey,
   dateKeyToLocalDate,
-  DAY_SIMULATION_INTERVAL_MS,
+  getDaySimulationIntervalMs,
+  getSkipSimulationIntervalMs,
   TICKING_CALENDAR_OFFSETS,
 } from "@/lib/logic/careerCalendar";
 import { createDayTicker, type DayTickerController } from "@/lib/logic/dayTicker";
+import {
+  getPlayerSeasonHistory,
+  mergePlayerIplHistory,
+  upsertPlayerIplHistory,
+  wasPlayerAcquiredViaRtm,
+} from "@/lib/logic/playerHistory";
 import { SEASON_ACCESS_ENABLED } from "@/lib/config/featureFlags";
-import type { Player, Team } from "@/lib/types";
+import { getClubSeasonHistory } from "@/lib/data/clubHistory";
+import { getClubFigures, type ClubFigureTier } from "@/lib/data/clubFigures";
+import { HISTORICAL_LEAGUE_HISTORY, LEAGUE_HISTORY_TEAMS } from "@/lib/data/leagueHistory";
+import LeagueHallOfFame from "@/components/history/LeagueHallOfFame";
+import LeagueRecords from "@/components/history/LeagueRecords";
+import type { IPLHistoryEntry, Player, Team } from "@/lib/types";
 import {
   Inbox as InboxIcon,
   Briefcase,
@@ -26,9 +38,11 @@ import {
   Trophy,
   History as HistoryIcon,
   AlertCircle,
+  Lock,
   Check,
   X,
   UserCheck,
+  ChevronDown,
   ChevronRight,
   TrendingUp,
   User,
@@ -130,6 +144,9 @@ interface RetentionDeadline {
   day: number;
 }
 
+type RosterSortKey = "name" | "role" | "nationality" | "rating" | "salary";
+type SortDirection = "asc" | "desc";
+
 // ============================================================================
 // Static Data Templates
 // ============================================================================
@@ -142,13 +159,14 @@ const generateNextRetentionDeadline = (auctionDate: string): RetentionDeadline =
 
 // Helper to calculate rating of player
 const getPlayerRating = (p: Player) => Math.max(p.currentBatting ?? 0, p.currentBowling ?? 0);
+const normalizeLeagueHistoryPlayerName = (name: string) => name.toLocaleLowerCase("en-GB").replace(/[^a-z0-9]/g, "");
 
 // ============================================================================
 // Main component
 // ============================================================================
 function OverviewPageContent() {
   const router = useRouter();
-  const { teams, userTeamId, players, currentDate, currentSeason, auction } = useGameStore();
+  const { teams, userTeamId, players, currentDate, currentSeason, auction, clubFigureTierOverrides, simulatedLeagueHistory } = useGameStore();
   const userTeam = teams[userTeamId];
 
   // Dynamically generate months based on currentSeason
@@ -175,6 +193,7 @@ function OverviewPageContent() {
   // --------------------------------------------------------------------------
   const [activeTab, setActiveTab] = useState<"home" | "squad" | "scouting" | "season" | "history">("home");
   const [activeSubTab, setActiveSubTab] = useState<string>("overview");
+  const [expandedLeagueHistorySeason, setExpandedLeagueHistorySeason] = useState<number | null>(null);
 
   const searchParams = useSearchParams();
   const tabParam = searchParams.get("tab");
@@ -213,21 +232,44 @@ function OverviewPageContent() {
   // Day-by-day career ticking simulation states & refs
   const [isSimulatingDays, setIsSimulatingDays] = useState(false);
   const [isCalendarClosing, setIsCalendarClosing] = useState(false);
+  const [pendingSkipTargetDate, setPendingSkipTargetDate] = useState<string | null>(null);
   const fixturesRef = useRef<Match[]>([]);
   const playerStatsRef = useRef<Record<string, PlayerStats>>({});
   const advanceOneDayRef = useRef<() => void>(() => undefined);
   const dayTickerRef = useRef<DayTickerController | null>(null);
   const calendarAnimationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const skipStartDateRef = useRef<string | null>(null);
+  const skipTargetDateRef = useRef<string | null>(null);
   const continueButtonRef = useRef<HTMLButtonElement | null>(null);
   const calendarStopButtonRef = useRef<HTMLButtonElement | null>(null);
   const wasSimulatingDaysRef = useRef(false);
 
   if (dayTickerRef.current === null) {
     dayTickerRef.current = createDayTicker({
-      intervalMs: DAY_SIMULATION_INTERVAL_MS,
+      intervalMs: () => {
+        const simulationDate = useGameStore.getState().currentDate;
+        const skipStartDate = skipStartDateRef.current;
+        const skipTargetDate = skipTargetDateRef.current;
+        if (skipStartDate && skipTargetDate) {
+          return getSkipSimulationIntervalMs(simulationDate, skipStartDate, skipTargetDate);
+        }
+
+        const season = useGameStore.getState().currentSeason;
+        const auctionDate = getSeasonDates(season).auctionDate;
+        const seasonStart = new Date(season + 1, 2, 31);
+        while (seasonStart.getDay() !== 6) seasonStart.setDate(seasonStart.getDate() - 1);
+        seasonStart.setDate(seasonStart.getDate() - 7);
+        const scheduleAnnouncement = new Date(seasonStart);
+        scheduleAnnouncement.setDate(scheduleAnnouncement.getDate() - 21);
+        const scheduleAnnouncementDate = `${scheduleAnnouncement.getFullYear()}-${String(scheduleAnnouncement.getMonth() + 1).padStart(2, "0")}-${String(scheduleAnnouncement.getDate()).padStart(2, "0")}`;
+
+        return getDaySimulationIntervalMs(simulationDate, auctionDate, scheduleAnnouncementDate);
+      },
       onTick: () => advanceOneDayRef.current(),
       onError: (error) => {
         console.error("Day-by-day simulation stopped unexpectedly:", error);
+        skipStartDateRef.current = null;
+        skipTargetDateRef.current = null;
         setIsSimulatingDays(false);
         setToastMessage("Simulation paused because the next day could not be completed.");
         setTimeout(() => setToastMessage(null), 3000);
@@ -270,9 +312,14 @@ function OverviewPageContent() {
   const currentCalendarMonth = CALENDAR_MONTHS[calendarMonthIndex];
   const calendarDaysInMonth = new Date(currentCalendarMonth.year, currentCalendarMonth.month + 1, 0).getDate();
   const calendarFirstWeekday = new Date(currentCalendarMonth.year, currentCalendarMonth.month, 1).getDay();
+  const selectedCalendarDateString = selectedCalendarDay === null
+    ? ""
+    : `${currentCalendarMonth.year}-${String(currentCalendarMonth.month + 1).padStart(2, "0")}-${String(selectedCalendarDay).padStart(2, "0")}`;
+  const canSkipToSelectedCalendarDate = selectedCalendarDateString > currentDate;
   const inGameDate = dateKeyToLocalDate(currentDate);
   const homeCalendarDaysInMonth = new Date(inGameDate.getFullYear(), inGameDate.getMonth() + 1, 0).getDate();
   const homeCalendarFirstWeekday = new Date(inGameDate.getFullYear(), inGameDate.getMonth(), 1).getDay();
+  const homeCalendarWeekCount = Math.max(5, Math.ceil((homeCalendarFirstWeekday + homeCalendarDaysInMonth) / 7));
 
   // Calculate announcement date (3 weeks before startSaturday)
   const expectedStartDateObj = new Date(currentSeason + 1, 2, 31);
@@ -1271,6 +1318,8 @@ function OverviewPageContent() {
 
   const stopSimulating = useCallback(() => {
     dayTickerRef.current?.stop();
+    skipStartDateRef.current = null;
+    skipTargetDateRef.current = null;
     setIsCalendarClosing(true);
     setIsSimulatingDays(false);
     if (calendarAnimationTimeoutRef.current) clearTimeout(calendarAnimationTimeoutRef.current);
@@ -1301,6 +1350,14 @@ function OverviewPageContent() {
       useGameStore.setState({ currentDate: nextDateString });
       stopSimulating();
       showToast("Paused: Your fixture needs a match result before the calendar can continue.");
+      return;
+    }
+
+    const skipTargetDate = skipTargetDateRef.current;
+    if (!isCatchingUpCurrentDate && skipTargetDate && nextDateString >= skipTargetDate) {
+      useGameStore.setState({ currentDate: skipTargetDate });
+      stopSimulating();
+      showToast("Reached selected calendar date.");
       return;
     }
 
@@ -1347,6 +1404,15 @@ function OverviewPageContent() {
       setIsSimulatingDays(true);
     }
   }, []);
+
+  const skipToCalendarDate = useCallback((targetDate: string) => {
+    const simulationDate = useGameStore.getState().currentDate;
+    if (targetDate <= simulationDate) return;
+    skipStartDateRef.current = simulationDate;
+    skipTargetDateRef.current = targetDate;
+    setPendingSkipTargetDate(null);
+    startSimulating();
+  }, [startSimulating]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -1532,7 +1598,72 @@ function OverviewPageContent() {
   // Roster details selection helper
   // --------------------------------------------------------------------------
   const [detailedPlayerId, setDetailedPlayerId] = useState<string | null>(null);
+  const [rosterSort, setRosterSort] = useState<{ key: RosterSortKey; direction: SortDirection }>({
+    key: "name",
+    direction: "asc",
+  });
   const detailedPlayer = detailedPlayerId ? players[detailedPlayerId] : null;
+  const rosterSeason = String((auction?.season ?? currentSeason) + 1);
+  const currentSeasonHistoryByPlayer = useMemo(() => {
+    const historyByPlayer = new Map<string, IPLHistoryEntry>();
+
+    Object.values(players).forEach((player) => {
+      const entry = getPlayerSeasonHistory(player.iplHistory, rosterSeason);
+      if (entry && entry.teamId !== "UNSOLD" && entry.price > 0) {
+        historyByPlayer.set(player.id, entry);
+      }
+    });
+
+    (auction?.saleHistory ?? []).forEach((sale) => {
+      historyByPlayer.set(sale.playerId, {
+        teamId: sale.teamId,
+        season: rosterSeason,
+        price: sale.price,
+        isRtm: wasPlayerAcquiredViaRtm(sale),
+      });
+    });
+
+    return historyByPlayer;
+  }, [auction?.saleHistory, players, rosterSeason]);
+  const detailedPlayerHistory = detailedPlayer
+    ? (() => {
+        const mergedHistory = mergePlayerIplHistory([], detailedPlayer.iplHistory);
+        const currentEntry = currentSeasonHistoryByPlayer.get(detailedPlayer.id);
+        return currentEntry ? upsertPlayerIplHistory(mergedHistory, currentEntry) : mergedHistory;
+      })()
+    : [];
+  const sortedRosterPlayers = useMemo(() => {
+    const rosterPlayers = (userTeam?.squad ?? []).map((id) => players[id]).filter((player): player is Player => Boolean(player));
+    const directionMultiplier = rosterSort.direction === "asc" ? 1 : -1;
+
+    return rosterPlayers.sort((left, right) => {
+      let comparison = 0;
+      if (rosterSort.key === "name") comparison = left.name.localeCompare(right.name);
+      if (rosterSort.key === "role") comparison = left.role.localeCompare(right.role);
+      if (rosterSort.key === "nationality") comparison = left.nationality.localeCompare(right.nationality);
+      if (rosterSort.key === "rating") comparison = getPlayerRating(left) - getPlayerRating(right);
+      if (rosterSort.key === "salary") {
+        comparison = (currentSeasonHistoryByPlayer.get(left.id)?.price ?? -1)
+          - (currentSeasonHistoryByPlayer.get(right.id)?.price ?? -1);
+      }
+
+      return comparison === 0
+        ? left.name.localeCompare(right.name)
+        : comparison * directionMultiplier;
+    });
+  }, [currentSeasonHistoryByPlayer, players, rosterSort, userTeam?.squad]);
+
+  const toggleRosterSort = (key: RosterSortKey) => {
+    setRosterSort((current) => ({
+      key,
+      direction: current.key === key
+        ? current.direction === "asc" ? "desc" : "asc"
+        : key === "rating" || key === "salary" ? "desc" : "asc",
+    }));
+  };
+
+  const rosterSortIndicator = (key: RosterSortKey) =>
+    rosterSort.key === key ? (rosterSort.direction === "asc" ? "↑" : "↓") : "↕";
 
   const handleToggleStartingXI = (pid: string) => {
     if (startingXI.includes(pid)) {
@@ -1574,7 +1705,7 @@ function OverviewPageContent() {
     history: {
       label: "History",
       icon: HistoryIcon,
-      subtabs: ["overview", "clubhistory", "clubfigures", "leaguehistory", "leaguehalloffame"]
+      subtabs: ["overview", "records", "clubhistory", "clubfigures", "leaguehistory", "leaguehalloffame"]
     }
   };
 
@@ -1591,6 +1722,7 @@ function OverviewPageContent() {
     if (subtab === "stats") return "Tournament Stats";
     if (subtab === "office") return "Manager Office";
     if (subtab === "calendar") return "Season Calendar";
+    if (subtab === "records") return "Records";
     if (subtab === "clubhistory") return "Club History";
     if (subtab === "clubfigures") return "Club Figures";
     if (subtab === "leaguehistory") return "League History";
@@ -1672,6 +1804,13 @@ function OverviewPageContent() {
       .sort((a,b) => b.wickets - a.wickets)
       .slice(0, 5);
   }, [playerStats]);
+  const leagueHistoryPlayerByName = useMemo(() => {
+    const playerByName = new Map<string, Player>();
+    Object.values(players).forEach((player) => {
+      playerByName.set(normalizeLeagueHistoryPlayerName(player.name), player);
+    });
+    return playerByName;
+  }, [players]);
 
   // Guard clause for uninitialized games
   if (!userTeam) {
@@ -1684,6 +1823,67 @@ function OverviewPageContent() {
       </div>
     );
   }
+
+  const clubSeasonHistory = getClubSeasonHistory(userTeamId, userTeam.name);
+  const clubTitles = clubSeasonHistory.filter((season) => season.outcome === "Champions");
+  const clubRunnerUpFinishes = clubSeasonHistory.filter((season) => season.outcome === "Runners-up");
+  const clubSeasonsPlayed = clubSeasonHistory.filter((season) => season.outcome !== "Did not participate").length;
+  const clubFigures = getClubFigures(userTeamId, players, clubFigureTierOverrides);
+  const clubFigureSections: Array<{ tier: ClubFigureTier; title: string; description: string }> = [
+    { tier: "legend", title: "Legends", description: "The defining names in club history" },
+    { tier: "icon", title: "Icons", description: "Major figures closely associated with the club" },
+    { tier: "hero", title: "Heroes", description: "Memorable performers and fan favourites" },
+  ];
+  const leagueHistoryBySeason = new Map(HISTORICAL_LEAGUE_HISTORY.map((season) => [season.season, season]));
+  simulatedLeagueHistory.forEach((season) => leagueHistoryBySeason.set(season.season, season));
+  const leagueHistorySeasons = Array.from(leagueHistoryBySeason.values()).sort((left, right) => right.season - left.season);
+  const careerLeagueHistoryCount = leagueHistorySeasons.filter((season) => season.source === "career").length;
+  const getLeagueHistoryTeam = (teamId: string) => {
+    const liveTeam = teams[teamId];
+    if (liveTeam) {
+      return {
+        id: liveTeam.id,
+        name: liveTeam.name,
+        shortName: liveTeam.shortName,
+        primaryColor: liveTeam.primaryColor,
+        secondaryColor: liveTeam.secondaryColor,
+      };
+    }
+    return LEAGUE_HISTORY_TEAMS[teamId] ?? {
+      id: teamId,
+      name: teamId,
+      shortName: teamId,
+      primaryColor: "#5b6472",
+      secondaryColor: "#ffffff",
+    };
+  };
+  const nextUserFixture = fixtures
+    .filter((fixture) => !fixture.played && (fixture.teamA === userTeamId || fixture.teamB === userTeamId))
+    .sort((left, right) => (left.date ?? "").localeCompare(right.date ?? "") || (left.time ?? "").localeCompare(right.time ?? "") || left.round - right.round)[0];
+  const nextOpponentId = nextUserFixture
+    ? nextUserFixture.teamA === userTeamId ? nextUserFixture.teamB : nextUserFixture.teamA
+    : null;
+  const nextOpponent = nextOpponentId ? teams[nextOpponentId] : null;
+  const nextOpponentSquad = nextOpponent
+    ? nextOpponent.squad.map((playerId) => players[playerId]).filter((player): player is Player => Boolean(player))
+    : [];
+  const nextOpponentCaptain = nextOpponentSquad
+    .filter((player) => !player.isIplCaptaincyUnavailable && player.name !== "MS Dhoni")
+    .slice()
+    .sort((left, right) => (right.captaincy ?? 0) - (left.captaincy ?? 0) || getPlayerRating(right) - getPlayerRating(left))[0];
+  const nextOpponentBatters = nextOpponentSquad
+    .slice()
+    .sort((left, right) => (right.currentBatting ?? 0) - (left.currentBatting ?? 0) || getPlayerRating(right) - getPlayerRating(left))
+    .slice(0, 2);
+  const nextOpponentBowlers = nextOpponentSquad
+    .filter((player) => (player.currentBowling ?? 0) > 0)
+    .sort((left, right) => (right.currentBowling ?? 0) - (left.currentBowling ?? 0) || getPlayerRating(right) - getPlayerRating(left))
+    .slice(0, 2);
+  const nextOpponentStandingIndex = nextOpponentId
+    ? standings.findIndex((standing) => standing.teamId === nextOpponentId)
+    : -1;
+  const nextOpponentStanding = nextOpponentStandingIndex >= 0 ? standings[nextOpponentStandingIndex] : null;
+  const nextFixtureVenue = nextUserFixture ? teams[nextUserFixture.teamA]?.homeGround : null;
 
   return (
     <div className="overview-page h-[calc(100vh-3rem)] flex overflow-hidden bg-bg relative">
@@ -1868,43 +2068,136 @@ function OverviewPageContent() {
                   </div>
 
                   {/* Main column */}
-                  <div className="grid min-h-0 grid-rows-[1fr_3fr] gap-6">
-                    <div onClick={() => router.push("/game/overview?tab=season&subtab=fixtures")} className="bg-surface border-2 border-border hover:border-accent p-5 cursor-pointer transition-colors overflow-hidden">
-                      <div className="flex justify-between items-start mb-3 border-b border-[#16130f]/10 pb-2">
-                        <div className="font-anton text-[14px] uppercase text-text-primary">NEXT OPPONENT</div>
-                      </div>
-                      {!isFixturesAnnounced || fixtures.filter(f => !f.played && (f.teamA === userTeamId || f.teamB === userTeamId)).length === 0 ? (
-                        <p className="text-xs font-barlow text-text-secondary py-2">
-                          {!isFixturesAnnounced ? `Fixtures will be announced on ${userFriendlyAnnouncementDate}.` : "No fixtures scheduled."}
-                        </p>
-                      ) : fixtures.filter(f => !f.played && (f.teamA === userTeamId || f.teamB === userTeamId)).slice(0, 1).map(match => {
-                        const oppId = match.teamA === userTeamId ? match.teamB : match.teamA;
-                        const opp = teams[oppId];
-                        return <div key={match.id} className="text-xs font-bold text-text-primary">{opp?.name}</div>;
-                      })}
+                  <div className="grid min-h-0 grid-rows-3 gap-6">
+                    <div
+                      onClick={() => isFixturesAnnounced && nextUserFixture && router.push("/game/overview?tab=season&subtab=fixtures")}
+                      className={`group relative overflow-hidden border-2 border-border bg-surface transition-all ${isFixturesAnnounced && nextUserFixture ? "cursor-pointer hover:border-accent hover:shadow-md" : "cursor-default"}`}
+                    >
+                      {nextOpponent && (
+                        <div className="absolute inset-x-0 top-0 h-1" style={{ backgroundColor: nextOpponent.primaryColor }} />
+                      )}
+                      {nextOpponent && (
+                        <div
+                          className="pointer-events-none absolute -right-16 -top-20 h-52 w-52 rounded-full opacity-15 blur-3xl"
+                          style={{ backgroundColor: nextOpponent.primaryColor }}
+                        />
+                      )}
+
+                      {!isFixturesAnnounced || !nextUserFixture || !nextOpponent ? (
+                        <div className="relative flex h-full flex-col p-4">
+                          <div className="flex items-center justify-between border-b border-[#16130f]/10 pb-2">
+                            <div className="font-anton text-[19px] uppercase text-text-primary">Next Opponent</div>
+                            <span className="font-space-mono text-[9px] font-bold uppercase tracking-wider text-text-secondary">Scouting brief</span>
+                          </div>
+                          <div className="flex min-h-0 flex-1 flex-col items-center justify-center text-center">
+                            <Lock size={22} className="mb-2 text-text-secondary/45" />
+                            <p className="font-anton text-[19px] uppercase text-text-primary">
+                              {!isFixturesAnnounced ? "Awaiting fixture announcement" : "Season schedule complete"}
+                            </p>
+                            <p className="mt-1.5 max-w-sm text-[12px] text-text-secondary">
+                              {!isFixturesAnnounced ? `The opposition dossier will unlock on ${userFriendlyAnnouncementDate}.` : "There are no remaining fixtures to scout."}
+                            </p>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="relative flex h-full min-h-0 flex-col p-4">
+                          <div className="flex shrink-0 items-start justify-between gap-3 border-b border-[#16130f]/10 pb-2">
+                            <div className="flex min-w-0 items-center gap-2.5">
+                              <div
+                                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full font-space-mono text-[11px] font-extrabold shadow-sm"
+                                style={{ backgroundColor: nextOpponent.primaryColor, color: nextOpponent.secondaryColor }}
+                              >
+                                {nextOpponent.shortName}
+                              </div>
+                              <div className="min-w-0">
+                                <p className="font-space-mono text-[9px] font-bold uppercase tracking-[0.16em] text-text-secondary">Next opponent · Scouting brief</p>
+                                <h3 className="mt-1 truncate font-anton text-[24px] uppercase leading-none text-text-primary">{nextOpponent.name}</h3>
+                                <div className="mt-1 flex items-center gap-2 font-space-mono text-[9px] font-bold uppercase text-text-secondary">
+                                  <span>{nextOpponentStandingIndex >= 0 ? `${nextOpponentStandingIndex + 1}${nextOpponentStandingIndex === 0 ? "st" : nextOpponentStandingIndex === 1 ? "nd" : nextOpponentStandingIndex === 2 ? "rd" : "th"} in league` : "Pre-season"}</span>
+                                  <span className="text-border">·</span>
+                                  <span>{nextOpponentStanding ? `${nextOpponentStanding.won}W ${nextOpponentStanding.lost}L` : "No record"}</span>
+                                </div>
+                              </div>
+                            </div>
+                            <div className="shrink-0 text-right">
+                              <p className="font-anton text-[20px] uppercase leading-none text-text-primary">
+                                {nextUserFixture.date ? dateKeyToLocalDate(nextUserFixture.date).toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "TBC"}
+                              </p>
+                              <p className="mt-1 font-space-mono text-[9px] font-bold uppercase text-text-secondary">{nextUserFixture.time ?? "Time TBC"} · Round {nextUserFixture.round}</p>
+                              <p className="mt-1 max-w-40 truncate text-[10px] font-medium text-text-secondary" title={nextFixtureVenue ?? "Venue TBC"}>{nextFixtureVenue ?? "Venue TBC"}</p>
+                            </div>
+                          </div>
+
+                          <div className="grid min-h-0 flex-1 grid-cols-[1.1fr_1fr_1fr] gap-2 pt-2">
+                            <div className="flex min-w-0 flex-col justify-center border border-[#16130f]/10 bg-black/[0.025] px-2.5 py-2 dark:bg-white/[0.025]">
+                              <p className="font-space-mono text-[8px] font-bold uppercase tracking-[0.14em] text-text-secondary">Likely captain</p>
+                              {nextOpponentCaptain ? (
+                                <div className="mt-1.5 flex min-w-0 items-center gap-2">
+                                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-black/[0.05] font-anton text-[12px] text-text-primary dark:bg-white/[0.06]">
+                                    {nextOpponentCaptain.name.split(" ").slice(0, 2).map((part) => part[0]).join("")}
+                                  </span>
+                                  <span className="min-w-0">
+                                    <span className="block truncate text-[12px] font-bold text-text-primary">{nextOpponentCaptain.name}</span>
+                                    <span className="mt-0.5 block truncate font-space-mono text-[8px] uppercase text-text-secondary">{nextOpponentCaptain.role}</span>
+                                  </span>
+                                </div>
+                              ) : (
+                                <span className="mt-1.5 text-[11px] text-text-secondary">Not selected</span>
+                              )}
+                            </div>
+
+                            <div className="flex min-w-0 flex-col justify-center border border-[#16130f]/10 bg-black/[0.025] px-2.5 py-2 dark:bg-white/[0.025]">
+                              <p className="font-space-mono text-[8px] font-bold uppercase tracking-[0.14em] text-text-secondary">Key batters</p>
+                              <div className="mt-1.5 space-y-1">
+                                {nextOpponentBatters.map((player) => (
+                                  <div key={`opp-batter-${player.id}`} className="flex min-w-0 items-center justify-between gap-2">
+                                    <span className="truncate text-[12px] font-semibold text-text-primary">{player.name}</span>
+                                    <span className="shrink-0 rounded-sm bg-black/[0.06] px-1 py-0.5 font-space-mono text-[9px] font-bold text-text-secondary dark:bg-white/[0.08]">{player.currentBatting}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+
+                            <div className="flex min-w-0 flex-col justify-center border border-[#16130f]/10 bg-black/[0.025] px-2.5 py-2 dark:bg-white/[0.025]">
+                              <p className="font-space-mono text-[8px] font-bold uppercase tracking-[0.14em] text-text-secondary">Key bowlers</p>
+                              <div className="mt-1.5 space-y-1">
+                                {nextOpponentBowlers.map((player) => (
+                                  <div key={`opp-bowler-${player.id}`} className="flex min-w-0 items-center justify-between gap-2">
+                                    <span className="truncate text-[12px] font-semibold text-text-primary">{player.name}</span>
+                                    <span className="shrink-0 rounded-sm bg-black/[0.06] px-1 py-0.5 font-space-mono text-[9px] font-bold text-text-secondary dark:bg-white/[0.08]">{player.currentBowling}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
-                    <div onClick={() => setActiveSubTab("calendar")} className="bg-surface border-2 border-border hover:border-accent p-5 cursor-pointer transition-colors overflow-hidden flex flex-col">
-                    <div className="flex h-full min-h-0 flex-col">
-                      <div className="flex justify-between items-start mb-2 border-b border-[#16130f]/10 pb-1.5">
-                        <div className="font-anton text-[14px] uppercase text-text-primary">SEASON CALENDAR</div>
+                    <div onClick={() => setActiveSubTab("calendar")} className="row-span-2 flex h-full min-h-0 cursor-pointer flex-col overflow-hidden border-2 border-border bg-surface p-3 transition-colors hover:border-accent">
+                    <div className="grid h-full min-h-0 grid-rows-[auto_auto_auto_minmax(0,1fr)]">
+                      <div className="mb-1 flex items-start justify-between border-b border-[#16130f]/10 pb-1">
+                        <div className="font-anton text-[16px] uppercase text-text-primary">SEASON CALENDAR</div>
                       </div>
                       
                       {/* Mini Month Label */}
-                      <div className="font-space-mono text-[8px] text-text-secondary uppercase mb-1.5 flex justify-between">
+                      <div className="mb-1 flex justify-between font-space-mono text-[9px] uppercase text-text-secondary">
                         <span>{inGameDate.toLocaleDateString("en-GB", { month: "long", year: "numeric" })}</span>
                         <span className="text-success font-bold">DAY {inGameDate.getDate()} · ACTIVE</span>
                       </div>
 
                       {/* Mini Weekday Headers */}
-                      <div className="grid grid-cols-7 gap-0.5 text-center font-space-mono text-[7px] font-bold text-text-secondary mb-1">
+                      <div className="mb-1 grid grid-cols-7 gap-0.5 text-center font-space-mono text-[8px] font-bold text-text-secondary">
                         <div>S</div><div>M</div><div>T</div><div>W</div><div>T</div><div>F</div><div>S</div>
                       </div>
 
                       {/* Mini Days Grid */}
-                      <div className="grid min-h-0 flex-1 grid-cols-7 grid-rows-6 gap-0.5">
+                      <div
+                        className="grid h-full min-h-0 grid-cols-7 gap-0.5"
+                        style={{ gridTemplateRows: `repeat(${homeCalendarWeekCount}, minmax(0, 1fr))` }}
+                      >
                         {Array.from({ length: homeCalendarFirstWeekday }).map((_, idx) => (
-                          <div key={`mini-empty-${idx}`} className="min-h-0 bg-transparent" />
+                          <div key={`mini-empty-${idx}`} className="min-h-0 rounded-sm border border-dashed border-border/25 bg-[#16130f]/[0.015]" />
                         ))}
 
                         {Array.from({ length: homeCalendarDaysInMonth }).map((_, idx) => {
@@ -1912,25 +2205,22 @@ function OverviewPageContent() {
                           const dateString = `${inGameDate.getFullYear()}-${String(inGameDate.getMonth() + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
                           const dayData = getCalendarDayData(dateString);
                           const isCurrentDay = day === inGameDate.getDate();
-                          const hasEvent = dayData.hasAuction || dayData.hasRetention || dayData.isAnnouncement || dayData.hasUserMatch;
-                          
-                          let bg = "bg-[#16130f]/5";
-                          let text = "text-text-secondary";
-                          if (isCurrentDay) {
-                            bg = "bg-accent text-[var(--ink)] font-bold ring-1 ring-accent";
-                            text = "text-[var(--ink)]";
-                          } else if (dayData.hasAuction) {
-                            bg = "bg-success text-white font-bold";
-                          } else if (dayData.hasRetention) {
-                            bg = "bg-danger text-white font-bold";
-                          } else if (hasEvent) {
-                            bg = "bg-accent/20 text-text-primary font-bold";
-                          }
+                          const hasRingedEvent = dayData.hasAuction || dayData.hasRetention || dayData.hasUserMatch;
+                          const surfaceClass = dayData.isAnnouncement
+                            ? "border-success bg-success/5"
+                            : isCurrentDay
+                              ? "border-[var(--ink)] bg-[var(--ink)]/5"
+                              : "border-border/60 bg-surface";
+                          const ringClass = dayData.isAnnouncement
+                            ? "ring-1 ring-success/20"
+                            : hasRingedEvent
+                              ? "ring-1 ring-accent/30"
+                              : "";
                           
                           return (
                             <div
                               key={`mini-${dateString}`}
-                              className={`min-h-0 flex items-center justify-center text-[7px] font-space-mono rounded-sm ${bg} ${text}`}
+                              className={`relative min-h-0 rounded-sm border p-1 font-space-mono text-[9px] font-bold leading-none text-text-primary ${surfaceClass} ${ringClass}`}
                               title={[
                                 dateString,
                                 isCurrentDay ? "Current in-game day" : "",
@@ -1940,10 +2230,57 @@ function OverviewPageContent() {
                                 dayData.hasUserMatch ? "Your team has a match" : "",
                               ].filter(Boolean).join(" · ")}
                             >
-                              {day}
+                              <span className="absolute left-1 top-1">{day}</span>
+                              {dayData.hasUserMatch && (
+                                <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-accent animate-pulse" />
+                              )}
+                              {dayData.dayMatches.length > 0 && (
+                                <div className="absolute inset-x-0.5 bottom-0.5 top-[14px] flex flex-col justify-end gap-px overflow-hidden">
+                                  {dayData.dayMatches.slice(0, 2).map((match) => {
+                                    const isUserGame = match.teamA === userTeamId || match.teamB === userTeamId;
+                                    const opponentId = match.teamA === userTeamId ? match.teamB : match.teamA;
+                                    const opponent = teams[opponentId];
+
+                                    return isUserGame ? (
+                                      <div
+                                        key={`mini-fixture-${match.id}`}
+                                        className="flex min-h-0 items-center justify-center overflow-hidden rounded-[2px] px-0.5 py-1 text-center font-space-mono text-[8px] font-bold uppercase leading-none tracking-[-0.03em]"
+                                        style={{ backgroundColor: userTeam.primaryColor, color: userTeam.secondaryColor }}
+                                      >
+                                        <span
+                                          className="truncate rounded-[2px] border border-white/20 px-1 py-0.5 shadow-sm"
+                                          style={opponent ? { backgroundColor: opponent.primaryColor, color: opponent.secondaryColor } : undefined}
+                                        >
+                                          vs {opponent?.shortName ?? opponentId}
+                                        </span>
+                                      </div>
+                                    ) : (
+                                      <div
+                                        key={`mini-fixture-${match.id}`}
+                                        className="flex min-h-0 items-center justify-center gap-1 overflow-hidden rounded-[2px] border border-border/70 bg-surface px-1 py-1 font-space-mono text-[8px] font-bold uppercase leading-none tracking-[-0.03em] text-text-primary shadow-sm"
+                                        title={`${teams[match.teamA]?.name ?? match.teamA} vs ${teams[match.teamB]?.name ?? match.teamB}`}
+                                      >
+                                        <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: teams[match.teamA]?.primaryColor ?? "#777777" }} />
+                                        <span className="truncate">{teams[match.teamA]?.shortName ?? match.teamA}</span>
+                                        <span className="shrink-0 text-text-secondary">v</span>
+                                        <span className="truncate">{teams[match.teamB]?.shortName ?? match.teamB}</span>
+                                        <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: teams[match.teamB]?.primaryColor ?? "#777777" }} />
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                              {(dayData.hasAuction || dayData.hasRetention || dayData.isAnnouncement) && (
+                                <span className={`absolute bottom-1 right-1 text-[6px] font-extrabold uppercase ${dayData.hasRetention ? "text-danger" : "text-success"}`}>
+                                  {dayData.hasAuction ? "A" : dayData.hasRetention ? "R" : "F"}
+                                </span>
+                              )}
                             </div>
                           );
                         })}
+                        {Array.from({ length: Math.max(0, homeCalendarWeekCount * 7 - homeCalendarFirstWeekday - homeCalendarDaysInMonth) }).map((_, idx) => (
+                          <div key={`mini-trailing-empty-${idx}`} className="min-h-0 rounded-sm border border-dashed border-border/25 bg-[#16130f]/[0.015]" />
+                        ))}
                       </div>
                     </div>
                   </div>
@@ -1972,8 +2309,16 @@ function OverviewPageContent() {
                       </div>
                     </div>
 
-                    <div onClick={() => router.push("/game/overview?tab=season&subtab=fixtures")} className="bg-surface border-2 border-border hover:border-accent p-5 cursor-pointer transition-colors overflow-hidden flex min-h-0 flex-col">
+                    <div
+                      onClick={() => isFixturesAnnounced && router.push("/game/overview?tab=season&subtab=fixtures")}
+                      className={`bg-surface border-2 border-border p-5 transition-colors overflow-hidden flex min-h-0 flex-col ${isFixturesAnnounced ? "hover:border-accent cursor-pointer" : "cursor-default"}`}
+                    >
                       <h3 className="shrink-0 font-anton text-[14px] uppercase text-text-primary border-b border-[#16130f]/10 pb-2 mb-3">NEXT FIXTURES</h3>
+                      {!isFixturesAnnounced ? (
+                        <div className="flex min-h-0 flex-1 items-center justify-center text-center font-space-mono text-xs uppercase text-text-secondary">
+                          Fixtures not yet announced
+                        </div>
+                      ) : (
                       <div className="grid min-h-0 flex-1 grid-rows-5">
                         {(() => {
                           const userFixtures = fixtures
@@ -2013,6 +2358,7 @@ function OverviewPageContent() {
                           });
                         })()}
                       </div>
+                      )}
                       <div className="hidden">
                         {(() => {
                           const userFixtures = fixtures
@@ -2200,6 +2546,7 @@ function OverviewPageContent() {
                             onClick={() => {
                               setCalendarMonthIndex(index => index - 1);
                               setSelectedCalendarDay(1);
+                              setPendingSkipTargetDate(null);
                             }}
                             disabled={calendarMonthIndex === 0}
                             className="text-text-primary hover:text-accent disabled:opacity-30 disabled:pointer-events-none font-bold text-xs uppercase transition-all"
@@ -2213,6 +2560,7 @@ function OverviewPageContent() {
                             onClick={() => {
                               setCalendarMonthIndex(index => index + 1);
                               setSelectedCalendarDay(1);
+                              setPendingSkipTargetDate(null);
                             }}
                             disabled={calendarMonthIndex === CALENDAR_MONTHS.length - 1}
                             className="text-text-primary hover:text-accent disabled:opacity-30 disabled:pointer-events-none font-bold text-xs uppercase transition-all"
@@ -2256,7 +2604,10 @@ function OverviewPageContent() {
                           return (
                             <button
                               key={`day-${day}`}
-                              onClick={() => setSelectedCalendarDay(day)}
+                              onClick={() => {
+                                setSelectedCalendarDay(day);
+                                setPendingSkipTargetDate(null);
+                              }}
                               className={`w-full h-full p-2 border-2 text-left flex flex-col justify-between transition-colors hover:border-accent rounded-md
                                 ${isSelected ? "border-[var(--ink)] bg-[var(--ink)]/5" : "border-border bg-surface"}
                                 ${isAnnouncementDay ? "border-success bg-success/5 ring-2 ring-success/20" : ""}
@@ -2329,8 +2680,9 @@ function OverviewPageContent() {
                   </div>
 
                   {/* Right part: Detail Inspector Panel */}
-                  <div className="bg-surface border-2 border-border p-5 flex flex-col h-full overflow-y-auto">
-                    <div>
+                  <div className="flex h-full min-h-0 flex-col gap-2">
+                    <div className="min-h-0 flex-1 overflow-y-auto border-2 border-border bg-surface p-5">
+                      <div>
                       <h4 className="font-anton text-[16px] text-text-primary uppercase border-b border-[#16130f]/10 pb-2 mb-4">
                         Details: {selectedCalendarDay} {currentCalendarMonth.label} {currentCalendarMonth.year}
                       </h4>
@@ -2458,7 +2810,42 @@ function OverviewPageContent() {
                           </div>
                         );
                       })()}
+                      </div>
                     </div>
+                    {pendingSkipTargetDate ? (
+                      <div className="flex min-h-9 w-full shrink-0 items-center gap-2 border border-accent bg-accent/5 px-2 py-1.5">
+                        <span className="min-w-0 flex-1 truncate font-space-mono text-[8px] font-bold uppercase text-text-primary">
+                          Simulate to {dateKeyToLocalDate(pendingSkipTargetDate).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}?
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setPendingSkipTargetDate(null)}
+                          className="border border-border px-2 py-1 font-space-mono text-[8px] font-bold uppercase text-text-secondary hover:text-text-primary"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => skipToCalendarDate(pendingSkipTargetDate)}
+                          className="border border-[var(--ink)] bg-[var(--ink)] px-2 py-1 font-space-mono text-[8px] font-bold uppercase text-bg"
+                        >
+                          Confirm
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setPendingSkipTargetDate(selectedCalendarDateString)}
+                        disabled={!canSkipToSelectedCalendarDate || isSimulatingDays}
+                        className="w-full shrink-0 border border-border bg-surface py-2 font-space-mono text-[9px] font-bold uppercase tracking-widest text-text-primary transition-colors hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        {selectedCalendarDateString === currentDate
+                          ? "Current date"
+                          : selectedCalendarDateString < currentDate
+                            ? "Date has passed"
+                            : "Skip to this date"}
+                      </button>
+                    )}
                   </div>
                 </div>
               )}
@@ -2485,7 +2872,7 @@ function OverviewPageContent() {
                       <span>Player</span>
                       <span className="text-center">Age</span>
                       <span className="text-center">Role</span>
-                      <span className="grid grid-cols-[5.5rem_3rem_5.5rem] justify-center">
+                      <span className="grid translate-x-2 grid-cols-[5.5rem_3rem_5.5rem] justify-center">
                         <span className="text-center">CA</span>
                         <span aria-hidden="true" />
                         <span className="text-center">PA</span>
@@ -2519,7 +2906,7 @@ function OverviewPageContent() {
                             </span>
                             <span className="text-center font-space-mono text-text-secondary">{player.age}</span>
                             <span className="truncate text-center font-space-mono text-xs uppercase text-text-secondary">{player.role}</span>
-                            <span className="grid grid-cols-[5.5rem_3rem_5.5rem] items-center justify-center">
+                            <span className="grid translate-x-2 grid-cols-[5.5rem_3rem_5.5rem] items-center justify-center">
                               {player.role === "All-Rounder" ? (
                                 <>
                                   <span
@@ -2581,18 +2968,41 @@ function OverviewPageContent() {
                     <table className="w-full text-left font-barlow text-xs divide-y divide-[#16130f]/10">
                       <thead className="bg-[#16130f]/5 text-[9px] font-space-mono text-text-secondary uppercase">
                         <tr>
-                          <th className="px-6 py-3.5">Name</th>
-                          <th className="px-6 py-3.5">Role</th>
-                          <th className="px-6 py-3.5">Nationality</th>
-                          <th className="px-6 py-3.5 text-center">Rating</th>
-                          <th className="px-6 py-3.5 text-right">Value</th>
+                          <th className="px-6 py-3.5" aria-sort={rosterSort.key === "name" ? (rosterSort.direction === "asc" ? "ascending" : "descending") : "none"}>
+                            <button type="button" onClick={() => toggleRosterSort("name")} className="flex w-full items-center gap-1 text-left hover:text-accent">
+                              Name <span aria-hidden="true">{rosterSortIndicator("name")}</span>
+                            </button>
+                          </th>
+                          <th className="px-6 py-3.5" aria-sort={rosterSort.key === "role" ? (rosterSort.direction === "asc" ? "ascending" : "descending") : "none"}>
+                            <button type="button" onClick={() => toggleRosterSort("role")} className="flex w-full items-center gap-1 text-left hover:text-accent">
+                              Role <span aria-hidden="true">{rosterSortIndicator("role")}</span>
+                            </button>
+                          </th>
+                          <th className="px-6 py-3.5" aria-sort={rosterSort.key === "nationality" ? (rosterSort.direction === "asc" ? "ascending" : "descending") : "none"}>
+                            <button type="button" onClick={() => toggleRosterSort("nationality")} className="flex w-full items-center gap-1 text-left hover:text-accent">
+                              Nationality <span aria-hidden="true">{rosterSortIndicator("nationality")}</span>
+                            </button>
+                          </th>
+                          <th className="px-6 py-3.5" aria-sort={rosterSort.key === "rating" ? (rosterSort.direction === "asc" ? "ascending" : "descending") : "none"}>
+                            <button type="button" onClick={() => toggleRosterSort("rating")} className="flex w-full items-center justify-center gap-1 hover:text-accent">
+                              Rating <span aria-hidden="true">{rosterSortIndicator("rating")}</span>
+                            </button>
+                          </th>
+                          <th className="px-6 py-3.5" aria-sort={rosterSort.key === "salary" ? (rosterSort.direction === "asc" ? "ascending" : "descending") : "none"}>
+                            <button type="button" onClick={() => toggleRosterSort("salary")} className="flex w-full items-center justify-end gap-1 hover:text-accent">
+                              {rosterSeason} Salary <span aria-hidden="true">{rosterSortIndicator("salary")}</span>
+                            </button>
+                          </th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-[#16130f]/10">
-                        {userTeam.squad.map(id => players[id]).filter(Boolean).map(p => {
-                          const lastAuctionEntry = p.iplHistory.find(h => h.season === getNextSeasonYear());
-                          const lastAuctionPrice = lastAuctionEntry?.price ?? p.basePrice;
-                          const isRtmOrRetained = p.isRetained || lastAuctionEntry?.isRtm;
+                        {sortedRosterPlayers.map(p => {
+                          const currentSalaryEntry = currentSeasonHistoryByPlayer.get(p.id);
+                          const acquisitionLabel = p.isRetained
+                            ? " (Retained)"
+                            : currentSalaryEntry?.isRtm
+                              ? " (RTM)"
+                              : "";
                           return (
                             <tr
                               key={p.id}
@@ -2612,7 +3022,7 @@ function OverviewPageContent() {
                               <td className="px-6 py-4 text-text-secondary">{p.nationality}</td>
                               <td className="px-6 py-4 text-center font-bold text-success font-space-mono text-[11px]">{getPlayerRating(p)}</td>
                               <td className="px-6 py-4 text-right font-space-mono text-[10px] text-text-primary">
-                                ₹{(lastAuctionPrice / 100).toFixed(2)} Cr{isRtmOrRetained ? " (RTM)" : ""}
+                                {currentSalaryEntry ? `${formatPrice(currentSalaryEntry.price)}${acquisitionLabel}` : "—"}
                               </td>
                             </tr>
                           );
@@ -2985,19 +3395,88 @@ function OverviewPageContent() {
               {activeSubTab === "overview" && (
                 <div className="grid grid-cols-3 gap-6 h-[calc(100vh-200px)] min-h-[500px] overflow-hidden">
                   {/* Fixtures progress */}
-                  <div onClick={() => isFixturesAnnounced && setActiveSubTab("fixtures")} className={`bg-surface border-2 border-border p-5 flex min-h-0 flex-col justify-between overflow-hidden transition-colors ${isFixturesAnnounced ? "hover:border-accent cursor-pointer" : "opacity-75"}`}>
-                    <div>
-                      <h4 className="font-anton text-[14px] uppercase border-b border-[#16130f]/10 pb-2 mb-4">SEASON SCHEDULE</h4>
+                  <div onClick={() => isFixturesAnnounced && setActiveSubTab("fixtures")} className={`bg-surface border-2 border-border p-5 flex min-h-0 flex-col overflow-hidden transition-colors ${isFixturesAnnounced ? "hover:border-accent cursor-pointer" : "opacity-75"}`}>
+                    <div className="flex min-h-0 flex-1 flex-col">
+                      <div className="mb-3 flex shrink-0 items-end justify-between border-b border-[#16130f]/10 pb-2">
+                        <h4 className="font-anton text-[16px] uppercase">SEASON SCHEDULE</h4>
+                        {isFixturesAnnounced && (
+                          <span className="font-space-mono text-[9px] font-bold uppercase text-text-secondary">
+                            {fixtures.filter((fixture) => fixture.played).length}/70 played
+                          </span>
+                        )}
+                      </div>
                       {isFixturesAnnounced ? (
-                        <div className="font-space-mono text-[10px] space-y-1">
-                          <div>COMPLETED: <span className="font-bold text-text-primary">{fixtures.filter(f=>f.played).length} / 70 Matches</span></div>
-                          <div>USER PLAYED: <span className="font-bold text-text-primary">
-                            {fixtures.filter(f=>f.played && (f.teamA===userTeamId || f.teamB===userTeamId)).length} / 14 Matches
-                          </span></div>
-                        </div>
+                        (() => {
+                          const upcomingFixtures = fixtures
+                            .filter((fixture) => !fixture.played)
+                            .sort((left, right) => (left.date ?? "").localeCompare(right.date ?? "") || (left.time ?? "").localeCompare(right.time ?? ""))
+                            .slice(0, 5);
+
+                          if (upcomingFixtures.length === 0) {
+                            return (
+                              <div className="flex min-h-0 flex-1 flex-col items-center justify-center text-center">
+                                <Check size={20} className="mb-2 text-success" />
+                                <p className="font-anton text-sm uppercase text-text-primary">Schedule complete</p>
+                                <p className="mt-1 text-xs text-text-secondary">No upcoming league fixtures.</p>
+                              </div>
+                            );
+                          }
+
+                          return (
+                            <div className="flex min-h-0 flex-1 flex-col">
+                              <div className="mb-2 shrink-0 text-center">
+                                <span className="font-space-mono text-[10px] font-bold uppercase tracking-wider text-text-secondary">Next league fixtures</span>
+                              </div>
+                              <div className="grid min-h-0 flex-1 gap-2" style={{ gridTemplateRows: `repeat(${upcomingFixtures.length}, minmax(0, 1fr))` }}>
+                                {upcomingFixtures.map((fixture) => {
+                                  const teamA = teams[fixture.teamA];
+                                  const teamB = teams[fixture.teamB];
+                                  const involvesUser = fixture.teamA === userTeamId || fixture.teamB === userTeamId;
+                                  const fixtureDate = fixture.date ? dateKeyToLocalDate(fixture.date) : null;
+
+                                  return (
+                                    <div
+                                      key={fixture.id}
+                                      className="flex min-h-0 flex-col justify-center border border-border px-2.5 py-2 text-center"
+                                      style={involvesUser ? {
+                                        backgroundColor: `${userTeam.primaryColor}38`,
+                                        borderColor: userTeam.primaryColor,
+                                        boxShadow: `inset 4px 0 0 ${userTeam.primaryColor}, inset -4px 0 0 ${userTeam.primaryColor}`,
+                                      } : undefined}
+                                    >
+                                      <div className="truncate font-space-mono text-[11px] font-medium uppercase text-text-secondary">
+                                        {fixtureDate?.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" }) ?? "Date TBD"}
+                                        {" · "}{fixture.time ?? "Time TBD"}{" · "}Match {fixture.round}
+                                      </div>
+                                      <div className="my-1.5 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 font-anton text-[16px] uppercase leading-none text-text-primary">
+                                        <span
+                                          className="flex min-w-0 items-center justify-end gap-1.5 truncate px-1 py-1 text-right"
+                                        >
+                                          <span className="truncate">{teamA?.shortName ?? fixture.teamA}</span>
+                                          <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: teamA?.primaryColor ?? "#777777" }} />
+                                        </span>
+                                        <span className="font-space-mono text-[10px] font-bold text-text-secondary">VS</span>
+                                        <span
+                                          className="flex min-w-0 items-center gap-1.5 truncate px-1 py-1 text-left"
+                                        >
+                                          <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: teamB?.primaryColor ?? "#777777" }} />
+                                          <span className="truncate">{teamB?.shortName ?? fixture.teamB}</span>
+                                        </span>
+                                      </div>
+                                      <div className="truncate font-space-mono text-[11px] font-medium uppercase text-text-secondary">
+                                        {teamA?.homeGround ?? "Stadium TBD"}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                              <div className="mt-2 shrink-0 border-t border-[#16130f]/10 pt-2 text-right font-space-mono text-[9px] font-bold uppercase text-accent">View full schedule →</div>
+                            </div>
+                          );
+                        })()
                       ) : (
                         <div className="font-space-mono text-[9px] text-text-secondary space-y-2">
-                          <span className="font-bold text-accent uppercase block font-space-mono text-[8px] bg-accent/10 py-0.5 px-1.5 rounded w-max">Announcing soon</span>
+                          <span className="font-bold text-accent uppercase block font-space-mono text-[10px] bg-accent/10 py-0.5 px-1.5 rounded w-max">Announcing soon</span>
                           <p className="font-barlow text-xs text-text-secondary">Fixtures will be announced on {userFriendlyAnnouncementDate}.</p>
                         </div>
                       )}
@@ -3007,24 +3486,26 @@ function OverviewPageContent() {
                   {/* Points Table standings */}
                   <div onClick={() => setActiveSubTab("standings")} className="bg-surface border-2 border-border hover:border-accent p-5 flex min-h-0 flex-col cursor-pointer transition-colors overflow-hidden">
                     <h4 className="font-anton text-[14px] uppercase border-b border-[#16130f]/10 pb-2 mb-4 shrink-0">POINTS TABLE</h4>
-                    <div className="grid grid-cols-[minmax(0,1fr)_2rem_2rem_2rem_2.5rem] gap-1 border-b border-[#16130f]/10 pb-2 font-space-mono text-[8px] font-bold uppercase text-text-secondary shrink-0">
+                    <div className="grid grid-cols-[1.5rem_minmax(0,1fr)_2rem_2rem_2rem_2.5rem] gap-1 border-b border-[#16130f]/10 pb-2 font-space-mono text-[8px] font-bold uppercase text-text-secondary shrink-0">
+                      <span aria-hidden="true" />
                       <span>Team</span>
-                      <span className="text-center">W</span>
-                      <span className="text-center">L</span>
-                      <span className="text-center">NR</span>
-                      <span className="text-right">Pts</span>
+                      <span className="relative right-3 text-center">W</span>
+                      <span className="relative right-3 text-center">L</span>
+                      <span className="relative right-3 text-center">NR</span>
+                      <span className="relative right-3 text-center">Pts</span>
                     </div>
                     <div
                       className="grid min-h-0 flex-1"
                       style={{ gridTemplateRows: `repeat(${Math.max(standings.length, 1)}, minmax(0, 1fr))` }}
                     >
                       {standings.map((row, index) => (
-                        <div key={row.teamId} className={`grid min-h-0 grid-cols-[minmax(0,1fr)_2rem_2rem_2rem_2.5rem] items-center gap-1 border-b border-[#16130f]/10 text-[10px] ${row.teamId === userTeamId ? "font-bold text-accent" : "text-text-primary"}`}>
-                          <span className="truncate"><span className="mr-1 font-space-mono text-[8px] text-text-secondary">{index + 1}.</span>{row.teamName}</span>
-                          <span className="text-center font-space-mono">{row.won}</span>
-                          <span className="text-center font-space-mono">{row.lost}</span>
-                          <span className="text-center font-space-mono">{row.noResults}</span>
-                          <span className="text-right font-space-mono font-bold">{row.points}</span>
+                        <div key={row.teamId} className={`grid min-h-0 grid-cols-[1.5rem_minmax(0,1fr)_2rem_2rem_2rem_2.5rem] items-center gap-1 border-b border-[#16130f]/10 text-[10px] text-text-primary ${row.teamId === userTeamId ? "bg-black/5 font-bold dark:bg-white/5" : ""}`}>
+                          <span className="relative right-2 text-center font-space-mono text-sm font-bold text-text-secondary">{index + 1}</span>
+                          <span className="truncate text-xs">{row.teamName}</span>
+                          <span className="relative right-3 text-center font-space-mono">{row.won}</span>
+                          <span className="relative right-3 text-center font-space-mono">{row.lost}</span>
+                          <span className="relative right-3 text-center font-space-mono">{row.noResults}</span>
+                          <span className="relative right-3 text-center font-space-mono text-xs font-bold">{row.points}</span>
                         </div>
                       ))}
                     </div>
@@ -3045,41 +3526,147 @@ function OverviewPageContent() {
 
               {/* Fixtures & Results page */}
               {activeSubTab === "fixtures" && (
-                <div className="bg-surface border-2 border-border p-5 h-[calc(100vh-200px)] min-h-[500px] flex flex-col overflow-hidden">
-                  <div className="flex justify-between items-center border-b border-[#16130f]/10 pb-3 mb-4 shrink-0">
-                    <h3 className="font-anton text-[16px] text-text-primary uppercase">SEASON FIXTURES &amp; RESULTS</h3>
+                <div className="flex h-[calc(100vh-200px)] min-h-[500px] flex-col overflow-hidden border-2 border-border bg-surface">
+                  <div
+                    className="relative flex shrink-0 items-center justify-between overflow-hidden border-b-2 border-border px-6 py-4"
+                    style={{ background: `linear-gradient(105deg, ${userTeam.primaryColor}28 0%, transparent 58%)` }}
+                  >
+                    <div className="relative">
+                      <p className="font-space-mono text-[9px] font-bold uppercase tracking-[0.18em] text-text-secondary">{currentSeason + 1} season · Match centre</p>
+                      <h3 className="mt-1 font-anton text-[24px] uppercase leading-none text-text-primary">Fixtures &amp; Results</h3>
+                    </div>
+                    {isFixturesAnnounced && (
+                      <div className="relative grid grid-cols-3 divide-x divide-[#16130f]/15 border border-border bg-surface/80">
+                        {[
+                          ["Played", fixtures.filter((match) => match.played).length],
+                          ["Upcoming", fixtures.filter((match) => !match.played).length],
+                          ["Your club", fixtures.filter((match) => match.teamA === userTeamId || match.teamB === userTeamId).length],
+                        ].map(([label, value]) => (
+                          <div key={label} className="min-w-24 px-4 py-2 text-center">
+                            <div className="font-anton text-xl leading-none text-text-primary">{value}</div>
+                            <div className="mt-1 font-space-mono text-[7px] font-bold uppercase tracking-wider text-text-secondary">{label}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                   {!isFixturesAnnounced ? (
-                    <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
-                      <div className="w-16 h-16 rounded-full bg-[#16130f]/5 flex items-center justify-center text-[24px] mb-4">
-                        🔒
+                    <div className="flex flex-1 flex-col items-center justify-center bg-bg/40 p-8 text-center">
+                      <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-full border-2 border-border bg-surface text-[24px] shadow-sm">
+                        <Lock size={24} />
                       </div>
-                      <h4 className="font-anton text-[18px] text-text-primary uppercase tracking-wide">Fixtures Locked</h4>
-                      <p className="font-barlow text-xs text-text-secondary max-w-sm mt-2">
-                        The league fixtures have not been released yet. The schedule announcement is set for:
+                      <h4 className="font-anton text-[22px] uppercase tracking-wide text-text-primary">Schedule under wraps</h4>
+                      <p className="mt-2 max-w-sm text-sm text-text-secondary">
+                        The league is finalising all 70 fixtures. The complete match calendar will be released on:
                       </p>
-                      <span className="font-space-mono text-xs font-bold text-accent mt-3 bg-accent/5 border border-accent/20 px-3 py-1 rounded">
+                      <span className="mt-4 border border-accent/30 bg-accent/10 px-4 py-2 font-space-mono text-xs font-bold uppercase text-accent">
                         {userFriendlyAnnouncementDate}
                       </span>
                     </div>
                   ) : (
-                    <div className="space-y-3 flex-1 overflow-y-auto pr-2 divide-y divide-[#16130f]/5">
-                      {[...fixtures].sort((a, b) => (a.date ?? "").localeCompare(b.date ?? "") || a.round - b.round).map(match => {
-                        const teamA = teams[match.teamA];
-                        const teamB = teams[match.teamB];
-                        const result = match.played
-                          ? `${match.winner ? `${teams[match.winner]?.shortName ?? match.winner} won` : "Played"} · ${match.scoreA?.runs ?? "-"}/${match.scoreA?.wickets ?? "-"} - ${match.scoreB?.runs ?? "-"}/${match.scoreB?.wickets ?? "-"}`
-                          : "-";
-                        return (
-                          <div key={match.id} className="grid grid-cols-[9rem_1fr_auto] items-center gap-4 py-3 text-xs">
-                            <span className="font-space-mono text-[10px] text-text-secondary">{match.date ?? "-"}</span>
-                            <span className="font-bold text-text-primary">{teamA?.name ?? match.teamA} vs {teamB?.name ?? match.teamB}</span>
-                            <span className="font-space-mono text-[10px] text-right text-text-secondary">{result}</span>
+                    (() => {
+                      const sortedFixtures = [...fixtures].sort((left, right) =>
+                        (left.date ?? "").localeCompare(right.date ?? "")
+                        || (left.time ?? "").localeCompare(right.time ?? "")
+                        || left.round - right.round
+                      );
+                      const nextFixtureId = sortedFixtures.find((match) => !match.played)?.id;
+                      const fixturesByDay = new Map<string, Match[]>();
+                      sortedFixtures.forEach((match) => {
+                        const date = match.date ?? "Date TBD";
+                        fixturesByDay.set(date, [...(fixturesByDay.get(date) ?? []), match]);
+                      });
+
+                      return (
+                        <div className="min-h-0 flex-1 overflow-y-auto bg-bg/40 p-5">
+                          <div className="space-y-6">
+                            {Array.from(fixturesByDay.entries()).map(([date, dayFixtures]) => {
+                              const dateLabel = date === "Date TBD"
+                                ? date
+                                : dateKeyToLocalDate(date).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+                              return (
+                                <section key={date}>
+                                  <div className="mb-2 flex items-center gap-3">
+                                    <h4 className="shrink-0 font-anton text-[15px] uppercase text-text-primary">{dateLabel}</h4>
+                                    <div className="h-px flex-1 bg-[#16130f]/15" />
+                                    <span className="font-space-mono text-[8px] font-bold uppercase text-text-secondary">
+                                      {dayFixtures.length} match{dayFixtures.length === 1 ? "" : "es"}
+                                    </span>
+                                  </div>
+
+                                  <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+                                    {dayFixtures.map((match) => {
+                                      const teamA = teams[match.teamA];
+                                      const teamB = teams[match.teamB];
+                                      const isUserMatch = match.teamA === userTeamId || match.teamB === userTeamId;
+                                      const isNextFixture = match.id === nextFixtureId;
+                                      const winner = match.winner ? teams[match.winner] : null;
+                                      const statusLabel = match.played ? "Final" : isNextFixture ? "Next up" : "Upcoming";
+
+                                      return (
+                                        <button
+                                          key={match.id}
+                                          type="button"
+                                          onClick={() => match.played && setActiveScorecard(match)}
+                                          disabled={!match.played}
+                                          className={`group relative overflow-hidden border bg-surface p-4 text-left shadow-sm transition-all ${match.played ? "cursor-pointer hover:-translate-y-0.5 hover:shadow-md" : "cursor-default"}`}
+                                          style={isUserMatch ? {
+                                            borderColor: userTeam.primaryColor,
+                                            background: `linear-gradient(110deg, ${userTeam.primaryColor}24 0%, var(--surface) 60%)`,
+                                          } : { borderColor: "var(--border)" }}
+                                        >
+                                          <div className="absolute inset-x-0 top-0 flex h-1">
+                                            <span className="flex-1" style={{ backgroundColor: teamA?.primaryColor ?? "#777" }} />
+                                            <span className="flex-1" style={{ backgroundColor: teamB?.primaryColor ?? "#777" }} />
+                                          </div>
+
+                                          <div className="mb-3 flex items-center justify-between pt-1 font-space-mono text-[8px] font-bold uppercase tracking-wider text-text-secondary">
+                                            <span>Match {match.round} · {match.time ?? "Time TBD"}</span>
+                                            <span className={`border px-2 py-0.5 ${match.played ? "border-success/30 bg-success/10 text-success" : isNextFixture ? "border-accent/30 bg-accent/10 text-accent" : "border-border bg-black/[0.03]"}`}>
+                                              {statusLabel}
+                                            </span>
+                                          </div>
+
+                                          <div className="grid grid-cols-[minmax(0,1fr)_3rem_minmax(0,1fr)] items-center gap-3">
+                                            <div className="min-w-0 text-center">
+                                              <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-full font-space-mono text-[10px] font-bold" style={{ backgroundColor: teamA?.primaryColor ?? "#777", color: teamA?.secondaryColor ?? "#fff" }}>
+                                                {teamA?.shortName.slice(0, 3) ?? match.teamA.slice(0, 3)}
+                                              </div>
+                                              <div className="truncate text-sm font-bold text-text-primary">{teamA?.name ?? match.teamA}</div>
+                                              {match.played && match.scoreA && <div className="mt-1 font-anton text-xl text-text-primary">{match.scoreA.runs}/{match.scoreA.wickets}</div>}
+                                            </div>
+
+                                            <div className="text-center">
+                                              <div className="font-space-mono text-[9px] font-bold uppercase text-text-secondary">VS</div>
+                                            </div>
+
+                                            <div className="min-w-0 text-center">
+                                              <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-full font-space-mono text-[10px] font-bold" style={{ backgroundColor: teamB?.primaryColor ?? "#777", color: teamB?.secondaryColor ?? "#fff" }}>
+                                                {teamB?.shortName.slice(0, 3) ?? match.teamB.slice(0, 3)}
+                                              </div>
+                                              <div className="truncate text-sm font-bold text-text-primary">{teamB?.name ?? match.teamB}</div>
+                                              {match.played && match.scoreB && <div className="mt-1 font-anton text-xl text-text-primary">{match.scoreB.runs}/{match.scoreB.wickets}</div>}
+                                            </div>
+                                          </div>
+
+                                          <div className="mt-3 flex items-center justify-between gap-3 border-t border-[#16130f]/10 pt-2">
+                                            <span className="truncate font-space-mono text-[8px] uppercase text-text-secondary">{teamA?.homeGround ?? "Venue TBD"}</span>
+                                            <span className={`shrink-0 text-right font-space-mono text-[8px] font-bold uppercase ${match.played ? "text-success" : "text-text-secondary"}`}>
+                                              {match.played ? `${winner?.shortName ?? "Match"} won` : isUserMatch ? "Your fixture" : "League fixture"}
+                                            </span>
+                                          </div>
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                </section>
+                              );
+                            })}
                           </div>
-                        );
-                      })}
-                    </div>
+                        </div>
+                      );
+                    })()
                   )}
                 </div>
               )}
@@ -3097,8 +3684,8 @@ function OverviewPageContent() {
                           <th className="px-8 py-[18px] text-center">W</th>
                           <th className="px-8 py-[18px] text-center">L</th>
                           <th className="px-8 py-[18px] text-center">NR</th>
+                          <th className="px-8 py-[18px] text-center">NRR</th>
                           <th className="px-8 py-[18px] text-center font-bold">Pts</th>
-                          <th className="px-8 py-[18px] text-right">NRR</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-[#16130f]/10">
@@ -3110,8 +3697,8 @@ function OverviewPageContent() {
                             <td className="px-8 py-1 text-center text-success font-bold font-space-mono">{row.won}</td>
                             <td className="px-8 py-1 text-center text-danger font-bold font-space-mono">{row.lost}</td>
                             <td className="px-8 py-1 text-center font-space-mono text-text-secondary">{row.noResults}</td>
+                            <td className="px-8 py-1 text-center font-space-mono font-medium text-text-primary">{row.nrr >= 0 ? "+" : ""}{row.nrr.toFixed(3)}</td>
                             <td className="px-8 py-1 text-center font-bold font-space-mono text-base text-text-primary">{row.points}</td>
-                            <td className="px-8 py-1 text-right font-space-mono font-medium text-text-primary">{row.nrr >= 0 ? "+" : ""}{row.nrr.toFixed(3)}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -3185,31 +3772,418 @@ function OverviewPageContent() {
           {activeTab === "history" && (
             <>
               {activeSubTab === "overview" && (
-                <div className="grid grid-cols-2 grid-rows-2 gap-6 h-[calc(100vh-200px)] min-h-[500px] overflow-hidden">
-                  {[
-                    ["clubhistory", "Club History", "Franchise seasons, honours, and milestones recorded during your career."],
-                    ["clubfigures", "Club Figures", "Club records and notable contributors recorded during your career."],
-                    ["leaguehistory", "League History", "Completed league seasons, standings, and results recorded in this save."],
-                    ["leaguehalloffame", "League Hall of Fame", "League honours and inductees recorded during your career."],
-                  ].map(([subtab, title, description]) => (
-                    <button
-                      key={subtab}
-                      onClick={() => setActiveSubTab(subtab)}
-                      className={`h-full overflow-hidden bg-surface border-2 border-border p-5 text-left hover:border-accent hover:bg-black/5 transition-colors ${
-                        subtab === "clubhistory" ? "col-start-1 row-start-1" :
-                        subtab === "leaguehistory" ? "col-start-1 row-start-2" :
-                        subtab === "clubfigures" ? "col-start-2 row-start-1" :
-                        "col-start-2 row-start-2"
-                      }`}
-                    >
-                      <h3 className="font-anton text-[16px] text-text-primary uppercase border-b border-[#16130f]/10 pb-2 mb-3">{title}</h3>
-                      <p className="text-xs text-text-secondary leading-relaxed">{description}</p>
-                    </button>
-                  ))}
+                <div className="relative h-[calc(100vh-200px)] min-h-[500px] overflow-hidden bg-[radial-gradient(circle_at_center,rgba(45,107,181,0.08),transparent_52%)]">
+                  <div className="grid h-full grid-cols-12 grid-rows-2 gap-4">
+                    {[
+                      {
+                        subtab: "clubhistory",
+                        title: "Club History",
+                        description: "Follow your franchise through every campaign, honour and defining milestone.",
+                        icon: HistoryIcon,
+                        position: "col-span-4 col-start-1 row-start-1",
+                        accent: "#d6ad55",
+                        highlights: ["Seasons", "Honours", "Trophy cabinet"],
+                        featured: false,
+                      },
+                      {
+                        subtab: "leaguehistory",
+                        title: "League History",
+                        description: "Revisit every final, champion, cap winner and saved career season.",
+                        icon: Trophy,
+                        position: "col-span-4 col-start-1 row-start-2",
+                        accent: "#4f8fd7",
+                        highlights: ["Finalists", "Cap winners", "League tables"],
+                        featured: false,
+                      },
+                      {
+                        subtab: "records",
+                        title: "Records",
+                        description: "Explore the career leaders, great single-season performances and landmark matches that define the IPL.",
+                        icon: FileText,
+                        position: "col-span-4 col-start-5 row-span-2 row-start-1",
+                        accent: "#e7c576",
+                        highlights: ["Appearances", "Runs", "Wickets", "Match records"],
+                        featured: true,
+                      },
+                      {
+                        subtab: "clubfigures",
+                        title: "Club Figures",
+                        description: "Meet the legends, icons and heroes who shaped your franchise identity.",
+                        icon: Users,
+                        position: "col-span-4 col-start-9 row-start-1",
+                        accent: "#8d68c7",
+                        highlights: ["Legends", "Icons", "Heroes"],
+                        featured: false,
+                      },
+                      {
+                        subtab: "leaguehalloffame",
+                        title: "League Hall of Fame",
+                        description: "Celebrate the players, captains and match-winners who became immortal.",
+                        icon: UserCheck,
+                        position: "col-span-4 col-start-9 row-start-2",
+                        accent: "#d87945",
+                        highlights: ["First ballot", "Greatest players", "Career eras"],
+                        featured: false,
+                      },
+                    ].map(({ subtab, title, description, icon: Icon, position, accent, highlights, featured }) => (
+                      <button
+                        key={subtab}
+                        type="button"
+                        onClick={() => setActiveSubTab(subtab)}
+                        className={`group relative flex min-h-0 flex-col overflow-hidden border-2 border-[#303a4a] bg-[#111721] text-left text-white shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-[0_14px_32px_rgba(0,0,0,0.3)] ${featured ? "p-6" : "p-5"} ${position}`}
+                        style={{ borderTopColor: accent }}
+                      >
+                        <span className="pointer-events-none absolute inset-x-0 top-0 h-1" style={{ backgroundColor: accent }} />
+                        <span className="pointer-events-none absolute -right-16 -top-20 h-52 w-52 rounded-full opacity-20 blur-3xl" style={{ backgroundColor: accent }} />
+                        <span className="pointer-events-none absolute -bottom-16 -left-12 h-40 w-40 rounded-full bg-[#2d6bb5]/15 blur-3xl" />
+
+                        <span className="relative flex items-start justify-between gap-3">
+                          <span
+                            className={`flex shrink-0 items-center justify-center rounded-full border ${featured ? "h-14 w-14" : "h-10 w-10"}`}
+                            style={{ borderColor: `${accent}70`, backgroundColor: `${accent}14`, color: accent }}
+                          >
+                            <Icon size={featured ? 25 : 18} />
+                          </span>
+                          <ChevronRight size={featured ? 19 : 15} className="text-white/35 transition-transform group-hover:translate-x-1" style={{ color: accent }} />
+                        </span>
+
+                        <span className={`relative flex flex-1 flex-col ${featured ? "justify-center py-6" : "justify-end pt-3"}`}>
+                          <span className="block font-space-mono text-[8px] font-bold uppercase tracking-[0.22em] text-[#83aee8]">History archive</span>
+                          <span className={`mt-2 block font-anton uppercase leading-none tracking-wide ${featured ? "text-[34px]" : "text-[23px]"}`}>{title}</span>
+                          <span className={`mt-3 block leading-relaxed text-white/55 ${featured ? "max-w-sm text-[12px]" : "max-w-md text-[11px]"}`}>{description}</span>
+
+                          <span className={featured ? "mt-7 grid grid-cols-2 gap-1.5" : "mt-4 flex flex-wrap gap-1.5"}>
+                            {highlights.map((highlight) => (
+                              <span
+                                key={highlight}
+                                className={`border px-2 py-1 font-space-mono font-bold uppercase tracking-wider text-white/65 ${featured ? "text-center text-[8px]" : "text-[7px]"}`}
+                                style={{ borderColor: `${accent}45`, backgroundColor: `${accent}0d` }}
+                              >
+                                {highlight}
+                              </span>
+                            ))}
+                          </span>
+                        </span>
+
+                        <span className="relative flex items-center justify-between border-t border-white/10 pt-3 font-space-mono text-[8px] font-bold uppercase tracking-[0.16em] text-white/40">
+                          <span>Open archive</span>
+                          <span className="transition-colors group-hover:text-white" style={{ color: accent }}>View</span>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
 
-              {activeSubTab !== "overview" && (
+              {activeSubTab === "clubhistory" && (
+                <div className="grid h-[calc(100vh-200px)] min-h-[500px] grid-cols-[minmax(0,1.35fr)_minmax(20rem,0.65fr)] gap-6 overflow-hidden">
+                  <section className="flex min-h-0 flex-col overflow-hidden border-2 border-border bg-surface p-5">
+                    <div className="mb-4 flex shrink-0 items-end justify-between border-b border-[#16130f]/10 pb-3">
+                      <div>
+                        <p className="font-space-mono text-[8px] font-bold uppercase tracking-[0.2em] text-text-secondary">IPL record through 2025</p>
+                        <h3 className="mt-1 font-anton text-[22px] uppercase leading-none text-text-primary">{userTeam.name}</h3>
+                      </div>
+                      <div className="flex gap-6 text-right font-space-mono">
+                        <div><div className="text-xl font-bold text-text-primary">{clubSeasonsPlayed}</div><div className="text-[8px] uppercase text-text-secondary">Seasons</div></div>
+                        <div><div className="text-xl font-bold text-text-primary">{clubTitles.length}</div><div className="text-[8px] uppercase text-text-secondary">Titles</div></div>
+                        <div><div className="text-xl font-bold text-text-primary">{clubRunnerUpFinishes.length}</div><div className="text-[8px] uppercase text-text-secondary">Runners-up</div></div>
+                      </div>
+                    </div>
+
+                    <div className="grid shrink-0 grid-cols-[4.5rem_minmax(0,1fr)_9rem] border-b border-[#16130f]/10 pb-2 font-space-mono text-[8px] font-bold uppercase text-text-secondary">
+                      <span>Season</span>
+                      <span>Club</span>
+                      <span>IPL outcome</span>
+                    </div>
+                    <div className="min-h-0 flex-1 overflow-y-auto">
+                      {clubSeasonHistory.map((season) => {
+                        const isTitle = season.outcome === "Champions";
+                        const isRunnerUp = season.outcome === "Runners-up";
+                        return (
+                          <div
+                            key={season.season}
+                            className={`grid min-h-11 grid-cols-[4.5rem_minmax(0,1fr)_9rem] items-center border-b border-[#16130f]/10 text-xs ${isTitle ? "bg-black/5 font-bold dark:bg-white/5" : ""}`}
+                          >
+                            <span className="font-space-mono text-sm font-bold text-text-primary">{season.season}</span>
+                            <span className="truncate pr-4 text-text-primary">{season.clubName}</span>
+                            <span className={`font-space-mono text-[10px] uppercase ${isTitle || isRunnerUp ? "font-bold text-text-primary" : "text-text-secondary"}`}>
+                              {season.outcome}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </section>
+
+                  <aside className="flex min-h-0 flex-col overflow-hidden border-2 border-border bg-surface p-5">
+                    <div className="mb-4 shrink-0 border-b border-[#16130f]/10 pb-3">
+                      <p className="font-space-mono text-[8px] font-bold uppercase tracking-[0.2em] text-text-secondary">Honours</p>
+                      <h3 className="mt-1 font-anton text-[20px] uppercase leading-none text-text-primary">IPL Trophy Cabinet</h3>
+                    </div>
+
+                    {clubTitles.length > 0 ? (
+                      <div className="grid min-h-0 flex-1 grid-cols-2 content-start gap-3 overflow-y-auto pr-1">
+                        {clubTitles.slice().reverse().map((title) => (
+                          <div key={title.season} className="relative flex min-h-44 flex-col items-center justify-end overflow-hidden border border-[#16130f]/10 bg-gradient-to-b from-white/5 to-black/10 p-3 dark:from-white/10 dark:to-black/20">
+                            <div className="pointer-events-none absolute inset-x-4 top-3 h-20 rounded-full bg-white/20 blur-2xl" />
+                            <img src="/images/ipl-trophy.png" alt="Gold IPL championship trophy" className="relative min-h-0 w-full flex-1 object-contain drop-shadow-[0_8px_10px_rgba(0,0,0,0.35)]" />
+                            <div className="mt-2 shrink-0 text-center">
+                              <div className="font-anton text-lg leading-none text-text-primary">{title.season}</div>
+                              <div className="mt-1 font-space-mono text-[7px] font-bold uppercase tracking-widest text-text-secondary">IPL Champions</div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="flex min-h-0 flex-1 flex-col items-center justify-center text-center">
+                        <img src="/images/ipl-trophy.png" alt="IPL trophy silhouette" className="h-36 object-contain opacity-15 grayscale" />
+                        <p className="mt-4 font-anton text-base uppercase text-text-primary">No IPL titles yet</p>
+                        <p className="mt-1 max-w-52 text-xs text-text-secondary">The first championship won in this career will be added to the cabinet.</p>
+                      </div>
+                    )}
+                  </aside>
+                </div>
+              )}
+
+              {activeSubTab === "clubfigures" && (
+                <div className="grid h-[calc(100vh-200px)] min-h-[500px] grid-cols-1 gap-5 overflow-hidden lg:grid-cols-3">
+                  {clubFigureSections.map(({ tier, title, description }) => {
+                    const tierFigures = clubFigures.filter((figure) => figure.tier === tier);
+                    return (
+                      <section key={tier} className="flex min-h-0 flex-col overflow-hidden border-2 border-border bg-surface p-5">
+                        <div className="mb-3 shrink-0 border-b border-[#16130f]/10 pb-3">
+                          <p className="font-space-mono text-[8px] font-bold uppercase tracking-[0.2em] text-text-secondary">Club figures</p>
+                          <h3 className="mt-1 font-anton text-[22px] uppercase leading-none text-text-primary">{title}</h3>
+                          <p className="mt-2 text-[11px] text-text-secondary">{description}</p>
+                        </div>
+
+                        <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
+                          {tierFigures.map((figure, index) => (
+                            <button
+                              key={figure.overrideKey}
+                              type="button"
+                              onClick={() => figure.playerId && setDetailedPlayerId(figure.playerId)}
+                              disabled={!figure.isLinked}
+                              className="flex w-full items-center gap-3 border border-[#16130f]/10 bg-black/[0.02] px-3 py-3 text-left transition-colors enabled:hover:border-accent enabled:hover:bg-accent/5 disabled:cursor-default dark:bg-white/[0.02]"
+                              title={figure.isLinked ? `Open ${figure.name}'s player profile` : `${figure.name} is retired`}
+                            >
+                              <span className="w-6 shrink-0 text-center font-anton text-lg text-text-secondary">{index + 1}</span>
+                              <span className="min-w-0 flex-1">
+                                <span className="block truncate text-sm font-bold text-text-primary">{figure.name}</span>
+                                <span className={`mt-0.5 block font-space-mono text-[9px] font-bold uppercase tracking-wider ${figure.isLinked ? "text-success" : "text-text-secondary"}`}>
+                                  {!figure.isLinked
+                                    ? "Retired"
+                                    : figure.currentTeamId
+                                      ? `Current Club: ${teams[figure.currentTeamId]?.shortName ?? figure.currentTeamId}`
+                                      : "Free Agent"}
+                                </span>
+                              </span>
+                              {figure.isLinked && <ChevronRight size={14} className="shrink-0 text-text-secondary" />}
+                            </button>
+                          ))}
+                        </div>
+                      </section>
+                    );
+                  })}
+                </div>
+              )}
+
+              {activeSubTab === "leaguehistory" && (
+                <section className="flex h-[calc(100vh-200px)] min-h-[500px] flex-col overflow-hidden border-2 border-border bg-surface">
+                  <div className="relative shrink-0 overflow-hidden border-b-2 border-border bg-[#16130f] px-6 py-5 text-white">
+                    <div className="pointer-events-none absolute -right-16 -top-24 h-56 w-56 rounded-full bg-orange-500/20 blur-3xl" />
+                    <div className="pointer-events-none absolute right-24 top-0 h-40 w-40 rounded-full bg-purple-600/25 blur-3xl" />
+                    <div className="relative flex items-end justify-between gap-6">
+                      <div>
+                        <p className="font-space-mono text-[9px] font-bold uppercase tracking-[0.24em] text-white/60">The complete honours archive</p>
+                        <div className="mt-2 flex items-center gap-3">
+                          <Trophy size={25} className="text-amber-400" />
+                          <h3 className="font-anton text-[30px] uppercase leading-none">IPL League History</h3>
+                        </div>
+                        <p className="mt-3 max-w-2xl text-xs leading-relaxed text-white/65">
+                          Every final and individual cap winner from the inaugural season. Career seasons will be saved separately with an expandable final league table.
+                        </p>
+                      </div>
+                      <div className="hidden shrink-0 gap-8 text-right md:flex">
+                        <div>
+                          <div className="font-anton text-[28px] leading-none">{HISTORICAL_LEAGUE_HISTORY.length}</div>
+                          <div className="mt-1 font-space-mono text-[8px] font-bold uppercase tracking-wider text-white/55">Official seasons</div>
+                        </div>
+                        <div>
+                          <div className="font-anton text-[28px] leading-none">{careerLeagueHistoryCount}</div>
+                          <div className="mt-1 font-space-mono text-[8px] font-bold uppercase tracking-wider text-white/55">Career seasons</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="min-h-0 flex-1 overflow-auto">
+                    <div className="min-w-[900px]">
+                      <div className="sticky top-0 z-10 grid grid-cols-[5rem_minmax(18rem,1.35fr)_minmax(13rem,1fr)_minmax(13rem,1fr)_2.5rem] items-center border-b border-border bg-surface px-5 py-3 font-space-mono text-[8px] font-bold uppercase tracking-[0.14em] text-text-secondary shadow-sm">
+                        <span>Season</span>
+                        <span>Finalists</span>
+                        <span className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-orange-500" />Orange Cap</span>
+                        <span className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-purple-700" />Purple Cap</span>
+                        <span />
+                      </div>
+
+                      {leagueHistorySeasons.map((season) => {
+                        const champion = getLeagueHistoryTeam(season.championTeamId);
+                        const runnerUp = getLeagueHistoryTeam(season.runnerUpTeamId);
+                        const orangeCapTeam = getLeagueHistoryTeam(season.orangeCap.teamId);
+                        const purpleCapTeam = getLeagueHistoryTeam(season.purpleCap.teamId);
+                        const orangeCapPlayer = leagueHistoryPlayerByName.get(normalizeLeagueHistoryPlayerName(season.orangeCap.name));
+                        const purpleCapPlayer = leagueHistoryPlayerByName.get(normalizeLeagueHistoryPlayerName(season.purpleCap.name));
+                        const canExpand = season.source === "career" && Boolean(season.standings?.length);
+                        const isExpanded = canExpand && expandedLeagueHistorySeason === season.season;
+
+                        return (
+                          <div key={`${season.source}-${season.season}`} className={season.source === "career" ? "bg-accent/[0.035]" : ""}>
+                            <div
+                              role={canExpand ? "button" : undefined}
+                              tabIndex={canExpand ? 0 : undefined}
+                              onClick={canExpand ? () => setExpandedLeagueHistorySeason(isExpanded ? null : season.season) : undefined}
+                              onKeyDown={canExpand ? (event) => {
+                                if (event.target !== event.currentTarget) return;
+                                if (event.key === "Enter" || event.key === " ") {
+                                  event.preventDefault();
+                                  setExpandedLeagueHistorySeason(isExpanded ? null : season.season);
+                                }
+                              } : undefined}
+                              aria-expanded={canExpand ? isExpanded : undefined}
+                              className={`grid min-h-[74px] w-full grid-cols-[5rem_minmax(18rem,1.35fr)_minmax(13rem,1fr)_minmax(13rem,1fr)_2.5rem] items-center border-b border-[#16130f]/10 px-5 text-left transition-colors ${canExpand ? "cursor-pointer hover:bg-accent/[0.07]" : "cursor-default"}`}
+                            >
+                              <span>
+                                <span className="block font-anton text-[21px] leading-none text-text-primary">{season.season}</span>
+                                <span className={`mt-1 block font-space-mono text-[7px] font-bold uppercase tracking-wider ${season.source === "career" ? "text-accent" : "text-text-secondary"}`}>
+                                  {season.source === "career" ? "Career season" : "Official record"}
+                                </span>
+                              </span>
+
+                              <span className="flex min-w-0 items-center gap-3 pr-5">
+                                <span
+                                  className="flex min-w-0 items-center gap-2 border px-3 py-2 shadow-sm"
+                                  style={{ backgroundColor: champion.primaryColor, borderColor: champion.primaryColor, color: champion.secondaryColor }}
+                                  title={`${champion.name}, champions`}
+                                >
+                                  <Trophy size={13} className="shrink-0" />
+                                  <span className="truncate font-bold">{champion.name}</span>
+                                  <span className="shrink-0 font-space-mono text-[7px] font-bold uppercase opacity-70">Champion</span>
+                                </span>
+                                <span className="shrink-0 font-space-mono text-[8px] font-bold uppercase text-text-secondary">def.</span>
+                                <span className="flex min-w-0 items-center gap-2">
+                                  <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: runnerUp.primaryColor }} />
+                                  <span className="truncate text-xs font-semibold text-text-primary">{runnerUp.name}</span>
+                                </span>
+                              </span>
+
+                              <span className="min-w-0 pr-4">
+                                {orangeCapPlayer ? (
+                                  <button
+                                    type="button"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      setDetailedPlayerId(orangeCapPlayer.id);
+                                    }}
+                                    className="group flex max-w-full items-center gap-1 text-[13px] font-bold text-text-primary hover:text-accent"
+                                    title={`Open ${orangeCapPlayer.name}'s player profile`}
+                                  >
+                                    <span className="truncate group-hover:underline">{season.orangeCap.name}</span>
+                                    <ChevronRight size={12} className="shrink-0 opacity-55" />
+                                  </button>
+                                ) : (
+                                  <span className="block truncate text-[13px] font-bold text-text-primary">{season.orangeCap.name}</span>
+                                )}
+                                <span className="mt-1 flex items-center gap-1.5 font-space-mono text-[8px] font-bold uppercase text-text-secondary">
+                                  <span className="h-2 w-2 rounded-full" style={{ backgroundColor: orangeCapTeam.primaryColor }} />
+                                  {orangeCapTeam.shortName}
+                                </span>
+                              </span>
+
+                              <span className="min-w-0 pr-4">
+                                {purpleCapPlayer ? (
+                                  <button
+                                    type="button"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      setDetailedPlayerId(purpleCapPlayer.id);
+                                    }}
+                                    className="group flex max-w-full items-center gap-1 text-[13px] font-bold text-text-primary hover:text-accent"
+                                    title={`Open ${purpleCapPlayer.name}'s player profile`}
+                                  >
+                                    <span className="truncate group-hover:underline">{season.purpleCap.name}</span>
+                                    <ChevronRight size={12} className="shrink-0 opacity-55" />
+                                  </button>
+                                ) : (
+                                  <span className="block truncate text-[13px] font-bold text-text-primary">{season.purpleCap.name}</span>
+                                )}
+                                <span className="mt-1 flex items-center gap-1.5 font-space-mono text-[8px] font-bold uppercase text-text-secondary">
+                                  <span className="h-2 w-2 rounded-full" style={{ backgroundColor: purpleCapTeam.primaryColor }} />
+                                  {purpleCapTeam.shortName}
+                                </span>
+                              </span>
+
+                              <span className="flex justify-end text-text-secondary">
+                                {canExpand && <ChevronDown size={17} className={`transition-transform ${isExpanded ? "rotate-180" : ""}`} />}
+                              </span>
+                            </div>
+
+                            {isExpanded && season.standings && (
+                              <div className="border-b-2 border-accent/30 bg-black/[0.025] px-10 py-5 dark:bg-white/[0.025]">
+                                <div className="mb-3 flex items-end justify-between">
+                                  <div>
+                                    <p className="font-space-mono text-[8px] font-bold uppercase tracking-[0.18em] text-accent">Saved career season</p>
+                                    <h4 className="mt-1 font-anton text-[18px] uppercase text-text-primary">{season.season} Final League Table</h4>
+                                  </div>
+                                  <span className="font-space-mono text-[8px] uppercase text-text-secondary">Final standings</span>
+                                </div>
+                                <div className="overflow-hidden border border-border bg-surface">
+                                  <div className="grid grid-cols-[3rem_minmax(14rem,1fr)_4rem_4rem_4rem_4rem_5rem_4rem] border-b border-border bg-black/[0.04] px-3 py-2 font-space-mono text-[8px] font-bold uppercase text-text-secondary dark:bg-white/[0.04]">
+                                    <span>Pos</span><span>Team</span><span className="text-center">P</span><span className="text-center">W</span><span className="text-center">L</span><span className="text-center">NR</span><span className="text-center">NRR</span><span className="text-center">Pts</span>
+                                  </div>
+                                  {season.standings.map((standing, index) => {
+                                    const standingTeam = getLeagueHistoryTeam(standing.teamId);
+                                    return (
+                                      <div key={standing.teamId} className={`grid grid-cols-[3rem_minmax(14rem,1fr)_4rem_4rem_4rem_4rem_5rem_4rem] items-center border-b border-[#16130f]/10 px-3 py-2 text-xs last:border-b-0 ${standing.teamId === userTeamId ? "bg-accent/[0.08] font-bold" : ""}`}>
+                                        <span className="font-space-mono font-bold text-text-primary">{index + 1}</span>
+                                        <span className="flex min-w-0 items-center gap-2 font-semibold text-text-primary"><span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: standingTeam.primaryColor }} /><span className="truncate">{standing.teamName || standingTeam.name}</span></span>
+                                        <span className="text-center font-space-mono text-text-secondary">{standing.played}</span>
+                                        <span className="text-center font-space-mono text-text-secondary">{standing.won}</span>
+                                        <span className="text-center font-space-mono text-text-secondary">{standing.lost}</span>
+                                        <span className="text-center font-space-mono text-text-secondary">{standing.noResults}</span>
+                                        <span className="text-center font-space-mono text-text-secondary">{standing.nrr > 0 ? "+" : ""}{standing.nrr.toFixed(3)}</span>
+                                        <span className="text-center font-space-mono font-bold text-text-primary">{standing.points}</span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </section>
+              )}
+
+              {activeSubTab === "leaguehalloffame" && (
+                <LeagueHallOfFame
+                  players={players}
+                  teams={teams}
+                  onOpenPlayer={setDetailedPlayerId}
+                />
+              )}
+
+              {activeSubTab === "records" && (
+                <LeagueRecords
+                  players={players}
+                  teams={teams}
+                  onOpenPlayer={setDetailedPlayerId}
+                />
+              )}
+
+              {activeSubTab !== "overview" && activeSubTab !== "records" && activeSubTab !== "clubhistory" && activeSubTab !== "clubfigures" && activeSubTab !== "leaguehistory" && activeSubTab !== "leaguehalloffame" && (
                 <div className="bg-surface border-2 border-border p-8 text-center h-[calc(100vh-200px)] min-h-[500px] flex flex-col items-center justify-center">
                   <h3 className="font-anton text-[18px] text-text-primary uppercase">{getSubTabLabel(activeSubTab)}</h3>
                   <p className="mt-3 text-xs text-text-secondary">No history has been recorded yet.</p>
@@ -3352,7 +4326,7 @@ function OverviewPageContent() {
                     <span className="text-right">Method</span>
                   </div>
                   <div>
-                    {[...detailedPlayer.iplHistory]
+                    {[...detailedPlayerHistory]
                       .filter(entry => entry.teamId && entry.teamId !== "UNSOLD")
                       .sort((a, b) => Number(b.season) - Number(a.season))
                       .map(entry => (
@@ -3363,7 +4337,7 @@ function OverviewPageContent() {
                           <span className="text-right font-space-mono text-[8px] font-bold uppercase text-text-secondary">{entry.isRtm ? "RTM" : "Signed"}</span>
                         </div>
                       ))}
-                    {detailedPlayer.iplHistory.every(entry => !entry.teamId || entry.teamId === "UNSOLD") && (
+                    {detailedPlayerHistory.every(entry => !entry.teamId || entry.teamId === "UNSOLD") && (
                       <p className="py-5 text-center text-xs text-text-secondary">No team history recorded.</p>
                     )}
                   </div>

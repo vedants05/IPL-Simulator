@@ -14,6 +14,14 @@ import {
 } from "@/lib/types";
 import { fetchPlayersFromSupabase } from "@/lib/supabase/fetchPlayers";
 import { fetchTeamsFromSupabase } from "@/lib/supabase/fetchTeams";
+import type { ClubFigureTier, ClubFigureTierOverrides } from "@/lib/data/clubFigures";
+import type { LeagueHistorySeason } from "@/lib/data/leagueHistory";
+import {
+  getPlayerSeasonHistory,
+  mergePlayerIplHistory,
+  upsertPlayerIplHistory,
+  wasPlayerAcquiredViaRtm,
+} from "@/lib/logic/playerHistory";
 import {
   buildAuctionSets,
   getNextBidAmount,
@@ -94,6 +102,8 @@ interface GameStateAdditions {
   userAcceleratedTargets: string[];
   aiAcceleratedTargets: Record<string, string[]>;
   aiAcceleratedBackups: Record<string, string[]>;
+  clubFigureTierOverrides: ClubFigureTierOverrides;
+  simulatedLeagueHistory: LeagueHistorySeason[];
 }
 
 interface GameActions {
@@ -132,6 +142,8 @@ interface GameActions {
   removeAuctionTarget: (playerId: string) => void;
   confirmUserAcceleratedTargets: (targets: string[]) => void;
   startAcceleratedAuctionFromPlanning: () => void;
+  setClubFigureTierOverride: (overrideKey: string, tier: ClubFigureTier) => void;
+  recordSimulatedLeagueSeason: (season: LeagueHistorySeason) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -455,6 +467,8 @@ export const useGameStore = create<Store>()(
       userAcceleratedTargets: [],
       aiAcceleratedTargets: {},
       aiAcceleratedBackups: {},
+      clubFigureTierOverrides: {},
+      simulatedLeagueHistory: [],
 
       // ----- Actions -----
       initNewGame: async (userTeamId) => {
@@ -498,6 +512,8 @@ export const useGameStore = create<Store>()(
           userTeamId,
           auctionTargets: {},
           auctionTargetPriorities: {},
+          clubFigureTierOverrides: {},
+          simulatedLeagueHistory: [],
           auction: {
             type: "mega",
             season: 2026,
@@ -530,16 +546,51 @@ export const useGameStore = create<Store>()(
         if (Object.keys(state.players).length === 0) return;
 
         const refreshedPlayers = { ...state.players };
+        const careerSeason = String((state.auction?.season ?? state.currentSeason) + 1);
+        const finalSalesByPlayer = new Map<string, NonNullable<typeof state.auction>["saleHistory"][number]>();
+        (state.auction?.saleHistory ?? []).forEach((sale) => finalSalesByPlayer.set(sale.playerId, sale));
+
         fetchedPlayers.forEach((freshPlayer) => {
           const savedPlayer = state.players[freshPlayer.id];
-          refreshedPlayers[freshPlayer.id] = savedPlayer
-            ? {
-                ...freshPlayer,
-                currentTeamId: savedPlayer.currentTeamId,
-                isRetained: savedPlayer.isRetained,
-                retainedByTeamId: savedPlayer.retainedByTeamId,
-              }
-            : freshPlayer;
+          if (!savedPlayer) {
+            refreshedPlayers[freshPlayer.id] = freshPlayer;
+            return;
+          }
+
+          let iplHistory = mergePlayerIplHistory(freshPlayer.iplHistory, savedPlayer.iplHistory);
+          const finalSale = finalSalesByPlayer.get(savedPlayer.id);
+          const existingCareerEntry = getPlayerSeasonHistory(iplHistory, careerSeason);
+
+          if (finalSale) {
+            iplHistory = upsertPlayerIplHistory(iplHistory, {
+              teamId: finalSale.teamId,
+              season: careerSeason,
+              price: finalSale.price,
+              isRtm: wasPlayerAcquiredViaRtm(finalSale),
+            });
+          } else if (savedPlayer.currentTeamId) {
+            const team = state.teams[savedPlayer.currentTeamId];
+            const isRetained = savedPlayer.isRetained || team?.retainedPlayers.includes(savedPlayer.id);
+            const reconstructedPrice = existingCareerEntry?.price
+              || (isRetained
+                ? getPlayerRetentionCost(savedPlayer.id, team?.retainedPlayers ?? [savedPlayer.id], state.players)
+                : savedPlayer.basePrice);
+
+            iplHistory = upsertPlayerIplHistory(iplHistory, {
+              teamId: savedPlayer.currentTeamId,
+              season: careerSeason,
+              price: reconstructedPrice,
+              isRtm: existingCareerEntry?.isRtm,
+            });
+          }
+
+          refreshedPlayers[freshPlayer.id] = {
+            ...freshPlayer,
+            currentTeamId: savedPlayer.currentTeamId,
+            isRetained: savedPlayer.isRetained,
+            retainedByTeamId: savedPlayer.retainedByTeamId,
+            iplHistory,
+          };
         });
 
         const currentPlayerId = state.auction?.currentPlayer?.id;
@@ -2173,6 +2224,24 @@ export const useGameStore = create<Store>()(
         }
       },
 
+      setClubFigureTierOverride: (overrideKey, tier) => {
+        set((state) => ({
+          clubFigureTierOverrides: {
+            ...state.clubFigureTierOverrides,
+            [overrideKey]: tier,
+          },
+        }));
+      },
+
+      recordSimulatedLeagueSeason: (season) => {
+        set((state) => ({
+          simulatedLeagueHistory: [
+            { ...season, source: "career" as const },
+            ...state.simulatedLeagueHistory.filter((record) => record.season !== season.season),
+          ].sort((left, right) => right.season - left.season),
+        }));
+      },
+
       resetGame: () => {
         set({
           saveId: "",
@@ -2186,6 +2255,8 @@ export const useGameStore = create<Store>()(
           speed: 1,
           auctionTargets: {},
           auctionTargetPriorities: {},
+          clubFigureTierOverrides: {},
+          simulatedLeagueHistory: [],
         });
       },
     }),
@@ -2207,6 +2278,8 @@ export const useGameStore = create<Store>()(
         speed: state.speed,
         auctionTargets: state.auctionTargets,
         auctionTargetPriorities: state.auctionTargetPriorities,
+        clubFigureTierOverrides: state.clubFigureTierOverrides,
+        simulatedLeagueHistory: state.simulatedLeagueHistory,
       }),
       merge: (persisted, current) => {
         const p = persisted as Partial<Store>;
@@ -2220,12 +2293,32 @@ export const useGameStore = create<Store>()(
               },
             ]))
           : current.teams;
+        const migratedPlayers = p.players ? { ...p.players } : current.players;
+        const persistedAuctionSeason = String((p.auction?.season ?? p.currentSeason ?? current.currentSeason) + 1);
+        const persistedFinalSales = new Map<string, NonNullable<typeof p.auction>["saleHistory"][number]>();
+        (p.auction?.saleHistory ?? []).forEach((sale) => persistedFinalSales.set(sale.playerId, sale));
+        persistedFinalSales.forEach((sale, playerId) => {
+          const player = migratedPlayers[playerId];
+          if (!player) return;
+          migratedPlayers[playerId] = {
+            ...player,
+            iplHistory: upsertPlayerIplHistory(player.iplHistory, {
+              teamId: sale.teamId,
+              season: persistedAuctionSeason,
+              price: sale.price,
+              isRtm: wasPlayerAcquiredViaRtm(sale),
+            }),
+          };
+        });
         return {
           ...current,
           ...p,
           teams: migratedTeams,
+          players: migratedPlayers,
           auctionTargets: p.auctionTargets ?? {},
           auctionTargetPriorities: p.auctionTargetPriorities ?? {},
+          clubFigureTierOverrides: p.clubFigureTierOverrides ?? {},
+          simulatedLeagueHistory: p.simulatedLeagueHistory ?? [],
         };
       },
     }

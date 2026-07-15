@@ -1,6 +1,7 @@
 "use client";
 import { useState, useRef, useEffect } from "react";
 import { useGameStore, getNextSeasonYear } from "@/lib/store/gameStore";
+import { wasPlayerAcquiredViaRtm } from "@/lib/logic/playerHistory";
 import { Player } from "@/lib/types";
 import PlayerCard from "./PlayerCard";
 
@@ -114,10 +115,10 @@ export default function UserSquad() {
                 {group.map((p) => {
                   const isSelected = selectedPlayer?.id === p.id;
                   const wasRetained = userTeam.retainedPlayers.includes(p.id);
-                  const sale = auction?.saleHistory.find((s: any) => s.playerId === p.id);
+                  const sale = [...(auction?.saleHistory ?? [])].reverse().find((entry) => entry.playerId === p.id);
                   const price = sale?.price ?? p.iplHistory.find((h) => h.season === getNextSeasonYear())?.price ?? p.iplHistory.find((h) => h.season === "2026")?.price;
                   const priceStr = price ? `(₹${(price / 100).toFixed(1)}Cr)` : "";
-                  const isRtm = !!p.iplHistory.find((h) => h.season === getNextSeasonYear())?.isRtm;
+                  const isRtm = sale ? wasPlayerAcquiredViaRtm(sale) : false;
 
                   let rowBg = undefined;
                   let rowBorder = "1px solid var(--hairline)";

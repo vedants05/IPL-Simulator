@@ -2,9 +2,15 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  DAY_SIMULATION_INTERVAL_MS,
+  FAST_DAY_SIMULATION_INTERVAL_MS,
+  SKIP_SIMULATION_MAX_SPEED_INTERVAL_MS,
+  SKIP_SIMULATION_SLOW_INTERVAL_MS,
   TICKING_CALENDAR_OFFSETS,
   addDaysToDateKey,
   dateKeyToLocalDate,
+  getDaySimulationIntervalMs,
+  getSkipSimulationIntervalMs,
   localDateToDateKey,
 } from "./careerCalendar";
 
@@ -22,6 +28,28 @@ test("the ticking calendar uses the previous, current, and next five days", () =
     "2027-01-03",
     "2027-01-04",
   ]);
+});
+
+test("simulation is twice as fast from auction day through schedule announcement day", () => {
+  const auctionDate = "2026-11-15";
+  const announcementDate = "2027-02-27";
+
+  assert.equal(getDaySimulationIntervalMs("2026-11-14", auctionDate, announcementDate), DAY_SIMULATION_INTERVAL_MS);
+  assert.equal(getDaySimulationIntervalMs(auctionDate, auctionDate, announcementDate), FAST_DAY_SIMULATION_INTERVAL_MS);
+  assert.equal(getDaySimulationIntervalMs("2027-01-10", auctionDate, announcementDate), FAST_DAY_SIMULATION_INTERVAL_MS);
+  assert.equal(getDaySimulationIntervalMs(announcementDate, auctionDate, announcementDate), FAST_DAY_SIMULATION_INTERVAL_MS);
+  assert.equal(getDaySimulationIntervalMs("2027-02-28", auctionDate, announcementDate), DAY_SIMULATION_INTERVAL_MS);
+});
+
+test("targeted date simulation accelerates, cruises, and slows near its target", () => {
+  const startDate = "2027-01-01";
+  const targetDate = "2027-02-10";
+
+  assert.equal(getSkipSimulationIntervalMs(startDate, startDate, targetDate), SKIP_SIMULATION_SLOW_INTERVAL_MS);
+  assert.equal(getSkipSimulationIntervalMs("2027-01-11", startDate, targetDate), SKIP_SIMULATION_MAX_SPEED_INTERVAL_MS);
+  assert.equal(getSkipSimulationIntervalMs("2027-01-25", startDate, targetDate), SKIP_SIMULATION_MAX_SPEED_INTERVAL_MS);
+  assert.ok(getSkipSimulationIntervalMs("2027-02-05", startDate, targetDate) > SKIP_SIMULATION_MAX_SPEED_INTERVAL_MS);
+  assert.ok(getSkipSimulationIntervalMs("2027-02-09", startDate, targetDate) > getSkipSimulationIntervalMs("2027-02-05", startDate, targetDate));
 });
 
 test("seven calendar tiles cross leap day without skipping or repeating a date", () => {

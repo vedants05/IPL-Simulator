@@ -2,6 +2,7 @@
 import { useState, useRef, useEffect } from "react";
 import { ChevronUp, ChevronDown } from "lucide-react";
 import { useGameStore, getNextSeasonYear } from "@/lib/store/gameStore";
+import { wasPlayerAcquiredViaRtm } from "@/lib/logic/playerHistory";
 import { Player } from "@/lib/types";
 import PlayerCard from "./PlayerCard";
 
@@ -157,7 +158,8 @@ export default function TeamPurseList() {
                       const price = sale?.price ?? p.iplHistory.find((h) => h.season === getNextSeasonYear())?.price ?? p.iplHistory.find((h) => h.season === "2026")?.price;
                       const priceStr = price ? ` (₹${(price / 100).toFixed(1)}Cr)` : "";
 
-                      const isRtm = !!p.iplHistory.find((h) => h.season === getNextSeasonYear())?.isRtm;
+                      const finalSale = [...(auction?.saleHistory ?? [])].reverse().find((sale) => sale.playerId === p.id);
+                      const isRtm = finalSale ? wasPlayerAcquiredViaRtm(finalSale) : false;
 
                       let rowBg = undefined;
                       let rowBorder = "1px solid var(--hairline)";

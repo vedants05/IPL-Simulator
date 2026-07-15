@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test:career-clock": "tsx --test lib/logic/careerCalendar.test.ts lib/logic/dayTicker.test.ts"
+    "test:career-clock": "tsx --test lib/logic/careerCalendar.test.ts lib/logic/dayTicker.test.ts",
+    "test:club-figures": "tsx --test lib/data/clubFigures.test.ts",
+    "test:player-history": "tsx --test lib/logic/playerHistory.test.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.0",

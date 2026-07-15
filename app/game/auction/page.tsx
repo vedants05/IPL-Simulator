@@ -16,6 +16,7 @@ import PlayerListPopup from "@/components/auction/PlayerListPopup";
 import SkipSetSummaryModal from "@/components/auction/SkipSetSummaryModal";
 import { Lock, Target, X } from "lucide-react";
 import { formatPrice } from "@/lib/logic/auctionRules";
+import { wasPlayerAcquiredViaRtm } from "@/lib/logic/playerHistory";
 import type { Player } from "@/lib/types";
 import { SEASON_ACCESS_ENABLED } from "@/lib/config/featureFlags";
 import { AcceleratedNominationsScreen, AcceleratedPlanningResultsScreen } from "@/components/auction/AcceleratedPlanning";
@@ -1696,7 +1697,7 @@ function TeamSquadCard({
                       ?? p.iplHistory.find((h) => h.season === "2026")?.price
                       ?? p.iplHistory.find((h) => h.teamId !== "UNSOLD" && h.price > 0)?.price
                       ?? p.basePrice;
-                    const isRtm = sale?.isRtm;
+                    const isRtm = auctionSale ? wasPlayerAcquiredViaRtm(auctionSale) : false;
                     const priceStr = `(₹${(price / 100).toFixed(1)}Cr)`;
 
                     // Determine if primaryColor is too dark to stand out in dark mode.

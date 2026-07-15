@@ -95,6 +95,7 @@ export interface Player {
   potentialBowling: number;
   reputation?: number;
   captaincy?: number;
+  isIplCaptaincyUnavailable?: boolean;
   battingAggression?: number;
   isWicketkeeper?: boolean;
   isPartTimeWk?: boolean;
