@@ -6,6 +6,8 @@ export interface ClubSeasonHistoryEntry {
   outcome: ClubSeasonOutcome;
 }
 
+export const LAST_HISTORICAL_CLUB_SEASON = 2026;
+
 interface ClubHistoryDefinition {
   firstSeason: number;
   names?: Array<{ from: number; name: string }>;
@@ -37,7 +39,7 @@ const CLUB_HISTORY: Record<string, ClubHistoryDefinition> = {
       { from: 2008, name: "Royal Challengers Bangalore" },
       { from: 2024, name: "Royal Challengers Bengaluru" },
     ],
-    champions: [2025],
+    champions: [2025, 2026],
     runnersUp: [2009, 2011, 2016],
   },
   SRH: {
@@ -72,7 +74,7 @@ const CLUB_HISTORY: Record<string, ClubHistoryDefinition> = {
   GT: {
     firstSeason: 2022,
     champions: [2022],
-    runnersUp: [2023],
+    runnersUp: [2023, 2026],
   },
   LSG: {
     firstSeason: 2022,
@@ -92,7 +94,7 @@ export function getClubSeasonHistory(teamId: string, fallbackName: string): Club
   const definition = CLUB_HISTORY[teamId];
   if (!definition) return [];
 
-  return Array.from({ length: 2025 - definition.firstSeason + 1 }, (_, index) => {
+  return Array.from({ length: LAST_HISTORICAL_CLUB_SEASON - definition.firstSeason + 1 }, (_, index) => {
     const season = definition.firstSeason + index;
     const outcome: ClubSeasonOutcome = definition.didNotParticipate?.includes(season)
       ? "Did not participate"

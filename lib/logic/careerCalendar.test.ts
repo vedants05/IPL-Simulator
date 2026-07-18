@@ -9,6 +9,7 @@ import {
   TICKING_CALENDAR_OFFSETS,
   addDaysToDateKey,
   dateKeyToLocalDate,
+  findCalendarMonthIndex,
   getDaySimulationIntervalMs,
   getSkipSimulationIntervalMs,
   localDateToDateKey,
@@ -101,6 +102,18 @@ test("date keys round-trip through a local noon date", () => {
 
   assert.equal(localDate.getHours(), 12);
   assert.equal(localDateToDateKey(localDate), "2027-04-05");
+});
+
+test("the season calendar locates the current in-game month", () => {
+  const calendarMonths = Array.from({ length: 12 }, (_, offset) => ({
+    month: (11 + offset) % 12,
+    year: 2026 + Math.floor((11 + offset) / 12),
+  }));
+
+  assert.equal(findCalendarMonthIndex(calendarMonths, "2026-12-18"), 0);
+  assert.equal(findCalendarMonthIndex(calendarMonths, "2027-03-20"), 3);
+  assert.equal(findCalendarMonthIndex(calendarMonths, "2027-07-17"), 7);
+  assert.equal(findCalendarMonthIndex(calendarMonths, "2027-12-01"), -1);
 });
 
 test("invalid and impossible date keys are rejected", () => {

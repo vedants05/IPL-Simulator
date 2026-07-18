@@ -242,6 +242,7 @@ export type AuctionTargetPriority = "high" | "medium" | "low";
 export interface GameState {
   saveId: string;
   saveCreatedAt: string;
+  fixtureSeed: string;
   currentDate: string;
   currentSeason: number;
   auctionCycle: number;

@@ -6,6 +6,8 @@ import {
   OTHER_LEAGUE_RECORDS,
   RETIRED_MAJOR_RECORDS,
   type MajorRecordCategoryId,
+  type RetiredRecordEntry,
+  qualifiesForBattingAverageRecord,
 } from "@/lib/data/leagueRecords";
 import { LEAGUE_HISTORY_TEAMS } from "@/lib/data/leagueHistory";
 import type { Player, Team } from "@/lib/types";
@@ -33,6 +35,7 @@ interface MajorRecordColumn {
   format: (value: number) => string;
   liveValue: (player: Player) => number;
   qualifies: (player: Player) => boolean;
+  retiredQualifies?: (entry: RetiredRecordEntry) => boolean;
 }
 
 const normalizeName = (name: string) => name.toLocaleLowerCase("en-GB").replace(/[^a-z0-9]/g, "");
@@ -81,7 +84,12 @@ export default function LeagueRecords({ players, teams, onOpenPlayer }: LeagueRe
       icon: Sparkles,
       format: (value) => value.toFixed(2),
       liveValue: (player) => player.iplStats.battingAverage,
-      qualifies: (player) => player.iplStats.matches >= 50 && player.iplStats.runs >= 1000 && player.iplStats.battingAverage > 0,
+      qualifies: (player) => qualifiesForBattingAverageRecord(player.iplStats),
+      retiredQualifies: (entry) => qualifiesForBattingAverageRecord({
+        matches: entry.matches ?? 0,
+        runs: entry.runs ?? 0,
+        battingAverage: entry.value,
+      }),
     },
   ];
 
@@ -97,6 +105,7 @@ export default function LeagueRecords({ players, teams, onOpenPlayer }: LeagueRe
       }));
     const liveNames = new Set(liveEntries.map((entry) => normalizeName(entry.name)));
     const retiredEntries = RETIRED_MAJOR_RECORDS[column.id]
+      .filter((entry) => column.retiredQualifies?.(entry) ?? true)
       .filter((entry) => !liveNames.has(normalizeName(entry.name)))
       .map((entry) => ({ ...entry, playerId: null, retired: true }));
 
@@ -112,19 +121,19 @@ export default function LeagueRecords({ players, teams, onOpenPlayer }: LeagueRe
 
   return (
     <section className="flex h-[calc(100vh-200px)] min-h-[500px] flex-col overflow-hidden border-2 border-border bg-surface">
-      <header className="relative flex shrink-0 items-center justify-between overflow-hidden border-b-2 border-[#4f79b7]/45 bg-[#10151e] px-5 py-3 text-white">
-        <div className="pointer-events-none absolute -left-16 -top-20 h-44 w-44 rounded-full bg-[#245da8]/30 blur-3xl" />
-        <div className="pointer-events-none absolute -right-12 -top-20 h-44 w-44 rounded-full bg-[#9b6823]/22 blur-3xl" />
+      <header className="relative flex shrink-0 items-center justify-between overflow-hidden border-b-2 border-[#aac0da] bg-[#e9eff7] px-5 py-3 text-[#172337] dark:border-[#4f79b7]/45 dark:bg-[#10151e] dark:text-white">
+        <div className="pointer-events-none absolute -left-16 -top-20 h-44 w-44 rounded-full bg-[#5c8cc6]/15 blur-3xl dark:bg-[#245da8]/30" />
+        <div className="pointer-events-none absolute -right-12 -top-20 h-44 w-44 rounded-full bg-[#c8913f]/12 blur-3xl dark:bg-[#9b6823]/22" />
         <div className="relative flex items-center gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[#d6ad55]/45 bg-[#d6ad55]/10">
-            <Trophy size={20} className="text-[#e7c576]" />
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[#a7751c]/40 bg-white/45 dark:border-[#d6ad55]/45 dark:bg-[#d6ad55]/10">
+            <Trophy size={20} className="text-[#946514] dark:text-[#e7c576]" />
           </div>
           <div>
-            <p className="font-space-mono text-[7px] font-bold uppercase tracking-[0.26em] text-[#83aee8]">League archive</p>
+            <p className="font-space-mono text-[7px] font-bold uppercase tracking-[0.26em] text-[#326da9] dark:text-[#83aee8]">League archive</p>
             <h3 className="mt-0.5 font-anton text-[24px] uppercase leading-none tracking-wide">IPL Record Book</h3>
           </div>
         </div>
-        <p className="relative hidden max-w-xl text-right text-[10px] leading-relaxed text-white/50 lg:block">
+        <p className="relative hidden max-w-xl text-right text-[10px] leading-relaxed text-[#607087] dark:text-white/50 lg:block">
           Live database leaders combined with retired all-time greats. Rate records use qualification thresholds.
         </p>
       </header>

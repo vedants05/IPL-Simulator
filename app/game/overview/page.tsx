@@ -1,16 +1,27 @@
 "use client";
-import { useState, useEffect, useLayoutEffect, useMemo, useRef, Suspense, useCallback } from "react";
+import { useState, useEffect, useLayoutEffect, useMemo, useRef, Suspense, useCallback, type CSSProperties } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useGameStore, getSeasonDates } from "@/lib/store/gameStore";
 import { formatPrice } from "@/lib/logic/auctionRules";
 import {
   addDaysToDateKey,
   dateKeyToLocalDate,
+  findCalendarMonthIndex,
   getDaySimulationIntervalMs,
   getSkipSimulationIntervalMs,
   TICKING_CALENDAR_OFFSETS,
 } from "@/lib/logic/careerCalendar";
 import { createDayTicker, type DayTickerController } from "@/lib/logic/dayTicker";
+import { buildRecommendedImpactSubs, buildRecommendedLineups, type LineupPlan, validateLineup } from "@/lib/logic/lineupPlanner";
+import {
+  generateBalancedLeagueFixtures,
+  LEAGUE_FIXTURE_SCHEDULE_VERSION,
+} from "@/lib/logic/leagueSchedule";
+import {
+  createTeamTactics,
+  normalizeTeamTactics,
+  type TeamTactics,
+} from "@/lib/logic/teamTactics";
 import {
   getPlayerSeasonHistory,
   mergePlayerIplHistory,
@@ -18,11 +29,29 @@ import {
   wasPlayerAcquiredViaRtm,
 } from "@/lib/logic/playerHistory";
 import { SEASON_ACCESS_ENABLED } from "@/lib/config/featureFlags";
-import { getClubSeasonHistory } from "@/lib/data/clubHistory";
+import { getClubSeasonHistory, LAST_HISTORICAL_CLUB_SEASON } from "@/lib/data/clubHistory";
 import { getClubFigures, type ClubFigureTier } from "@/lib/data/clubFigures";
 import { HISTORICAL_LEAGUE_HISTORY, LEAGUE_HISTORY_TEAMS } from "@/lib/data/leagueHistory";
 import LeagueHallOfFame from "@/components/history/LeagueHallOfFame";
 import LeagueRecords from "@/components/history/LeagueRecords";
+import CaptaincyPage from "@/components/squad/CaptaincyPage";
+import TacticsLineupBuilder from "@/components/squad/TacticsLineupBuilder";
+import TeamTacticsPage from "@/components/squad/TeamTacticsPage";
+import {
+  EMPTY_TEAM_LEADERSHIP,
+  getCaptainChangeGamesRemaining,
+  normalizeTeamLeadership,
+  type TeamLeadership,
+} from "@/lib/logic/captaincy";
+import {
+  buildCareerEmailDrafts,
+  normalizeCareerEmails,
+  orderCareerEmailThread,
+  reconcileCareerEmails,
+  type CareerEmail,
+  type CareerEmailAction,
+  type CareerEmailLineupStatus,
+} from "@/lib/logic/careerEmails";
 import type { IPLHistoryEntry, Player, Team } from "@/lib/types";
 import {
   Inbox as InboxIcon,
@@ -51,26 +80,6 @@ import {
   DollarSign,
   Play
 } from "lucide-react";
-
-// ============================================================================
-// Types
-// ============================================================================
-interface InboxMessage {
-  id: string;
-  sender: string;
-  subject: string;
-  body: string;
-  type: "trade" | "news" | "injury" | "board" | "sponsor";
-  date: string;
-  unread: boolean;
-  tradeDetails?: {
-    offerPlayerId: string;
-    requestPlayerId: string;
-    offerTeamId: string;
-    cashAdjustment: number; // in Lakhs
-  };
-  completed?: "accepted" | "declined" | null;
-}
 
 interface PlayerStats {
   id: string;
@@ -125,6 +134,7 @@ interface MatchScorecard {
 
 interface Match {
   id: string;
+  matchNumber: number;
   round: number;
   teamA: string;
   teamB: string;
@@ -166,14 +176,14 @@ const normalizeLeagueHistoryPlayerName = (name: string) => name.toLocaleLowerCas
 // ============================================================================
 function OverviewPageContent() {
   const router = useRouter();
-  const { teams, userTeamId, players, currentDate, currentSeason, auction, clubFigureTierOverrides, simulatedLeagueHistory } = useGameStore();
+  const { teams, userTeamId, players, currentDate, currentSeason, fixtureSeed, auction, clubFigureTierOverrides, simulatedLeagueHistory } = useGameStore();
   const userTeam = teams[userTeamId];
 
   // Dynamically generate months based on currentSeason
   const CALENDAR_MONTHS = useMemo(() => {
     return Array.from({ length: 12 }, (_, offset) => {
       const month = (11 + offset) % 12;
-      const year = currentSeason + Math.floor((11 + offset) / 12);
+      const year = currentSeason - 1 + Math.floor((11 + offset) / 12);
       return { month, year, label: new Date(year, month).toLocaleString("en-GB", { month: "long" }) };
     });
   }, [currentSeason]);
@@ -192,7 +202,7 @@ function OverviewPageContent() {
   // Core UI Tabs State
   // --------------------------------------------------------------------------
   const [activeTab, setActiveTab] = useState<"home" | "squad" | "scouting" | "season" | "history">("home");
-  const [activeSubTab, setActiveSubTab] = useState<string>("overview");
+  const [activeSubTab, _setActiveSubTab] = useState<string>("overview");
   const [expandedLeagueHistorySeason, setExpandedLeagueHistorySeason] = useState<number | null>(null);
 
   const searchParams = useSearchParams();
@@ -203,9 +213,13 @@ function OverviewPageContent() {
   useEffect(() => {
     if (tabParam === "home" || tabParam === "squad" || tabParam === "scouting" || tabParam === "season" || tabParam === "history") {
       setActiveTab(tabParam as any);
-      setActiveSubTab(subtabParam || "overview"); // Set to url subtab or reset to overview
+      _setActiveSubTab(subtabParam || "overview"); // Set to url subtab or reset to overview
     }
   }, [tabParam, subtabParam]);
+
+  const setActiveSubTab = (newSubTab: string) => {
+    router.push(`/game/overview?tab=${activeTab}&subtab=${newSubTab}`, { scroll: false });
+  };
 
   // --------------------------------------------------------------------------
   // Simulation & Career States (Saved in LocalStorage)
@@ -213,11 +227,15 @@ function OverviewPageContent() {
   const [fixtures, setFixtures] = useState<Match[]>([]);
   const [standings, setStandings] = useState<LeagueStandings[]>([]);
   const [playerStats, setPlayerStats] = useState<Record<string, PlayerStats>>({});
-  const [inbox, setInbox] = useState<InboxMessage[]>([]);
+  const [inbox, setInbox] = useState<CareerEmail[]>([]);
+  const [isCareerLoaded, setIsCareerLoaded] = useState(false);
   const [selectedMsgId, setSelectedMsgId] = useState<string | null>(null);
-  const [startingXI, setStartingXI] = useState<string[]>([]);
-  const [impactPlayer, setImpactPlayer] = useState<string>("");
-  const [teamStrategy, setTeamStrategy] = useState<string>("Balanced");
+  const [battingFirstXI, setBattingFirstXI] = useState<string[]>([]);
+  const [bowlingFirstXI, setBowlingFirstXI] = useState<string[]>([]);
+  const [battingFirstImpactSubs, setBattingFirstImpactSubs] = useState<string[]>([]);
+  const [bowlingFirstImpactSubs, setBowlingFirstImpactSubs] = useState<string[]>([]);
+  const [teamTactics, setTeamTactics] = useState<TeamTactics>(() => createTeamTactics());
+  const [teamLeadership, setTeamLeadership] = useState<TeamLeadership>(() => ({ ...EMPTY_TEAM_LEADERSHIP }));
   const [activeCommentary, setActiveCommentary] = useState<string[] | null>(null);
   const [activeScorecard, setActiveScorecard] = useState<Match | null>(null);
   const [shortlist, setShortlist] = useState<string[]>([]);
@@ -228,6 +246,9 @@ function OverviewPageContent() {
   const [filterRole, setFilterRole] = useState<"all" | "Batsman" | "WK-Batsman" | "All-Rounder" | "Pace Bowler" | "Spin Bowler">("all");
   const [minRating, setMinRating] = useState<number>(60);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const userGamesPlayed = useMemo(() => fixtures.filter((fixture) => (
+    fixture.played && (fixture.teamA === userTeamId || fixture.teamB === userTeamId)
+  )).length, [fixtures, userTeamId]);
 
   // Day-by-day career ticking simulation states & refs
   const [isSimulatingDays, setIsSimulatingDays] = useState(false);
@@ -256,7 +277,7 @@ function OverviewPageContent() {
 
         const season = useGameStore.getState().currentSeason;
         const auctionDate = getSeasonDates(season).auctionDate;
-        const seasonStart = new Date(season + 1, 2, 31);
+        const seasonStart = new Date(season, 2, 31);
         while (seasonStart.getDay() !== 6) seasonStart.setDate(seasonStart.getDate() - 1);
         seasonStart.setDate(seasonStart.getDate() - 7);
         const scheduleAnnouncement = new Date(seasonStart);
@@ -317,12 +338,19 @@ function OverviewPageContent() {
     : `${currentCalendarMonth.year}-${String(currentCalendarMonth.month + 1).padStart(2, "0")}-${String(selectedCalendarDay).padStart(2, "0")}`;
   const canSkipToSelectedCalendarDate = selectedCalendarDateString > currentDate;
   const inGameDate = dateKeyToLocalDate(currentDate);
+  const openCalendarAtCurrentDate = () => {
+    const currentMonthIndex = findCalendarMonthIndex(CALENDAR_MONTHS, currentDate);
+    if (currentMonthIndex >= 0) setCalendarMonthIndex(currentMonthIndex);
+    setSelectedCalendarDay(inGameDate.getDate());
+    setPendingSkipTargetDate(null);
+    setActiveSubTab("calendar");
+  };
   const homeCalendarDaysInMonth = new Date(inGameDate.getFullYear(), inGameDate.getMonth() + 1, 0).getDate();
   const homeCalendarFirstWeekday = new Date(inGameDate.getFullYear(), inGameDate.getMonth(), 1).getDay();
   const homeCalendarWeekCount = Math.max(5, Math.ceil((homeCalendarFirstWeekday + homeCalendarDaysInMonth) / 7));
 
   // Calculate announcement date (3 weeks before startSaturday)
-  const expectedStartDateObj = new Date(currentSeason + 1, 2, 31);
+  const expectedStartDateObj = new Date(currentSeason, 2, 31);
   while (expectedStartDateObj.getDay() !== 6) {
     expectedStartDateObj.setDate(expectedStartDateObj.getDate() - 1);
   }
@@ -401,23 +429,33 @@ function OverviewPageContent() {
     setTimeout(() => setToastMessage(null), 3000);
   };
 
-  // Sync default starting XI from store squad on load
+  // Build sensible defaults while persisted match plans are being loaded.
   useEffect(() => {
-    if (userTeam && startingXI.length === 0) {
-      // Pick top 11 by rating
-      const sorted = [...userTeam.squad]
-        .map(id => players[id])
-        .filter(Boolean)
-        .sort((a, b) => getPlayerRating(b) - getPlayerRating(a));
-      setStartingXI(sorted.slice(0, 11).map(p => p.id));
-      if (sorted.length > 11) {
-        setImpactPlayer(sorted[11].id);
-      }
+    if (userTeam && battingFirstXI.length === 0 && bowlingFirstXI.length === 0) {
+      const candidates = userTeam.squad
+        .map((id) => players[id])
+        .filter((player): player is Player => Boolean(player))
+        .map((player) => ({
+            id: player.id,
+            nationality: player.nationality,
+            role: player.role,
+            batting: player.currentBatting,
+            bowling: player.currentBowling,
+            isWicketkeeper: player.role === "WK-Batsman" || Boolean(player.isWicketkeeper) || Boolean(player.isPartTimeWk),
+            isPartTimeWicketkeeper: Boolean(player.isPartTimeWk),
+            isOpener: player.isOpener,
+          }));
+      const recommended = buildRecommendedLineups(candidates);
+      setBattingFirstXI(recommended.battingFirstXI);
+      setBowlingFirstXI(recommended.bowlingFirstXI);
+      setBattingFirstImpactSubs(buildRecommendedImpactSubs(recommended.battingFirstXI, candidates, "battingFirst"));
+      setBowlingFirstImpactSubs(buildRecommendedImpactSubs(recommended.bowlingFirstXI, candidates, "bowlingFirst"));
     }
-  }, [userTeam, players]);
+  }, [battingFirstXI.length, bowlingFirstXI.length, players, userTeam]);
 
   // Load and save state from LocalStorage
   useEffect(() => {
+    setIsCareerLoaded(false);
     const saved = localStorage.getItem(`ipl_career_${userTeamId}`);
     if (saved) {
       try {
@@ -426,10 +464,21 @@ function OverviewPageContent() {
         // Self-healing validation: check if loaded fixtures are valid (no days with > 2 matches, starts on second-last Sat of March)
         let isValidSchedule = true;
         if (parsed.fixtures && parsed.fixtures.length === 70) {
-          const expectedStartDate = new Date(currentSeason + 1, 2, 31);
+          const expectedStartDate = new Date(currentSeason, 2, 31);
           while (expectedStartDate.getDay() !== 6) {
             expectedStartDate.setDate(expectedStartDate.getDate() - 1);
           }
+
+          // Regenerate old, untouched schedules so existing local careers pick
+          // up the balanced two-month fixture layout without losing results.
+          if (parsed.scheduleVersion !== LEAGUE_FIXTURE_SCHEDULE_VERSION
+            && !parsed.fixtures.some((fixture: Match) => fixture.played)) {
+            isValidSchedule = false;
+          }
+          parsed.fixtures = parsed.fixtures.map((fixture: Match, index: number) => ({
+            ...fixture,
+            matchNumber: index + 1,
+          }));
           expectedStartDate.setDate(expectedStartDate.getDate() - 7);
           const expectedDateString = `${expectedStartDate.getFullYear()}-${String(expectedStartDate.getMonth() + 1).padStart(2, "0")}-${String(expectedStartDate.getDate()).padStart(2, "0")}`;
 
@@ -455,17 +504,42 @@ function OverviewPageContent() {
           setFixtures(parsed.fixtures);
           setStandings(calculateStandings(parsed.fixtures));
         } else {
-          initCareer();
-          return;
+          // Regenerate only the schedule so lineup, tactics and season stats in
+          // an existing career survive fixture-version migrations.
+          const regeneratedFixtures = generateLeagueFixtures();
+          parsed.fixtures = regeneratedFixtures;
+          parsed.scheduleVersion = LEAGUE_FIXTURE_SCHEDULE_VERSION;
+          fixturesRef.current = regeneratedFixtures;
+          setFixtures(regeneratedFixtures);
+          setStandings(calculateStandings(regeneratedFixtures));
+          localStorage.setItem(`ipl_career_${userTeamId}`, JSON.stringify(parsed));
         }
         if (parsed.playerStats) {
           playerStatsRef.current = parsed.playerStats;
           setPlayerStats(parsed.playerStats);
         }
-        if (parsed.inbox) setInbox([]);
-        if (parsed.startingXI) setStartingXI(parsed.startingXI);
-        if (parsed.impactPlayer) setImpactPlayer(parsed.impactPlayer);
-        if (parsed.teamStrategy) setTeamStrategy(parsed.teamStrategy);
+        setInbox(normalizeCareerEmails(parsed.inbox));
+        const legacyXI = Array.isArray(parsed.startingXI) ? parsed.startingXI : [];
+        if (Array.isArray(parsed.battingFirstXI) || legacyXI.length > 0) {
+          setBattingFirstXI(Array.isArray(parsed.battingFirstXI) ? parsed.battingFirstXI : legacyXI);
+        }
+        if (Array.isArray(parsed.bowlingFirstXI) || legacyXI.length > 0) {
+          setBowlingFirstXI(Array.isArray(parsed.bowlingFirstXI) ? parsed.bowlingFirstXI : legacyXI);
+        }
+        if (Array.isArray(parsed.battingFirstImpactSubs)) setBattingFirstImpactSubs(parsed.battingFirstImpactSubs);
+        if (Array.isArray(parsed.bowlingFirstImpactSubs)) setBowlingFirstImpactSubs(parsed.bowlingFirstImpactSubs);
+        setTeamTactics(normalizeTeamTactics(parsed.teamTactics, parsed.teamStrategy));
+        const loadedUserGamesPlayed = Array.isArray(parsed.fixtures)
+          ? parsed.fixtures.filter((fixture: Match) => (
+              fixture.played && (fixture.teamA === userTeamId || fixture.teamB === userTeamId)
+            )).length
+          : 0;
+        setTeamLeadership(normalizeTeamLeadership(
+          parsed.teamLeadership,
+          (userTeam?.squad ?? []).map((id) => players[id]).filter((player): player is Player => Boolean(player)),
+          loadedUserGamesPlayed,
+          currentSeason,
+        ));
         if (parsed.shortlist) setShortlist(parsed.shortlist);
         const savedDeadline = parsed.retentionDeadline as RetentionDeadline | undefined;
         const nextDeadline = savedDeadline ?? generateNextRetentionDeadline(currentDate);
@@ -480,17 +554,25 @@ function OverviewPageContent() {
       // Initialize Career
       initCareer();
     }
+    setIsCareerLoaded(true);
   }, [userTeamId]);
 
   const saveCareerState = (updatedData: any) => {
     const currentState = {
+      scheduleVersion: LEAGUE_FIXTURE_SCHEDULE_VERSION,
       fixtures: updatedData.fixtures ?? fixtures,
       standings: updatedData.standings ?? standings,
       playerStats: updatedData.playerStats ?? playerStats,
-      inbox: [],
-      startingXI: updatedData.startingXI ?? startingXI,
-      impactPlayer: updatedData.impactPlayer ?? impactPlayer,
-      teamStrategy: updatedData.teamStrategy ?? teamStrategy,
+      inbox: updatedData.inbox ?? inbox,
+      battingFirstXI: updatedData.battingFirstXI ?? battingFirstXI,
+      bowlingFirstXI: updatedData.bowlingFirstXI ?? bowlingFirstXI,
+      battingFirstImpactSubs: updatedData.battingFirstImpactSubs ?? battingFirstImpactSubs,
+      bowlingFirstImpactSubs: updatedData.bowlingFirstImpactSubs ?? bowlingFirstImpactSubs,
+      // Keep the old key during migration so pre-redesign saves remain portable.
+      startingXI: updatedData.battingFirstXI ?? battingFirstXI,
+      teamTactics: updatedData.teamTactics ?? teamTactics,
+      teamStrategy: (updatedData.teamTactics ?? teamTactics).preset,
+      teamLeadership: updatedData.teamLeadership ?? teamLeadership,
       shortlist: updatedData.shortlist ?? shortlist,
       retentionDeadline: updatedData.retentionDeadline ?? retentionDeadline,
     };
@@ -500,6 +582,25 @@ function OverviewPageContent() {
   // Initialize all career details
   const initCareer = () => {
     if (!userTeam) return;
+    const lineupCandidates = userTeam.squad
+      .map((id) => players[id])
+      .filter((player): player is Player => Boolean(player))
+      .map((player) => ({
+          id: player.id,
+          nationality: player.nationality,
+          role: player.role,
+          batting: player.currentBatting,
+          bowling: player.currentBowling,
+          isWicketkeeper: player.role === "WK-Batsman" || Boolean(player.isWicketkeeper) || Boolean(player.isPartTimeWk),
+          isPartTimeWicketkeeper: Boolean(player.isPartTimeWk),
+          isOpener: player.isOpener,
+        }));
+    const recommendedLineups = buildRecommendedLineups(lineupCandidates);
+    const initialBattingFirstXI = battingFirstXI.length > 0 ? battingFirstXI : recommendedLineups.battingFirstXI;
+    const initialBowlingFirstXI = bowlingFirstXI.length > 0 ? bowlingFirstXI : recommendedLineups.bowlingFirstXI;
+    const initialBattingImpactSubs = battingFirstImpactSubs.length > 0 ? battingFirstImpactSubs : buildRecommendedImpactSubs(initialBattingFirstXI, lineupCandidates, "battingFirst");
+    const initialBowlingImpactSubs = bowlingFirstImpactSubs.length > 0 ? bowlingFirstImpactSubs : buildRecommendedImpactSubs(initialBowlingFirstXI, lineupCandidates, "bowlingFirst");
+    const initialTeamTactics = normalizeTeamTactics(teamTactics);
     // 1. Generate fixtures
     const GeneratedFixtures = generateLeagueFixtures();
     // 2. Generate standings
@@ -517,7 +618,7 @@ function OverviewPageContent() {
     }));
 
     // 3. Generate initial inbox messages
-    const initialInbox: InboxMessage[] = [];
+    const initialInbox: CareerEmail[] = [];
     const nextRetentionDeadline = generateNextRetentionDeadline(currentDate);
 
     // Set and save
@@ -528,6 +629,11 @@ function OverviewPageContent() {
     setInbox(initialInbox);
     setPlayerStats({});
     setRetentionDeadline(nextRetentionDeadline);
+    setBattingFirstXI(initialBattingFirstXI);
+    setBowlingFirstXI(initialBowlingFirstXI);
+    setBattingFirstImpactSubs(initialBattingImpactSubs);
+    setBowlingFirstImpactSubs(initialBowlingImpactSubs);
+    setTeamTactics(initialTeamTactics);
     
     saveCareerState({
       fixtures: GeneratedFixtures,
@@ -535,6 +641,12 @@ function OverviewPageContent() {
       inbox: initialInbox,
       playerStats: {},
       retentionDeadline: nextRetentionDeadline,
+      battingFirstXI: initialBattingFirstXI,
+      bowlingFirstXI: initialBowlingFirstXI,
+      battingFirstImpactSubs: initialBattingImpactSubs,
+      bowlingFirstImpactSubs: initialBowlingImpactSubs,
+      teamTactics: initialTeamTactics,
+      teamLeadership,
     });
   };
 
@@ -542,13 +654,32 @@ function OverviewPageContent() {
   // Career Methods
   // --------------------------------------------------------------------------
   
-  // Generates a high-quality, deterministic 14-round schedule for 10 teams
+  // Generates the balanced schedule, retaining the old search as an emergency
+  // fallback so a career can still initialize if malformed team data is loaded.
   const generateLeagueFixtures = (): Match[] => {
     if (!userTeam) return [];
 
+    const previousSeason = simulatedLeagueHistory.find((season) => season.season === currentSeason - 1)
+      ?? HISTORICAL_LEAGUE_HISTORY.find((season) => season.season === currentSeason - 1);
+    const reigningChampionTeamId = previousSeason?.championTeamId;
+    if (!reigningChampionTeamId || !teams[reigningChampionTeamId]) {
+      throw new Error(`Cannot generate ${currentSeason} fixtures without the ${currentSeason - 1} champion`);
+    }
+
+    try {
+      return generateBalancedLeagueFixtures(Object.keys(teams), currentSeason, reigningChampionTeamId, fixtureSeed);
+    } catch (error) {
+      console.error("Balanced fixture generation failed; using legacy scheduler.", error);
+    }
+
     const teamIds = Object.keys(teams);
-    // Deterministic shuffle based on currentSeason to ensure different groups each season
-    const seed = currentSeason;
+    const includesReigningChampion = (match: { teamA: string; teamB: string }) => (
+      match.teamA === reigningChampionTeamId || match.teamB === reigningChampionTeamId
+    );
+    // Stable within one career, but different for each new save.
+    const seed = Array.from(`${currentSeason}:${fixtureSeed}`).reduce((value, character) => (
+      (Math.imul(value, 31) + character.charCodeAt(0)) | 0
+    ), 7);
     const pseudoRandom = (s: number) => {
       const x = Math.sin(s) * 10000;
       return x - Math.floor(x);
@@ -620,7 +751,7 @@ function OverviewPageContent() {
     const allMatchesPool = [...firstFixtures, ...secondFixtures];
 
     // Find the second last Saturday of March of the next season year
-    const nextSeasonYear = currentSeason + 1;
+    const nextSeasonYear = currentSeason;
     const startSaturday = new Date(nextSeasonYear, 2, 31); // March 31
     while (startSaturday.getDay() !== 6) { // 6 = Saturday
       startSaturday.setDate(startSaturday.getDate() - 1);
@@ -670,7 +801,7 @@ function OverviewPageContent() {
       
       // Shuffle the pool
       for (let i = pool.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
+        const j = Math.floor(pseudoRandom(seed + attempt * 7919 + i * 104729) * (i + 1));
         [pool[i], pool[j]] = [pool[j], pool[i]];
       }
 
@@ -690,6 +821,7 @@ function OverviewPageContent() {
         let foundIdx = -1;
         for (let i = 0; i < pool.length; i++) {
           const m = pool[i];
+          if (slotIndex === 0 && !includesReigningChampion(m)) continue;
           const daysA = playedDays.get(m.teamA)!;
           const daysB = playedDays.get(m.teamB)!;
 
@@ -744,6 +876,7 @@ function OverviewPageContent() {
 
         scheduled.push({
           id: `match_${slotIndex}_${nextSeasonYear}_${match.teamA}_${match.teamB}`,
+          matchNumber: slotIndex + 1,
           round: Math.floor(slotIndex / 5) + 1, // Round 1 to 14
           teamA: match.teamA,
           teamB: match.teamB,
@@ -765,7 +898,7 @@ function OverviewPageContent() {
     for (let attempt = 0; attempt < 3000; attempt++) {
       const pool = [...allMatchesPool];
       for (let i = pool.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
+        const j = Math.floor(pseudoRandom(seed + 1_000_003 + attempt * 7919 + i * 104729) * (i + 1));
         [pool[i], pool[j]] = [pool[j], pool[i]];
       }
 
@@ -784,6 +917,7 @@ function OverviewPageContent() {
         let foundIdx = -1;
         for (let i = 0; i < pool.length; i++) {
           const m = pool[i];
+          if (slotIndex === 0 && !includesReigningChampion(m)) continue;
           const daysA = playedDays.get(m.teamA)!;
           const daysB = playedDays.get(m.teamB)!;
 
@@ -831,6 +965,7 @@ function OverviewPageContent() {
 
         scheduled.push({
           id: `match_${slotIndex}_${nextSeasonYear}_${match.teamA}_${match.teamB}`,
+          matchNumber: slotIndex + 1,
           round: Math.floor(slotIndex / 5) + 1, // Round 1 to 14
           teamA: match.teamA,
           teamB: match.teamB,
@@ -849,10 +984,19 @@ function OverviewPageContent() {
 
     // Fallback: This structured fallback is guaranteed to succeed and respects Sunday limits + 1-day rest
     console.warn("Scheduler using absolute structured fallback...");
-    return allMatchesPool.map((m, idx) => {
+    const openingFixtureIndex = allMatchesPool.findIndex(includesReigningChampion);
+    const orderedMatchesPool = openingFixtureIndex <= 0
+      ? allMatchesPool
+      : [
+          allMatchesPool[openingFixtureIndex],
+          ...allMatchesPool.slice(0, openingFixtureIndex),
+          ...allMatchesPool.slice(openingFixtureIndex + 1),
+        ];
+    return orderedMatchesPool.map((m, idx) => {
       const { timeLabel, dateString } = getSlotDetails(idx);
       return {
         id: `match_${idx}_${nextSeasonYear}_${m.teamA}_${m.teamB}`,
+        matchNumber: idx + 1,
         round: Math.floor(idx / 5) + 1,
         teamA: m.teamA,
         teamB: m.teamB,
@@ -861,6 +1005,34 @@ function OverviewPageContent() {
         time: timeLabel
       };
     });
+  };
+
+  const getSimulationSquad = (teamId: string, batsFirst: boolean): Player[] => {
+    const availablePlayers = Object.values(players)
+      .filter((player) => player.currentTeamId === teamId)
+      .sort((left, right) => getPlayerRating(right) - getPlayerRating(left));
+
+    if (teamId !== userTeamId) return availablePlayers.slice(0, 11);
+
+    const configuredIds = batsFirst ? battingFirstXI : bowlingFirstXI;
+    const validation = validateLineup(configuredIds, availablePlayers.map((player) => ({
+      id: player.id,
+      nationality: player.nationality,
+      role: player.role,
+      batting: player.currentBatting,
+      bowling: player.currentBowling,
+      isWicketkeeper: player.role === "WK-Batsman" || Boolean(player.isWicketkeeper) || Boolean(player.isPartTimeWk),
+      isPartTimeWicketkeeper: Boolean(player.isPartTimeWk),
+      isOpener: player.isOpener,
+    })));
+    if (!validation.isValid) return availablePlayers.slice(0, 11);
+
+    const configuredPlayers = configuredIds
+      .map((id) => players[id])
+      .filter((player): player is Player => Boolean(player) && player.currentTeamId === teamId);
+    const configuredIdSet = new Set(configuredPlayers.map((player) => player.id));
+    const fallbackPlayers = availablePlayers.filter((player) => !configuredIdSet.has(player.id));
+    return [...configuredPlayers, ...fallbackPlayers].slice(0, 11);
   };
 
   // Toggle shortlist helper
@@ -904,15 +1076,8 @@ function OverviewPageContent() {
 
       const { teamA, teamB } = match;
 
-      const squadA = Object.values(players)
-        .filter(p => p.currentTeamId === teamA)
-        .sort((a, b) => getPlayerRating(b) - getPlayerRating(a))
-        .slice(0, 11);
-      
-      const squadB = Object.values(players)
-        .filter(p => p.currentTeamId === teamB)
-        .sort((a, b) => getPlayerRating(b) - getPlayerRating(a))
-        .slice(0, 11);
+      const squadA = getSimulationSquad(teamA, true);
+      const squadB = getSimulationSquad(teamB, false);
 
       const strengthA = squadA.length > 0 
         ? squadA.reduce((sum, p) => sum + getPlayerRating(p), 0) / squadA.length
@@ -1125,15 +1290,8 @@ function OverviewPageContent() {
 
       const { teamA, teamB } = match;
 
-      const squadA = Object.values(players)
-        .filter(p => p.currentTeamId === teamA)
-        .sort((a, b) => getPlayerRating(b) - getPlayerRating(a))
-        .slice(0, 11);
-      
-      const squadB = Object.values(players)
-        .filter(p => p.currentTeamId === teamB)
-        .sort((a, b) => getPlayerRating(b) - getPlayerRating(a))
-        .slice(0, 11);
+      const squadA = getSimulationSquad(teamA, true);
+      const squadB = getSimulationSquad(teamB, false);
 
       const strengthA = squadA.length > 0 
         ? squadA.reduce((sum, p) => sum + getPlayerRating(p), 0) / squadA.length
@@ -1603,7 +1761,7 @@ function OverviewPageContent() {
     direction: "asc",
   });
   const detailedPlayer = detailedPlayerId ? players[detailedPlayerId] : null;
-  const rosterSeason = String((auction?.season ?? currentSeason) + 1);
+  const rosterSeason = String(auction?.season ?? currentSeason);
   const currentSeasonHistoryByPlayer = useMemo(() => {
     const historyByPlayer = new Map<string, IPLHistoryEntry>();
 
@@ -1665,17 +1823,49 @@ function OverviewPageContent() {
   const rosterSortIndicator = (key: RosterSortKey) =>
     rosterSort.key === key ? (rosterSort.direction === "asc" ? "↑" : "↓") : "↕";
 
-  const handleToggleStartingXI = (pid: string) => {
-    if (startingXI.includes(pid)) {
-      setStartingXI(startingXI.filter(id => id !== pid));
+  const handleMatchPlanChange = (plan: LineupPlan, lineup: string[], impactSubs: string[]) => {
+    if (plan === "battingFirst") {
+      setBattingFirstXI(lineup);
+      setBattingFirstImpactSubs(impactSubs);
+      saveCareerState({ battingFirstXI: lineup, battingFirstImpactSubs: impactSubs });
     } else {
-      if (startingXI.length >= 11) {
-        showToast("Starting XI is already full (11 players).");
-        return;
-      }
-      setStartingXI([...startingXI, pid]);
+      setBowlingFirstXI(lineup);
+      setBowlingFirstImpactSubs(impactSubs);
+      saveCareerState({ bowlingFirstXI: lineup, bowlingFirstImpactSubs: impactSubs });
     }
-    saveCareerState({ startingXI: [...startingXI, pid] });
+  };
+
+  const handleBothMatchPlansChange = (
+    nextBattingFirstXI: string[],
+    nextBowlingFirstXI: string[],
+    nextBattingFirstImpactSubs: string[],
+    nextBowlingFirstImpactSubs: string[],
+  ) => {
+    setBattingFirstXI(nextBattingFirstXI);
+    setBowlingFirstXI(nextBowlingFirstXI);
+    setBattingFirstImpactSubs(nextBattingFirstImpactSubs);
+    setBowlingFirstImpactSubs(nextBowlingFirstImpactSubs);
+    saveCareerState({
+      battingFirstXI: nextBattingFirstXI,
+      bowlingFirstXI: nextBowlingFirstXI,
+      battingFirstImpactSubs: nextBattingFirstImpactSubs,
+      bowlingFirstImpactSubs: nextBowlingFirstImpactSubs,
+    });
+    showToast("Both match plans have been rebuilt.");
+  };
+
+  const handleTacticsChange = (nextTactics: TeamTactics) => {
+    setTeamTactics(nextTactics);
+    saveCareerState({ teamTactics: nextTactics });
+  };
+
+  const handleLeadershipChange = (nextLeadership: TeamLeadership) => {
+    const squad = (userTeam?.squad ?? [])
+      .map((id) => players[id])
+      .filter((player): player is Player => Boolean(player));
+    const normalizedLeadership = normalizeTeamLeadership(nextLeadership, squad, userGamesPlayed, currentSeason);
+    setTeamLeadership(normalizedLeadership);
+    saveCareerState({ teamLeadership: normalizedLeadership });
   };
 
   // --------------------------------------------------------------------------
@@ -1690,7 +1880,7 @@ function OverviewPageContent() {
     squad: {
       label: "Squad",
       icon: Users,
-      subtabs: ["overview", "roster", "tactics"]
+      subtabs: ["overview", "roster", "playingxi", "captaincy", "tactics"]
     },
     scouting: {
       label: "Scouting",
@@ -1713,7 +1903,9 @@ function OverviewPageContent() {
   const getSubTabLabel = (subtab: string): string => {
     if (subtab === "overview") return "Overview";
     if (subtab === "roster") return "Roster Overview";
-    if (subtab === "tactics") return "Tactics & Playing XI";
+    if (subtab === "playingxi") return "Playing XIs";
+    if (subtab === "captaincy") return "Captaincy";
+    if (subtab === "tactics") return "Team Tactics";
     if (subtab === "search") return "Player Search";
     if (subtab === "reports") return "Scout Reports";
     if (subtab === "planner") return "Auction Planner";
@@ -1804,6 +1996,95 @@ function OverviewPageContent() {
       .sort((a,b) => b.wickets - a.wickets)
       .slice(0, 5);
   }, [playerStats]);
+  const emailLineupCandidates = useMemo(() => (userTeam?.squad ?? [])
+    .map((id) => players[id])
+    .filter((player): player is Player => Boolean(player))
+    .map((player) => ({
+      id: player.id,
+      nationality: player.nationality,
+      role: player.role,
+      batting: player.currentBatting,
+      bowling: player.currentBowling,
+      isWicketkeeper: player.role === "WK-Batsman" || Boolean(player.isWicketkeeper) || Boolean(player.isPartTimeWk),
+      isPartTimeWicketkeeper: Boolean(player.isPartTimeWk),
+      isOpener: player.isOpener,
+    })), [players, userTeam?.squad]);
+  const emailLineupStatus = useMemo<CareerEmailLineupStatus>(() => {
+    const battingValidation = validateLineup(battingFirstXI, emailLineupCandidates);
+    const bowlingValidation = validateLineup(bowlingFirstXI, emailLineupCandidates);
+    const candidateIds = new Set(emailLineupCandidates.map((player) => player.id));
+    const impactPlanIsValid = (lineup: string[], impactSubs: string[]) => (
+      impactSubs.length === 5
+      && new Set(impactSubs).size === 5
+      && impactSubs.every((id) => candidateIds.has(id) && !lineup.includes(id))
+    );
+
+    return {
+      battingFirstValid: battingValidation.isValid && impactPlanIsValid(battingFirstXI, battingFirstImpactSubs),
+      bowlingFirstValid: bowlingValidation.isValid && impactPlanIsValid(bowlingFirstXI, bowlingFirstImpactSubs),
+      battingFirstCount: battingValidation.playerCount,
+      bowlingFirstCount: bowlingValidation.playerCount,
+      battingImpactCount: battingFirstImpactSubs.length,
+      bowlingImpactCount: bowlingFirstImpactSubs.length,
+      battingOverseasCount: battingValidation.overseasCount,
+      bowlingOverseasCount: bowlingValidation.overseasCount,
+      battingWicketkeepers: battingValidation.wicketkeeperCount,
+      bowlingWicketkeepers: bowlingValidation.wicketkeeperCount,
+      battingBowlingOptions: battingValidation.bowlingOptionCount,
+      bowlingBowlingOptions: bowlingValidation.bowlingOptionCount,
+    };
+  }, [
+    battingFirstImpactSubs,
+    battingFirstXI,
+    bowlingFirstImpactSubs,
+    bowlingFirstXI,
+    emailLineupCandidates,
+  ]);
+  const careerEmailDrafts = useMemo(() => {
+    if (!userTeam) return [];
+    return buildCareerEmailDrafts({
+      currentDate,
+      season: currentSeason,
+      fixtureAnnouncementDate: formattedAnnouncementDate,
+      fixturesAnnounced: isFixturesAnnounced,
+      userTeamId,
+      userTeam,
+      teams,
+      players,
+      fixtures,
+      standings,
+      playerStats,
+      leadership: teamLeadership,
+      captainChangeGamesRemaining: getCaptainChangeGamesRemaining(teamLeadership, userGamesPlayed),
+      lineup: emailLineupStatus,
+      tacticsPreset: teamTactics.preset,
+    });
+  }, [
+    currentDate,
+    currentSeason,
+    emailLineupStatus,
+    fixtures,
+    formattedAnnouncementDate,
+    isFixturesAnnounced,
+    playerStats,
+    players,
+    standings,
+    teamLeadership,
+    teamTactics.preset,
+    teams,
+    userGamesPlayed,
+    userTeam,
+    userTeamId,
+  ]);
+
+  useEffect(() => {
+    if (!isCareerLoaded || !userTeam) return;
+    const nextInbox = reconcileCareerEmails(inbox, careerEmailDrafts);
+    if (nextInbox === inbox) return;
+    setInbox(nextInbox);
+    saveCareerState({ inbox: nextInbox });
+  }, [careerEmailDrafts, inbox, isCareerLoaded, userTeam]);
+
   const leagueHistoryPlayerByName = useMemo(() => {
     const playerByName = new Map<string, Player>();
     Object.values(players).forEach((player) => {
@@ -1884,6 +2165,63 @@ function OverviewPageContent() {
     : -1;
   const nextOpponentStanding = nextOpponentStandingIndex >= 0 ? standings[nextOpponentStandingIndex] : null;
   const nextFixtureVenue = nextUserFixture ? teams[nextUserFixture.teamA]?.homeGround : null;
+  const inboxThreads = Array.from(inbox.reduce((threads, message) => {
+    const thread = threads.get(message.threadId) ?? [];
+    thread.push(message);
+    threads.set(message.threadId, thread);
+    return threads;
+  }, new Map<string, CareerEmail[]>())).map(([threadId, messages]) => {
+    const newestMessages = [...messages].sort((left, right) => (
+      right.date.localeCompare(left.date)
+      || right.daySequence - left.daySequence
+      || right.id.localeCompare(left.id)
+    ));
+    return {
+      threadId,
+      messages: orderCareerEmailThread(messages),
+      latest: newestMessages[0],
+      unreadCount: messages.filter((message) => message.unread).length,
+    };
+  }).sort((left, right) => (
+    right.latest.date.localeCompare(left.latest.date)
+    || right.latest.daySequence - left.latest.daySequence
+    || right.latest.id.localeCompare(left.latest.id)
+  ));
+  const selectedMessage = selectedMsgId ? inbox.find((message) => message.id === selectedMsgId) ?? null : null;
+  const selectedThread = selectedMessage
+    ? inboxThreads.find((thread) => thread.threadId === selectedMessage.threadId) ?? null
+    : null;
+
+  const markThreadRead = (threadId: string, selectedId: string) => {
+    setSelectedMsgId(selectedId);
+    const nextInbox = inbox.map((message) => (
+      message.threadId === threadId && message.unread ? { ...message, unread: false } : message
+    ));
+    if (nextInbox.some((message, index) => message !== inbox[index])) {
+      setInbox(nextInbox);
+      saveCareerState({ inbox: nextInbox });
+    }
+  };
+
+  const handleEmailAction = (action: CareerEmailAction) => {
+    if (action.kind === "player" && action.entityId && players[action.entityId]) {
+      setDetailedPlayerId(action.entityId);
+      return;
+    }
+
+    if (action.kind === "fixture" && action.entityId) {
+      const fixture = fixtures.find((candidate) => candidate.id === action.entityId);
+      if (fixture?.played) {
+        setActiveScorecard(fixture);
+        return;
+      }
+    }
+
+    if (action.tab && action.subtab) {
+      setActiveTab(action.tab);
+      router.push(`/game/overview?tab=${action.tab}&subtab=${action.subtab}`, { scroll: false });
+    }
+  };
 
   return (
     <div className="overview-page h-[calc(100vh-3rem)] flex overflow-hidden bg-bg relative">
@@ -2016,7 +2354,14 @@ function OverviewPageContent() {
                       ? "bg-[var(--ink)] text-bg border-[var(--ink)]" 
                       : "bg-surface text-text-secondary border-transparent hover:bg-[#16130f]/5"}`}
                 >
-                  {getSubTabLabel(subtab)}
+                  <span className="inline-flex items-center gap-1.5">
+                    {getSubTabLabel(subtab)}
+                    {subtab === "inbox" && inbox.some((message) => message.unread) && (
+                      <span className="min-w-4 rounded-full bg-danger px-1 py-0.5 text-center text-[8px] leading-none text-white">
+                        {inbox.filter((message) => message.unread).length}
+                      </span>
+                    )}
+                  </span>
                 </button>
               );
             })}
@@ -2056,12 +2401,19 @@ function OverviewPageContent() {
                       </span>
                     </div>
                     <div className="space-y-3 overflow-y-auto pr-1 flex-1">
-                      {inbox.length === 0 ? (
+                      {inboxThreads.length === 0 ? (
                         <p className="text-xs font-barlow text-text-secondary py-3">No messages.</p>
-                      ) : inbox.map(m => (
-                        <div key={m.id} className="text-xs border-b border-[#16130f]/10 pb-3">
-                          <div className="font-bold text-text-primary truncate">{m.subject}</div>
-                          <div className="text-[10px] text-text-secondary mt-0.5">{m.sender} · {m.date}</div>
+                      ) : inboxThreads.slice(0, 5).map((thread) => (
+                        <div key={thread.threadId} className="border-b border-[#16130f]/10 pb-3 text-xs">
+                          <div className="flex items-center gap-2">
+                            {thread.unreadCount > 0 && <span className="size-1.5 shrink-0 rounded-full bg-accent" />}
+                            <div className="truncate font-bold text-text-primary">{thread.latest.subject}</div>
+                            {thread.messages.length > 1 && (
+                              <span className="ml-auto shrink-0 font-space-mono text-[8px] text-text-secondary">{thread.messages.length}</span>
+                            )}
+                          </div>
+                          <div className="mt-0.5 truncate text-[10px] text-text-secondary">{thread.latest.preview}</div>
+                          <div className="mt-0.5 text-[10px] text-text-secondary">{thread.latest.sender} · {thread.latest.date}</div>
                         </div>
                       ))}
                     </div>
@@ -2123,7 +2475,7 @@ function OverviewPageContent() {
                               <p className="font-anton text-[20px] uppercase leading-none text-text-primary">
                                 {nextUserFixture.date ? dateKeyToLocalDate(nextUserFixture.date).toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "TBC"}
                               </p>
-                              <p className="mt-1 font-space-mono text-[9px] font-bold uppercase text-text-secondary">{nextUserFixture.time ?? "Time TBC"} · Round {nextUserFixture.round}</p>
+                              <p className="mt-1 font-space-mono text-[9px] font-bold uppercase text-text-secondary">{nextUserFixture.time ?? "Time TBC"} · Match {nextUserFixture.matchNumber}</p>
                               <p className="mt-1 max-w-40 truncate text-[10px] font-medium text-text-secondary" title={nextFixtureVenue ?? "Venue TBC"}>{nextFixtureVenue ?? "Venue TBC"}</p>
                             </div>
                           </div>
@@ -2174,7 +2526,7 @@ function OverviewPageContent() {
                       )}
                     </div>
 
-                    <div onClick={() => setActiveSubTab("calendar")} className="row-span-2 flex h-full min-h-0 cursor-pointer flex-col overflow-hidden border-2 border-border bg-surface p-3 transition-colors hover:border-accent">
+                    <div onClick={openCalendarAtCurrentDate} className="row-span-2 flex h-full min-h-0 cursor-pointer flex-col overflow-hidden border-2 border-border bg-surface p-3 transition-colors hover:border-accent">
                     <div className="grid h-full min-h-0 grid-rows-[auto_auto_auto_minmax(0,1fr)]">
                       <div className="mb-1 flex items-start justify-between border-b border-[#16130f]/10 pb-1">
                         <div className="font-anton text-[16px] uppercase text-text-primary">SEASON CALENDAR</div>
@@ -2422,58 +2774,124 @@ function OverviewPageContent() {
               {activeSubTab === "inbox" && (
                 <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 h-[calc(100vh-200px)] min-h-[500px] overflow-hidden">
                   <div className="lg:col-span-1 border-2 border-border bg-surface overflow-y-auto divide-y divide-[#16130f]/10">
-                    {inbox.length === 0 ? (
+                    {inboxThreads.length === 0 ? (
                       <div className="p-8 text-center text-xs font-barlow text-text-secondary">No messages.</div>
                     ) : (
-                      inbox.map(msg => (
+                      inboxThreads.map((thread) => (
                         <button
-                          key={msg.id}
-                          onClick={() => {
-                            setSelectedMsgId(msg.id);
-                            // Mark read
-                            setInbox(inbox.map(m => m.id === msg.id ? { ...m, unread: false } : m));
-                          }}
+                          key={thread.threadId}
+                          onClick={() => markThreadRead(thread.threadId, thread.latest.id)}
                           className={`w-full p-4 text-left transition-colors flex flex-col gap-1.5 hover:bg-black/5
-                            ${selectedMsgId === msg.id ? "bg-[#16130f]/5" : ""}
-                            ${msg.unread ? "border-l-4 border-accent" : ""}`}
+                            ${selectedThread?.threadId === thread.threadId ? "bg-[#16130f]/5" : ""}
+                            ${thread.unreadCount > 0 ? "border-l-4 border-accent" : ""}`}
                         >
                           <div className="flex justify-between items-center">
-                            <span className="font-space-mono text-[9px] font-bold text-text-secondary uppercase">{msg.sender}</span>
-                            <span className="font-space-mono text-[8px] text-text-secondary">{msg.date}</span>
+                            <span className="font-space-mono text-[9px] font-bold text-text-secondary uppercase">{thread.latest.sender}</span>
+                            <span className="font-space-mono text-[8px] text-text-secondary">{thread.latest.date}</span>
                           </div>
-                          <div className="font-bold text-text-primary text-xs leading-snug truncate w-full">{msg.subject}</div>
+                          <div className="flex w-full items-center gap-2">
+                            <div className="min-w-0 flex-1 truncate text-xs font-bold leading-snug text-text-primary">{thread.latest.subject}</div>
+                            {thread.messages.length > 1 && (
+                              <span className="shrink-0 rounded bg-black/5 px-1.5 py-0.5 font-space-mono text-[8px] text-text-secondary">
+                                {thread.messages.length}
+                              </span>
+                            )}
+                          </div>
+                          <div className="w-full truncate text-[10px] text-text-secondary">{thread.latest.preview}</div>
+                          <div className="flex items-center gap-1.5 pt-0.5">
+                            <span className="rounded border border-[#16130f]/10 px-1.5 py-0.5 font-space-mono text-[8px] uppercase text-text-secondary">
+                              {thread.latest.category}
+                            </span>
+                            {thread.latest.requiresAction && (
+                              <span className={`rounded px-1.5 py-0.5 font-space-mono text-[8px] font-bold uppercase ${thread.latest.actionCompleted ? "bg-success/10 text-success" : "bg-danger/10 text-danger"}`}>
+                                {thread.latest.actionCompleted ? "Complete" : "Action"}
+                              </span>
+                            )}
+                          </div>
                         </button>
                       ))
                     )}
                   </div>
 
-                  <div className="lg:col-span-3 border-2 border-border bg-surface p-6 flex flex-col justify-between overflow-y-auto h-full">
-                    {selectedMsgId ? (
-                      (() => {
-                        const msg = inbox.find(m => m.id === selectedMsgId);
-                        if (!msg) return null;
-                        return (
-                          <div className="flex flex-col h-full justify-between">
-                            <div>
-                              <div className="border-b border-[#16130f]/10 pb-4 mb-4">
-                                <div className="flex justify-between items-center text-xs font-space-mono text-text-secondary mb-2">
-                                  <span>FROM: {msg.sender}</span>
-                                  <span>DATE: {msg.date}</span>
+                  <div className="lg:col-span-3 flex h-full flex-col overflow-hidden border-2 border-border bg-surface">
+                    {selectedThread ? (
+                      <>
+                        <div className="min-h-0 flex-1 overflow-y-auto p-6">
+                          <div className="flex flex-col gap-5">
+                          {selectedThread.messages.map((msg, index) => (
+                          <article key={msg.id} className={index > 0 ? "border-t border-[#16130f]/10 pt-5" : ""}>
+                            <header className="mb-5 border-b-2 border-border pb-5">
+                              <div className="flex items-center gap-3">
+                                <div className="flex size-11 shrink-0 items-center justify-center rounded-full border border-border bg-[var(--ink)] text-bg shadow-sm" aria-hidden="true">
+                                  <User size={21} strokeWidth={1.8} />
                                 </div>
-                                <h2 className="font-anton text-[20px] text-text-primary uppercase tracking-wide">{msg.subject}</h2>
+                                <div className="min-w-0 flex-1">
+                                  <div className="truncate font-barlow text-[14px] font-bold text-text-primary">
+                                    <span className="font-space-mono text-[9px] font-semibold uppercase text-text-secondary">From: </span>
+                                    {msg.sender}
+                                  </div>
+                                  <div className="mt-0.5 font-space-mono text-[9px] text-text-secondary">
+                                    To: <span className="font-semibold text-text-primary/75">You</span>
+                                  </div>
+                                </div>
+                                <time
+                                  dateTime={msg.date}
+                                  className="shrink-0 text-right font-space-mono text-[9px] text-text-secondary"
+                                >
+                                  {dateKeyToLocalDate(msg.date).toLocaleDateString("en-GB", {
+                                    day: "numeric",
+                                    month: "short",
+                                    year: "numeric",
+                                  })}
+                                </time>
                               </div>
-                              <p className="font-barlow text-[13px] text-text-secondary whitespace-pre-line leading-relaxed">{msg.body}</p>
-                            </div>
-
-
+                              <h2 className="mt-5 font-anton text-[24px] uppercase leading-tight tracking-wide text-text-primary">{msg.subject}</h2>
+                              <div className="mt-3 flex flex-wrap items-center gap-2">
+                                <span className="rounded border border-[#16130f]/10 px-2 py-0.5 font-space-mono text-[8px] uppercase text-text-secondary">{msg.category}</span>
+                                {msg.priority !== "normal" && (
+                                  <span className={`rounded px-2 py-0.5 font-space-mono text-[8px] font-bold uppercase ${msg.priority === "urgent" ? "bg-danger/10 text-danger" : "bg-accent/10 text-accent"}`}>
+                                    {msg.priority}
+                                  </span>
+                                )}
+                                {msg.requiresAction && (
+                                  <span className={`rounded px-2 py-0.5 font-space-mono text-[8px] font-bold uppercase ${msg.actionCompleted ? "bg-success/10 text-success" : "bg-danger/10 text-danger"}`}>
+                                    {msg.actionCompleted ? "Completed" : "Action required"}
+                                  </span>
+                                )}
+                              </div>
+                            </header>
+                            <div className="max-w-3xl whitespace-pre-line font-barlow text-[13px] leading-7 text-text-secondary">{msg.body}</div>
+                          </article>
+                          ))}
                           </div>
-                        );
-                      })()
+                        </div>
+                        <div className="flex min-h-[54px] shrink-0 items-center gap-2 border-t-2 border-border bg-bg/60 px-6 py-2">
+                          {selectedThread.latest.actions.length > 0 ? (
+                            selectedThread.latest.actions.map((action) => (
+                              <button
+                                key={`${selectedThread.latest.id}:${action.label}`}
+                                type="button"
+                                onClick={() => handleEmailAction(action)}
+                                className="rounded border border-border bg-[var(--ink)] px-3 py-2 font-space-mono text-[9px] font-bold uppercase tracking-wider text-bg transition-colors hover:bg-accent"
+                              >
+                                {action.label}
+                              </button>
+                            ))
+                          ) : (
+                            <span className="font-space-mono text-[8px] uppercase tracking-wider text-text-secondary/60">No actions for this email</span>
+                          )}
+                        </div>
+                      </>
                     ) : (
-                      <div className="h-full flex flex-col items-center justify-center text-text-secondary">
-                        <AlertCircle size={32} className="mb-2 text-text-secondary/40" />
-                        <span className="font-space-mono text-[10px] uppercase tracking-widest">Select a message to read</span>
-                      </div>
+                      <>
+                        <div className="flex min-h-0 flex-1 flex-col items-center justify-center p-6 text-text-secondary">
+                          <AlertCircle size={32} className="mb-2 text-text-secondary/40" />
+                          <span className="font-space-mono text-[10px] uppercase tracking-widest">Select a message to read</span>
+                        </div>
+                        <div className="flex min-h-[54px] shrink-0 items-center border-t-2 border-border bg-bg/60 px-6 py-2">
+                          <span className="font-space-mono text-[8px] uppercase tracking-wider text-text-secondary/60">Email actions</span>
+                        </div>
+                      </>
                     )}
                   </div>
                 </div>
@@ -2538,8 +2956,8 @@ function OverviewPageContent() {
                       {/* Calendar Header with switcher */}
                       <div className="flex justify-between items-center mb-4 border-b border-[#16130f]/10 pb-3 shrink-0">
                         <div>
-                          <h3 className="font-anton text-[20px] text-text-primary uppercase leading-none">{currentSeason + 1} Season Calendar</h3>
-                          <span className="font-space-mono text-[9px] text-text-secondary uppercase mt-1">December {currentSeason} to November {currentSeason + 1}</span>
+                          <h3 className="font-anton text-[20px] text-text-primary uppercase leading-none">{currentSeason} Season Calendar</h3>
+                          <span className="font-space-mono text-[9px] text-text-secondary uppercase mt-1">December {currentSeason - 1} to November {currentSeason}</span>
                         </div>
                         <div className="flex items-center gap-3 bg-[#16130f]/5 px-3 py-1.5 border border-border rounded">
                           <button
@@ -2653,9 +3071,19 @@ function OverviewPageContent() {
                                           </div>
                                         ) : (
                                           <span className="flex items-center justify-center gap-0.5">
-                                            <span style={{ color: teams[m.teamA]?.primaryColor }}>{teams[m.teamA]?.shortName ?? m.teamA}</span>
+                                            <span
+                                              className="calendar-team-name"
+                                              style={{ "--calendar-team-color": teams[m.teamA]?.primaryColor ?? "#777777" } as CSSProperties}
+                                            >
+                                              {teams[m.teamA]?.shortName ?? m.teamA}
+                                            </span>
                                             <span className="text-text-secondary font-medium"> v </span>
-                                            <span style={{ color: teams[m.teamB]?.primaryColor }}>{teams[m.teamB]?.shortName ?? m.teamB}</span>
+                                            <span
+                                              className="calendar-team-name"
+                                              style={{ "--calendar-team-color": teams[m.teamB]?.primaryColor ?? "#777777" } as CSSProperties}
+                                            >
+                                              {teams[m.teamB]?.shortName ?? m.teamB}
+                                            </span>
                                           </span>
                                         )}
                                       </div>
@@ -2770,7 +3198,7 @@ function OverviewPageContent() {
                                 >
                                   <div className="flex justify-between items-center mb-2">
                                     <span className="font-space-mono text-[9px] font-bold text-text-secondary uppercase">
-                                      Match {m.round} · {m.time}
+                                      Match {m.matchNumber} · {m.time}
                                     </span>
                                     {isUserGame && (
                                       <span
@@ -2947,15 +3375,18 @@ function OverviewPageContent() {
                     </div>
                   </div>
 
-                  {/* Tactics preview */}
-                  <div onClick={() => setActiveSubTab("tactics")} className="bg-surface border-2 border-border hover:border-accent p-5 flex min-h-0 flex-col justify-between cursor-pointer transition-colors overflow-hidden">
-                    <div>
-                      <h4 className="font-anton text-[14px] uppercase border-b border-[#16130f]/10 pb-2 mb-4">TACTICS & playing xi</h4>
-                      <div className="font-space-mono text-[10px] space-y-1">
-                        <div>STRATEGY: <span className="font-bold text-accent">{teamStrategy}</span></div>
-                        <div>SELECTED XI: <span className="font-bold text-text-primary">{startingXI.length} / 11</span></div>
+                  <div className="grid min-h-0 grid-rows-2 gap-3">
+                    <button type="button" onClick={() => setActiveSubTab("playingxi")} className="flex min-h-0 flex-col border-2 border-border bg-surface p-5 text-left transition-colors hover:border-accent">
+                      <h4 className="font-anton text-[14px] uppercase border-b border-[#16130f]/10 pb-2 mb-4">Playing XIs</h4>
+                      <div className="space-y-1 font-space-mono text-[10px]">
+                        <div>BAT-FIRST: <span className="font-bold text-text-primary">{battingFirstXI.length}/11 XI · {battingFirstImpactSubs.length}/5 IMP</span></div>
+                        <div>BOWL-FIRST: <span className="font-bold text-text-primary">{bowlingFirstXI.length}/11 XI · {bowlingFirstImpactSubs.length}/5 IMP</span></div>
                       </div>
-                    </div>
+                    </button>
+                    <button type="button" onClick={() => setActiveSubTab("tactics")} className="flex min-h-0 flex-col border-2 border-border bg-surface p-5 text-left transition-colors hover:border-accent">
+                      <h4 className="font-anton text-[14px] uppercase border-b border-[#16130f]/10 pb-2 mb-4">Team Tactics</h4>
+                      <div className="font-space-mono text-[10px]">APPROACH: <span className="font-bold text-accent">{teamTactics.preset}</span></div>
+                    </button>
                   </div>
 
                 </div>
@@ -3011,11 +3442,15 @@ function OverviewPageContent() {
                             >
                               <td className="px-6 py-4 font-semibold text-text-primary flex items-center gap-2">
                                 {p.name}
-                                {startingXI.includes(p.id) && (
-                                  <span className="font-space-mono text-[8px] bg-success/20 text-success px-1.5 py-0.5 rounded font-bold">XI</span>
-                                )}
-                                {impactPlayer === p.id && (
-                                  <span className="font-space-mono text-[8px] bg-accent/20 text-accent px-1.5 py-0.5 rounded font-bold">IMP</span>
+                                {battingFirstXI.includes(p.id) && bowlingFirstXI.includes(p.id) ? (
+                                  <span className="rounded bg-success/20 px-1.5 py-0.5 font-space-mono text-[8px] font-bold text-success">BOTH XI</span>
+                                ) : battingFirstXI.includes(p.id) ? (
+                                  <span className="rounded bg-[#d87945]/15 px-1.5 py-0.5 font-space-mono text-[8px] font-bold text-[#b5572f]">BAT XI</span>
+                                ) : bowlingFirstXI.includes(p.id) ? (
+                                  <span className="rounded bg-[#4f8fd7]/15 px-1.5 py-0.5 font-space-mono text-[8px] font-bold text-[#326da9]">BOWL XI</span>
+                                ) : null}
+                                {(battingFirstImpactSubs.includes(p.id) || bowlingFirstImpactSubs.includes(p.id)) && (
+                                  <span className="rounded bg-accent/15 px-1.5 py-0.5 font-space-mono text-[8px] font-bold text-[#9a6b12] dark:text-accent">IMPACT</span>
                                 )}
                               </td>
                               <td className="px-6 py-4 font-space-mono text-[10px] uppercase text-text-secondary">{p.role}</td>
@@ -3033,120 +3468,41 @@ function OverviewPageContent() {
                 </div>
               )}
 
-              {/* Tactics & Playing XI page */}
+              {/* Playing XI page */}
+              {activeSubTab === "playingxi" && (
+                <TacticsLineupBuilder
+                  team={userTeam}
+                  players={players}
+                  battingFirstXI={battingFirstXI}
+                  bowlingFirstXI={bowlingFirstXI}
+                  battingFirstImpactSubs={battingFirstImpactSubs}
+                  bowlingFirstImpactSubs={bowlingFirstImpactSubs}
+                  tactics={teamTactics}
+                  onChangePlan={handleMatchPlanChange}
+                  onChangeBothPlans={handleBothMatchPlansChange}
+                  onChangeTactics={handleTacticsChange}
+                  onOpenPlayer={setDetailedPlayerId}
+                />
+              )}
+
+              {activeSubTab === "captaincy" && (
+                <CaptaincyPage
+                  team={userTeam}
+                  players={players}
+                  leadership={teamLeadership}
+                  gamesPlayed={userGamesPlayed}
+                  activeSeason={currentSeason}
+                  onChange={handleLeadershipChange}
+                  onOpenPlayer={setDetailedPlayerId}
+                />
+              )}
+
               {activeSubTab === "tactics" && (
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-200px)] min-h-[500px] overflow-hidden">
-                  {/* Left list: Squad roster selection */}
-                  <div className="lg:col-span-2 bg-surface border-2 border-border p-5 flex flex-col h-full overflow-hidden">
-                    <div className="flex justify-between items-center border-b border-[#16130f]/10 pb-3 mb-4 shrink-0">
-                      <h3 className="font-anton text-[16px] text-text-primary uppercase">SELECT STARTING XI</h3>
-                      <div className="font-space-mono text-[10px] text-text-secondary">
-                        Capped: <span className="font-bold text-text-primary">{startingXI.length}/11</span>
-                      </div>
-                    </div>
-
-                    <div className="space-y-2 flex-1 overflow-y-auto pr-2 divide-y divide-[#16130f]/5">
-                      {userTeam.squad.map(id => players[id]).filter(Boolean).map(p => {
-                        const inXI = startingXI.includes(p.id);
-                        return (
-                          <div key={p.id} className="py-2.5 flex items-center justify-between text-xs">
-                            <div>
-                              <div className="font-bold text-text-primary">{p.name}</div>
-                              <div className="font-space-mono text-[9px] text-text-secondary mt-0.5">
-                                RTG: {getPlayerRating(p)} · {p.role.toUpperCase()} · {p.nationality.toUpperCase()}
-                              </div>
-                            </div>
-                            <div className="flex gap-2">
-                              {/* Impact player selection toggle */}
-                              {!inXI && (
-                                <button
-                                  onClick={() => setImpactPlayer(impactPlayer === p.id ? "" : p.id)}
-                                  className={`px-3 py-1 font-space-mono text-[8px] font-bold border rounded uppercase transition-all
-                                    ${impactPlayer === p.id ? "bg-accent text-[#16130f] border-accent" : "border-border text-text-secondary hover:bg-black/5"}`}
-                                >
-                                  Impact
-                                </button>
-                              )}
-                              {/* Starting XI toggle */}
-                              <button
-                                onClick={() => handleToggleStartingXI(p.id)}
-                                className={`px-4 py-1.5 font-space-mono text-[9px] font-bold border rounded uppercase transition-all active:scale-95
-                                  ${inXI ? "bg-success text-white border-success" : "border-border text-text-primary hover:bg-black/5"}`}
-                              >
-                                {inXI ? "Selected ✓" : "Select XI"}
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Right: XI validation & strategy selection */}
-                  <div className="flex flex-col gap-6">
-                    <div className="bg-surface border-2 border-border p-5">
-                      <h3 className="font-anton text-[16px] text-text-primary uppercase border-b border-[#16130f]/10 pb-2 mb-4 font-bold">TEAM STRATEGY</h3>
-                      <div className="flex flex-col gap-2">
-                        {["Ultra Aggressive", "Balanced", "Anchor & Explode", "Bowling Dominant"].map(strat => (
-                          <button
-                            key={strat}
-                            onClick={() => {
-                              setTeamStrategy(strat);
-                              saveCareerState({ teamStrategy: strat });
-                            }}
-                            className={`w-full py-2.5 font-space-mono text-[10px] font-bold border uppercase tracking-wider text-center transition-all duration-150 active:scale-95
-                              ${teamStrategy === strat ? "bg-[var(--ink)] text-bg border-[var(--ink)]" : "border-border text-text-primary hover:bg-black/5"}`}
-                          >
-                            {strat}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="bg-surface border-2 border-border p-5">
-                      <h3 className="font-anton text-[16px] text-text-primary uppercase border-b border-[#16130f]/10 pb-2 mb-4">XI VALIDATIONS</h3>
-                      <div className="space-y-3 text-xs">
-                        <div className="flex items-center gap-2">
-                          {startingXI.length === 11 ? (
-                            <Check size={14} className="text-success" />
-                          ) : (
-                            <X size={14} className="text-danger" />
-                          )}
-                          <span className={startingXI.length === 11 ? "text-text-secondary" : "text-danger"}>Exactly 11 players selected ({startingXI.length})</span>
-                        </div>
-
-                        {(() => {
-                          const overseasInXI = startingXI.map(id => players[id]).filter(p => p && p.nationality === "Overseas").length;
-                          const ok = overseasInXI <= 4;
-                          return (
-                            <div className="flex items-center gap-2">
-                              {ok ? (
-                                <Check size={14} className="text-success" />
-                              ) : (
-                                <X size={14} className="text-danger" />
-                              )}
-                              <span className={ok ? "text-text-secondary" : "text-danger"}>Maximum 4 Overseas players ({overseasInXI})</span>
-                            </div>
-                          );
-                        })()}
-
-                        {(() => {
-                          const hasWK = startingXI.map(id => players[id]).some(p => p && (p.role === "WK-Batsman" || p.isWicketkeeper));
-                          return (
-                            <div className="flex items-center gap-2">
-                              {hasWK ? (
-                                <Check size={14} className="text-success" />
-                              ) : (
-                                <X size={14} className="text-danger" />
-                              )}
-                              <span className={hasWK ? "text-text-secondary" : "text-danger"}>At least 1 Wicketkeeper in XI</span>
-                            </div>
-                          );
-                        })()}
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                <TeamTacticsPage
+                  tactics={teamTactics}
+                  onChange={handleTacticsChange}
+                  onOpenPlayingXI={() => setActiveSubTab("playingxi")}
+                />
               )}
 
             </>
@@ -3313,7 +3669,16 @@ function OverviewPageContent() {
                       <tbody className="divide-y divide-[#16130f]/10">
                         {filteredSearchList.map(p => (
                           <tr key={p.id} className="hover:bg-black/5 transition-colors">
-                            <td className="px-6 py-4 font-semibold text-text-primary">{p.name}</td>
+                            <td className="px-6 py-4 font-semibold text-text-primary">
+                              <button
+                                type="button"
+                                onClick={() => setDetailedPlayerId(p.id)}
+                                className="text-left font-semibold text-text-primary underline-offset-2 transition-colors hover:text-accent hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
+                                aria-label={`Open ${p.name}'s player profile`}
+                              >
+                                {p.name}
+                              </button>
+                            </td>
                             <td className="px-6 py-4 font-space-mono text-[10px] text-text-secondary uppercase">{p.role}</td>
                             <td className="px-6 py-4 text-text-secondary">{p.nationality}</td>
                             <td className="px-6 py-4 text-center font-bold text-success font-space-mono text-[11px]">{getPlayerRating(p)}</td>
@@ -3446,7 +3811,7 @@ function OverviewPageContent() {
                                     >
                                       <div className="truncate font-space-mono text-[11px] font-medium uppercase text-text-secondary">
                                         {fixtureDate?.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" }) ?? "Date TBD"}
-                                        {" · "}{fixture.time ?? "Time TBD"}{" · "}Match {fixture.round}
+                                        {" · "}{fixture.time ?? "Time TBD"}{" · "}Match {fixture.matchNumber}
                                       </div>
                                       <div className="my-1.5 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 font-anton text-[16px] uppercase leading-none text-text-primary">
                                         <span
@@ -3532,7 +3897,7 @@ function OverviewPageContent() {
                     style={{ background: `linear-gradient(105deg, ${userTeam.primaryColor}28 0%, transparent 58%)` }}
                   >
                     <div className="relative">
-                      <p className="font-space-mono text-[9px] font-bold uppercase tracking-[0.18em] text-text-secondary">{currentSeason + 1} season · Match centre</p>
+                      <p className="font-space-mono text-[9px] font-bold uppercase tracking-[0.18em] text-text-secondary">{currentSeason} season · Match centre</p>
                       <h3 className="mt-1 font-anton text-[24px] uppercase leading-none text-text-primary">Fixtures &amp; Results</h3>
                     </div>
                     {isFixturesAnnounced && (
@@ -3622,7 +3987,7 @@ function OverviewPageContent() {
                                           </div>
 
                                           <div className="mb-3 flex items-center justify-between pt-1 font-space-mono text-[8px] font-bold uppercase tracking-wider text-text-secondary">
-                                            <span>Match {match.round} · {match.time ?? "Time TBD"}</span>
+                                            <span>Match {match.matchNumber} · {match.time ?? "Time TBD"}</span>
                                             <span className={`border px-2 py-0.5 ${match.played ? "border-success/30 bg-success/10 text-success" : isNextFixture ? "border-accent/30 bg-accent/10 text-accent" : "border-border bg-black/[0.03]"}`}>
                                               {statusLabel}
                                             </span>
@@ -3772,7 +4137,7 @@ function OverviewPageContent() {
           {activeTab === "history" && (
             <>
               {activeSubTab === "overview" && (
-                <div className="relative h-[calc(100vh-200px)] min-h-[500px] overflow-hidden bg-[radial-gradient(circle_at_center,rgba(45,107,181,0.08),transparent_52%)]">
+                <div className="relative h-[calc(100vh-200px)] min-h-[500px] overflow-hidden bg-[radial-gradient(circle_at_center,rgba(45,107,181,0.075),transparent_52%)] dark:bg-[radial-gradient(circle_at_center,rgba(45,107,181,0.08),transparent_52%)]">
                   <div className="grid h-full grid-cols-12 grid-rows-2 gap-4">
                     {[
                       {
@@ -3782,6 +4147,7 @@ function OverviewPageContent() {
                         icon: HistoryIcon,
                         position: "col-span-4 col-start-1 row-start-1",
                         accent: "#d6ad55",
+                        lightAccent: "#9a6b12",
                         highlights: ["Seasons", "Honours", "Trophy cabinet"],
                         featured: false,
                       },
@@ -3792,6 +4158,7 @@ function OverviewPageContent() {
                         icon: Trophy,
                         position: "col-span-4 col-start-1 row-start-2",
                         accent: "#4f8fd7",
+                        lightAccent: "#326da9",
                         highlights: ["Finalists", "Cap winners", "League tables"],
                         featured: false,
                       },
@@ -3802,6 +4169,7 @@ function OverviewPageContent() {
                         icon: FileText,
                         position: "col-span-4 col-start-5 row-span-2 row-start-1",
                         accent: "#e7c576",
+                        lightAccent: "#946514",
                         highlights: ["Appearances", "Runs", "Wickets", "Match records"],
                         featured: true,
                       },
@@ -3812,6 +4180,7 @@ function OverviewPageContent() {
                         icon: Users,
                         position: "col-span-4 col-start-9 row-start-1",
                         accent: "#8d68c7",
+                        lightAccent: "#6f4ca7",
                         highlights: ["Legends", "Icons", "Heroes"],
                         featured: false,
                       },
@@ -3822,42 +4191,47 @@ function OverviewPageContent() {
                         icon: UserCheck,
                         position: "col-span-4 col-start-9 row-start-2",
                         accent: "#d87945",
+                        lightAccent: "#b5572f",
                         highlights: ["First ballot", "Greatest players", "Career eras"],
                         featured: false,
                       },
-                    ].map(({ subtab, title, description, icon: Icon, position, accent, highlights, featured }) => (
+                    ].map(({ subtab, title, description, icon: Icon, position, accent, lightAccent, highlights, featured }) => (
                       <button
                         key={subtab}
                         type="button"
                         onClick={() => setActiveSubTab(subtab)}
-                        className={`group relative flex min-h-0 flex-col overflow-hidden border-2 border-[#303a4a] bg-[#111721] text-left text-white shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-[0_14px_32px_rgba(0,0,0,0.3)] ${featured ? "p-6" : "p-5"} ${position}`}
-                        style={{ borderTopColor: accent }}
+                        className={`history-archive-tile group relative flex min-h-0 flex-col overflow-hidden border-2 border-[#d8d1c4] bg-[#fbfaf6] text-left text-text-primary shadow-[0_7px_22px_rgba(64,52,35,0.08)] transition-all hover:-translate-y-0.5 hover:shadow-[0_14px_30px_rgba(64,52,35,0.14)] dark:border-[#303a4a] dark:bg-[#111721] dark:text-white dark:shadow-sm dark:hover:shadow-[0_14px_32px_rgba(0,0,0,0.3)] ${featured ? "p-6" : "p-5"} ${position}`}
+                        style={{
+                          "--history-tile-accent-light": lightAccent,
+                          "--history-tile-accent-dark": accent,
+                          borderTopColor: "var(--history-tile-accent)",
+                        } as CSSProperties}
                       >
-                        <span className="pointer-events-none absolute inset-x-0 top-0 h-1" style={{ backgroundColor: accent }} />
-                        <span className="pointer-events-none absolute -right-16 -top-20 h-52 w-52 rounded-full opacity-20 blur-3xl" style={{ backgroundColor: accent }} />
-                        <span className="pointer-events-none absolute -bottom-16 -left-12 h-40 w-40 rounded-full bg-[#2d6bb5]/15 blur-3xl" />
+                        <span className="pointer-events-none absolute inset-x-0 top-0 h-1" style={{ backgroundColor: "var(--history-tile-accent)" }} />
+                        <span className="pointer-events-none absolute -right-16 -top-20 h-52 w-52 rounded-full opacity-[0.09] blur-3xl dark:opacity-20" style={{ backgroundColor: "var(--history-tile-accent)" }} />
+                        <span className="pointer-events-none absolute -bottom-16 -left-12 h-40 w-40 rounded-full bg-[#8fb5dd]/20 blur-3xl dark:bg-[#2d6bb5]/15" />
 
                         <span className="relative flex items-start justify-between gap-3">
                           <span
                             className={`flex shrink-0 items-center justify-center rounded-full border ${featured ? "h-14 w-14" : "h-10 w-10"}`}
-                            style={{ borderColor: `${accent}70`, backgroundColor: `${accent}14`, color: accent }}
+                            style={{ borderColor: "color-mix(in srgb, var(--history-tile-accent) 48%, transparent)", backgroundColor: "color-mix(in srgb, var(--history-tile-accent) 9%, transparent)", color: "var(--history-tile-accent)" }}
                           >
                             <Icon size={featured ? 25 : 18} />
                           </span>
-                          <ChevronRight size={featured ? 19 : 15} className="text-white/35 transition-transform group-hover:translate-x-1" style={{ color: accent }} />
+                          <ChevronRight size={featured ? 19 : 15} className="transition-transform group-hover:translate-x-1" style={{ color: "var(--history-tile-accent)" }} />
                         </span>
 
                         <span className={`relative flex flex-1 flex-col ${featured ? "justify-center py-6" : "justify-end pt-3"}`}>
-                          <span className="block font-space-mono text-[8px] font-bold uppercase tracking-[0.22em] text-[#83aee8]">History archive</span>
+                          <span className="block font-space-mono text-[8px] font-bold uppercase tracking-[0.22em] text-[#52769d] dark:text-[#83aee8]">History archive</span>
                           <span className={`mt-2 block font-anton uppercase leading-none tracking-wide ${featured ? "text-[34px]" : "text-[23px]"}`}>{title}</span>
-                          <span className={`mt-3 block leading-relaxed text-white/55 ${featured ? "max-w-sm text-[12px]" : "max-w-md text-[11px]"}`}>{description}</span>
+                          <span className={`mt-3 block leading-relaxed text-[#716a60] dark:text-white/55 ${featured ? "max-w-sm text-[12px]" : "max-w-md text-[11px]"}`}>{description}</span>
 
                           <span className={featured ? "mt-7 grid grid-cols-2 gap-1.5" : "mt-4 flex flex-wrap gap-1.5"}>
                             {highlights.map((highlight) => (
                               <span
                                 key={highlight}
-                                className={`border px-2 py-1 font-space-mono font-bold uppercase tracking-wider text-white/65 ${featured ? "text-center text-[8px]" : "text-[7px]"}`}
-                                style={{ borderColor: `${accent}45`, backgroundColor: `${accent}0d` }}
+                                className={`border px-2 py-1 font-space-mono font-bold uppercase tracking-wider text-[#625b51] dark:text-white/65 ${featured ? "text-center text-[8px]" : "text-[7px]"}`}
+                                style={{ borderColor: "color-mix(in srgb, var(--history-tile-accent) 32%, transparent)", backgroundColor: "color-mix(in srgb, var(--history-tile-accent) 6%, transparent)" }}
                               >
                                 {highlight}
                               </span>
@@ -3865,9 +4239,9 @@ function OverviewPageContent() {
                           </span>
                         </span>
 
-                        <span className="relative flex items-center justify-between border-t border-white/10 pt-3 font-space-mono text-[8px] font-bold uppercase tracking-[0.16em] text-white/40">
+                        <span className="relative flex items-center justify-between border-t border-[#16130f]/10 pt-3 font-space-mono text-[8px] font-bold uppercase tracking-[0.16em] text-[#81796d] dark:border-white/10 dark:text-white/40">
                           <span>Open archive</span>
-                          <span className="transition-colors group-hover:text-white" style={{ color: accent }}>View</span>
+                          <span className="transition-colors" style={{ color: "var(--history-tile-accent)" }}>View</span>
                         </span>
                       </button>
                     ))}
@@ -3880,7 +4254,7 @@ function OverviewPageContent() {
                   <section className="flex min-h-0 flex-col overflow-hidden border-2 border-border bg-surface p-5">
                     <div className="mb-4 flex shrink-0 items-end justify-between border-b border-[#16130f]/10 pb-3">
                       <div>
-                        <p className="font-space-mono text-[8px] font-bold uppercase tracking-[0.2em] text-text-secondary">IPL record through 2025</p>
+                        <p className="font-space-mono text-[8px] font-bold uppercase tracking-[0.2em] text-text-secondary">IPL record through {LAST_HISTORICAL_CLUB_SEASON}</p>
                         <h3 className="mt-1 font-anton text-[22px] uppercase leading-none text-text-primary">{userTeam.name}</h3>
                       </div>
                       <div className="flex gap-6 text-right font-space-mono">
@@ -3924,8 +4298,8 @@ function OverviewPageContent() {
                     {clubTitles.length > 0 ? (
                       <div className="grid min-h-0 flex-1 grid-cols-2 content-start gap-3 overflow-y-auto pr-1">
                         {clubTitles.slice().reverse().map((title) => (
-                          <div key={title.season} className="relative flex min-h-44 flex-col items-center justify-end overflow-hidden border border-[#16130f]/10 bg-gradient-to-b from-white/5 to-black/10 p-3 dark:from-white/10 dark:to-black/20">
-                            <div className="pointer-events-none absolute inset-x-4 top-3 h-20 rounded-full bg-white/20 blur-2xl" />
+                          <div key={title.season} className="relative flex min-h-44 flex-col items-center justify-end overflow-hidden border border-[#d4c8b2] bg-gradient-to-b from-[#fffdf8] to-[#eee4d2] p-3 shadow-sm dark:border-[#16130f]/10 dark:from-white/10 dark:to-black/20 dark:shadow-none">
+                            <div className="pointer-events-none absolute inset-x-4 top-3 h-20 rounded-full bg-[#d6ad55]/20 blur-2xl dark:bg-white/20" />
                             <img src="/images/ipl-trophy.png" alt="Gold IPL championship trophy" className="relative min-h-0 w-full flex-1 object-contain drop-shadow-[0_8px_10px_rgba(0,0,0,0.35)]" />
                             <div className="mt-2 shrink-0 text-center">
                               <div className="font-anton text-lg leading-none text-text-primary">{title.season}</div>
@@ -3990,28 +4364,28 @@ function OverviewPageContent() {
 
               {activeSubTab === "leaguehistory" && (
                 <section className="flex h-[calc(100vh-200px)] min-h-[500px] flex-col overflow-hidden border-2 border-border bg-surface">
-                  <div className="relative shrink-0 overflow-hidden border-b-2 border-border bg-[#16130f] px-6 py-5 text-white">
-                    <div className="pointer-events-none absolute -right-16 -top-24 h-56 w-56 rounded-full bg-orange-500/20 blur-3xl" />
-                    <div className="pointer-events-none absolute right-24 top-0 h-40 w-40 rounded-full bg-purple-600/25 blur-3xl" />
+                  <div className="relative shrink-0 overflow-hidden border-b-2 border-[#d5c9b6] bg-[#f5eddf] px-6 py-5 text-[#241d15] dark:border-border dark:bg-[#16130f] dark:text-white">
+                    <div className="pointer-events-none absolute -right-16 -top-24 h-56 w-56 rounded-full bg-orange-400/15 blur-3xl dark:bg-orange-500/20" />
+                    <div className="pointer-events-none absolute right-24 top-0 h-40 w-40 rounded-full bg-purple-500/10 blur-3xl dark:bg-purple-600/25" />
                     <div className="relative flex items-end justify-between gap-6">
                       <div>
-                        <p className="font-space-mono text-[9px] font-bold uppercase tracking-[0.24em] text-white/60">The complete honours archive</p>
+                        <p className="font-space-mono text-[9px] font-bold uppercase tracking-[0.24em] text-[#796a58] dark:text-white/60">The complete honours archive</p>
                         <div className="mt-2 flex items-center gap-3">
                           <Trophy size={25} className="text-amber-400" />
                           <h3 className="font-anton text-[30px] uppercase leading-none">IPL League History</h3>
                         </div>
-                        <p className="mt-3 max-w-2xl text-xs leading-relaxed text-white/65">
+                        <p className="mt-3 max-w-2xl text-xs leading-relaxed text-[#6d6255] dark:text-white/65">
                           Every final and individual cap winner from the inaugural season. Career seasons will be saved separately with an expandable final league table.
                         </p>
                       </div>
                       <div className="hidden shrink-0 gap-8 text-right md:flex">
                         <div>
                           <div className="font-anton text-[28px] leading-none">{HISTORICAL_LEAGUE_HISTORY.length}</div>
-                          <div className="mt-1 font-space-mono text-[8px] font-bold uppercase tracking-wider text-white/55">Official seasons</div>
+                          <div className="mt-1 font-space-mono text-[8px] font-bold uppercase tracking-wider text-[#796f63] dark:text-white/55">Official seasons</div>
                         </div>
                         <div>
                           <div className="font-anton text-[28px] leading-none">{careerLeagueHistoryCount}</div>
-                          <div className="mt-1 font-space-mono text-[8px] font-bold uppercase tracking-wider text-white/55">Career seasons</div>
+                          <div className="mt-1 font-space-mono text-[8px] font-bold uppercase tracking-wider text-[#796f63] dark:text-white/55">Career seasons</div>
                         </div>
                       </div>
                     </div>
@@ -4356,7 +4730,7 @@ function OverviewPageContent() {
           <div className="bg-surface border-2 border-border w-full max-w-3xl rounded shadow-xl flex flex-col overflow-hidden text-left font-barlow animate-in zoom-in-95 duration-200">
             <div className="bg-border p-5 flex justify-between items-center">
               <div>
-                <span className="font-space-mono text-[9px] font-bold text-accent uppercase">MATCH RESULTS · ROUND {activeScorecard.round}</span>
+                <span className="font-space-mono text-[9px] font-bold text-accent uppercase">MATCH {activeScorecard.matchNumber} · RESULT</span>
                 <h3 className="font-anton text-[24px] leading-tight text-text-primary uppercase mt-0.5">
                   {teams[activeScorecard.teamA]?.name} vs {teams[activeScorecard.teamB]?.name}
                 </h3>

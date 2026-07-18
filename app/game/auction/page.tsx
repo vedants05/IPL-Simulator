@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { useGameStore, getNextSeasonYear } from "@/lib/store/gameStore";
+import { useGameStore, getActiveSeasonYear } from "@/lib/store/gameStore";
 import RetentionPhase from "./retention";
 import PlayerCard from "@/components/auction/PlayerCard";
 import BidPanel from "@/components/auction/BidPanel";
@@ -1688,7 +1688,7 @@ function TeamSquadCard({
                 <div className="flex flex-wrap gap-1 flex-1">
                   {group.map((p) => {
                     const wasRetained = team.retainedPlayers.includes(p.id);
-                    const sale = p.iplHistory.find((h) => h.season === getNextSeasonYear());
+                    const sale = p.iplHistory.find((h) => h.season === getActiveSeasonYear());
                     const auctionSale = [...(auction?.saleHistory ?? [])]
                       .reverse()
                       .find((entry) => entry.playerId === p.id);
@@ -1817,7 +1817,7 @@ function TeamSquadCard({
 }
 
 function AuctionComplete() {
-  const { auction, teams, players, userTeamId } = useGameStore();
+  const { auction, teams, players, userTeamId, currentSeason } = useGameStore();
   const [summaryTab] = useState<"buys" | "unsold">("buys");
   // Keep this unresolved during the first client render. Defaulting to false
   // briefly exposed the CTA before the persisted season state was loaded.
@@ -1867,7 +1867,7 @@ function AuctionComplete() {
     .filter((sale): sale is { player: Player; teamId: string; price: number } => sale !== null);
 
   // Legacy fallback for saves completed before saleHistory was populated.
-  const auctionSeason = String((auction?.season ?? 2026) + 1);
+  const auctionSeason = String(auction?.season ?? currentSeason);
   const historyAuctionSales = Object.values(players)
     .filter((player) => player.currentTeamId && !player.isRetained)
     .map((player) => {

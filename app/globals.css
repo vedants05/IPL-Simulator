@@ -71,6 +71,22 @@ body {
   gap: 0.75rem;
 }
 
+.history-archive-tile {
+  --history-tile-accent: var(--history-tile-accent-light);
+}
+
+.dark .history-archive-tile {
+  --history-tile-accent: var(--history-tile-accent-dark);
+}
+
+.calendar-team-name {
+  color: color-mix(in oklch, var(--calendar-team-color, #777777) 80%, #16130f 20%);
+}
+
+.dark .calendar-team-name {
+  color: color-mix(in oklch, var(--calendar-team-color, #777777) 78%, #ffffff 22%);
+}
+
 /* Put every theme-sensitive colour on one shared animation clock. */
 html.theme-changing,
 html.theme-changing body,

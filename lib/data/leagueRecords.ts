@@ -4,7 +4,24 @@ export interface RetiredRecordEntry {
   name: string;
   value: number;
   teamId: string;
+  matches?: number;
+  runs?: number;
 }
+
+export const BATTING_AVERAGE_MINIMUM_MATCHES = 50;
+export const BATTING_AVERAGE_MINIMUM_RUNS = 1000;
+
+export const qualifiesForBattingAverageRecord = ({
+  matches,
+  runs,
+  battingAverage,
+}: {
+  matches: number;
+  runs: number;
+  battingAverage: number;
+}) => matches >= BATTING_AVERAGE_MINIMUM_MATCHES
+  && runs >= BATTING_AVERAGE_MINIMUM_RUNS
+  && battingAverage > 0;
 
 export interface OtherLeagueRecord {
   id: string;
@@ -41,10 +58,11 @@ export const RETIRED_MAJOR_RECORDS: Record<MajorRecordCategoryId, RetiredRecordE
     { name: "Harbhajan Singh", value: 150, teamId: "KKR" },
   ],
   "batting-average": [
-    { name: "Shaun Marsh", value: 39.95, teamId: "KXIP" },
-    { name: "Chris Gayle", value: 39.72, teamId: "PBKS" },
-    { name: "AB de Villiers", value: 39.70, teamId: "RCB" },
-    { name: "David Warner", value: 40.52, teamId: "DC" },
+    { name: "David Warner", value: 40.52, teamId: "DC", matches: 184, runs: 6565 },
+    { name: "Shaun Marsh", value: 39.95, teamId: "KXIP", matches: 71, runs: 2477 },
+    { name: "JP Duminy", value: 39.78, teamId: "MI", matches: 83, runs: 2029 },
+    { name: "Chris Gayle", value: 39.72, teamId: "PBKS", matches: 142, runs: 4965 },
+    { name: "AB de Villiers", value: 39.70, teamId: "RCB", matches: 184, runs: 5162 },
   ],
 };
 

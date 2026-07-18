@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import { useGameStore } from "@/lib/store/gameStore";
 import { switchColorMode } from "./TeamThemeProvider";
 import AuctionGuidedTour from "@/components/auction/AuctionGuidedTour";
@@ -35,6 +35,7 @@ const NAV_ITEMS = [
 
 export default function NavBar() {
   const pathname = usePathname();
+  const router = useRouter();
   const {
     teams,
     userTeamId,
@@ -156,6 +157,32 @@ export default function NavBar() {
 
   return (
     <nav className="h-12 border-b-2 border-border flex items-center px-5 gap-0 shrink-0 z-50">
+      {/* Navigation history back/forward buttons */}
+      <div className="flex items-center gap-1.5 mr-4 shrink-0">
+        <button
+          onClick={() => router.back()}
+          className="w-[28px] h-[28px] rounded border-[1.5px] border-[var(--ink)] hover:bg-[var(--ink)]/5 flex items-center justify-center cursor-pointer transition-all duration-150 hover:scale-105 active:scale-95"
+          style={{
+            backgroundColor: "var(--surface)",
+            color: "var(--ink)",
+          }}
+          title="Go Back"
+        >
+          <ArrowLeft size={13} />
+        </button>
+        <button
+          onClick={() => router.forward()}
+          className="w-[28px] h-[28px] rounded border-[1.5px] border-[var(--ink)] hover:bg-[var(--ink)]/5 flex items-center justify-center cursor-pointer transition-all duration-150 hover:scale-105 active:scale-95"
+          style={{
+            backgroundColor: "var(--surface)",
+            color: "var(--ink)",
+          }}
+          title="Go Forward"
+        >
+          <ArrowRight size={13} />
+        </button>
+      </div>
+
       {userTeam && (
         <div className="flex items-center gap-2.5 mr-5 shrink-0">
           <div

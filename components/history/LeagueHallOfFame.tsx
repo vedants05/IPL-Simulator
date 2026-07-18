@@ -74,20 +74,20 @@ export default function LeagueHallOfFame({ players, teams, onOpenPlayer }: Leagu
 
   return (
     <section className="flex h-[calc(100vh-200px)] min-h-[500px] flex-col overflow-hidden border-2 border-border bg-surface">
-      <header className="relative shrink-0 overflow-hidden border-b-2 border-[#d6ad55]/45 bg-[#100d17] px-6 py-5 text-white">
-        <div className="pointer-events-none absolute -left-20 -top-24 h-64 w-64 rounded-full bg-[#6f3db5]/30 blur-3xl" />
-        <div className="pointer-events-none absolute right-0 top-0 h-full w-2/5 bg-[radial-gradient(circle_at_center,rgba(214,173,85,0.22),transparent_68%)]" />
+      <header className="relative shrink-0 overflow-hidden border-b-2 border-[#c9a95f]/55 bg-[#f6edd9] px-6 py-5 text-[#261f15] dark:border-[#d6ad55]/45 dark:bg-[#100d17] dark:text-white">
+        <div className="pointer-events-none absolute -left-20 -top-24 h-64 w-64 rounded-full bg-[#8d68c7]/10 blur-3xl dark:bg-[#6f3db5]/30" />
+        <div className="pointer-events-none absolute right-0 top-0 h-full w-2/5 bg-[radial-gradient(circle_at_center,rgba(184,137,46,0.16),transparent_68%)] dark:bg-[radial-gradient(circle_at_center,rgba(214,173,85,0.22),transparent_68%)]" />
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-[#d6ad55] to-transparent" />
 
         <div className="relative flex items-end justify-between gap-8">
           <div className="flex items-center gap-4">
-            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full border border-[#d6ad55]/60 bg-[#d6ad55]/10 shadow-[0_0_35px_rgba(214,173,85,0.18)]">
-              <Crown size={27} className="text-[#e7c576]" />
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full border border-[#b8892e]/50 bg-white/45 shadow-[0_0_35px_rgba(184,137,46,0.13)] dark:border-[#d6ad55]/60 dark:bg-[#d6ad55]/10 dark:shadow-[0_0_35px_rgba(214,173,85,0.18)]">
+              <Crown size={27} className="text-[#946514] dark:text-[#e7c576]" />
             </div>
             <div>
-              <p className="font-space-mono text-[8px] font-bold uppercase tracking-[0.32em] text-[#d6ad55]">Immortals of the Indian Premier League</p>
+              <p className="font-space-mono text-[8px] font-bold uppercase tracking-[0.32em] text-[#8d6218] dark:text-[#d6ad55]">Immortals of the Indian Premier League</p>
               <h3 className="mt-1 font-anton text-[32px] uppercase leading-none tracking-wide">League Hall of Fame</h3>
-              <p className="mt-2 max-w-2xl text-[11px] leading-relaxed text-white/55">
+              <p className="mt-2 max-w-2xl text-[11px] leading-relaxed text-[#6e6250] dark:text-white/55">
                 The first-ballot class: players whose leadership, records and defining moments permanently shaped the league.
               </p>
             </div>
@@ -95,12 +95,12 @@ export default function LeagueHallOfFame({ players, teams, onOpenPlayer }: Leagu
 
           <div className="hidden items-center gap-7 lg:flex">
             <div className="text-right">
-              <div className="font-anton text-[28px] leading-none text-[#e7c576]">{LEAGUE_HALL_OF_FAME.length}</div>
-              <div className="mt-1 font-space-mono text-[7px] font-bold uppercase tracking-[0.18em] text-white/40">Founding class</div>
+              <div className="font-anton text-[28px] leading-none text-[#946514] dark:text-[#e7c576]">{LEAGUE_HALL_OF_FAME.length}</div>
+              <div className="mt-1 font-space-mono text-[7px] font-bold uppercase tracking-[0.18em] text-[#746957] dark:text-white/40">Founding class</div>
             </div>
-            <div className="h-9 w-px bg-white/15" />
-            <div className="flex items-center gap-2 text-white/55">
-              <ShieldCheck size={17} className="text-[#d6ad55]" />
+            <div className="h-9 w-px bg-[#261f15]/15 dark:bg-white/15" />
+            <div className="flex items-center gap-2 text-[#6e6250] dark:text-white/55">
+              <ShieldCheck size={17} className="text-[#946514] dark:text-[#d6ad55]" />
               <span className="font-space-mono text-[8px] font-bold uppercase tracking-wider">First ballot</span>
             </div>
           </div>
@@ -114,7 +114,7 @@ export default function LeagueHallOfFame({ players, teams, onOpenPlayer }: Leagu
               key={filter}
               type="button"
               onClick={() => setActiveFilter(filter)}
-              className={`shrink-0 border px-3 py-1.5 font-space-mono text-[8px] font-bold uppercase tracking-wider transition-colors ${activeFilter === filter ? "border-[#b68a32] bg-[#b68a32] text-white" : "border-border bg-surface text-text-secondary hover:border-[#b68a32]/60 hover:text-text-primary"}`}
+              className={`shrink-0 border px-3 py-1.5 font-space-mono text-[8px] font-bold uppercase tracking-wider transition-colors ${activeFilter === filter ? "border-[#8b631e] bg-[#8b631e] text-white dark:border-[#b68a32] dark:bg-[#b68a32]" : "border-border bg-surface text-text-secondary hover:border-[#b68a32]/60 hover:text-text-primary"}`}
             >
               {filter === "All" ? "All inductees" : filter}
             </button>
@@ -145,22 +145,22 @@ export default function LeagueHallOfFame({ players, teams, onOpenPlayer }: Leagu
                     type="button"
                     disabled={!linkedPlayer}
                     onClick={() => linkedPlayer && onOpenPlayer(linkedPlayer.id)}
-                    className="group relative min-h-44 overflow-hidden border border-[#d6ad55]/35 bg-[#15111d] p-4 text-left text-white shadow-sm transition-all enabled:hover:-translate-y-0.5 enabled:hover:border-[#d6ad55] enabled:hover:shadow-lg disabled:cursor-default"
+                    className="group relative min-h-44 overflow-hidden border border-[#d2b873] bg-[linear-gradient(145deg,#fffdf7,#f0e4cb)] p-4 text-left text-text-primary shadow-[0_5px_16px_rgba(73,56,28,0.09)] transition-all enabled:hover:-translate-y-0.5 enabled:hover:border-[#a9781e] enabled:hover:shadow-lg disabled:cursor-default dark:border-[#d6ad55]/35 dark:bg-[#15111d] dark:bg-none dark:text-white dark:shadow-sm dark:enabled:hover:border-[#d6ad55]"
                     title={linkedPlayer ? `Open ${linkedPlayer.name}'s player profile` : `${member.name} is not in the current player database`}
                   >
                     <div className="absolute inset-y-0 left-0 w-1" style={{ backgroundColor: team.primaryColor }} />
                     <div className="pointer-events-none absolute -right-9 -top-9 h-28 w-28 rounded-full opacity-20 blur-2xl" style={{ backgroundColor: team.primaryColor }} />
                     <div className="relative flex h-full flex-col">
                       <div className="flex items-start justify-between gap-3">
-                        <span className="flex h-11 w-11 items-center justify-center rounded-full border border-[#d6ad55]/40 bg-[#d6ad55]/10 font-anton text-lg text-[#e7c576]">
+                        <span className="flex h-11 w-11 items-center justify-center rounded-full border border-[#a9781e]/40 bg-white/55 font-anton text-lg text-[#8d6218] dark:border-[#d6ad55]/40 dark:bg-[#d6ad55]/10 dark:text-[#e7c576]">
                           {getInitials(member.name)}
                         </span>
-                        <Trophy size={15} className="text-[#d6ad55]/70" />
+                        <Trophy size={15} className="text-[#946514]/75 dark:text-[#d6ad55]/70" />
                       </div>
                       <div className="mt-auto pt-4">
-                        <p className="font-space-mono text-[7px] font-bold uppercase tracking-[0.18em] text-[#d6ad55]/80">{member.role} · {member.era}</p>
+                        <p className="font-space-mono text-[7px] font-bold uppercase tracking-[0.18em] text-[#8d6218] dark:text-[#d6ad55]/80">{member.role} · {member.era}</p>
                         <h5 className="mt-1 font-anton text-[21px] uppercase leading-none">{member.name}</h5>
-                        <p className="mt-2 line-clamp-2 text-[10px] leading-relaxed text-white/55">{member.legacy}</p>
+                        <p className="mt-2 line-clamp-2 text-[10px] leading-relaxed text-[#6e6250] dark:text-white/55">{member.legacy}</p>
                       </div>
                     </div>
                   </button>

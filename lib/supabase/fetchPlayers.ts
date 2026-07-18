@@ -139,15 +139,16 @@ export function mapRowsToPlayers(data: any[]): Player[] {
     const bowlType = row.bowling_type || "NA";
     const batHand = (row.batting_hand || "").includes("LHB") || (row.batting_hand || "").toLowerCase().includes("left") ? "Left-hand" : "Right-hand";
     const bowlHand = (row.bowling_hand || "").toLowerCase().includes("left") ? "Left-hand" : (row.bowling_hand || "").toLowerCase().includes("right") ? "Right-hand" : null;
-    
+
+    const isGurnoorBrar = name === "Gurnoor Singh Brar";
     const curBat = parseInt(row.current_batting) || 0;
     const potBat = parseInt(row.potential_batting) || 0;
-    const curBowl = parseInt(row.current_bowling) || 0;
-    const potBowl = parseInt(row.potential_bowling) || 0;
+    const curBowl = isGurnoorBrar ? 78 : parseInt(row.current_bowling) || 0;
+    const potBowl = isGurnoorBrar ? 84 : parseInt(row.potential_bowling) || 0;
     
     const reputation = parseInt(row.reputation) || 5;
     const isWicketkeeper = row.can_keep_wickets === true;
-    const isPartTimeWk = row.part_time_wicketkeeper === true;
+    const isPartTimeWk = name === "Rahul Tripathi" ? false : row.part_time_wicketkeeper === true;
     const isOpener = name === "Ayush Mhatre" ? true : row.opener === true;
     const isFinisher = row.finisher === true;
     const isAnukul = name === "Anukul Roy";

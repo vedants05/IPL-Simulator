@@ -1,6 +1,6 @@
 "use client";
 import { useState, useRef, useEffect } from "react";
-import { useGameStore, getNextSeasonYear } from "@/lib/store/gameStore";
+import { useGameStore, getActiveSeasonYear } from "@/lib/store/gameStore";
 import { wasPlayerAcquiredViaRtm } from "@/lib/logic/playerHistory";
 import { Player } from "@/lib/types";
 import PlayerCard from "./PlayerCard";
@@ -116,7 +116,7 @@ export default function UserSquad() {
                   const isSelected = selectedPlayer?.id === p.id;
                   const wasRetained = userTeam.retainedPlayers.includes(p.id);
                   const sale = [...(auction?.saleHistory ?? [])].reverse().find((entry) => entry.playerId === p.id);
-                  const price = sale?.price ?? p.iplHistory.find((h) => h.season === getNextSeasonYear())?.price ?? p.iplHistory.find((h) => h.season === "2026")?.price;
+                  const price = sale?.price ?? p.iplHistory.find((h) => h.season === getActiveSeasonYear())?.price ?? p.iplHistory.find((h) => h.season === "2026")?.price;
                   const priceStr = price ? `(₹${(price / 100).toFixed(1)}Cr)` : "";
                   const isRtm = sale ? wasPlayerAcquiredViaRtm(sale) : false;
 
@@ -233,7 +233,7 @@ export default function UserSquad() {
           <div className="flex-1 overflow-y-auto">
             {(() => {
               const sale = auction?.saleHistory.find((s: any) => s.playerId === selectedPlayer.id);
-              const salary = sale?.price ?? selectedPlayer.iplHistory.find((h) => h.season === getNextSeasonYear())?.price ?? selectedPlayer.iplHistory.find((h) => h.teamId !== "UNSOLD" && h.price > 0)?.price ?? selectedPlayer.basePrice;
+              const salary = sale?.price ?? selectedPlayer.iplHistory.find((h) => h.season === getActiveSeasonYear())?.price ?? selectedPlayer.iplHistory.find((h) => h.teamId !== "UNSOLD" && h.price > 0)?.price ?? selectedPlayer.basePrice;
               return <PlayerCard player={selectedPlayer} soldPrice={salary} collapsible={false} />;
             })()}
           </div>

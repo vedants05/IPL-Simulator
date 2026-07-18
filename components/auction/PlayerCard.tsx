@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { Player } from "@/lib/types";
-import { useGameStore, getNextSeasonYear } from "@/lib/store/gameStore";
+import { useGameStore, getActiveSeasonYear } from "@/lib/store/gameStore";
 
 interface Props {
   player: Player;
@@ -162,7 +162,7 @@ export default function PlayerCard({ player, soldPrice, collapsible = true }: Pr
               {soldPrice !== undefined
                 ? crore(soldPrice)
                 : player.currentTeamId
-                 ? crore(player.iplHistory.find((h) => h.season === getNextSeasonYear())?.price ?? player.iplHistory.find((h) => h.teamId !== "UNSOLD" && h.price > 0)?.price ?? player.basePrice)
+                 ? crore(player.iplHistory.find((h) => h.season === getActiveSeasonYear())?.price ?? player.iplHistory.find((h) => h.teamId !== "UNSOLD" && h.price > 0)?.price ?? player.basePrice)
                  : crore(player.basePrice)}
             </span>
           </div>

@@ -44,6 +44,16 @@ export function addDaysToDateKey(dateKey: string, numberOfDays: number): string 
   return localDateToDateKey(date);
 }
 
+export function findCalendarMonthIndex(
+  calendarMonths: ReadonlyArray<{ month: number; year: number }>,
+  dateKey: string,
+): number {
+  const date = dateKeyToLocalDate(dateKey);
+  return calendarMonths.findIndex(({ month, year }) => (
+    month === date.getMonth() && year === date.getFullYear()
+  ));
+}
+
 export function getDaySimulationIntervalMs(
   currentDate: string,
   auctionDate: string,
