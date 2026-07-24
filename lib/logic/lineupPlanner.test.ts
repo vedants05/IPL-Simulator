@@ -6,6 +6,7 @@ import {
   buildRecommendedImpactSubs,
   dropPlayerIntoImpactSubs,
   dropPlayerIntoLineup,
+  getLineupDropPosition,
   isBowlingOption,
   type LineupCandidate,
   validateLineup,
@@ -88,6 +89,28 @@ test("lineup drops can swap players or insert them between batting positions", (
   assert.deepEqual(dropPlayerIntoLineup(selected, [], "a", 2, "swap").lineup, ["c", "b", "a", "d"]);
   assert.deepEqual(dropPlayerIntoLineup(selected, [], "d", 1, "before").lineup, ["a", "d", "b", "c"]);
   assert.deepEqual(dropPlayerIntoLineup(selected, [], "a", 2, "after").lineup, ["b", "c", "a", "d"]);
+});
+
+test("every downward drop below position X moves the player to position X", () => {
+  const selected = Array.from({ length: 11 }, (_, index) => `player-${index + 1}`);
+
+  for (let sourcePosition = 1; sourcePosition < selected.length; sourcePosition++) {
+    for (let targetPosition = sourcePosition + 1; targetPosition <= selected.length; targetPosition++) {
+      const playerId = `player-${sourcePosition}`;
+      assert.equal(
+        getLineupDropPosition(selected, playerId, targetPosition - 1, "after"),
+        targetPosition,
+      );
+      assert.equal(
+        dropPlayerIntoLineup(selected, [], playerId, targetPosition - 1, "after").lineup[targetPosition - 1],
+        playerId,
+      );
+    }
+  }
+
+  assert.equal(getLineupDropPosition(selected, "player-3", 7, "before"), 7);
+  assert.equal(getLineupDropPosition(selected, "player-10", 7, "after"), 9);
+  assert.equal(getLineupDropPosition(selected.slice(0, 8), "player-3", 8, "before"), 8);
 });
 
 test("players can be dropped from the pool into either selection zone", () => {

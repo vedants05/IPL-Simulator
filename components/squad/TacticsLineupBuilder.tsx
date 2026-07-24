@@ -17,6 +17,7 @@ import {
   buildRecommendedLineups,
   dropPlayerIntoImpactSubs,
   dropPlayerIntoLineup,
+  getLineupDropPosition,
   type LineupCandidate,
   type LineupDropPlacement,
   type LineupPlan,
@@ -334,7 +335,9 @@ export default function TacticsLineupBuilder({
               const player = activePlayers[index];
               const keeper = player ? keeperLabel(player) : null;
               const preview = dragPreview?.zone === "lineup" && dragPreview.targetIndex === index ? dragPreview : null;
-              const insertPosition = preview?.placement === "after" ? index + 2 : index + 1;
+              const dropPosition = preview && draggedPlayer
+                ? getLineupDropPosition(activeXI, draggedPlayer.id, index, preview.placement)
+                : index + 1;
               return player ? (
                 <div
                   key={player.id}
@@ -365,7 +368,7 @@ export default function TacticsLineupBuilder({
                     <span className={`pointer-events-none absolute inset-x-0 z-20 flex items-center ${preview.placement === "before" ? "top-0" : "bottom-0"}`}>
                       <span className="h-1 flex-1 bg-accent" />
                       <span className="bg-accent px-2 py-0.5 font-space-mono text-[11px] font-bold uppercase tracking-wide text-[#16130f] shadow-md">
-                        Insert at #{insertPosition}
+                        {draggedPlayer?.source === "lineup" ? "Move to" : "Insert at"} #{dropPosition}
                       </span>
                       <span className="h-1 flex-1 bg-accent" />
                     </span>
@@ -395,7 +398,7 @@ export default function TacticsLineupBuilder({
                     <span className="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-center">
                       <span className="h-1 flex-1 bg-accent" />
                       <span className="bg-accent px-2 py-0.5 font-space-mono text-[11px] font-bold uppercase tracking-wide text-[#16130f] shadow-md">
-                        Insert at #{index + 1}
+                        {draggedPlayer?.source === "lineup" ? "Move to" : "Insert at"} #{dropPosition}
                       </span>
                       <span className="h-1 flex-1 bg-accent" />
                     </span>

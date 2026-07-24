@@ -48,6 +48,7 @@ import {
 } from "@/lib/logic/captaincy";
 import {
   appointAiLeagueLeadership,
+  appointAiTeamLeadership,
   reconcileAiLeagueLeadership,
   type AiLeagueLeadership,
 } from "@/lib/logic/aiLeadership";
@@ -2201,10 +2202,11 @@ function OverviewPageContent() {
   const nextOpponentSquad = nextOpponent
     ? nextOpponent.squad.map((playerId) => players[playerId]).filter((player): player is Player => Boolean(player))
     : [];
-  const nextOpponentCaptain = nextOpponentSquad
-    .filter((player) => !player.isIplCaptaincyUnavailable && player.name !== "MS Dhoni")
-    .slice()
-    .sort((left, right) => (right.captaincy ?? 0) - (left.captaincy ?? 0) || getPlayerRating(right) - getPlayerRating(left))[0];
+  const nextOpponentCaptainId = nextOpponentId
+    ? (aiTeamLeadership[nextOpponentId]?.captainId
+      ?? (nextOpponent ? appointAiTeamLeadership(nextOpponent, nextOpponentSquad, currentSeason).captainId : null))
+    : null;
+  const nextOpponentCaptain = nextOpponentCaptainId ? players[nextOpponentCaptainId] : undefined;
   const nextOpponentBatters = nextOpponentSquad
     .slice()
     .sort((left, right) => (right.currentBatting ?? 0) - (left.currentBatting ?? 0) || getPlayerRating(right) - getPlayerRating(left))
@@ -2540,7 +2542,7 @@ function OverviewPageContent() {
 
                           <div className="grid min-h-0 flex-1 grid-cols-[1.1fr_1fr_1fr] gap-2 pt-2">
                             <div className="flex min-w-0 flex-col justify-center border border-[#16130f]/10 bg-black/[0.025] px-2.5 py-2 dark:bg-white/[0.025]">
-                              <p className="font-space-mono text-[8px] font-bold uppercase tracking-[0.14em] text-text-secondary">Likely captain</p>
+                              <p className="font-space-mono text-[8px] font-bold uppercase tracking-[0.14em] text-text-secondary">Captain</p>
                               {nextOpponentCaptain ? (
                                 <div className="mt-1.5 flex min-w-0 items-center gap-2">
                                   <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-black/[0.05] font-anton text-[12px] text-text-primary dark:bg-white/[0.06]">

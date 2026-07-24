@@ -26,6 +26,34 @@ export interface LineupValidation {
   isValid: boolean;
 }
 
+function lineupInsertionIndex(
+  lineupLength: number,
+  lineupIndex: number,
+  targetIndex: number,
+  placement: LineupDropPlacement,
+): number {
+  let insertionIndex = placement === "after" ? targetIndex + 1 : targetIndex;
+  if (lineupIndex >= 0 && lineupIndex < insertionIndex) insertionIndex--;
+  const lengthAfterRemoval = lineupIndex >= 0 ? lineupLength - 1 : lineupLength;
+  return Math.max(0, Math.min(insertionIndex, lengthAfterRemoval));
+}
+
+export function getLineupDropPosition(
+  lineup: readonly string[],
+  playerId: string,
+  targetIndex: number,
+  placement: LineupDropPlacement,
+): number {
+  const lineupIndex = lineup.indexOf(playerId);
+  const targetHasPlayer = targetIndex < lineup.length;
+  const replacesTarget = targetHasPlayer
+    && (placement === "swap" || (lineupIndex < 0 && lineup.length >= 11));
+
+  return replacesTarget
+    ? targetIndex + 1
+    : lineupInsertionIndex(lineup.length, lineupIndex, targetIndex, placement) + 1;
+}
+
 export function dropPlayerIntoLineup(
   lineup: readonly string[],
   impactSubs: readonly string[],
@@ -41,10 +69,9 @@ export function dropPlayerIntoLineup(
     if (placement === "swap" && targetIndex < nextLineup.length) {
       [nextLineup[lineupIndex], nextLineup[targetIndex]] = [nextLineup[targetIndex], nextLineup[lineupIndex]];
     } else {
-      let insertionIndex = placement === "after" ? targetIndex + 1 : targetIndex;
+      const insertionIndex = lineupInsertionIndex(nextLineup.length, lineupIndex, targetIndex, placement);
       const [movedPlayer] = nextLineup.splice(lineupIndex, 1);
-      if (lineupIndex < insertionIndex) insertionIndex--;
-      nextLineup.splice(Math.max(0, Math.min(insertionIndex, nextLineup.length)), 0, movedPlayer);
+      nextLineup.splice(insertionIndex, 0, movedPlayer);
     }
     return { lineup: nextLineup, impactSubs: nextImpactSubs };
   }
@@ -60,8 +87,8 @@ export function dropPlayerIntoLineup(
   }
 
   if (impactIndex >= 0) nextImpactSubs.splice(impactIndex, 1);
-  const insertionIndex = placement === "after" ? targetIndex + 1 : targetIndex;
-  nextLineup.splice(Math.max(0, Math.min(insertionIndex, nextLineup.length)), 0, playerId);
+  const insertionIndex = lineupInsertionIndex(nextLineup.length, -1, targetIndex, placement);
+  nextLineup.splice(insertionIndex, 0, playerId);
   return { lineup: nextLineup.slice(0, 11), impactSubs: nextImpactSubs };
 }
 

@@ -1,5 +1,6 @@
 import type { Player, Team } from "@/lib/types";
 import type { TeamLeadership } from "./captaincy";
+import { appointAiTeamLeadership } from "./aiLeadership";
 
 export type CareerEmailCategory = "task" | "fixture" | "match" | "squad" | "captaincy" | "league" | "season";
 export type CareerEmailPriority = "normal" | "important" | "urgent";
@@ -410,9 +411,8 @@ export function buildCareerEmailDrafts(context: CareerEmailContext): CareerEmail
     const opponentId = getOpponentId(nextFixture, context.userTeamId);
     const opponent = context.teams[opponentId];
     const opponentSquad = opponent?.squad.map((id) => context.players[id]).filter((player): player is Player => Boolean(player)) ?? [];
-    const likelyCaptain = [...opponentSquad]
-      .filter((player) => !player.isIplCaptaincyUnavailable)
-      .sort((left, right) => (right.captaincy ?? 0) - (left.captaincy ?? 0))[0];
+    const opponentLeadership = opponent ? appointAiTeamLeadership(opponent, opponentSquad, context.season) : null;
+    const opponentCaptain = opponentLeadership?.captainId ? context.players[opponentLeadership.captainId] : null;
     const threats = [...opponentSquad]
       .sort((left, right) => Math.max(right.currentBatting, right.currentBowling) - Math.max(left.currentBatting, left.currentBowling))
       .slice(0, 3);
@@ -428,7 +428,7 @@ export function buildCareerEmailDrafts(context: CareerEmailContext): CareerEmail
         sender: "Performance Analyst",
         subject: `Next fixture: ${context.userTeam.shortName} v ${opponent?.shortName ?? opponentId}`,
         preview: `${formatDate(nextFixture.date)} · ${getVenue(nextFixture, context.teams)}.`,
-        body: `Date: ${formatDate(nextFixture.date)}\nVenue: ${getVenue(nextFixture, context.teams)}\nOpponent position: ${opponentStandingIndex >= 0 ? ordinal(opponentStandingIndex + 1) : "Pre-season"}\nOpponent form: ${getTeamForm(opponentId, context.fixtures)}\nOur position: ${userStandingIndex >= 0 ? ordinal(userStandingIndex + 1) : "Pre-season"}\n\nKey opposition threats:\n${threats.length > 0 ? threats.map((player) => `• ${player.name}`).join("\n") : "• Opposition data unavailable"}\n\nLikely opposition captain: ${likelyCaptain?.name ?? "Not confirmed"}\n\nSelection status:\nBat-first plan: ${context.lineup.battingFirstValid ? "Ready" : "Needs attention"}\nBowl-first plan: ${context.lineup.bowlingFirstValid ? "Ready" : "Needs attention"}\n\nRecommended focus: review the opposition's strongest ${(threats[0]?.currentBatting ?? 0) >= (threats[0]?.currentBowling ?? 0) ? "batting matchups" : "bowling threats"}.`,
+        body: `Date: ${formatDate(nextFixture.date)}\nVenue: ${getVenue(nextFixture, context.teams)}\nOpponent position: ${opponentStandingIndex >= 0 ? ordinal(opponentStandingIndex + 1) : "Pre-season"}\nOpponent form: ${getTeamForm(opponentId, context.fixtures)}\nOur position: ${userStandingIndex >= 0 ? ordinal(userStandingIndex + 1) : "Pre-season"}\n\nKey opposition threats:\n${threats.length > 0 ? threats.map((player) => `• ${player.name}`).join("\n") : "• Opposition data unavailable"}\n\nOpposition captain: ${opponentCaptain?.name ?? "Not appointed"}\n\nSelection status:\nBat-first plan: ${context.lineup.battingFirstValid ? "Ready" : "Needs attention"}\nBowl-first plan: ${context.lineup.bowlingFirstValid ? "Ready" : "Needs attention"}\n\nRecommended focus: review the opposition's strongest ${(threats[0]?.currentBatting ?? 0) >= (threats[0]?.currentBowling ?? 0) ? "batting matchups" : "bowling threats"}.`,
         category: "fixture",
         priority: "important",
         date: context.currentDate,
