@@ -243,7 +243,7 @@ export default function TacticsLineupBuilder({
   };
 
   return (
-    <div className="flex h-[calc(100vh-160px)] min-h-[720px] flex-col overflow-hidden border-2 border-border bg-surface">
+    <div className="flex h-[calc(100vh-160px)] min-h-0 flex-col overflow-hidden border-2 border-border bg-surface">
       <div className="flex shrink-0 items-center justify-between border-b-2 border-border bg-[linear-gradient(110deg,rgba(var(--team-primary-rgb),0.12),transparent_48%)] px-5 py-3">
         <div>
           <p className="font-space-mono text-[12px] font-bold uppercase tracking-[0.18em] text-text-secondary">Matchday selection</p>

@@ -44,6 +44,50 @@ export function addDaysToDateKey(dateKey: string, numberOfDays: number): string 
   return localDateToDateKey(date);
 }
 
+interface CareerCalendarFixture {
+  date?: string | null;
+  played: boolean;
+}
+
+export interface CareerCalendarStep {
+  nextDate: string;
+  blockedByFixture: boolean;
+}
+
+export function isCareerCalendarAtImpasse(
+  currentDate: string,
+  fixtures: ReadonlyArray<CareerCalendarFixture>,
+): boolean {
+  return fixtures.some((fixture) => (
+    !fixture.played && Boolean(fixture.date && fixture.date <= currentDate)
+  ));
+}
+
+/**
+ * Advances by one day unless an unresolved fixture has reached matchday.
+ * Until match simulation is available, the ticker must stop at every fixture,
+ * including games that do not involve the user's club.
+ */
+export function getCareerCalendarStep(
+  currentDate: string,
+  fixtures: ReadonlyArray<CareerCalendarFixture>,
+): CareerCalendarStep {
+  const earliestUnplayedFixtureDate = fixtures
+    .filter((fixture) => !fixture.played && fixture.date)
+    .map((fixture) => fixture.date as string)
+    .sort()[0];
+  const nextDate = earliestUnplayedFixtureDate && earliestUnplayedFixtureDate <= currentDate
+    ? earliestUnplayedFixtureDate
+    : addDaysToDateKey(currentDate, 1);
+
+  return {
+    nextDate,
+    blockedByFixture: Boolean(
+      earliestUnplayedFixtureDate && earliestUnplayedFixtureDate <= nextDate,
+    ),
+  };
+}
+
 export function findCalendarMonthIndex(
   calendarMonths: ReadonlyArray<{ month: number; year: number }>,
   dateKey: string,

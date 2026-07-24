@@ -10,8 +10,10 @@ import {
   addDaysToDateKey,
   dateKeyToLocalDate,
   findCalendarMonthIndex,
+  getCareerCalendarStep,
   getDaySimulationIntervalMs,
   getSkipSimulationIntervalMs,
+  isCareerCalendarAtImpasse,
   localDateToDateKey,
 } from "./careerCalendar";
 
@@ -51,6 +53,32 @@ test("targeted date simulation accelerates, cruises, and slows near its target",
   assert.equal(getSkipSimulationIntervalMs("2027-01-25", startDate, targetDate), SKIP_SIMULATION_MAX_SPEED_INTERVAL_MS);
   assert.ok(getSkipSimulationIntervalMs("2027-02-05", startDate, targetDate) > SKIP_SIMULATION_MAX_SPEED_INTERVAL_MS);
   assert.ok(getSkipSimulationIntervalMs("2027-02-09", startDate, targetDate) > getSkipSimulationIntervalMs("2027-02-05", startDate, targetDate));
+});
+
+test("career ticking stops at every unresolved fixture while the match engine is unavailable", () => {
+  const nonUserFixture = { date: "2027-03-20", played: false };
+
+  assert.equal(isCareerCalendarAtImpasse("2027-03-19", [nonUserFixture]), false);
+  assert.equal(isCareerCalendarAtImpasse("2027-03-20", [nonUserFixture]), true);
+  assert.equal(isCareerCalendarAtImpasse("2027-03-21", [nonUserFixture]), true);
+  assert.equal(isCareerCalendarAtImpasse("2027-03-20", [{ ...nonUserFixture, played: true }]), false);
+
+  assert.deepEqual(getCareerCalendarStep("2027-03-18", [nonUserFixture]), {
+    nextDate: "2027-03-19",
+    blockedByFixture: false,
+  });
+  assert.deepEqual(getCareerCalendarStep("2027-03-19", [nonUserFixture]), {
+    nextDate: "2027-03-20",
+    blockedByFixture: true,
+  });
+  assert.deepEqual(getCareerCalendarStep("2027-03-21", [nonUserFixture]), {
+    nextDate: "2027-03-20",
+    blockedByFixture: true,
+  });
+  assert.deepEqual(getCareerCalendarStep("2027-03-20", [{ ...nonUserFixture, played: true }]), {
+    nextDate: "2027-03-21",
+    blockedByFixture: false,
+  });
 });
 
 test("seven calendar tiles cross leap day without skipping or repeating a date", () => {

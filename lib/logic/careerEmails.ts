@@ -361,6 +361,18 @@ export function buildCareerEmailDrafts(context: CareerEmailContext): CareerEmail
     const opener = userFixtures[0];
     const opponentId = getOpponentId(opener, context.userTeamId);
     const opponent = context.teams[opponentId];
+    const opponentCode = (fixture: CareerEmailFixture) => {
+      const fixtureOpponentId = getOpponentId(fixture, context.userTeamId);
+      return context.teams[fixtureOpponentId]?.shortName ?? fixtureOpponentId;
+    };
+    const homeFixtureOpponents = userFixtures
+      .filter((fixture) => fixture.teamA === context.userTeamId)
+      .map(opponentCode)
+      .join(",");
+    const awayFixtureOpponents = userFixtures
+      .filter((fixture) => fixture.teamB === context.userTeamId)
+      .map(opponentCode)
+      .join(",");
     push({
       templateId: "fixture.announcement",
       dedupeKey: `fixtures-announced:${context.season}`,
@@ -368,7 +380,7 @@ export function buildCareerEmailDrafts(context: CareerEmailContext): CareerEmail
       sender: "IPL League Office",
       subject: `${context.season} IPL fixtures released`,
       preview: `Opening fixture: ${opponent?.shortName ?? opponentId} on ${formatDate(opener.date)}.`,
-      body: `The league schedule for the ${context.season} IPL season has been confirmed.\n\nYour opening fixture is against ${opponent?.name ?? opponentId} on ${formatDate(opener.date)} at ${getVenue(opener, context.teams)}.\n\nHome fixtures: ${userFixtures.filter((fixture) => fixture.teamA === context.userTeamId).length}\nAway fixtures: ${userFixtures.filter((fixture) => fixture.teamB === context.userTeamId).length}\n\nThe complete schedule is now available in the Season section.`,
+      body: `The league schedule for the ${context.season} IPL season has been confirmed.\n\nYour opening fixture is against ${opponent?.name ?? opponentId} on ${formatDate(opener.date)} at ${getVenue(opener, context.teams)}.\n\nHome: ${homeFixtureOpponents || "None"}\nAway: ${awayFixtureOpponents || "None"}\n\nThe complete schedule is now available in the Season section.`,
       category: "fixture",
       priority: "important",
       date: context.fixtureAnnouncementDate,
@@ -868,11 +880,18 @@ export function reconcileCareerEmails(existingValue: unknown, drafts: CareerEmai
       || current.preview !== candidate.preview
       || current.priority !== candidate.priority
     );
-    if (current.daySequence !== candidate.daySequence || taskChanged) {
+    const fixtureAnnouncementChanged = candidate.templateId === "fixture.announcement" && (
+      current.body !== candidate.body
+      || current.preview !== candidate.preview
+      || current.subject !== candidate.subject
+    );
+    const contentChanged = taskChanged || fixtureAnnouncementChanged;
+    if (current.daySequence !== candidate.daySequence || contentChanged) {
       byDedupeKey.set(candidate.dedupeKey, {
         ...current,
         daySequence: candidate.daySequence,
-        ...(taskChanged ? {
+        ...(contentChanged ? {
+          subject: candidate.subject,
           body: candidate.body,
           preview: candidate.preview,
           priority: candidate.priority,

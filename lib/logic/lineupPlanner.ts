@@ -102,11 +102,15 @@ export function dropPlayerIntoImpactSubs(
 
 const isOverseas = (player: LineupCandidate) => player.nationality === "Overseas";
 
+export const MIN_BOWLING_OPTION_RATING = 68;
+
 export const isBowlingOption = (player: LineupCandidate) =>
-  player.role === "All-Rounder"
-  || player.role === "Pace Bowler"
-  || player.role === "Spin Bowler"
-  || player.bowling >= 55;
+  player.bowling >= MIN_BOWLING_OPTION_RATING
+  && (
+    player.role === "All-Rounder"
+    || player.role === "Pace Bowler"
+    || player.role === "Spin Bowler"
+  );
 
 export function validateLineup(ids: readonly string[], candidates: readonly LineupCandidate[]): LineupValidation {
   const candidateById = new Map(candidates.map((candidate) => [candidate.id, candidate]));

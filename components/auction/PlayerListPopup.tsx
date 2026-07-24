@@ -313,7 +313,7 @@ export default function PlayerListPopup({
         style={{
           maxWidth: "680px",
           border: "2px solid var(--ink)",
-          maxHeight: "calc(100vh - 80px)",
+          maxHeight: "calc(var(--app-viewport-height) - 80px)",
         }}
         onClick={(e) => e.stopPropagation()}
       >

@@ -80,40 +80,6 @@ export function bowlStyle(bowlType: string | null): BowlingType | null {
   return null;
 }
 
-function toAttr(score: number, fallback = 7): number {
-  if (score <= 0) return fallback;
-  return Math.max(1, Math.min(20, Math.round(score / 5)));
-}
-
-export function genAttrs(bat: number, bowl: number, bowlType: string | null) {
-  const bv = toAttr(bat);
-  const wv = toAttr(bowl);
-  const isPacer   = bowlType === "Pacer";
-  const isSpinner = bowlType === "Spinner";
-  const hasBat  = bat > 0;
-  const hasBowl = bowl > 0;
-  return {
-    technique:   hasBat ? bv : 7,
-    power:       hasBat ? Math.min(20, bv + 1) : 7,
-    timing:      hasBat ? bv : 7,
-    placement:   hasBat ? Math.max(1, bv - 1) : 7,
-    running:     11,
-    pace:        isPacer && hasBowl ? wv : 7,
-    swing:       isPacer && hasBowl ? Math.max(1, wv - 2) : 7,
-    seam:        isPacer && hasBowl ? Math.max(1, wv - 1) : 7,
-    spin:        isSpinner && hasBowl ? wv : 7,
-    flight:      isSpinner && hasBowl ? Math.max(1, wv - 1) : 7,
-    accuracy:    hasBowl ? Math.max(1, wv - 1) : 8,
-    variation:   hasBowl ? Math.max(1, wv - 2) : 7,
-    catching:    13,
-    throwing:    12,
-    agility:     13,
-    composure:   12,
-    leadership:  10,
-    determination: 13,
-  };
-}
-
 export function genPotential(curBat: number, potBat: number, curBowl: number, potBowl: number, age: number): Potential {
   const maxCur = Math.max(curBat, curBowl);
   const maxPot = Math.max(potBat, potBowl);
@@ -169,7 +135,6 @@ export function mapRowsToPlayers(data: any[]): Player[] {
     const hasBattedAt7 = isRahane ? false : row.has_batted_at_7 === true;
 
     const playerRating = Math.max(curBat, curBowl);
-    const star = Math.max(1.5, Math.min(5.0, Math.round((playerRating - 45) / 8 * 2) / 2));
     const base = calculateBasePrice(isCapped, nat, playerRating, reputation);
 
     let id = toSlug(name);
@@ -245,7 +210,6 @@ export function mapRowsToPlayers(data: any[]): Player[] {
       battingStyle: batHand as any,
       bowlingStyle: bowlStyle(bowlType),
       bowlingHand: bowlHand,
-      starRating: star,
       basePrice: base,
       isCapped,
       isRetained: false,
@@ -256,7 +220,6 @@ export function mapRowsToPlayers(data: any[]): Player[] {
       potentialBatting: potBat,
       currentBowling: curBowl,
       potentialBowling: potBowl,
-      attributes: genAttrs(curBat, curBowl, bowlType),
       careerStats: {
         batting,
         bowling,

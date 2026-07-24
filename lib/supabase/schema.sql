@@ -85,7 +85,7 @@ create table if not exists players (
 -- Teams ---------------------------------------------------------------------
 -- Static franchise config only. Runtime state (squad, purse spent, RTM used,
 -- overseas count) is initialised in the store per game, not stored here.
--- DNA + segment focus are flat columns; board objectives are JSONB.
+-- DNA + segment focus are stored as flat columns.
 create table if not exists teams (
   id text primary key,
   name text not null,
@@ -102,7 +102,6 @@ create table if not exists teams (
   fan_base text,
   prestige integer,
   ai_personality text,
-  description text,
   dna_loyalty integer,
   dna_pref_youngsters integer,
   dna_experience_focus integer,
@@ -119,8 +118,7 @@ create table if not exists teams (
   sf_overseas_all_rounders integer,
   sf_indian_all_rounders integer,
   sf_overseas_batters integer,
-  sf_indian_batters integer,
-  board_objectives jsonb
+  sf_indian_batters integer
 );
 
 -- Row level security: public read + write (app uses the anon key). ----------

@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, useLayoutEffect, useMemo, useRef, Suspense, useCallback, type CSSProperties } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useGameStore, getSeasonDates } from "@/lib/store/gameStore";
 import { formatPrice } from "@/lib/logic/auctionRules";
@@ -7,8 +8,10 @@ import {
   addDaysToDateKey,
   dateKeyToLocalDate,
   findCalendarMonthIndex,
+  getCareerCalendarStep,
   getDaySimulationIntervalMs,
   getSkipSimulationIntervalMs,
+  isCareerCalendarAtImpasse,
   TICKING_CALENDAR_OFFSETS,
 } from "@/lib/logic/careerCalendar";
 import { createDayTicker, type DayTickerController } from "@/lib/logic/dayTicker";
@@ -43,6 +46,11 @@ import {
   normalizeTeamLeadership,
   type TeamLeadership,
 } from "@/lib/logic/captaincy";
+import {
+  appointAiLeagueLeadership,
+  reconcileAiLeagueLeadership,
+  type AiLeagueLeadership,
+} from "@/lib/logic/aiLeadership";
 import {
   buildCareerEmailDrafts,
   normalizeCareerEmails,
@@ -170,6 +178,7 @@ const generateNextRetentionDeadline = (auctionDate: string): RetentionDeadline =
 // Helper to calculate rating of player
 const getPlayerRating = (p: Player) => Math.max(p.currentBatting ?? 0, p.currentBowling ?? 0);
 const normalizeLeagueHistoryPlayerName = (name: string) => name.toLocaleLowerCase("en-GB").replace(/[^a-z0-9]/g, "");
+const HOME_NEXT_FIXTURE_ROW_HEIGHT = 24;
 
 // ============================================================================
 // Main component
@@ -236,9 +245,11 @@ function OverviewPageContent() {
   const [bowlingFirstImpactSubs, setBowlingFirstImpactSubs] = useState<string[]>([]);
   const [teamTactics, setTeamTactics] = useState<TeamTactics>(() => createTeamTactics());
   const [teamLeadership, setTeamLeadership] = useState<TeamLeadership>(() => ({ ...EMPTY_TEAM_LEADERSHIP }));
+  const [aiTeamLeadership, setAiTeamLeadership] = useState<AiLeagueLeadership>({});
   const [activeCommentary, setActiveCommentary] = useState<string[] | null>(null);
   const [activeScorecard, setActiveScorecard] = useState<Match | null>(null);
   const [shortlist, setShortlist] = useState<string[]>([]);
+  const [visibleHomeFixtureCount, setVisibleHomeFixtureCount] = useState(5);
   
   // Local state for interactive tools
   const [searchQuery, setSearchQuery] = useState("");
@@ -263,7 +274,23 @@ function OverviewPageContent() {
   const skipTargetDateRef = useRef<string | null>(null);
   const continueButtonRef = useRef<HTMLButtonElement | null>(null);
   const calendarStopButtonRef = useRef<HTMLButtonElement | null>(null);
+  const homeNextFixturesListRef = useRef<HTMLDivElement | null>(null);
   const wasSimulatingDaysRef = useRef(false);
+
+  useLayoutEffect(() => {
+    const list = homeNextFixturesListRef.current;
+    if (!list) return;
+
+    const updateVisibleCount = () => {
+      const nextCount = Math.max(1, Math.floor(list.clientHeight / HOME_NEXT_FIXTURE_ROW_HEIGHT));
+      setVisibleHomeFixtureCount((current) => current === nextCount ? current : nextCount);
+    };
+
+    updateVisibleCount();
+    const observer = new ResizeObserver(updateVisibleCount);
+    observer.observe(list);
+    return () => observer.disconnect();
+  }, [activeSubTab, activeTab, fixtures.length]);
 
   if (dayTickerRef.current === null) {
     dayTickerRef.current = createDayTicker({
@@ -337,6 +364,10 @@ function OverviewPageContent() {
     ? ""
     : `${currentCalendarMonth.year}-${String(currentCalendarMonth.month + 1).padStart(2, "0")}-${String(selectedCalendarDay).padStart(2, "0")}`;
   const canSkipToSelectedCalendarDate = selectedCalendarDateString > currentDate;
+  const isTickerAtImpasse = useMemo(
+    () => isCareerCalendarAtImpasse(currentDate, fixtures),
+    [currentDate, fixtures],
+  );
   const inGameDate = dateKeyToLocalDate(currentDate);
   const openCalendarAtCurrentDate = () => {
     const currentMonthIndex = findCalendarMonthIndex(CALENDAR_MONTHS, currentDate);
@@ -540,6 +571,18 @@ function OverviewPageContent() {
           loadedUserGamesPlayed,
           currentSeason,
         ));
+        const loadedAiTeamLeadership = reconcileAiLeagueLeadership(
+          parsed.aiTeamLeadership,
+          teams,
+          players,
+          userTeamId,
+          currentSeason,
+        );
+        setAiTeamLeadership(loadedAiTeamLeadership);
+        if (JSON.stringify(parsed.aiTeamLeadership ?? {}) !== JSON.stringify(loadedAiTeamLeadership)) {
+          parsed.aiTeamLeadership = loadedAiTeamLeadership;
+          localStorage.setItem(`ipl_career_${userTeamId}`, JSON.stringify(parsed));
+        }
         if (parsed.shortlist) setShortlist(parsed.shortlist);
         const savedDeadline = parsed.retentionDeadline as RetentionDeadline | undefined;
         const nextDeadline = savedDeadline ?? generateNextRetentionDeadline(currentDate);
@@ -573,6 +616,7 @@ function OverviewPageContent() {
       teamTactics: updatedData.teamTactics ?? teamTactics,
       teamStrategy: (updatedData.teamTactics ?? teamTactics).preset,
       teamLeadership: updatedData.teamLeadership ?? teamLeadership,
+      aiTeamLeadership: updatedData.aiTeamLeadership ?? aiTeamLeadership,
       shortlist: updatedData.shortlist ?? shortlist,
       retentionDeadline: updatedData.retentionDeadline ?? retentionDeadline,
     };
@@ -601,6 +645,12 @@ function OverviewPageContent() {
     const initialBattingImpactSubs = battingFirstImpactSubs.length > 0 ? battingFirstImpactSubs : buildRecommendedImpactSubs(initialBattingFirstXI, lineupCandidates, "battingFirst");
     const initialBowlingImpactSubs = bowlingFirstImpactSubs.length > 0 ? bowlingFirstImpactSubs : buildRecommendedImpactSubs(initialBowlingFirstXI, lineupCandidates, "bowlingFirst");
     const initialTeamTactics = normalizeTeamTactics(teamTactics);
+    const initialAiTeamLeadership = appointAiLeagueLeadership(
+      teams,
+      players,
+      userTeamId,
+      currentSeason,
+    );
     // 1. Generate fixtures
     const GeneratedFixtures = generateLeagueFixtures();
     // 2. Generate standings
@@ -634,6 +684,7 @@ function OverviewPageContent() {
     setBattingFirstImpactSubs(initialBattingImpactSubs);
     setBowlingFirstImpactSubs(initialBowlingImpactSubs);
     setTeamTactics(initialTeamTactics);
+    setAiTeamLeadership(initialAiTeamLeadership);
     
     saveCareerState({
       fixtures: GeneratedFixtures,
@@ -647,6 +698,7 @@ function OverviewPageContent() {
       bowlingFirstImpactSubs: initialBowlingImpactSubs,
       teamTactics: initialTeamTactics,
       teamLeadership,
+      aiTeamLeadership: initialAiTeamLeadership,
     });
   };
 
@@ -1490,24 +1542,19 @@ function OverviewPageContent() {
   const advanceOneDay = () => {
     const currentDateString = useGameStore.getState().currentDate;
     const unplayedMatches = fixturesRef.current.filter((match) => !match.played);
-    const overdueFixtureDate = unplayedMatches
-      .map((match) => match.date)
-      .filter((date): date is string => Boolean(date && date <= currentDateString))
-      .sort()[0];
-    const nextDateString = overdueFixtureDate ?? addDaysToDateKey(currentDateString, 1);
-    const isCatchingUpCurrentDate = overdueFixtureDate !== undefined;
-    const userMatchBlocksProgress = unplayedMatches.some(
-      (match) =>
-        Boolean(match.date && match.date <= nextDateString) &&
-        (match.teamA === userTeamId || match.teamB === userTeamId),
-    );
+    const {
+      nextDate: nextDateString,
+      blockedByFixture: fixtureBlocksProgress,
+    } = getCareerCalendarStep(currentDateString, unplayedMatches);
+    const isCatchingUpCurrentDate = nextDateString <= currentDateString;
 
-    // User matches require a real result from the future match system. Never
-    // advance beyond their scheduled day or generate a result automatically.
-    if (userMatchBlocksProgress) {
+    // Until the match engine is available, every fixture requires an external
+    // result. Pause on matchday instead of repeatedly ticking the same overdue
+    // date or advancing beyond an unresolved game.
+    if (fixtureBlocksProgress) {
       useGameStore.setState({ currentDate: nextDateString });
       stopSimulating();
-      showToast("Paused: Your fixture needs a match result before the calendar can continue.");
+      showToast("Paused at matchday: Fixtures need the game engine before the calendar can continue.");
       return;
     }
 
@@ -1553,6 +1600,12 @@ function OverviewPageContent() {
   });
 
   const startSimulating = useCallback(() => {
+    const simulationDate = useGameStore.getState().currentDate;
+    if (isCareerCalendarAtImpasse(simulationDate, fixturesRef.current)) {
+      showToast("Continue unavailable: Fixtures need the game engine before the calendar can progress.");
+      return;
+    }
+
     if (calendarAnimationTimeoutRef.current) {
       clearTimeout(calendarAnimationTimeoutRef.current);
       calendarAnimationTimeoutRef.current = null;
@@ -2373,7 +2426,12 @@ function OverviewPageContent() {
                 ref={continueButtonRef}
                 type="button"
                 onClick={startSimulating}
-                className="flex items-center gap-1.5 rounded bg-success px-3.5 py-1.5 font-space-mono text-[9px] font-bold uppercase tracking-wider text-white shadow-sm transition-all hover:bg-success/80 active:scale-95"
+                disabled={isTickerAtImpasse}
+                aria-label={isTickerAtImpasse
+                  ? "Continue unavailable: waiting for the game engine to resolve matchday fixtures"
+                  : "Continue day-by-day simulation"}
+                title={isTickerAtImpasse ? "Waiting for the game engine to resolve matchday fixtures" : undefined}
+                className="flex items-center gap-1.5 rounded bg-success px-3.5 py-1.5 font-space-mono text-[9px] font-bold uppercase tracking-wider text-white shadow-sm transition-all hover:bg-success/80 active:scale-95 disabled:cursor-not-allowed disabled:bg-text-secondary disabled:opacity-45 disabled:hover:bg-text-secondary disabled:active:scale-100"
               >
                 <Play className="size-3 fill-current" aria-hidden="true" /> Continue
               </button>
@@ -2558,16 +2616,18 @@ function OverviewPageContent() {
                           const dayData = getCalendarDayData(dateString);
                           const isCurrentDay = day === inGameDate.getDate();
                           const hasRingedEvent = dayData.hasAuction || dayData.hasRetention || dayData.hasUserMatch;
-                          const surfaceClass = dayData.isAnnouncement
-                            ? "border-success bg-success/5"
-                            : isCurrentDay
-                              ? "border-[var(--ink)] bg-[var(--ink)]/5"
+                          const surfaceClass = isCurrentDay
+                            ? "border-accent/60 bg-accent/[0.07] shadow-sm"
+                            : dayData.isAnnouncement
+                              ? "border-success bg-success/5"
                               : "border-border/60 bg-surface";
-                          const ringClass = dayData.isAnnouncement
-                            ? "ring-1 ring-success/20"
-                            : hasRingedEvent
-                              ? "ring-1 ring-accent/30"
-                              : "";
+                          const ringClass = isCurrentDay
+                            ? "ring-1 ring-inset ring-accent/20"
+                            : dayData.isAnnouncement
+                              ? "ring-1 ring-success/20"
+                              : hasRingedEvent
+                                ? "ring-1 ring-accent/30"
+                                : "";
                           
                           return (
                             <div
@@ -2582,7 +2642,7 @@ function OverviewPageContent() {
                                 dayData.hasUserMatch ? "Your team has a match" : "",
                               ].filter(Boolean).join(" · ")}
                             >
-                              <span className="absolute left-1 top-1">{day}</span>
+                              <span className={`absolute left-1 top-1 ${isCurrentDay ? "text-accent" : ""}`}>{day}</span>
                               {dayData.hasUserMatch && (
                                 <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-accent animate-pulse" />
                               )}
@@ -2671,31 +2731,33 @@ function OverviewPageContent() {
                           Fixtures not yet announced
                         </div>
                       ) : (
-                      <div className="grid min-h-0 flex-1 grid-rows-5">
+                      <div ref={homeNextFixturesListRef} className="min-h-0 flex-1 overflow-hidden">
                         {(() => {
                           const userFixtures = fixtures
-                            .filter((fixture) => fixture.teamA === userTeamId || fixture.teamB === userTeamId)
+                            .filter((fixture) => (
+                              !fixture.played
+                              && (fixture.teamA === userTeamId || fixture.teamB === userTeamId)
+                            ))
                             .sort((a, b) => (a.date ?? "").localeCompare(b.date ?? "") || a.round - b.round);
-                          const firstUnplayedIndex = userFixtures.findIndex((fixture) => !fixture.played);
-                          const remainingFixtures = firstUnplayedIndex < 0 ? 0 : userFixtures.length - firstUnplayedIndex;
-                          const windowStart = remainingFixtures <= 5
-                            ? Math.max(0, userFixtures.length - 5)
-                            : Math.max(0, firstUnplayedIndex - 1);
 
-                          return userFixtures.slice(windowStart, windowStart + 5).map((fixture) => {
+                          if (userFixtures.length === 0) {
+                            return (
+                              <div className="flex h-full items-center justify-center text-center font-space-mono text-xs uppercase text-text-secondary">
+                                No upcoming fixtures
+                              </div>
+                            );
+                          }
+
+                          return userFixtures.slice(0, visibleHomeFixtureCount).map((fixture, index) => {
                             const opponentId = fixture.teamA === userTeamId ? fixture.teamB : fixture.teamA;
                             const opponent = teams[opponentId];
                             const fixtureDate = fixture.date ? dateKeyToLocalDate(fixture.date) : null;
-                            const isNextFixture = firstUnplayedIndex >= 0 && fixture.id === userFixtures[firstUnplayedIndex].id;
-                            const userScore = fixture.teamA === userTeamId ? fixture.scoreA : fixture.scoreB;
-                            const result = fixture.played
-                              ? `${fixture.winner === userTeamId ? "W" : "L"} ${userScore?.runs ?? "-"}/${userScore?.wickets ?? "-"}`
-                              : "-";
+                            const isNextFixture = index === 0;
 
                             return (
                               <div
                                 key={`next-fixture-${fixture.id}`}
-                                className={`grid min-h-0 grid-cols-[2.75rem_minmax(0,1fr)_auto] items-center gap-2 border-b border-[#16130f]/10 px-1.5 text-text-primary ${isNextFixture ? "bg-accent/15 ring-1 ring-inset ring-accent/30" : ""}`}
+                                className={`grid h-6 grid-cols-[2.75rem_minmax(0,1fr)_auto] items-center gap-2 border-b border-[#16130f]/10 px-1.5 text-text-primary ${isNextFixture ? "bg-accent/15 ring-1 ring-inset ring-accent/30" : ""}`}
                               >
                                 <div className="flex flex-col items-center justify-center leading-none">
                                   <span className="font-space-mono text-[14px] font-bold">{fixtureDate?.getDate() ?? "-"}</span>
@@ -2704,7 +2766,9 @@ function OverviewPageContent() {
                                   </span>
                                 </div>
                                 <span className="truncate text-[10px] font-medium">vs {opponent?.shortName ?? opponentId}</span>
-                                <span className="font-space-mono text-[9px]">{result}</span>
+                                <span className="font-space-mono text-[8px] font-bold uppercase text-text-secondary">
+                                  {fixture.teamA === userTeamId ? "Home" : "Away"}
+                                </span>
                               </div>
                             );
                           });
@@ -3264,10 +3328,12 @@ function OverviewPageContent() {
                       <button
                         type="button"
                         onClick={() => setPendingSkipTargetDate(selectedCalendarDateString)}
-                        disabled={!canSkipToSelectedCalendarDate || isSimulatingDays}
+                        disabled={!canSkipToSelectedCalendarDate || isSimulatingDays || isTickerAtImpasse}
                         className="w-full shrink-0 border border-border bg-surface py-2 font-space-mono text-[9px] font-bold uppercase tracking-widest text-text-primary transition-colors hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
                       >
-                        {selectedCalendarDateString === currentDate
+                        {isTickerAtImpasse
+                          ? "Waiting for game engine"
+                          : selectedCalendarDateString === currentDate
                           ? "Current date"
                           : selectedCalendarDateString < currentDate
                             ? "Date has passed"
@@ -3289,18 +3355,18 @@ function OverviewPageContent() {
               {activeSubTab === "overview" && (
                 <div className="grid grid-cols-1 lg:grid-cols-[2fr_3fr] gap-6 h-[calc(100vh-200px)] min-h-[500px] overflow-hidden">
                   {/* Roster overview */}
-                  <div onClick={() => setActiveSubTab("roster")} className="bg-surface border-2 border-border hover:border-accent p-5 flex min-h-0 flex-col cursor-pointer transition-colors overflow-hidden">
-                    <div className="flex items-end justify-between border-b border-[#16130f]/10 pb-2 mb-3 shrink-0">
-                      <h4 className="font-anton text-[14px] uppercase">SQUAD OVERVIEW</h4>
-                      <div className="font-space-mono text-[8px] text-text-secondary uppercase">
+                  <div onClick={() => setActiveSubTab("roster")} className="squad-overview-tile bg-surface border-2 border-border hover:border-accent p-5 flex min-h-0 flex-col cursor-pointer transition-colors overflow-hidden">
+                    <div className="flex items-end justify-between gap-3 border-b border-[#16130f]/10 pb-2 mb-3 shrink-0">
+                      <h4 className="squad-overview-title whitespace-nowrap font-anton uppercase">SQUAD OVERVIEW</h4>
+                      <div className="squad-overview-summary min-w-0 truncate font-space-mono text-text-secondary uppercase">
                         {userTeam.squad.length} Players · {userTeam.overseasPlayersCurrent} Overseas
                       </div>
                     </div>
-                    <div className="grid grid-cols-[13rem_2.5rem_6.5rem_14rem] justify-start gap-2 border-b border-[#16130f]/10 pb-1.5 text-[8px] font-space-mono font-bold text-text-secondary uppercase shrink-0">
+                    <div className="squad-overview-grid squad-overview-heading grid gap-2 border-b border-[#16130f]/10 pb-1.5 font-space-mono font-bold text-text-secondary uppercase shrink-0">
                       <span>Player</span>
                       <span className="text-center">Age</span>
                       <span className="text-center">Role</span>
-                      <span className="grid translate-x-2 grid-cols-[5.5rem_3rem_5.5rem] justify-center">
+                      <span className="squad-overview-ability-grid grid">
                         <span className="text-center">CA</span>
                         <span aria-hidden="true" />
                         <span className="text-center">PA</span>
@@ -3319,10 +3385,10 @@ function OverviewPageContent() {
                               event.stopPropagation();
                               setDetailedPlayerId(player.id);
                             }}
-                            className="grid h-11 grid-cols-[13rem_2.5rem_6.5rem_14rem] items-center justify-start gap-2 border-b border-[#16130f]/10 text-xs hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer"
+                            className="squad-overview-grid squad-overview-row grid h-11 items-center gap-2 border-b border-[#16130f]/10 hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer"
                           >
                             <span className="flex min-w-0 items-center gap-1">
-                              <span className="whitespace-nowrap font-semibold text-text-primary">{player.name}</span>
+                              <span className="min-w-0 truncate font-semibold text-text-primary">{player.name}</span>
                               {player.nationality === "Overseas" && (
                                 <span
                                   className="shrink-0 rounded-[2px] px-1 py-0.5 font-space-mono text-[7px] font-bold leading-none text-white"
@@ -3333,19 +3399,19 @@ function OverviewPageContent() {
                               )}
                             </span>
                             <span className="text-center font-space-mono text-text-secondary">{player.age}</span>
-                            <span className="truncate text-center font-space-mono text-xs uppercase text-text-secondary">{player.role}</span>
-                            <span className="grid translate-x-2 grid-cols-[5.5rem_3rem_5.5rem] items-center justify-center">
+                            <span className="squad-overview-role truncate text-center font-space-mono uppercase text-text-secondary">{player.role}</span>
+                            <span className="squad-overview-ability-grid grid items-center">
                               {player.role === "All-Rounder" ? (
                                 <>
                                   <span
-                                    className="text-center font-space-mono text-[10px] font-bold text-text-primary"
+                                    className="squad-overview-allrounder-rating text-center font-space-mono font-bold leading-tight text-text-primary"
                                     title={`Batting ${player.currentBatting}, Bowling ${player.currentBowling}`}
                                   >
                                     Bat {player.currentBatting}/Bowl {player.currentBowling}
                                   </span>
                                   <span aria-hidden="true" />
                                   <span
-                                    className="text-center font-space-mono text-[10px] font-bold text-text-primary"
+                                    className="squad-overview-allrounder-rating text-center font-space-mono font-bold leading-tight text-text-primary"
                                     title={`Batting ${player.potentialBatting}, Bowling ${player.potentialBowling}`}
                                   >
                                     Bat {player.potentialBatting}/Bowl {player.potentialBowling}
@@ -3353,15 +3419,15 @@ function OverviewPageContent() {
                                 </>
                               ) : player.role === "Pace Bowler" || player.role === "Spin Bowler" ? (
                                 <>
-                                  <span className="text-center font-space-mono font-bold text-text-primary">{player.currentBowling}</span>
+                                  <span className="squad-overview-rating text-center font-space-mono font-bold text-text-primary">{player.currentBowling}</span>
                                   <span aria-hidden="true" />
-                                  <span className="text-center font-space-mono font-bold text-text-primary">{player.potentialBowling}</span>
+                                  <span className="squad-overview-rating text-center font-space-mono font-bold text-text-primary">{player.potentialBowling}</span>
                                 </>
                               ) : (
                                 <>
-                                  <span className="text-center font-space-mono font-bold text-text-primary">{player.currentBatting}</span>
+                                  <span className="squad-overview-rating text-center font-space-mono font-bold text-text-primary">{player.currentBatting}</span>
                                   <span aria-hidden="true" />
-                                  <span className="text-center font-space-mono font-bold text-text-primary">{player.potentialBatting}</span>
+                                  <span className="squad-overview-rating text-center font-space-mono font-bold text-text-primary">{player.potentialBatting}</span>
                                 </>
                               )}
                             </span>
@@ -3866,7 +3932,14 @@ function OverviewPageContent() {
                       {standings.map((row, index) => (
                         <div key={row.teamId} className={`grid min-h-0 grid-cols-[1.5rem_minmax(0,1fr)_2rem_2rem_2rem_2.5rem] items-center gap-1 border-b border-[#16130f]/10 text-[10px] text-text-primary ${row.teamId === userTeamId ? "bg-black/5 font-bold dark:bg-white/5" : ""}`}>
                           <span className="relative right-2 text-center font-space-mono text-sm font-bold text-text-secondary">{index + 1}</span>
-                          <span className="truncate text-xs">{row.teamName}</span>
+                          <Link
+                            href={`/game/teams/${row.teamId}`}
+                            onClick={(event) => event.stopPropagation()}
+                            className="truncate text-xs underline-offset-2 transition-colors hover:text-accent hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
+                            aria-label={`Open ${row.teamName} team profile`}
+                          >
+                            {row.teamName}
+                          </Link>
                           <span className="relative right-3 text-center font-space-mono">{row.won}</span>
                           <span className="relative right-3 text-center font-space-mono">{row.lost}</span>
                           <span className="relative right-3 text-center font-space-mono">{row.noResults}</span>
@@ -4038,32 +4111,50 @@ function OverviewPageContent() {
 
               {/* Points Table page */}
               {activeSubTab === "standings" && (
-                <div className="border-2 border-border bg-surface h-[calc(100vh-200px)] min-h-[500px] flex flex-col overflow-hidden">
+                <div className="points-table-panel border-2 border-border bg-surface h-[calc(100vh-200px)] min-h-[500px] flex flex-col overflow-hidden">
                   <div className="min-h-0 flex-1 overflow-x-auto overflow-y-hidden">
-                    <table className="h-full w-full table-fixed text-left font-barlow text-sm divide-y divide-[#16130f]/10">
-                      <thead className="bg-[#16130f]/5 text-[11px] font-space-mono text-text-secondary uppercase tracking-wider">
+                    <table className="points-table w-full text-left font-barlow divide-y divide-[#16130f]/10">
+                      <colgroup>
+                        <col style={{ width: "6%" }} />
+                        <col style={{ width: "48%" }} />
+                        <col style={{ width: "5.5%" }} />
+                        <col style={{ width: "5.5%" }} />
+                        <col style={{ width: "5.5%" }} />
+                        <col style={{ width: "5.5%" }} />
+                        <col style={{ width: "14%" }} />
+                        <col style={{ width: "10%" }} />
+                      </colgroup>
+                      <thead className="points-table-header bg-[#16130f]/5 font-space-mono text-text-secondary uppercase tracking-wider">
                         <tr>
-                          <th className="px-8 py-[18px] text-center">Pos</th>
-                          <th className="px-8 py-[18px]">Team</th>
-                          <th className="px-8 py-[18px] text-center">P</th>
-                          <th className="px-8 py-[18px] text-center">W</th>
-                          <th className="px-8 py-[18px] text-center">L</th>
-                          <th className="px-8 py-[18px] text-center">NR</th>
-                          <th className="px-8 py-[18px] text-center">NRR</th>
-                          <th className="px-8 py-[18px] text-center font-bold">Pts</th>
+                          <th className="points-table-compact-stat text-center">Pos</th>
+                          <th>Team</th>
+                          <th className="points-table-compact-stat text-center">P</th>
+                          <th className="points-table-compact-stat text-center">W</th>
+                          <th className="points-table-compact-stat text-center">L</th>
+                          <th className="points-table-compact-stat text-center">NR</th>
+                          <th className="points-table-compact-stat text-center">NRR</th>
+                          <th className="points-table-compact-stat text-center font-bold">Pts</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-[#16130f]/10">
+                      <tbody className="points-table-body divide-y divide-[#16130f]/10">
                         {standings.map((row, idx) => (
-                          <tr key={row.teamId} className={`hover:bg-black/5 transition-colors ${row.teamId === userTeamId ? "bg-accent/5 font-bold" : ""}`} style={{ height: `${100 / Math.max(standings.length, 1)}%` }}>
-                            <td className="px-8 py-1 text-center font-bold text-text-secondary font-space-mono text-xs">#{idx + 1}</td>
-                            <td className="px-8 py-1 font-bold text-text-primary text-[15px]">{row.teamName}</td>
-                            <td className="px-8 py-1 text-center font-space-mono text-text-secondary">{row.played}</td>
-                            <td className="px-8 py-1 text-center text-success font-bold font-space-mono">{row.won}</td>
-                            <td className="px-8 py-1 text-center text-danger font-bold font-space-mono">{row.lost}</td>
-                            <td className="px-8 py-1 text-center font-space-mono text-text-secondary">{row.noResults}</td>
-                            <td className="px-8 py-1 text-center font-space-mono font-medium text-text-primary">{row.nrr >= 0 ? "+" : ""}{row.nrr.toFixed(3)}</td>
-                            <td className="px-8 py-1 text-center font-bold font-space-mono text-base text-text-primary">{row.points}</td>
+                          <tr key={row.teamId} className={`hover:bg-black/5 transition-colors ${row.teamId === userTeamId ? "bg-accent/5 font-bold" : ""}`}>
+                            <td className="points-table-compact-stat points-table-position text-center font-bold text-text-secondary font-space-mono">#{idx + 1}</td>
+                            <td className="points-table-team truncate font-bold text-text-primary">
+                              <Link
+                                href={`/game/teams/${row.teamId}`}
+                                className="inline-block max-w-full truncate underline-offset-2 transition-colors hover:text-accent hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
+                                aria-label={`Open ${row.teamName} team profile`}
+                              >
+                                {row.teamName}
+                              </Link>
+                            </td>
+                            <td className="points-table-compact-stat text-center font-space-mono text-text-secondary">{row.played}</td>
+                            <td className="points-table-compact-stat text-center text-success font-bold font-space-mono">{row.won}</td>
+                            <td className="points-table-compact-stat text-center text-danger font-bold font-space-mono">{row.lost}</td>
+                            <td className="points-table-compact-stat text-center font-space-mono text-text-secondary">{row.noResults}</td>
+                            <td className="points-table-compact-stat text-center font-space-mono font-medium text-text-primary">{row.nrr >= 0 ? "+" : ""}{row.nrr.toFixed(3)}</td>
+                            <td className="points-table-compact-stat points-table-points text-center font-bold font-space-mono text-text-primary">{row.points}</td>
                           </tr>
                         ))}
                       </tbody>

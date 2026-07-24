@@ -86,19 +86,6 @@ test("automatic XI roles are unique and obey their eligibility rules", () => {
     currentBatting: batting,
     currentBowling: bowling,
     bowlingStyle,
-    attributes: {
-      accuracy: 72,
-      technique: 70,
-      composure: 70,
-      power: 70,
-      timing: 70,
-      placement: 70,
-      swing: 70,
-      seam: 70,
-      variation: 70,
-      spin: 70,
-      flight: 70,
-    },
     ...flags,
   } as unknown as Player);
   const lineup = [
@@ -116,6 +103,11 @@ test("automatic XI roles are unique and obey their eligibility rules", () => {
   ];
 
   const roles = autoAssignTacticalRoles(lineup);
+  assert.equal(roles.powerplayAggressor, "opener-one");
+  assert.equal(roles.finisher, "finisher");
+  assert.equal(roles.strikeSpinner, "spinner");
+  assert.equal(roles.newBallBowler, "quick-one");
+
   (["batting", "bowling"] as const).forEach((discipline) => {
     const assigned = TACTICAL_ROLE_DEFINITIONS
       .filter((definition) => definition.discipline === discipline)

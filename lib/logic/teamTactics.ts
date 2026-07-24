@@ -73,7 +73,7 @@ export const TACTICAL_ROLE_DEFINITIONS: Array<{
   { id: "newBallBowler", label: "New-ball bowler", shortLabel: "New ball", description: "Leads the pace attack in the powerplay.", rule: "Pace bowler and BOWL 55+", discipline: "bowling" },
   { id: "middleOversController", label: "Middle-overs controller", shortLabel: "Middle control", description: "Builds pressure through accurate middle overs.", rule: "Any bowler with BOWL 50+", discipline: "bowling" },
   { id: "strikeSpinner", label: "Strike spinner", shortLabel: "Strike spin", description: "Provides the main spin wicket threat.", rule: "Spin bowler and BOWL 50+", discipline: "bowling" },
-  { id: "deathBowler", label: "Death bowler", shortLabel: "Death", description: "Takes responsibility for the final overs.", rule: "BOWL 60+ with pace or ACC 65+", discipline: "bowling" },
+  { id: "deathBowler", label: "Death bowler", shortLabel: "Death", description: "Takes responsibility for the final overs.", rule: "BOWL 60+", discipline: "bowling" },
 ];
 
 const emptyRoles = (): TacticalRoles => ({
@@ -209,7 +209,6 @@ export function normalizeTeamTactics(value: unknown, legacyStrategy?: unknown): 
 }
 
 export function isPlayerEligibleForTacticalRole(player: Player, role: TacticalRole, battingPosition: number): boolean {
-  const accuracy = player.attributes?.accuracy ?? 0;
   switch (role) {
     case "anchor": return battingPosition <= 4 && player.currentBatting >= 55;
     case "powerplayAggressor": return battingPosition <= 2 && player.currentBatting >= 50;
@@ -218,22 +217,43 @@ export function isPlayerEligibleForTacticalRole(player: Player, role: TacticalRo
     case "newBallBowler": return player.currentBowling >= 55 && player.bowlingStyle === "Pacer";
     case "middleOversController": return player.currentBowling >= 50;
     case "strikeSpinner": return player.currentBowling >= 50 && player.bowlingStyle === "Spinner";
-    case "deathBowler": return player.currentBowling >= 60 && (player.bowlingStyle === "Pacer" || accuracy >= 65);
+    case "deathBowler": return player.currentBowling >= 60;
   }
 }
 
-const attribute = (player: Player, key: keyof Player["attributes"]) => player.attributes?.[key] ?? 50;
+const battingOrderFit = (battingPosition: number, idealPosition: number) => (
+  Math.max(0, 30 - Math.abs(battingPosition - idealPosition) * 8)
+);
 
-const roleScore = (player: Player, role: TacticalRole) => {
+const roleScore = (player: Player, role: TacticalRole, battingPosition: number) => {
+  const aggression = player.battingAggression ?? 50;
   switch (role) {
-    case "anchor": return player.currentBatting * 2 + attribute(player, "technique") + attribute(player, "composure");
-    case "powerplayAggressor": return player.currentBatting + attribute(player, "power") + (player.battingAggression ?? 50) + (player.isOpener ? 20 : 0);
-    case "middleOversEnforcer": return player.currentBatting + attribute(player, "timing") + attribute(player, "placement");
-    case "finisher": return player.currentBatting + attribute(player, "power") + attribute(player, "composure") + (player.isFinisher ? 25 : 0);
-    case "newBallBowler": return player.currentBowling * 2 + attribute(player, "swing") + attribute(player, "seam");
-    case "middleOversController": return player.currentBowling * 2 + attribute(player, "accuracy") + attribute(player, "variation");
-    case "strikeSpinner": return player.currentBowling * 2 + attribute(player, "spin") + attribute(player, "flight") + attribute(player, "variation");
-    case "deathBowler": return player.currentBowling * 2 + attribute(player, "accuracy") + attribute(player, "variation");
+    case "anchor":
+      return player.currentBatting * 3
+        + battingOrderFit(battingPosition, 2)
+        + (100 - aggression) * 0.25;
+    case "powerplayAggressor":
+      return player.currentBatting * 3
+        + battingOrderFit(battingPosition, 0)
+        + aggression * 0.4
+        + (player.isOpener ? 20 : 0);
+    case "middleOversEnforcer":
+      return player.currentBatting * 3
+        + battingOrderFit(battingPosition, 3)
+        + aggression * 0.2;
+    case "finisher":
+      return player.currentBatting * 3
+        + battingOrderFit(battingPosition, 5)
+        + aggression * 0.3
+        + (player.isFinisher ? 25 : 0);
+    case "newBallBowler":
+      return player.currentBowling * 4 + (player.bowlingStyle === "Pacer" ? 20 : 0);
+    case "middleOversController":
+      return player.currentBowling * 4 + (player.bowlingStyle === "Spinner" ? 8 : 0);
+    case "strikeSpinner":
+      return player.currentBowling * 4 + (player.bowlingStyle === "Spinner" ? 20 : 0);
+    case "deathBowler":
+      return player.currentBowling * 4 + (player.bowlingStyle === "Pacer" ? 12 : 0);
   }
 };
 
@@ -261,7 +281,11 @@ export function autoAssignTacticalRoles(playersInBattingOrder: readonly Player[]
       .filter((candidate) => !usedByDiscipline[definition.discipline].has(candidate.id))
       .filter((candidate) => isPlayerEligibleForTacticalRole(candidate, role, positions.get(candidate.id) ?? 99))
       .slice()
-      .sort((left, right) => roleScore(right, role) - roleScore(left, role))[0];
+      .sort((left, right) => (
+        roleScore(right, role, positions.get(right.id) ?? 99)
+        - roleScore(left, role, positions.get(left.id) ?? 99)
+        || left.name.localeCompare(right.name)
+      ))[0];
     if (!player) return;
     result[role] = player.id;
     usedByDiscipline[definition.discipline].add(player.id);

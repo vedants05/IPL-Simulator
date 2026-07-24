@@ -6,6 +6,7 @@ import {
   buildRecommendedImpactSubs,
   dropPlayerIntoImpactSubs,
   dropPlayerIntoLineup,
+  isBowlingOption,
   type LineupCandidate,
   validateLineup,
 } from "./lineupPlanner";
@@ -61,6 +62,24 @@ test("lineup validation reports overseas, wicketkeeping, and bowling balance", (
   assert.equal(validation.wicketkeeperCount, 0);
   assert.equal(validation.isComplete, false);
   assert.equal(validation.isValid, false);
+});
+
+test("bowling options require a bowling role and a rating of at least 68", () => {
+  const candidate = (role: string, bowling: number): LineupCandidate => ({
+    id: `${role}-${bowling}`,
+    nationality: "Indian Capped",
+    role,
+    batting: 70,
+    bowling,
+    isWicketkeeper: false,
+  });
+
+  assert.equal(isBowlingOption(candidate("Batsman", 80)), false);
+  assert.equal(isBowlingOption(candidate("All-Rounder", 67)), false);
+  assert.equal(isBowlingOption(candidate("All-Rounder", 68)), true);
+  assert.equal(isBowlingOption(candidate("Pace Bowler", 67)), false);
+  assert.equal(isBowlingOption(candidate("Pace Bowler", 68)), true);
+  assert.equal(isBowlingOption(candidate("Spin Bowler", 68)), true);
 });
 
 test("lineup drops can swap players or insert them between batting positions", () => {

@@ -56,7 +56,7 @@ export default function RetentionsPage() {
   const accentColor = TEAM_COLORS[selected] ?? "#6a1fc2";
 
   return (
-    <div style={{ minHeight: "100vh", background: "#0a0a12", color: "#e8e8f0", fontFamily: "'Inter', sans-serif", padding: "0" }}>
+    <div style={{ minHeight: "var(--app-viewport-height)", background: "#0a0a12", color: "#e8e8f0", fontFamily: "'Inter', sans-serif", padding: "0" }}>
       <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
 
       {/* Header */}

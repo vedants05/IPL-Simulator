@@ -85,7 +85,7 @@ export default function CaptaincyPage({
   ));
 
   return (
-    <div className="relative flex h-[calc(100vh-200px)] min-h-[560px] flex-col overflow-hidden border-2 border-border bg-surface">
+    <div className="relative flex h-[calc(100vh-200px)] min-h-0 flex-col overflow-hidden border-2 border-border bg-surface">
       <header className="flex shrink-0 items-center justify-between gap-5 border-b-2 border-border bg-[linear-gradient(110deg,rgba(var(--team-primary-rgb),0.12),transparent_48%)] px-5 py-4">
         <div className="flex min-w-0 items-center gap-3">
           <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--team-primary)] text-[var(--team-accent-text)]">

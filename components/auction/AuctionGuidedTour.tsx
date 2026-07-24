@@ -54,6 +54,18 @@ const STEPS: TourStep[] = [
 
 type Rect = { top: number; left: number; width: number; height: number };
 
+function getLogicalViewport() {
+  const scale = Number.parseFloat(
+    getComputedStyle(document.documentElement).getPropertyValue("--app-scale"),
+  ) || 1;
+
+  return {
+    scale,
+    width: window.innerWidth / scale,
+    height: window.innerHeight / scale,
+  };
+}
+
 export default function AuctionGuidedTour({ onClose }: { onClose: () => void }) {
   const [stepIndex, setStepIndex] = useState(0);
   const [rect, setRect] = useState<Rect | null>(null);
@@ -67,10 +79,11 @@ export default function AuctionGuidedTour({ onClose }: { onClose: () => void }) 
         return;
       }
       const bounds = element.getBoundingClientRect();
-      const left = Math.max(0, bounds.left);
-      const top = Math.max(0, bounds.top);
-      const right = Math.min(window.innerWidth, bounds.right);
-      const bottom = Math.min(window.innerHeight, bounds.bottom);
+      const viewport = getLogicalViewport();
+      const left = Math.max(0, bounds.left / viewport.scale);
+      const top = Math.max(0, bounds.top / viewport.scale);
+      const right = Math.min(viewport.width, bounds.right / viewport.scale);
+      const bottom = Math.min(viewport.height, bounds.bottom / viewport.scale);
       setRect({
         top,
         left,
@@ -107,9 +120,10 @@ export default function AuctionGuidedTour({ onClose }: { onClose: () => void }) 
   }
 
   const gap = 18;
-  const cardWidth = Math.min(330, window.innerWidth - 32);
+  const viewport = getLogicalViewport();
+  const cardWidth = Math.min(330, viewport.width - 32);
   const cardHeight = 210;
-  const roomRight = window.innerWidth - (rect.left + rect.width);
+  const roomRight = viewport.width - (rect.left + rect.width);
   const roomLeft = rect.left;
   const placeRight = roomRight >= cardWidth + gap;
   const placeLeft = !placeRight && roomLeft >= cardWidth + gap;
@@ -117,10 +131,10 @@ export default function AuctionGuidedTour({ onClose }: { onClose: () => void }) 
     ? rect.left + rect.width + gap
     : placeLeft
       ? rect.left - cardWidth - gap
-      : Math.max(16, Math.min(window.innerWidth - cardWidth - 16, rect.left + rect.width / 2 - cardWidth / 2));
+      : Math.max(16, Math.min(viewport.width - cardWidth - 16, rect.left + rect.width / 2 - cardWidth / 2));
   const cardTop = placeRight || placeLeft
-    ? Math.max(16, Math.min(window.innerHeight - cardHeight - 16, rect.top + rect.height / 2 - cardHeight / 2))
-    : rect.top + rect.height + cardHeight + gap < window.innerHeight
+    ? Math.max(16, Math.min(viewport.height - cardHeight - 16, rect.top + rect.height / 2 - cardHeight / 2))
+    : rect.top + rect.height + cardHeight + gap < viewport.height
       ? rect.top + rect.height + gap
       : Math.max(16, rect.top - cardHeight - gap);
   const blurPanel = "fixed bg-black/55 backdrop-blur-[4px]";

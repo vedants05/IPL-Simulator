@@ -8,27 +8,6 @@ export type AuctionPhase = "pre-auction" | "retention" | "live" | "completed";
 export type AIPersonality = "Conservative" | "Aggressive" | "Balanced";
 export type FanBase = "Small" | "Medium" | "Large" | "Massive";
 
-export interface PlayerAttributes {
-  technique: number;
-  power: number;
-  timing: number;
-  placement: number;
-  running: number;
-  pace: number;
-  swing: number;
-  seam: number;
-  spin: number;
-  flight: number;
-  accuracy: number;
-  variation: number;
-  catching: number;
-  throwing: number;
-  agility: number;
-  composure: number;
-  leadership: number;
-  determination: number;
-}
-
 export interface BattingStats {
   matches: number;
   innings: number;
@@ -78,7 +57,6 @@ export interface Player {
   battingStyle: BattingStyle;
   bowlingStyle: BowlingType | null;
   bowlingHand: "Right-hand" | "Left-hand" | null;
-  attributes: PlayerAttributes;
   careerStats: CareerStats;
   iplStats: IPLStats;
   iplHistory: IPLHistoryEntry[];
@@ -87,7 +65,6 @@ export interface Player {
   isRetained: boolean;
   retainedByTeamId: string | null;
   currentTeamId: string | null;
-  starRating: number;
   potential: Potential;
   currentBatting: number;
   potentialBatting: number;
@@ -108,14 +85,6 @@ export interface Player {
   hasBattedAt6?: boolean;
   hasBattedAt7?: boolean;
   onlyOpensOrBenched?: boolean;
-}
-
-export interface BoardObjective {
-  id: string;
-  description: string;
-  type: "finish_position" | "player_development" | "revenue";
-  target: number;
-  isCompleted: boolean;
 }
 
 // Segment focus — from teamLogic.csv: how strongly a franchise targets each
@@ -165,12 +134,10 @@ export interface Team {
   softSquadTarget?: number; // hidden AI planning target; not a hard squad rule
   overseasPlayersCurrent: number;
   overseasPlayersMax: number;
-  boardObjectives: BoardObjective[];
   fanBase: FanBase;
   prestige: number;
   aiPersonality: AIPersonality;
   dna: FranchiseDNA;
-  description: string;
 }
 
 export interface BidEntry {

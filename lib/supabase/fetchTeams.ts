@@ -1,5 +1,5 @@
 import { supabase } from "./client";
-import { Team, FanBase, AIPersonality, BoardObjective } from "../types";
+import { Team, FanBase, AIPersonality } from "../types";
 
 const STATIC_TEAMS: Team[] = [
   {
@@ -21,7 +21,6 @@ const STATIC_TEAMS: Team[] = [
     minSquadSize: 18,
     overseasPlayersCurrent: 0,
     overseasPlayersMax: 8,
-    boardObjectives: [{ id: "mi-1", description: "Qualify for playoffs", type: "finish_position" as any, target: 4, isCompleted: false }],
     fanBase: "Massive" as any,
     prestige: 10,
     aiPersonality: "Aggressive" as any,
@@ -46,7 +45,6 @@ const STATIC_TEAMS: Team[] = [
         indianBatters: 85,
       },
     },
-    description: "Five-time champions with ₹120Cr purse. Retaining Rohit & Bumrah. Rebuilding around Indian core.",
   },
   {
     id: "CSK",
@@ -67,7 +65,6 @@ const STATIC_TEAMS: Team[] = [
     minSquadSize: 18,
     overseasPlayersCurrent: 0,
     overseasPlayersMax: 8,
-    boardObjectives: [{ id: "csk-1", description: "Qualify for playoffs", type: "finish_position" as any, target: 4, isCompleted: false }],
     fanBase: "Massive" as any,
     prestige: 10,
     aiPersonality: "Conservative" as any,
@@ -92,7 +89,6 @@ const STATIC_TEAMS: Team[] = [
         indianBatters: 70,
       },
     },
-    description: "Five-time champions. Retaining Dhoni and Jadeja. Experienced squad, value-driven bidding.",
   },
   {
     id: "KKR",
@@ -113,7 +109,6 @@ const STATIC_TEAMS: Team[] = [
     minSquadSize: 18,
     overseasPlayersCurrent: 0,
     overseasPlayersMax: 8,
-    boardObjectives: [{ id: "kkr-1", description: "Win the IPL", type: "finish_position" as any, target: 1, isCompleted: false }],
     fanBase: "Large" as any,
     prestige: 9,
     aiPersonality: "Balanced" as any,
@@ -138,7 +133,6 @@ const STATIC_TEAMS: Team[] = [
         indianBatters: 80,
       },
     },
-    description: "Three-time champions. Retaining Narine & Russell. Strong overseas core, seeking Indian stars.",
   },
   {
     id: "RCB",
@@ -159,7 +153,6 @@ const STATIC_TEAMS: Team[] = [
     minSquadSize: 18,
     overseasPlayersCurrent: 0,
     overseasPlayersMax: 8,
-    boardObjectives: [{ id: "rcb-1", description: "Qualify for playoffs", type: "finish_position" as any, target: 4, isCompleted: false }],
     fanBase: "Massive" as any,
     prestige: 8,
     aiPersonality: "Aggressive" as any,
@@ -184,7 +177,6 @@ const STATIC_TEAMS: Team[] = [
         indianBatters: 90,
       },
     },
-    description: "Retaining Virat Kohli. High-spending franchise targeting marquee names to chase maiden title.",
   },
   {
     id: "DC",
@@ -205,7 +197,6 @@ const STATIC_TEAMS: Team[] = [
     minSquadSize: 18,
     overseasPlayersCurrent: 0,
     overseasPlayersMax: 8,
-    boardObjectives: [{ id: "dc-1", description: "Qualify for playoffs", type: "finish_position" as any, target: 4, isCompleted: false }],
     fanBase: "Large" as any,
     prestige: 7,
     aiPersonality: "Balanced" as any,
@@ -230,7 +221,6 @@ const STATIC_TEAMS: Team[] = [
         indianBatters: 60,
       },
     },
-    description: "Rebuilding with Rishabh Pant as cornerstone. Aiming for first IPL title.",
   },
   {
     id: "SRH",
@@ -251,7 +241,6 @@ const STATIC_TEAMS: Team[] = [
     minSquadSize: 18,
     overseasPlayersCurrent: 0,
     overseasPlayersMax: 8,
-    boardObjectives: [{ id: "srh-1", description: "Qualify for playoffs", type: "finish_position" as any, target: 4, isCompleted: false }],
     fanBase: "Large" as any,
     prestige: 7,
     aiPersonality: "Aggressive" as any,
@@ -276,7 +265,6 @@ const STATIC_TEAMS: Team[] = [
         indianBatters: 70,
       },
     },
-    description: "Two-time champions. Retaining Head & Klaasen. Explosive batting-focused strategy.",
   },
   {
     id: "PBKS",
@@ -297,7 +285,6 @@ const STATIC_TEAMS: Team[] = [
     minSquadSize: 18,
     overseasPlayersCurrent: 0,
     overseasPlayersMax: 8,
-    boardObjectives: [{ id: "pbks-1", description: "Qualify for playoffs", type: "finish_position" as any, target: 4, isCompleted: false }],
     fanBase: "Medium" as any,
     prestige: 6,
     aiPersonality: "Balanced" as any,
@@ -322,7 +309,6 @@ const STATIC_TEAMS: Team[] = [
         indianBatters: 85,
       },
     },
-    description: "Full rebuild after mega auction. Best chance to reshape the squad around young Indian talent.",
   },
   {
     id: "RR",
@@ -343,7 +329,6 @@ const STATIC_TEAMS: Team[] = [
     minSquadSize: 18,
     overseasPlayersCurrent: 0,
     overseasPlayersMax: 8,
-    boardObjectives: [{ id: "rr-1", description: "Qualify for playoffs", type: "finish_position" as any, target: 4, isCompleted: false }],
     fanBase: "Medium" as any,
     prestige: 7,
     aiPersonality: "Conservative" as any,
@@ -368,7 +353,6 @@ const STATIC_TEAMS: Team[] = [
         indianBatters: 85,
       },
     },
-    description: "Smart bidders who excel at finding undervalued talent. Retaining Samson and key domestic stars.",
   },
   {
     id: "GT",
@@ -389,7 +373,6 @@ const STATIC_TEAMS: Team[] = [
     minSquadSize: 18,
     overseasPlayersCurrent: 0,
     overseasPlayersMax: 8,
-    boardObjectives: [{ id: "gt-1", description: "Qualify for playoffs", type: "finish_position" as any, target: 4, isCompleted: false }],
     fanBase: "Large" as any,
     prestige: 8,
     aiPersonality: "Balanced" as any,
@@ -414,7 +397,6 @@ const STATIC_TEAMS: Team[] = [
         indianBatters: 85,
       },
     },
-    description: "Two-time finalists. Retaining Shubman Gill & Rashid Khan. Strong bowling attack.",
   },
   {
     id: "LSG",
@@ -435,7 +417,6 @@ const STATIC_TEAMS: Team[] = [
     minSquadSize: 18,
     overseasPlayersCurrent: 0,
     overseasPlayersMax: 8,
-    boardObjectives: [{ id: "lsg-1", description: "Qualify for playoffs", type: "finish_position" as any, target: 4, isCompleted: false }],
     fanBase: "Medium" as any,
     prestige: 6,
     aiPersonality: "Aggressive" as any,
@@ -460,7 +441,6 @@ const STATIC_TEAMS: Team[] = [
         indianBatters: 55,
       },
     },
-    description: "Newer franchise with deep pockets. Retaining KL Rahul. Targeting overseas power-hitters.",
   },
 ];
 
@@ -498,10 +478,6 @@ export async function fetchTeamsFromSupabase(forceRefresh = false): Promise<Team
 
     const mapped = data.map((row: any): Team => {
       const totalPurse = Number(row.total_purse) || 0;
-      const boardObjectives: BoardObjective[] = Array.isArray(row.board_objectives)
-        ? row.board_objectives
-        : [];
-
       return {
         id: row.id,
         name: row.name,
@@ -521,7 +497,6 @@ export async function fetchTeamsFromSupabase(forceRefresh = false): Promise<Team
         minSquadSize: Number(row.min_squad_size) || 0,
         overseasPlayersCurrent: 0,
         overseasPlayersMax: Number(row.overseas_players_max) || 0,
-        boardObjectives,
         fanBase: row.fan_base as FanBase,
         prestige: Number(row.prestige) || 0,
         aiPersonality: row.ai_personality as AIPersonality,
@@ -546,7 +521,6 @@ export async function fetchTeamsFromSupabase(forceRefresh = false): Promise<Team
             indianBatters: Number(row.sf_indian_batters) || 0,
           },
         },
-        description: row.description,
       };
     });
 

@@ -220,6 +220,75 @@ test("only action prompts and their resolution emails share a thread", () => {
   );
 });
 
+test("fixture announcement lists home and away opponents in schedule order", () => {
+  const opponentTeam = (id: string, shortName: string): Team => ({
+    ...team(id, []),
+    name: `${shortName} Franchise`,
+    shortName,
+    homeGround: `${shortName} Ground`,
+  });
+  const scheduledFixture = (
+    matchNumber: number,
+    date: string,
+    opponentId: string,
+    home: boolean,
+  ): CareerEmailFixture => ({
+    id: `scheduled-${matchNumber}`,
+    matchNumber,
+    round: matchNumber,
+    teamA: home ? "user" : opponentId,
+    teamB: home ? opponentId : "user",
+    played: false,
+    date,
+    time: "19:30",
+  });
+  const teams = {
+    user: team("user", ["captain", "deputy", "batter", "bowler"]),
+    rcb: opponentTeam("rcb", "RCB"),
+    csk: opponentTeam("csk", "CSK"),
+    gt: opponentTeam("gt", "GT"),
+    mi: opponentTeam("mi", "MI"),
+  };
+  const fixtures = [
+    scheduledFixture(4, "2027-03-24", "rcb", true),
+    scheduledFixture(2, "2027-03-22", "gt", false),
+    scheduledFixture(1, "2027-03-21", "csk", true),
+    scheduledFixture(3, "2027-03-23", "mi", false),
+  ];
+  const announcement = buildCareerEmailDrafts(baseContext({
+    currentDate: "2027-02-27",
+    fixturesAnnounced: true,
+    fixtures,
+    teams,
+  })).find((email) => email.templateId === "fixture.announcement");
+
+  assert.match(announcement?.body ?? "", /Home: CSK,RCB/);
+  assert.match(announcement?.body ?? "", /Away: GT,MI/);
+  assert.doesNotMatch(announcement?.body ?? "", /Home fixtures: \d|Away fixtures: \d/);
+});
+
+test("stored fixture announcements refresh without becoming unread again", () => {
+  const drafts = buildCareerEmailDrafts(baseContext({
+    currentDate: "2027-02-27",
+    fixturesAnnounced: true,
+    fixtures: [fixture(1), fixture(2)],
+  }));
+  const announcement = drafts.find((email) => email.templateId === "fixture.announcement")!;
+  const storedAnnouncement = {
+    ...announcement,
+    body: "Home fixtures: 1\nAway fixtures: 1",
+    unread: false,
+  };
+  const refreshedAnnouncement = reconcileCareerEmails(
+    [storedAnnouncement],
+    drafts,
+  ).find((email) => email.templateId === "fixture.announcement");
+
+  assert.match(refreshedAnnouncement?.body ?? "", /Home: MUM/);
+  assert.match(refreshedAnnouncement?.body ?? "", /Away: MUM/);
+  assert.equal(refreshedAnnouncement?.unread, false);
+});
+
 test("leadership selection leaves the original prompt unchanged", () => {
   const originalDrafts = buildCareerEmailDrafts(baseContext());
   const originalInbox = reconcileCareerEmails([], originalDrafts);

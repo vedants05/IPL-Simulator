@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Anton, Barlow, Barlow_Condensed, Space_Mono } from "next/font/google";
+import ViewportScaler from "@/components/shared/ViewportScaler";
 import "./globals.css";
 
 const anton = Anton({
@@ -54,7 +55,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body className="antialiased bg-bg text-text-primary font-barlow">
-        {children}
+        <ViewportScaler>{children}</ViewportScaler>
       </body>
     </html>
   );

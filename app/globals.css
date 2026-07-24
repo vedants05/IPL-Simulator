@@ -3,6 +3,10 @@
 @tailwind utilities;
 
 :root {
+  --app-scale: 1;
+  --app-viewport-width: 1280px;
+  --app-viewport-height: 720px;
+
   --background: #f4f1ea;
   --foreground: #16130f;
 
@@ -62,13 +66,161 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
 * {
   box-sizing: border-box;
+}
+
+.app-viewport {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: var(--app-base-bg, var(--background));
+}
+
+.app-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  min-width: 1280px;
+  min-height: 720px;
+  overflow: auto;
+  transform-origin: top left;
+  background: var(--app-base-bg, var(--background));
+}
+
+/* Tailwind's screen units refer to the physical browser viewport. Inside the
+   scaled canvas, these overrides make them use the shared logical viewport. */
+.app-canvas .h-screen {
+  height: var(--app-viewport-height) !important;
+}
+
+.app-canvas .min-h-screen {
+  min-height: var(--app-viewport-height) !important;
+}
+
+.app-canvas .w-screen {
+  width: var(--app-viewport-width) !important;
+}
+
+.app-canvas [class~="h-[calc(100vh-3rem)]"] {
+  height: calc(var(--app-viewport-height) - 3rem) !important;
+}
+
+.app-canvas [class~="h-[calc(100vh-160px)]"] {
+  height: calc(var(--app-viewport-height) - 160px) !important;
+}
+
+.app-canvas [class~="h-[calc(100vh-200px)]"] {
+  height: calc(var(--app-viewport-height) - 200px) !important;
+}
+
+.app-canvas [class~="max-h-[calc(100vh-6rem)]"] {
+  max-height: calc(var(--app-viewport-height) - 6rem) !important;
 }
 
 /* Overview cards use the compact tile rhythm throughout every sub-page. */
 .overview-page .gap-6 {
   gap: 0.75rem;
+}
+
+/* The squad summary is narrower than the surrounding overview canvas. Size
+   its type and columns from the tile itself instead of the browser viewport. */
+.squad-overview-tile {
+  container-name: squad-overview;
+  container-type: inline-size;
+}
+
+.squad-overview-title {
+  font-size: clamp(0.75rem, 3cqi, 0.875rem);
+}
+
+.squad-overview-summary,
+.squad-overview-heading {
+  font-size: clamp(0.4375rem, 1.8cqi, 0.5rem);
+}
+
+.squad-overview-grid {
+  grid-template-columns:
+    minmax(0, 1.5fr)
+    minmax(1.75rem, 0.25fr)
+    minmax(4rem, 0.65fr)
+    minmax(8rem, 1.25fr);
+}
+
+.squad-overview-row {
+  font-size: clamp(0.5625rem, 2.35cqi, 0.75rem);
+}
+
+.squad-overview-role {
+  font-size: clamp(0.5rem, 2cqi, 0.625rem);
+}
+
+.squad-overview-ability-grid {
+  grid-template-columns: minmax(0, 1fr) 0.5rem minmax(0, 1fr);
+}
+
+.squad-overview-rating {
+  font-size: clamp(0.5625rem, 2.2cqi, 0.6875rem);
+}
+
+.squad-overview-allrounder-rating {
+  font-size: clamp(0.4375rem, 1.85cqi, 0.625rem);
+}
+
+.points-table-panel {
+  container-name: points-table;
+  container-type: size;
+}
+
+.points-table {
+  height: 100%;
+  table-layout: fixed;
+}
+
+.points-table-header {
+  font-size: clamp(0.5rem, 1.8cqh, 0.6875rem);
+}
+
+.points-table-header th {
+  padding-block: clamp(0.25rem, 1.2cqh, 0.625rem);
+  padding-inline: clamp(0.75rem, 2.2cqw, 2rem);
+}
+
+.points-table-body {
+  font-size: clamp(0.625rem, 2cqh, 0.875rem);
+}
+
+.points-table-body tr {
+  height: auto;
+}
+
+.points-table-body td {
+  padding-block: clamp(0.125rem, 0.65cqh, 0.375rem);
+  padding-inline: clamp(0.75rem, 2.2cqw, 2rem);
+}
+
+.points-table .points-table-compact-stat {
+  padding-inline: clamp(0.2rem, 0.55cqw, 0.5rem);
+}
+
+.points-table-position {
+  font-size: clamp(0.5625rem, 1.8cqh, 0.75rem);
+}
+
+.points-table-team {
+  font-size: clamp(0.6875rem, 2.3cqh, 0.9375rem);
+}
+
+.points-table-points {
+  font-size: clamp(0.75rem, 2.5cqh, 1rem);
 }
 
 .history-archive-tile {
