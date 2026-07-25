@@ -1,6 +1,7 @@
 import type { Player } from "@/lib/types";
 
 import { MIN_BOWLING_OPTION_RATING } from "./lineupPlanner";
+import { findSpecialOpenerPair, SPECIAL_OPENER_PAIRS } from "./openerPairs";
 
 export type AiLineupMode = "battingFirst" | "bowlingFirst";
 
@@ -25,14 +26,7 @@ export interface AiLineupOptions {
   useProvisionalCaptain?: boolean;
 }
 
-export const SPECIAL_OPENER_PAIRS = [
-  ["virat-kohli", "phil-salt"],
-  ["sunil-narine", "finn-allen"],
-  ["yashasvi-jaiswal", "vaibhav-suryavanshi"],
-  ["travis-head", "abhishek-sharma"],
-  ["shubman-gill", "sai-sudharsan"],
-  ["prabhsimran-singh", "priyansh-arya"],
-] as const;
+export { SPECIAL_OPENER_PAIRS };
 
 export const currentAbility = (player: Player) => (
   Math.max(player.currentBatting ?? 0, player.currentBowling ?? 0)
@@ -261,11 +255,14 @@ export const maxSpecialistBowlersFor = (lineup: readonly Player[]) => {
   return hasEliteAllRounder || hasTwoStrongAllRounders ? 4 : MAX_SPECIALIST_BOWLERS;
 };
 
-const idMatches = (playerId: string, prefix: string) => (
-  playerId === prefix || playerId.startsWith(`${prefix}-`) || playerId.startsWith(prefix)
-);
-
 function getOpeningPair(squad: readonly Player[]): Player[] {
+  // A designated partnership takes precedence over every individual opener
+  // preference, including a wicketkeeper who normally opens. The keeper is
+  // still selected separately by the XI balance rules, but must not split an
+  // intact special pair such as Head/Abhishek.
+  const specialPair = findSpecialOpenerPair(squad);
+  if (specialPair) return specialPair;
+
   const forcedKeeperOpeners = squad
     .filter((player) => isKeeper(player) && (player.isOpener || player.onlyOpensOrBenched))
     .sort((left, right) => (
@@ -286,12 +283,6 @@ function getOpeningPair(squad: readonly Player[]): Player[] {
         || currentAbility(right) - currentAbility(left)
       ))[0];
     return [forcedKeeperOpeners[0], otherOpener ?? fallbackOpener].filter((player): player is Player => Boolean(player));
-  }
-
-  for (const [firstPrefix, secondPrefix] of SPECIAL_OPENER_PAIRS) {
-    const first = squad.find((player) => idMatches(player.id, firstPrefix));
-    const second = squad.find((player) => idMatches(player.id, secondPrefix));
-    if (first && second) return [first, second];
   }
 
   const flaggedOpeners = squad
@@ -1018,43 +1009,212 @@ export function findOptimalImpactBattingPosition(
   for (const candidatePos of preferredPosOrder) {
     if (!canPlayerBatAtPosition(impactPlayer, candidatePos)) continue;
 
-    const testLineup: Player[] = [];
+    const insertedLineup: Player[] = [];
     let inserted = false;
 
     for (let i = 0; i < baseBatters.length; i++) {
-      const currentPos = testLineup.length + 1;
+      const currentPos = insertedLineup.length + 1;
       if (currentPos === candidatePos && !inserted) {
-        testLineup.push(impactPlayer);
+        insertedLineup.push(impactPlayer);
         inserted = true;
       }
-      testLineup.push(baseBatters[i]);
+      insertedLineup.push(baseBatters[i]);
     }
     if (!inserted) {
-      testLineup.push(impactPlayer);
+      insertedLineup.push(impactPlayer);
     }
 
-    const preservesHighRatedOrder = highRatedPlayersToProtect.every((player) => (
-      testLineup.findIndex((candidate) => candidate.id === player.id) + 1 === originalPositions.get(player.id)
-    ));
-    if (!preservesHighRatedOrder) continue;
+    // Test both orientations of a two-opener combination. When the incoming
+    // player completes a designated partnership, also test its canonical
+    // order (for example Head #1, Abhishek #2) before the generic variants.
+    const testLineups: Player[][] = [insertedLineup];
+    if (insertedLineup[0]?.isOpener && insertedLineup[1]?.isOpener) {
+      testLineups.push([
+        insertedLineup[1],
+        insertedLineup[0],
+        ...insertedLineup.slice(2),
+      ]);
+    }
+    const specialPair = findSpecialOpenerPair(insertedLineup);
+    if (specialPair) {
+      const specialIds = new Set(specialPair.map((player) => player.id));
+      testLineups.unshift([
+        ...specialPair,
+        ...insertedLineup.filter((player) => !specialIds.has(player.id)),
+      ]);
+    }
 
-    let allShiftedFit = true;
-    for (let pos = candidatePos + 1; pos <= 7; pos++) {
-      const shiftedPlayer = testLineup[pos - 1];
-      if (shiftedPlayer && isBattingOption(shiftedPlayer)) {
-        if (!canPlayerBatAtPosition(shiftedPlayer, pos)) {
-          allShiftedFit = false;
-          break;
+    const uniqueLineups = Array.from(new Map(
+      testLineups.map((lineup) => [lineup.map((player) => player.id).join("|"), lineup]),
+    ).values());
+
+    for (const testLineup of uniqueLineups) {
+      const actualImpactPosition = testLineup.findIndex((player) => player.id === impactPlayer.id) + 1;
+      if (!canPlayerBatAtPosition(impactPlayer, actualImpactPosition)) continue;
+
+      const preservesHighRatedOrder = highRatedPlayersToProtect.every((player) => {
+        const originalPosition = originalPositions.get(player.id);
+        const nextPosition = testLineup.findIndex((candidate) => candidate.id === player.id) + 1;
+        // Positions one and two are equally natural for recognised openers, so
+        // swapping them is not treated as displacing a high-rated batter.
+        if (player.isOpener && (originalPosition === 1 || originalPosition === 2) && nextPosition <= 2) {
+          return true;
         }
-      }
-    }
+        return nextPosition === originalPosition;
+      });
+      if (!preservesHighRatedOrder) continue;
 
-    if (allShiftedFit) {
-      return candidatePos;
+      const allMovedPlayersFit = testLineup.slice(0, 7).every((player, index) => {
+        if (!isBattingOption(player)) return true;
+        const position = index + 1;
+        const originalPosition = originalPositions.get(player.id);
+        if (player.id !== impactPlayer.id && originalPosition === position) return true;
+        return canPlayerBatAtPosition(player, position);
+      });
+
+      if (allMovedPlayersFit) {
+        return actualImpactPosition;
+      }
     }
   }
 
   return 7;
+}
+
+function optimiseStrongAllRounderBowlFirstImpact(
+  squad: readonly Player[],
+  startingXI: readonly Player[],
+  impactPlayer: Player | null,
+  outgoingPlayer: Player | null,
+  openingPair: readonly Player[],
+  protectedIds: ReadonlySet<string>,
+): {
+  startingXI: Player[];
+  impactPlayer: Player;
+  outgoingPlayer: Player;
+  forcedImpactBattingPosition: number | null;
+} | null {
+  if (
+    !impactPlayer
+    || impactPlayer.role !== "All-Rounder"
+    || (impactPlayer.currentBatting ?? 0) < 80
+    || (impactPlayer.currentBowling ?? 0) < 75
+  ) {
+    return null;
+  }
+
+  const originalSecondInningsBatting = startingXI.reduce(
+    (total, player) => total + (player.currentBatting ?? 0),
+    0,
+  ) - (outgoingPlayer?.currentBatting ?? 0) + (impactPlayer.currentBatting ?? 0);
+
+  const removableSpecialists = startingXI
+    .filter((player) => isSpecialistBowler(player) && !protectedIds.has(player.id))
+    .sort((left, right) => (
+      (left.currentBowling ?? 0) - (right.currentBowling ?? 0)
+      || currentAbility(left) - currentAbility(right)
+    ));
+
+  let best: {
+    startingXI: Player[];
+    impactPlayer: Player;
+    outgoingPlayer: Player;
+    forcedImpactBattingPosition: number | null;
+    secondInningsBatting: number;
+    startingBowling: number;
+  } | null = null;
+
+  removableSpecialists.forEach((removedSpecialist) => {
+    const trialXI = startingXI
+      .filter((player) => player.id !== removedSpecialist.id)
+      .concat(impactPlayer);
+    if (!hasBaseBalance(trialXI, "bowlingFirst")) return;
+
+    const orderedTrialXI = orderStartingXI(
+      trialXI,
+      openingPair,
+      "bowlingFirst",
+      squad,
+      protectedIds,
+    );
+    const trialIds = new Set(orderedTrialXI.map((player) => player.id));
+    const pureBatter = squad
+      .filter((player) => (
+        !trialIds.has(player.id)
+        && (player.role === "Batsman" || player.role === "WK-Batsman")
+        && !isAiBowlingOption(player)
+        && isImpactPlayerWithinOverseasLimit(orderedTrialXI, player)
+      ))
+      .sort((left, right) => (
+        (right.currentBatting ?? 0) - (left.currentBatting ?? 0)
+        || currentAbility(right) - currentAbility(left)
+        || (right.reputation ?? 0) - (left.reputation ?? 0)
+      ))[0];
+    if (!pureBatter) return;
+
+    const resolvedImpact = resolveBowlingFirstImpactPlayer(
+      squad,
+      orderedTrialXI,
+      pureBatter,
+      pureBatter.isOpener ? 1 : null,
+    );
+    const finalImpact = resolvedImpact.player;
+    if (!finalImpact || isAiBowlingOption(finalImpact)) return;
+
+    const keepers = orderedTrialXI.filter(isKeeper);
+    const trialOutgoing = [...orderedTrialXI]
+      .filter((player) => (
+        !protectedIds.has(player.id)
+        && !(isKeeper(player) && keepers.length <= 1)
+      ))
+      .sort((left, right) => (
+        (left.currentBatting ?? 0) - (right.currentBatting ?? 0)
+        || currentAbility(left) - currentAbility(right)
+      ))[0];
+    if (!trialOutgoing) return;
+
+    const secondInningsBatting = orderedTrialXI.reduce(
+      (total, player) => total + (player.currentBatting ?? 0),
+      0,
+    ) - (trialOutgoing.currentBatting ?? 0) + (finalImpact.currentBatting ?? 0);
+    if (secondInningsBatting <= originalSecondInningsBatting) return;
+
+    const startingBowling = orderedTrialXI.reduce(
+      (total, player) => total + (player.currentBowling ?? 0),
+      0,
+    );
+    if (
+      !best
+      || secondInningsBatting > best.secondInningsBatting
+      || (
+        secondInningsBatting === best.secondInningsBatting
+        && startingBowling > best.startingBowling
+      )
+    ) {
+      best = {
+        startingXI: orderedTrialXI,
+        impactPlayer: finalImpact,
+        outgoingPlayer: trialOutgoing,
+        forcedImpactBattingPosition: resolvedImpact.forcePosition8 ? 8 : null,
+        secondInningsBatting,
+        startingBowling,
+      };
+    }
+  });
+
+  const selectedBest = best as {
+    startingXI: Player[];
+    impactPlayer: Player;
+    outgoingPlayer: Player;
+    forcedImpactBattingPosition: number | null;
+  } | null;
+  if (!selectedBest) return null;
+  return {
+    startingXI: selectedBest.startingXI,
+    impactPlayer: selectedBest.impactPlayer,
+    outgoingPlayer: selectedBest.outgoingPlayer,
+    forcedImpactBattingPosition: selectedBest.forcedImpactBattingPosition,
+  };
 }
 
 function buildPlan(
@@ -1082,7 +1242,7 @@ function buildPlan(
     ? squad.find((player) => player.id === options.viceCaptainId)
     : undefined;
 
-  const startingPlayers = selectStartingPlayers(
+  let startingPlayers = selectStartingPlayers(
     squad,
     mode,
     openingPair,
@@ -1106,6 +1266,23 @@ function buildPlan(
     protectedIds,
     leadershipProtectedIds,
   );
+
+  if (mode === "bowlingFirst") {
+    const optimisedImpactStructure = optimiseStrongAllRounderBowlFirstImpact(
+      squad,
+      startingPlayers,
+      impactPlayer,
+      outgoingPlayer,
+      openingPair,
+      protectedIds,
+    );
+    if (optimisedImpactStructure) {
+      startingPlayers = optimisedImpactStructure.startingXI;
+      impactPlayer = optimisedImpactStructure.impactPlayer;
+      outgoingPlayer = optimisedImpactStructure.outgoingPlayer;
+      forcedImpactBattingPosition = optimisedImpactStructure.forcedImpactBattingPosition;
+    }
+  }
 
   if (!impactPlayer && squad.length > 11) {
     const startingIds = new Set(startingPlayers.map((p) => p.id));

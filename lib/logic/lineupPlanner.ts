@@ -1,3 +1,5 @@
+import { findSpecialOpenerPair } from "./openerPairs";
+
 export type LineupPlan = "battingFirst" | "bowlingFirst";
 export type LineupDropPlacement = "before" | "swap" | "after";
 
@@ -159,7 +161,10 @@ export function validateLineup(ids: readonly string[], candidates: readonly Line
 }
 
 function sortIntoBattingOrder(players: readonly LineupCandidate[]): string[] {
-  return [...players]
+  const specialPair = findSpecialOpenerPair(players);
+  const specialPairIds = new Set(specialPair?.map((player) => player.id) ?? []);
+  const orderedRest = [...players]
+    .filter((player) => !specialPairIds.has(player.id))
     .sort((left, right) => {
       const leftForcedKeeperOpener = left.isWicketkeeper && (left.isOpener || left.onlyOpensOrBenched);
       const rightForcedKeeperOpener = right.isWicketkeeper && (right.isOpener || right.onlyOpensOrBenched);
@@ -170,8 +175,8 @@ function sortIntoBattingOrder(players: readonly LineupCandidate[]): string[] {
       const specialistDifference = Number(isBowlingOption(left) && left.batting < 55) - Number(isBowlingOption(right) && right.batting < 55);
       if (specialistDifference !== 0) return specialistDifference;
       return right.batting - left.batting || right.bowling - left.bowling;
-    })
-    .map((player) => player.id);
+    });
+  return [...(specialPair ?? []), ...orderedRest].map((player) => player.id);
 }
 
 function canAddToLineup(player: LineupCandidate, selected: readonly LineupCandidate[]): boolean {
@@ -253,6 +258,8 @@ export function buildRecommendedLineups(candidates: readonly LineupCandidate[]):
       selected.push(player);
     };
 
+    const specialPair = findSpecialOpenerPair(candidates);
+    specialPair?.forEach(add);
     add([...ranked].filter((player) => player.isWicketkeeper).sort((left, right) => right.batting - left.batting)[0]);
     ranked.filter(isBowlingOption).forEach((player) => {
       if (selected.filter(isBowlingOption).length < 5) add(player);

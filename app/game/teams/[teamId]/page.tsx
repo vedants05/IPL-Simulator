@@ -576,7 +576,7 @@ export default function TeamProfilePage() {
               ? (right.currentBatting ?? 0) - (left.currentBatting ?? 0)
               : (right.currentBowling ?? 0) - (left.currentBowling ?? 0))
             || currentAbility(right) - currentAbility(left)
-            || right.reputation - left.reputation
+            || (right.reputation ?? 0) - (left.reputation ?? 0)
           ))[0]?.id
           ?? (fallback.impactPlayerId && isEligibleImpactId(fallback.impactPlayerId)
             ? fallback.impactPlayerId

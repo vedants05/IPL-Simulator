@@ -46,6 +46,25 @@ test("recommended plans create two independently valid XIs and five-player bench
   assert.ok(bowlingImpactSubs.every((id) => !plans.bowlingFirstXI.includes(id)));
 });
 
+test("recommended defaults keep Head and Abhishek together ahead of a keeper-opener", () => {
+  const srhLikeSquad = squad.map((candidate) => {
+    if (candidate.id === "wk") {
+      return { ...candidate, id: "ishan-kishan", batting: 88, isOpener: true };
+    }
+    if (candidate.id === "bat1") {
+      return { ...candidate, id: "abhishek-sharma", batting: 90, isOpener: true };
+    }
+    if (candidate.id === "bat2") {
+      return { ...candidate, id: "travis-head", batting: 89, isOpener: true };
+    }
+    return candidate;
+  });
+
+  const plans = buildRecommendedLineups(srhLikeSquad);
+  assert.deepEqual(plans.battingFirstXI.slice(0, 2), ["travis-head", "abhishek-sharma"]);
+  assert.deepEqual(plans.bowlingFirstXI.slice(0, 2), ["travis-head", "abhishek-sharma"]);
+});
+
 test("bat-first impact bench keeps one backup batter and four highest-rated bowlers", () => {
   const starters = Array.from({ length: 11 }, (_, index): LineupCandidate => ({
     id: `starter-${index}`,

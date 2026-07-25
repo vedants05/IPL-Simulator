@@ -65,6 +65,21 @@ const player = (
   ...overrides,
 });
 
+type LineupFixturePlayer = Pick<
+  Player,
+  "id" | "name" | "role" | "currentBatting" | "currentBowling"
+> & Partial<Player>;
+
+const lineupFixturePlayers = (players: LineupFixturePlayer[]): Player[] => (
+  players.map((candidate) => player(
+    candidate.id,
+    candidate.role,
+    candidate.currentBatting,
+    candidate.currentBowling,
+    candidate,
+  ))
+);
+
 const squad = [
   player("travis-head", "Batsman", 88, 8, {
     nationality: "Overseas",
@@ -151,6 +166,31 @@ test("AI match plans obey hard balance rules and preserve the established opener
     assert.ok(selected.filter(isSpecialistBowler).length <= maxSpecialistBowlersFor(selected));
     assert.ok(!impactPlayer || isImpactPlayerWithinOverseasLimit(selected, impactPlayer));
     assert.deepEqual(plan.startingXI.slice(0, 2), ["travis-head", "abhishek-sharma"]);
+  }
+});
+
+test("a competing keeper-opener cannot split the Head and Abhishek special partnership", () => {
+  const srhLikeSquad = [
+    ...squad.map((candidate) => {
+      if (candidate.id === "travis-head") {
+        return { ...candidate, currentBatting: 89, potentialBatting: 89 };
+      }
+      if (candidate.id === "abhishek-sharma") {
+        return { ...candidate, currentBatting: 90, potentialBatting: 93 };
+      }
+      return candidate;
+    }),
+    player("ishan-kishan", "WK-Batsman", 88, 0, {
+      isWicketkeeper: true,
+      isOpener: true,
+    }),
+  ];
+
+  const plans = buildAiMatchLineups(srhLikeSquad);
+  for (const plan of [plans.battingFirst, plans.bowlingFirst]) {
+    assert.deepEqual(plan.startingXI.slice(0, 2), ["travis-head", "abhishek-sharma"]);
+    assert.notEqual(plan.impactPlayerId, "travis-head");
+    assert.notEqual(plan.impactPlayerId, "abhishek-sharma");
   }
 });
 
@@ -332,8 +372,66 @@ test("batting-first starting XI targets >= 7 batting options while bowl-first ta
   assert.ok(bowlFirstImpact && isBattingOpt(bowlFirstImpact), "Expected 7th batter as impact sub for bowl-first plan");
 });
 
+test("bowl-first planning starts a strong all-rounder and reserves a pure batter for the chase", () => {
+  const lsgLikeSquad = [
+    player("josh-inglis", "WK-Batsman", 85, 0, {
+      nationality: "Overseas",
+      isWicketkeeper: true,
+      isOpener: true,
+    }),
+    player("tom-banton", "WK-Batsman", 77, 0, {
+      nationality: "Overseas",
+      isWicketkeeper: true,
+      isOpener: true,
+    }),
+    player("nicholas-pooran", "WK-Batsman", 86, 0, {
+      nationality: "Overseas",
+      isWicketkeeper: true,
+      hasBattedAt3: true,
+    }),
+    player("mitchell-marsh", "All-Rounder", 84, 76, {
+      nationality: "Overseas",
+      hasBattedAt4: true,
+    }),
+    player("urvil-patel", "WK-Batsman", 79, 0, {
+      isWicketkeeper: true,
+      hasBattedAt5: true,
+    }),
+    player("suryansh-shedge", "All-Rounder", 79, 68, {
+      hasBattedAt6: true,
+    }),
+    player("nitish-kumar-reddy", "All-Rounder", 81, 76, {
+      isCoreBatter: true,
+      hasBattedAt5: true,
+    }),
+    player("kuldeep-yadav", "Spin Bowler", 0, 88),
+    player("mohammed-siraj", "Pace Bowler", 0, 84),
+    player("rahul-chahar", "Spin Bowler", 0, 83),
+    player("mohammed-shami", "Pace Bowler", 0, 86),
+    player("khaleel-ahmed", "Pace Bowler", 10, 83),
+    player("backup-batter", "Batsman", 78, 0, {
+      hasBattedAt6: true,
+    }),
+  ];
+
+  const plan = buildAiMatchLineups(lsgLikeSquad, {
+    captainId: "mitchell-marsh",
+    viceCaptainId: "nicholas-pooran",
+  }).bowlingFirst;
+
+  assert.ok(plan.startingXI.includes("nitish-kumar-reddy"));
+  assert.equal(plan.impactPlayerId, "backup-batter");
+  assert.equal(
+    plan.startingXI
+      .map((id) => lsgLikeSquad.find((candidate) => candidate.id === id)!)
+      .filter(isSpecialistBowler)
+      .length,
+    4,
+  );
+});
+
 test("bowl-first plan subbing in an all-rounder (>75 batting) replaces an out-and-out batter according to tie-breaking criteria", () => {
-  const customSquad: Player[] = [
+  const customSquad = lineupFixturePlayers([
     { id: "op1", name: "Opener 1", role: "Batsman", currentBatting: 85, currentBowling: 0, age: 28, reputation: 8, isOpener: true, nationality: "Indian" },
     { id: "op2", name: "Opener 2", role: "Batsman", currentBatting: 84, currentBowling: 0, age: 27, reputation: 8, isOpener: true, nationality: "Indian" },
     { id: "wk1", name: "Keeper 1", role: "WK-Batsman", currentBatting: 83, currentBowling: 0, age: 26, reputation: 7, nationality: "Indian", hasBattedAt3: true },
@@ -346,7 +444,7 @@ test("bowl-first plan subbing in an all-rounder (>75 batting) replaces an out-an
     { id: "bow4", name: "Bowler 4", role: "Spin Bowler", currentBatting: 20, currentBowling: 80, age: 28, reputation: 6, nationality: "Indian" },
     { id: "bow5", name: "Bowler 5", role: "Spin Bowler", currentBatting: 15, currentBowling: 78, age: 29, reputation: 6, nationality: "Indian" },
     { id: "ar-impact", name: "All Rounder Impact", role: "All-Rounder", currentBatting: 78, currentBowling: 70, age: 26, reputation: 7, nationality: "Indian" },
-  ];
+  ]);
 
   const plans = buildAiMatchLineups(customSquad);
   assert.equal(plans.bowlingFirst.startingXI.includes("ar-impact"), true);
@@ -354,7 +452,7 @@ test("bowl-first plan subbing in an all-rounder (>75 batting) replaces an out-an
 });
 
 test("bowl-first plan supports a 2nd All-Rounder exception when a 2nd All-Rounder has higher batting rating than the next candidate batter", () => {
-  const squadWithTwoARs: Player[] = [
+  const squadWithTwoARs = lineupFixturePlayers([
     { id: "op1", name: "Opener 1", role: "Batsman", currentBatting: 89, currentBowling: 0, age: 26, reputation: 8, isOpener: true, nationality: "Indian" },
     { id: "op2", name: "Opener 2", role: "Batsman", currentBatting: 87, currentBowling: 0, age: 25, reputation: 8, isOpener: true, nationality: "Indian" },
     { id: "wk1", name: "Keeper 1", role: "WK-Batsman", currentBatting: 87, currentBowling: 0, age: 34, reputation: 9, nationality: "Overseas", hasBattedAt3: true },
@@ -368,7 +466,7 @@ test("bowl-first plan supports a 2nd All-Rounder exception when a 2nd All-Rounde
     { id: "bow2", name: "Bowler 2", role: "Pace Bowler", currentBatting: 20, currentBowling: 82, age: 28, reputation: 7, nationality: "Indian" },
     { id: "bow3", name: "Bowler 3", role: "Pace Bowler", currentBatting: 15, currentBowling: 91, age: 29, reputation: 9, nationality: "Overseas" },
     { id: "bow4", name: "Bowler 4", role: "Pace Bowler", currentBatting: 10, currentBowling: 84, age: 30, reputation: 8, nationality: "Indian" },
-  ];
+  ]);
 
   const plans = buildAiMatchLineups(squadWithTwoARs);
   // AR 3 (79) starts in bowl-first XI over Bat 2 (75) (1st AR exception)
@@ -387,7 +485,7 @@ test("impactBattingPosition calculates the exact 1-based batting position for an
 });
 
 test("bat-first plan promotes #8 core batter (>78, can bat at 5) to #5 if positions 5, 6, 7 are all finishers, shifting finishers down 1", () => {
-  const squadForBatFirstRule: Player[] = [
+  const squadForBatFirstRule = lineupFixturePlayers([
     { id: "op1", name: "Opener 1", role: "Batsman", currentBatting: 89, currentBowling: 0, age: 26, reputation: 8, isOpener: true, nationality: "Indian" },
     { id: "op2", name: "Opener 2", role: "Batsman", currentBatting: 87, currentBowling: 0, age: 25, reputation: 8, isOpener: true, nationality: "Indian" },
     { id: "wk1", name: "Keeper 1", role: "WK-Batsman", currentBatting: 87, currentBowling: 0, age: 34, reputation: 9, nationality: "Overseas", hasBattedAt3: true },
@@ -399,7 +497,7 @@ test("bat-first plan promotes #8 core batter (>78, can bat at 5) to #5 if positi
     { id: "bow1", name: "Bowler 1", role: "Spin Bowler", currentBatting: 20, currentBowling: 88, age: 26, reputation: 9, nationality: "Overseas" },
     { id: "bow2", name: "Bowler 2", role: "Pace Bowler", currentBatting: 20, currentBowling: 82, age: 28, reputation: 7, nationality: "Indian" },
     { id: "bow3", name: "Bowler 3", role: "Pace Bowler", currentBatting: 15, currentBowling: 91, age: 29, reputation: 9, nationality: "Indian" },
-  ];
+  ]);
 
   const openingPair: [Player, Player] = [squadForBatFirstRule[0], squadForBatFirstRule[1]];
   const orderedXI = orderStartingXI(squadForBatFirstRule, openingPair, "battingFirst", squadForBatFirstRule);
@@ -413,7 +511,7 @@ test("bat-first plan promotes #8 core batter (>78, can bat at 5) to #5 if positi
 });
 
 test("bat-first plan does NOT promote #8 core batter if #8 rating is lower than ALL 3 finishers at 5, 6, and 7", () => {
-  const squadForException: Player[] = [
+  const squadForException = lineupFixturePlayers([
     { id: "op1", name: "Opener 1", role: "Batsman", currentBatting: 89, currentBowling: 0, age: 26, reputation: 8, isOpener: true, nationality: "Indian" },
     { id: "op2", name: "Opener 2", role: "Batsman", currentBatting: 87, currentBowling: 0, age: 25, reputation: 8, isOpener: true, nationality: "Indian" },
     { id: "wk1", name: "Keeper 1", role: "WK-Batsman", currentBatting: 87, currentBowling: 0, age: 34, reputation: 9, nationality: "Overseas", hasBattedAt3: true },
@@ -425,7 +523,7 @@ test("bat-first plan does NOT promote #8 core batter if #8 rating is lower than 
     { id: "bow1", name: "Bowler 1", role: "Spin Bowler", currentBatting: 20, currentBowling: 88, age: 26, reputation: 9, nationality: "Overseas" },
     { id: "bow2", name: "Bowler 2", role: "Pace Bowler", currentBatting: 20, currentBowling: 82, age: 28, reputation: 7, nationality: "Indian" },
     { id: "bow3", name: "Bowler 3", role: "Pace Bowler", currentBatting: 15, currentBowling: 91, age: 29, reputation: 9, nationality: "Indian" },
-  ];
+  ]);
 
   const openingPair: [Player, Player] = [squadForException[0], squadForException[1]];
   const orderedXI = orderStartingXI(squadForException, openingPair, "battingFirst", squadForException);
@@ -435,7 +533,7 @@ test("bat-first plan does NOT promote #8 core batter if #8 rating is lower than 
 });
 
 test("bat-first plan promotes Dewald Brevis (81) 3 positions directly to #5 and shifts Miller, Dube, Dhoni down 1", () => {
-  const brevisSquad: Player[] = [
+  const brevisSquad = lineupFixturePlayers([
     { id: "samson", name: "Sanju Samson", role: "WK-Batsman", currentBatting: 89, currentBowling: 0, age: 31, reputation: 9, isOpener: true, nationality: "Indian" },
     { id: "gaikwad", name: "Ruturaj Gaikwad", role: "Batsman", currentBatting: 83, currentBowling: 0, age: 29, reputation: 8, isOpener: true, nationality: "Indian" },
     { id: "sky", name: "Suryakumar Yadav", role: "Batsman", currentBatting: 85, currentBowling: 0, age: 35, reputation: 9, hasBattedAt3: true, hasBattedAt4: true, nationality: "Indian" },
@@ -447,7 +545,7 @@ test("bat-first plan promotes Dewald Brevis (81) 3 positions directly to #5 and 
     { id: "dhir", name: "Naman Dhir", role: "All-Rounder", currentBatting: 74, currentBowling: 74, age: 26, reputation: 7, nationality: "Indian" },
     { id: "harshal", name: "Harshal Patel", role: "Pace Bowler", currentBatting: 45, currentBowling: 80, age: 35, reputation: 8, nationality: "Indian" },
     { id: "noor", name: "Noor Ahmad", role: "Spin Bowler", currentBatting: 15, currentBowling: 84, age: 21, reputation: 8, nationality: "Overseas" },
-  ];
+  ]);
 
   const openingPair: [Player, Player] = [brevisSquad[0], brevisSquad[1]];
   const orderedXI = orderStartingXI(brevisSquad, openingPair, "battingFirst");
@@ -463,7 +561,7 @@ test("bat-first plan promotes Dewald Brevis (81) 3 positions directly to #5 and 
 });
 
 test("bowl-first plan also promotes #8 core batter to #5 if positions 5-8 are all batters/all-rounders", () => {
-  const squadForBowlFirstPromotion: Player[] = [
+  const squadForBowlFirstPromotion = lineupFixturePlayers([
     { id: "op1", name: "Opener 1", role: "Batsman", currentBatting: 89, currentBowling: 0, age: 26, reputation: 8, isOpener: true, nationality: "Indian" },
     { id: "op2", name: "Opener 2", role: "Batsman", currentBatting: 87, currentBowling: 0, age: 25, reputation: 8, isOpener: true, nationality: "Indian" },
     { id: "wk1", name: "Keeper 1", role: "WK-Batsman", currentBatting: 87, currentBowling: 0, age: 34, reputation: 9, nationality: "Overseas", hasBattedAt3: true },
@@ -475,7 +573,7 @@ test("bowl-first plan also promotes #8 core batter to #5 if positions 5-8 are al
     { id: "bow1", name: "Bowler 1", role: "Spin Bowler", currentBatting: 20, currentBowling: 88, age: 26, reputation: 9, nationality: "Overseas" },
     { id: "bow2", name: "Bowler 2", role: "Pace Bowler", currentBatting: 20, currentBowling: 82, age: 28, reputation: 7, nationality: "Indian" },
     { id: "bow3", name: "Bowler 3", role: "Pace Bowler", currentBatting: 15, currentBowling: 91, age: 29, reputation: 9, nationality: "Indian" },
-  ];
+  ]);
 
   const openingPair: [Player, Player] = [squadForBowlFirstPromotion[0], squadForBowlFirstPromotion[1]];
   const orderedXI = orderStartingXI(squadForBowlFirstPromotion, openingPair, "bowlingFirst");
@@ -577,4 +675,33 @@ test("findOptimalImpactBattingPosition inserts core batter and verifies downward
 
   const pos = findOptimalImpactBattingPosition(starters, brevis, outgoing);
   assert.equal(pos, 3);
+});
+
+test("impact position checks both opener orders and restores a special partnership", () => {
+  const head = player("travis-head", "Batsman", 89, 0, {
+    nationality: "Overseas",
+    isOpener: true,
+  });
+  const abhishek = player("abhishek-sharma", "All-Rounder", 90, 69, {
+    isOpener: true,
+  });
+  const ishan = player("ishan-kishan", "WK-Batsman", 88, 0, {
+    isWicketkeeper: true,
+    isOpener: true,
+  });
+  const starters = [
+    abhishek,
+    ishan,
+    player("three", "Batsman", 84, 0, { hasBattedAt3: true }),
+    player("four", "Batsman", 83, 0, { hasBattedAt4: true }),
+    player("five", "Batsman", 82, 0, { hasBattedAt5: true }),
+    player("six", "All-Rounder", 80, 75, { hasBattedAt6: true }),
+    player("seven", "All-Rounder", 79, 76, { hasBattedAt7: true }),
+    player("eight", "Pace Bowler", 30, 85),
+    player("nine", "Spin Bowler", 25, 84),
+    player("ten", "Pace Bowler", 20, 82),
+    player("eleven", "Spin Bowler", 15, 80),
+  ];
+
+  assert.equal(findOptimalImpactBattingPosition(starters, head, ishan, true), 1);
 });
