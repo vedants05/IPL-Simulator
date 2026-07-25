@@ -38,6 +38,20 @@ export function localDateToDateKey(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
+/**
+ * Returns the day on which the season fixture schedule is released.
+ * The schedule is announced three weeks before the second-last Saturday of March.
+ */
+export function getSeasonScheduleAnnouncementDate(season: number): string {
+  const seasonStart = new Date(season, 2, 31, 12);
+  while (seasonStart.getDay() !== 6) {
+    seasonStart.setDate(seasonStart.getDate() - 1);
+  }
+  seasonStart.setDate(seasonStart.getDate() - 7);
+  seasonStart.setDate(seasonStart.getDate() - 21);
+  return localDateToDateKey(seasonStart);
+}
+
 export function addDaysToDateKey(dateKey: string, numberOfDays: number): string {
   const date = dateKeyToLocalDate(dateKey);
   date.setDate(date.getDate() + numberOfDays);

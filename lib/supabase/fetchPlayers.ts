@@ -115,11 +115,12 @@ export function mapRowsToPlayers(data: any[]): Player[] {
     const reputation = parseInt(row.reputation) || 5;
     const isWicketkeeper = row.can_keep_wickets === true;
     const isPartTimeWk = name === "Rahul Tripathi" ? false : row.part_time_wicketkeeper === true;
-    const isOpener = name === "Ayush Mhatre" ? true : row.opener === true;
-    const isFinisher = row.finisher === true;
+    const isOpener = name === "Finn Allen" || name === "Ayush Mhatre" ? true : row.opener === true;
+    const isRiyanParag = name === "Riyan Parag";
+    const isFinisher = isRiyanParag ? false : row.finisher === true;
     const isAnukul = name === "Anukul Roy";
-    const isCoreBatter = isAnukul ? false : row.core_batter === true;
-    const onlyOpensOrBenched = row.only_opener === true;
+    const isCoreBatter = isRiyanParag ? true : (isAnukul ? false : row.core_batter === true);
+    const onlyOpensOrBenched = name === "Finn Allen" ? true : row.only_opener === true;
     const captaincy = parseInt(row.captaincy) || 50;
     // The source field is a positive desire flag. A false value means that the
     // player must not be offered IPL captaincy. Dhoni is explicitly unavailable.
@@ -128,11 +129,12 @@ export function mapRowsToPlayers(data: any[]): Player[] {
     
     const isRahane = name === "Ajinkya Rahane";
     const isPhillips = name === "Glenn Phillips";
+    const isTripathi = name === "Rahul Tripathi";
     const hasBattedAt3 = isPhillips ? true : row.has_batted_at_3 === true;
     const hasBattedAt4 = isRahane ? false : row.has_batted_at_4 === true;
     const hasBattedAt5 = isRahane ? false : row.has_batted_at_5 === true;
-    const hasBattedAt6 = isRahane ? false : row.has_batted_at_6 === true;
-    const hasBattedAt7 = isRahane ? false : row.has_batted_at_7 === true;
+    const hasBattedAt6 = (isRahane || isTripathi) ? false : row.has_batted_at_6 === true;
+    const hasBattedAt7 = (isRahane || isTripathi) ? false : row.has_batted_at_7 === true;
 
     const playerRating = Math.max(curBat, curBowl);
     const base = calculateBasePrice(isCapped, nat, playerRating, reputation);

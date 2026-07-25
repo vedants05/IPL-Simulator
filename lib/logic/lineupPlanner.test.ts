@@ -46,6 +46,43 @@ test("recommended plans create two independently valid XIs and five-player bench
   assert.ok(bowlingImpactSubs.every((id) => !plans.bowlingFirstXI.includes(id)));
 });
 
+test("bat-first impact bench keeps one backup batter and four highest-rated bowlers", () => {
+  const starters = Array.from({ length: 11 }, (_, index): LineupCandidate => ({
+    id: `starter-${index}`,
+    nationality: "Indian Capped",
+    role: index < 6 ? "Batsman" : index === 6 ? "WK-Batsman" : "Pace Bowler",
+    batting: 90 - index,
+    bowling: index >= 7 ? 80 - index : 0,
+    isWicketkeeper: index === 6,
+    isOpener: index < 2,
+  }));
+  const reserves: LineupCandidate[] = [
+    { id: "backup-batter", nationality: "Indian Uncapped", role: "Batsman", batting: 80, bowling: 0, isWicketkeeper: false },
+    ...Array.from({ length: 5 }, (_, index): LineupCandidate => ({
+      id: `reserve-bowler-${index}`,
+      nationality: "Indian Uncapped",
+      role: "Pace Bowler",
+      batting: 20 - index,
+      bowling: 90 - index,
+      isWicketkeeper: false,
+    })),
+  ];
+
+  const selected = buildRecommendedImpactSubs(
+    starters.map((candidate) => candidate.id),
+    [...starters, ...reserves],
+    "battingFirst",
+  );
+
+  assert.deepEqual(selected.slice(0, 4), [
+    "reserve-bowler-0",
+    "reserve-bowler-1",
+    "reserve-bowler-2",
+    "reserve-bowler-3",
+  ]);
+  assert.equal(selected[4], "backup-batter");
+});
+
 test("part-time wicketkeepers satisfy the keeper requirement", () => {
   const partTimeKeeperSquad = squad.map((player) => player.id === "wk"
     ? { ...player, role: "Batsman", isWicketkeeper: true, isPartTimeWicketkeeper: true }

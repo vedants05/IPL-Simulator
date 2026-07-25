@@ -31,7 +31,7 @@ function representedTeamInSeason(
   activeSeason: number,
 ): boolean {
   if (season === activeSeason && player.currentTeamId === teamId) return true;
-  return player.iplHistory.some((entry) => (
+  return (player.iplHistory ?? []).some((entry) => (
     Number(entry.season) === season && entry.teamId === teamId
   ));
 }
@@ -144,15 +144,20 @@ export function reconcileAiLeagueLeadership(
 ): AiLeagueLeadership {
   return Object.values(teams).reduce<AiLeagueLeadership>((appointments, team) => {
     if (team.id === userTeamId) return appointments;
-    const existing = saved?.[team.id];
-    if (existing && existing.season === season) {
-      appointments[team.id] = existing;
-      return appointments;
-    }
-
     const squad = team.squad
       .map((playerId) => players[playerId])
       .filter((player): player is Player => Boolean(player));
+    const existing = saved?.[team.id];
+    const squadIds = new Set(squad.map((player) => player.id));
+    if (
+      existing
+      && existing.season === season
+      && (!existing.captainId || squadIds.has(existing.captainId))
+      && (!existing.viceCaptainId || squadIds.has(existing.viceCaptainId))
+    ) {
+      appointments[team.id] = existing;
+      return appointments;
+    }
     appointments[team.id] = appointAiTeamLeadership(team, squad, season);
     return appointments;
   }, {});

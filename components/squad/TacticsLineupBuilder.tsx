@@ -14,7 +14,6 @@ import {
 
 import {
   buildRecommendedImpactSubs,
-  buildRecommendedLineups,
   dropPlayerIntoImpactSubs,
   dropPlayerIntoLineup,
   getLineupDropPosition,
@@ -32,6 +31,11 @@ import {
   type TacticalRole,
   type TeamTactics,
 } from "@/lib/logic/teamTactics";
+import {
+  buildAiMatchLineups,
+  findOptimalImpactBattingPosition,
+  selectBattingFirstOutgoingBatter,
+} from "@/lib/logic/aiLineupSelector";
 import type { Player, Team } from "@/lib/types";
 
 interface TacticsLineupBuilderProps {
@@ -41,6 +45,14 @@ interface TacticsLineupBuilderProps {
   bowlingFirstXI: string[];
   battingFirstImpactSubs: string[];
   bowlingFirstImpactSubs: string[];
+  battingFirstImpactPlayerId?: string | null;
+  battingFirstOutgoingPlayerId?: string | null;
+  battingFirstImpactBattingPosition?: number | null;
+  bowlingFirstImpactPlayerId?: string | null;
+  bowlingFirstOutgoingPlayerId?: string | null;
+  bowlingFirstImpactBattingPosition?: number | null;
+  captainId?: string | null;
+  viceCaptainId?: string | null;
   tactics: TeamTactics;
   onChangePlan: (plan: LineupPlan, lineup: string[], impactSubs: string[]) => void;
   onChangeBothPlans: (
@@ -50,6 +62,12 @@ interface TacticsLineupBuilderProps {
     bowlingFirstImpactSubs: string[],
   ) => void;
   onChangeTactics: (tactics: TeamTactics) => void;
+  onChangeImpactStrategy?: (
+    plan: LineupPlan,
+    impactPlayerId: string | null,
+    outgoingPlayerId: string | null,
+    entryPosition: number | null,
+  ) => void;
   onOpenPlayer: (playerId: string) => void;
 }
 
@@ -74,9 +92,18 @@ const roleLabel = (role: Player["role"]) => ({
   "Spin Bowler": "SPIN",
 }[role]);
 
-const keeperLabel = (player: Player) => {
-  if (player.isPartTimeWk) return "PT WK";
-  if (player.role === "WK-Batsman" || player.isWicketkeeper) return "WK";
+const playerRating = (player: Player) => Math.max(player.currentBatting ?? 0, player.currentBowling ?? 0);
+
+const keeperLabel = (player: Player, startingXI: readonly Player[] = []) => {
+  const isFullTime = (player.role === "WK-Batsman" || player.isWicketkeeper) && !player.isPartTimeWk;
+  if (isFullTime) return "WK";
+  if (player.isPartTimeWk) {
+    const hasFullTimeKeeper = startingXI.some(
+      (p) => (p.role === "WK-Batsman" || p.isWicketkeeper) && !p.isPartTimeWk
+    );
+    if (!hasFullTimeKeeper) return "WK";
+    return "PT WK";
+  }
   return null;
 };
 
@@ -108,15 +135,38 @@ export default function TacticsLineupBuilder({
   bowlingFirstXI,
   battingFirstImpactSubs,
   bowlingFirstImpactSubs,
+  battingFirstImpactPlayerId,
+  battingFirstOutgoingPlayerId,
+  battingFirstImpactBattingPosition,
+  bowlingFirstImpactPlayerId,
+  bowlingFirstOutgoingPlayerId,
+  bowlingFirstImpactBattingPosition,
+  captainId,
+  viceCaptainId,
   tactics,
   onChangePlan,
   onChangeBothPlans,
   onChangeTactics,
+  onChangeImpactStrategy,
   onOpenPlayer,
 }: TacticsLineupBuilderProps) {
   const [activePlan, setActivePlan] = useState<LineupPlan>("battingFirst");
   const [draggedPlayer, setDraggedPlayer] = useState<DraggedPlayer | null>(null);
   const [dragPreview, setDragPreview] = useState<DragPreview | null>(null);
+  const [autoOutgoingByPlan, setAutoOutgoingByPlan] = useState<Record<LineupPlan, boolean>>({
+    battingFirst: battingFirstOutgoingPlayerId == null,
+    bowlingFirst: bowlingFirstOutgoingPlayerId == null,
+  });
+
+  const currentImpactPlayerId = activePlan === "battingFirst"
+    ? battingFirstImpactPlayerId
+    : bowlingFirstImpactPlayerId;
+  const currentOutgoingPlayerId = activePlan === "battingFirst"
+    ? battingFirstOutgoingPlayerId
+    : bowlingFirstOutgoingPlayerId;
+  const currentImpactPosition = activePlan === "battingFirst"
+    ? battingFirstImpactBattingPosition
+    : bowlingFirstImpactBattingPosition;
   const squad = useMemo(
     () => team.squad.map((id) => players[id]).filter((player): player is Player => Boolean(player)),
     [players, team.squad],
@@ -132,6 +182,23 @@ export default function TacticsLineupBuilder({
   const bowlingValidation = validateLineup(bowlingFirstXI, candidates);
   const activePlayers = activeXI.map((id) => playerById.get(id)).filter((player): player is Player => Boolean(player));
   const activeImpactPlayers = activeImpactSubs.map((id) => playerById.get(id)).filter((player): player is Player => Boolean(player));
+  const autoBattingFirstOutgoingPlayer = useMemo(() => (
+    selectBattingFirstOutgoingBatter(
+      battingFirstXI.map((id) => playerById.get(id)).filter((player): player is Player => Boolean(player)),
+      new Set([captainId, viceCaptainId].filter((id): id is string => Boolean(id))),
+    )
+  ), [battingFirstXI, captainId, playerById, viceCaptainId]);
+  const autoImpactPosition = useMemo(() => {
+    if (activePlan !== "bowlingFirst") return null;
+    const impactPlayer = (currentImpactPlayerId && playerById.get(currentImpactPlayerId))
+      ?? [...activeImpactPlayers].sort((left, right) => (
+        (right.currentBatting ?? 0) - (left.currentBatting ?? 0)
+      ))[0];
+    const outgoingPlayer = (currentOutgoingPlayerId && playerById.get(currentOutgoingPlayerId))
+      ?? activePlayers[activePlayers.length - 1];
+    if (!impactPlayer || !outgoingPlayer) return null;
+    return findOptimalImpactBattingPosition(activePlayers, impactPlayer, outgoingPlayer, true);
+  }, [activePlan, activeImpactPlayers, activePlayers, currentImpactPlayerId, currentOutgoingPlayerId, playerById]);
   const activeRoles = tactics.roles[activePlan];
   const sortedSquad = [...squad]
     .sort((left, right) => Math.max(right.currentBatting, right.currentBowling) - Math.max(left.currentBatting, left.currentBowling));
@@ -196,10 +263,16 @@ export default function TacticsLineupBuilder({
   const copyOtherPlan = () => setActivePlanState([...otherXI], [...otherImpactSubs]);
   const autoAssignRoles = () => onChangeTactics(autoAssignTacticalRolesForPlan(tactics, activePlan, activePlayers));
   const autoBuild = () => {
-    const recommended = buildRecommendedLineups(candidates);
-    const battingImpact = buildRecommendedImpactSubs(recommended.battingFirstXI, candidates, "battingFirst");
-    const bowlingImpact = buildRecommendedImpactSubs(recommended.bowlingFirstXI, candidates, "bowlingFirst");
-    onChangeBothPlans(recommended.battingFirstXI, recommended.bowlingFirstXI, battingImpact, bowlingImpact);
+    const recommended = buildAiMatchLineups(squad, {
+      captainId,
+      viceCaptainId,
+      useProvisionalCaptain: !captainId,
+    });
+    const battingFirstXI = recommended.battingFirst.startingXI;
+    const bowlingFirstXI = recommended.bowlingFirst.startingXI;
+    const battingImpact = buildRecommendedImpactSubs(battingFirstXI, candidates, "battingFirst");
+    const bowlingImpact = buildRecommendedImpactSubs(bowlingFirstXI, candidates, "bowlingFirst");
+    onChangeBothPlans(battingFirstXI, bowlingFirstXI, battingImpact, bowlingImpact);
   };
 
   const fullTimeKeepers = activePlayers.filter((player) => !player.isPartTimeWk && (player.role === "WK-Batsman" || player.isWicketkeeper));
@@ -296,7 +369,7 @@ export default function TacticsLineupBuilder({
             {sortedSquad.map((player) => {
               const inXI = activeXI.includes(player.id);
               const isImpact = activeImpactSubs.includes(player.id);
-              const keeper = keeperLabel(player);
+              const keeper = keeperLabel(player, activePlayers);
               return (
                 <div
                   key={player.id}
@@ -333,7 +406,7 @@ export default function TacticsLineupBuilder({
           <div className="grid h-full min-h-0 grid-rows-[repeat(11,minmax(0,1fr))] gap-1 p-2">
             {Array.from({ length: 11 }, (_, index) => {
               const player = activePlayers[index];
-              const keeper = player ? keeperLabel(player) : null;
+              const keeper = player ? keeperLabel(player, activePlayers) : null;
               const preview = dragPreview?.zone === "lineup" && dragPreview.targetIndex === index ? dragPreview : null;
               const dropPosition = preview && draggedPlayer
                 ? getLineupDropPosition(activeXI, draggedPlayer.id, index, preview.placement)
@@ -417,7 +490,7 @@ export default function TacticsLineupBuilder({
             <div className="mt-3 space-y-1.5">
               {Array.from({ length: 5 }, (_, index) => {
                 const player = activeImpactPlayers[index];
-                const keeper = player ? keeperLabel(player) : null;
+                const keeper = player ? keeperLabel(player, activePlayers) : null;
                 const preview = dragPreview?.zone === "impact" && dragPreview.targetIndex === index;
                 return player ? (
                   <div
@@ -445,7 +518,7 @@ export default function TacticsLineupBuilder({
                     )}
                     <GripVertical size={16} className="text-text-secondary/55" />
                     <span className="flex h-7 w-7 items-center justify-center rounded-full bg-accent font-anton text-[13px] text-[#16130f]">{index + 1}</span>
-                    <button type="button" onClick={() => onOpenPlayer(player.id)} className="min-w-0 flex-1 text-left"><span className="flex items-center gap-1.5"><span className="truncate text-[14px] font-bold text-text-primary hover:underline">{player.name}</span>{player.nationality === "Overseas" && <OverseasMarker />}</span><span className="font-space-mono text-[11px] font-bold uppercase text-text-secondary">{roleLabel(player.role)}{keeper ? ` · ${keeper}` : ""}</span></button>
+                    <button type="button" onClick={() => onOpenPlayer(player.id)} className="min-w-0 flex-1 text-left"><span className="flex items-center gap-1.5"><span className="truncate text-[14px] font-bold text-text-primary hover:underline">{player.name}</span>{player.nationality === "Overseas" && <OverseasMarker />}</span><span className="font-space-mono text-[11px] font-bold uppercase text-text-primary/75">{roleLabel(player.role)}{keeper ? ` · ${keeper}` : ""}</span></button>
                   </div>
                 ) : (
                   <div
@@ -467,6 +540,132 @@ export default function TacticsLineupBuilder({
                 );
               })}
             </div>
+          </div>
+
+          {/* Impact Substitute Strategy Card */}
+          <div className="mt-3 border border-border bg-surface p-3 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-space-mono text-[9px] font-bold uppercase tracking-[0.15em] text-accent">
+                  Impact Strategy ({activePlan === "battingFirst" ? "Bat First Plan" : "Bowl First Plan"})
+                </p>
+                <h4 className="mt-0.5 font-anton text-[18px] uppercase text-text-primary">
+                  Expected Match Change
+                </h4>
+              </div>
+            </div>
+            <p className="mt-1 text-[11px] text-text-primary/75">
+              Select the player coming in and player subbed out{activePlan === "bowlingFirst" ? ", then choose the entry position." : "."}
+            </p>
+
+            <div className="mt-3 space-y-2.5">
+              {/* 1. Player Coming In */}
+              <div>
+                <label className="block font-space-mono text-[9px] font-bold uppercase text-text-secondary">
+                  Player Coming In ({activePlan === "battingFirst" ? "Impact Bowler" : "Impact Batter"})
+                </label>
+                <select
+                  value={currentImpactPlayerId ?? ""}
+                  onChange={(e) => onChangeImpactStrategy?.(
+                    activePlan,
+                    e.target.value || null,
+                    autoOutgoingByPlan[activePlan] ? null : currentOutgoingPlayerId ?? null,
+                    activePlan === "bowlingFirst" ? currentImpactPosition ?? null : null,
+                  )}
+                  className="mt-1 w-full rounded border border-border/80 bg-background px-2 py-1 text-[11px] font-bold text-text-primary focus:border-accent focus:outline-none"
+                  style={{ color: "var(--ink)", backgroundColor: "var(--surface2)", colorScheme: "light" }}
+                  aria-label="Select player coming in"
+                >
+                  <option value="">Auto (Highest Rated Bench Option)</option>
+                  {activeImpactPlayers.map((player) => (
+                    <option key={player.id} value={player.id}>
+                      {player.name} ({roleLabel(player.role)} · {playerRating(player)})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* 2. Player Going Out */}
+              <div>
+                <label className="block font-space-mono text-[9px] font-bold uppercase text-text-secondary">
+                  Player Going Out (Subbed Out)
+                </label>
+                <select
+                  value={autoOutgoingByPlan[activePlan] ? "" : currentOutgoingPlayerId ?? ""}
+                  onChange={(e) => {
+                    const useAuto = e.target.value === "";
+                    setAutoOutgoingByPlan((current) => ({ ...current, [activePlan]: useAuto }));
+                    onChangeImpactStrategy?.(
+                      activePlan,
+                      currentImpactPlayerId ?? null,
+                      useAuto ? null : e.target.value,
+                      activePlan === "bowlingFirst" ? currentImpactPosition ?? null : null,
+                    );
+                  }}
+                  className="mt-1 w-full rounded border border-border/80 bg-background px-2 py-1 text-[11px] font-bold text-text-primary focus:border-accent focus:outline-none"
+                  style={{ color: "var(--ink)", backgroundColor: "var(--surface2)", colorScheme: "light" }}
+                  aria-label="Select player going out"
+                >
+                  <option value="">Auto ({activePlan === "battingFirst" ? "Lowest Priority Player" : "Lowest Rated Batting Option"})</option>
+                  {activePlayers.map((player, idx) => {
+                    const isKeeperPlayer = (player.role === "WK-Batsman" || player.isWicketkeeper) && fullTimeKeepers.length <= 1;
+                    return (
+                      <option key={player.id} value={player.id} disabled={isKeeperPlayer}>
+                        #{idx + 1} {player.name} ({roleLabel(player.role)} · {playerRating(player)}){isKeeperPlayer ? " (Keeper)" : ""}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+
+              {/* 3. Entry Position (only relevant when bowling first) */}
+              {activePlan === "bowlingFirst" && <div>
+                <label className="block font-space-mono text-[9px] font-bold uppercase text-text-secondary">
+                  Entry Batting / Bowling Position
+                </label>
+                <select
+                  value={currentImpactPosition ?? ""}
+                  onChange={(e) => onChangeImpactStrategy?.(
+                    activePlan,
+                    currentImpactPlayerId ?? null,
+                    currentOutgoingPlayerId ?? null,
+                    e.target.value === "" ? null : Number(e.target.value),
+                  )}
+                  className="mt-1 w-full rounded border border-border/80 bg-background px-2 py-1 text-[11px] font-bold text-text-primary focus:border-accent focus:outline-none"
+                  style={{ color: "var(--ink)", backgroundColor: "var(--surface2)", colorScheme: "light" }}
+                  aria-label="Select entry position"
+                >
+                  <option value="">
+                    {autoImpactPosition ? `Auto choose best position (#${autoImpactPosition})` : "Auto choose best position"}
+                  </option>
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map((pos) => (
+                    <option key={pos} value={pos}>
+                      Position #{pos} {pos <= 2 ? "(Opener)" : pos <= 5 ? "(Core)" : pos <= 7 ? "(Finisher)" : "(Lower)"}
+                    </option>
+                  ))}
+                </select>
+              </div>}
+            </div>
+
+            {/* Projected Change Summary Banner */}
+            {(() => {
+              const inPl = (currentImpactPlayerId && playerById.get(currentImpactPlayerId))
+                || [...activeImpactPlayers].sort((left, right) => (
+                  activePlan === "bowlingFirst"
+                    ? (right.currentBatting ?? 0) - (left.currentBatting ?? 0)
+                    : (right.currentBowling ?? 0) - (left.currentBowling ?? 0)
+                ))[0];
+              const outPl = autoOutgoingByPlan[activePlan] && activePlan === "battingFirst"
+                ? autoBattingFirstOutgoingPlayer
+                : (currentOutgoingPlayerId && playerById.get(currentOutgoingPlayerId)) || activePlayers[activePlayers.length - 1];
+              const pos = currentImpactPosition ?? autoImpactPosition ?? "auto";
+              if (!inPl || !outPl) return null;
+              return (
+                <div className="mt-3 border-t border-border/50 pt-2 font-space-mono text-[8px] uppercase text-text-primary/75">
+                  Projected change: <span className="font-bold text-text-primary">{inPl.name}</span> in for <span className="font-bold text-text-primary">{outPl.name}</span>{activePlan === "bowlingFirst" ? <> at number <span className="font-bold text-accent">{pos}</span></> : null}
+                </div>
+              );
+            })()}
           </div>
 
           <div className="mt-3 border border-border bg-surface p-3 shadow-sm">

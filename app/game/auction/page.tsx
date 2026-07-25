@@ -1610,10 +1610,11 @@ function TeamSquadCard({
   const overseas = squad.filter((p) => p.nationality === "Overseas").length;
   const lineup = selectPotentialLineup(squad);
 
-  // Find the primary wicketkeeper (highest rated keeper in the lineup)
-  const isKeeperRole = (p: import("@/lib/types").Player) =>
-    !!(p.isWicketkeeper || p.isPartTimeWk || p.role === "WK-Batsman");
-  const wkCandidates = lineup.filter(isKeeperRole).sort((a, b) => playerRating(b) - playerRating(a));
+  // Find the primary wicketkeeper (prefer full-time keeper; fall back to part-time keeper if 0 full-time keepers exist)
+  const fullTimeWks = lineup.filter((p) => (p.role === "WK-Batsman" || p.isWicketkeeper) && !p.isPartTimeWk);
+  const wkCandidates = fullTimeWks.length > 0
+    ? fullTimeWks.sort((a, b) => playerRating(b) - playerRating(a))
+    : lineup.filter((p) => p.isPartTimeWk).sort((a, b) => playerRating(b) - playerRating(a));
   const primaryWkId = wkCandidates[0]?.id;
 
   // Find the captain (highest captaincy rating, tiebreaker overall rating)

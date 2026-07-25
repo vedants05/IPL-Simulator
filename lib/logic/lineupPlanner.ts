@@ -15,6 +15,7 @@ export interface LineupCandidate {
   isWicketkeeper: boolean;
   isPartTimeWicketkeeper?: boolean;
   isOpener?: boolean;
+  onlyOpensOrBenched?: boolean;
 }
 
 export interface LineupValidation {
@@ -160,7 +161,11 @@ export function validateLineup(ids: readonly string[], candidates: readonly Line
 function sortIntoBattingOrder(players: readonly LineupCandidate[]): string[] {
   return [...players]
     .sort((left, right) => {
+      const leftForcedKeeperOpener = left.isWicketkeeper && (left.isOpener || left.onlyOpensOrBenched);
+      const rightForcedKeeperOpener = right.isWicketkeeper && (right.isOpener || right.onlyOpensOrBenched);
       const openerDifference = Number(Boolean(right.isOpener)) - Number(Boolean(left.isOpener));
+      const forcedKeeperDifference = Number(Boolean(rightForcedKeeperOpener)) - Number(Boolean(leftForcedKeeperOpener));
+      if (forcedKeeperDifference !== 0) return forcedKeeperDifference;
       if (openerDifference !== 0) return openerDifference;
       const specialistDifference = Number(isBowlingOption(left) && left.batting < 55) - Number(isBowlingOption(right) && right.batting < 55);
       if (specialistDifference !== 0) return specialistDifference;
@@ -171,6 +176,59 @@ function sortIntoBattingOrder(players: readonly LineupCandidate[]): string[] {
 
 function canAddToLineup(player: LineupCandidate, selected: readonly LineupCandidate[]): boolean {
   return !isOverseas(player) || selected.filter(isOverseas).length < 4;
+}
+
+export function sanitizeLineupBatterAt8OrBelow(
+  selected: readonly LineupCandidate[],
+  candidates: readonly LineupCandidate[],
+): LineupCandidate[] {
+  let result = [...selected];
+
+  const checkAndReplaceAt = (index: number) => {
+    const p = result[index];
+    if (!p) return false;
+    const isBatterAt8OrBelow = !isBowlingOption(p) && p.role !== "All-Rounder";
+    if (!isBatterAt8OrBelow) return false;
+
+    const startersWithoutP = result.filter((starter) => starter.id !== p.id);
+    const overseasCountWithoutP = startersWithoutP.filter(isOverseas).length;
+
+    const bench = candidates.filter((c) => (
+      !result.some((starter) => starter.id === c.id)
+      && (!isOverseas(c) || overseasCountWithoutP < 4)
+    ));
+
+    const allRounders = bench.filter((c) => c.role === "All-Rounder");
+    const bowlers = bench.filter(isBowlingOption);
+
+    const replacement = allRounders.sort((a, b) => (b.batting + b.bowling) - (a.batting + a.bowling))[0]
+      ?? bowlers.sort((a, b) => b.bowling - a.bowling)[0]
+      ?? bench.sort((a, b) => Math.max(b.batting, b.bowling) - Math.max(a.batting, a.bowling))[0];
+
+    if (replacement) {
+      result[index] = replacement;
+      return true;
+    }
+    return false;
+  };
+
+  for (let idx = 7; idx < result.length; idx++) {
+    checkAndReplaceAt(idx);
+  }
+
+  const orderedIds = sortIntoBattingOrder(result);
+  const orderedPlayers = orderedIds.map((id) => result.find((p) => p?.id === id)!).filter(Boolean);
+  for (let idx = 7; idx < orderedPlayers.length; idx++) {
+    const p = orderedPlayers[idx];
+    if (p && !isBowlingOption(p) && p.role !== "All-Rounder") {
+      const realIndex = result.findIndex((starter) => starter.id === p.id);
+      if (realIndex !== -1) {
+        checkAndReplaceAt(realIndex);
+      }
+    }
+  }
+
+  return result;
 }
 
 export function buildRecommendedLineups(candidates: readonly LineupCandidate[]): {
@@ -206,8 +264,8 @@ export function buildRecommendedLineups(candidates: readonly LineupCandidate[]):
     return selected.slice(0, 11);
   };
 
-  const battingPlayers = selectPlan("battingFirst");
-  const bowlingPlayers = selectPlan("bowlingFirst");
+  const battingPlayers = sanitizeLineupBatterAt8OrBelow(selectPlan("battingFirst"), candidates);
+  const bowlingPlayers = sanitizeLineupBatterAt8OrBelow(selectPlan("bowlingFirst"), candidates);
 
   return {
     battingFirstXI: sortIntoBattingOrder(battingPlayers),
@@ -220,17 +278,70 @@ export function buildRecommendedImpactSubs(
   candidates: readonly LineupCandidate[],
   plan: LineupPlan,
 ): string[] {
-  return candidates
-    .filter((candidate) => !lineup.includes(candidate.id))
-    .sort((left, right) => {
-      const leftScore = plan === "battingFirst"
-        ? left.bowling * 0.65 + left.batting * 0.35
-        : left.batting * 0.65 + left.bowling * 0.35;
-      const rightScore = plan === "battingFirst"
-        ? right.bowling * 0.65 + right.batting * 0.35
-        : right.batting * 0.65 + right.bowling * 0.35;
-      return rightScore - leftScore;
-    })
-    .slice(0, 5)
-    .map((candidate) => candidate.id);
+  const starters = candidates.filter((candidate) => lineup.includes(candidate.id));
+  const overseasStarters = starters.filter(isOverseas).length;
+  const available = candidates.filter((candidate) => (
+    !lineup.includes(candidate.id)
+    && overseasStarters + (isOverseas(candidate) ? 1 : 0) <= 4
+  ));
+  const preferred = available.filter((candidate) => (
+    plan === "battingFirst" ? isBowlingOption(candidate) : (
+      candidate.role === "Batsman"
+      || candidate.role === "WK-Batsman"
+      || candidate.role === "All-Rounder"
+    )
+  ));
+
+  if (plan === "battingFirst") {
+    const specialistBackupBatters = available.filter((candidate) => (
+      candidate.role === "Batsman" || candidate.role === "WK-Batsman"
+    ));
+    const allBackupBatters = available.filter((candidate) => (
+      candidate.role === "Batsman"
+      || candidate.role === "WK-Batsman"
+      || candidate.role === "All-Rounder"
+    ));
+    const hasTwoRecognisedOpeners = starters.filter((candidate) => candidate.isOpener).length >= 2;
+    const backupBatter = [...(
+      specialistBackupBatters.length > 0 ? specialistBackupBatters : allBackupBatters
+    )].sort((left, right) => (
+      // A player restricted to opening/bench duty is a weaker generic backup
+      // unless the XI has fewer than two recognised openers.
+      Number(hasTwoRecognisedOpeners && Boolean(left.onlyOpensOrBenched))
+        - Number(hasTwoRecognisedOpeners && Boolean(right.onlyOpensOrBenched))
+      || right.batting - left.batting
+      || right.bowling - left.bowling
+    ))[0];
+
+    const selected: LineupCandidate[] = [];
+
+    [...preferred]
+      .filter((candidate) => candidate.id !== backupBatter?.id)
+      .sort((left, right) => right.bowling - left.bowling || right.batting - left.batting)
+      .forEach((candidate) => {
+        if (selected.length < 4) selected.push(candidate);
+      });
+
+    // Keep the emergency batter in the named five, but after the four bowling
+    // options so no first-entry fallback can treat them as the automatic
+    // incoming impact player.
+    if (backupBatter && selected.length < 5) selected.push(backupBatter);
+
+    [...available]
+      .filter((candidate) => !selected.some((chosen) => chosen.id === candidate.id))
+      .sort((left, right) => right.bowling - left.bowling || right.batting - left.batting)
+      .forEach((candidate) => {
+        if (selected.length < 5) selected.push(candidate);
+      });
+
+    return selected.map((candidate) => candidate.id);
+  }
+
+  const ranked = (preferred.length >= 5 ? preferred : available).sort((left, right) => {
+    // Bowl-first impact substitutes are selected for the second innings: the
+    // highest-rated eligible batter must lead the list, independent of the
+    // source order of the substitutes.
+    return right.batting - left.batting || right.bowling - left.bowling;
+  });
+  return ranked.slice(0, 5).map((candidate) => candidate.id);
 }

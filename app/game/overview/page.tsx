@@ -15,6 +15,11 @@ import {
   TICKING_CALENDAR_OFFSETS,
 } from "@/lib/logic/careerCalendar";
 import { createDayTicker, type DayTickerController } from "@/lib/logic/dayTicker";
+import {
+  buildAiMatchLineups,
+  findOptimalImpactBattingPosition,
+  selectBattingFirstImpactBowler,
+} from "@/lib/logic/aiLineupSelector";
 import { buildRecommendedImpactSubs, buildRecommendedLineups, type LineupPlan, validateLineup } from "@/lib/logic/lineupPlanner";
 import {
   generateBalancedLeagueFixtures,
@@ -227,7 +232,20 @@ function OverviewPageContent() {
     }
   }, [tabParam, subtabParam]);
 
+  useEffect(() => {
+    const handleSwitchTab = (e: Event) => {
+      const customEvent = e as CustomEvent<{ tab: string; subtab?: string }>;
+      if (customEvent.detail?.tab && ["home", "squad", "scouting", "season", "history"].includes(customEvent.detail.tab)) {
+        setActiveTab(customEvent.detail.tab as any);
+        _setActiveSubTab(customEvent.detail.subtab || "overview");
+      }
+    };
+    window.addEventListener("ipl_switch_tab", handleSwitchTab);
+    return () => window.removeEventListener("ipl_switch_tab", handleSwitchTab);
+  }, []);
+
   const setActiveSubTab = (newSubTab: string) => {
+    _setActiveSubTab(newSubTab);
     router.push(`/game/overview?tab=${activeTab}&subtab=${newSubTab}`, { scroll: false });
   };
 
@@ -244,6 +262,12 @@ function OverviewPageContent() {
   const [bowlingFirstXI, setBowlingFirstXI] = useState<string[]>([]);
   const [battingFirstImpactSubs, setBattingFirstImpactSubs] = useState<string[]>([]);
   const [bowlingFirstImpactSubs, setBowlingFirstImpactSubs] = useState<string[]>([]);
+  const [battingFirstImpactPlayerId, setBattingFirstImpactPlayerId] = useState<string | null>(null);
+  const [battingFirstOutgoingPlayerId, setBattingFirstOutgoingPlayerId] = useState<string | null>(null);
+  const [battingFirstImpactBattingPosition, setBattingFirstImpactBattingPosition] = useState<number | null>(null);
+  const [bowlingFirstImpactPlayerId, setBowlingFirstImpactPlayerId] = useState<string | null>(null);
+  const [bowlingFirstOutgoingPlayerId, setBowlingFirstOutgoingPlayerId] = useState<string | null>(null);
+  const [bowlingFirstImpactBattingPosition, setBowlingFirstImpactBattingPosition] = useState<number | null>(null);
   const [teamTactics, setTeamTactics] = useState<TeamTactics>(() => createTeamTactics());
   const [teamLeadership, setTeamLeadership] = useState<TeamLeadership>(() => ({ ...EMPTY_TEAM_LEADERSHIP }));
   const [aiTeamLeadership, setAiTeamLeadership] = useState<AiLeagueLeadership>({});
@@ -476,6 +500,9 @@ function OverviewPageContent() {
             isWicketkeeper: player.role === "WK-Batsman" || Boolean(player.isWicketkeeper) || Boolean(player.isPartTimeWk),
             isPartTimeWicketkeeper: Boolean(player.isPartTimeWk),
             isOpener: player.isOpener,
+            onlyOpensOrBenched: player.onlyOpensOrBenched,
+            onlyOpensOrBenched: player.onlyOpensOrBenched,
+            onlyOpensOrBenched: player.onlyOpensOrBenched,
           }));
       const recommended = buildRecommendedLineups(candidates);
       setBattingFirstXI(recommended.battingFirstXI);
@@ -552,26 +579,99 @@ function OverviewPageContent() {
         }
         setInbox(normalizeCareerEmails(parsed.inbox));
         const legacyXI = Array.isArray(parsed.startingXI) ? parsed.startingXI : [];
-        if (Array.isArray(parsed.battingFirstXI) || legacyXI.length > 0) {
-          setBattingFirstXI(Array.isArray(parsed.battingFirstXI) ? parsed.battingFirstXI : legacyXI);
+        const loadedBattingXI = Array.isArray(parsed.battingFirstXI) ? parsed.battingFirstXI : legacyXI;
+        const loadedBowlingXI = Array.isArray(parsed.bowlingFirstXI) ? parsed.bowlingFirstXI : legacyXI;
+
+        const userSquadCandidates = (userTeam?.squad ?? [])
+          .map((id) => players[id])
+          .filter((player): player is Player => Boolean(player))
+          .map((player) => ({
+            id: player.id,
+            nationality: player.nationality,
+            role: player.role,
+            batting: player.currentBatting,
+            bowling: player.currentBowling,
+            isWicketkeeper: player.role === "WK-Batsman" || Boolean(player.isWicketkeeper) || Boolean(player.isPartTimeWk),
+            isPartTimeWicketkeeper: Boolean(player.isPartTimeWk),
+            isOpener: player.isOpener,
+          }));
+
+        const cleanXI = (rawXI: string[]) => {
+          if (rawXI.length !== 11 || userSquadCandidates.length === 0) return rawXI;
+          // A saved XI is user configuration. Preserve its exact batting order
+          // when all eleven IDs are still valid; automatic position-8/tail
+          // sanitisation belongs only to recommendation generation, not page
+          // navigation or career reloads.
+          const validIds = new Set(userSquadCandidates.map((candidate) => candidate.id));
+          if (new Set(rawXI).size !== 11 || rawXI.some((id) => !validIds.has(id))) return rawXI;
+          return rawXI;
+        };
+
+        if (loadedBattingXI.length > 0) {
+          setBattingFirstXI(cleanXI(loadedBattingXI));
         }
-        if (Array.isArray(parsed.bowlingFirstXI) || legacyXI.length > 0) {
-          setBowlingFirstXI(Array.isArray(parsed.bowlingFirstXI) ? parsed.bowlingFirstXI : legacyXI);
+        if (loadedBowlingXI.length > 0) {
+          setBowlingFirstXI(cleanXI(loadedBowlingXI));
         }
         if (Array.isArray(parsed.battingFirstImpactSubs)) setBattingFirstImpactSubs(parsed.battingFirstImpactSubs);
         if (Array.isArray(parsed.bowlingFirstImpactSubs)) setBowlingFirstImpactSubs(parsed.bowlingFirstImpactSubs);
+        if (typeof parsed.battingFirstImpactPlayerId === "string" || parsed.battingFirstImpactPlayerId === null) {
+          setBattingFirstImpactPlayerId(parsed.battingFirstImpactPlayerId);
+        }
+        if (typeof parsed.battingFirstOutgoingPlayerId === "string" || parsed.battingFirstOutgoingPlayerId === null) {
+          setBattingFirstOutgoingPlayerId(parsed.battingFirstOutgoingPlayerId);
+        }
+        if (typeof parsed.battingFirstImpactBattingPosition === "number" || parsed.battingFirstImpactBattingPosition === null) {
+          setBattingFirstImpactBattingPosition(parsed.battingFirstImpactBattingPosition);
+        }
+        if (typeof parsed.bowlingFirstImpactPlayerId === "string" || parsed.bowlingFirstImpactPlayerId === null) {
+          setBowlingFirstImpactPlayerId(parsed.bowlingFirstImpactPlayerId);
+        }
+        if (typeof parsed.bowlingFirstOutgoingPlayerId === "string" || parsed.bowlingFirstOutgoingPlayerId === null) {
+          setBowlingFirstOutgoingPlayerId(parsed.bowlingFirstOutgoingPlayerId);
+        }
+        if (typeof parsed.bowlingFirstImpactBattingPosition === "number" || parsed.bowlingFirstImpactBattingPosition === null) {
+          setBowlingFirstImpactBattingPosition(parsed.bowlingFirstImpactBattingPosition);
+        }
         setTeamTactics(normalizeTeamTactics(parsed.teamTactics, parsed.teamStrategy));
         const loadedUserGamesPlayed = Array.isArray(parsed.fixtures)
           ? parsed.fixtures.filter((fixture: Match) => (
               fixture.played && (fixture.teamA === userTeamId || fixture.teamB === userTeamId)
             )).length
           : 0;
-        setTeamLeadership(normalizeTeamLeadership(
+        const userSquadPlayers = (userTeam?.squad ?? [])
+          .map((id) => players[id])
+          .filter((player): player is Player => Boolean(player));
+        const loadedLeadership = normalizeTeamLeadership(
           parsed.teamLeadership,
-          (userTeam?.squad ?? []).map((id) => players[id]).filter((player): player is Player => Boolean(player)),
+          userSquadPlayers,
           loadedUserGamesPlayed,
           currentSeason,
-        ));
+        );
+        const canValidateLeadershipSquad = userSquadPlayers.length > 0;
+        const savedCaptainId = typeof parsed.teamLeadership?.captainId === "string"
+          && (
+            !canValidateLeadershipSquad
+            || userSquadPlayers.some((player) => player.id === parsed.teamLeadership.captainId)
+          )
+          ? parsed.teamLeadership.captainId
+          : null;
+        const savedViceCaptainId = typeof parsed.teamLeadership?.viceCaptainId === "string"
+          && parsed.teamLeadership.viceCaptainId !== savedCaptainId
+          && (
+            !canValidateLeadershipSquad
+            || userSquadPlayers.some((player) => player.id === parsed.teamLeadership.viceCaptainId)
+          )
+          ? parsed.teamLeadership.viceCaptainId
+          : null;
+        setTeamLeadership({
+          ...loadedLeadership,
+          // User appointments are authoritative across navigation and reloads.
+          // Normalisation may migrate metadata, but it must not silently replace
+          // valid saved captain or vice-captain selections.
+          captainId: savedCaptainId,
+          viceCaptainId: savedViceCaptainId,
+        });
         const loadedAiTeamLeadership = reconcileAiLeagueLeadership(
           parsed.aiTeamLeadership,
           teams,
@@ -601,28 +701,132 @@ function OverviewPageContent() {
     setIsCareerLoaded(true);
   }, [userTeamId]);
 
-  const saveCareerState = (updatedData: any) => {
-    const currentState = {
+  const saveCareerState = useCallback((updatedData: any) => {
+    const storageKey = `ipl_career_${userTeamId}`;
+    let latestSavedState: Record<string, any> = {};
+    try {
+      const saved = localStorage.getItem(storageKey);
+      if (saved) latestSavedState = JSON.parse(saved);
+    } catch (error) {
+      console.error("Unable to merge latest career save:", error);
+    }
+
+    const fallbackState = {
       scheduleVersion: LEAGUE_FIXTURE_SCHEDULE_VERSION,
-      fixtures: updatedData.fixtures ?? fixtures,
-      standings: updatedData.standings ?? standings,
-      playerStats: updatedData.playerStats ?? playerStats,
-      inbox: updatedData.inbox ?? inbox,
-      battingFirstXI: updatedData.battingFirstXI ?? battingFirstXI,
-      bowlingFirstXI: updatedData.bowlingFirstXI ?? bowlingFirstXI,
-      battingFirstImpactSubs: updatedData.battingFirstImpactSubs ?? battingFirstImpactSubs,
-      bowlingFirstImpactSubs: updatedData.bowlingFirstImpactSubs ?? bowlingFirstImpactSubs,
-      // Keep the old key during migration so pre-redesign saves remain portable.
-      startingXI: updatedData.battingFirstXI ?? battingFirstXI,
-      teamTactics: updatedData.teamTactics ?? teamTactics,
-      teamStrategy: (updatedData.teamTactics ?? teamTactics).preset,
-      teamLeadership: updatedData.teamLeadership ?? teamLeadership,
-      aiTeamLeadership: updatedData.aiTeamLeadership ?? aiTeamLeadership,
-      shortlist: updatedData.shortlist ?? shortlist,
-      retentionDeadline: updatedData.retentionDeadline ?? retentionDeadline,
+      fixtures,
+      standings,
+      playerStats,
+      inbox,
+      battingFirstXI,
+      bowlingFirstXI,
+      battingFirstImpactSubs,
+      bowlingFirstImpactSubs,
+      battingFirstImpactPlayerId,
+      battingFirstOutgoingPlayerId,
+      battingFirstImpactBattingPosition,
+      bowlingFirstImpactPlayerId,
+      bowlingFirstOutgoingPlayerId,
+      bowlingFirstImpactBattingPosition,
+      startingXI: battingFirstXI,
+      teamTactics,
+      teamStrategy: teamTactics?.preset ?? "custom",
+      teamLeadership,
+      aiTeamLeadership,
+      shortlist,
+      retentionDeadline,
     };
-    localStorage.setItem(`ipl_career_${userTeamId}`, JSON.stringify(currentState));
-  };
+    const currentState = {
+      ...fallbackState,
+      ...latestSavedState,
+      ...updatedData,
+      scheduleVersion: LEAGUE_FIXTURE_SCHEDULE_VERSION,
+      // Keep the legacy XI synchronized only when the batting-first XI changes.
+      startingXI: updatedData.battingFirstXI
+        ?? latestSavedState.startingXI
+        ?? latestSavedState.battingFirstXI
+        ?? battingFirstXI,
+      teamStrategy: updatedData.teamTactics?.preset
+        ?? latestSavedState.teamStrategy
+        ?? teamTactics?.preset
+        ?? "custom",
+    };
+    localStorage.setItem(storageKey, JSON.stringify(currentState));
+  }, [userTeamId, fixtures, standings, playerStats, inbox, battingFirstXI, bowlingFirstXI, battingFirstImpactSubs, bowlingFirstImpactSubs, battingFirstImpactPlayerId, battingFirstOutgoingPlayerId, battingFirstImpactBattingPosition, bowlingFirstImpactPlayerId, bowlingFirstOutgoingPlayerId, bowlingFirstImpactBattingPosition, teamTactics, teamLeadership, aiTeamLeadership, shortlist, retentionDeadline]);
+
+  useEffect(() => {
+    if (!isCareerLoaded || !userTeamId || (battingFirstXI.length === 0 && bowlingFirstXI.length === 0)) return;
+    saveCareerState({
+      battingFirstXI,
+      bowlingFirstXI,
+      battingFirstImpactSubs,
+      bowlingFirstImpactSubs,
+    });
+  }, [isCareerLoaded, userTeamId, battingFirstXI, bowlingFirstXI, battingFirstImpactSubs, bowlingFirstImpactSubs, saveCareerState]);
+
+  // Sanitize position 8+ batters from user XIs once userTeam and players are populated
+  useEffect(() => {
+    if (!userTeam || Object.keys(players).length === 0) return;
+
+    const userSquadCandidates = (userTeam.squad ?? [])
+      .map((id) => players[id])
+      .filter((player): player is Player => Boolean(player))
+      .map((player) => ({
+        id: player.id,
+        nationality: player.nationality,
+        role: player.role,
+        batting: player.currentBatting,
+        bowling: player.currentBowling,
+        isWicketkeeper: player.role === "WK-Batsman" || Boolean(player.isWicketkeeper) || Boolean(player.isPartTimeWk),
+        isPartTimeWicketkeeper: Boolean(player.isPartTimeWk),
+        isOpener: player.isOpener,
+        onlyOpensOrBenched: player.onlyOpensOrBenched,
+      }));
+
+    if (userSquadCandidates.length === 0) return;
+    const userSquadPlayers = (userTeam.squad ?? [])
+      .map((id) => players[id])
+      .filter((player): player is Player => Boolean(player));
+
+    if (battingFirstXI.length === 11) {
+      const cands = battingFirstXI.map((id) => userSquadCandidates.find((c) => c.id === id)!).filter(Boolean);
+      if (cands.length === 11) {
+        const cleaned = battingFirstXI;
+        if (cleaned.some((id, idx) => id !== battingFirstXI[idx])) {
+          setBattingFirstXI(cleaned);
+          saveCareerState({ battingFirstXI: cleaned });
+        }
+      }
+    }
+
+    if (bowlingFirstXI.length !== 11) {
+      const repairedXI = buildAiMatchLineups(userSquadPlayers).bowlingFirst.startingXI;
+      if (repairedXI.length === 11) {
+        setBowlingFirstXI(repairedXI);
+        saveCareerState({ bowlingFirstXI: repairedXI });
+      }
+    } else {
+      const cands = bowlingFirstXI.map((id) => userSquadCandidates.find((c) => c.id === id)!).filter(Boolean);
+      if (cands.length === 11) {
+        const hasWicketkeeper = cands.some((player) => player.isWicketkeeper);
+        const repairedXI = !hasWicketkeeper
+          ? buildAiMatchLineups(userSquadPlayers).bowlingFirst.startingXI
+          : null;
+        const cleaned = (repairedXI && repairedXI.length === 11
+          ? repairedXI
+          : bowlingFirstXI);
+        if (cleaned.some((id, idx) => id !== bowlingFirstXI[idx])) {
+          setBowlingFirstXI(cleaned);
+          saveCareerState({ bowlingFirstXI: cleaned });
+        }
+      } else {
+        const repairedXI = buildAiMatchLineups(userSquadPlayers).bowlingFirst.startingXI;
+        if (repairedXI.length === 11) {
+          setBowlingFirstXI(repairedXI);
+          saveCareerState({ bowlingFirstXI: repairedXI });
+        }
+      }
+    }
+  }, [userTeam, players, battingFirstXI, bowlingFirstXI, saveCareerState]);
 
   // Initialize all career details
   const initCareer = () => {
@@ -639,6 +843,7 @@ function OverviewPageContent() {
           isWicketkeeper: player.role === "WK-Batsman" || Boolean(player.isWicketkeeper) || Boolean(player.isPartTimeWk),
           isPartTimeWicketkeeper: Boolean(player.isPartTimeWk),
           isOpener: player.isOpener,
+          onlyOpensOrBenched: player.onlyOpensOrBenched,
         }));
     const recommendedLineups = buildRecommendedLineups(lineupCandidates);
     const initialBattingFirstXI = battingFirstXI.length > 0 ? battingFirstXI : recommendedLineups.battingFirstXI;
@@ -1077,6 +1282,7 @@ function OverviewPageContent() {
       isWicketkeeper: player.role === "WK-Batsman" || Boolean(player.isWicketkeeper) || Boolean(player.isPartTimeWk),
       isPartTimeWicketkeeper: Boolean(player.isPartTimeWk),
       isOpener: player.isOpener,
+      onlyOpensOrBenched: player.onlyOpensOrBenched,
     })));
     if (!validation.isValid) return availablePlayers.slice(0, 11);
 
@@ -1641,7 +1847,16 @@ function OverviewPageContent() {
   const calculateStandings = (allMatches: Match[]): LeagueStandings[] => {
     const records: Record<string, LeagueStandings> = {};
     const runTotals: Record<string, { scored: number; facedBalls: number; conceded: number; bowledBalls: number }> = {};
-    const randomTieBreak = new Map(Object.keys(teams).map(teamId => [teamId, Math.random()]));
+    const getTeamTieBreakValue = (teamId: string) => {
+      const str = `${currentSeason}:${fixtureSeed}:${teamId}`;
+      let hash = 2166136261;
+      for (let i = 0; i < str.length; i++) {
+        hash ^= str.charCodeAt(i);
+        hash = Math.imul(hash, 16777619);
+      }
+      return (hash >>> 0) / 4294967296;
+    };
+    const randomTieBreak = new Map(Object.keys(teams).map(teamId => [teamId, getTeamTieBreakValue(teamId)]));
 
     const oversToBalls = (overs: number | undefined) => {
       if (overs === undefined || overs < 0) return 0;
@@ -1878,6 +2093,20 @@ function OverviewPageContent() {
     rosterSort.key === key ? (rosterSort.direction === "asc" ? "↑" : "↓") : "↕";
 
   const handleMatchPlanChange = (plan: LineupPlan, lineup: string[], impactSubs: string[]) => {
+    if (plan === "bowlingFirst") {
+      const hasWicketkeeper = lineup.some((playerId) => {
+        const player = players[playerId];
+        return Boolean(player && (
+          player.role === "WK-Batsman"
+          || player.isWicketkeeper
+          || player.isPartTimeWk
+        ));
+      });
+      if (!hasWicketkeeper) {
+        showToast("Bowl-first XI must include a wicketkeeper.");
+        return;
+      }
+    }
     if (plan === "battingFirst") {
       setBattingFirstXI(lineup);
       setBattingFirstImpactSubs(impactSubs);
@@ -1895,6 +2124,18 @@ function OverviewPageContent() {
     nextBattingFirstImpactSubs: string[],
     nextBowlingFirstImpactSubs: string[],
   ) => {
+    const hasWicketkeeper = nextBowlingFirstXI.some((playerId) => {
+      const player = players[playerId];
+      return Boolean(player && (
+        player.role === "WK-Batsman"
+        || player.isWicketkeeper
+        || player.isPartTimeWk
+      ));
+    });
+    if (!hasWicketkeeper) {
+      showToast("Bowl-first XI must include a wicketkeeper.");
+      return;
+    }
     setBattingFirstXI(nextBattingFirstXI);
     setBowlingFirstXI(nextBowlingFirstXI);
     setBattingFirstImpactSubs(nextBattingFirstImpactSubs);
@@ -1911,6 +2152,64 @@ function OverviewPageContent() {
   const handleTacticsChange = (nextTactics: TeamTactics) => {
     setTeamTactics(nextTactics);
     saveCareerState({ teamTactics: nextTactics });
+  };
+
+  const handleImpactStrategyChange = (
+    plan: LineupPlan,
+    impactPlayerId: string | null,
+    outgoingPlayerId: string | null,
+    entryPosition: number | null,
+  ) => {
+    let persistedImpactPlayerId = impactPlayerId;
+    if (plan === "battingFirst" && persistedImpactPlayerId === null) {
+      const impactCandidates = battingFirstImpactSubs
+        .map((id) => players[id])
+        .filter((player): player is Player => Boolean(player));
+      const impactBowler = selectBattingFirstImpactBowler(impactCandidates);
+      persistedImpactPlayerId = impactBowler?.id ?? null;
+    }
+
+    // null remains the persisted Auto state. Every consumer resolves it from
+    // the current XI through selectBattingFirstOutgoingBatter, avoiding stale
+    // outgoing IDs after lineup or leadership changes.
+    const persistedOutgoingPlayerId = outgoingPlayerId;
+    // Auto is resolved once, at the point the user selects it. Persisting the
+    // concrete slot keeps the club-profile view from running a second,
+    // potentially different position-selection algorithm.
+    let persistedEntryPosition = entryPosition;
+    if (plan === "bowlingFirst" && persistedEntryPosition === null) {
+      const starters = bowlingFirstXI
+        .map((id) => players[id])
+        .filter((player): player is Player => Boolean(player));
+      const impact = (impactPlayerId && players[impactPlayerId])
+        ?? bowlingFirstImpactSubs
+          .map((id) => players[id])
+          .filter((player): player is Player => Boolean(player))
+          .sort((left, right) => (right.currentBatting ?? 0) - (left.currentBatting ?? 0))[0];
+      const outgoing = (outgoingPlayerId && players[outgoingPlayerId]) ?? starters[starters.length - 1];
+      if (impact && outgoing && starters.length > 0) {
+        persistedEntryPosition = findOptimalImpactBattingPosition(starters, impact, outgoing, true);
+      }
+    }
+    if (plan === "battingFirst") {
+      setBattingFirstImpactPlayerId(persistedImpactPlayerId);
+      setBattingFirstOutgoingPlayerId(persistedOutgoingPlayerId);
+      setBattingFirstImpactBattingPosition(entryPosition);
+      saveCareerState({
+        battingFirstImpactPlayerId: persistedImpactPlayerId,
+        battingFirstOutgoingPlayerId: persistedOutgoingPlayerId,
+        battingFirstImpactBattingPosition: entryPosition,
+      });
+    } else {
+      setBowlingFirstImpactPlayerId(impactPlayerId);
+      setBowlingFirstOutgoingPlayerId(outgoingPlayerId);
+      setBowlingFirstImpactBattingPosition(persistedEntryPosition);
+      saveCareerState({
+        bowlingFirstImpactPlayerId: impactPlayerId,
+        bowlingFirstOutgoingPlayerId: outgoingPlayerId,
+        bowlingFirstImpactBattingPosition: persistedEntryPosition,
+      });
+    }
   };
 
   const handleLeadershipChange = (nextLeadership: TeamLeadership) => {
@@ -2062,6 +2361,7 @@ function OverviewPageContent() {
       isWicketkeeper: player.role === "WK-Batsman" || Boolean(player.isWicketkeeper) || Boolean(player.isPartTimeWk),
       isPartTimeWicketkeeper: Boolean(player.isPartTimeWk),
       isOpener: player.isOpener,
+      onlyOpensOrBenched: player.onlyOpensOrBenched,
     })), [players, userTeam?.squad]);
   const emailLineupStatus = useMemo<CareerEmailLineupStatus>(() => {
     const battingValidation = validateLineup(battingFirstXI, emailLineupCandidates);
@@ -2515,15 +2815,22 @@ function OverviewPageContent() {
                         <div className="relative flex h-full min-h-0 flex-col p-4">
                           <div className="flex shrink-0 items-start justify-between gap-3 border-b border-[#16130f]/10 pb-2">
                             <div className="flex min-w-0 items-center gap-2.5">
-                              <div
-                                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full font-space-mono text-[11px] font-extrabold shadow-sm"
+                              <Link
+                                href={`/game/teams/${nextOpponent.id}`}
+                                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full font-space-mono text-[11px] font-extrabold shadow-sm hover:opacity-90 transition-opacity"
                                 style={{ backgroundColor: nextOpponent.primaryColor, color: nextOpponent.secondaryColor }}
+                                title={`View ${nextOpponent.name} team profile`}
                               >
                                 {nextOpponent.shortName}
-                              </div>
+                              </Link>
                               <div className="min-w-0">
                                 <p className="font-space-mono text-[9px] font-bold uppercase tracking-[0.16em] text-text-secondary">Next opponent · Scouting brief</p>
-                                <h3 className="mt-1 truncate font-anton text-[24px] uppercase leading-none text-text-primary">{nextOpponent.name}</h3>
+                                <Link
+                                  href={`/game/teams/${nextOpponent.id}`}
+                                  className="mt-1 block truncate font-anton text-[24px] uppercase leading-none text-text-primary hover:text-accent hover:underline transition-colors"
+                                >
+                                  {nextOpponent.name}
+                                </Link>
                                 <div className="mt-1 flex items-center gap-2 font-space-mono text-[9px] font-bold uppercase text-text-secondary">
                                   <span>{nextOpponentStandingIndex >= 0 ? `${nextOpponentStandingIndex + 1}${nextOpponentStandingIndex === 0 ? "st" : nextOpponentStandingIndex === 1 ? "nd" : nextOpponentStandingIndex === 2 ? "rd" : "th"} in league` : "Pre-season"}</span>
                                   <span className="text-border">·</span>
@@ -3545,10 +3852,19 @@ function OverviewPageContent() {
                   bowlingFirstXI={bowlingFirstXI}
                   battingFirstImpactSubs={battingFirstImpactSubs}
                   bowlingFirstImpactSubs={bowlingFirstImpactSubs}
+                  battingFirstImpactPlayerId={battingFirstImpactPlayerId}
+                  battingFirstOutgoingPlayerId={battingFirstOutgoingPlayerId}
+                  battingFirstImpactBattingPosition={battingFirstImpactBattingPosition}
+                  bowlingFirstImpactPlayerId={bowlingFirstImpactPlayerId}
+                  bowlingFirstOutgoingPlayerId={bowlingFirstOutgoingPlayerId}
+                  bowlingFirstImpactBattingPosition={bowlingFirstImpactBattingPosition}
+                  captainId={teamLeadership?.captainId}
+                  viceCaptainId={teamLeadership?.viceCaptainId}
                   tactics={teamTactics}
                   onChangePlan={handleMatchPlanChange}
                   onChangeBothPlans={handleBothMatchPlansChange}
                   onChangeTactics={handleTacticsChange}
+                  onChangeImpactStrategy={handleImpactStrategyChange}
                   onOpenPlayer={setDetailedPlayerId}
                 />
               )}
@@ -3936,7 +4252,10 @@ function OverviewPageContent() {
                           <span className="relative right-2 text-center font-space-mono text-sm font-bold text-text-secondary">{index + 1}</span>
                           <Link
                             href={`/game/teams/${row.teamId}`}
-                            onClick={(event) => event.stopPropagation()}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              router.push(`/game/teams/${row.teamId}`);
+                            }}
                             className="truncate text-xs underline-offset-2 transition-colors hover:text-accent hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
                             aria-label={`Open ${row.teamName} team profile`}
                           >
@@ -4145,6 +4464,10 @@ function OverviewPageContent() {
                             <td className="points-table-team truncate font-bold text-text-primary">
                               <Link
                                 href={`/game/teams/${row.teamId}`}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  router.push(`/game/teams/${row.teamId}`);
+                                }}
                                 className="inline-block max-w-full truncate underline-offset-2 transition-colors hover:text-accent hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
                                 aria-label={`Open ${row.teamName} team profile`}
                               >

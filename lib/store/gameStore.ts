@@ -2313,6 +2313,14 @@ export const useGameStore = create<Store>()(
             ]))
           : current.teams;
         const migratedPlayers = p.players ? { ...p.players } : current.players;
+        Object.entries(migratedPlayers).forEach(([id, player]) => {
+          if (player.name !== "Riyan Parag") return;
+          migratedPlayers[id] = {
+            ...player,
+            isCoreBatter: true,
+            isFinisher: false,
+          };
+        });
         const persistedAuctionSeason = String(migratedAuction?.season ?? migratedCurrentSeason);
         const persistedFinalSales = new Map<string, NonNullable<typeof p.auction>["saleHistory"][number]>();
         (migratedAuction?.saleHistory ?? []).forEach((sale) => persistedFinalSales.set(sale.playerId, sale));

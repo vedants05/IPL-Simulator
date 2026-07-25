@@ -201,7 +201,7 @@ export default function NavBar() {
       )}
 
       <div className="flex items-center gap-0">
-        {(SEASON_ACCESS_ENABLED && auction?.phase === "completed" && continuedToSeason
+        {((SEASON_ACCESS_ENABLED && (auction?.phase === "completed" || continuedToSeason)) || pathname.startsWith("/game/overview") || pathname.startsWith("/game/teams")
           ? NAV_ITEMS
           : [ { label: "Auction", href: "/game/auction" } ]
         ).map((item) => {
@@ -209,12 +209,23 @@ export default function NavBar() {
           if (item.href === "/game/auction") {
             active = pathname.startsWith("/game/auction");
           } else {
-            active = pathname.startsWith("/game/overview") && item.href.includes("tab=" + activeTabFromUrl);
+            const itemTab = item.href.split("tab=")[1];
+            active = pathname.startsWith("/game/overview") && activeTabFromUrl === itemTab;
           }
           return (
             <Link
               key={item.href}
               href={item.href}
+              onClick={(e) => {
+                e.preventDefault();
+                if (item.href.includes("tab=")) {
+                  const targetTab = new URLSearchParams(item.href.split("?")[1]).get("tab");
+                  if (targetTab && typeof window !== "undefined") {
+                    window.dispatchEvent(new CustomEvent("ipl_switch_tab", { detail: { tab: targetTab } }));
+                  }
+                }
+                router.push(item.href);
+              }}
               className={`px-4 h-12 flex items-center text-[11px] font-bold tracking-widest uppercase font-space-mono transition-colors border-b-2
                 ${active
                   ? "bg-surface"

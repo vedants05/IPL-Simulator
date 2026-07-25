@@ -13,6 +13,7 @@ import {
   getCareerCalendarStep,
   getDaySimulationIntervalMs,
   getSkipSimulationIntervalMs,
+  getSeasonScheduleAnnouncementDate,
   isCareerCalendarAtImpasse,
   localDateToDateKey,
 } from "./careerCalendar";
@@ -42,6 +43,10 @@ test("simulation is twice as fast from auction day through schedule announcement
   assert.equal(getDaySimulationIntervalMs("2027-01-10", auctionDate, announcementDate), FAST_DAY_SIMULATION_INTERVAL_MS);
   assert.equal(getDaySimulationIntervalMs(announcementDate, auctionDate, announcementDate), FAST_DAY_SIMULATION_INTERVAL_MS);
   assert.equal(getDaySimulationIntervalMs("2027-02-28", auctionDate, announcementDate), DAY_SIMULATION_INTERVAL_MS);
+});
+
+test("fixture schedule announcement is three weeks before the second-last March Saturday", () => {
+  assert.equal(getSeasonScheduleAnnouncementDate(2027), "2027-02-27");
 });
 
 test("targeted date simulation accelerates, cruises, and slows near its target", () => {
