@@ -144,27 +144,62 @@ const PREMIUM_IMPACT_BATTING_RATING = 85;
  * finisher is intentionally introduced at eight so the top seven remain the
  * established middle order.
  */
+function sanitizeImpactPlayerOverseasLimit(
+  squad: readonly Player[],
+  startingXI: readonly Player[],
+  impactPlayer: Player | null,
+  mode: AiLineupMode = "bowlingFirst",
+): Player | null {
+  if (!impactPlayer) return null;
+  const startersOverseas = startingXI.filter(isOverseas).length;
+  if (startersOverseas < 4 || !isOverseas(impactPlayer)) return impactPlayer;
+
+  const startingIds = new Set(startingXI.map((p) => p.id));
+  const legalBench = squad
+    .filter((p) => (
+      !startingIds.has(p.id)
+      && (mode === "battingFirst" ? isAiBowlingOption(p) : isBattingOption(p))
+      && isImpactPlayerWithinOverseasLimit(startingXI, p)
+    ))
+    .sort((left, right) => (
+      (mode === "bowlingFirst"
+        ? (right.currentBatting ?? 0) - (left.currentBatting ?? 0)
+        : (right.currentBowling ?? 0) - (left.currentBowling ?? 0))
+      || currentAbility(right) - currentAbility(left)
+      || (right.reputation ?? 0) - (left.reputation ?? 0)
+    ));
+
+  if (legalBench.length > 0) return legalBench[0];
+
+  const anyLegalBench = squad
+    .filter((p) => !startingIds.has(p.id) && isImpactPlayerWithinOverseasLimit(startingXI, p))
+    .sort((left, right) => currentAbility(right) - currentAbility(left));
+
+  return anyLegalBench[0] ?? null;
+}
+
 export function applyBowlingFirstImpactFinisherRule(
   squad: readonly Player[],
   startingXI: readonly Player[],
   impactPlayer: Player | null,
 ): { player: Player | null; forcePosition8: boolean; replacedOpener: boolean } {
+  const safeImpactPlayer = sanitizeImpactPlayerOverseasLimit(squad, startingXI, impactPlayer, "bowlingFirst");
   if (
-    !impactPlayer
-    || !isBattingOption(impactPlayer)
-    || impactPlayer.isOpener
-    || impactPlayer.isFinisher
+    !safeImpactPlayer
+    || !isBattingOption(safeImpactPlayer)
+    || safeImpactPlayer.isOpener
+    || safeImpactPlayer.isFinisher
   ) {
-    return { player: impactPlayer, forcePosition8: false, replacedOpener: false };
+    return { player: safeImpactPlayer, forcePosition8: false, replacedOpener: false };
   }
 
   const middleOrder = startingXI.slice(2, 7);
-  const impactBattingRating = impactPlayer.currentBatting ?? 0;
+  const impactBattingRating = safeImpactPlayer.currentBatting ?? 0;
   if (
     middleOrder.length !== 5
     || !middleOrder.every((player) => impactBattingRating < (player.currentBatting ?? 0))
   ) {
-    return { player: impactPlayer, forcePosition8: false, replacedOpener: false };
+    return { player: safeImpactPlayer, forcePosition8: false, replacedOpener: false };
   }
 
   const startingIds = new Set(startingXI.map((player) => player.id));
@@ -183,7 +218,7 @@ export function applyBowlingFirstImpactFinisherRule(
 
   return finisher
     ? { player: finisher, forcePosition8: true, replacedOpener: false }
-    : { player: impactPlayer, forcePosition8: false, replacedOpener: false };
+    : { player: safeImpactPlayer, forcePosition8: false, replacedOpener: false };
 }
 
 /**
@@ -197,18 +232,19 @@ export function resolveBowlingFirstImpactPlayer(
   impactPlayer: Player | null,
   impactPosition?: number | null,
 ): { player: Player | null; forcePosition8: boolean; replacedOpener: boolean } {
+  const safeImpactPlayer = sanitizeImpactPlayerOverseasLimit(squad, startingXI, impactPlayer, "bowlingFirst");
   const bothStartingOpeners = Boolean(startingXI[0]?.isOpener && startingXI[1]?.isOpener);
   const isWeakStartingOpener = Boolean(
-    impactPlayer
-    && impactPlayer.isOpener
+    safeImpactPlayer
+    && safeImpactPlayer.isOpener
     && (impactPosition === 1 || impactPosition === 2)
     && bothStartingOpeners
-    && (impactPlayer.currentBatting ?? 0) < (startingXI[0]?.currentBatting ?? 0)
-    && (impactPlayer.currentBatting ?? 0) < (startingXI[1]?.currentBatting ?? 0),
+    && (safeImpactPlayer.currentBatting ?? 0) < (startingXI[0]?.currentBatting ?? 0)
+    && (safeImpactPlayer.currentBatting ?? 0) < (startingXI[1]?.currentBatting ?? 0),
   );
 
   if (!isWeakStartingOpener) {
-    return applyBowlingFirstImpactFinisherRule(squad, startingXI, impactPlayer);
+    return applyBowlingFirstImpactFinisherRule(squad, startingXI, safeImpactPlayer);
   }
 
   const startingIds = new Set(startingXI.map((player) => player.id));
@@ -227,7 +263,7 @@ export function resolveBowlingFirstImpactPlayer(
     ))[0] ?? null;
 
   if (!middleOrderImpact) {
-    return { player: impactPlayer, forcePosition8: false, replacedOpener: false };
+    return { player: safeImpactPlayer, forcePosition8: false, replacedOpener: false };
   }
 
   const resolved = applyBowlingFirstImpactFinisherRule(squad, startingXI, middleOrderImpact);

@@ -177,9 +177,9 @@ export default function TacticsLineupBuilder({
   const otherXI = activePlan === "battingFirst" ? bowlingFirstXI : battingFirstXI;
   const activeImpactSubs = activePlan === "battingFirst" ? battingFirstImpactSubs : bowlingFirstImpactSubs;
   const otherImpactSubs = activePlan === "battingFirst" ? bowlingFirstImpactSubs : battingFirstImpactSubs;
-  const activeValidation = validateLineup(activeXI, candidates);
-  const battingValidation = validateLineup(battingFirstXI, candidates);
-  const bowlingValidation = validateLineup(bowlingFirstXI, candidates);
+  const activeValidation = validateLineup(activeXI, candidates, activePlan);
+  const battingValidation = validateLineup(battingFirstXI, candidates, "battingFirst");
+  const bowlingValidation = validateLineup(bowlingFirstXI, candidates, "bowlingFirst");
   const activePlayers = activeXI.map((id) => playerById.get(id)).filter((player): player is Player => Boolean(player));
   const activeImpactPlayers = activeImpactSubs.map((id) => playerById.get(id)).filter((player): player is Player => Boolean(player));
   const autoBattingFirstOutgoingPlayer = useMemo(() => (
@@ -190,8 +190,12 @@ export default function TacticsLineupBuilder({
   ), [battingFirstXI, captainId, playerById, viceCaptainId]);
   const autoImpactPosition = useMemo(() => {
     if (activePlan !== "bowlingFirst") return null;
-    const impactPlayer = (currentImpactPlayerId && playerById.get(currentImpactPlayerId))
-      ?? [...activeImpactPlayers].sort((left, right) => (
+    const startersOverseas = activePlayers.filter((p) => p.nationality === "Overseas").length;
+    const legalImpactPlayers = activeImpactPlayers.filter((p) => p.nationality !== "Overseas" || startersOverseas < 4);
+    const impactCandidate = currentImpactPlayerId ? playerById.get(currentImpactPlayerId) : null;
+    const impactPlayer = (impactCandidate && (impactCandidate.nationality !== "Overseas" || startersOverseas < 4))
+      ? impactCandidate
+      : [...legalImpactPlayers].sort((left, right) => (
         (right.currentBatting ?? 0) - (left.currentBatting ?? 0)
       ))[0];
     const outgoingPlayer = (currentOutgoingPlayerId && playerById.get(currentOutgoingPlayerId))
@@ -316,6 +320,13 @@ export default function TacticsLineupBuilder({
     );
   };
 
+  const handleQuickSubIntoXI = (player: Player) => {
+    if (activeXI.includes(player.id)) return;
+    const targetPos = activeXI.length < 11 ? activeXI.length : 10;
+    const next = dropPlayerIntoLineup(activeXI, activeImpactSubs, player.id, targetPos, "swap");
+    setActivePlanState(next.lineup, next.impactSubs);
+  };
+
   return (
     <div className="flex h-[calc(100vh-160px)] min-h-0 flex-col overflow-hidden border-2 border-border bg-surface">
       <div className="flex shrink-0 items-center justify-between border-b-2 border-border bg-[linear-gradient(110deg,rgba(var(--team-primary-rgb),0.12),transparent_48%)] px-5 py-3">
@@ -363,7 +374,7 @@ export default function TacticsLineupBuilder({
               <div><p className="font-space-mono text-[12px] font-bold uppercase tracking-[0.14em] text-text-secondary">Available squad</p><h4 className="mt-1 font-anton text-[20px] uppercase text-text-primary">Player pool</h4></div>
               <span className="font-space-mono text-[12px] font-bold text-text-secondary">{squad.length} players</span>
             </div>
-            <p className="mt-2 font-space-mono text-[11px] font-bold uppercase tracking-wide text-text-secondary">Drag a player into an XI or impact slot</p>
+            <p className="mt-2 font-space-mono text-[11px] font-bold uppercase tracking-wide text-text-secondary">Drag a player into an XI or impact slot, or click + XI</p>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto p-2">
             {sortedSquad.map((player) => {
@@ -376,7 +387,7 @@ export default function TacticsLineupBuilder({
                   draggable
                   onDragStart={(event) => beginPlayerDrag(event, player.id, "pool")}
                   onDragEnd={finishPlayerDrag}
-                  className={`mb-1 grid min-h-14 cursor-grab grid-cols-[1.5rem_minmax(0,1fr)_3rem_3rem_4.75rem] items-center gap-1.5 border px-2.5 py-2 active:cursor-grabbing ${
+                  className={`mb-1 grid min-h-14 cursor-grab grid-cols-[1.5rem_minmax(0,1fr)_3rem_3rem_5.5rem] items-center gap-1.5 border px-2.5 py-2 active:cursor-grabbing ${
                     draggedPlayer?.id === player.id && draggedPlayer.source === "pool"
                       ? "border-accent opacity-40"
                       : inXI
@@ -393,9 +404,24 @@ export default function TacticsLineupBuilder({
                   </button>
                   <span className="text-center font-space-mono text-[13px] font-bold text-text-primary" title="Batting rating">{player.currentBatting}</span>
                   <span className="text-center font-space-mono text-[13px] font-bold text-text-primary" title="Bowling rating">{player.currentBowling}</span>
-                  <span className={`text-center font-space-mono text-[11px] font-bold uppercase tracking-wide ${inXI ? "text-success" : isImpact ? "text-accent" : "text-text-secondary/70"}`}>
-                    {inXI ? `XI #${activeXI.indexOf(player.id) + 1}` : isImpact ? `Impact #${activeImpactSubs.indexOf(player.id) + 1}` : "Available"}
-                  </span>
+                  <div className="flex flex-col items-center justify-center gap-1 min-w-0">
+                    <span className={`text-center font-space-mono text-[10px] font-bold uppercase tracking-wide ${inXI ? "text-success" : isImpact ? "text-accent" : "text-text-secondary/70"}`}>
+                      {inXI ? `XI #${activeXI.indexOf(player.id) + 1}` : isImpact ? `Impact #${activeImpactSubs.indexOf(player.id) + 1}` : "Available"}
+                    </span>
+                    {!inXI && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleQuickSubIntoXI(player);
+                        }}
+                        className="px-2 py-0.5 font-space-mono text-[9px] font-bold uppercase bg-accent text-[#16130f] rounded hover:bg-accent/80 transition-colors shadow-sm"
+                        title={`Sub ${player.name} into Playing XI`}
+                      >
+                        + XI
+                      </button>
+                    )}
+                  </div>
                 </div>
               );
             })}
@@ -492,6 +518,8 @@ export default function TacticsLineupBuilder({
                 const player = activeImpactPlayers[index];
                 const keeper = player ? keeperLabel(player, activePlayers) : null;
                 const preview = dragPreview?.zone === "impact" && dragPreview.targetIndex === index;
+                const startersOverseas = activePlayers.filter((p) => p.nationality === "Overseas").length;
+                const isPlayerIneligibleOS = Boolean(player && player.nationality === "Overseas" && startersOverseas >= 4);
                 return player ? (
                   <div
                     key={player.id}
@@ -503,12 +531,14 @@ export default function TacticsLineupBuilder({
                       completeImpactDrop(index);
                     }}
                     onDragEnd={finishPlayerDrag}
-                    className={`relative flex min-h-14 cursor-grab items-center gap-2 overflow-hidden border bg-accent/[0.04] px-2.5 shadow-sm active:cursor-grabbing ${
-                      preview
-                        ? "border-accent bg-accent/[0.1] ring-2 ring-inset ring-accent"
-                        : draggedPlayer?.id === player.id && draggedPlayer.source === "impact"
-                          ? "border-accent opacity-40"
-                          : "border-accent/30"
+                    className={`relative flex min-h-14 cursor-grab items-center gap-2 overflow-hidden border px-2.5 shadow-sm active:cursor-grabbing ${
+                      isPlayerIneligibleOS
+                        ? "border-red-500/40 bg-red-500/[0.04]"
+                        : preview
+                          ? "border-accent bg-accent/[0.1] ring-2 ring-inset ring-accent"
+                          : draggedPlayer?.id === player.id && draggedPlayer.source === "impact"
+                            ? "border-accent opacity-40"
+                            : "border-accent/30 bg-accent/[0.04]"
                     }`}
                   >
                     {preview && (
@@ -517,8 +547,13 @@ export default function TacticsLineupBuilder({
                       </span>
                     )}
                     <GripVertical size={16} className="text-text-secondary/55" />
-                    <span className="flex h-7 w-7 items-center justify-center rounded-full bg-accent font-anton text-[13px] text-[#16130f]">{index + 1}</span>
+                    <span className={`flex h-7 w-7 items-center justify-center rounded-full font-anton text-[13px] ${isPlayerIneligibleOS ? "bg-red-500 text-white" : "bg-accent text-[#16130f]"}`}>{index + 1}</span>
                     <button type="button" onClick={() => onOpenPlayer(player.id)} className="min-w-0 flex-1 text-left"><span className="flex items-center gap-1.5"><span className="truncate text-[14px] font-bold text-text-primary hover:underline">{player.name}</span>{player.nationality === "Overseas" && <OverseasMarker />}</span><span className="font-space-mono text-[11px] font-bold uppercase text-text-primary/75">{roleLabel(player.role)}{keeper ? ` · ${keeper}` : ""}</span></button>
+                    {isPlayerIneligibleOS && (
+                      <span className="shrink-0 rounded border border-red-500/30 bg-red-500/15 px-1.5 py-0.5 font-space-mono text-[9px] font-bold text-red-600 dark:text-red-400" title="Starting XI already has 4 Overseas players; this player cannot be subbed in">
+                        Ineligible (4 OS)
+                      </span>
+                    )}
                   </div>
                 ) : (
                   <div

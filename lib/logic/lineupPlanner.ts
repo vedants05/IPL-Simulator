@@ -142,13 +142,18 @@ export const isBowlingOption = (player: LineupCandidate) =>
     || player.role === "Spin Bowler"
   );
 
-export function validateLineup(ids: readonly string[], candidates: readonly LineupCandidate[]): LineupValidation {
+export function validateLineup(
+  ids: readonly string[],
+  candidates: readonly LineupCandidate[],
+  mode: LineupPlan = "battingFirst",
+): LineupValidation {
   const candidateById = new Map(candidates.map((candidate) => [candidate.id, candidate]));
   const selected = ids.map((id) => candidateById.get(id)).filter((player): player is LineupCandidate => Boolean(player));
   const overseasCount = selected.filter(isOverseas).length;
   const wicketkeeperCount = selected.filter((player) => player.isWicketkeeper).length;
   const bowlingOptionCount = selected.filter(isBowlingOption).length;
   const isComplete = selected.length === 11;
+  const minBowlers = mode === "bowlingFirst" ? 5 : 4;
 
   return {
     playerCount: selected.length,
@@ -156,7 +161,7 @@ export function validateLineup(ids: readonly string[], candidates: readonly Line
     wicketkeeperCount,
     bowlingOptionCount,
     isComplete,
-    isValid: isComplete && overseasCount <= 4 && wicketkeeperCount >= 1 && bowlingOptionCount >= 5,
+    isValid: isComplete && overseasCount <= 4 && wicketkeeperCount >= 1 && bowlingOptionCount >= minBowlers,
   };
 }
 

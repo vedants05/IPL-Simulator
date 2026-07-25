@@ -202,21 +202,24 @@ function LineupColumn({
   const starters = plan.startingXI
     .map((playerId) => players[playerId])
     .filter((player): player is Player => Boolean(player));
+  const startersOverseasCount = starters.filter((p) => p.nationality === "Overseas").length;
+  const isImpactPlayerWithinOverseasLimit = (candidate: Player) => {
+    if (candidate.nationality !== "Overseas") return true;
+    return startersOverseasCount < 4;
+  };
+
   const startersSet = new Set(plan.startingXI);
   const benchCandidates = (impactCandidates?.length ? impactCandidates : squad ?? [])
-    .filter((player) => !startersSet.has(player.id));
+    .filter((player) => !startersSet.has(player.id) && isImpactPlayerWithinOverseasLimit(player));
 
   const rawImpactPlayer = plan.impactPlayerId ? players[plan.impactPlayerId] : undefined;
-  let effectiveImpactPlayer = rawImpactPlayer;
+  let effectiveImpactPlayer = (rawImpactPlayer && isImpactPlayerWithinOverseasLimit(rawImpactPlayer))
+    ? rawImpactPlayer
+    : undefined;
   if (!effectiveImpactPlayer && squad && squad.length > 0) {
-    const isImpactPlayerWithinOverseasLimit = (startersXI: readonly Player[], candidate: Player) => {
-      if (candidate.nationality !== "Overseas") return true;
-      const startersOverseas = startersXI.filter((p) => p.nationality === "Overseas").length;
-      return startersOverseas < 4;
-    };
     const isBowlFirstPlan = title.toLowerCase().includes("bowl");
     const legalBench = squad
-      .filter((p) => !startersSet.has(p.id) && isImpactPlayerWithinOverseasLimit(starters, p))
+      .filter((p) => !startersSet.has(p.id) && isImpactPlayerWithinOverseasLimit(p))
       .sort((left, right) => {
         if (isBowlFirstPlan) {
           const leftBat = isBattingOption(left);
@@ -464,7 +467,7 @@ export default function TeamProfilePage() {
     try {
       const parsed = JSON.parse(savedCareer) as Partial<TeamProfileCareer>;
       let aiTeamLeadership = parsed.aiTeamLeadership ?? {};
-      if (team && team.id !== userTeamId) {
+      if (team && team.id !== userTeamId && !aiTeamLeadership[team.id]) {
         const teamSquad = team.squad
           .map((playerId) => players[playerId])
           .filter((player): player is Player => Boolean(player));
@@ -514,7 +517,7 @@ export default function TeamProfilePage() {
   }, [players, team]);
 
   const profileLineups = useMemo(() => {
-    if (activeTab !== "lineups") return null;
+    if (activeTab !== "lineups" || !team) return null;
 
     const isProfileUserTeam = teamId === userTeamId;
     const aiLeadership = career.aiTeamLeadership?.[teamId];
