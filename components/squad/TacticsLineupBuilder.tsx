@@ -8,7 +8,6 @@ import {
   ShieldCheck,
   Sparkles,
   Swords,
-  UserRoundCog,
   X,
 } from "lucide-react";
 
@@ -22,15 +21,6 @@ import {
   type LineupPlan,
   validateLineup,
 } from "@/lib/logic/lineupPlanner";
-import {
-  TACTICAL_ROLE_DEFINITIONS,
-  autoAssignTacticalRolesForPlan,
-  isPlayerEligibleForTacticalRole,
-  setPlayerTacticalRole,
-  type TacticalDiscipline,
-  type TacticalRole,
-  type TeamTactics,
-} from "@/lib/logic/teamTactics";
 import {
   buildAiMatchLineups,
   findOptimalImpactBattingPosition,
@@ -53,7 +43,6 @@ interface TacticsLineupBuilderProps {
   bowlingFirstImpactBattingPosition?: number | null;
   captainId?: string | null;
   viceCaptainId?: string | null;
-  tactics: TeamTactics;
   onChangePlan: (plan: LineupPlan, lineup: string[], impactSubs: string[]) => void;
   onChangeBothPlans: (
     battingFirstXI: string[],
@@ -61,7 +50,6 @@ interface TacticsLineupBuilderProps {
     battingFirstImpactSubs: string[],
     bowlingFirstImpactSubs: string[],
   ) => void;
-  onChangeTactics: (tactics: TeamTactics) => void;
   onChangeImpactStrategy?: (
     plan: LineupPlan,
     impactPlayerId: string | null,
@@ -143,10 +131,8 @@ export default function TacticsLineupBuilder({
   bowlingFirstImpactBattingPosition,
   captainId,
   viceCaptainId,
-  tactics,
   onChangePlan,
   onChangeBothPlans,
-  onChangeTactics,
   onChangeImpactStrategy,
   onOpenPlayer,
 }: TacticsLineupBuilderProps) {
@@ -203,7 +189,6 @@ export default function TacticsLineupBuilder({
     if (!impactPlayer || !outgoingPlayer) return null;
     return findOptimalImpactBattingPosition(activePlayers, impactPlayer, outgoingPlayer, true);
   }, [activePlan, activeImpactPlayers, activePlayers, currentImpactPlayerId, currentOutgoingPlayerId, playerById]);
-  const activeRoles = tactics.roles[activePlan];
   const sortedSquad = [...squad]
     .sort((left, right) => Math.max(right.currentBatting, right.currentBowling) - Math.max(left.currentBatting, left.currentBowling));
 
@@ -265,7 +250,6 @@ export default function TacticsLineupBuilder({
   };
 
   const copyOtherPlan = () => setActivePlanState([...otherXI], [...otherImpactSubs]);
-  const autoAssignRoles = () => onChangeTactics(autoAssignTacticalRolesForPlan(tactics, activePlan, activePlayers));
   const autoBuild = () => {
     const recommended = buildAiMatchLineups(squad, {
       captainId,
@@ -281,44 +265,6 @@ export default function TacticsLineupBuilder({
 
   const fullTimeKeepers = activePlayers.filter((player) => !player.isPartTimeWk && (player.role === "WK-Batsman" || player.isWicketkeeper));
   const partTimeKeepers = activePlayers.filter((player) => player.isPartTimeWk);
-
-  const renderRoleSelect = (player: Player, battingPosition: number, discipline: TacticalDiscipline) => {
-    const definitions = TACTICAL_ROLE_DEFINITIONS.filter((definition) => definition.discipline === discipline);
-    const selectedRole = definitions.find((definition) => activeRoles[definition.id] === player.id);
-    const eligibleDefinitions = definitions.filter((definition) => isPlayerEligibleForTacticalRole(player, definition.id, battingPosition));
-    const visibleDefinitions = selectedRole && !eligibleDefinitions.some((definition) => definition.id === selectedRole.id)
-      ? [selectedRole, ...eligibleDefinitions]
-      : eligibleDefinitions;
-    const eligibilitySummary = eligibleDefinitions.length > 0
-      ? eligibleDefinitions.map((definition) => `${definition.label}: ${definition.rule}`).join("\n")
-      : `This player does not currently meet a ${discipline} specialist-role rule.`;
-
-    return (
-      <select
-        value={selectedRole?.id ?? ""}
-        onChange={(event) => onChangeTactics(setPlayerTacticalRole(
-          tactics,
-          activePlan,
-          player.id,
-          discipline,
-          (event.target.value || null) as TacticalRole | null,
-        ))}
-        onMouseDown={(event) => event.stopPropagation()}
-        draggable={false}
-        disabled={visibleDefinitions.length === 0}
-        title={eligibilitySummary}
-        aria-label={`${discipline === "batting" ? "Batting" : "Bowling"} role for ${player.name}`}
-        className="h-6 w-full min-w-0 border border-border bg-surface px-1 font-space-mono text-[9px] font-bold uppercase text-text-primary outline-none focus:border-accent disabled:cursor-not-allowed disabled:opacity-45"
-      >
-        <option value="">{discipline === "batting" ? "BAT" : "BOWL"} role: none</option>
-        {visibleDefinitions.map((definition) => (
-          <option key={definition.id} value={definition.id}>
-            {discipline === "batting" ? "BAT" : "BOWL"} - {definition.shortLabel}{definition === selectedRole && !eligibleDefinitions.includes(definition) ? " (rule!)" : ""}
-          </option>
-        ))}
-      </select>
-    );
-  };
 
   const handleQuickSubIntoXI = (player: Player) => {
     if (activeXI.includes(player.id)) return;
@@ -340,9 +286,6 @@ export default function TacticsLineupBuilder({
           </button>
           <button type="button" onClick={copyOtherPlan} className="flex items-center gap-2 border border-border bg-surface px-3 py-2 font-space-mono text-[12px] font-bold uppercase text-text-primary transition-colors hover:border-accent">
             <Copy size={16} /> Copy other plan
-          </button>
-          <button type="button" onClick={autoAssignRoles} className="flex items-center gap-2 border border-border bg-surface px-3 py-2 font-space-mono text-[12px] font-bold uppercase text-text-primary transition-colors hover:border-accent">
-            <UserRoundCog size={16} className="text-accent" /> Auto roles
           </button>
         </div>
       </div>
@@ -399,7 +342,7 @@ export default function TacticsLineupBuilder({
                 >
                   <GripVertical size={16} className="text-text-secondary/55" />
                   <button type="button" onClick={() => onOpenPlayer(player.id)} className="min-w-0 text-left">
-                    <span className="flex items-center gap-1.5"><span className="truncate text-[14px] font-bold text-text-primary hover:underline">{player.name}</span>{player.nationality === "Overseas" && <OverseasMarker />}{keeper && <span className={`px-1.5 py-0.5 font-space-mono text-[10px] font-bold ${keeper === "PT WK" ? "bg-amber-500/15 text-amber-700 dark:text-amber-300" : "bg-success/15 text-success"}`}>{keeper}</span>}</span>
+                    <span className="flex min-h-4 items-center gap-1.5 leading-none"><span className="truncate text-[14px] font-bold leading-none text-text-primary hover:underline">{player.name}</span>{player.nationality === "Overseas" && <OverseasMarker />}{keeper && <span className={`inline-flex items-center px-1.5 py-0.5 font-space-mono text-[10px] font-bold leading-none ${keeper === "PT WK" ? "bg-amber-500/15 text-amber-700 dark:text-amber-300" : "bg-success/15 text-success"}`}>{keeper}</span>}</span>
                     <span className="mt-0.5 block font-space-mono text-[12px] font-bold uppercase text-text-secondary">{roleLabel(player.role)}</span>
                   </button>
                   <span className="text-center font-space-mono text-[13px] font-bold text-text-primary" title="Batting rating">{player.currentBatting}</span>
@@ -450,7 +393,7 @@ export default function TacticsLineupBuilder({
                   }}
                   onDragEnd={finishPlayerDrag}
                   title="Drop in the centre to swap positions, or on the top/bottom edge to insert"
-                  className={`relative grid min-h-0 cursor-grab grid-cols-[1.5rem_2.25rem_minmax(8rem,1fr)_minmax(8.5rem,0.9fr)] items-center gap-2 overflow-hidden border bg-surface px-2.5 shadow-sm transition-[border-color,background-color,opacity,box-shadow] active:cursor-grabbing ${
+                  className={`relative grid min-h-0 cursor-grab grid-cols-[1.5rem_2.25rem_minmax(8rem,1fr)] items-center gap-2 overflow-hidden border bg-surface px-2.5 shadow-sm transition-[border-color,background-color,opacity,box-shadow] active:cursor-grabbing ${
                     preview?.placement === "swap"
                       ? "border-accent bg-accent/[0.09] ring-2 ring-inset ring-accent"
                       : draggedPlayer?.id === player.id && draggedPlayer.source === "lineup"
@@ -472,16 +415,16 @@ export default function TacticsLineupBuilder({
                       <span className="h-1 flex-1 bg-accent" />
                     </span>
                   )}
-                  <GripVertical size={17} className="text-text-secondary/55" />
-                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-black/[0.05] font-anton text-[16px] text-text-primary dark:bg-white/[0.06]">{index + 1}</span>
-                  <button type="button" onClick={() => onOpenPlayer(player.id)} className="min-w-0 text-left">
-                    <span className="flex items-center gap-1.5"><span className="truncate text-[14px] font-bold text-text-primary hover:underline">{player.name}</span>{player.nationality === "Overseas" && <OverseasMarker />}{keeper && <span className={`px-1.5 py-0.5 font-space-mono text-[10px] font-bold ${keeper === "PT WK" ? "bg-amber-500/15 text-amber-700 dark:text-amber-300" : "bg-success/15 text-success"}`}>{keeper}</span>}</span>
-                    <span className="mt-0.5 block truncate font-space-mono text-[10px] font-bold uppercase text-text-secondary">{roleLabel(player.role)}{player.isOpener ? " · Opener" : ""} · BAT {player.currentBatting} · BOWL {player.currentBowling}</span>
-                  </button>
-                  <span className="grid min-w-0 grid-rows-2 gap-1">
-                    {renderRoleSelect(player, index, "batting")}
-                    {renderRoleSelect(player, index, "bowling")}
+                  <span className="flex h-full max-h-full w-6 shrink-0 items-center justify-center self-center overflow-hidden">
+                    <GripVertical size={17} className="block text-text-secondary/55" />
                   </span>
+                  <span className="flex h-[min(2rem,calc(100%_-_0.25rem))] aspect-square shrink-0 items-center justify-center self-center rounded-full bg-black/[0.05] font-anton text-[16px] leading-none text-text-primary dark:bg-white/[0.06]">
+                    {index + 1}
+                  </span>
+                  <button type="button" onClick={() => onOpenPlayer(player.id)} className="flex h-full min-h-0 min-w-0 flex-col justify-center self-center overflow-hidden text-left">
+                    <span className="flex min-h-4 items-center gap-1.5 leading-none"><span className="truncate text-[14px] font-bold leading-none text-text-primary hover:underline">{player.name}</span>{player.nationality === "Overseas" && <OverseasMarker />}{keeper && <span className={`inline-flex items-center px-1.5 py-0.5 font-space-mono text-[10px] font-bold leading-none ${keeper === "PT WK" ? "bg-amber-500/15 text-amber-700 dark:text-amber-300" : "bg-success/15 text-success"}`}>{keeper}</span>}</span>
+                    <span className="mt-1 block truncate font-space-mono text-[10px] font-bold uppercase leading-none text-text-secondary [@media(max-height:650px)]:hidden">{roleLabel(player.role)}{player.isOpener ? " · Opener" : ""} · BAT {player.currentBatting} · BOWL {player.currentBowling}</span>
+                  </button>
                 </div>
               ) : (
                 <div
@@ -491,7 +434,7 @@ export default function TacticsLineupBuilder({
                     event.preventDefault();
                     completePlayerDrop(index, "before");
                   }}
-                  className={`relative flex min-h-0 items-center gap-3 overflow-hidden border border-dashed px-3 text-text-secondary ${preview ? "border-accent bg-accent/[0.07]" : "border-border/50"}`}
+                  className={`relative grid min-h-0 grid-cols-[1.5rem_2.25rem_minmax(0,1fr)] items-center gap-2 overflow-hidden border border-dashed px-2.5 text-text-secondary ${preview ? "border-accent bg-accent/[0.07]" : "border-border/50"}`}
                 >
                   {preview && (
                     <span className="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-center">
@@ -502,18 +445,20 @@ export default function TacticsLineupBuilder({
                       <span className="h-1 flex-1 bg-accent" />
                     </span>
                   )}
-                  <GripVertical size={16} className="opacity-20" /><span className="font-anton text-[16px]">{index + 1}</span><span className="font-space-mono text-[12px] font-bold uppercase tracking-wide">Empty batting-order slot</span>
+                  <span className="flex h-full w-6 items-center justify-center"><GripVertical size={16} className="block opacity-20" /></span>
+                  <span className="flex h-[min(2rem,calc(100%_-_0.25rem))] aspect-square items-center justify-center font-anton text-[16px] leading-none">{index + 1}</span>
+                  <span className="flex items-center font-space-mono text-[12px] font-bold uppercase tracking-wide">Empty batting-order slot</span>
                 </div>
               );
             })}
           </div>
         </section>
 
-        <aside className="min-h-0 overflow-y-auto p-3">
-          <div className="border border-border bg-surface p-3 shadow-sm">
-            <div className="flex items-end justify-between"><div><p className="font-space-mono text-[12px] font-bold uppercase tracking-[0.14em] text-text-secondary">Named reserves</p><h4 className="mt-1 font-anton text-[19px] uppercase text-text-primary">Impact substitutes</h4></div><span className="font-space-mono text-[12px] font-bold text-text-secondary">{activeImpactSubs.length}/5</span></div>
-            <p className="mt-2 text-[13px] leading-relaxed text-text-secondary">Drag players here from the squad, or drag these tabs onto each other to swap their order.</p>
-            <div className="mt-3 space-y-1.5">
+        <aside className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto_auto] gap-2 overflow-hidden p-2 [@media(max-height:850px)]:gap-1 [@media(max-height:850px)]:p-1">
+          <div className="flex h-full min-h-0 flex-col overflow-hidden border border-border bg-surface p-2 shadow-sm [@media(max-height:850px)]:p-1">
+            <div className="flex items-end justify-between"><div><p className="font-space-mono text-[10px] font-bold uppercase tracking-[0.14em] text-text-secondary [@media(max-height:650px)]:hidden">Named reserves</p><h4 className="font-anton text-[17px] uppercase leading-none text-text-primary [@media(max-height:650px)]:text-[14px]">Impact substitutes</h4></div><span className="font-space-mono text-[11px] font-bold leading-none text-text-secondary">{activeImpactSubs.length}/5</span></div>
+            <p className="mt-1 text-[11px] leading-tight text-text-secondary [@media(max-height:900px)]:hidden">Drag players here from the squad, or drag these tabs onto each other to swap their order.</p>
+            <div className="mt-1.5 grid min-h-0 flex-1 grid-rows-5 gap-1 [@media(max-height:650px)]:mt-1 [@media(max-height:650px)]:gap-0.5">
               {Array.from({ length: 5 }, (_, index) => {
                 const player = activeImpactPlayers[index];
                 const keeper = player ? keeperLabel(player, activePlayers) : null;
@@ -531,7 +476,7 @@ export default function TacticsLineupBuilder({
                       completeImpactDrop(index);
                     }}
                     onDragEnd={finishPlayerDrag}
-                    className={`relative flex min-h-14 cursor-grab items-center gap-2 overflow-hidden border px-2.5 shadow-sm active:cursor-grabbing ${
+                    className={`relative flex h-full min-h-0 cursor-grab items-center gap-1.5 overflow-hidden border px-2 shadow-sm active:cursor-grabbing [@media(max-height:650px)]:px-1 ${
                       isPlayerIneligibleOS
                         ? "border-red-500/40 bg-red-500/[0.04]"
                         : preview
@@ -546,9 +491,9 @@ export default function TacticsLineupBuilder({
                         Swap with impact #{index + 1}
                       </span>
                     )}
-                    <GripVertical size={16} className="text-text-secondary/55" />
-                    <span className={`flex h-7 w-7 items-center justify-center rounded-full font-anton text-[13px] ${isPlayerIneligibleOS ? "bg-red-500 text-white" : "bg-accent text-[#16130f]"}`}>{index + 1}</span>
-                    <button type="button" onClick={() => onOpenPlayer(player.id)} className="min-w-0 flex-1 text-left"><span className="flex items-center gap-1.5"><span className="truncate text-[14px] font-bold text-text-primary hover:underline">{player.name}</span>{player.nationality === "Overseas" && <OverseasMarker />}</span><span className="font-space-mono text-[11px] font-bold uppercase text-text-primary/75">{roleLabel(player.role)}{keeper ? ` · ${keeper}` : ""}</span></button>
+                    <GripVertical size={14} className="shrink-0 text-text-secondary/55 [@media(max-height:650px)]:hidden" />
+                    <span className={`flex h-[min(1.5rem,calc(100%_-_0.125rem))] aspect-square shrink-0 items-center justify-center rounded-full font-anton text-[12px] leading-none [@media(max-height:650px)]:text-[10px] ${isPlayerIneligibleOS ? "bg-red-500 text-white" : "bg-accent text-[#16130f]"}`}>{index + 1}</span>
+                    <button type="button" onClick={() => onOpenPlayer(player.id)} className="flex h-full min-h-0 min-w-0 flex-1 flex-col justify-center overflow-hidden text-left"><span className="flex items-center gap-1 text-[13px] font-bold leading-none text-text-primary"><span className="truncate hover:underline">{player.name}</span>{player.nationality === "Overseas" && <OverseasMarker />}</span><span className="mt-0.5 font-space-mono text-[9px] font-bold uppercase leading-none text-text-primary/75 [@media(max-height:800px)]:hidden">{roleLabel(player.role)}{keeper ? ` · ${keeper}` : ""}</span></button>
                     {isPlayerIneligibleOS && (
                       <span className="shrink-0 rounded border border-red-500/30 bg-red-500/15 px-1.5 py-0.5 font-space-mono text-[9px] font-bold text-red-600 dark:text-red-400" title="Starting XI already has 4 Overseas players; this player cannot be subbed in">
                         Ineligible (4 OS)
@@ -563,14 +508,14 @@ export default function TacticsLineupBuilder({
                       event.preventDefault();
                       completeImpactDrop(index);
                     }}
-                    className={`relative flex min-h-14 items-center gap-2 overflow-hidden border border-dashed px-2.5 text-text-secondary ${preview ? "border-accent bg-accent/[0.08]" : "border-border/50"}`}
+                    className={`relative flex h-full min-h-0 items-center gap-1.5 overflow-hidden border border-dashed px-2 text-text-secondary [@media(max-height:650px)]:px-1 ${preview ? "border-accent bg-accent/[0.08]" : "border-border/50"}`}
                   >
                     {preview && (
                       <span className="pointer-events-none absolute right-2 top-1/2 z-20 -translate-y-1/2 bg-accent px-2 py-1 font-space-mono text-[11px] font-bold uppercase tracking-wide text-[#16130f] shadow-md">
                         Drop into impact #{index + 1}
                       </span>
                     )}
-                    <GripVertical size={16} className="opacity-20" /><span className="font-anton text-[13px]">{index + 1}</span><span className="font-space-mono text-[11px] font-bold uppercase">Empty impact slot</span>
+                    <GripVertical size={14} className="opacity-20 [@media(max-height:650px)]:hidden" /><span className="font-anton text-[12px] leading-none">{index + 1}</span><span className="font-space-mono text-[10px] font-bold uppercase leading-none">Empty impact slot</span>
                   </div>
                 );
               })}
@@ -578,25 +523,25 @@ export default function TacticsLineupBuilder({
           </div>
 
           {/* Impact Substitute Strategy Card */}
-          <div className="mt-3 border border-border bg-surface p-3 shadow-sm">
+          <div className="shrink-0 border border-border bg-surface p-2 shadow-sm [@media(max-height:850px)]:p-1">
             <div className="flex items-center justify-between">
               <div>
-                <p className="font-space-mono text-[9px] font-bold uppercase tracking-[0.15em] text-accent">
+                <p className="font-space-mono text-[8px] font-bold uppercase leading-none tracking-[0.12em] text-accent [@media(max-height:650px)]:hidden">
                   Impact Strategy ({activePlan === "battingFirst" ? "Bat First Plan" : "Bowl First Plan"})
                 </p>
-                <h4 className="mt-0.5 font-anton text-[18px] uppercase text-text-primary">
+                <h4 className="mt-0.5 font-anton text-[16px] uppercase leading-none text-text-primary [@media(max-height:650px)]:mt-0 [@media(max-height:650px)]:text-[13px]">
                   Expected Match Change
                 </h4>
               </div>
             </div>
-            <p className="mt-1 text-[11px] text-text-primary/75">
+            <p className="mt-1 text-[10px] leading-tight text-text-primary/75 [@media(max-height:900px)]:hidden">
               Select the player coming in and player subbed out{activePlan === "bowlingFirst" ? ", then choose the entry position." : "."}
             </p>
 
-            <div className="mt-3 space-y-2.5">
+            <div className="mt-1.5 space-y-1 [@media(max-height:650px)]:mt-1 [@media(max-height:650px)]:space-y-0.5">
               {/* 1. Player Coming In */}
               <div>
-                <label className="block font-space-mono text-[9px] font-bold uppercase text-text-secondary">
+                <label className="block font-space-mono text-[8px] font-bold uppercase leading-none text-text-secondary [@media(max-height:650px)]:sr-only">
                   Player Coming In ({activePlan === "battingFirst" ? "Impact Bowler" : "Impact Batter"})
                 </label>
                 <select
@@ -607,7 +552,7 @@ export default function TacticsLineupBuilder({
                     autoOutgoingByPlan[activePlan] ? null : currentOutgoingPlayerId ?? null,
                     activePlan === "bowlingFirst" ? currentImpactPosition ?? null : null,
                   )}
-                  className="mt-1 w-full rounded border border-border/80 bg-background px-2 py-1 text-[11px] font-bold text-text-primary focus:border-accent focus:outline-none"
+                  className="mt-0.5 h-7 w-full rounded border border-border/80 bg-background px-2 py-0 text-[10px] font-bold text-text-primary focus:border-accent focus:outline-none [@media(max-height:650px)]:mt-0 [@media(max-height:650px)]:h-5 [@media(max-height:650px)]:text-[9px]"
                   style={{ color: "var(--ink)", backgroundColor: "var(--surface2)", colorScheme: "light" }}
                   aria-label="Select player coming in"
                 >
@@ -622,7 +567,7 @@ export default function TacticsLineupBuilder({
 
               {/* 2. Player Going Out */}
               <div>
-                <label className="block font-space-mono text-[9px] font-bold uppercase text-text-secondary">
+                <label className="block font-space-mono text-[8px] font-bold uppercase leading-none text-text-secondary [@media(max-height:650px)]:sr-only">
                   Player Going Out (Subbed Out)
                 </label>
                 <select
@@ -637,7 +582,7 @@ export default function TacticsLineupBuilder({
                       activePlan === "bowlingFirst" ? currentImpactPosition ?? null : null,
                     );
                   }}
-                  className="mt-1 w-full rounded border border-border/80 bg-background px-2 py-1 text-[11px] font-bold text-text-primary focus:border-accent focus:outline-none"
+                  className="mt-0.5 h-7 w-full rounded border border-border/80 bg-background px-2 py-0 text-[10px] font-bold text-text-primary focus:border-accent focus:outline-none [@media(max-height:650px)]:mt-0 [@media(max-height:650px)]:h-5 [@media(max-height:650px)]:text-[9px]"
                   style={{ color: "var(--ink)", backgroundColor: "var(--surface2)", colorScheme: "light" }}
                   aria-label="Select player going out"
                 >
@@ -655,7 +600,7 @@ export default function TacticsLineupBuilder({
 
               {/* 3. Entry Position (only relevant when bowling first) */}
               {activePlan === "bowlingFirst" && <div>
-                <label className="block font-space-mono text-[9px] font-bold uppercase text-text-secondary">
+                <label className="block font-space-mono text-[8px] font-bold uppercase leading-none text-text-secondary [@media(max-height:650px)]:sr-only">
                   Entry Batting / Bowling Position
                 </label>
                 <select
@@ -666,7 +611,7 @@ export default function TacticsLineupBuilder({
                     currentOutgoingPlayerId ?? null,
                     e.target.value === "" ? null : Number(e.target.value),
                   )}
-                  className="mt-1 w-full rounded border border-border/80 bg-background px-2 py-1 text-[11px] font-bold text-text-primary focus:border-accent focus:outline-none"
+                  className="mt-0.5 h-7 w-full rounded border border-border/80 bg-background px-2 py-0 text-[10px] font-bold text-text-primary focus:border-accent focus:outline-none [@media(max-height:650px)]:mt-0 [@media(max-height:650px)]:h-5 [@media(max-height:650px)]:text-[9px]"
                   style={{ color: "var(--ink)", backgroundColor: "var(--surface2)", colorScheme: "light" }}
                   aria-label="Select entry position"
                 >
@@ -696,24 +641,24 @@ export default function TacticsLineupBuilder({
               const pos = currentImpactPosition ?? autoImpactPosition ?? "auto";
               if (!inPl || !outPl) return null;
               return (
-                <div className="mt-3 border-t border-border/50 pt-2 font-space-mono text-[8px] uppercase text-text-primary/75">
+                <div className="mt-1 truncate border-t border-border/50 pt-1 font-space-mono text-[8px] uppercase leading-none text-text-primary/75 [@media(max-height:650px)]:mt-0.5 [@media(max-height:650px)]:pt-0.5 [@media(max-height:650px)]:text-[7px]">
                   Projected change: <span className="font-bold text-text-primary">{inPl.name}</span> in for <span className="font-bold text-text-primary">{outPl.name}</span>{activePlan === "bowlingFirst" ? <> at number <span className="font-bold text-accent">{pos}</span></> : null}
                 </div>
               );
             })()}
           </div>
 
-          <div className="mt-3 border border-border bg-surface p-3 shadow-sm">
-            <p className="font-space-mono text-[12px] font-bold uppercase tracking-[0.14em] text-text-secondary">Plan checks</p>
-            <div className="mt-3 space-y-3 text-[13px] font-medium">
+          <div className="shrink-0 border border-border bg-surface p-2 shadow-sm [@media(max-height:850px)]:p-1">
+            <p className="font-space-mono text-[10px] font-bold uppercase leading-none tracking-[0.12em] text-text-secondary [@media(max-height:650px)]:text-[8px]">Plan checks</p>
+            <div className="mt-1 grid grid-cols-3 gap-x-1.5 gap-y-1 text-[9px] font-medium leading-none [@media(max-height:650px)]:mt-0.5 [@media(max-height:650px)]:gap-y-0.5 [@media(max-height:650px)]:text-[8px]">
               {[
-                [activeValidation.playerCount === 11, `Exactly 11 players (${activeValidation.playerCount}/11)`],
-                [activeImpactSubs.length === 5, `Five impact substitutes (${activeImpactSubs.length}/5)`],
-                [activeValidation.overseasCount <= 4, `Overseas limit (${activeValidation.overseasCount}/4)`],
-                [activeValidation.wicketkeeperCount >= 1, fullTimeKeepers.length > 0 ? `Wicketkeeper (${fullTimeKeepers.length})` : partTimeKeepers.length > 0 ? `Part-time wicketkeeper (${partTimeKeepers.length})` : "Wicketkeeper (0)"],
-                [activeValidation.bowlingOptionCount >= 5, `Bowling options (${activeValidation.bowlingOptionCount}/5)`],
+                [activeValidation.playerCount === 11, `XI (${activeValidation.playerCount}/11)`],
+                [activeImpactSubs.length === 5, `Impact (${activeImpactSubs.length}/5)`],
+                [activeValidation.overseasCount <= 4, `Overseas (${activeValidation.overseasCount}/4)`],
+                [activeValidation.wicketkeeperCount >= 1, fullTimeKeepers.length > 0 ? `Keeper (${fullTimeKeepers.length})` : partTimeKeepers.length > 0 ? `PT keeper (${partTimeKeepers.length})` : "Keeper (0)"],
+                [activeValidation.bowlingOptionCount >= 5, `Bowling (${activeValidation.bowlingOptionCount}/5)`],
               ].map(([valid, label]) => (
-                <div key={String(label)} className="flex items-center gap-2.5"><span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${valid ? "bg-success/[0.12] text-success" : "bg-danger/[0.12] text-danger"}`}>{valid ? <Check size={14} /> : <X size={14} />}</span><span className={valid ? "text-text-secondary" : "text-danger"}>{label}</span></div>
+                <div key={String(label)} className="flex min-w-0 items-center gap-1"><span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full [@media(max-height:650px)]:h-3 [@media(max-height:650px)]:w-3 ${valid ? "bg-success/[0.12] text-success" : "bg-danger/[0.12] text-danger"}`}>{valid ? <Check size={10} /> : <X size={10} />}</span><span className={`truncate ${valid ? "text-text-secondary" : "text-danger"}`}>{label}</span></div>
               ))}
             </div>
           </div>

@@ -1,5 +1,3 @@
-import type { Player } from "@/lib/types";
-
 export const TEAM_STRATEGIES = [
   "Ultra Aggressive",
   "Balanced",
@@ -8,8 +6,6 @@ export const TEAM_STRATEGIES = [
 ] as const;
 
 export type TeamStrategy = typeof TEAM_STRATEGIES[number];
-export type TacticalPlan = "battingFirst" | "bowlingFirst";
-export type TacticalDiscipline = "batting" | "bowling";
 export type BattingPowerplayPlan = "cautious" | "balanced" | "attack";
 export type BattingMiddlePlan = "rebuild" | "rotate" | "dominate";
 export type BattingDeathPlan = "preserve" | "flexible" | "all-out";
@@ -22,20 +18,6 @@ export type FieldSetting = "defensive" | "balanced" | "attacking";
 export type ImpactPolicy = "extra-batter" | "extra-bowler" | "match-situation";
 export type TossPreference = "bat" | "bowl" | "conditions";
 export type OppositionPlan = "neutral" | "target-weak-bowler" | "play-out-stars" | "attack-pace" | "attack-spin";
-
-export interface TacticalRoles {
-  anchor: string | null;
-  powerplayAggressor: string | null;
-  middleOversEnforcer: string | null;
-  finisher: string | null;
-  newBallBowler: string | null;
-  middleOversController: string | null;
-  strikeSpinner: string | null;
-  deathBowler: string | null;
-}
-
-export type TacticalRole = keyof TacticalRoles;
-export type TacticalRolePlans = Record<TacticalPlan, TacticalRoles>;
 
 export interface TeamTactics {
   preset: TeamStrategy;
@@ -55,44 +37,9 @@ export interface TeamTactics {
   impactPolicy: ImpactPolicy;
   tossPreference: TossPreference;
   oppositionPlan: OppositionPlan;
-  roles: TacticalRolePlans;
 }
 
-export const TACTICAL_ROLE_DEFINITIONS: Array<{
-  id: TacticalRole;
-  label: string;
-  shortLabel: string;
-  description: string;
-  rule: string;
-  discipline: TacticalDiscipline;
-}> = [
-  { id: "anchor", label: "Anchor", shortLabel: "Anchor", description: "Protects the innings when wickets fall.", rule: "Batting positions 1-5 and BAT 55+", discipline: "batting" },
-  { id: "powerplayAggressor", label: "Powerplay aggressor", shortLabel: "PP aggressor", description: "Sets the boundary tempo against the new ball.", rule: "Batting positions 1-3 and BAT 50+", discipline: "batting" },
-  { id: "middleOversEnforcer", label: "Middle-overs enforcer", shortLabel: "Middle enforcer", description: "Attacks matchups after the powerplay.", rule: "Batting positions 3-7 and BAT 55+", discipline: "batting" },
-  { id: "finisher", label: "Finisher", shortLabel: "Finisher", description: "Takes responsibility for the final overs.", rule: "Batting position 5 or lower and BAT 50+", discipline: "batting" },
-  { id: "newBallBowler", label: "New-ball bowler", shortLabel: "New ball", description: "Leads the pace attack in the powerplay.", rule: "Pace bowler and BOWL 55+", discipline: "bowling" },
-  { id: "middleOversController", label: "Middle-overs controller", shortLabel: "Middle control", description: "Builds pressure through accurate middle overs.", rule: "Any bowler with BOWL 50+", discipline: "bowling" },
-  { id: "strikeSpinner", label: "Strike spinner", shortLabel: "Strike spin", description: "Provides the main spin wicket threat.", rule: "Spin bowler and BOWL 50+", discipline: "bowling" },
-  { id: "deathBowler", label: "Death bowler", shortLabel: "Death", description: "Takes responsibility for the final overs.", rule: "BOWL 60+", discipline: "bowling" },
-];
-
-const emptyRoles = (): TacticalRoles => ({
-  anchor: null,
-  powerplayAggressor: null,
-  middleOversEnforcer: null,
-  finisher: null,
-  newBallBowler: null,
-  middleOversController: null,
-  strikeSpinner: null,
-  deathBowler: null,
-});
-
-const emptyRolePlans = (): TacticalRolePlans => ({
-  battingFirst: emptyRoles(),
-  bowlingFirst: emptyRoles(),
-});
-
-const PRESET_SETTINGS: Record<TeamStrategy, Omit<TeamTactics, "preset" | "roles">> = {
+const PRESET_SETTINGS: Record<TeamStrategy, Omit<TeamTactics, "preset">> = {
   "Ultra Aggressive": {
     batting: { powerplay: "attack", middle: "dominate", death: "all-out", collapseResponse: "keep-attacking", chaseApproach: "front-load" },
     bowling: { powerplay: "swing-attack", middle: "pace", death: "wicket-hunt", field: "attacking" },
@@ -125,40 +72,7 @@ const PRESET_SETTINGS: Record<TeamStrategy, Omit<TeamTactics, "preset" | "roles"
 
 const isObject = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === "object";
 
-const normalizeRoleSet = (value: unknown): TacticalRoles => {
-  const raw = isObject(value) ? value : {};
-  const normalized = emptyRoles();
-  const usedByDiscipline: Record<TacticalDiscipline, Set<string>> = {
-    batting: new Set<string>(),
-    bowling: new Set<string>(),
-  };
-
-  TACTICAL_ROLE_DEFINITIONS.forEach(({ id, discipline }) => {
-    const playerId = typeof raw[id] === "string" ? raw[id] as string : null;
-    if (!playerId || usedByDiscipline[discipline].has(playerId)) return;
-    normalized[id] = playerId;
-    usedByDiscipline[discipline].add(playerId);
-  });
-  return normalized;
-};
-
-const normalizeRolePlans = (value: unknown): TacticalRolePlans => {
-  const raw = isObject(value) ? value : {};
-  if (isObject(raw.battingFirst) || isObject(raw.bowlingFirst)) {
-    return {
-      battingFirst: normalizeRoleSet(raw.battingFirst),
-      bowlingFirst: normalizeRoleSet(raw.bowlingFirst),
-    };
-  }
-
-  // Older saves stored one role map. Carry it into both match plans.
-  return {
-    battingFirst: normalizeRoleSet(raw),
-    bowlingFirst: normalizeRoleSet(raw),
-  };
-};
-
-export function createTeamTactics(preset: TeamStrategy = "Balanced", roles: unknown = emptyRolePlans()): TeamTactics {
+export function createTeamTactics(preset: TeamStrategy = "Balanced"): TeamTactics {
   const settings = PRESET_SETTINGS[preset];
   return {
     preset,
@@ -167,12 +81,11 @@ export function createTeamTactics(preset: TeamStrategy = "Balanced", roles: unkn
     impactPolicy: settings.impactPolicy,
     tossPreference: settings.tossPreference,
     oppositionPlan: settings.oppositionPlan,
-    roles: normalizeRolePlans(roles),
   };
 }
 
-export function applyTeamTacticsPreset(tactics: TeamTactics, preset: TeamStrategy): TeamTactics {
-  return createTeamTactics(preset, tactics.roles);
+export function applyTeamTacticsPreset(_tactics: TeamTactics, preset: TeamStrategy): TeamTactics {
+  return createTeamTactics(preset);
 }
 
 const oneOf = <T extends string>(value: unknown, allowed: readonly T[], fallback: T): T => (
@@ -204,133 +117,6 @@ export function normalizeTeamTactics(value: unknown, legacyStrategy?: unknown): 
     impactPolicy: oneOf(raw.impactPolicy, ["extra-batter", "extra-bowler", "match-situation"], fallback.impactPolicy),
     tossPreference: oneOf(raw.tossPreference, ["bat", "bowl", "conditions"], fallback.tossPreference),
     oppositionPlan: oneOf(raw.oppositionPlan, ["neutral", "target-weak-bowler", "play-out-stars", "attack-pace", "attack-spin"], fallback.oppositionPlan),
-    roles: normalizeRolePlans(raw.roles),
-  };
-}
-
-export function isPlayerEligibleForTacticalRole(player: Player, role: TacticalRole, battingPosition: number): boolean {
-  switch (role) {
-    case "anchor": return battingPosition <= 4 && player.currentBatting >= 55;
-    case "powerplayAggressor": return battingPosition <= 2 && player.currentBatting >= 50;
-    case "middleOversEnforcer": return battingPosition >= 2 && battingPosition <= 6 && player.currentBatting >= 55;
-    case "finisher": return battingPosition >= 4 && player.currentBatting >= 50;
-    case "newBallBowler": return player.currentBowling >= 55 && player.bowlingStyle === "Pacer";
-    case "middleOversController": return player.currentBowling >= 50;
-    case "strikeSpinner": return player.currentBowling >= 50 && player.bowlingStyle === "Spinner";
-    case "deathBowler": return player.currentBowling >= 60;
-  }
-}
-
-const battingOrderFit = (battingPosition: number, idealPosition: number) => (
-  Math.max(0, 30 - Math.abs(battingPosition - idealPosition) * 8)
-);
-
-const roleScore = (player: Player, role: TacticalRole, battingPosition: number) => {
-  const aggression = player.battingAggression ?? 50;
-  switch (role) {
-    case "anchor":
-      return player.currentBatting * 3
-        + battingOrderFit(battingPosition, 2)
-        + (100 - aggression) * 0.25;
-    case "powerplayAggressor":
-      return player.currentBatting * 3
-        + battingOrderFit(battingPosition, 0)
-        + aggression * 0.4
-        + (player.isOpener ? 20 : 0);
-    case "middleOversEnforcer":
-      return player.currentBatting * 3
-        + battingOrderFit(battingPosition, 3)
-        + aggression * 0.2;
-    case "finisher":
-      return player.currentBatting * 3
-        + battingOrderFit(battingPosition, 5)
-        + aggression * 0.3
-        + (player.isFinisher ? 25 : 0);
-    case "newBallBowler":
-      return player.currentBowling * 4 + (player.bowlingStyle === "Pacer" ? 20 : 0);
-    case "middleOversController":
-      return player.currentBowling * 4 + (player.bowlingStyle === "Spinner" ? 8 : 0);
-    case "strikeSpinner":
-      return player.currentBowling * 4 + (player.bowlingStyle === "Spinner" ? 20 : 0);
-    case "deathBowler":
-      return player.currentBowling * 4 + (player.bowlingStyle === "Pacer" ? 12 : 0);
-  }
-};
-
-export function autoAssignTacticalRoles(playersInBattingOrder: readonly Player[]): TacticalRoles {
-  const result = emptyRoles();
-  const positions = new Map(playersInBattingOrder.map((player, index) => [player.id, index]));
-  const usedByDiscipline: Record<TacticalDiscipline, Set<string>> = {
-    batting: new Set<string>(),
-    bowling: new Set<string>(),
-  };
-  const assignmentOrder: TacticalRole[] = [
-    "powerplayAggressor",
-    "finisher",
-    "middleOversEnforcer",
-    "anchor",
-    "strikeSpinner",
-    "newBallBowler",
-    "deathBowler",
-    "middleOversController",
-  ];
-
-  assignmentOrder.forEach((role) => {
-    const definition = TACTICAL_ROLE_DEFINITIONS.find((item) => item.id === role)!;
-    const player = playersInBattingOrder
-      .filter((candidate) => !usedByDiscipline[definition.discipline].has(candidate.id))
-      .filter((candidate) => isPlayerEligibleForTacticalRole(candidate, role, positions.get(candidate.id) ?? 99))
-      .slice()
-      .sort((left, right) => (
-        roleScore(right, role, positions.get(right.id) ?? 99)
-        - roleScore(left, role, positions.get(left.id) ?? 99)
-        || left.name.localeCompare(right.name)
-      ))[0];
-    if (!player) return;
-    result[role] = player.id;
-    usedByDiscipline[definition.discipline].add(player.id);
-  });
-
-  return result;
-}
-
-export function autoAssignTacticalRolesForPlan(
-  tactics: TeamTactics,
-  plan: TacticalPlan,
-  playersInBattingOrder: readonly Player[],
-): TeamTactics {
-  return {
-    ...tactics,
-    roles: {
-      ...tactics.roles,
-      [plan]: autoAssignTacticalRoles(playersInBattingOrder),
-    },
-  };
-}
-
-export function setPlayerTacticalRole(
-  tactics: TeamTactics,
-  plan: TacticalPlan,
-  playerId: string,
-  discipline: TacticalDiscipline,
-  role: TacticalRole | null,
-): TeamTactics {
-  if (role && TACTICAL_ROLE_DEFINITIONS.find((definition) => definition.id === role)?.discipline !== discipline) return tactics;
-  const planRoles = { ...tactics.roles[plan] };
-
-  TACTICAL_ROLE_DEFINITIONS
-    .filter((definition) => definition.discipline === discipline)
-    .forEach((definition) => {
-      if (planRoles[definition.id] === playerId) planRoles[definition.id] = null;
-    });
-  if (role) planRoles[role] = playerId;
-
-  return {
-    ...tactics,
-    roles: {
-      ...tactics.roles,
-      [plan]: planRoles,
-    },
   };
 }
 

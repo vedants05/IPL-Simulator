@@ -3809,10 +3809,8 @@ function OverviewPageContent() {
                   bowlingFirstImpactBattingPosition={bowlingFirstImpactBattingPosition}
                   captainId={teamLeadership?.captainId}
                   viceCaptainId={teamLeadership?.viceCaptainId}
-                  tactics={teamTactics}
                   onChangePlan={handleMatchPlanChange}
                   onChangeBothPlans={handleBothMatchPlansChange}
-                  onChangeTactics={handleTacticsChange}
                   onChangeImpactStrategy={handleImpactStrategyChange}
                   onOpenPlayer={setDetailedPlayerId}
                 />
