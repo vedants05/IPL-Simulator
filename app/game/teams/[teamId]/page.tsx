@@ -15,26 +15,14 @@ import {
 
 import { HISTORICAL_LEAGUE_HISTORY } from "@/lib/data/leagueHistory";
 import { formatPrice } from "@/lib/logic/auctionRules";
-import {
-  buildAiMatchLineups,
-  resolveBowlingFirstImpactPlayer,
-  currentAbility,
-  isAiBowlingOption,
-  isBattingOption,
-  isImpactPlayerWithinOverseasLimit,
-  selectBattingFirstOutgoingBatter,
-  type AiMatchLineups,
-  type AiLineupPlan,
-} from "@/lib/logic/aiLineupSelector";
-import {
-  appointAiTeamLeadership,
-  type AiLeagueLeadership,
-} from "@/lib/logic/aiLeadership";
+import type { AiLineupPlan } from "@/lib/logic/aiLineupSelector";
+import type { AiLeagueLeadership, AiTeamLeadership } from "@/lib/logic/aiLeadership";
 import { dateKeyToLocalDate, getSeasonScheduleAnnouncementDate } from "@/lib/logic/careerCalendar";
 import { useGameStore } from "@/lib/store/gameStore";
 import type { Player, Team } from "@/lib/types";
 
 type TeamProfileTab = "overview" | "squad" | "fixtures" | "lineups";
+type AiLineupModule = typeof import("@/lib/logic/aiLineupSelector");
 
 const TEAM_PROFILE_TABS: readonly TeamProfileTab[] = ["overview", "squad", "fixtures", "lineups"];
 const NEXT_FIXTURE_ROW_HEIGHT = 24;
@@ -184,6 +172,7 @@ function LineupColumn({
   squad = [],
   impactCandidates,
   team,
+  aiLogic,
   isUserTeam = false,
   onSelectImpactPlayer,
   onSelectImpactPosition,
@@ -195,10 +184,12 @@ function LineupColumn({
   squad?: Player[];
   impactCandidates?: Player[];
   team: Team;
+  aiLogic: AiLineupModule;
   isUserTeam?: boolean;
   onSelectImpactPlayer?: (playerId: string) => void;
   onSelectImpactPosition?: (position: number) => void;
 }) {
+  const { currentAbility, isAiBowlingOption, isBattingOption } = aiLogic;
   const starters = plan.startingXI
     .map((playerId) => players[playerId])
     .filter((player): player is Player => Boolean(player));
@@ -417,8 +408,11 @@ export default function TeamProfilePage() {
   const auction = useGameStore((state) => state.auction);
   const simulatedLeagueHistory = useGameStore((state) => state.simulatedLeagueHistory);
   const [hasMounted, setHasMounted] = useState(false);
+  const [hasLoadedCareer, setHasLoadedCareer] = useState(false);
   const [activeTab, setActiveTab] = useState<TeamProfileTab>("overview");
   const [career, setCareer] = useState<TeamProfileCareer>(EMPTY_CAREER);
+  const [aiLineupLogic, setAiLineupLogic] = useState<AiLineupModule | null>(null);
+  const [fallbackAiLeadership, setFallbackAiLeadership] = useState<AiTeamLeadership | null>(null);
   const [visibleNextFixtureCount, setVisibleNextFixtureCount] = useState(3);
   const nextFixturesListRef = useRef<HTMLDivElement>(null);
 
@@ -437,6 +431,19 @@ export default function TeamProfilePage() {
     window.addEventListener("popstate", syncTabWithHistory);
     return () => window.removeEventListener("popstate", syncTabWithHistory);
   }, []);
+
+  useEffect(() => {
+    if (activeTab !== "lineups" || aiLineupLogic) return;
+    let cancelled = false;
+    import("@/lib/logic/aiLineupSelector").then((module) => {
+      if (!cancelled) setAiLineupLogic(module);
+    }).catch((error) => {
+      console.error("Unable to load team profile lineup tools:", error);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, aiLineupLogic]);
 
   useEffect(() => {
     if (!hasMounted || activeTab !== "overview" || !team) return;
@@ -458,51 +465,57 @@ export default function TeamProfilePage() {
   useEffect(() => {
     if (!hasMounted || !userTeamId) return;
 
-    const savedCareer = localStorage.getItem(`ipl_career_${userTeamId}`);
-    if (!savedCareer) {
-      setCareer(EMPTY_CAREER);
-      return;
-    }
-
-    try {
-      const parsed = JSON.parse(savedCareer) as Partial<TeamProfileCareer>;
-      let aiTeamLeadership = parsed.aiTeamLeadership ?? {};
-      if (team && team.id !== userTeamId && !aiTeamLeadership[team.id]) {
-        const teamSquad = team.squad
-          .map((playerId) => players[playerId])
-          .filter((player): player is Player => Boolean(player));
-        aiTeamLeadership = {
-          ...aiTeamLeadership,
-          [team.id]: appointAiTeamLeadership(team, teamSquad, currentSeason),
-        };
-        localStorage.setItem(`ipl_career_${userTeamId}`, JSON.stringify({
-          ...parsed,
-          aiTeamLeadership,
-        }));
+    let cancelled = false;
+    const loadCareer = () => {
+      const savedCareer = localStorage.getItem(`ipl_career_${userTeamId}`);
+      if (!savedCareer) {
+        if (!cancelled) {
+          setCareer(EMPTY_CAREER);
+          setHasLoadedCareer(true);
+        }
+        return;
       }
 
-      setCareer({
-        fixtures: Array.isArray(parsed.fixtures) ? parsed.fixtures : [],
-        standings: Array.isArray(parsed.standings) ? parsed.standings : [],
-        playerStats: parsed.playerStats && typeof parsed.playerStats === "object" ? parsed.playerStats : {},
-        battingFirstXI: Array.isArray(parsed.battingFirstXI) ? parsed.battingFirstXI : [],
-        bowlingFirstXI: Array.isArray(parsed.bowlingFirstXI) ? parsed.bowlingFirstXI : [],
-        battingFirstImpactSubs: Array.isArray(parsed.battingFirstImpactSubs) ? parsed.battingFirstImpactSubs : [],
-        bowlingFirstImpactSubs: Array.isArray(parsed.bowlingFirstImpactSubs) ? parsed.bowlingFirstImpactSubs : [],
-        battingFirstImpactPlayerId: parsed.battingFirstImpactPlayerId ?? null,
-        battingFirstOutgoingPlayerId: parsed.battingFirstOutgoingPlayerId ?? null,
-        battingFirstImpactBattingPosition: typeof parsed.battingFirstImpactBattingPosition === "number" ? parsed.battingFirstImpactBattingPosition : null,
-        bowlingFirstImpactPlayerId: parsed.bowlingFirstImpactPlayerId ?? null,
-        bowlingFirstOutgoingPlayerId: parsed.bowlingFirstOutgoingPlayerId ?? null,
-        bowlingFirstImpactBattingPosition: typeof parsed.bowlingFirstImpactBattingPosition === "number" ? parsed.bowlingFirstImpactBattingPosition : null,
-        teamLeadership: parsed.teamLeadership,
-        aiTeamLeadership,
-      });
-    } catch (error) {
-      console.error("Unable to load team profile career data:", error);
-      setCareer(EMPTY_CAREER);
-    }
-  }, [currentSeason, hasMounted, players, team, teamId, userTeamId]);
+      try {
+        const parsed = JSON.parse(savedCareer) as Partial<TeamProfileCareer>;
+        if (cancelled) return;
+        setCareer({
+          fixtures: Array.isArray(parsed.fixtures) ? parsed.fixtures : [],
+          standings: Array.isArray(parsed.standings) ? parsed.standings : [],
+          playerStats: parsed.playerStats && typeof parsed.playerStats === "object" ? parsed.playerStats : {},
+          battingFirstXI: Array.isArray(parsed.battingFirstXI) ? parsed.battingFirstXI : [],
+          bowlingFirstXI: Array.isArray(parsed.bowlingFirstXI) ? parsed.bowlingFirstXI : [],
+          battingFirstImpactSubs: Array.isArray(parsed.battingFirstImpactSubs) ? parsed.battingFirstImpactSubs : [],
+          bowlingFirstImpactSubs: Array.isArray(parsed.bowlingFirstImpactSubs) ? parsed.bowlingFirstImpactSubs : [],
+          battingFirstImpactPlayerId: parsed.battingFirstImpactPlayerId ?? null,
+          battingFirstOutgoingPlayerId: parsed.battingFirstOutgoingPlayerId ?? null,
+          battingFirstImpactBattingPosition: typeof parsed.battingFirstImpactBattingPosition === "number" ? parsed.battingFirstImpactBattingPosition : null,
+          bowlingFirstImpactPlayerId: parsed.bowlingFirstImpactPlayerId ?? null,
+          bowlingFirstOutgoingPlayerId: parsed.bowlingFirstOutgoingPlayerId ?? null,
+          bowlingFirstImpactBattingPosition: typeof parsed.bowlingFirstImpactBattingPosition === "number" ? parsed.bowlingFirstImpactBattingPosition : null,
+          teamLeadership: parsed.teamLeadership,
+          aiTeamLeadership: parsed.aiTeamLeadership ?? {},
+        });
+        setHasLoadedCareer(true);
+      } catch (error) {
+        console.error("Unable to load team profile career data:", error);
+        if (!cancelled) {
+          setCareer(EMPTY_CAREER);
+          setHasLoadedCareer(true);
+        }
+      }
+    };
+
+    const canUseIdleCallback = typeof window.requestIdleCallback === "function";
+    const scheduledId = canUseIdleCallback
+      ? window.requestIdleCallback(loadCareer, { timeout: 250 })
+      : globalThis.setTimeout(loadCareer, 0);
+    return () => {
+      cancelled = true;
+      if (canUseIdleCallback) window.cancelIdleCallback(scheduledId as number);
+      else globalThis.clearTimeout(scheduledId as ReturnType<typeof setTimeout>);
+    };
+  }, [hasMounted, userTeamId]);
 
   const squad = useMemo(() => {
     if (!team) return [];
@@ -516,11 +529,43 @@ export default function TeamProfilePage() {
       ));
   }, [players, team]);
 
+  useEffect(() => {
+    if (!hasLoadedCareer || !team || team.id === userTeamId || career.aiTeamLeadership?.[team.id]) {
+      setFallbackAiLeadership(null);
+      return;
+    }
+    let cancelled = false;
+    const timeoutId = globalThis.setTimeout(() => {
+      import("@/lib/logic/aiLeadership").then(({ appointAiTeamLeadership }) => {
+        if (!cancelled) setFallbackAiLeadership(appointAiTeamLeadership(team, squad, currentSeason));
+      }).catch((error) => {
+        console.error("Unable to derive team profile leadership:", error);
+      });
+    }, 0);
+    return () => {
+      cancelled = true;
+      globalThis.clearTimeout(timeoutId);
+    };
+  }, [career.aiTeamLeadership, currentSeason, hasLoadedCareer, squad, team, userTeamId]);
+
+  const profileAiLeadership = team && team.id !== userTeamId
+    ? career.aiTeamLeadership?.[team.id] ?? fallbackAiLeadership
+    : null;
+
   const profileLineups = useMemo(() => {
-    if (activeTab !== "lineups" || !team) return null;
+    if (activeTab !== "lineups" || !team || !aiLineupLogic) return null;
 
     const isProfileUserTeam = teamId === userTeamId;
-    const aiLeadership = career.aiTeamLeadership?.[teamId];
+    const aiLeadership = profileAiLeadership;
+    const {
+      buildAiMatchLineups,
+      currentAbility,
+      isAiBowlingOption,
+      isBattingOption,
+      isImpactPlayerWithinOverseasLimit,
+      resolveBowlingFirstImpactPlayer,
+      selectBattingFirstOutgoingBatter,
+    } = aiLineupLogic;
     const designatedCaptainId = isProfileUserTeam
       ? career.teamLeadership?.captainId
       : aiLeadership?.captainId;
@@ -704,7 +749,7 @@ export default function TeamProfilePage() {
         true,
       ),
     };
-  }, [activeTab, career, players, squad, teamId, userTeamId]);
+  }, [activeTab, aiLineupLogic, career, players, profileAiLeadership, squad, team, teamId, userTeamId]);
 
   const handleSelectBowlingFirstImpactPlayer = (playerId: string) => {
     setCareer((prev) => {
@@ -780,7 +825,7 @@ export default function TeamProfilePage() {
   const bestBowler = [...squad].sort((left, right) => right.currentBowling - left.currentBowling)[0];
   const savedLeadership = teamId === userTeamId
     ? career.teamLeadership
-    : career.aiTeamLeadership?.[teamId];
+    : profileAiLeadership;
   const captain = savedLeadership?.captainId ? players[savedLeadership.captainId] : undefined;
   const viceCaptain = savedLeadership?.viceCaptainId ? players[savedLeadership.viceCaptainId] : undefined;
 
@@ -1219,7 +1264,7 @@ export default function TeamProfilePage() {
           </section>
         )}
 
-        {activeTab === "lineups" && profileLineups && (
+        {activeTab === "lineups" && profileLineups && aiLineupLogic && (
           <div className="grid h-full min-h-0 grid-cols-2 gap-5">
             <LineupColumn
               title="Bat first lineup"
@@ -1227,6 +1272,7 @@ export default function TeamProfilePage() {
               plan={profileLineups.battingFirst}
               players={players}
               squad={squad}
+              aiLogic={aiLineupLogic}
               impactCandidates={career.battingFirstImpactSubs.map((playerId) => players[playerId]).filter((player): player is Player => Boolean(player))}
               team={team}
               isUserTeam={isUserTeam}
@@ -1237,12 +1283,28 @@ export default function TeamProfilePage() {
               plan={profileLineups.bowlingFirst}
               players={players}
               squad={squad}
+              aiLogic={aiLineupLogic}
               impactCandidates={career.bowlingFirstImpactSubs.map((playerId) => players[playerId]).filter((player): player is Player => Boolean(player))}
               team={team}
               isUserTeam={isUserTeam}
               onSelectImpactPlayer={handleSelectBowlingFirstImpactPlayer}
               onSelectImpactPosition={handleSelectBowlingFirstImpactPosition}
             />
+          </div>
+        )}
+        {activeTab === "lineups" && !profileLineups && (
+          <div className="grid h-full min-h-0 grid-cols-2 gap-5" aria-label="Loading projected lineups">
+            {[0, 1].map((column) => (
+              <div key={column} className="animate-pulse border-2 border-border bg-surface p-5">
+                <div className="h-3 w-28 bg-black/10 dark:bg-white/10" />
+                <div className="mt-3 h-6 w-44 bg-black/10 dark:bg-white/10" />
+                <div className="mt-6 grid h-[calc(100%-4rem)] grid-rows-11 gap-1">
+                  {Array.from({ length: 11 }, (_, index) => (
+                    <div key={index} className="bg-black/[0.045] dark:bg-white/[0.06]" />
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </main>

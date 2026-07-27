@@ -1,0 +1,1 @@
+self.__REACT_LOADABLE_MANIFEST='{"app\\\\game\\\\teams\\\\[teamId]\\\\page.tsx -> @/lib/logic/aiLeadership":{"id":4450,"files":["static/chunks/134-c05fb6e744f05275.js","static/chunks/450.825b9f1c8c98da89.js"]},"app\\\\game\\\\teams\\\\[teamId]\\\\page.tsx -> @/lib/logic/aiLineupSelector":{"id":134,"files":["static/chunks/134-c05fb6e744f05275.js"]}}';

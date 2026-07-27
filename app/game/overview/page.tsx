@@ -81,7 +81,6 @@ import {
   Table,
   Trophy,
   History as HistoryIcon,
-  AlertCircle,
   Lock,
   Check,
   X,
@@ -89,11 +88,15 @@ import {
   ChevronDown,
   ChevronRight,
   TrendingUp,
-  User,
   Heart,
   Info,
   DollarSign,
-  Play
+  Play,
+  Mail,
+  MailOpen,
+  ArrowUpRight,
+  Crown,
+  ShieldCheck,
 } from "lucide-react";
 
 interface PlayerStats {
@@ -184,6 +187,13 @@ const generateNextRetentionDeadline = (auctionDate: string): RetentionDeadline =
 
 // Helper to calculate rating of player
 const getPlayerRating = (p: Player) => Math.max(p.currentBatting ?? 0, p.currentBowling ?? 0);
+const getCompactPlayerRole = (role: Player["role"]) => ({
+  Batsman: "BAT",
+  "WK-Batsman": "WK",
+  "All-Rounder": "AR",
+  "Pace Bowler": "PACE",
+  "Spin Bowler": "SPIN",
+}[role]);
 const normalizeLeagueHistoryPlayerName = (name: string) => name.toLocaleLowerCase("en-GB").replace(/[^a-z0-9]/g, "");
 const HOME_NEXT_FIXTURE_ROW_HEIGHT = 24;
 
@@ -2661,7 +2671,7 @@ function OverviewPageContent() {
                   <span className="inline-flex items-center gap-1.5">
                     {getSubTabLabel(subtab)}
                     {subtab === "inbox" && inbox.some((message) => message.unread) && (
-                      <span className="min-w-4 rounded-full bg-danger px-1 py-0.5 text-center text-[8px] leading-none text-white">
+                      <span className="min-w-4 rounded-full bg-danger px-1 py-0.5 text-center text-[8px] leading-none text-white shadow-sm ring-1 ring-white/25">
                         {inbox.filter((message) => message.unread).length}
                       </span>
                     )}
@@ -2702,29 +2712,63 @@ function OverviewPageContent() {
               {activeSubTab === "overview" && (
                 <div className="grid grid-cols-[minmax(16rem,0.85fr)_minmax(30rem,1.5fr)_minmax(16rem,0.85fr)] gap-6 h-[calc(100vh-200px)] min-h-[500px] overflow-hidden">
                   {/* Inbox column */}
-                  <div onClick={() => setActiveSubTab("inbox")} className="bg-surface border-2 border-border hover:border-accent p-5 flex min-h-0 flex-col cursor-pointer transition-colors">
-                    <div className="flex justify-between items-start mb-4 border-b border-[#16130f]/10 pb-2 shrink-0">
-                      <div className="font-anton text-[14px] uppercase text-text-primary">INBOX MESSAGES</div>
-                      <span className="font-space-mono text-[9px] bg-danger text-white px-1.5 py-0.5 rounded font-bold">
+                  <div
+                    onClick={() => setActiveSubTab("inbox")}
+                    className="group flex min-h-0 cursor-pointer flex-col overflow-hidden border-2 border-border bg-surface p-5 transition-colors hover:border-accent"
+                  >
+                    <div className="flex shrink-0 items-center justify-between border-b border-[#16130f]/10 pb-3">
+                      <div className="flex items-center gap-3">
+                        <span className="flex size-9 items-center justify-center rounded-lg bg-[var(--ink)] text-bg shadow-sm">
+                          <Mail size={17} strokeWidth={1.9} aria-hidden="true" />
+                        </span>
+                        <div>
+                          <div className="font-anton text-[15px] uppercase leading-none text-text-primary">INBOX MESSAGES</div>
+                          <div className="mt-1 font-space-mono text-[8px] font-bold uppercase tracking-[0.16em] text-text-secondary">Club communications</div>
+                        </div>
+                      </div>
+                      <span className={`rounded-full px-2 py-1 font-space-mono text-[8px] font-bold uppercase tracking-wide ${inbox.some((message) => message.unread) ? "bg-danger text-white shadow-sm" : "bg-success/10 text-success"}`}>
                         {inbox.filter(m => m.unread).length} UNREAD
                       </span>
                     </div>
-                    <div className="space-y-3 overflow-y-auto pr-1 flex-1">
+                    <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto py-3">
                       {inboxThreads.length === 0 ? (
-                        <p className="text-xs font-barlow text-text-secondary py-3">No messages.</p>
+                        <div className="flex h-full flex-col items-center justify-center rounded-lg border border-dashed border-border p-5 text-center">
+                          <MailOpen size={22} className="mb-2 text-text-secondary/40" aria-hidden="true" />
+                          <p className="text-xs font-barlow text-text-secondary">No messages.</p>
+                        </div>
                       ) : inboxThreads.slice(0, 5).map((thread) => (
-                        <div key={thread.threadId} className="border-b border-[#16130f]/10 pb-3 text-xs">
-                          <div className="flex items-center gap-2">
-                            {thread.unreadCount > 0 && <span className="size-1.5 shrink-0 rounded-full bg-accent" />}
-                            <div className="truncate font-bold text-text-primary">{thread.latest.subject}</div>
-                            {thread.messages.length > 1 && (
-                              <span className="ml-auto shrink-0 font-space-mono text-[8px] text-text-secondary">{thread.messages.length}</span>
-                            )}
+                        <div
+                          key={thread.threadId}
+                          className={`rounded-lg border px-3 py-2.5 text-xs transition-colors ${
+                            thread.unreadCount > 0
+                              ? "border-accent/35 bg-accent/[0.055]"
+                              : "border-transparent bg-bg/35 group-hover:border-border/70"
+                          }`}
+                        >
+                          <div className="flex items-start gap-2.5">
+                            <span className={`mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full font-space-mono text-[9px] font-bold uppercase ${thread.unreadCount > 0 ? "bg-[var(--ink)] text-bg" : "bg-black/[0.055] text-text-secondary dark:bg-white/[0.07]"}`}>
+                              {thread.latest.sender.slice(0, 1)}
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2">
+                                <div className={`truncate text-[11px] text-text-primary ${thread.unreadCount > 0 ? "font-extrabold" : "font-semibold"}`}>{thread.latest.subject}</div>
+                                {thread.messages.length > 1 && (
+                                  <span className="ml-auto shrink-0 rounded-full bg-black/[0.055] px-1.5 py-0.5 font-space-mono text-[8px] text-text-secondary dark:bg-white/[0.07]">{thread.messages.length}</span>
+                                )}
+                              </div>
+                              <div className="mt-0.5 truncate text-[10px] leading-snug text-text-secondary">{thread.latest.preview}</div>
+                              <div className="mt-1 flex items-center justify-between gap-2 font-space-mono text-[8px] uppercase tracking-wide text-text-secondary/80">
+                                <span className="truncate">{thread.latest.sender}</span>
+                                <span className="shrink-0">{thread.latest.date}</span>
+                              </div>
+                            </div>
                           </div>
-                          <div className="mt-0.5 truncate text-[10px] text-text-secondary">{thread.latest.preview}</div>
-                          <div className="mt-0.5 text-[10px] text-text-secondary">{thread.latest.sender} · {thread.latest.date}</div>
                         </div>
                       ))}
+                    </div>
+                    <div className="flex shrink-0 items-center justify-between border-t border-[#16130f]/10 pt-2 font-space-mono text-[8px] font-bold uppercase tracking-[0.14em] text-text-secondary">
+                      <span>{inboxThreads.length} conversations</span>
+                      <span className="inline-flex items-center gap-1 text-text-primary transition-colors group-hover:text-accent">Open inbox <ArrowUpRight size={11} /></span>
                     </div>
                   </div>
 
@@ -3094,128 +3138,189 @@ function OverviewPageContent() {
 
               {/* Inbox page */}
               {activeSubTab === "inbox" && (
-                <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 h-[calc(100vh-200px)] min-h-[500px] overflow-hidden">
-                  <div className="lg:col-span-1 border-2 border-border bg-surface overflow-y-auto divide-y divide-[#16130f]/10">
-                    {inboxThreads.length === 0 ? (
-                      <div className="p-8 text-center text-xs font-barlow text-text-secondary">No messages.</div>
-                    ) : (
-                      inboxThreads.map((thread) => (
-                        <button
-                          key={thread.threadId}
-                          onClick={() => markThreadRead(thread.threadId, thread.latest.id)}
-                          className={`w-full p-4 text-left transition-colors flex flex-col gap-1.5 hover:bg-black/5
-                            ${selectedThread?.threadId === thread.threadId ? "bg-[#16130f]/5" : ""}
-                            ${thread.unreadCount > 0 ? "border-l-4 border-accent" : ""}`}
-                        >
-                          <div className="flex justify-between items-center">
-                            <span className="font-space-mono text-[9px] font-bold text-text-secondary uppercase">{thread.latest.sender}</span>
-                            <span className="font-space-mono text-[8px] text-text-secondary">{thread.latest.date}</span>
-                          </div>
-                          <div className="flex w-full items-center gap-2">
-                            <div className="min-w-0 flex-1 truncate text-xs font-bold leading-snug text-text-primary">{thread.latest.subject}</div>
-                            {thread.messages.length > 1 && (
-                              <span className="shrink-0 rounded bg-black/5 px-1.5 py-0.5 font-space-mono text-[8px] text-text-secondary">
-                                {thread.messages.length}
-                              </span>
-                            )}
-                          </div>
-                          <div className="w-full truncate text-[10px] text-text-secondary">{thread.latest.preview}</div>
-                          <div className="flex items-center gap-1.5 pt-0.5">
-                            <span className="rounded border border-[#16130f]/10 px-1.5 py-0.5 font-space-mono text-[8px] uppercase text-text-secondary">
-                              {thread.latest.category}
-                            </span>
-                            {thread.latest.requiresAction && (
-                              <span className={`rounded px-1.5 py-0.5 font-space-mono text-[8px] font-bold uppercase ${thread.latest.actionCompleted ? "bg-success/10 text-success" : "bg-danger/10 text-danger"}`}>
-                                {thread.latest.actionCompleted ? "Complete" : "Action"}
-                              </span>
-                            )}
-                          </div>
-                        </button>
-                      ))
-                    )}
-                  </div>
+                <div className="grid h-[calc(100vh-200px)] min-h-[500px] grid-cols-1 overflow-hidden rounded-xl border border-border bg-surface shadow-[0_18px_50px_rgba(22,19,15,0.08)] lg:grid-cols-[minmax(19rem,0.92fr)_minmax(0,2.2fr)]">
+                  <aside className="flex min-h-0 flex-col border-r border-border bg-bg/45">
+                    <div className="flex shrink-0 items-center justify-between border-b border-border bg-surface px-4 py-3.5">
+                      <div className="flex items-center gap-3">
+                        <span className="flex size-10 items-center justify-center rounded-lg bg-[var(--ink)] text-bg shadow-sm">
+                          <InboxIcon size={19} strokeWidth={1.9} aria-hidden="true" />
+                        </span>
+                        <div>
+                          <h2 className="font-anton text-[18px] uppercase leading-none text-text-primary">Inbox</h2>
+                          <p className="mt-1 font-space-mono text-[8px] font-bold uppercase tracking-[0.15em] text-text-secondary">
+                            {inboxThreads.length} conversations
+                          </p>
+                        </div>
+                      </div>
+                      <span className={`rounded-full px-2 py-1 font-space-mono text-[8px] font-bold uppercase tracking-wide ${inbox.some((message) => message.unread) ? "bg-danger text-white shadow-sm" : "bg-success/10 text-success"}`}>
+                        {inbox.filter((message) => message.unread).length} unread
+                      </span>
+                    </div>
 
-                  <div className="lg:col-span-3 flex h-full flex-col overflow-hidden border-2 border-border bg-surface">
+                    <div className="min-h-0 flex-1 space-y-1 overflow-y-auto p-2">
+                      {inboxThreads.length === 0 ? (
+                        <div className="flex h-full flex-col items-center justify-center rounded-lg border border-dashed border-border bg-surface/70 p-8 text-center">
+                          <MailOpen size={28} className="mb-3 text-text-secondary/35" aria-hidden="true" />
+                          <div className="text-xs font-barlow text-text-secondary">No messages.</div>
+                        </div>
+                      ) : (
+                        inboxThreads.map((thread) => {
+                          const isSelected = selectedThread?.threadId === thread.threadId;
+                          return (
+                            <button
+                              key={thread.threadId}
+                              onClick={() => markThreadRead(thread.threadId, thread.latest.id)}
+                              className={`group relative flex w-full gap-3 rounded-lg border p-3 text-left transition-all duration-150 ${
+                                isSelected
+                                  ? "border-accent/50 bg-surface shadow-[0_5px_18px_rgba(22,19,15,0.08)]"
+                                  : thread.unreadCount > 0
+                                    ? "border-accent/20 bg-accent/[0.045] hover:border-accent/45 hover:bg-surface"
+                                    : "border-transparent hover:border-border hover:bg-surface/80"
+                              }`}
+                            >
+                              {thread.unreadCount > 0 && <span className="absolute right-2 top-2 size-2 rounded-full bg-accent shadow-sm" aria-label={`${thread.unreadCount} unread`} />}
+                              <span className={`flex size-9 shrink-0 items-center justify-center rounded-full font-space-mono text-[10px] font-bold uppercase ${
+                                isSelected || thread.unreadCount > 0
+                                  ? "bg-[var(--ink)] text-bg"
+                                  : "bg-black/[0.055] text-text-secondary dark:bg-white/[0.07]"
+                              }`}>
+                                {thread.latest.sender.slice(0, 1)}
+                              </span>
+                              <span className="min-w-0 flex-1">
+                                <span className="flex items-center gap-2 pr-3">
+                                  <span className={`min-w-0 flex-1 truncate font-space-mono text-[9px] uppercase tracking-wide ${thread.unreadCount > 0 ? "font-extrabold text-text-primary" : "font-bold text-text-secondary"}`}>
+                                    {thread.latest.sender}
+                                  </span>
+                                  <span className="shrink-0 font-space-mono text-[8px] text-text-secondary/80">{thread.latest.date}</span>
+                                </span>
+                                <span className={`mt-1 block truncate text-[12px] leading-snug text-text-primary ${thread.unreadCount > 0 ? "font-extrabold" : "font-semibold"}`}>
+                                  {thread.latest.subject}
+                                </span>
+                                <span className="mt-1 block truncate text-[10px] leading-snug text-text-secondary">{thread.latest.preview}</span>
+                                <span className="mt-2 flex items-center gap-1.5">
+                                  <span className="rounded-full border border-border/80 bg-bg/60 px-2 py-0.5 font-space-mono text-[7px] font-bold uppercase tracking-wide text-text-secondary">
+                                    {thread.latest.category}
+                                  </span>
+                                  {thread.messages.length > 1 && (
+                                    <span className="rounded-full bg-black/[0.055] px-2 py-0.5 font-space-mono text-[7px] font-bold text-text-secondary dark:bg-white/[0.07]">
+                                      {thread.messages.length}
+                                    </span>
+                                  )}
+                                  {thread.latest.requiresAction && (
+                                    <span className={`rounded-full px-2 py-0.5 font-space-mono text-[7px] font-bold uppercase tracking-wide ${thread.latest.actionCompleted ? "bg-success/10 text-success" : "bg-danger/10 text-danger"}`}>
+                                      {thread.latest.actionCompleted ? "Complete" : "Action"}
+                                    </span>
+                                  )}
+                                </span>
+                              </span>
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+                  </aside>
+
+                  <section className="flex h-full min-h-0 flex-col overflow-hidden bg-bg/25">
                     {selectedThread ? (
                       <>
-                        <div className="min-h-0 flex-1 overflow-y-auto p-6">
-                          <div className="flex flex-col gap-5">
-                          {selectedThread.messages.map((msg, index) => (
-                          <article key={msg.id} className={index > 0 ? "border-t border-[#16130f]/10 pt-5" : ""}>
-                            <header className="mb-5 border-b-2 border-border pb-5">
-                              <div className="flex items-center gap-3">
-                                <div className="flex size-11 shrink-0 items-center justify-center rounded-full border border-border bg-[var(--ink)] text-bg shadow-sm" aria-hidden="true">
-                                  <User size={21} strokeWidth={1.8} />
-                                </div>
-                                <div className="min-w-0 flex-1">
-                                  <div className="truncate font-barlow text-[14px] font-bold text-text-primary">
-                                    <span className="font-space-mono text-[9px] font-semibold uppercase text-text-secondary">From: </span>
-                                    {msg.sender}
+                        <div className="flex min-h-[58px] shrink-0 items-center justify-between border-b border-border bg-surface px-5 py-3">
+                          <div className="flex min-w-0 items-center gap-3">
+                            <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-bg text-text-secondary">
+                              <MailOpen size={15} strokeWidth={1.8} aria-hidden="true" />
+                            </span>
+                            <div className="min-w-0">
+                              <div className="font-space-mono text-[8px] font-bold uppercase tracking-[0.16em] text-text-secondary">Conversation</div>
+                              <div className="mt-0.5 truncate text-[11px] font-semibold text-text-primary">{selectedThread.latest.subject}</div>
+                            </div>
+                          </div>
+                          <span className="shrink-0 rounded-full border border-border bg-bg/70 px-2.5 py-1 font-space-mono text-[8px] font-bold text-text-secondary">
+                            {selectedThread.messages.length} {selectedThread.messages.length === 1 ? "message" : "messages"}
+                          </span>
+                        </div>
+
+                        <div className="min-h-0 flex-1 overflow-y-auto p-5">
+                          <div className="mx-auto flex max-w-5xl flex-col gap-4">
+                            {selectedThread.messages.map((msg) => (
+                              <article key={msg.id} className="overflow-hidden rounded-xl border border-border bg-surface shadow-[0_8px_28px_rgba(22,19,15,0.055)]">
+                                <header className="border-b border-border/80 bg-bg/35 px-6 py-5">
+                                  <div className="flex items-start gap-3">
+                                    <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[var(--ink)] font-space-mono text-[11px] font-bold uppercase text-bg shadow-sm" aria-hidden="true">
+                                      {msg.sender.slice(0, 1)}
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                      <div className="truncate font-barlow text-[14px] font-bold text-text-primary">{msg.sender}</div>
+                                      <div className="mt-0.5 font-space-mono text-[8px] uppercase tracking-wide text-text-secondary">
+                                        To <span className="font-bold text-text-primary/75">You</span>
+                                      </div>
+                                    </div>
+                                    <time
+                                      dateTime={msg.date}
+                                      className="shrink-0 rounded-md border border-border/80 bg-surface px-2.5 py-1.5 text-right font-space-mono text-[8px] font-bold uppercase tracking-wide text-text-secondary"
+                                    >
+                                      {dateKeyToLocalDate(msg.date).toLocaleDateString("en-GB", {
+                                        day: "numeric",
+                                        month: "short",
+                                        year: "numeric",
+                                      })}
+                                    </time>
                                   </div>
-                                  <div className="mt-0.5 font-space-mono text-[9px] text-text-secondary">
-                                    To: <span className="font-semibold text-text-primary/75">You</span>
+                                  <h2 className="mt-5 max-w-4xl font-anton text-[25px] uppercase leading-tight tracking-[0.015em] text-text-primary">{msg.subject}</h2>
+                                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                                    <span className="rounded-full border border-border bg-surface px-2.5 py-1 font-space-mono text-[7px] font-bold uppercase tracking-wider text-text-secondary">{msg.category}</span>
+                                    {msg.priority !== "normal" && (
+                                      <span className={`rounded-full px-2.5 py-1 font-space-mono text-[7px] font-bold uppercase tracking-wider ${msg.priority === "urgent" ? "bg-danger/10 text-danger" : "bg-accent/10 text-accent"}`}>
+                                        {msg.priority}
+                                      </span>
+                                    )}
+                                    {msg.requiresAction && (
+                                      <span className={`rounded-full px-2.5 py-1 font-space-mono text-[7px] font-bold uppercase tracking-wider ${msg.actionCompleted ? "bg-success/10 text-success" : "bg-danger/10 text-danger"}`}>
+                                        {msg.actionCompleted ? "Completed" : "Action required"}
+                                      </span>
+                                    )}
                                   </div>
-                                </div>
-                                <time
-                                  dateTime={msg.date}
-                                  className="shrink-0 text-right font-space-mono text-[9px] text-text-secondary"
-                                >
-                                  {dateKeyToLocalDate(msg.date).toLocaleDateString("en-GB", {
-                                    day: "numeric",
-                                    month: "short",
-                                    year: "numeric",
-                                  })}
-                                </time>
-                              </div>
-                              <h2 className="mt-5 font-anton text-[24px] uppercase leading-tight tracking-wide text-text-primary">{msg.subject}</h2>
-                              <div className="mt-3 flex flex-wrap items-center gap-2">
-                                <span className="rounded border border-[#16130f]/10 px-2 py-0.5 font-space-mono text-[8px] uppercase text-text-secondary">{msg.category}</span>
-                                {msg.priority !== "normal" && (
-                                  <span className={`rounded px-2 py-0.5 font-space-mono text-[8px] font-bold uppercase ${msg.priority === "urgent" ? "bg-danger/10 text-danger" : "bg-accent/10 text-accent"}`}>
-                                    {msg.priority}
-                                  </span>
-                                )}
-                                {msg.requiresAction && (
-                                  <span className={`rounded px-2 py-0.5 font-space-mono text-[8px] font-bold uppercase ${msg.actionCompleted ? "bg-success/10 text-success" : "bg-danger/10 text-danger"}`}>
-                                    {msg.actionCompleted ? "Completed" : "Action required"}
-                                  </span>
-                                )}
-                              </div>
-                            </header>
-                            <div className="max-w-3xl whitespace-pre-line font-barlow text-[13px] leading-7 text-text-secondary">{msg.body}</div>
-                          </article>
-                          ))}
+                                </header>
+                                <div className="max-w-4xl whitespace-pre-line px-6 py-6 font-barlow text-[14px] leading-7 text-text-secondary">{msg.body}</div>
+                              </article>
+                            ))}
                           </div>
                         </div>
-                        <div className="flex min-h-[54px] shrink-0 items-center gap-2 border-t-2 border-border bg-bg/60 px-6 py-2">
-                          {selectedThread.latest.actions.length > 0 ? (
-                            selectedThread.latest.actions.map((action) => (
-                              <button
-                                key={`${selectedThread.latest.id}:${action.label}`}
-                                type="button"
-                                onClick={() => handleEmailAction(action)}
-                                className="rounded border border-border bg-[var(--ink)] px-3 py-2 font-space-mono text-[9px] font-bold uppercase tracking-wider text-bg transition-colors hover:bg-accent"
-                              >
-                                {action.label}
-                              </button>
-                            ))
-                          ) : (
-                            <span className="font-space-mono text-[8px] uppercase tracking-wider text-text-secondary/60">No actions for this email</span>
-                          )}
+
+                        <div className="flex min-h-[62px] shrink-0 items-center justify-between gap-3 border-t border-border bg-surface px-5 py-3 shadow-[0_-8px_24px_rgba(22,19,15,0.035)]">
+                          <span className="font-space-mono text-[8px] font-bold uppercase tracking-[0.15em] text-text-secondary/70">Email actions</span>
+                          <div className="flex items-center gap-2">
+                            {selectedThread.latest.actions.length > 0 ? (
+                              selectedThread.latest.actions.map((action) => (
+                                <button
+                                  key={`${selectedThread.latest.id}:${action.label}`}
+                                  type="button"
+                                  onClick={() => handleEmailAction(action)}
+                                  className="inline-flex items-center gap-2 rounded-lg border border-[var(--ink)] bg-[var(--ink)] px-3.5 py-2 font-space-mono text-[8px] font-bold uppercase tracking-wider text-bg shadow-sm transition-all hover:-translate-y-0.5 hover:border-accent hover:bg-accent"
+                                >
+                                  {action.label}
+                                  <ArrowUpRight size={12} aria-hidden="true" />
+                                </button>
+                              ))
+                            ) : (
+                              <span className="rounded-full border border-border bg-bg/60 px-3 py-1.5 font-space-mono text-[8px] uppercase tracking-wider text-text-secondary/60">No actions for this email</span>
+                            )}
+                          </div>
                         </div>
                       </>
                     ) : (
                       <>
-                        <div className="flex min-h-0 flex-1 flex-col items-center justify-center p-6 text-text-secondary">
-                          <AlertCircle size={32} className="mb-2 text-text-secondary/40" />
-                          <span className="font-space-mono text-[10px] uppercase tracking-widest">Select a message to read</span>
+                        <div className="flex min-h-0 flex-1 flex-col items-center justify-center p-8 text-center text-text-secondary">
+                          <span className="mb-4 flex size-16 items-center justify-center rounded-2xl border border-border bg-surface shadow-sm">
+                            <MailOpen size={28} className="text-text-secondary/35" aria-hidden="true" />
+                          </span>
+                          <span className="font-anton text-[18px] uppercase text-text-primary">Select a message to read</span>
+                          <span className="mt-2 max-w-xs text-[11px] leading-relaxed text-text-secondary">Choose a conversation from the inbox to open it here.</span>
                         </div>
-                        <div className="flex min-h-[54px] shrink-0 items-center border-t-2 border-border bg-bg/60 px-6 py-2">
+                        <div className="flex min-h-[62px] shrink-0 items-center border-t border-border bg-surface px-5 py-3">
                           <span className="font-space-mono text-[8px] uppercase tracking-wider text-text-secondary/60">Email actions</span>
                         </div>
                       </>
                     )}
-                  </div>
+                  </section>
                 </div>
               )}
 
@@ -3265,6 +3370,7 @@ function OverviewPageContent() {
                     >
                       REQUEST BUDGET INCREASE
                     </button>
+
                   </div>
                 </div>
               )}
@@ -3699,18 +3805,231 @@ function OverviewPageContent() {
                     </div>
                   </div>
 
-                  <div className="grid min-h-0 grid-rows-2 gap-3">
-                    <button type="button" onClick={() => setActiveSubTab("playingxi")} className="flex min-h-0 flex-col border-2 border-border bg-surface p-5 text-left transition-colors hover:border-accent">
-                      <h4 className="font-anton text-[14px] uppercase border-b border-[#16130f]/10 pb-2 mb-4">Playing XIs</h4>
-                      <div className="space-y-1 font-space-mono text-[10px]">
-                        <div>BAT-FIRST: <span className="font-bold text-text-primary">{battingFirstXI.length}/11 XI · {battingFirstImpactSubs.length}/5 IMP</span></div>
-                        <div>BOWL-FIRST: <span className="font-bold text-text-primary">{bowlingFirstXI.length}/11 XI · {bowlingFirstImpactSubs.length}/5 IMP</span></div>
+                  <div className="grid min-h-0 grid-cols-2 grid-rows-[minmax(0,1.55fr)_minmax(0,0.75fr)] gap-3">
+                    {/* Playing XIs Preview Tile */}
+                    {(() => {
+                      const batFirstSub = (battingFirstImpactPlayerId && players[battingFirstImpactPlayerId])
+                        || (battingFirstImpactSubs.length > 0 && players[battingFirstImpactSubs[0]])
+                        || null;
+                      const bowlFirstSub = (bowlingFirstImpactPlayerId && players[bowlingFirstImpactPlayerId])
+                        || (bowlingFirstImpactSubs.length > 0 && players[bowlingFirstImpactSubs[0]])
+                        || null;
+                      const batFirstOS = battingFirstXI.filter((id) => players[id]?.nationality === "Overseas").length;
+                      const bowlFirstOS = bowlingFirstXI.filter((id) => players[id]?.nationality === "Overseas").length;
+                      const batFirstStarters = battingFirstXI.map((id) => players[id]).filter((p): p is Player => Boolean(p));
+                      const bowlFirstStarters = bowlingFirstXI.map((id) => players[id]).filter((p): p is Player => Boolean(p));
+
+                      const lineupPlans = [
+                        {
+                          key: "bat-first",
+                          label: "Bat First XI",
+                          ids: battingFirstXI,
+                          starters: batFirstStarters,
+                          overseas: batFirstOS,
+                          impact: batFirstSub,
+                          dotClass: "bg-[#d87945]",
+                          textClass: "text-[#b5572f] dark:text-[#e58a5c]",
+                          washClass: "bg-[#d87945]/[0.045]",
+                        },
+                        {
+                          key: "bowl-first",
+                          label: "Bowl First XI",
+                          ids: bowlingFirstXI,
+                          starters: bowlFirstStarters,
+                          overseas: bowlFirstOS,
+                          impact: bowlFirstSub,
+                          dotClass: "bg-[#4f8fd7]",
+                          textClass: "text-[#326da9] dark:text-[#6aa5e5]",
+                          washClass: "bg-[#4f8fd7]/[0.045]",
+                        },
+                      ];
+
+                      return (
+                        <button
+                          type="button"
+                          onClick={() => setActiveSubTab("playingxi")}
+                          className="group col-span-2 flex min-h-0 flex-col overflow-hidden rounded-lg border-2 border-border bg-surface p-3 text-left transition-all hover:border-accent hover:shadow-md"
+                        >
+                          <div className="mb-2 flex shrink-0 items-center justify-between border-b border-[#16130f]/10 pb-2">
+                            <div className="flex items-center gap-2">
+                              <h4 className="font-anton text-[14px] uppercase leading-none text-text-primary">Playing XIs</h4>
+                              <span className="rounded-full bg-accent/15 px-2 py-0.5 font-space-mono text-[8px] font-bold uppercase text-[#9a6b12] dark:text-accent">
+                                Matchday
+                              </span>
+                            </div>
+                            <span className="font-space-mono text-[9px] font-bold uppercase text-accent group-hover:underline">
+                              Manage XIs →
+                            </span>
+                          </div>
+
+                          <div className="grid min-h-0 flex-1 grid-cols-2 gap-2.5">
+                            {lineupPlans.map((plan) => (
+                              <div key={plan.key} className={`flex min-h-0 flex-col overflow-hidden rounded-md border border-border/70 ${plan.washClass}`}>
+                                <div className="flex shrink-0 items-center justify-between border-b border-border/60 bg-surface/75 px-2 py-1.5">
+                                  <span className={`flex items-center gap-1.5 font-space-mono text-[8px] font-extrabold uppercase tracking-wide ${plan.textClass}`}>
+                                    <span className={`size-1.5 shrink-0 rounded-full ${plan.dotClass}`} />
+                                    {plan.label}
+                                  </span>
+                                  <span className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">
+                                    {plan.ids.length}/11 · {plan.overseas}/4 OS
+                                  </span>
+                                </div>
+
+                                <div className="grid min-h-0 flex-1 grid-rows-11 divide-y divide-border/45">
+                                  {Array.from({ length: 11 }, (_, index) => {
+                                    const player = plan.starters[index];
+                                    return (
+                                      <div key={`${plan.key}-${index}`} className="grid min-h-0 grid-cols-[1.15rem_minmax(0,1fr)_auto] items-center gap-1.5 px-2">
+                                        <span className={`font-space-mono text-[7px] font-extrabold tabular-nums ${player ? plan.textClass : "text-text-secondary/45"}`}>
+                                          {String(index + 1).padStart(2, "0")}
+                                        </span>
+                                        <span className={`truncate text-[9px] leading-none ${player ? "font-semibold text-text-primary" : "font-medium italic text-text-secondary/45"}`}>
+                                          {player ? player.name : "Empty slot"}
+                                        </span>
+                                        {player && (
+                                          <span className="flex shrink-0 items-center gap-1">
+                                            {player.id === teamLeadership?.captainId && <span className="font-space-mono text-[6px] font-extrabold text-accent">C</span>}
+                                            {player.id === teamLeadership?.viceCaptainId && <span className="font-space-mono text-[6px] font-extrabold text-accent">VC</span>}
+                                            {player.nationality === "Overseas" && <span className="size-1 rounded-full bg-accent" title="Overseas player" />}
+                                            <span className="font-space-mono text-[6.5px] font-bold uppercase text-text-secondary">{getCompactPlayerRole(player.role)}</span>
+                                          </span>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+
+                                <div className="flex shrink-0 items-center justify-between gap-2 border-t border-border/60 bg-surface/75 px-2 py-1 font-space-mono text-[7px] uppercase text-text-secondary">
+                                  <span className="shrink-0">Impact</span>
+                                  <strong className="truncate text-right text-text-primary">{plan.impact ? plan.impact.name : "Auto"}</strong>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </button>
+                      );
+                    })()}
+
+                    {/* Team Tactics Preview Tile */}
+                    <button
+                      type="button"
+                      onClick={() => setActiveSubTab("tactics")}
+                      className="group flex min-h-0 flex-col justify-between overflow-hidden rounded-lg border-2 border-border bg-surface p-3 text-left transition-all hover:border-accent hover:shadow-md"
+                    >
+                      <div>
+                        <div className="mb-2 flex items-center justify-between border-b border-[#16130f]/10 pb-2">
+                          <div className="flex items-center gap-2">
+                            <h4 className="font-anton text-[14px] uppercase text-text-primary">Team Tactics</h4>
+                            <span className="rounded bg-accent/15 px-1.5 py-0.5 font-space-mono text-[10px] font-bold text-accent uppercase">
+                              {teamTactics.preset}
+                            </span>
+                          </div>
+                          <span className="font-space-mono text-[10px] font-bold uppercase text-accent group-hover:underline">
+                            Edit Tactics →
+                          </span>
+                        </div>
+
+                        <div className="space-y-1.5 font-space-mono text-[9px]">
+                          {/* Batting Strategy */}
+                          <div className="rounded border border-border/50 bg-black/[0.02] p-1.5 dark:bg-white/[0.02]">
+                            <div className="font-bold uppercase text-text-secondary text-[8.5px] mb-1 tracking-wider">Batting Approach</div>
+                            <div className="grid grid-cols-3 gap-1">
+                              <div>PP: <span className="font-bold text-text-primary capitalize">{teamTactics.batting.powerplay}</span></div>
+                              <div>MID: <span className="font-bold text-text-primary capitalize">{teamTactics.batting.middle}</span></div>
+                              <div>DEATH: <span className="font-bold text-text-primary capitalize">{teamTactics.batting.death}</span></div>
+                            </div>
+                          </div>
+
+                          {/* Bowling Strategy */}
+                          <div className="rounded border border-border/50 bg-black/[0.02] p-1.5 dark:bg-white/[0.02]">
+                            <div className="font-bold uppercase text-text-secondary text-[8.5px] mb-1 tracking-wider">Bowling Approach</div>
+                            <div className="grid grid-cols-3 gap-1">
+                              <div>PP: <span className="font-bold text-text-primary capitalize">{teamTactics.bowling.powerplay}</span></div>
+                              <div>MID: <span className="font-bold text-text-primary capitalize">{teamTactics.bowling.middle}</span></div>
+                              <div>DEATH: <span className="font-bold text-text-primary capitalize">{teamTactics.bowling.death}</span></div>
+                            </div>
+                          </div>
+
+                          {/* Preferences summary */}
+                          <div className="flex items-center justify-between pt-0.5 text-[9.5px] text-text-secondary">
+                            <span>Toss: <strong className="text-text-primary capitalize">{teamTactics.tossPreference}</strong></span>
+                            <span>Impact: <strong className="text-text-primary capitalize">{teamTactics.impactPolicy.replace("-", " ")}</strong></span>
+                          </div>
+                        </div>
                       </div>
                     </button>
-                    <button type="button" onClick={() => setActiveSubTab("tactics")} className="flex min-h-0 flex-col border-2 border-border bg-surface p-5 text-left transition-colors hover:border-accent">
-                      <h4 className="font-anton text-[14px] uppercase border-b border-[#16130f]/10 pb-2 mb-4">Team Tactics</h4>
-                      <div className="font-space-mono text-[10px]">APPROACH: <span className="font-bold text-accent">{teamTactics.preset}</span></div>
-                    </button>
+
+                    {/* Captaincy Preview Tile */}
+                    {(() => {
+                      const captain = teamLeadership?.captainId ? players[teamLeadership.captainId] : null;
+                      const viceCaptain = teamLeadership?.viceCaptainId ? players[teamLeadership.viceCaptainId] : null;
+                      const appointments = [
+                        {
+                          key: "captain",
+                          label: "Captain",
+                          player: captain,
+                          icon: Crown,
+                          iconClass: "bg-accent text-[#16130f]",
+                          borderClass: captain ? "border-accent/45" : "border-border/60",
+                        },
+                        {
+                          key: "vice-captain",
+                          label: "Vice-captain",
+                          player: viceCaptain,
+                          icon: ShieldCheck,
+                          iconClass: "bg-success/[0.14] text-success",
+                          borderClass: viceCaptain ? "border-success/40" : "border-border/60",
+                        },
+                      ];
+
+                      return (
+                        <button
+                          type="button"
+                          onClick={() => setActiveSubTab("captaincy")}
+                          className="group flex min-h-0 flex-col overflow-hidden rounded-lg border-2 border-border bg-surface p-3 text-left transition-all hover:border-accent hover:shadow-md"
+                        >
+                          <div className="mb-2 flex shrink-0 items-center justify-between border-b border-[#16130f]/10 pb-2">
+                            <div className="flex items-center gap-2">
+                              <h4 className="font-anton text-[14px] uppercase leading-none text-text-primary">Captaincy</h4>
+                              <span className="rounded-full bg-success/10 px-2 py-0.5 font-space-mono text-[8px] font-bold uppercase text-success">
+                                Leadership
+                              </span>
+                            </div>
+                            <span className="font-space-mono text-[9px] font-bold uppercase text-accent group-hover:underline">
+                              Manage →
+                            </span>
+                          </div>
+
+                          <div className="grid min-h-0 flex-1 grid-cols-2 gap-2">
+                            {appointments.map((appointment) => {
+                              const LeaderIcon = appointment.icon;
+                              return (
+                                <div key={appointment.key} className={`flex min-w-0 flex-col justify-between rounded-md border bg-bg/35 p-2 ${appointment.borderClass}`}>
+                                  <div className="flex items-center gap-2">
+                                    <span className={`flex size-7 shrink-0 items-center justify-center rounded-full ${appointment.iconClass}`}>
+                                      <LeaderIcon size={13} strokeWidth={2} aria-hidden="true" />
+                                    </span>
+                                    <span className="font-space-mono text-[7px] font-extrabold uppercase tracking-[0.12em] text-text-secondary">
+                                      {appointment.label}
+                                    </span>
+                                  </div>
+                                  {appointment.player ? (
+                                    <div className="mt-2 min-w-0">
+                                      <div className="truncate text-[11px] font-bold leading-none text-text-primary">{appointment.player.name}</div>
+                                      <div className="mt-1 truncate font-space-mono text-[7px] font-bold uppercase text-text-secondary">
+                                        {getCompactPlayerRole(appointment.player.role)} · Captaincy {appointment.player.captaincy ?? 50}
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div className="mt-2 text-[10px] font-semibold leading-none text-text-secondary">Not appointed</div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </button>
+                      );
+                    })()}
                   </div>
 
                 </div>
