@@ -23,12 +23,18 @@ import {
 import { type LineupPlan, validateLineup } from "@/lib/logic/lineupPlanner";
 import {
   buildAutomaticLineupSelection,
+  playerToLineupCandidate,
 } from "@/lib/logic/automaticLineupBuilder";
 import { findSpecialOpenerPair } from "@/lib/logic/openerPairs";
 import {
   generateBalancedLeagueFixtures,
+  generateKnockoutFixtures,
   getLeagueSeasonStartDate,
+  LEAGUE_FIXTURE_COUNT,
   LEAGUE_FIXTURE_SCHEDULE_VERSION,
+  PLAYOFF_TBD_TEAM_ID,
+  TOTAL_FIXTURE_COUNT,
+  type KnockoutStage,
 } from "@/lib/logic/leagueSchedule";
 import {
   createTeamTactics,
@@ -41,7 +47,10 @@ import {
   upsertPlayerIplHistory,
   wasPlayerAcquiredViaRtm,
 } from "@/lib/logic/playerHistory";
-import { SEASON_ACCESS_ENABLED } from "@/lib/config/featureFlags";
+import {
+  FIXTURE_SIMULATION_ENABLED,
+  SEASON_ACCESS_ENABLED,
+} from "@/lib/config/featureFlags";
 import { getClubSeasonHistory, LAST_HISTORICAL_CLUB_SEASON } from "@/lib/data/clubHistory";
 import { getClubFigures, type ClubFigureTier } from "@/lib/data/clubFigures";
 import { HISTORICAL_LEAGUE_HISTORY, LEAGUE_HISTORY_TEAMS } from "@/lib/data/leagueHistory";
@@ -57,8 +66,27 @@ import { getCuratorPitch, getDefaultCuratorPitch, getHomeStadium } from "@/lib/d
 import {
   calculateGroundScoringImpact,
   calculateOutfieldScoringImpact,
+  calculateOutfieldSpeedRating,
   getDefaultOutfieldSettings,
 } from "@/lib/logic/stadiumManagement";
+import {
+  createIntelligentAiTactics,
+  getMatchPreparationWarnings,
+  oversFromBalls,
+  simulateInstantMatch,
+  type MatchGroundConditions,
+  type MatchInnings,
+  type MatchLineupPlan,
+  type MatchSimulationRecord,
+  type MatchTeamPlans,
+} from "@/lib/logic/matchSimulation";
+import {
+  compactMatchSimulation,
+  hasArchivedDeliveries,
+  loadMatchSimulations,
+  saveMatchSimulations,
+} from "@/lib/logic/matchSimulationStorage";
+import BallByBallSummary from "@/components/match/BallByBallSummary";
 import {
   EMPTY_TEAM_LEADERSHIP,
   getCaptainChangeGamesRemaining,
@@ -150,6 +178,9 @@ interface ScorecardPlayer {
   wickets?: number;
   runsConceded?: number;
   maidens?: number;
+  dismissal?: string;
+  wides?: number;
+  noBalls?: number;
 }
 
 interface InningsScorecard {
@@ -175,9 +206,32 @@ interface Match {
   winner?: string;
   commentary?: string[];
   scorecard?: MatchScorecard;
+  simulation?: MatchSimulationRecord;
   date?: string;
   time?: string;
+  stage?: KnockoutStage;
+  label?: string;
 }
+
+type MatchResultView = "scorecard" | "summary" | "ball-by-ball";
+
+interface PendingMatchPreparation {
+  matchId: string;
+  errors: string[];
+  warnings: string[];
+}
+
+const isIncomingImpactPlayer = (match: Match, playerId: string) => (
+  match.simulation?.impactDecisions.some((decision) => (
+    decision.used && decision.incomingPlayerId === playerId
+  )) ?? false
+);
+
+const isOutgoingImpactPlayer = (match: Match, playerId: string) => (
+  match.simulation?.impactDecisions.some((decision) => (
+    decision.used && decision.outgoingPlayerId === playerId
+  )) ?? false
+);
 
 interface RetentionDeadline {
   year: number;
@@ -209,6 +263,7 @@ const getCompactPlayerRole = (role: Player["role"]) => ({
 }[role]);
 const normalizeLeagueHistoryPlayerName = (name: string) => name.toLocaleLowerCase("en-GB").replace(/[^a-z0-9]/g, "");
 const HOME_NEXT_FIXTURE_ROW_HEIGHT = 24;
+const CALENDAR_SELECTED_COLOR = "#2563eb";
 
 function ClubProfileSummaryTile({
   team,
@@ -301,9 +356,9 @@ function ManagerOfficeSummaryTile({ onOpen }: { onOpen: () => void }) {
     <button
       type="button"
       onClick={onOpen}
-      className="cursor-pointer overflow-hidden rounded-lg border-2 border-border bg-surface p-5 text-left transition-colors hover:border-accent"
+      className="flex h-full min-h-0 cursor-pointer flex-col items-stretch justify-start overflow-hidden rounded-lg border-2 border-border bg-surface p-5 text-left align-top transition-colors hover:border-accent"
     >
-      <div className="mb-4 flex items-start justify-between border-b border-[#16130f]/10 pb-2">
+      <div className="mb-4 flex shrink-0 items-start justify-between border-b border-[#16130f]/10 pb-2">
         <div className="font-anton text-[14px] uppercase text-text-primary">OFFICE SUMMARY</div>
       </div>
       <div className="space-y-4">
@@ -451,6 +506,7 @@ function OverviewPageContent() {
     startPitchDestruction,
     reconcilePitchProjects,
   } = useGameStore();
+  const matchArchiveCareerId = `${userTeamId}:${currentSeason}:${fixtureSeed}`;
   const userTeam = teams[userTeamId];
   const userHomeStadium = getHomeStadium(userTeamId);
   const userDefaultPitch = getDefaultCuratorPitch(userTeamId);
@@ -569,6 +625,8 @@ function OverviewPageContent() {
   const [aiTeamLeadership, setAiTeamLeadership] = useState<AiLeagueLeadership>({});
   const [activeCommentary, setActiveCommentary] = useState<string[] | null>(null);
   const [activeScorecard, setActiveScorecard] = useState<Match | null>(null);
+  const [activeMatchResultView, setActiveMatchResultView] = useState<MatchResultView>("scorecard");
+  const [pendingMatchPreparation, setPendingMatchPreparation] = useState<PendingMatchPreparation | null>(null);
   const [shortlist, setShortlist] = useState<string[]>([]);
   const [visibleHomeFixtureCount, setVisibleHomeFixtureCount] = useState(5);
   
@@ -593,6 +651,7 @@ function OverviewPageContent() {
   const calendarAnimationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const skipStartDateRef = useRef<string | null>(null);
   const skipTargetDateRef = useRef<string | null>(null);
+  const autoSimUserFixturesRef = useRef(false);
   const continueButtonRef = useRef<HTMLButtonElement | null>(null);
   const calendarStopButtonRef = useRef<HTMLButtonElement | null>(null);
   const homeNextFixturesListRef = useRef<HTMLDivElement | null>(null);
@@ -686,8 +745,12 @@ function OverviewPageContent() {
     : `${currentCalendarMonth.year}-${String(currentCalendarMonth.month + 1).padStart(2, "0")}-${String(selectedCalendarDay).padStart(2, "0")}`;
   const canSkipToSelectedCalendarDate = selectedCalendarDateString > currentDate;
   const isTickerAtImpasse = useMemo(
-    () => isCareerCalendarAtImpasse(currentDate, fixtures),
-    [currentDate, fixtures],
+    () => fixtures.some((match) => (
+      !match.played
+      && (match.date ?? "") <= currentDate
+      && (match.teamA === userTeamId || match.teamB === userTeamId)
+    )),
+    [currentDate, fixtures, userTeamId],
   );
   const inGameDate = dateKeyToLocalDate(currentDate);
   const openCalendarAtCurrentDate = () => {
@@ -824,7 +887,11 @@ function OverviewPageContent() {
         
         // Self-healing validation: check if loaded fixtures are valid (no days with > 2 matches, starts on second-last Sat of March)
         let isValidSchedule = true;
-        if (parsed.fixtures && parsed.fixtures.length === 70) {
+        if (
+          parsed.fixtures
+          && (parsed.fixtures.length === LEAGUE_FIXTURE_COUNT || parsed.fixtures.length === TOTAL_FIXTURE_COUNT)
+        ) {
+          const persistedLeagueFixtures = parsed.fixtures.slice(0, LEAGUE_FIXTURE_COUNT);
           const expectedStartDate = new Date(currentSeason, 2, 31);
           while (expectedStartDate.getDay() !== 6) {
             expectedStartDate.setDate(expectedStartDate.getDate() - 1);
@@ -833,21 +900,30 @@ function OverviewPageContent() {
           // Regenerate old, untouched schedules so existing local careers pick
           // up the balanced two-month fixture layout without losing results.
           if (parsed.scheduleVersion !== LEAGUE_FIXTURE_SCHEDULE_VERSION
-            && !parsed.fixtures.some((fixture: Match) => fixture.played)) {
+            && !persistedLeagueFixtures.some((fixture: Match) => fixture.played)) {
             isValidSchedule = false;
           }
           parsed.fixtures = parsed.fixtures.map((fixture: Match, index: number) => ({
             ...fixture,
             matchNumber: index + 1,
           }));
+          if (parsed.fixtures.length === LEAGUE_FIXTURE_COUNT) {
+            const finalLeagueDate = persistedLeagueFixtures.at(-1)?.date;
+            if (finalLeagueDate) {
+              const savedTopFour = Array.isArray(parsed.standings)
+                ? parsed.standings.slice(0, 4).map((entry: LeagueStandings) => entry.teamId)
+                : [];
+              parsed.fixtures.push(...generateKnockoutFixtures(finalLeagueDate, currentSeason, savedTopFour));
+            }
+          }
           expectedStartDate.setDate(expectedStartDate.getDate() - 7);
           const expectedDateString = `${expectedStartDate.getFullYear()}-${String(expectedStartDate.getMonth() + 1).padStart(2, "0")}-${String(expectedStartDate.getDate()).padStart(2, "0")}`;
 
-          if (parsed.fixtures[0].date !== expectedDateString) {
+          if (persistedLeagueFixtures[0].date !== expectedDateString) {
             isValidSchedule = false;
           } else {
             const matchCountsByDate: Record<string, number> = {};
-            for (const m of parsed.fixtures) {
+            for (const m of persistedLeagueFixtures) {
               if (!m.date) { isValidSchedule = false; break; }
               matchCountsByDate[m.date] = (matchCountsByDate[m.date] || 0) + 1;
               if (matchCountsByDate[m.date] > 2) {
@@ -874,6 +950,32 @@ function OverviewPageContent() {
           setFixtures(regeneratedFixtures);
           setStandings(calculateStandings(regeneratedFixtures));
           localStorage.setItem(`ipl_career_${userTeamId}`, JSON.stringify(parsed));
+        }
+        const archivedFixtureIds = (parsed.fixtures as Match[])
+          .filter((fixture) => fixture.simulation && !hasArchivedDeliveries(fixture.simulation))
+          .map((fixture) => fixture.id);
+        if (archivedFixtureIds.length > 0) {
+          void loadMatchSimulations(matchArchiveCareerId, archivedFixtureIds)
+            .then((archived) => {
+              if (Object.keys(archived).length === 0) return;
+              setFixtures((current) => {
+                const hydrated = current.map((fixture) => (
+                  archived[fixture.id]
+                    ? { ...fixture, simulation: archived[fixture.id] }
+                    : fixture
+                ));
+                fixturesRef.current = hydrated;
+                return hydrated;
+              });
+              setActiveScorecard((current) => (
+                current && archived[current.id]
+                  ? { ...current, simulation: archived[current.id] }
+                  : current
+              ));
+            })
+            .catch((error) => {
+              console.error("Unable to hydrate ball-by-ball match archives:", error);
+            });
         }
         if (parsed.playerStats) {
           playerStatsRef.current = parsed.playerStats;
@@ -1052,8 +1154,33 @@ function OverviewPageContent() {
         ?? teamTactics?.preset
         ?? "custom",
     };
+    if (Array.isArray(currentState.fixtures)) {
+      const alreadySavedSimulationKeys = new Set(
+        (Array.isArray(latestSavedState.fixtures) ? latestSavedState.fixtures as Match[] : [])
+          .filter((fixture) => fixture.simulation)
+          .map((fixture) => `${fixture.id}:${fixture.simulation?.version}:${fixture.simulation?.seed}`),
+      );
+      const completeSimulations = (currentState.fixtures as Match[])
+        .filter((fixture) => (
+          fixture.simulation
+          && hasArchivedDeliveries(fixture.simulation)
+          && !alreadySavedSimulationKeys.has(
+            `${fixture.id}:${fixture.simulation.version}:${fixture.simulation.seed}`,
+          )
+        ))
+        .map((fixture) => fixture.simulation!);
+      if (completeSimulations.length > 0) {
+        void saveMatchSimulations(matchArchiveCareerId, completeSimulations)
+          .catch((error) => console.error("Unable to archive ball-by-ball match records:", error));
+      }
+      currentState.fixtures = (currentState.fixtures as Match[]).map((fixture) => (
+        fixture.simulation
+          ? { ...fixture, simulation: compactMatchSimulation(fixture.simulation) }
+          : fixture
+      ));
+    }
     localStorage.setItem(storageKey, JSON.stringify(currentState));
-  }, [userTeamId, fixtures, standings, playerStats, inbox, battingFirstXI, bowlingFirstXI, battingFirstImpactSubs, bowlingFirstImpactSubs, battingFirstImpactPlayerId, battingFirstOutgoingPlayerId, battingFirstImpactBattingPosition, bowlingFirstImpactPlayerId, bowlingFirstOutgoingPlayerId, bowlingFirstImpactBattingPosition, teamTactics, teamLeadership, aiTeamLeadership, shortlist, retentionDeadline]);
+  }, [userTeamId, fixtures, standings, playerStats, inbox, battingFirstXI, bowlingFirstXI, battingFirstImpactSubs, bowlingFirstImpactSubs, battingFirstImpactPlayerId, battingFirstOutgoingPlayerId, battingFirstImpactBattingPosition, bowlingFirstImpactPlayerId, bowlingFirstOutgoingPlayerId, bowlingFirstImpactBattingPosition, teamTactics, teamLeadership, aiTeamLeadership, shortlist, retentionDeadline, matchArchiveCareerId]);
 
   useEffect(() => {
     if (!isCareerLoaded || !userTeamId || (battingFirstXI.length === 0 && bowlingFirstXI.length === 0)) return;
@@ -1152,6 +1279,12 @@ function OverviewPageContent() {
   // fallback so a career can still initialize if malformed team data is loaded.
   const generateLeagueFixtures = (): Match[] => {
     if (!userTeam) return [];
+    const withKnockouts = (leagueFixtures: Match[]) => {
+      const finalLeagueDate = leagueFixtures[leagueFixtures.length - 1]?.date;
+      return finalLeagueDate
+        ? [...leagueFixtures, ...generateKnockoutFixtures(finalLeagueDate, currentSeason)]
+        : leagueFixtures;
+    };
 
     const previousSeason = simulatedLeagueHistory.find((season) => season.season === currentSeason - 1)
       ?? HISTORICAL_LEAGUE_HISTORY.find((season) => season.season === currentSeason - 1);
@@ -1161,7 +1294,7 @@ function OverviewPageContent() {
     }
 
     try {
-      return generateBalancedLeagueFixtures(Object.keys(teams), currentSeason, reigningChampionTeamId, fixtureSeed);
+      return withKnockouts(generateBalancedLeagueFixtures(Object.keys(teams), currentSeason, reigningChampionTeamId, fixtureSeed));
     } catch (error) {
       console.error("Balanced fixture generation failed; using legacy scheduler.", error);
     }
@@ -1383,7 +1516,7 @@ function OverviewPageContent() {
       }
 
       if (success) {
-        return scheduled;
+        return withKnockouts(scheduled);
       }
     }
 
@@ -1472,7 +1605,7 @@ function OverviewPageContent() {
       }
 
       if (success) {
-        return scheduled;
+        return withKnockouts(scheduled);
       }
     }
 
@@ -1573,7 +1706,681 @@ function OverviewPageContent() {
     ).modifier;
   };
 
+  const getMatchConditions = (match: Match): MatchGroundConditions | null => {
+    const stadium = getHomeStadium(match.teamA);
+    if (!stadium) return null;
+    const selectedPitchId = homePitchSelections[stadium.teamId] ?? stadium.defaultPitchId;
+    const pitch = getCuratorPitch(selectedPitchId)
+      ?? (customPitchesByTeam[stadium.teamId] ?? []).find((candidate) => candidate.id === selectedPitchId)
+      ?? getDefaultCuratorPitch(stadium.teamId);
+    const boundaries = homeBoundaryDimensions[stadium.teamId]
+      ?? stadium.defaultBoundaryDimensions;
+    const outfield = homeOutfieldSettings[stadium.teamId]
+      ?? getDefaultOutfieldSettings(stadium.teamId);
+    if (!pitch || !outfield) return null;
+    const groundImpact = calculateGroundScoringImpact(
+      stadium.teamId,
+      boundaries,
+      outfield,
+    );
+    return {
+      homeTeamId: match.teamA,
+      stadiumId: stadium.id,
+      stadiumName: stadium.name,
+      pitch,
+      boundaries,
+      outfield,
+      outfieldSpeedRating: calculateOutfieldSpeedRating(stadium.teamId, outfield),
+      adjustedExpectedScore: {
+        min: Math.round(pitch.expectedFirstInningsScore.min * groundImpact.modifier),
+        max: Math.round(pitch.expectedFirstInningsScore.max * groundImpact.modifier),
+      },
+      groundScoringModifier: groundImpact.modifier,
+      // Deliberately isolated so a future league/season rule can change it
+      // without modifying delivery generation.
+      chasingScoringBonus: 0.05,
+    };
+  };
+
+  const getTeamSquad = (teamId: string) => {
+    const configuredIds = teams[teamId]?.squad ?? [];
+    const configured = configuredIds
+      .map((playerId) => players[playerId])
+      .filter((player): player is Player => Boolean(player) && player.currentTeamId === teamId);
+    if (configured.length > 0) return configured;
+    return Object.values(players).filter((player) => player.currentTeamId === teamId);
+  };
+
+  const toMatchLineupPlan = (
+    startingXI: readonly string[],
+    impactSubs: readonly string[],
+    impactPlayerId: string | null | undefined,
+    outgoingPlayerId: string | null | undefined,
+    impactBattingPosition: number | null | undefined,
+    captainId: string | null | undefined,
+    viceCaptainId: string | null | undefined,
+  ): MatchLineupPlan => ({
+    startingXI: [...startingXI],
+    impactSubs: [...impactSubs],
+    plannedImpactPlayerId: impactPlayerId,
+    plannedOutgoingPlayerId: outgoingPlayerId,
+    plannedImpactBattingPosition: impactBattingPosition,
+    captainId,
+    viceCaptainId,
+  });
+
+  const tuneAiPlanForPitch = (
+    startingXI: readonly string[],
+    impactSubs: readonly string[],
+    plan: LineupPlan,
+    pitch: MatchGroundConditions["pitch"] | undefined,
+    protectedIds: ReadonlySet<string>,
+  ) => {
+    if (!pitch) return { startingXI: [...startingXI], impactSubs: [...impactSubs] };
+    const favouredStyle = pitch.favours.includes("spin-bowlers")
+      ? "Spinner"
+      : (
+          pitch.favours.includes("pace-bowlers")
+          || pitch.favours.includes("high-rated-pace-bowlers")
+        )
+        ? "Pacer"
+        : null;
+    if (!favouredStyle) return { startingXI: [...startingXI], impactSubs: [...impactSubs] };
+
+    const targetOptions = favouredStyle === "Spinner" ? 2 : 3;
+    let nextXI = [...startingXI];
+    let nextSubs = [...impactSubs];
+    const squad = getTeamSquad(players[nextXI[0]]?.currentTeamId ?? "");
+    const candidates = squad.map(playerToLineupCandidate);
+    const isStyle = (player: Player | undefined) => Boolean(
+      player
+      && (
+        player.bowlingStyle === favouredStyle
+        || (favouredStyle === "Spinner" && player.role === "Spin Bowler")
+        || (favouredStyle === "Pacer" && player.role === "Pace Bowler")
+      )
+      && player.currentBowling >= 68
+    );
+    const countStyleOptions = () => nextXI
+      .map((id) => players[id])
+      .filter(isStyle)
+      .length;
+
+    while (countStyleOptions() < targetOptions) {
+      const incoming = squad
+        .filter((player) => !nextXI.includes(player.id) && isStyle(player))
+        .sort((left, right) => (
+          right.currentBowling - left.currentBowling
+          || getPlayerRating(right) - getPlayerRating(left)
+        ))[0];
+      if (!incoming) break;
+
+      const keepers = nextXI.filter((id) => {
+        const player = players[id];
+        return player?.role === "WK-Batsman" || player?.isWicketkeeper || player?.isPartTimeWk;
+      });
+      const outgoing = nextXI
+        .map((id, index) => ({ player: players[id], index }))
+        .filter(({ player }) => Boolean(
+          player
+          && !protectedIds.has(player.id)
+          && (player.reputation ?? 0) < 10
+          && !isStyle(player)
+          && !(
+            (player.role === "WK-Batsman" || player.isWicketkeeper || player.isPartTimeWk)
+            && keepers.length <= 1
+          )
+          && player.currentBowling <= incoming.currentBowling + 2
+        ))
+        .sort((left, right) => (
+          Number(right.index >= 7) - Number(left.index >= 7)
+          || left.player.currentBowling - right.player.currentBowling
+          || getPlayerRating(left.player) - getPlayerRating(right.player)
+        ))[0];
+      if (!outgoing?.player) break;
+
+      const proposed = [...nextXI];
+      proposed[outgoing.index] = incoming.id;
+      if (!validateLineup(proposed, candidates, plan).isValid) break;
+      nextXI = proposed;
+      nextSubs = nextSubs
+        .filter((id) => id !== incoming.id)
+        .concat(outgoing.player.id)
+        .slice(0, 5);
+    }
+
+    return { startingXI: nextXI, impactSubs: nextSubs };
+  };
+
+  const buildTeamMatchPlans = (
+    teamId: string,
+    userSelection?: {
+      battingFirstXI: string[];
+      bowlingFirstXI: string[];
+      battingFirstImpactSubs: string[];
+      bowlingFirstImpactSubs: string[];
+    },
+    conditions?: MatchGroundConditions,
+  ): MatchTeamPlans => {
+    const isUserControlled = teamId === userTeamId;
+    if (isUserControlled) {
+      const selection = userSelection ?? {
+        battingFirstXI,
+        bowlingFirstXI,
+        battingFirstImpactSubs,
+        bowlingFirstImpactSubs,
+      };
+      return {
+        teamId,
+        isUserControlled: true,
+        tactics: teamTactics,
+        battingFirst: toMatchLineupPlan(
+          selection.battingFirstXI,
+          selection.battingFirstImpactSubs,
+          userSelection ? null : battingFirstImpactPlayerId,
+          userSelection ? null : battingFirstOutgoingPlayerId,
+          userSelection ? null : battingFirstImpactBattingPosition,
+          teamLeadership.captainId,
+          teamLeadership.viceCaptainId,
+        ),
+        bowlingFirst: toMatchLineupPlan(
+          selection.bowlingFirstXI,
+          selection.bowlingFirstImpactSubs,
+          userSelection ? null : bowlingFirstImpactPlayerId,
+          userSelection ? null : bowlingFirstOutgoingPlayerId,
+          userSelection ? null : bowlingFirstImpactBattingPosition,
+          teamLeadership.captainId,
+          teamLeadership.viceCaptainId,
+        ),
+      };
+    }
+
+    const squad = getTeamSquad(teamId);
+    const leadership = aiTeamLeadership[teamId];
+    const selection = buildAutomaticLineupSelection(squad, {
+      captainId: leadership?.captainId,
+      viceCaptainId: leadership?.viceCaptainId,
+      useProvisionalCaptain: !leadership?.captainId,
+    });
+    const recommended = buildAiMatchLineups(squad, {
+      captainId: leadership?.captainId,
+      viceCaptainId: leadership?.viceCaptainId,
+      useProvisionalCaptain: !leadership?.captainId,
+    });
+    const pitch = conditions?.pitch ?? getDefaultCuratorPitch(teamId);
+    const protectedIds = new Set([
+      leadership?.captainId,
+      leadership?.viceCaptainId,
+      recommended.battingFirst.captainId,
+      recommended.battingFirst.viceCaptainId,
+      recommended.bowlingFirst.captainId,
+      recommended.bowlingFirst.viceCaptainId,
+    ].filter((id): id is string => Boolean(id)));
+    const tunedBattingFirst = tuneAiPlanForPitch(
+      selection.battingFirstXI,
+      selection.battingFirstImpactSubs,
+      "battingFirst",
+      pitch,
+      protectedIds,
+    );
+    const tunedBowlingFirst = tuneAiPlanForPitch(
+      selection.bowlingFirstXI,
+      selection.bowlingFirstImpactSubs,
+      "bowlingFirst",
+      pitch,
+      protectedIds,
+    );
+    return {
+      teamId,
+      isUserControlled: false,
+      tactics: pitch
+        ? createIntelligentAiTactics(teams[teamId], pitch)
+        : createTeamTactics(teams[teamId]?.aiPersonality === "Aggressive" ? "Ultra Aggressive" : "Balanced"),
+      battingFirst: toMatchLineupPlan(
+        tunedBattingFirst.startingXI,
+        tunedBattingFirst.impactSubs,
+        tunedBattingFirst.impactSubs.includes(recommended.battingFirst.impactPlayerId ?? "")
+          ? recommended.battingFirst.impactPlayerId
+          : null,
+        tunedBattingFirst.startingXI.includes(recommended.battingFirst.likelyOutgoingPlayerId ?? "")
+          ? recommended.battingFirst.likelyOutgoingPlayerId
+          : null,
+        recommended.battingFirst.impactBattingPosition,
+        recommended.battingFirst.captainId,
+        recommended.battingFirst.viceCaptainId,
+      ),
+      bowlingFirst: toMatchLineupPlan(
+        tunedBowlingFirst.startingXI,
+        tunedBowlingFirst.impactSubs,
+        tunedBowlingFirst.impactSubs.includes(recommended.bowlingFirst.impactPlayerId ?? "")
+          ? recommended.bowlingFirst.impactPlayerId
+          : null,
+        tunedBowlingFirst.startingXI.includes(recommended.bowlingFirst.likelyOutgoingPlayerId ?? "")
+          ? recommended.bowlingFirst.likelyOutgoingPlayerId
+          : null,
+        recommended.bowlingFirst.impactBattingPosition,
+        recommended.bowlingFirst.captainId,
+        recommended.bowlingFirst.viceCaptainId,
+      ),
+    };
+  };
+
+  const getRecentFormAdjustments = (match: Match): Record<string, number> => {
+    const involvedTeamIds = new Set([match.teamA, match.teamB]);
+    const recent = fixtures
+      .filter((fixture) => (
+        fixture.played
+        && fixture.simulation
+        && (involvedTeamIds.has(fixture.teamA) || involvedTeamIds.has(fixture.teamB))
+      ))
+      .slice(-20);
+    const performances = new Map<string, number[]>();
+    recent.forEach((fixture) => {
+      const matchPerformances = new Map<string, number>();
+      fixture.simulation?.innings.forEach((innings) => {
+        innings.batting.forEach((entry) => {
+          if (entry.didNotBat) return;
+          matchPerformances.set(
+            entry.id,
+            (matchPerformances.get(entry.id) ?? 0)
+              + Math.min(5, Math.max(-5, (entry.runs - 24) / 12)),
+          );
+        });
+        innings.bowling.forEach((entry) => {
+          if (entry.balls === 0) return;
+          const economy = entry.runsConceded / (entry.balls / 6);
+          matchPerformances.set(
+            entry.id,
+            (matchPerformances.get(entry.id) ?? 0)
+              + Math.min(5, Math.max(-5, entry.wickets * 1.3 + (8 - economy) * 0.4)),
+          );
+        });
+      });
+      matchPerformances.forEach((performance, playerId) => {
+        const values = performances.get(playerId) ?? [];
+        values.push(Math.min(5, Math.max(-5, performance)));
+        performances.set(playerId, values.slice(-5));
+      });
+    });
+    return Object.fromEntries(Array.from(performances, ([playerId, values]) => [
+      playerId,
+      Math.max(-3, Math.min(3, values.reduce((sum, value) => sum + value, 0) / values.length)),
+    ]));
+  };
+
+  const simulationToLegacyScorecard = (
+    simulation: MatchSimulationRecord,
+    teamA: string,
+    teamB: string,
+  ): MatchScorecard => {
+    const teamAInnings = simulation.innings.find((innings) => innings.battingTeamId === teamA)!;
+    const teamBInnings = simulation.innings.find((innings) => innings.battingTeamId === teamB)!;
+    const convertInnings = (innings: MatchInnings): InningsScorecard => ({
+      batting: innings.batting.map((entry) => ({
+        id: entry.id,
+        name: entry.name,
+        runs: entry.runs,
+        balls: entry.balls,
+        fours: entry.fours,
+        sixes: entry.sixes,
+        dismissal: entry.dismissal,
+      })),
+      bowling: innings.bowling.map((entry) => ({
+        id: entry.id,
+        name: entry.name,
+        overs: entry.overs,
+        wickets: entry.wickets,
+        runsConceded: entry.runsConceded,
+        maidens: entry.maidens,
+        wides: entry.wides,
+        noBalls: entry.noBalls,
+      })),
+      extras: innings.extras.total,
+    });
+    return {
+      inningsA: convertInnings(teamAInnings),
+      inningsB: convertInnings(teamBInnings),
+    };
+  };
+
+  const resolveKnockoutBracket = (
+    sourceFixtures: Match[],
+    leagueTable: LeagueStandings[],
+  ): Match[] => {
+    const leagueComplete = sourceFixtures.filter((fixture) => !fixture.stage)
+      .every((fixture) => fixture.played);
+    if (!leagueComplete) return sourceFixtures;
+
+    const topFour = leagueTable.slice(0, 4).map((entry) => entry.teamId);
+    const qualifier1 = sourceFixtures.find((fixture) => fixture.stage === "qualifier1");
+    const eliminator = sourceFixtures.find((fixture) => fixture.stage === "eliminator");
+    const qualifier2 = sourceFixtures.find((fixture) => fixture.stage === "qualifier2");
+    const qualifier1Winner = qualifier1?.played ? qualifier1.winner : undefined;
+    const qualifier1Loser = qualifier1Winner && qualifier1
+      ? qualifier1.teamA === qualifier1Winner ? qualifier1.teamB : qualifier1.teamA
+      : undefined;
+    const eliminatorWinner = eliminator?.played ? eliminator.winner : undefined;
+    const qualifier2Winner = qualifier2?.played ? qualifier2.winner : undefined;
+
+    return sourceFixtures.map((fixture) => {
+      if (fixture.stage === "qualifier1" && topFour.length === 4 && !fixture.played) {
+        return { ...fixture, teamA: topFour[0], teamB: topFour[1] };
+      }
+      if (fixture.stage === "eliminator" && topFour.length === 4 && !fixture.played) {
+        return { ...fixture, teamA: topFour[2], teamB: topFour[3] };
+      }
+      if (
+        fixture.stage === "qualifier2"
+        && !fixture.played
+        && qualifier1Loser
+        && eliminatorWinner
+      ) {
+        return { ...fixture, teamA: qualifier1Loser, teamB: eliminatorWinner };
+      }
+      if (
+        fixture.stage === "final"
+        && !fixture.played
+        && qualifier1Winner
+        && qualifier2Winner
+      ) {
+        return { ...fixture, teamA: qualifier1Winner, teamB: qualifier2Winner };
+      }
+      return fixture;
+    });
+  };
+
+  const buildSimulatedMatch = (
+    match: Match,
+    userSelection?: {
+      battingFirstXI: string[];
+      bowlingFirstXI: string[];
+      battingFirstImpactSubs: string[];
+      bowlingFirstImpactSubs: string[];
+    },
+  ): Match => {
+    if (!FIXTURE_SIMULATION_ENABLED) {
+      throw new Error("Fixture simulation is not currently enabled.");
+    }
+    const conditions = getMatchConditions(match);
+    const teamA = teams[match.teamA];
+    const teamB = teams[match.teamB];
+    if (!conditions || !teamA || !teamB) {
+      throw new Error("The match stadium, pitch or team data is incomplete.");
+    }
+    const simulation = simulateInstantMatch({
+      fixtureId: match.id,
+      matchNumber: match.matchNumber,
+      date: match.date,
+      time: match.time,
+      seed: `${currentSeason}:${fixtureSeed}:${match.id}`,
+      teamA,
+      teamB,
+      players,
+      teamAPlans: buildTeamMatchPlans(match.teamA, userSelection, conditions),
+      teamBPlans: buildTeamMatchPlans(match.teamB, userSelection, conditions),
+      conditions,
+      formAdjustments: getRecentFormAdjustments(match),
+    });
+    if (match.stage && !simulation.winnerId) {
+      const superOverHash = Array.from(`${fixtureSeed}:${match.id}`).reduce(
+        (value, character) => Math.imul(value ^ character.charCodeAt(0), 16777619),
+        2166136261,
+      );
+      const superOverWinnerId = (superOverHash >>> 0) % 2 === 0 ? match.teamA : match.teamB;
+      simulation.winnerId = superOverWinnerId;
+      simulation.resultText = `${teams[superOverWinnerId].name} won after a Super Over.`;
+      simulation.summary = [
+        ...simulation.summary.slice(0, -2),
+        simulation.resultText,
+        ...simulation.summary.slice(-1),
+      ];
+    }
+    const teamAInnings = simulation.innings.find((innings) => innings.battingTeamId === match.teamA)!;
+    const teamBInnings = simulation.innings.find((innings) => innings.battingTeamId === match.teamB)!;
+    return {
+      ...match,
+      played: true,
+      winner: simulation.winnerId ?? undefined,
+      scoreA: {
+        runs: teamAInnings.runs,
+        wickets: teamAInnings.wickets,
+        overs: teamAInnings.overs,
+      },
+      scoreB: {
+        runs: teamBInnings.runs,
+        wickets: teamBInnings.wickets,
+        overs: teamBInnings.overs,
+      },
+      commentary: simulation.summary,
+      scorecard: simulationToLegacyScorecard(simulation, match.teamA, match.teamB),
+      simulation,
+    };
+  };
+
+  const commitSimulatedMatch = (
+    simulatedMatch: Match,
+    sourceFixtures = fixturesRef.current,
+    sourceStats = playerStatsRef.current,
+  ) => {
+    let nextFixtures = sourceFixtures.map((fixture) => (
+      fixture.id === simulatedMatch.id ? simulatedMatch : fixture
+    ));
+    const nextPlayerStats = Object.fromEntries(
+      Object.entries(sourceStats).map(([playerId, stats]) => [playerId, { ...stats }]),
+    ) as Record<string, PlayerStats>;
+    if (simulatedMatch.scorecard) {
+      accumulateStats(
+        simulatedMatch.scorecard,
+        simulatedMatch.teamA,
+        simulatedMatch.teamB,
+        nextPlayerStats,
+        simulatedMatch.simulation,
+      );
+    }
+    const nextStandings = calculateStandings(nextFixtures);
+    nextFixtures = resolveKnockoutBracket(nextFixtures, nextStandings);
+    fixturesRef.current = nextFixtures;
+    playerStatsRef.current = nextPlayerStats;
+    setFixtures(nextFixtures);
+    setPlayerStats(nextPlayerStats);
+    setStandings(nextStandings);
+    saveCareerState({
+      fixtures: nextFixtures,
+      playerStats: nextPlayerStats,
+      standings: nextStandings,
+    });
+    return { nextFixtures, nextPlayerStats, nextStandings };
+  };
+
+  const getUserLineupErrors = () => {
+    const squad = getTeamSquad(userTeamId);
+    const candidates = squad.map(playerToLineupCandidate);
+    const describe = (
+      plan: LineupPlan,
+      ids: readonly string[],
+      subs: readonly string[],
+      impactPlayerId: string | null,
+      outgoingPlayerId: string | null,
+    ) => {
+      const validation = validateLineup(ids, candidates, plan);
+      const label = plan === "battingFirst" ? "Bat-first XI" : "Bowl-first XI";
+      const problems: string[] = [];
+      if (new Set(ids).size !== ids.length) problems.push(`${label} contains the same player more than once.`);
+      if (validation.playerCount !== 11) problems.push(`${label} must contain exactly 11 eligible squad players.`);
+      if (validation.overseasCount > 4) problems.push(`${label} has ${validation.overseasCount} overseas players; the maximum is 4.`);
+      if (validation.wicketkeeperCount < 1) problems.push(`${label} needs a wicketkeeper.`);
+      const requiredBowlers = plan === "bowlingFirst" ? 5 : 4;
+      if (validation.bowlingOptionCount < requiredBowlers) {
+        problems.push(`${label} needs at least ${requiredBowlers} recognised bowling options.`);
+      }
+      if (subs.length !== 5 || new Set(subs).size !== subs.length) {
+        problems.push(`${label} must name five different Impact substitutes.`);
+      }
+      if (subs.some((id) => ids.includes(id) || !candidates.some((candidate) => candidate.id === id))) {
+        problems.push(`${label} has an ineligible Impact substitute.`);
+      }
+      const selectedImpact = impactPlayerId ? players[impactPlayerId] : null;
+      const selectedOutgoing = outgoingPlayerId ? players[outgoingPlayerId] : null;
+      const overseasStarters = ids.filter((id) => players[id]?.nationality === "Overseas").length;
+      if (
+        selectedImpact?.nationality === "Overseas"
+        && overseasStarters - Number(selectedOutgoing?.nationality === "Overseas") >= 4
+      ) {
+        problems.push(`${label}'s selected Impact change would introduce a fifth overseas player.`);
+      }
+      return problems;
+    };
+    return [
+      ...describe(
+        "battingFirst",
+        battingFirstXI,
+        battingFirstImpactSubs,
+        battingFirstImpactPlayerId,
+        battingFirstOutgoingPlayerId,
+      ),
+      ...describe(
+        "bowlingFirst",
+        bowlingFirstXI,
+        bowlingFirstImpactSubs,
+        bowlingFirstImpactPlayerId,
+        bowlingFirstOutgoingPlayerId,
+      ),
+    ];
+  };
+
+  const getUserPreparationWarnings = (match: Match) => {
+    const conditions = getMatchConditions(match);
+    if (!conditions) return ["The selected stadium conditions could not be loaded."];
+    const warnings = [
+      ...getMatchPreparationWarnings(
+        battingFirstXI.map((id) => players[id]).filter((player): player is Player => Boolean(player)),
+        teamTactics,
+        conditions,
+      ),
+      ...getMatchPreparationWarnings(
+        bowlingFirstXI.map((id) => players[id]).filter((player): player is Player => Boolean(player)),
+        teamTactics,
+        conditions,
+      ),
+    ];
+    return Array.from(new Set(warnings));
+  };
+
+  const runFixtureSimulation = (
+    matchId: string,
+    userSelection?: {
+      battingFirstXI: string[];
+      bowlingFirstXI: string[];
+      battingFirstImpactSubs: string[];
+      bowlingFirstImpactSubs: string[];
+    },
+  ) => {
+    const match = fixturesRef.current.find((fixture) => fixture.id === matchId);
+    if (!match || match.played) return;
+    try {
+      const simulatedMatch = buildSimulatedMatch(match, userSelection);
+      commitSimulatedMatch(simulatedMatch);
+      setPendingMatchPreparation(null);
+      setActiveCommentary(null);
+      setActiveMatchResultView("summary");
+      setActiveScorecard(simulatedMatch);
+      showToast(simulatedMatch.simulation?.resultText ?? "Match simulation completed.");
+    } catch (error) {
+      console.error("Unable to simulate fixture:", error);
+      showToast(error instanceof Error ? error.message : "Unable to simulate this fixture.");
+    }
+  };
+
+  const prepareUserFixtureSimulation = (match: Match) => {
+    const errors = getUserLineupErrors();
+    const warnings = errors.length === 0 ? getUserPreparationWarnings(match) : [];
+    if (errors.length > 0 || warnings.length > 0) {
+      setPendingMatchPreparation({ matchId: match.id, errors, warnings });
+      return;
+    }
+    runFixtureSimulation(match.id);
+  };
+
+  const simulateAiFixturesOnDate = (date: string) => {
+    let nextFixtures = [...fixturesRef.current];
+    const nextPlayerStats = Object.fromEntries(
+      Object.entries(playerStatsRef.current).map(([playerId, stats]) => [playerId, { ...stats }]),
+    ) as Record<string, PlayerStats>;
+    const matches = nextFixtures.filter((match) => (
+      !match.played
+      && match.date === date
+      && match.teamA !== userTeamId
+      && match.teamB !== userTeamId
+    ));
+
+    matches.forEach((match) => {
+      const simulatedMatch = buildSimulatedMatch(match);
+      nextFixtures = nextFixtures.map((fixture) => (
+        fixture.id === match.id ? simulatedMatch : fixture
+      ));
+      if (simulatedMatch.scorecard) {
+        accumulateStats(
+          simulatedMatch.scorecard,
+          simulatedMatch.teamA,
+          simulatedMatch.teamB,
+          nextPlayerStats,
+          simulatedMatch.simulation,
+        );
+      }
+    });
+
+    if (matches.length > 0) {
+      const nextStandings = calculateStandings(nextFixtures);
+      nextFixtures = resolveKnockoutBracket(nextFixtures, nextStandings);
+      fixturesRef.current = nextFixtures;
+      playerStatsRef.current = nextPlayerStats;
+      setFixtures(nextFixtures);
+      setPlayerStats(nextPlayerStats);
+      setStandings(nextStandings);
+      saveCareerState({
+        fixtures: nextFixtures,
+        playerStats: nextPlayerStats,
+        standings: nextStandings,
+      });
+    }
+    return { nextFixtures, nextPlayerStats, simulatedCount: matches.length };
+  };
+
+  const autoFixAndSimulatePendingMatch = () => {
+    if (!pendingMatchPreparation) return;
+    const squad = getTeamSquad(userTeamId);
+    const selection = buildAutomaticLineupSelection(squad, {
+      captainId: teamLeadership.captainId,
+      viceCaptainId: teamLeadership.viceCaptainId,
+      useProvisionalCaptain: !teamLeadership.captainId,
+    });
+    setBattingFirstXI(selection.battingFirstXI);
+    setBowlingFirstXI(selection.bowlingFirstXI);
+    setBattingFirstImpactSubs(selection.battingFirstImpactSubs);
+    setBowlingFirstImpactSubs(selection.bowlingFirstImpactSubs);
+    setBattingFirstImpactPlayerId(null);
+    setBattingFirstOutgoingPlayerId(null);
+    setBattingFirstImpactBattingPosition(null);
+    setBowlingFirstImpactPlayerId(null);
+    setBowlingFirstOutgoingPlayerId(null);
+    setBowlingFirstImpactBattingPosition(null);
+    saveCareerState({
+      ...selection,
+      battingFirstImpactPlayerId: null,
+      battingFirstOutgoingPlayerId: null,
+      battingFirstImpactBattingPosition: null,
+      bowlingFirstImpactPlayerId: null,
+      bowlingFirstOutgoingPlayerId: null,
+      bowlingFirstImpactBattingPosition: null,
+    });
+    runFixtureSimulation(pendingMatchPreparation.matchId, selection);
+  };
+
   const handleSimulateNextRound = () => {
+    if (!FIXTURE_SIMULATION_ENABLED) {
+      showToast("Fixture simulation is not currently enabled.");
+      return;
+    }
     if (dayTickerRef.current?.isRunning()) {
       showToast("Stop the calendar simulation before simulating a round manually.");
       return;
@@ -1782,15 +2589,16 @@ function OverviewPageContent() {
     });
 
     const nextStandings = calculateStandings(nextFixtures);
+    const resolvedFixtures = resolveKnockoutBracket(nextFixtures, nextStandings);
 
-    fixturesRef.current = nextFixtures;
+    fixturesRef.current = resolvedFixtures;
     playerStatsRef.current = nextPlayerStats;
-    setFixtures(nextFixtures);
+    setFixtures(resolvedFixtures);
     setPlayerStats(nextPlayerStats);
     setStandings(nextStandings);
 
     saveCareerState({
-      fixtures: nextFixtures,
+      fixtures: resolvedFixtures,
       playerStats: nextPlayerStats,
       standings: nextStandings
     });
@@ -1800,6 +2608,9 @@ function OverviewPageContent() {
 
   // Day-by-day career ticking simulation actions & helpers
   const simulateMatchesForDate = (dateStr: string, currentFixtures: Match[], currentPlayerStats: Record<string, PlayerStats>) => {
+    if (!FIXTURE_SIMULATION_ENABLED) {
+      return { nextFixtures: currentFixtures, nextPlayerStats: currentPlayerStats, simulated: false };
+    }
     const dayMatches = currentFixtures.filter(f => f.date === dateStr && !f.played);
     if (dayMatches.length === 0) return { nextFixtures: currentFixtures, nextPlayerStats: currentPlayerStats, simulated: false };
 
@@ -2003,6 +2814,7 @@ function OverviewPageContent() {
     dayTickerRef.current?.stop();
     skipStartDateRef.current = null;
     skipTargetDateRef.current = null;
+    autoSimUserFixturesRef.current = false;
     setIsCalendarClosing(true);
     setIsSimulatingDays(false);
     if (calendarAnimationTimeoutRef.current) clearTimeout(calendarAnimationTimeoutRef.current);
@@ -2021,13 +2833,46 @@ function OverviewPageContent() {
     } = getCareerCalendarStep(currentDateString, unplayedMatches);
     const isCatchingUpCurrentDate = nextDateString <= currentDateString;
 
-    // Until the match engine is available, every fixture requires an external
-    // result. Pause on matchday instead of repeatedly ticking the same overdue
-    // date or advancing beyond an unresolved game.
     if (fixtureBlocksProgress) {
+      if (!FIXTURE_SIMULATION_ENABLED) {
+        useGameStore.setState({ currentDate: nextDateString });
+        stopSimulating();
+        showToast("Paused before the fixtures begin. Fixture simulation is not currently enabled.");
+        return;
+      }
+      const { nextFixtures } = simulateAiFixturesOnDate(nextDateString);
       useGameStore.setState({ currentDate: nextDateString });
-      stopSimulating();
-      showToast("Paused at matchday: Fixtures need the game engine before the calendar can continue.");
+      const userFixture = nextFixtures.find((match) => (
+        !match.played
+        && match.date === nextDateString
+        && (match.teamA === userTeamId || match.teamB === userTeamId)
+      ));
+      if (userFixture) {
+        const skipTargetDate = skipTargetDateRef.current;
+        if (
+          autoSimUserFixturesRef.current
+          && skipTargetDate
+          && nextDateString <= skipTargetDate
+        ) {
+          try {
+            const simulatedMatch = buildSimulatedMatch(userFixture);
+            commitSimulatedMatch(
+              simulatedMatch,
+              nextFixtures,
+              playerStatsRef.current,
+            );
+          } catch (error) {
+            console.error("Unable to auto-simulate calendar fixture:", error);
+            stopSimulating();
+            showToast(error instanceof Error ? error.message : "Unable to auto-simulate your fixture.");
+          }
+          return;
+        }
+        stopSimulating();
+        setActiveTab("season");
+        router.push("/game/overview?tab=season&subtab=fixtures", { scroll: false });
+        showToast("Paused at matchday. Review your plans and simulate your fixture.");
+      }
       return;
     }
 
@@ -2060,8 +2905,6 @@ function OverviewPageContent() {
       return;
     }
 
-    // Dates advance only; fixtures remain untouched until a future result
-    // system supplies their scorecards.
     if (!isCatchingUpCurrentDate) {
       // Commit the date only after that day's match results are safely persisted.
       useGameStore.setState({ currentDate: nextDateString });
@@ -2075,7 +2918,21 @@ function OverviewPageContent() {
   const startSimulating = useCallback(() => {
     const simulationDate = useGameStore.getState().currentDate;
     if (isCareerCalendarAtImpasse(simulationDate, fixturesRef.current)) {
-      showToast("Continue unavailable: Fixtures need the game engine before the calendar can progress.");
+      const unresolved = fixturesRef.current.find((match) => (
+        !match.played
+        && (match.date ?? "") <= simulationDate
+        && (match.teamA === userTeamId || match.teamB === userTeamId)
+      ));
+      if (unresolved) {
+        setActiveTab("season");
+        router.push("/game/overview?tab=season&subtab=fixtures", { scroll: false });
+        showToast("Simulate your match before continuing the calendar.");
+      } else {
+        simulateAiFixturesOnDate(simulationDate);
+        if (dayTickerRef.current?.start()) {
+          setIsSimulatingDays(true);
+        }
+      }
       return;
     }
 
@@ -2087,16 +2944,28 @@ function OverviewPageContent() {
     if (dayTickerRef.current?.start()) {
       setIsSimulatingDays(true);
     }
-  }, []);
+  }, [router, userTeamId]);
 
-  const skipToCalendarDate = useCallback((targetDate: string) => {
+  const skipToCalendarDate = useCallback((targetDate: string, autoSimUserFixtures = false) => {
     const simulationDate = useGameStore.getState().currentDate;
     if (targetDate <= simulationDate) return;
     skipStartDateRef.current = simulationDate;
     skipTargetDateRef.current = targetDate;
+    autoSimUserFixturesRef.current = autoSimUserFixtures;
     setPendingSkipTargetDate(null);
     startSimulating();
   }, [startSimulating]);
+
+  const countUserFixturesBeforeCalendarDate = (targetDate: string) => {
+    const simulationDate = useGameStore.getState().currentDate;
+    return fixturesRef.current.filter((match) => (
+      !match.played
+      && Boolean(match.date)
+      && (match.date ?? "") > simulationDate
+      && (match.date ?? "") <= targetDate
+      && (match.teamA === userTeamId || match.teamB === userTeamId)
+    )).length;
+  };
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -2156,7 +3025,7 @@ function OverviewPageContent() {
       runTotals[t.id] = { scored: 0, facedBalls: 0, conceded: 0, bowledBalls: 0 };
     });
 
-    allMatches.filter(m => m.played).forEach(m => {
+    allMatches.filter(m => m.played && !m.stage).forEach(m => {
       const recA = records[m.teamA];
       const recB = records[m.teamB];
       if (!recA || !recB) return;
@@ -2219,7 +3088,13 @@ function OverviewPageContent() {
   };
 
   // Accumulate simulated match scorecard stats into players career stats
-  const accumulateStats = (scorecard: MatchScorecard, teamA: string, teamB: string, newStats: Record<string, PlayerStats>) => {
+  const accumulateStats = (
+    scorecard: MatchScorecard,
+    teamA: string,
+    teamB: string,
+    newStats: Record<string, PlayerStats>,
+    simulation?: MatchSimulationRecord,
+  ) => {
     const addBatting = (bat: ScorecardPlayer, teamId: string) => {
       if (!newStats[bat.id]) {
         newStats[bat.id] = {
@@ -2237,7 +3112,7 @@ function OverviewPageContent() {
         };
       }
       const pStat = newStats[bat.id];
-      pStat.matches++;
+      if (!simulation) pStat.matches++;
       pStat.runs += bat.runs ?? 0;
       pStat.balls += bat.balls ?? 0;
       if ((bat.runs ?? 0) > pStat.highestScore) {
@@ -2264,7 +3139,13 @@ function OverviewPageContent() {
       const pStat = newStats[bowl.id];
       pStat.wickets += bowl.wickets ?? 0;
       pStat.runsConceded += bowl.runsConceded ?? 0;
-      pStat.oversBowled += bowl.overs ?? 0;
+      const oversToLegalBalls = (overs: number) => (
+        Math.floor(overs) * 6 + Math.round((overs - Math.floor(overs)) * 10)
+      );
+      pStat.oversBowled = oversFromBalls(
+        oversToLegalBalls(pStat.oversBowled)
+        + oversToLegalBalls(bowl.overs ?? 0),
+      );
 
       const currentBestWkts = parseInt(pStat.bestBowling.split("/")[0]) || 0;
       const currentBestRuns = parseInt(pStat.bestBowling.split("/")[1]) || 999;
@@ -2283,6 +3164,32 @@ function OverviewPageContent() {
     // Innings B is teamB batting, teamA bowling
     scorecard.inningsB.batting.forEach(b => addBatting(b, teamB));
     scorecard.inningsB.bowling.forEach(b => addBowling(b, teamA));
+
+    if (simulation) {
+      Object.values(simulation.lineups).forEach((lineup) => {
+        const participants = new Set([...lineup.startingXI, ...lineup.finalXI]);
+        participants.forEach((playerId) => {
+          const player = players[playerId];
+          if (!player) return;
+          if (!newStats[playerId]) {
+            newStats[playerId] = {
+              id: playerId,
+              name: player.name,
+              teamId: lineup.teamId,
+              runs: 0,
+              balls: 0,
+              wickets: 0,
+              runsConceded: 0,
+              oversBowled: 0,
+              matches: 0,
+              highestScore: 0,
+              bestBowling: "0/0",
+            };
+          }
+          newStats[playerId].matches++;
+        });
+      });
+    }
   };
 
 
@@ -2623,6 +3530,57 @@ function OverviewPageContent() {
       .sort((a,b) => b.wickets - a.wickets)
       .slice(0, 5);
   }, [playerStats]);
+
+  const bestBattingPerformances = useMemo(() => fixtures
+    .filter((match) => match.played && match.scorecard)
+    .flatMap((match) => [
+      ...match.scorecard!.inningsA.batting.map((performance) => ({
+        ...performance,
+        teamId: match.teamA,
+        opponentId: match.teamB,
+        matchNumber: match.matchNumber,
+      })),
+      ...match.scorecard!.inningsB.batting.map((performance) => ({
+        ...performance,
+        teamId: match.teamB,
+        opponentId: match.teamA,
+        matchNumber: match.matchNumber,
+      })),
+    ])
+    .filter((performance) => (performance.balls ?? 0) > 0)
+    .sort((left, right) => (
+      (right.runs ?? 0) - (left.runs ?? 0)
+      || (
+        ((right.runs ?? 0) / Math.max(1, right.balls ?? 0))
+        - ((left.runs ?? 0) / Math.max(1, left.balls ?? 0))
+      )
+      || (right.sixes ?? 0) - (left.sixes ?? 0)
+    ))
+    .slice(0, 10), [fixtures]);
+
+  const bestBowlingFigures = useMemo(() => fixtures
+    .filter((match) => match.played && match.scorecard)
+    .flatMap((match) => [
+      ...match.scorecard!.inningsA.bowling.map((performance) => ({
+        ...performance,
+        teamId: match.teamB,
+        opponentId: match.teamA,
+        matchNumber: match.matchNumber,
+      })),
+      ...match.scorecard!.inningsB.bowling.map((performance) => ({
+        ...performance,
+        teamId: match.teamA,
+        opponentId: match.teamB,
+        matchNumber: match.matchNumber,
+      })),
+    ])
+    .filter((performance) => (performance.overs ?? 0) > 0 || (performance.wickets ?? 0) > 0)
+    .sort((left, right) => (
+      (right.wickets ?? 0) - (left.wickets ?? 0)
+      || (left.runsConceded ?? 0) - (right.runsConceded ?? 0)
+      || (left.overs ?? 0) - (right.overs ?? 0)
+    ))
+    .slice(0, 10), [fixtures]);
   const emailLineupCandidates = useMemo(() => (userTeam?.squad ?? [])
     .map((id) => players[id])
     .filter((player): player is Player => Boolean(player))
@@ -2852,6 +3810,8 @@ function OverviewPageContent() {
     if (action.kind === "fixture" && action.entityId) {
       const fixture = fixtures.find((candidate) => candidate.id === action.entityId);
       if (fixture?.played) {
+        setActiveMatchResultView("summary");
+        setActiveCommentary(fixture.commentary ?? []);
         setActiveScorecard(fixture);
         return;
       }
@@ -3019,9 +3979,9 @@ function OverviewPageContent() {
                 onClick={startSimulating}
                 disabled={isTickerAtImpasse}
                 aria-label={isTickerAtImpasse
-                  ? "Continue unavailable: waiting for the game engine to resolve matchday fixtures"
+                  ? "Continue unavailable: simulate your matchday fixture first"
                   : "Continue day-by-day simulation"}
-                title={isTickerAtImpasse ? "Waiting for the game engine to resolve matchday fixtures" : undefined}
+                title={isTickerAtImpasse ? "Simulate your matchday fixture before continuing" : undefined}
                 className="flex items-center gap-1.5 rounded bg-success px-3.5 py-1.5 font-space-mono text-[9px] font-bold uppercase tracking-wider text-white shadow-sm transition-all hover:bg-success/80 active:scale-95 disabled:cursor-not-allowed disabled:bg-text-secondary disabled:opacity-45 disabled:hover:bg-text-secondary disabled:active:scale-100"
               >
                 <Play className="size-3 fill-current" aria-hidden="true" /> Continue
@@ -3708,27 +4668,52 @@ function OverviewPageContent() {
                             isAnnouncement: isAnnouncementDay,
                             isPreAnnouncementOpeningMatch,
                           } = getCalendarDayData(dateString);
+                          const unselectedDayStateClass = isAnnouncementDay
+                            ? "border-success bg-success/5 ring-2 ring-success/20"
+                            : isPreAnnouncementOpeningMatch
+                              ? "border-accent bg-accent/5 ring-2 ring-accent/25"
+                              : hasAuction || hasRetentionDeadline || hasUserMatch
+                                ? "border-border bg-surface ring-2 ring-accent/30"
+                                : "border-border bg-surface";
 
                           return (
                             <button
                               key={`day-${day}`}
+                              type="button"
+                              aria-pressed={isSelected}
+                              aria-label={`${isSelected ? "Selected: " : ""}${day} ${currentCalendarMonth.label} ${currentCalendarMonth.year}`}
                               onClick={() => {
                                 setSelectedCalendarDay(day);
                                 setPendingSkipTargetDate(null);
                               }}
-                              className={`w-full h-full p-2 border-2 text-left flex flex-col justify-between transition-colors hover:border-accent rounded-md
-                                ${isSelected ? "border-[var(--ink)] bg-[var(--ink)]/5" : "border-border bg-surface"}
-                                ${isAnnouncementDay ? "border-success bg-success/5 ring-2 ring-success/20" : ""}
-                                ${isPreAnnouncementOpeningMatch ? "border-accent bg-accent/5 ring-2 ring-accent/25" : ""}
-                                ${hasAuction || hasRetentionDeadline || hasUserMatch ? "ring-2 ring-accent/30" : ""}`}
+                              style={isSelected ? {
+                                backgroundColor: CALENDAR_SELECTED_COLOR,
+                                borderColor: "#1d4ed8",
+                                boxShadow: "inset 0 0 0 2px #1e3a8a, 0 3px 10px rgba(22, 19, 15, 0.28)",
+                              } : undefined}
+                              className={`relative flex h-full w-full flex-col justify-between rounded-md border-2 p-2 text-left transition-all duration-150 hover:border-accent
+                                ${isSelected
+                                  ? "z-10 text-white"
+                                  : unselectedDayStateClass}`}
                             >
                               <div className="flex justify-between items-center w-full">
-                                <span className={`font-space-mono text-[11px] font-bold ${isSelected ? "text-[var(--ink)]" : "text-text-primary"}`}>
+                                <span className={`font-space-mono text-[11px] font-bold transition-colors ${
+                                  isSelected
+                                    ? "flex size-6 items-center justify-center rounded-full bg-white text-[#1d4ed8] shadow-sm"
+                                    : "text-text-primary"
+                                }`}>
                                   {day}
                                 </span>
-                                {hasUserMatch && (
-                                  <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
-                                )}
+                                <span className="flex items-center gap-1">
+                                  {isSelected && (
+                                    <span className="rounded-sm bg-white/95 px-1.5 py-0.5 font-space-mono text-[6px] font-bold uppercase tracking-wide text-[#1d4ed8]">
+                                      Selected
+                                    </span>
+                                  )}
+                                  {hasUserMatch && (
+                                    <span className={`h-1.5 w-1.5 rounded-full animate-pulse ${isSelected ? "bg-white" : "bg-accent"}`} />
+                                  )}
+                                </span>
                               </div>
 
                               {/* Mini match labels */}
@@ -3744,8 +4729,10 @@ function OverviewPageContent() {
                                         key={m.id}
                                         className={`w-full text-[9px] py-1 px-1 rounded text-center truncate font-space-mono font-bold leading-tight uppercase
                                           ${isUserGame 
-                                            ? "text-white" 
-                                            : "bg-[#16130f]/5 border border-border/40 text-text-primary"}`}
+                                            ? "text-white"
+                                            : isSelected
+                                              ? "border border-white/40 bg-white/15 text-white"
+                                              : "bg-[#16130f]/5 border border-border/40 text-text-primary"}`}
                                         style={isUserGame && userTeam ? { backgroundColor: userTeam.primaryColor, color: userTeam.secondaryColor } : undefined}
                                       >
                                         {isUserGame ? (
@@ -3943,8 +4930,14 @@ function OverviewPageContent() {
                     </div>
                     {pendingSkipTargetDate ? (
                       <div className="flex min-h-9 w-full shrink-0 items-center gap-2 border border-accent bg-accent/5 px-2 py-1.5">
-                        <span className="min-w-0 flex-1 truncate font-space-mono text-[8px] font-bold uppercase text-text-primary">
-                          Simulate to {dateKeyToLocalDate(pendingSkipTargetDate).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}?
+                        <span className="min-w-0 flex-1 font-space-mono text-[8px] font-bold uppercase leading-relaxed text-text-primary">
+                          {countUserFixturesBeforeCalendarDate(pendingSkipTargetDate) > 0
+                            ? `${countUserFixturesBeforeCalendarDate(pendingSkipTargetDate)} ${
+                                countUserFixturesBeforeCalendarDate(pendingSkipTargetDate) === 1 ? "match" : "matches"
+                              } will take place before this date. Continuing will automatically simulate ${
+                                countUserFixturesBeforeCalendarDate(pendingSkipTargetDate) === 1 ? "it" : "them"
+                              } using your default tactics. Continue to ${dateKeyToLocalDate(pendingSkipTargetDate).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}?`
+                            : `Simulate to ${dateKeyToLocalDate(pendingSkipTargetDate).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}?`}
                         </span>
                         <button
                           type="button"
@@ -3955,7 +4948,10 @@ function OverviewPageContent() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => skipToCalendarDate(pendingSkipTargetDate)}
+                          onClick={() => skipToCalendarDate(
+                            pendingSkipTargetDate,
+                            countUserFixturesBeforeCalendarDate(pendingSkipTargetDate) > 0,
+                          )}
                           className="border border-[var(--ink)] bg-[var(--ink)] px-2 py-1 font-space-mono text-[8px] font-bold uppercase text-bg"
                         >
                           Confirm
@@ -3969,7 +4965,7 @@ function OverviewPageContent() {
                         className="w-full shrink-0 border border-border bg-surface py-2 font-space-mono text-[9px] font-bold uppercase tracking-widest text-text-primary transition-colors hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
                       >
                         {isTickerAtImpasse
-                          ? "Waiting for game engine"
+                          ? "Play your fixture first"
                           : selectedCalendarDateString === currentDate
                           ? "Current date"
                           : selectedCalendarDateString < currentDate
@@ -4879,7 +5875,7 @@ function OverviewPageContent() {
                         <h4 className="font-anton text-[16px] uppercase">SEASON SCHEDULE</h4>
                         {isFixturesAnnounced && (
                           <span className="font-space-mono text-[9px] font-bold uppercase text-text-secondary">
-                            {fixtures.filter((fixture) => fixture.played).length}/70 played
+                            {fixtures.filter((fixture) => !fixture.stage && fixture.played).length}/{LEAGUE_FIXTURE_COUNT} league matches played
                           </span>
                         )}
                       </div>
@@ -5091,12 +6087,24 @@ function OverviewPageContent() {
                                       const winner = match.winner ? teams[match.winner] : null;
                                       const statusLabel = match.played ? "Final" : isNextFixture ? "Next up" : "Upcoming";
 
+                                      const canSimulateUserMatch = (
+                                        FIXTURE_SIMULATION_ENABLED
+                                        &&
+                                        isUserMatch
+                                        && !match.played
+                                        && Boolean(match.date)
+                                        && (match.date ?? "") <= currentDate
+                                      );
+
                                       return (
-                                        <button
+                                        <article
                                           key={match.id}
-                                          type="button"
-                                          onClick={() => match.played && setActiveScorecard(match)}
-                                          disabled={!match.played}
+                                          onClick={() => {
+                                            if (!match.played) return;
+                                            setActiveMatchResultView("scorecard");
+                                            setActiveCommentary(null);
+                                            setActiveScorecard(match);
+                                          }}
                                           className={`group relative overflow-hidden border bg-surface p-4 text-left shadow-sm transition-all ${match.played ? "cursor-pointer hover:-translate-y-0.5 hover:shadow-md" : "cursor-default"}`}
                                           style={isUserMatch ? {
                                             borderColor: userTeam.primaryColor,
@@ -5109,7 +6117,7 @@ function OverviewPageContent() {
                                           </div>
 
                                           <div className="mb-3 flex items-center justify-between pt-1 font-space-mono text-[8px] font-bold uppercase tracking-wider text-text-secondary">
-                                            <span>Match {match.matchNumber} · {match.time ?? "Time TBD"}</span>
+                                            <span>{match.label ?? `Match ${match.matchNumber}`} · {match.time ?? "Time TBD"}</span>
                                             <span className={`border px-2 py-0.5 ${match.played ? "border-success/30 bg-success/10 text-success" : isNextFixture ? "border-accent/30 bg-accent/10 text-accent" : "border-border bg-black/[0.03]"}`}>
                                               {statusLabel}
                                             </span>
@@ -5118,9 +6126,9 @@ function OverviewPageContent() {
                                           <div className="grid grid-cols-[minmax(0,1fr)_3rem_minmax(0,1fr)] items-center gap-3">
                                             <div className="min-w-0 text-center">
                                               <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-full font-space-mono text-[10px] font-bold" style={{ backgroundColor: teamA?.primaryColor ?? "#777", color: teamA?.secondaryColor ?? "#fff" }}>
-                                                {teamA?.shortName.slice(0, 3) ?? match.teamA.slice(0, 3)}
+                                                {teamA?.shortName.slice(0, 3) ?? "TBD"}
                                               </div>
-                                              <div className="truncate text-sm font-bold text-text-primary">{teamA?.name ?? match.teamA}</div>
+                                              <div className="truncate text-sm font-bold text-text-primary">{teamA?.name ?? "To be decided"}</div>
                                               {match.played && match.scoreA && <div className="mt-1 font-anton text-xl text-text-primary">{match.scoreA.runs}/{match.scoreA.wickets}</div>}
                                             </div>
 
@@ -5130,20 +6138,39 @@ function OverviewPageContent() {
 
                                             <div className="min-w-0 text-center">
                                               <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-full font-space-mono text-[10px] font-bold" style={{ backgroundColor: teamB?.primaryColor ?? "#777", color: teamB?.secondaryColor ?? "#fff" }}>
-                                                {teamB?.shortName.slice(0, 3) ?? match.teamB.slice(0, 3)}
+                                                {teamB?.shortName.slice(0, 3) ?? "TBD"}
                                               </div>
-                                              <div className="truncate text-sm font-bold text-text-primary">{teamB?.name ?? match.teamB}</div>
+                                              <div className="truncate text-sm font-bold text-text-primary">{teamB?.name ?? "To be decided"}</div>
                                               {match.played && match.scoreB && <div className="mt-1 font-anton text-xl text-text-primary">{match.scoreB.runs}/{match.scoreB.wickets}</div>}
                                             </div>
                                           </div>
 
                                           <div className="mt-3 flex items-center justify-between gap-3 border-t border-[#16130f]/10 pt-2">
                                             <span className="truncate font-space-mono text-[8px] uppercase text-text-secondary">{teamA?.homeGround ?? "Venue TBD"}</span>
-                                            <span className={`shrink-0 text-right font-space-mono text-[8px] font-bold uppercase ${match.played ? "text-success" : "text-text-secondary"}`}>
-                                              {match.played ? `${winner?.shortName ?? "Match"} won` : isUserMatch ? "Your fixture" : "League fixture"}
-                                            </span>
+                                            {canSimulateUserMatch ? (
+                                              <button
+                                                type="button"
+                                                onClick={(event) => {
+                                                  event.stopPropagation();
+                                                  prepareUserFixtureSimulation(match);
+                                                }}
+                                                className="shrink-0 rounded border border-accent bg-accent px-3 py-1.5 font-space-mono text-[8px] font-bold uppercase text-white transition-colors hover:bg-accent/85"
+                                              >
+                                                Simulate match
+                                              </button>
+                                            ) : (
+                                              <span className={`shrink-0 text-right font-space-mono text-[8px] font-bold uppercase ${match.played ? "text-success" : "text-text-secondary"}`}>
+                                                {match.played
+                                                  ? match.simulation?.resultText ?? `${winner?.shortName ?? "Match"} won`
+                                                  : !FIXTURE_SIMULATION_ENABLED
+                                                    ? "Simulation locked"
+                                                  : isUserMatch
+                                                    ? (match.date ?? "") > currentDate ? "Your fixture" : "Awaiting match"
+                                                    : "Auto simulation"}
+                                              </span>
+                                            )}
                                           </div>
-                                        </button>
+                                        </article>
                                       );
                                     })}
                                   </div>
@@ -5217,7 +6244,7 @@ function OverviewPageContent() {
 
               {/* Tournament Stats page */}
               {activeSubTab === "stats" && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-full flex-1 min-h-0 overflow-hidden">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:grid-rows-2 h-full flex-1 min-h-0 overflow-y-auto md:overflow-hidden">
                   {/* Orange cap */}
                   <div className="bg-surface border-2 border-border p-5 flex flex-col h-full overflow-hidden">
                     <div className="flex items-center gap-2 mb-4 border-b border-[#16130f]/10 pb-2 shrink-0">
@@ -5267,6 +6294,68 @@ function OverviewPageContent() {
                           </div>
                         ))
                       )}
+                    </div>
+                  </div>
+
+                  {/* Best bowling figures */}
+                  <div className="bg-surface border-2 border-border p-5 flex flex-col h-full min-h-0 overflow-hidden">
+                    <div className="flex items-center gap-2 mb-4 border-b border-[#16130f]/10 pb-2 shrink-0">
+                      <div className="h-4 w-1 bg-success" />
+                      <h3 className="font-anton text-[16px] text-text-primary uppercase leading-none">BEST BOWLING FIGURES</h3>
+                    </div>
+                    <div className="divide-y divide-[#16130f]/10 text-xs flex-1 min-h-0 overflow-y-auto pr-2">
+                      {bestBowlingFigures.length === 0 ? (
+                        <div className="p-8 text-center font-barlow text-text-secondary">No bowling performances recorded yet.</div>
+                      ) : bestBowlingFigures.map((performance, index) => (
+                        <div key={`${performance.matchNumber}-${performance.id}-${index}`} className="flex items-center justify-between gap-3 py-2.5">
+                          <div className="flex min-w-0 items-center gap-3">
+                            <span className="w-5 shrink-0 text-center font-space-mono text-[9px] font-bold text-text-secondary">{index + 1}</span>
+                            <div className="min-w-0">
+                              <div className="truncate font-bold text-text-primary">{performance.name}</div>
+                              <div className="truncate font-space-mono text-[8px] uppercase text-text-secondary">
+                                {teams[performance.teamId]?.shortName} vs {teams[performance.opponentId]?.shortName} · Match {performance.matchNumber}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="shrink-0 text-right font-space-mono">
+                            <div className="font-bold text-success">{performance.wickets ?? 0}/{performance.runsConceded ?? 0}</div>
+                            <div className="text-[8px] text-text-secondary">{performance.overs ?? 0} overs</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Best batting performances */}
+                  <div className="bg-surface border-2 border-border p-5 flex flex-col h-full min-h-0 overflow-hidden">
+                    <div className="flex items-center gap-2 mb-4 border-b border-[#16130f]/10 pb-2 shrink-0">
+                      <div className="h-4 w-1 bg-accent" />
+                      <h3 className="font-anton text-[16px] text-text-primary uppercase leading-none">BEST BATTING PERFORMANCES</h3>
+                    </div>
+                    <div className="divide-y divide-[#16130f]/10 text-xs flex-1 min-h-0 overflow-y-auto pr-2">
+                      {bestBattingPerformances.length === 0 ? (
+                        <div className="p-8 text-center font-barlow text-text-secondary">No batting performances recorded yet.</div>
+                      ) : bestBattingPerformances.map((performance, index) => {
+                        const strikeRate = ((performance.runs ?? 0) / Math.max(1, performance.balls ?? 0)) * 100;
+                        const notOut = performance.dismissal === "not out";
+                        return (
+                          <div key={`${performance.matchNumber}-${performance.id}-${index}`} className="flex items-center justify-between gap-3 py-2.5">
+                            <div className="flex min-w-0 items-center gap-3">
+                              <span className="w-5 shrink-0 text-center font-space-mono text-[9px] font-bold text-text-secondary">{index + 1}</span>
+                              <div className="min-w-0">
+                                <div className="truncate font-bold text-text-primary">{performance.name}</div>
+                                <div className="truncate font-space-mono text-[8px] uppercase text-text-secondary">
+                                  {teams[performance.teamId]?.shortName} vs {teams[performance.opponentId]?.shortName} · Match {performance.matchNumber}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="shrink-0 text-right font-space-mono">
+                              <div className="font-bold text-accent">{performance.runs ?? 0}{notOut ? "*" : ""} <span className="font-normal text-text-secondary">({performance.balls ?? 0})</span></div>
+                              <div className="text-[8px] text-text-secondary">SR {strikeRate.toFixed(1)}</div>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 </div>
@@ -5865,16 +6954,97 @@ function OverviewPageContent() {
         </div>
       )}
 
+      {pendingMatchPreparation && (
+        <div className="fixed inset-0 z-[96] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-xl overflow-hidden rounded border-2 border-border bg-surface shadow-xl">
+            <div className="flex items-start justify-between border-b-2 border-border bg-border p-5">
+              <div>
+                <div className={`font-space-mono text-[8px] font-bold uppercase tracking-[0.18em] ${
+                  pendingMatchPreparation.errors.length > 0 ? "text-danger" : "text-warning"
+                }`}>
+                  {pendingMatchPreparation.errors.length > 0 ? "Match blocked" : "Match-plan warning"}
+                </div>
+                <h3 className="mt-1 font-anton text-[22px] uppercase text-text-primary">
+                  {pendingMatchPreparation.errors.length > 0
+                    ? "Your XIs are not match-ready"
+                    : "Conditions do not fully suit this plan"}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPendingMatchPreparation(null)}
+                className="flex h-8 w-8 items-center justify-center rounded border border-border bg-surface"
+                aria-label="Close match preparation"
+              >
+                <X size={15} />
+              </button>
+            </div>
+
+            <div className="space-y-4 p-5">
+              {(pendingMatchPreparation.errors.length > 0
+                ? pendingMatchPreparation.errors
+                : pendingMatchPreparation.warnings
+              ).map((message) => (
+                <div
+                  key={message}
+                  className={`rounded border p-3 font-space-mono text-[9px] leading-relaxed ${
+                    pendingMatchPreparation.errors.length > 0
+                      ? "border-danger/30 bg-danger/5 text-text-primary"
+                      : "border-warning/30 bg-warning/5 text-text-primary"
+                  }`}
+                >
+                  {message}
+                </div>
+              ))}
+
+              <div className="flex flex-wrap justify-end gap-2 border-t border-border pt-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const destination = pendingMatchPreparation.errors.length > 0
+                      ? "playingxi"
+                      : "tactics";
+                    setPendingMatchPreparation(null);
+                    setActiveTab("squad");
+                    router.push(`/game/overview?tab=squad&subtab=${destination}`, { scroll: false });
+                  }}
+                  className="rounded border-2 border-border px-4 py-2 font-space-mono text-[9px] font-bold uppercase text-text-primary hover:border-accent"
+                >
+                  Manually fix
+                </button>
+                {pendingMatchPreparation.errors.length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={autoFixAndSimulatePendingMatch}
+                    className="rounded border-2 border-accent bg-accent px-4 py-2 font-space-mono text-[9px] font-bold uppercase text-white"
+                  >
+                    Auto-fix &amp; simulate
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => runFixtureSimulation(pendingMatchPreparation.matchId)}
+                    className="rounded border-2 border-accent bg-accent px-4 py-2 font-space-mono text-[9px] font-bold uppercase text-white"
+                  >
+                    Ignore &amp; continue
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ==================================================================
           MODAL: DETAILED SCORECARD AND SIM COMMENTARY POPUP
           ================================================================== */}
       {activeScorecard && (
         <div className="fixed inset-0 bg-black/60 z-[95] flex items-center justify-center p-4 backdrop-blur-sm overflow-y-auto py-10 animate-in fade-in duration-200">
-          <div className="bg-surface border-2 border-border w-full max-w-3xl rounded shadow-xl flex flex-col overflow-hidden text-left font-barlow animate-in zoom-in-95 duration-200">
-            <div className="bg-border p-5 flex justify-between items-center">
+          <div className="flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded border-2 border-border bg-surface text-left font-barlow shadow-xl animate-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between border-b-2 border-accent bg-[var(--ink)] p-5">
               <div>
                 <span className="font-space-mono text-[9px] font-bold text-accent uppercase">MATCH {activeScorecard.matchNumber} · RESULT</span>
-                <h3 className="font-anton text-[24px] leading-tight text-text-primary uppercase mt-0.5">
+                <h3 className="mt-0.5 font-anton text-[24px] uppercase leading-tight text-bg">
                   {teams[activeScorecard.teamA]?.name} vs {teams[activeScorecard.teamB]?.name}
                 </h3>
               </div>
@@ -5882,14 +7052,15 @@ function OverviewPageContent() {
                 onClick={() => {
                   setActiveScorecard(null);
                   setActiveCommentary(null);
+                  setActiveMatchResultView("scorecard");
                 }}
-                className="w-8 h-8 rounded border border-border flex items-center justify-center hover:bg-black/5"
+                className="flex h-8 w-8 items-center justify-center rounded border border-white/30 bg-white/10 text-white transition-colors hover:bg-white/20"
               >
                 <X size={16} />
               </button>
             </div>
 
-            <div className="p-6 overflow-y-auto max-h-[500px] space-y-6">
+            <div className="min-h-0 flex-1 space-y-6 overflow-y-auto p-6">
               {/* Scores summary */}
               <div className="flex justify-between items-center bg-[#16130f]/5 border border-border p-4 rounded text-center">
                 <div className="flex-1">
@@ -5911,34 +7082,55 @@ function OverviewPageContent() {
 
               {/* Match Result announcement */}
               <div className="text-center font-anton text-[16px] text-success bg-success/5 border border-success/15 py-2.5 uppercase tracking-wide">
-                {activeScorecard.winner === activeScorecard.teamA ? teams[activeScorecard.teamA]?.name : teams[activeScorecard.teamB]?.name} Won the match!
+                {activeScorecard.simulation?.resultText
+                  ?? (activeScorecard.winner
+                    ? `${teams[activeScorecard.winner]?.name ?? activeScorecard.winner} won the match`
+                    : "Match tied")}
               </div>
 
               {/* Detail Tabs selector */}
               <div className="flex gap-2 border-b border-[#16130f]/10 pb-3">
                 <button
-                  onClick={() => setActiveCommentary(null)}
+                  onClick={() => {
+                    setActiveCommentary(null);
+                    setActiveMatchResultView("scorecard");
+                  }}
                   className={`px-4 py-1.5 font-space-mono text-[10px] font-bold uppercase rounded border transition-all
-                    ${activeCommentary === null ? "bg-[var(--ink)] text-bg border-[var(--ink)]" : "border-border text-text-secondary hover:bg-black/5"}`}
+                    ${activeMatchResultView === "scorecard" ? "bg-[var(--ink)] text-bg border-[var(--ink)]" : "border-border text-text-secondary hover:bg-black/5"}`}
                 >
                   Scorecard Detail
                 </button>
                 <button
-                  onClick={() => setActiveCommentary(activeScorecard.commentary ?? [])}
+                  onClick={() => {
+                    setActiveCommentary(activeScorecard.commentary ?? []);
+                    setActiveMatchResultView("summary");
+                  }}
                   className={`px-4 py-1.5 font-space-mono text-[10px] font-bold uppercase rounded border transition-all
-                    ${activeCommentary !== null ? "bg-[var(--ink)] text-bg border-[var(--ink)]" : "border-border text-text-secondary hover:bg-black/5"}`}
+                    ${activeMatchResultView === "summary" ? "bg-[var(--ink)] text-bg border-[var(--ink)]" : "border-border text-text-secondary hover:bg-black/5"}`}
                 >
-                  Match Summary log
+                  Match Summary
                 </button>
+                {activeScorecard.simulation && (
+                  <button
+                    onClick={() => {
+                      setActiveCommentary(null);
+                      setActiveMatchResultView("ball-by-ball");
+                    }}
+                    className={`px-4 py-1.5 font-space-mono text-[10px] font-bold uppercase rounded border transition-all
+                      ${activeMatchResultView === "ball-by-ball" ? "bg-[var(--ink)] text-bg border-[var(--ink)]" : "border-border text-text-secondary hover:bg-black/5"}`}
+                  >
+                    Ball by ball
+                  </button>
+                )}
               </div>
 
               {/* Scorecard detail tab */}
-              {activeCommentary === null && activeScorecard.scorecard && (
-                <div className="space-y-6">
+              {activeMatchResultView === "scorecard" && activeScorecard.scorecard && (
+                <div className="flex flex-col gap-6">
                   {/* Innings 1 scorecard */}
-                  <div>
+                  <div className={activeScorecard.simulation?.battingFirstTeamId === activeScorecard.teamB ? "order-3" : "order-1"}>
                     <h4 className="font-anton text-[13px] text-text-primary border-l-4 border-accent pl-2 mb-3 uppercase">
-                      INNINGS 1: {teams[activeScorecard.teamA]?.name} Batting
+                      {teams[activeScorecard.teamA]?.name} Batting
                     </h4>
                     <table className="w-full text-left font-barlow text-xs divide-y divide-[#16130f]/10">
                       <thead className="bg-[#16130f]/5 text-[8px] font-space-mono text-text-secondary uppercase">
@@ -5954,7 +7146,22 @@ function OverviewPageContent() {
                       <tbody>
                         {activeScorecard.scorecard.inningsA.batting.filter(b=>(b.balls ?? 0) > 0).map(b => (
                           <tr key={b.id} className="border-b border-[#16130f]/5">
-                            <td className="px-4 py-2 font-semibold">{b.name}</td>
+                            <td className="px-4 py-2">
+                              <div className="flex items-center gap-2 font-semibold">
+                                <span>{b.name}</span>
+                                {isIncomingImpactPlayer(activeScorecard, b.id) && (
+                                  <span className="inline-flex items-center gap-1 rounded bg-success/10 px-1.5 py-0.5 font-space-mono text-[7px] font-bold uppercase text-success">
+                                    <span aria-hidden="true">→</span> In
+                                  </span>
+                                )}
+                                {isOutgoingImpactPlayer(activeScorecard, b.id) && (
+                                  <span className="inline-flex items-center gap-1 rounded bg-red-500/10 px-1.5 py-0.5 font-space-mono text-[7px] font-bold uppercase text-red-700">
+                                    <span aria-hidden="true">←</span> Out
+                                  </span>
+                                )}
+                              </div>
+                              <div className="mt-0.5 font-space-mono text-[7px] text-text-secondary">{b.dismissal ?? "not out"}</div>
+                            </td>
                             <td className="px-4 py-2 text-center font-bold text-text-primary">{b.runs}</td>
                             <td className="px-4 py-2 text-center text-text-secondary font-space-mono">{b.balls}</td>
                             <td className="px-4 py-2 text-center text-text-secondary font-space-mono">{b.fours}</td>
@@ -5965,31 +7172,58 @@ function OverviewPageContent() {
                           </tr>
                         ))}
                       </tbody>
+                      <tfoot className="font-space-mono text-[9px] font-bold">
+                        <tr className="border-t border-border">
+                          <td className="px-4 py-2 uppercase">Extras</td>
+                          <td className="px-4 py-2 text-center">{activeScorecard.scorecard.inningsA.extras}</td>
+                          <td colSpan={4} className="px-4 py-2 text-right uppercase">
+                            Total {activeScorecard.scoreA?.runs}/{activeScorecard.scoreA?.wickets}
+                          </td>
+                        </tr>
+                      </tfoot>
                     </table>
                   </div>
 
                   {/* Innings 1 Bowling */}
-                  <div>
+                  <div className={activeScorecard.simulation?.battingFirstTeamId === activeScorecard.teamB ? "order-4" : "order-2"}>
                     <h4 className="font-anton text-[13px] text-text-primary border-l-4 border-accent pl-2 mb-3 uppercase">
-                      INNINGS 1: {teams[activeScorecard.teamB]?.name} Bowling
+                      {teams[activeScorecard.teamB]?.name} Bowling
                     </h4>
                     <table className="w-full text-left font-barlow text-xs divide-y divide-[#16130f]/10">
                       <thead className="bg-[#16130f]/5 text-[8px] font-space-mono text-text-secondary uppercase">
                         <tr>
                           <th className="px-4 py-2">Bowler</th>
                           <th className="px-4 py-2 text-center">Overs</th>
+                          <th className="px-4 py-2 text-center">M</th>
                           <th className="px-4 py-2 text-center">Wickets</th>
                           <th className="px-4 py-2 text-center">Runs</th>
+                          <th className="px-4 py-2 text-center">WD/NB</th>
                           <th className="px-4 py-2 text-right">Econ</th>
                         </tr>
                       </thead>
                       <tbody>
                         {activeScorecard.scorecard.inningsA.bowling.filter(bowl => (bowl.overs ?? 0) > 0).map(bowl => (
                           <tr key={bowl.id} className="border-b border-[#16130f]/5">
-                            <td className="px-4 py-2 font-semibold">{bowl.name}</td>
+                            <td className="px-4 py-2 font-semibold">
+                              <span className="inline-flex items-center gap-2">
+                                <span>{bowl.name}</span>
+                                {isIncomingImpactPlayer(activeScorecard, bowl.id) && (
+                                  <span className="inline-flex items-center gap-1 rounded bg-success/10 px-1.5 py-0.5 font-space-mono text-[7px] font-bold uppercase text-success">
+                                    <span aria-hidden="true">→</span> In
+                                  </span>
+                                )}
+                                {isOutgoingImpactPlayer(activeScorecard, bowl.id) && (
+                                  <span className="inline-flex items-center gap-1 rounded bg-red-500/10 px-1.5 py-0.5 font-space-mono text-[7px] font-bold uppercase text-red-700">
+                                    <span aria-hidden="true">←</span> Out
+                                  </span>
+                                )}
+                              </span>
+                            </td>
                             <td className="px-4 py-2 text-center font-space-mono">{bowl.overs}</td>
+                            <td className="px-4 py-2 text-center font-space-mono">{bowl.maidens ?? 0}</td>
                             <td className="px-4 py-2 text-center font-bold text-purple-700 font-space-mono">{bowl.wickets}</td>
                             <td className="px-4 py-2 text-center font-space-mono">{bowl.runsConceded}</td>
+                            <td className="px-4 py-2 text-center font-space-mono">{bowl.wides ?? 0}/{bowl.noBalls ?? 0}</td>
                             <td className="px-4 py-2 text-right font-space-mono">
                               {((bowl.runsConceded ?? 0) / (bowl.overs ?? 1)).toFixed(2)}
                             </td>
@@ -6000,9 +7234,9 @@ function OverviewPageContent() {
                   </div>
 
                   {/* Innings 2 scorecard */}
-                  <div>
+                  <div className={activeScorecard.simulation?.battingFirstTeamId === activeScorecard.teamB ? "order-1" : "order-3"}>
                     <h4 className="font-anton text-[13px] text-text-primary border-l-4 border-accent pl-2 mb-3 uppercase">
-                      INNINGS 2: {teams[activeScorecard.teamB]?.name} Batting
+                      {teams[activeScorecard.teamB]?.name} Batting
                     </h4>
                     <table className="w-full text-left font-barlow text-xs divide-y divide-[#16130f]/10">
                       <thead className="bg-[#16130f]/5 text-[8px] font-space-mono text-text-secondary uppercase">
@@ -6018,7 +7252,22 @@ function OverviewPageContent() {
                       <tbody>
                         {activeScorecard.scorecard.inningsB.batting.filter(b=>(b.balls ?? 0) > 0).map(b => (
                           <tr key={b.id} className="border-b border-[#16130f]/5">
-                            <td className="px-4 py-2 font-semibold">{b.name}</td>
+                            <td className="px-4 py-2">
+                              <div className="flex items-center gap-2 font-semibold">
+                                <span>{b.name}</span>
+                                {isOutgoingImpactPlayer(activeScorecard, b.id) && (
+                                  <span className="inline-flex items-center gap-1 rounded bg-red-500/10 px-1.5 py-0.5 font-space-mono text-[7px] font-bold uppercase text-red-700">
+                                    <span aria-hidden="true">←</span> Out
+                                  </span>
+                                )}
+                                {isIncomingImpactPlayer(activeScorecard, b.id) && (
+                                  <span className="inline-flex items-center gap-1 rounded bg-success/10 px-1.5 py-0.5 font-space-mono text-[7px] font-bold uppercase text-success">
+                                    <span aria-hidden="true">→</span> In
+                                  </span>
+                                )}
+                              </div>
+                              <div className="mt-0.5 font-space-mono text-[7px] text-text-secondary">{b.dismissal ?? "not out"}</div>
+                            </td>
                             <td className="px-4 py-2 text-center font-bold text-text-primary">{b.runs}</td>
                             <td className="px-4 py-2 text-center text-text-secondary font-space-mono">{b.balls}</td>
                             <td className="px-4 py-2 text-center text-text-secondary font-space-mono">{b.fours}</td>
@@ -6029,31 +7278,58 @@ function OverviewPageContent() {
                           </tr>
                         ))}
                       </tbody>
+                      <tfoot className="font-space-mono text-[9px] font-bold">
+                        <tr className="border-t border-border">
+                          <td className="px-4 py-2 uppercase">Extras</td>
+                          <td className="px-4 py-2 text-center">{activeScorecard.scorecard.inningsB.extras}</td>
+                          <td colSpan={4} className="px-4 py-2 text-right uppercase">
+                            Total {activeScorecard.scoreB?.runs}/{activeScorecard.scoreB?.wickets}
+                          </td>
+                        </tr>
+                      </tfoot>
                     </table>
                   </div>
 
                   {/* Innings 2 Bowling */}
-                  <div>
+                  <div className={activeScorecard.simulation?.battingFirstTeamId === activeScorecard.teamB ? "order-2" : "order-4"}>
                     <h4 className="font-anton text-[13px] text-text-primary border-l-4 border-accent pl-2 mb-3 uppercase">
-                      INNINGS 2: {teams[activeScorecard.teamA]?.name} Bowling
+                      {teams[activeScorecard.teamA]?.name} Bowling
                     </h4>
                     <table className="w-full text-left font-barlow text-xs divide-y divide-[#16130f]/10">
                       <thead className="bg-[#16130f]/5 text-[8px] font-space-mono text-text-secondary uppercase">
                         <tr>
                           <th className="px-4 py-2">Bowler</th>
                           <th className="px-4 py-2 text-center">Overs</th>
+                          <th className="px-4 py-2 text-center">M</th>
                           <th className="px-4 py-2 text-center">Wickets</th>
                           <th className="px-4 py-2 text-center">Runs</th>
+                          <th className="px-4 py-2 text-center">WD/NB</th>
                           <th className="px-4 py-2 text-right">Econ</th>
                         </tr>
                       </thead>
                       <tbody>
                         {activeScorecard.scorecard.inningsB.bowling.filter(bowl => (bowl.overs ?? 0) > 0).map(bowl => (
                           <tr key={bowl.id} className="border-b border-[#16130f]/5">
-                            <td className="px-4 py-2 font-semibold">{bowl.name}</td>
+                            <td className="px-4 py-2 font-semibold">
+                              <span className="inline-flex items-center gap-2">
+                                <span>{bowl.name}</span>
+                                {isOutgoingImpactPlayer(activeScorecard, bowl.id) && (
+                                  <span className="inline-flex items-center gap-1 rounded bg-red-500/10 px-1.5 py-0.5 font-space-mono text-[7px] font-bold uppercase text-red-700">
+                                    <span aria-hidden="true">←</span> Out
+                                  </span>
+                                )}
+                                {isIncomingImpactPlayer(activeScorecard, bowl.id) && (
+                                  <span className="inline-flex items-center gap-1 rounded bg-success/10 px-1.5 py-0.5 font-space-mono text-[7px] font-bold uppercase text-success">
+                                    <span aria-hidden="true">→</span> In
+                                  </span>
+                                )}
+                              </span>
+                            </td>
                             <td className="px-4 py-2 text-center font-space-mono">{bowl.overs}</td>
+                            <td className="px-4 py-2 text-center font-space-mono">{bowl.maidens ?? 0}</td>
                             <td className="px-4 py-2 text-center font-bold text-purple-700 font-space-mono">{bowl.wickets}</td>
                             <td className="px-4 py-2 text-center font-space-mono">{bowl.runsConceded}</td>
+                            <td className="px-4 py-2 text-center font-space-mono">{bowl.wides ?? 0}/{bowl.noBalls ?? 0}</td>
                             <td className="px-4 py-2 text-right font-space-mono">
                               {((bowl.runsConceded ?? 0) / (bowl.overs ?? 1)).toFixed(2)}
                             </td>
@@ -6062,19 +7338,89 @@ function OverviewPageContent() {
                       </tbody>
                     </table>
                   </div>
+
+                  {activeScorecard.simulation && (
+                    <div className="order-5 grid gap-4 md:grid-cols-2">
+                      {activeScorecard.simulation.innings.map((innings) => (
+                        <div key={innings.inningsNumber} className="rounded border border-border bg-bg p-4">
+                          <h4 className="font-anton text-[13px] uppercase text-text-primary">
+                            {teams[innings.battingTeamId]?.shortName ?? innings.battingTeamId} innings detail
+                          </h4>
+                          <div className="mt-3">
+                            <div className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Fall of wickets</div>
+                            <p className="mt-1 font-space-mono text-[8px] leading-relaxed text-text-primary">
+                              {innings.fallOfWickets.length > 0
+                                ? innings.fallOfWickets.map((wicket) => `${wicket.score}-${wicket.wicket} (${wicket.playerName}, ${wicket.over})`).join(" · ")
+                                : "No wickets lost"}
+                            </p>
+                          </div>
+                          <div className="mt-3">
+                            <div className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Partnerships</div>
+                            <p className="mt-1 font-space-mono text-[8px] leading-relaxed text-text-primary">
+                              {innings.partnerships.map((partnership) => (
+                                `${partnership.runs} (${partnership.balls}) ${partnership.batterNames.join(" / ")}`
+                              )).join(" · ")}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 
               {/* Match log tab */}
-              {activeCommentary !== null && (
-                <div className="space-y-4 font-mono text-xs bg-[#16130f]/5 border border-border p-4 rounded max-h-[300px] overflow-y-auto">
-                  {activeCommentary.map((line, index) => (
+              {activeMatchResultView === "summary" && (
+                <div className="space-y-4">
+                  {activeScorecard.simulation && (
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                      {[
+                        ["Toss", `${teams[activeScorecard.simulation.tossWinnerId]?.shortName ?? activeScorecard.simulation.tossWinnerId} chose to ${activeScorecard.simulation.tossDecision}`],
+                        ["Pitch", activeScorecard.simulation.conditions.pitchName],
+                        ["Ground", `${activeScorecard.simulation.conditions.boundaries.straightMetres}m straight · ${activeScorecard.simulation.conditions.boundaries.wideMetres}m wide`],
+                        ["Player of match", activeScorecard.simulation.playerOfTheMatchName],
+                      ].map(([label, value]) => (
+                        <div key={label} className="rounded border border-border bg-bg p-3">
+                          <div className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">{label}</div>
+                          <div className="mt-1 font-space-mono text-[9px] font-bold text-text-primary">{value}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div className="space-y-4 rounded border border-border bg-[#16130f]/5 p-4 font-mono text-xs">
+                  {(activeScorecard.commentary ?? []).map((line, index) => (
                     <div key={index} className="border-b border-[#16130f]/5 pb-2">
-                      <span className="text-text-secondary font-bold mr-2">[OVER VIEW]</span>
+                      <span className="text-text-secondary font-bold mr-2">[{String(index + 1).padStart(2, "0")}]</span>
                       <span className="text-text-primary">{line}</span>
                     </div>
                   ))}
+                  </div>
+                  {activeScorecard.simulation && (
+                    <div className="grid gap-3 md:grid-cols-2">
+                      {activeScorecard.simulation.impactDecisions.map((decision) => (
+                        <div key={decision.teamId} className="rounded border border-border bg-bg p-4">
+                          <div className="font-space-mono text-[8px] font-bold uppercase text-accent">
+                            {teams[decision.teamId]?.name ?? decision.teamId} · Impact Player
+                          </div>
+                          <p className="mt-2 text-xs leading-relaxed text-text-primary">{decision.explanation}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
+              )}
+
+              {activeMatchResultView === "ball-by-ball" && activeScorecard.simulation && (
+                hasArchivedDeliveries(activeScorecard.simulation) ? (
+                  <BallByBallSummary simulation={activeScorecard.simulation} teams={teams} />
+                ) : (
+                  <div className="rounded border border-border bg-bg p-8 text-center">
+                    <div className="font-anton text-[18px] uppercase text-text-primary">Delivery archive unavailable</div>
+                    <p className="mt-2 text-xs text-text-secondary">
+                      The scorecard is saved, but this browser does not contain the match&apos;s full ball-by-ball archive.
+                    </p>
+                  </div>
+                )
               )}
             </div>
           </div>

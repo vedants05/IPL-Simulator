@@ -18,7 +18,11 @@ import { Lock, Target, X } from "lucide-react";
 import { formatPrice } from "@/lib/logic/auctionRules";
 import { wasPlayerAcquiredViaRtm } from "@/lib/logic/playerHistory";
 import type { Player } from "@/lib/types";
-import { SEASON_ACCESS_ENABLED } from "@/lib/config/featureFlags";
+import {
+  getSeasonAccessStorageKey,
+  SEASON_ACCESS_CHANGED_EVENT,
+  SEASON_ACCESS_ENABLED,
+} from "@/lib/config/featureFlags";
 import { AcceleratedNominationsScreen, AcceleratedPlanningResultsScreen } from "@/components/auction/AcceleratedPlanning";
 
 type PopupTab = "sold" | "unsold" | "left" | null;
@@ -1829,18 +1833,20 @@ function AuctionComplete() {
   useEffect(() => {
     if (typeof window !== "undefined") {
       if (!SEASON_ACCESS_ENABLED) {
-        localStorage.removeItem(`ipl_continued_to_season_${userTeamId}`);
+        localStorage.removeItem(getSeasonAccessStorageKey(userTeamId));
         setContinued(false);
         return;
       }
-      setContinued(localStorage.getItem(`ipl_continued_to_season_${userTeamId}`) === "true");
+      setContinued(localStorage.getItem(getSeasonAccessStorageKey(userTeamId)) === "true");
     }
   }, [userTeamId, pathname]);
 
   const handleContinue = () => {
     if (!SEASON_ACCESS_ENABLED) return;
-    localStorage.setItem(`ipl_continued_to_season_${userTeamId}`, "true");
+    localStorage.setItem(getSeasonAccessStorageKey(userTeamId), "true");
     localStorage.removeItem(`ipl_career_${userTeamId}`);
+    setContinued(true);
+    window.dispatchEvent(new Event(SEASON_ACCESS_CHANGED_EVENT));
     router.push("/game/overview?tab=home");
   };
 

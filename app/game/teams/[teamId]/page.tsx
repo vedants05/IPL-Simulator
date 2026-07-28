@@ -112,6 +112,54 @@ const EMPTY_CAREER: TeamProfileCareer = {
   aiTeamLeadership: {},
 };
 
+let cachedCareerSnapshot: {
+  storageKey: string;
+  serialized: string | null;
+  career: TeamProfileCareer;
+} | null = null;
+
+function normalizeTeamProfileCareer(parsed: Partial<TeamProfileCareer>): TeamProfileCareer {
+  return {
+    fixtures: Array.isArray(parsed.fixtures) ? parsed.fixtures : [],
+    standings: Array.isArray(parsed.standings) ? parsed.standings : [],
+    playerStats: parsed.playerStats && typeof parsed.playerStats === "object" ? parsed.playerStats : {},
+    battingFirstXI: Array.isArray(parsed.battingFirstXI) ? parsed.battingFirstXI : [],
+    bowlingFirstXI: Array.isArray(parsed.bowlingFirstXI) ? parsed.bowlingFirstXI : [],
+    battingFirstImpactSubs: Array.isArray(parsed.battingFirstImpactSubs) ? parsed.battingFirstImpactSubs : [],
+    bowlingFirstImpactSubs: Array.isArray(parsed.bowlingFirstImpactSubs) ? parsed.bowlingFirstImpactSubs : [],
+    battingFirstImpactPlayerId: parsed.battingFirstImpactPlayerId ?? null,
+    battingFirstOutgoingPlayerId: parsed.battingFirstOutgoingPlayerId ?? null,
+    battingFirstImpactBattingPosition: typeof parsed.battingFirstImpactBattingPosition === "number"
+      ? parsed.battingFirstImpactBattingPosition
+      : null,
+    bowlingFirstImpactPlayerId: parsed.bowlingFirstImpactPlayerId ?? null,
+    bowlingFirstOutgoingPlayerId: parsed.bowlingFirstOutgoingPlayerId ?? null,
+    bowlingFirstImpactBattingPosition: typeof parsed.bowlingFirstImpactBattingPosition === "number"
+      ? parsed.bowlingFirstImpactBattingPosition
+      : null,
+    teamLeadership: parsed.teamLeadership,
+    aiTeamLeadership: parsed.aiTeamLeadership ?? {},
+  };
+}
+
+function readTeamProfileCareer(userTeamId: string): TeamProfileCareer {
+  const storageKey = `ipl_career_${userTeamId}`;
+  const serialized = localStorage.getItem(storageKey);
+  if (
+    cachedCareerSnapshot
+    && cachedCareerSnapshot.storageKey === storageKey
+    && cachedCareerSnapshot.serialized === serialized
+  ) {
+    return cachedCareerSnapshot.career;
+  }
+
+  const career = serialized
+    ? normalizeTeamProfileCareer(JSON.parse(serialized) as Partial<TeamProfileCareer>)
+    : EMPTY_CAREER;
+  cachedCareerSnapshot = { storageKey, serialized, career };
+  return career;
+}
+
 const ROLE_ORDER: Record<Player["role"], number> = {
   "WK-Batsman": 0,
   Batsman: 1,
@@ -468,56 +516,13 @@ export default function TeamProfilePage() {
   useEffect(() => {
     if (!hasMounted || !userTeamId) return;
 
-    let cancelled = false;
-    const loadCareer = () => {
-      const savedCareer = localStorage.getItem(`ipl_career_${userTeamId}`);
-      if (!savedCareer) {
-        if (!cancelled) {
-          setCareer(EMPTY_CAREER);
-          setHasLoadedCareer(true);
-        }
-        return;
-      }
-
-      try {
-        const parsed = JSON.parse(savedCareer) as Partial<TeamProfileCareer>;
-        if (cancelled) return;
-        setCareer({
-          fixtures: Array.isArray(parsed.fixtures) ? parsed.fixtures : [],
-          standings: Array.isArray(parsed.standings) ? parsed.standings : [],
-          playerStats: parsed.playerStats && typeof parsed.playerStats === "object" ? parsed.playerStats : {},
-          battingFirstXI: Array.isArray(parsed.battingFirstXI) ? parsed.battingFirstXI : [],
-          bowlingFirstXI: Array.isArray(parsed.bowlingFirstXI) ? parsed.bowlingFirstXI : [],
-          battingFirstImpactSubs: Array.isArray(parsed.battingFirstImpactSubs) ? parsed.battingFirstImpactSubs : [],
-          bowlingFirstImpactSubs: Array.isArray(parsed.bowlingFirstImpactSubs) ? parsed.bowlingFirstImpactSubs : [],
-          battingFirstImpactPlayerId: parsed.battingFirstImpactPlayerId ?? null,
-          battingFirstOutgoingPlayerId: parsed.battingFirstOutgoingPlayerId ?? null,
-          battingFirstImpactBattingPosition: typeof parsed.battingFirstImpactBattingPosition === "number" ? parsed.battingFirstImpactBattingPosition : null,
-          bowlingFirstImpactPlayerId: parsed.bowlingFirstImpactPlayerId ?? null,
-          bowlingFirstOutgoingPlayerId: parsed.bowlingFirstOutgoingPlayerId ?? null,
-          bowlingFirstImpactBattingPosition: typeof parsed.bowlingFirstImpactBattingPosition === "number" ? parsed.bowlingFirstImpactBattingPosition : null,
-          teamLeadership: parsed.teamLeadership,
-          aiTeamLeadership: parsed.aiTeamLeadership ?? {},
-        });
-        setHasLoadedCareer(true);
-      } catch (error) {
-        console.error("Unable to load team profile career data:", error);
-        if (!cancelled) {
-          setCareer(EMPTY_CAREER);
-          setHasLoadedCareer(true);
-        }
-      }
-    };
-
-    const canUseIdleCallback = typeof window.requestIdleCallback === "function";
-    const scheduledId = canUseIdleCallback
-      ? window.requestIdleCallback(loadCareer, { timeout: 250 })
-      : globalThis.setTimeout(loadCareer, 0);
-    return () => {
-      cancelled = true;
-      if (canUseIdleCallback) window.cancelIdleCallback(scheduledId as number);
-      else globalThis.clearTimeout(scheduledId as ReturnType<typeof setTimeout>);
-    };
+    try {
+      setCareer(readTeamProfileCareer(userTeamId));
+    } catch (error) {
+      console.error("Unable to load team profile career data:", error);
+      setCareer(EMPTY_CAREER);
+    }
+    setHasLoadedCareer(true);
   }, [hasMounted, userTeamId]);
 
   const squad = useMemo(() => {

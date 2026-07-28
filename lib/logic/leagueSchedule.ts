@@ -2,6 +2,11 @@ import { addDaysToDateKey, dateKeyToLocalDate, localDateToDateKey } from "./care
 
 export const LEAGUE_FIXTURE_SCHEDULE_VERSION = 4;
 export const LEAGUE_FIXTURE_COUNT = 70;
+export const KNOCKOUT_FIXTURE_COUNT = 4;
+export const TOTAL_FIXTURE_COUNT = LEAGUE_FIXTURE_COUNT + KNOCKOUT_FIXTURE_COUNT;
+export const PLAYOFF_TBD_TEAM_ID = "__PLAYOFF_TBD__";
+
+export type KnockoutStage = "qualifier1" | "eliminator" | "qualifier2" | "final";
 
 const TEAM_COUNT = 10;
 const MATCHES_PER_TEAM = 14;
@@ -20,6 +25,11 @@ export interface ScheduledLeagueFixture extends Pairing {
   played: false;
   date: string;
   time: string;
+}
+
+export interface ScheduledKnockoutFixture extends ScheduledLeagueFixture {
+  stage: KnockoutStage;
+  label: string;
 }
 
 export interface LeagueFixtureSlot {
@@ -109,6 +119,75 @@ export function getLeagueFixtureSlot(startDate: string, slotIndex: number): Leag
     date: addDaysToDateKey(startDate, dayOffset),
     time,
   };
+}
+
+export function generateKnockoutFixtures(
+  finalLeagueDate: string,
+  activeSeason: number,
+  topFourTeamIds: readonly string[] = [],
+): ScheduledKnockoutFixture[] {
+  const teamAt = (index: number) => topFourTeamIds[index] ?? PLAYOFF_TBD_TEAM_ID;
+  const qualifier1Date = addDaysToDateKey(finalLeagueDate, 3);
+  const eliminatorDate = addDaysToDateKey(finalLeagueDate, 4);
+  const eliminatorDay = dateKeyToLocalDate(eliminatorDate).getDay();
+  const daysToFollowingSaturday = ((6 - eliminatorDay + 7) % 7) || 7;
+  const finalDate = addDaysToDateKey(eliminatorDate, daysToFollowingSaturday);
+  const playoffSpan = Math.round(
+    (dateKeyToLocalDate(finalDate).getTime() - dateKeyToLocalDate(eliminatorDate).getTime())
+    / 86_400_000,
+  );
+  const qualifier2Date = addDaysToDateKey(eliminatorDate, Math.round(playoffSpan / 2));
+
+  return [
+    {
+      id: `playoff_q1_${activeSeason}`,
+      matchNumber: 71,
+      round: 15,
+      teamA: teamAt(0),
+      teamB: teamAt(1),
+      played: false,
+      date: qualifier1Date,
+      time: "19:30",
+      stage: "qualifier1",
+      label: "Qualifier 1",
+    },
+    {
+      id: `playoff_eliminator_${activeSeason}`,
+      matchNumber: 72,
+      round: 16,
+      teamA: teamAt(2),
+      teamB: teamAt(3),
+      played: false,
+      date: eliminatorDate,
+      time: "19:30",
+      stage: "eliminator",
+      label: "Eliminator",
+    },
+    {
+      id: `playoff_q2_${activeSeason}`,
+      matchNumber: 73,
+      round: 17,
+      teamA: PLAYOFF_TBD_TEAM_ID,
+      teamB: PLAYOFF_TBD_TEAM_ID,
+      played: false,
+      date: qualifier2Date,
+      time: "19:30",
+      stage: "qualifier2",
+      label: "Qualifier 2",
+    },
+    {
+      id: `playoff_final_${activeSeason}`,
+      matchNumber: 74,
+      round: 18,
+      teamA: PLAYOFF_TBD_TEAM_ID,
+      teamB: PLAYOFF_TBD_TEAM_ID,
+      played: false,
+      date: finalDate,
+      time: "19:30",
+      stage: "final",
+      label: "Final",
+    },
+  ];
 }
 
 function buildOddGroupRounds(group: readonly string[]): Pairing[][] {

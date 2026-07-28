@@ -60,7 +60,7 @@ test("targeted date simulation accelerates, cruises, and slows near its target",
   assert.ok(getSkipSimulationIntervalMs("2027-02-09", startDate, targetDate) > getSkipSimulationIntervalMs("2027-02-05", startDate, targetDate));
 });
 
-test("career ticking stops at every unresolved fixture while the match engine is unavailable", () => {
+test("career ticking stops at every unresolved fixture so matchday can be resolved first", () => {
   const nonUserFixture = { date: "2027-03-20", played: false };
 
   assert.equal(isCareerCalendarAtImpasse("2027-03-19", [nonUserFixture]), false);

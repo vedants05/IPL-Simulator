@@ -28,6 +28,7 @@ import {
   type HomePitchSelections,
   type IplTeamId,
 } from "@/lib/data/pitchCurator";
+import { getSeasonAccessStorageKey } from "@/lib/config/featureFlags";
 import { addDaysToDateKey } from "@/lib/logic/careerCalendar";
 import {
   deriveCustomPitch,
@@ -668,7 +669,7 @@ export const useGameStore = create<Store>()(
       // ----- Actions -----
       initNewGame: async (userTeamId) => {
         if (typeof window !== "undefined") {
-          localStorage.removeItem(`ipl_continued_to_season_${userTeamId}`);
+          localStorage.removeItem(getSeasonAccessStorageKey(userTeamId));
         }
         const [fetchedPlayers, fetchedTeams] = await Promise.all([
           fetchPlayersFromSupabase(),

@@ -52,6 +52,7 @@ export interface CareerEmailFixture {
   date?: string;
   time?: string;
   winner?: string;
+  stage?: "qualifier1" | "eliminator" | "qualifier2" | "final";
   scoreA?: { runs: number; wickets: number; overs: number };
   scoreB?: { runs: number; wickets: number; overs: number };
   scorecard?: {
@@ -248,7 +249,9 @@ export function buildCareerEmailDrafts(context: CareerEmailContext): CareerEmail
   const userFixtures = sortFixtures(context.fixtures.filter((fixture) => (
     fixture.teamA === context.userTeamId || fixture.teamB === context.userTeamId
   )));
+  const leagueUserFixtures = userFixtures.filter((fixture) => !fixture.stage);
   const playedUserFixtures = userFixtures.filter((fixture) => fixture.played);
+  const playedLeagueUserFixtures = leagueUserFixtures.filter((fixture) => fixture.played);
   const nextFixture = userFixtures.find((fixture) => !fixture.played);
   const userStandingIndex = context.standings.findIndex((standing) => standing.teamId === context.userTeamId);
   const userStanding = userStandingIndex >= 0 ? context.standings[userStandingIndex] : null;
@@ -691,7 +694,7 @@ export function buildCareerEmailDrafts(context: CareerEmailContext): CareerEmail
     });
   });
 
-  const gamesPlayed = playedUserFixtures.length;
+  const gamesPlayed = playedLeagueUserFixtures.length;
   const digestMilestone = Math.min(12, Math.floor(gamesPlayed / 3) * 3);
   if (digestMilestone >= 3) {
     const orangeLeader = Object.values(context.playerStats).sort((left, right) => right.runs - left.runs)[0];
@@ -753,8 +756,8 @@ export function buildCareerEmailDrafts(context: CareerEmailContext): CareerEmail
     });
   }
 
-  if (gamesPlayed >= 10 && gamesPlayed < userFixtures.length) {
-    const matchesRemaining = userFixtures.length - gamesPlayed;
+  if (gamesPlayed >= 10 && gamesPlayed < leagueUserFixtures.length) {
+    const matchesRemaining = leagueUserFixtures.length - gamesPlayed;
     const likelyRequiredWins = Math.max(0, Math.ceil(((context.standings[3]?.points ?? 16) + 1 - (userStanding?.points ?? 0)) / 2));
     push({
       templateId: "season.qualification-scenarios",
@@ -773,7 +776,7 @@ export function buildCareerEmailDrafts(context: CareerEmailContext): CareerEmail
     });
   }
 
-  if (userFixtures.length > 0 && gamesPlayed === userFixtures.length) {
+  if (leagueUserFixtures.length > 0 && gamesPlayed === leagueUserFixtures.length) {
     const topFour = userStandingIndex >= 0 && userStandingIndex < 4;
     push({
       templateId: topFour ? "season.top-four" : "season.eliminated",
@@ -783,7 +786,7 @@ export function buildCareerEmailDrafts(context: CareerEmailContext): CareerEmail
       subject: topFour ? `${context.userTeam.name} secure a top-four finish` : "League campaign complete",
       preview: `Final league position: ${userStandingIndex >= 0 ? ordinal(userStandingIndex + 1) : "Unavailable"}.`,
       body: topFour
-        ? `${context.userTeam.name} have completed the league stage in ${ordinal(userStandingIndex + 1)} place with ${userStanding?.points ?? 0} points.\n\nThe club has secured a top-four finish. Playoff scheduling will follow when the competition system is available.`
+        ? `${context.userTeam.name} have completed the league stage in ${ordinal(userStandingIndex + 1)} place with ${userStanding?.points ?? 0} points.\n\nThe club has secured a top-four finish and its opening knockout fixture has now been confirmed.`
         : `${context.userTeam.name} have completed the league stage in ${userStandingIndex >= 0 ? ordinal(userStandingIndex + 1) : "an unconfirmed position"} with ${userStanding?.points ?? 0} points.\n\nThe club will not finish in the top four this season.`,
       category: "season",
       priority: "important",

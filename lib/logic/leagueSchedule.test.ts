@@ -5,6 +5,7 @@ import { dateKeyToLocalDate } from "./careerCalendar";
 import {
   LEAGUE_FIXTURE_COUNT,
   generateBalancedLeagueFixtures,
+  generateKnockoutFixtures,
   getLeagueSeasonStartDate,
 } from "./leagueSchedule";
 
@@ -122,4 +123,28 @@ test("fixture generation rejects a reigning champion outside the league", () => 
     () => generateBalancedLeagueFixtures(teamIds, 2027, "DCG", fixtureSeed),
     /Reigning champion DCG is not in the league/,
   );
+});
+
+test("knockout fixtures follow the IPL bracket and requested spacing", () => {
+  const playoffs = generateKnockoutFixtures(
+    "2027-05-25",
+    2027,
+    ["MI", "CSK", "RCB", "KKR"],
+  );
+  assert.deepEqual(
+    playoffs.map(({ stage, teamA, teamB }) => ({ stage, teamA, teamB })),
+    [
+      { stage: "qualifier1", teamA: "MI", teamB: "CSK" },
+      { stage: "eliminator", teamA: "RCB", teamB: "KKR" },
+      { stage: "qualifier2", teamA: "__PLAYOFF_TBD__", teamB: "__PLAYOFF_TBD__" },
+      { stage: "final", teamA: "__PLAYOFF_TBD__", teamB: "__PLAYOFF_TBD__" },
+    ],
+  );
+  assert.equal(dayOffset("2027-05-25", playoffs[0].date), 3);
+  assert.equal(dayOffset("2027-05-25", playoffs[1].date), 4);
+  assert.equal(dateKeyToLocalDate(playoffs[3].date).getDay(), 6);
+  assert.equal(playoffs[3].time, "19:30");
+  const eliminatorToQualifier2 = dayOffset(playoffs[1].date, playoffs[2].date);
+  const qualifier2ToFinal = dayOffset(playoffs[2].date, playoffs[3].date);
+  assert.ok(Math.abs(eliminatorToQualifier2 - qualifier2ToFinal) <= 1);
 });

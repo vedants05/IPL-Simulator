@@ -5,7 +5,11 @@ import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import { useGameStore } from "@/lib/store/gameStore";
 import { switchColorMode } from "./TeamThemeProvider";
 import AuctionGuidedTour from "@/components/auction/AuctionGuidedTour";
-import { SEASON_ACCESS_ENABLED } from "@/lib/config/featureFlags";
+import {
+  getSeasonAccessStorageKey,
+  SEASON_ACCESS_CHANGED_EVENT,
+  SEASON_ACCESS_ENABLED,
+} from "@/lib/config/featureFlags";
 import {
   AlertTriangle,
   SkipForward,
@@ -67,14 +71,61 @@ export default function NavBar() {
   const [isDarkMode, setIsDarkMode] = useState(false);
   const searchParams = useSearchParams();
   const activeTabFromUrl = searchParams.get("tab") || "home";
-  const [continuedToSeason, setContinuedToSeason] = useState(false);
+  const [continuedToSeason, setContinuedToSeason] = useState<boolean | null>(null);
+  const isAuctionPage = pathname.startsWith("/game/auction");
+  const seasonPagesUnlocked = SEASON_ACCESS_ENABLED && continuedToSeason === true;
+  const teamProfilePrefetchKey = Object.keys(teams).sort().join("|");
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const val = localStorage.getItem(`ipl_continued_to_season_${userTeamId}`) === "true";
-      setContinuedToSeason(val);
-    }
+    const syncSeasonAccess = () => {
+      if (!SEASON_ACCESS_ENABLED) {
+        localStorage.removeItem(getSeasonAccessStorageKey(userTeamId));
+        setContinuedToSeason(false);
+        return;
+      }
+
+      setContinuedToSeason(
+        localStorage.getItem(getSeasonAccessStorageKey(userTeamId)) === "true",
+      );
+    };
+
+    syncSeasonAccess();
+    window.addEventListener(SEASON_ACCESS_CHANGED_EVENT, syncSeasonAccess);
+
+    return () => {
+      window.removeEventListener(SEASON_ACCESS_CHANGED_EVENT, syncSeasonAccess);
+    };
   }, [userTeamId, pathname]);
+
+  useEffect(() => {
+    if (continuedToSeason === null || seasonPagesUnlocked || isAuctionPage) return;
+
+    if (localStorage.getItem(getSeasonAccessStorageKey(userTeamId)) === "true") {
+      setContinuedToSeason(true);
+      return;
+    }
+
+    router.replace("/game/auction");
+  }, [continuedToSeason, isAuctionPage, router, seasonPagesUnlocked, userTeamId]);
+
+  useEffect(() => {
+    if (!seasonPagesUnlocked || !teamProfilePrefetchKey) return;
+
+    const prefetchTeamProfiles = () => {
+      teamProfilePrefetchKey
+        .split("|")
+        .filter(Boolean)
+        .forEach((teamId) => router.prefetch(`/game/teams/${teamId}`));
+    };
+
+    if (typeof window.requestIdleCallback === "function") {
+      const idleId = window.requestIdleCallback(prefetchTeamProfiles, { timeout: 1200 });
+      return () => window.cancelIdleCallback(idleId);
+    }
+
+    const timeoutId = globalThis.setTimeout(prefetchTeamProfiles, 150);
+    return () => globalThis.clearTimeout(timeoutId);
+  }, [router, seasonPagesUnlocked, teamProfilePrefetchKey]);
 
   useEffect(() => {
     const savedTheme = localStorage.getItem("theme");
@@ -154,7 +205,6 @@ export default function NavBar() {
     }
   };
   const userTeam = teams[userTeamId];
-  const isAuctionPage = pathname.startsWith("/game/auction");
 
   return (
     <nav className="h-12 border-b-2 border-border flex items-center px-5 gap-0 shrink-0 z-50">
@@ -202,9 +252,9 @@ export default function NavBar() {
       )}
 
       <div className="flex items-center gap-0">
-        {((SEASON_ACCESS_ENABLED && (auction?.phase === "completed" || continuedToSeason)) || pathname.startsWith("/game/overview") || pathname.startsWith("/game/teams")
+        {(seasonPagesUnlocked
           ? NAV_ITEMS
-          : [ { label: "Auction", href: "/game/auction" } ]
+          : [{ label: "Auction", href: "/game/auction" }]
         ).map((item) => {
           let active = false;
           if (item.href === "/game/auction") {
