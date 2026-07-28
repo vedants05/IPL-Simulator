@@ -1,6 +1,7 @@
 import type { Player, Team } from "@/lib/types";
 import type { TeamLeadership } from "./captaincy";
 import { appointAiTeamLeadership } from "./aiLeadership";
+import { PITCH_SELECTION_EMAIL_DAYS } from "./pitchCreator";
 
 export type CareerEmailCategory = "task" | "fixture" | "match" | "squad" | "captaincy" | "league" | "season";
 export type CareerEmailPriority = "normal" | "important" | "urgent";
@@ -8,7 +9,7 @@ export type CareerEmailPriority = "normal" | "important" | "urgent";
 export interface CareerEmailAction {
   label: string;
   kind: "navigate" | "fixture" | "player";
-  tab?: "home" | "squad" | "scouting" | "season" | "history";
+  tab?: "home" | "club" | "squad" | "scouting" | "season" | "history";
   subtab?: string;
   entityId?: string;
 }
@@ -110,6 +111,7 @@ export interface CareerEmailContext {
   captainChangeGamesRemaining: number;
   lineup: CareerEmailLineupStatus;
   tacticsPreset: string;
+  homePitchName: string;
 }
 
 type DraftInput = Omit<CareerEmail, "id" | "unread" | "daySequence">;
@@ -405,6 +407,35 @@ export function buildCareerEmailDrafts(context: CareerEmailContext): CareerEmail
       actionCompleted: false,
       actions: [fixtureAction("View opening fixture", opener.id), navigation("Review Playing XIs", "squad", "playingxi")],
     });
+  }
+
+  if (context.fixturesAnnounced) {
+    userFixtures
+      .filter((fixture) => (
+        !fixture.played
+        && fixture.teamA === context.userTeamId
+        && Boolean(fixture.date)
+        && daysBetween(context.currentDate, fixture.date!) === PITCH_SELECTION_EMAIL_DAYS
+      ))
+      .forEach((fixture) => {
+        const opponentId = getOpponentId(fixture, context.userTeamId);
+        const opponent = context.teams[opponentId];
+        push({
+          templateId: "fixture.pitch-selection",
+          dedupeKey: `pitch-selection:${fixture.id}`,
+          threadId: `pitch-selection:${fixture.id}`,
+          sender: "Head Groundskeeper",
+          subject: `Choose the pitch for ${opponent?.shortName ?? opponentId}`,
+          preview: `${context.homePitchName} remains selected for our home match in three days.`,
+          body: `Our home match against ${opponent?.name ?? opponentId} is in three days at ${getVenue(fixture, context.teams)}.\n\nCurrent pitch: ${context.homePitchName}\nMatch date: ${formatDate(fixture.date)}\n\nIf you want a different completed pitch, select it in the Pitch Curator before matchday. If this email is left untouched, ${context.homePitchName} will remain the current pitch.`,
+          category: "fixture",
+          priority: "important",
+          date: context.currentDate,
+          requiresAction: false,
+          actionCompleted: false,
+          actions: [navigation("Review pitch selection", "club", "pitchcurator")],
+        });
+      });
   }
 
   if (context.fixturesAnnounced && nextFixture?.date) {
@@ -807,6 +838,7 @@ const LEGACY_TEMPLATE_DAY_SEQUENCE: Record<string, number> = {
   "fixture.opener": 80,
   "fixture.rest-period": 90,
   "fixture.short-turnaround": 90,
+  "fixture.pitch-selection": 95,
   "fixture.next-briefing": 100,
   "fixture.selection-reminder": 110,
   "fixture.matchday": 120,

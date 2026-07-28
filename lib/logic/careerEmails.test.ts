@@ -76,6 +76,7 @@ const baseContext = (updates: Partial<CareerEmailContext> = {}): CareerEmailCont
   captainChangeGamesRemaining: 0,
   lineup: lineupReady,
   tacticsPreset: "Balanced",
+  homePitchName: "The Highway Belter",
   ...updates,
 });
 
@@ -157,6 +158,39 @@ test("match-eve selection reminders only appear when action is needed", () => {
 
   assert.ok(invalidDrafts.some((email) => email.templateId === "fixture.selection-reminder"));
   assert.equal(readyDrafts.some((email) => email.templateId === "fixture.selection-reminder"), false);
+});
+
+test("pitch selection email appears exactly three days before a home match", () => {
+  const homeFixture = fixture(1);
+  const homeDrafts = buildCareerEmailDrafts(baseContext({
+    currentDate: "2027-03-17",
+    fixturesAnnounced: true,
+    fixtures: [homeFixture],
+  }));
+  const pitchEmail = homeDrafts.find((email) => email.templateId === "fixture.pitch-selection");
+
+  assert.ok(pitchEmail);
+  assert.match(pitchEmail.body, /Current pitch: The Highway Belter/);
+  assert.deepEqual(pitchEmail.actions[0], {
+    label: "Review pitch selection",
+    kind: "navigate",
+    tab: "club",
+    subtab: "pitchcurator",
+  });
+
+  const earlyDrafts = buildCareerEmailDrafts(baseContext({
+    currentDate: "2027-03-16",
+    fixturesAnnounced: true,
+    fixtures: [homeFixture],
+  }));
+  const awayDrafts = buildCareerEmailDrafts(baseContext({
+    currentDate: "2027-03-18",
+    fixturesAnnounced: true,
+    fixtures: [fixture(2)],
+  }));
+
+  assert.equal(earlyDrafts.some((email) => email.templateId === "fixture.pitch-selection"), false);
+  assert.equal(awayDrafts.some((email) => email.templateId === "fixture.pitch-selection"), false);
 });
 
 test("each completed fixture produces one combined match report", () => {

@@ -12,20 +12,21 @@ import {
 } from "lucide-react";
 
 import {
-  buildRecommendedImpactSubs,
   dropPlayerIntoImpactSubs,
   dropPlayerIntoLineup,
   getLineupDropPosition,
-  type LineupCandidate,
   type LineupDropPlacement,
   type LineupPlan,
   validateLineup,
 } from "@/lib/logic/lineupPlanner";
 import {
-  buildAiMatchLineups,
   findOptimalImpactBattingPosition,
   selectBattingFirstOutgoingBatter,
 } from "@/lib/logic/aiLineupSelector";
+import {
+  buildAutomaticLineupSelection,
+  playerToLineupCandidate,
+} from "@/lib/logic/automaticLineupBuilder";
 import type { Player, Team } from "@/lib/types";
 
 interface TacticsLineupBuilderProps {
@@ -105,17 +106,6 @@ const OverseasMarker = () => (
   </span>
 );
 
-const toCandidate = (player: Player): LineupCandidate => ({
-  id: player.id,
-  nationality: player.nationality,
-  role: player.role,
-  batting: player.currentBatting,
-  bowling: player.currentBowling,
-  isWicketkeeper: player.role === "WK-Batsman" || Boolean(player.isWicketkeeper) || Boolean(player.isPartTimeWk),
-  isPartTimeWicketkeeper: Boolean(player.isPartTimeWk),
-  isOpener: player.isOpener,
-});
-
 export default function TacticsLineupBuilder({
   team,
   players,
@@ -157,7 +147,7 @@ export default function TacticsLineupBuilder({
     () => team.squad.map((id) => players[id]).filter((player): player is Player => Boolean(player)),
     [players, team.squad],
   );
-  const candidates = useMemo(() => squad.map(toCandidate), [squad]);
+  const candidates = useMemo(() => squad.map(playerToLineupCandidate), [squad]);
   const playerById = useMemo(() => new Map(squad.map((player) => [player.id, player])), [squad]);
   const activeXI = activePlan === "battingFirst" ? battingFirstXI : bowlingFirstXI;
   const otherXI = activePlan === "battingFirst" ? bowlingFirstXI : battingFirstXI;
@@ -251,16 +241,17 @@ export default function TacticsLineupBuilder({
 
   const copyOtherPlan = () => setActivePlanState([...otherXI], [...otherImpactSubs]);
   const autoBuild = () => {
-    const recommended = buildAiMatchLineups(squad, {
+    const recommended = buildAutomaticLineupSelection(squad, {
       captainId,
       viceCaptainId,
       useProvisionalCaptain: !captainId,
     });
-    const battingFirstXI = recommended.battingFirst.startingXI;
-    const bowlingFirstXI = recommended.bowlingFirst.startingXI;
-    const battingImpact = buildRecommendedImpactSubs(battingFirstXI, candidates, "battingFirst");
-    const bowlingImpact = buildRecommendedImpactSubs(bowlingFirstXI, candidates, "bowlingFirst");
-    onChangeBothPlans(battingFirstXI, bowlingFirstXI, battingImpact, bowlingImpact);
+    onChangeBothPlans(
+      recommended.battingFirstXI,
+      recommended.bowlingFirstXI,
+      recommended.battingFirstImpactSubs,
+      recommended.bowlingFirstImpactSubs,
+    );
   };
 
   const fullTimeKeepers = activePlayers.filter((player) => !player.isPartTimeWk && (player.role === "WK-Batsman" || player.isWicketkeeper));
@@ -274,7 +265,7 @@ export default function TacticsLineupBuilder({
   };
 
   return (
-    <div className="flex h-[calc(100vh-160px)] min-h-0 flex-col overflow-hidden border-2 border-border bg-surface">
+    <div className="flex h-full flex-1 min-h-0 flex-col overflow-hidden border-2 border-border bg-surface">
       <div className="flex shrink-0 items-center justify-between border-b-2 border-border bg-[linear-gradient(110deg,rgba(var(--team-primary-rgb),0.12),transparent_48%)] px-5 py-3">
         <div>
           <p className="font-space-mono text-[12px] font-bold uppercase tracking-[0.18em] text-text-secondary">Matchday selection</p>

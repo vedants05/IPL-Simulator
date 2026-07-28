@@ -14,6 +14,8 @@ import {
 } from "lucide-react";
 
 import { HISTORICAL_LEAGUE_HISTORY } from "@/lib/data/leagueHistory";
+import { getHomeStadium } from "@/lib/data/pitchCurator";
+import { getTeamAuctionDescriptor } from "@/lib/constants/auctionDescriptors";
 import { formatPrice } from "@/lib/logic/auctionRules";
 import type { AiLineupPlan } from "@/lib/logic/aiLineupSelector";
 import type { AiLeagueLeadership, AiTeamLeadership } from "@/lib/logic/aiLeadership";
@@ -420,6 +422,7 @@ export default function TeamProfilePage() {
   const rawTeamId = Array.isArray(params.teamId) ? params.teamId[0] : params.teamId;
   const teamId = decodeURIComponent(rawTeamId ?? "").toUpperCase();
   const team = teams[teamId];
+  const homeStadium = getHomeStadium(teamId);
 
   useEffect(() => {
     setHasMounted(true);
@@ -560,6 +563,7 @@ export default function TeamProfilePage() {
     const {
       buildAiMatchLineups,
       currentAbility,
+      findOptimalImpactBattingPosition,
       isAiBowlingOption,
       isBattingOption,
       isImpactPlayerWithinOverseasLimit,
@@ -651,9 +655,33 @@ export default function TeamProfilePage() {
       let forceImpactPosition8 = false;
       let replacedOpenerImpact = false;
       const customPos = isBowlingFirst ? career.bowlingFirstImpactBattingPosition : career.battingFirstImpactBattingPosition;
-      const intendedImpactPosition = typeof customPos === "number"
+      const hasValidCustomPosition = typeof customPos === "number"
+        && customPos >= 1
+        && customPos <= 11;
+      let intendedImpactPosition = hasValidCustomPosition
         ? customPos
         : fallback.impactBattingPosition;
+      if (
+        isBowlingFirst
+        && savedImpactPlayerId
+        && !(typeof intendedImpactPosition === "number"
+          && intendedImpactPosition >= 1
+          && intendedImpactPosition <= 11)
+      ) {
+        const intendedImpactPlayer = players[savedImpactPlayerId];
+        const tentativeOutgoingId = userSelectedOutgoingId ?? fallback.likelyOutgoingPlayerId;
+        const tentativeOutgoingPlayer = tentativeOutgoingId
+          ? startingPlayers.find((player) => player.id === tentativeOutgoingId)
+          : undefined;
+        if (intendedImpactPlayer && tentativeOutgoingPlayer) {
+          intendedImpactPosition = findOptimalImpactBattingPosition(
+            startingPlayers,
+            intendedImpactPlayer,
+            tentativeOutgoingPlayer,
+            true,
+          );
+        }
+      }
       if (isBowlingFirst && savedImpactPlayerId) {
         const impactRule = resolveBowlingFirstImpactPlayer(
           squad,
@@ -669,11 +697,16 @@ export default function TeamProfilePage() {
       }
 
       const impactPlayerId = savedImpactPlayerId;
-      const impactBattingPosition = forceImpactPosition8
+      let impactBattingPosition = forceImpactPosition8
         ? 8
-        : (!replacedOpenerImpact && typeof customPos === "number" && customPos >= 1 && customPos <= 11)
+        : (!replacedOpenerImpact && hasValidCustomPosition)
         ? customPos
-        : fallback.impactBattingPosition;
+        : (!replacedOpenerImpact
+          && typeof intendedImpactPosition === "number"
+          && intendedImpactPosition >= 1
+          && intendedImpactPosition <= 11)
+        ? intendedImpactPosition
+        : null;
 
       let outgoingPlayerId = fallback.likelyOutgoingPlayerId;
       if (!isBowlingFirst && !userSelectedOutgoingId) {
@@ -721,6 +754,29 @@ export default function TeamProfilePage() {
         && userSelectedOutgoingId !== impactPlayerId
         && startingPlayers.some((player) => player.id === userSelectedOutgoingId)) {
         outgoingPlayerId = userSelectedOutgoingId;
+      }
+      if (
+        isBowlingFirst
+        && !forceImpactPosition8
+        && (
+          replacedOpenerImpact
+          || !(typeof impactBattingPosition === "number"
+            && impactBattingPosition >= 1
+            && impactBattingPosition <= 11)
+        )
+        && impactPlayerId
+        && outgoingPlayerId
+      ) {
+        const impactPlayer = players[impactPlayerId];
+        const outgoingPlayer = startingPlayers.find((player) => player.id === outgoingPlayerId);
+        if (impactPlayer && outgoingPlayer) {
+          impactBattingPosition = findOptimalImpactBattingPosition(
+            startingPlayers,
+            impactPlayer,
+            outgoingPlayer,
+            true,
+          );
+        }
       }
 
       return {
@@ -939,8 +995,10 @@ export default function TeamProfilePage() {
             </div>
             <h1 className="mt-1.5 truncate font-anton text-[30px] uppercase leading-none">{team.name}</h1>
             <div className="mt-2.5 flex flex-wrap items-center gap-x-5 gap-y-1 font-space-mono text-[8px] font-bold uppercase opacity-80">
-              <span className="inline-flex items-center gap-1.5"><MapPin className="size-3" /> {team.city}</span>
-              <span>{team.homeGround}</span>
+              <span className="inline-flex items-center gap-1.5">
+                <MapPin className="size-3" />
+                Home stadium: {team.homeGround}
+              </span>
             </div>
           </div>
 
@@ -997,17 +1055,40 @@ export default function TeamProfilePage() {
             </div>
 
             <div className="grid min-h-0 flex-1 grid-cols-[1.1fr_0.9fr_1fr] gap-3">
-              <section className="min-h-0 overflow-hidden border border-border bg-surface p-3">
-                <p className="font-space-mono text-[8px] font-bold uppercase tracking-[0.15em] text-accent">Club identity</p>
-                <h2 className="mt-0.5 font-anton text-[18px] uppercase leading-none text-text-primary">{team.shortName} details</h2>
-                <dl className="mt-3 grid grid-cols-[5.5rem_minmax(0,1fr)] gap-y-2 text-[9px]">
-                  <dt className="font-space-mono uppercase text-text-secondary">Home city</dt>
-                  <dd className="truncate font-semibold text-text-primary">{team.city}</dd>
-                  <dt className="font-space-mono uppercase text-text-secondary">Ground</dt>
-                  <dd className="truncate font-semibold text-text-primary">{team.homeGround}</dd>
-                  <dt className="font-space-mono uppercase text-text-secondary">Approach</dt>
-                  <dd className="truncate font-semibold text-text-primary">{team.aiPersonality}</dd>
-                </dl>
+              <section className="flex min-h-0 flex-col justify-between overflow-hidden border border-border bg-surface p-3">
+                <div>
+                  <p className="font-space-mono text-[8px] font-bold uppercase tracking-[0.15em] text-accent">Club identity</p>
+                  <h2 className="mt-0.5 font-anton text-[18px] uppercase leading-none text-text-primary">{team.shortName} details</h2>
+                  <dl className="mt-3 grid grid-cols-[5.5rem_minmax(0,1fr)] gap-y-2 text-[9px]">
+                    <dt className="font-space-mono uppercase text-text-secondary">Home stadium</dt>
+                    <dd className="truncate font-semibold text-text-primary">{team.homeGround}</dd>
+                    {homeStadium && (
+                      <>
+                        <dt className="font-space-mono uppercase text-text-secondary">Capacity</dt>
+                        <dd className="truncate font-semibold text-text-primary">{homeStadium.capacity.toLocaleString("en-GB")} seats</dd>
+                      </>
+                    )}
+                    <dt className="font-space-mono uppercase text-text-secondary">Approach</dt>
+                    <dd className="truncate font-semibold text-text-primary">{team.aiPersonality}</dd>
+                  </dl>
+                </div>
+                {(() => {
+                  const descriptor = getTeamAuctionDescriptor(team.id);
+                  if (!descriptor) return null;
+                  return (
+                    <div className="mt-2.5 rounded border border-accent/40 bg-accent/[0.04] p-2.5">
+                      <p className="font-space-mono text-[7.5px] font-bold uppercase tracking-wider text-accent">
+                        Auction Focus & Tendencies
+                      </p>
+                      <h4 className="mt-0.5 font-anton text-[13px] uppercase text-text-primary">
+                        {descriptor.title}
+                      </h4>
+                      <p className="mt-1 font-barlow text-[10.5px] leading-snug text-text-secondary">
+                        {descriptor.detail}
+                      </p>
+                    </div>
+                  );
+                })()}
               </section>
 
               <section className="flex min-h-0 flex-col overflow-hidden border border-border bg-surface p-3">

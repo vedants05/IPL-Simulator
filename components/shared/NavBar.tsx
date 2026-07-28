@@ -26,6 +26,7 @@ import {
 
 const NAV_ITEMS = [
   { label: "Home", href: "/game/overview?tab=home" },
+  { label: "Club", href: "/game/overview?tab=club" },
   { label: "Squad", href: "/game/overview?tab=squad" },
   { label: "Scouting", href: "/game/overview?tab=scouting" },
   { label: "Season", href: "/game/overview?tab=season" },

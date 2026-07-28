@@ -17,6 +17,41 @@ import { fetchTeamsFromSupabase } from "@/lib/supabase/fetchTeams";
 import type { ClubFigureTier, ClubFigureTierOverrides } from "@/lib/data/clubFigures";
 import type { LeagueHistorySeason } from "@/lib/data/leagueHistory";
 import {
+  createDefaultHomeBoundaryDimensions,
+  createDefaultHomePitchSelections,
+  getHomeStadium,
+  isPitchRegisteredForTeam,
+  normalizeHomeBoundaryDimensions,
+  normalizeHomePitchSelections,
+  type BoundaryDimensions,
+  type HomeBoundaryDimensions,
+  type HomePitchSelections,
+  type IplTeamId,
+} from "@/lib/data/pitchCurator";
+import { addDaysToDateKey } from "@/lib/logic/careerCalendar";
+import {
+  deriveCustomPitch,
+  isCustomCuratorPitch,
+  MAX_PITCHES_PER_STADIUM,
+  PITCH_DESTRUCTION_DAYS,
+  type CustomCuratorPitch,
+  type PitchProject,
+  type PitchSliderSettings,
+  type PitchSoil,
+} from "@/lib/logic/pitchCreator";
+import {
+  calculateOutfieldPreparationTiming,
+  createDefaultHomeOutfieldSettings,
+  normalizeBoundaryPreset,
+  normalizeHomeOutfieldSettings,
+  normalizeOutfieldPreparationProject,
+  normalizeOutfieldSettings,
+  type BoundaryPreset,
+  type HomeOutfieldSettings,
+  type OutfieldPreparationProject,
+  type OutfieldSettings,
+} from "@/lib/logic/stadiumManagement";
+import {
   getPlayerSeasonHistory,
   mergePlayerIplHistory,
   upsertPlayerIplHistory,
@@ -107,6 +142,13 @@ interface GameStateAdditions {
   aiAcceleratedBackups: Record<string, string[]>;
   clubFigureTierOverrides: ClubFigureTierOverrides;
   simulatedLeagueHistory: LeagueHistorySeason[];
+  homePitchSelections: HomePitchSelections;
+  homeBoundaryDimensions: HomeBoundaryDimensions;
+  boundaryPresetsByTeam: Partial<Record<IplTeamId, BoundaryPreset[]>>;
+  homeOutfieldSettings: HomeOutfieldSettings;
+  outfieldProjectsByTeam: Partial<Record<IplTeamId, OutfieldPreparationProject>>;
+  customPitchesByTeam: Partial<Record<IplTeamId, CustomCuratorPitch[]>>;
+  pitchProjectsByTeam: Partial<Record<IplTeamId, PitchProject>>;
 }
 
 interface GameActions {
@@ -145,14 +187,156 @@ interface GameActions {
   removeAuctionTarget: (playerId: string) => void;
   confirmUserAcceleratedTargets: (targets: string[]) => void;
   startAcceleratedAuctionFromPlanning: () => void;
-  setClubFigureTierOverride: (overrideKey: string, tier: ClubFigureTier) => void;
+  setClubFigureTierOverride: (figureId: string, tier: ClubFigureTier) => void;
   recordSimulatedLeagueSeason: (season: LeagueHistorySeason) => void;
+  setHomePitchSelection: (teamId: string, pitchId: string) => void;
+  setHomeBoundaryDimensions: (
+    teamId: string,
+    dimensions: Partial<BoundaryDimensions>,
+  ) => void;
+  saveBoundaryPreset: (
+    teamId: string,
+    name: string,
+    dimensions: BoundaryDimensions,
+  ) => string | null;
+  applyBoundaryPreset: (teamId: string, presetId: string) => boolean;
+  deleteBoundaryPreset: (teamId: string, presetId: string) => boolean;
+  startOutfieldPreparation: (teamId: string, target: OutfieldSettings) => boolean;
+  reconcileOutfieldProjects: () => void;
+  startPitchCreation: (
+    teamId: string,
+    soil: PitchSoil,
+    sliders: PitchSliderSettings,
+  ) => boolean;
+  startPitchDestruction: (teamId: string, pitchId: string) => boolean;
+  reconcilePitchProjects: () => void;
 }
 
 // ---------------------------------------------------------------------------
 // Full store type
 // ---------------------------------------------------------------------------
 type Store = GameState & GameStateAdditions & GameActions;
+
+function getAdditionalHomePitchIds(
+  customPitchesByTeam: Partial<Record<IplTeamId, CustomCuratorPitch[]>>,
+) {
+  return Object.fromEntries(
+    Object.entries(customPitchesByTeam).map(([teamId, pitches]) => [
+      teamId,
+      (pitches ?? []).map((pitch) => pitch.id),
+    ]),
+  ) as Partial<Record<IplTeamId, string[]>>;
+}
+
+function normalizeCustomPitches(
+  value: unknown,
+): Partial<Record<IplTeamId, CustomCuratorPitch[]>> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const supplied = value as Record<string, unknown>;
+  const normalized: Partial<Record<IplTeamId, CustomCuratorPitch[]>> = {};
+
+  Object.keys(supplied).forEach((teamId) => {
+    const stadium = getHomeStadium(teamId);
+    const pitches = supplied[teamId];
+    if (!stadium || !Array.isArray(pitches)) return;
+    const capacity = Math.max(0, MAX_PITCHES_PER_STADIUM - stadium.pitches.length);
+    const seen = new Set<string>();
+    const valid = pitches.filter((pitch): pitch is CustomCuratorPitch => {
+      if (
+        !pitch
+        || typeof pitch !== "object"
+        || !isCustomCuratorPitch(pitch as CustomCuratorPitch)
+      ) return false;
+      const candidate = pitch as CustomCuratorPitch;
+      if (
+        candidate.teamId !== teamId
+        || typeof candidate.id !== "string"
+        || !candidate.id
+        || seen.has(candidate.id)
+      ) return false;
+      seen.add(candidate.id);
+      return true;
+    }).slice(0, capacity);
+    if (valid.length > 0) normalized[stadium.teamId] = valid;
+  });
+
+  return normalized;
+}
+
+function normalizePitchProjects(
+  value: unknown,
+): Partial<Record<IplTeamId, PitchProject>> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const supplied = value as Record<string, unknown>;
+  const normalized: Partial<Record<IplTeamId, PitchProject>> = {};
+
+  Object.entries(supplied).forEach(([teamId, project]) => {
+    const stadium = getHomeStadium(teamId);
+    if (!stadium || !project || typeof project !== "object") return;
+    const candidate = project as Partial<PitchProject>;
+    if (
+      candidate.teamId !== teamId
+      || (candidate.kind !== "create" && candidate.kind !== "destroy")
+      || typeof candidate.id !== "string"
+      || typeof candidate.startedOn !== "string"
+      || typeof candidate.completesOn !== "string"
+    ) return;
+    if (
+      candidate.kind === "create"
+      && candidate.pitch
+      && isCustomCuratorPitch(candidate.pitch)
+      && candidate.pitch.teamId === teamId
+    ) {
+      normalized[stadium.teamId] = candidate as PitchProject;
+    } else if (
+      candidate.kind === "destroy"
+      && typeof candidate.pitchId === "string"
+      && typeof candidate.pitchName === "string"
+    ) {
+      normalized[stadium.teamId] = candidate as PitchProject;
+    }
+  });
+
+  return normalized;
+}
+
+function normalizeBoundaryPresetsByTeam(
+  value: unknown,
+): Partial<Record<IplTeamId, BoundaryPreset[]>> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const supplied = value as Record<string, unknown>;
+  const normalized: Partial<Record<IplTeamId, BoundaryPreset[]>> = {};
+
+  Object.entries(supplied).forEach(([teamId, presets]) => {
+    const stadium = getHomeStadium(teamId);
+    if (!stadium || !Array.isArray(presets)) return;
+    const seen = new Set<string>();
+    const valid = presets.flatMap((preset) => {
+      const candidate = normalizeBoundaryPreset(preset, stadium.teamId);
+      if (!candidate || seen.has(candidate.id)) return [];
+      seen.add(candidate.id);
+      return [candidate];
+    });
+    if (valid.length > 0) normalized[stadium.teamId] = valid;
+  });
+
+  return normalized;
+}
+
+function normalizeOutfieldProjectsByTeam(
+  value: unknown,
+): Partial<Record<IplTeamId, OutfieldPreparationProject>> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const supplied = value as Record<string, unknown>;
+  const normalized: Partial<Record<IplTeamId, OutfieldPreparationProject>> = {};
+  Object.entries(supplied).forEach(([teamId, project]) => {
+    const stadium = getHomeStadium(teamId);
+    if (!stadium) return;
+    const candidate = normalizeOutfieldPreparationProject(project, stadium.teamId);
+    if (candidate) normalized[stadium.teamId] = candidate;
+  });
+  return normalized;
+}
 
 function pickSoftSquadTarget(): number {
   const roll = Math.random();
@@ -473,6 +657,13 @@ export const useGameStore = create<Store>()(
       aiAcceleratedBackups: {},
       clubFigureTierOverrides: {},
       simulatedLeagueHistory: [],
+      homePitchSelections: createDefaultHomePitchSelections(),
+      homeBoundaryDimensions: createDefaultHomeBoundaryDimensions(),
+      boundaryPresetsByTeam: {},
+      homeOutfieldSettings: createDefaultHomeOutfieldSettings(),
+      outfieldProjectsByTeam: {},
+      customPitchesByTeam: {},
+      pitchProjectsByTeam: {},
 
       // ----- Actions -----
       initNewGame: async (userTeamId) => {
@@ -520,6 +711,13 @@ export const useGameStore = create<Store>()(
           auctionTargetPriorities: {},
           clubFigureTierOverrides: {},
           simulatedLeagueHistory: [],
+          homePitchSelections: createDefaultHomePitchSelections(),
+          homeBoundaryDimensions: createDefaultHomeBoundaryDimensions(),
+          boundaryPresetsByTeam: {},
+          homeOutfieldSettings: createDefaultHomeOutfieldSettings(),
+          outfieldProjectsByTeam: {},
+          customPitchesByTeam: {},
+          pitchProjectsByTeam: {},
           auction: {
             type: "mega",
             season: INITIAL_ACTIVE_SEASON,
@@ -2230,13 +2428,284 @@ export const useGameStore = create<Store>()(
         }
       },
 
-      setClubFigureTierOverride: (overrideKey, tier) => {
+      setClubFigureTierOverride: (figureId, tier) => {
         set((state) => ({
           clubFigureTierOverrides: {
             ...state.clubFigureTierOverrides,
-            [overrideKey]: tier,
+            [figureId]: tier,
           },
         }));
+      },
+
+      setHomePitchSelection: (teamId, pitchId) => {
+        const stadium = getHomeStadium(teamId);
+        if (!stadium) return;
+        set((state) => {
+          const customPitches = state.customPitchesByTeam[stadium.teamId] ?? [];
+          const isCustomPitch = customPitches.some((pitch) => pitch.id === pitchId);
+          const project = state.pitchProjectsByTeam[stadium.teamId];
+          const isBeingDestroyed = project?.kind === "destroy" && project.pitchId === pitchId;
+          if (
+            (!isPitchRegisteredForTeam(teamId, pitchId) && !isCustomPitch)
+            || isBeingDestroyed
+          ) return state;
+          return {
+            homePitchSelections: normalizeHomePitchSelections(
+              {
+                ...state.homePitchSelections,
+                [teamId]: pitchId,
+              },
+              getAdditionalHomePitchIds(state.customPitchesByTeam),
+            ),
+          };
+        });
+      },
+
+      setHomeBoundaryDimensions: (teamId, dimensions) => {
+        const stadium = getHomeStadium(teamId);
+        if (!stadium) return;
+        set((state) => ({
+          homeBoundaryDimensions: normalizeHomeBoundaryDimensions({
+            ...state.homeBoundaryDimensions,
+            [stadium.teamId]: {
+              ...state.homeBoundaryDimensions[stadium.teamId],
+              ...dimensions,
+            },
+          }),
+        }));
+      },
+
+      saveBoundaryPreset: (teamId, name, dimensions) => {
+        const stadium = getHomeStadium(teamId);
+        const state = get();
+        const trimmedName = name.trim().slice(0, 32);
+        if (!stadium || teamId !== state.userTeamId || !trimmedName) return null;
+        const normalizedDimensions = normalizeHomeBoundaryDimensions({
+          ...state.homeBoundaryDimensions,
+          [stadium.teamId]: dimensions,
+        })[stadium.teamId];
+        const existing = (state.boundaryPresetsByTeam[stadium.teamId] ?? [])
+          .find((preset) => preset.name.toLocaleLowerCase("en-GB") === trimmedName.toLocaleLowerCase("en-GB"));
+        const preset: BoundaryPreset = {
+          id: existing?.id ?? `boundary-preset-${uuidv4()}`,
+          teamId: stadium.teamId,
+          name: trimmedName,
+          dimensions: normalizedDimensions,
+          createdOn: existing?.createdOn ?? state.currentDate,
+        };
+        set((current) => ({
+          boundaryPresetsByTeam: {
+            ...current.boundaryPresetsByTeam,
+            [stadium.teamId]: [
+              ...(current.boundaryPresetsByTeam[stadium.teamId] ?? [])
+                .filter((candidate) => candidate.id !== preset.id),
+              preset,
+            ],
+          },
+        }));
+        return preset.id;
+      },
+
+      applyBoundaryPreset: (teamId, presetId) => {
+        const stadium = getHomeStadium(teamId);
+        const state = get();
+        if (!stadium || teamId !== state.userTeamId) return false;
+        const preset = (state.boundaryPresetsByTeam[stadium.teamId] ?? [])
+          .find((candidate) => candidate.id === presetId);
+        if (!preset) return false;
+        state.setHomeBoundaryDimensions(stadium.teamId, preset.dimensions);
+        return true;
+      },
+
+      deleteBoundaryPreset: (teamId, presetId) => {
+        const stadium = getHomeStadium(teamId);
+        const state = get();
+        if (!stadium || teamId !== state.userTeamId) return false;
+        const presets = state.boundaryPresetsByTeam[stadium.teamId] ?? [];
+        if (!presets.some((preset) => preset.id === presetId)) return false;
+        set((current) => ({
+          boundaryPresetsByTeam: {
+            ...current.boundaryPresetsByTeam,
+            [stadium.teamId]: presets.filter((preset) => preset.id !== presetId),
+          },
+        }));
+        return true;
+      },
+
+      startOutfieldPreparation: (teamId, target) => {
+        const stadium = getHomeStadium(teamId);
+        const state = get();
+        if (!stadium || teamId !== state.userTeamId || state.outfieldProjectsByTeam[stadium.teamId]) {
+          return false;
+        }
+        const current = state.homeOutfieldSettings[stadium.teamId];
+        const normalizedTarget = normalizeOutfieldSettings(target, stadium.teamId);
+        if (
+          current.grassHeightMm === normalizedTarget.grassHeightMm
+          && current.moisturePercent === normalizedTarget.moisturePercent
+          && current.firmnessGmax === normalizedTarget.firmnessGmax
+        ) return false;
+        const timing = calculateOutfieldPreparationTiming(
+          stadium.teamId,
+          current,
+          normalizedTarget,
+        );
+        if (timing.totalDays < 1) return false;
+        const project: OutfieldPreparationProject = {
+          id: `outfield-project-${uuidv4()}`,
+          teamId: stadium.teamId,
+          startedOn: state.currentDate,
+          completesOn: addDaysToDateKey(state.currentDate, timing.totalDays),
+          preparationDays: timing.totalDays,
+          target: normalizedTarget,
+        };
+        set((currentState) => ({
+          outfieldProjectsByTeam: {
+            ...currentState.outfieldProjectsByTeam,
+            [stadium.teamId]: project,
+          },
+        }));
+        return true;
+      },
+
+      reconcileOutfieldProjects: () => {
+        set((state) => {
+          const nextProjects = { ...state.outfieldProjectsByTeam };
+          const nextSettings = { ...state.homeOutfieldSettings };
+          let changed = false;
+          Object.entries(state.outfieldProjectsByTeam).forEach(([teamId, project]) => {
+            if (!project || project.completesOn > state.currentDate) return;
+            const stadium = getHomeStadium(teamId);
+            if (stadium) {
+              nextSettings[stadium.teamId] = normalizeOutfieldSettings(
+                project.target,
+                stadium.teamId,
+              );
+              delete nextProjects[stadium.teamId];
+            } else {
+              delete nextProjects[teamId as IplTeamId];
+            }
+            changed = true;
+          });
+          if (!changed) return state;
+          return {
+            homeOutfieldSettings: nextSettings,
+            outfieldProjectsByTeam: nextProjects,
+          };
+        });
+      },
+
+      startPitchCreation: (teamId, soil, sliders) => {
+        const stadium = getHomeStadium(teamId);
+        const state = get();
+        if (!stadium || teamId !== state.userTeamId || state.pitchProjectsByTeam[stadium.teamId]) {
+          return false;
+        }
+        const existingCustomPitches = state.customPitchesByTeam[stadium.teamId] ?? [];
+        if (stadium.pitches.length + existingCustomPitches.length >= MAX_PITCHES_PER_STADIUM) {
+          return false;
+        }
+
+        const pitch = deriveCustomPitch({
+          id: `custom-pitch-${uuidv4()}`,
+          teamId: stadium.teamId,
+          stadium,
+          soil,
+          sliders,
+          createdOn: state.currentDate,
+        });
+        const project: PitchProject = {
+          id: `pitch-project-${uuidv4()}`,
+          kind: "create",
+          teamId: stadium.teamId,
+          startedOn: state.currentDate,
+          completesOn: addDaysToDateKey(state.currentDate, pitch.creationDays),
+          pitch,
+        };
+        set((current) => ({
+          pitchProjectsByTeam: {
+            ...current.pitchProjectsByTeam,
+            [stadium.teamId]: project,
+          },
+        }));
+        return true;
+      },
+
+      startPitchDestruction: (teamId, pitchId) => {
+        const stadium = getHomeStadium(teamId);
+        const state = get();
+        if (!stadium || teamId !== state.userTeamId || state.pitchProjectsByTeam[stadium.teamId]) {
+          return false;
+        }
+        const pitch = (state.customPitchesByTeam[stadium.teamId] ?? [])
+          .find((candidate) => candidate.id === pitchId);
+        if (!pitch || state.homePitchSelections[stadium.teamId] === pitchId) return false;
+
+        const project: PitchProject = {
+          id: `pitch-project-${uuidv4()}`,
+          kind: "destroy",
+          teamId: stadium.teamId,
+          startedOn: state.currentDate,
+          completesOn: addDaysToDateKey(state.currentDate, PITCH_DESTRUCTION_DAYS),
+          pitchId,
+          pitchName: pitch.name,
+        };
+        set((current) => ({
+          pitchProjectsByTeam: {
+            ...current.pitchProjectsByTeam,
+            [stadium.teamId]: project,
+          },
+        }));
+        return true;
+      },
+
+      reconcilePitchProjects: () => {
+        set((state) => {
+          const nextProjects = { ...state.pitchProjectsByTeam };
+          const nextCustomPitches: Partial<Record<IplTeamId, CustomCuratorPitch[]>> = Object.fromEntries(
+            Object.entries(state.customPitchesByTeam).map(([teamId, pitches]) => [
+              teamId,
+              [...(pitches ?? [])],
+            ]),
+          );
+          let changed = false;
+
+          Object.entries(state.pitchProjectsByTeam).forEach(([teamId, project]) => {
+            if (!project || project.completesOn > state.currentDate) return;
+            const stadium = getHomeStadium(teamId);
+            if (!stadium) {
+              delete nextProjects[teamId as IplTeamId];
+              changed = true;
+              return;
+            }
+            const customPitches = nextCustomPitches[stadium.teamId] ?? [];
+            if (project.kind === "create") {
+              const hasCapacity = stadium.pitches.length + customPitches.length < MAX_PITCHES_PER_STADIUM;
+              const alreadyExists = customPitches.some((pitch) => pitch.id === project.pitch.id);
+              if (hasCapacity && !alreadyExists) {
+                nextCustomPitches[stadium.teamId] = [
+                  ...customPitches,
+                  { ...project.pitch, createdOn: project.completesOn },
+                ];
+              }
+            } else {
+              nextCustomPitches[stadium.teamId] = customPitches
+                .filter((pitch) => pitch.id !== project.pitchId);
+            }
+            delete nextProjects[stadium.teamId];
+            changed = true;
+          });
+
+          if (!changed) return state;
+          return {
+            customPitchesByTeam: nextCustomPitches,
+            pitchProjectsByTeam: nextProjects,
+            homePitchSelections: normalizeHomePitchSelections(
+              state.homePitchSelections,
+              getAdditionalHomePitchIds(nextCustomPitches),
+            ),
+          };
+        });
       },
 
       recordSimulatedLeagueSeason: (season) => {
@@ -2264,6 +2733,13 @@ export const useGameStore = create<Store>()(
           auctionTargetPriorities: {},
           clubFigureTierOverrides: {},
           simulatedLeagueHistory: [],
+          homePitchSelections: createDefaultHomePitchSelections(),
+          homeBoundaryDimensions: createDefaultHomeBoundaryDimensions(),
+          boundaryPresetsByTeam: {},
+          homeOutfieldSettings: createDefaultHomeOutfieldSettings(),
+          outfieldProjectsByTeam: {},
+          customPitchesByTeam: {},
+          pitchProjectsByTeam: {},
         });
       },
     }),
@@ -2288,6 +2764,13 @@ export const useGameStore = create<Store>()(
         auctionTargetPriorities: state.auctionTargetPriorities,
         clubFigureTierOverrides: state.clubFigureTierOverrides,
         simulatedLeagueHistory: state.simulatedLeagueHistory,
+        homePitchSelections: state.homePitchSelections,
+        homeBoundaryDimensions: state.homeBoundaryDimensions,
+        boundaryPresetsByTeam: state.boundaryPresetsByTeam,
+        homeOutfieldSettings: state.homeOutfieldSettings,
+        outfieldProjectsByTeam: state.outfieldProjectsByTeam,
+        customPitchesByTeam: state.customPitchesByTeam,
+        pitchProjectsByTeam: state.pitchProjectsByTeam,
       }),
       merge: (persisted, current) => {
         const p = persisted as Partial<Store>;
@@ -2337,6 +2820,8 @@ export const useGameStore = create<Store>()(
             }),
           };
         });
+        const customPitchesByTeam = normalizeCustomPitches(p.customPitchesByTeam);
+        const pitchProjectsByTeam = normalizePitchProjects(p.pitchProjectsByTeam);
         return {
           ...current,
           ...p,
@@ -2349,6 +2834,19 @@ export const useGameStore = create<Store>()(
           auctionTargetPriorities: p.auctionTargetPriorities ?? {},
           clubFigureTierOverrides: p.clubFigureTierOverrides ?? {},
           simulatedLeagueHistory: p.simulatedLeagueHistory ?? [],
+          homePitchSelections: normalizeHomePitchSelections(
+            p.homePitchSelections,
+            getAdditionalHomePitchIds(customPitchesByTeam),
+          ),
+          homeBoundaryDimensions: normalizeHomeBoundaryDimensions(
+            p.homeBoundaryDimensions
+              ?? (p as Partial<Store> & { homeBoundaryLengths?: unknown }).homeBoundaryLengths,
+          ),
+          boundaryPresetsByTeam: normalizeBoundaryPresetsByTeam(p.boundaryPresetsByTeam),
+          homeOutfieldSettings: normalizeHomeOutfieldSettings(p.homeOutfieldSettings),
+          outfieldProjectsByTeam: normalizeOutfieldProjectsByTeam(p.outfieldProjectsByTeam),
+          customPitchesByTeam,
+          pitchProjectsByTeam,
         };
       },
     }

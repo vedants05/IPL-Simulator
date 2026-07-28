@@ -1117,6 +1117,221 @@ export function findOptimalImpactBattingPosition(
   return 7;
 }
 
+interface BowlFirstImpactStructure {
+  startingXI: Player[];
+  impactPlayer: Player;
+  outgoingPlayer: Player;
+  forcedImpactBattingPosition: number | null;
+}
+
+const hasLegalBowlingFirstStartingXI = (startingXI: readonly Player[]) => (
+  startingXI.length === 11
+  && startingXI.filter(isOverseas).length <= 4
+  && startingXI.some(isKeeper)
+  && startingXI.filter(isAiBowlingOption).length >= 5
+  && startingXI.some((player) => (
+    isAiBowlingOption(player)
+    && (player.role === "Pace Bowler" || player.bowlingStyle === "Pacer")
+  ))
+  && startingXI.some((player) => (
+    isAiBowlingOption(player)
+    && (player.role === "Spin Bowler" || player.bowlingStyle === "Spinner")
+  ))
+);
+
+/**
+ * A keeper-opener can be more valuable as the chase impact player when the
+ * initial XI already contains another keeper and opener, while a strong
+ * bowling all-rounder is otherwise left on the bench. Assess that as a full
+ * two-innings structure:
+ *
+ * 1. Start the all-rounder for the bowling innings.
+ * 2. Keep another wicketkeeper and recognised opener in the XI.
+ * 3. Bring the removed keeper-opener into a natural #1/#2 slot.
+ * 4. Remove the legal player with the lowest batting value from the chase.
+ *
+ * The post-impact XI must satisfy the normal balance rules. The first-innings
+ * XI may contain a fifth specialist bowler because that bowler can be the
+ * planned outgoing player before the chase.
+ */
+function optimiseKeeperOpenerBowlFirstImpact(
+  squad: readonly Player[],
+  startingXI: readonly Player[],
+  impactPlayer: Player | null,
+  outgoingPlayer: Player | null,
+  hardProtectedIds: ReadonlySet<string>,
+): BowlFirstImpactStructure | null {
+  if (
+    !impactPlayer
+    || impactPlayer.role !== "All-Rounder"
+    || (impactPlayer.currentBatting ?? 0) < 80
+    || (impactPlayer.currentBowling ?? 0) < 75
+  ) {
+    return null;
+  }
+
+  const specialPairIds = new Set(
+    (findSpecialOpenerPair(squad) ?? []).map((player) => player.id),
+  );
+  const recognisedOpeners = startingXI.filter((player) => Boolean(player.isOpener));
+  const keeperOpenerCandidates = startingXI
+    .filter((player) => (
+      isKeeper(player)
+      && Boolean(player.isOpener)
+      && !hardProtectedIds.has(player.id)
+      && !specialPairIds.has(player.id)
+      && recognisedOpeners.some((opener) => opener.id !== player.id)
+      && startingXI.some((keeper) => keeper.id !== player.id && isKeeper(keeper))
+    ))
+    .sort((left, right) => (
+      (left.currentBatting ?? 0) - (right.currentBatting ?? 0)
+      || currentAbility(left) - currentAbility(right)
+    ));
+
+  if (keeperOpenerCandidates.length === 0) return null;
+
+  const originalStartingBowling = startingXI.reduce(
+    (total, player) => total + (player.currentBowling ?? 0),
+    0,
+  );
+  const originalSecondInningsBatting = startingXI.reduce(
+    (total, player) => total + (player.currentBatting ?? 0),
+    0,
+  ) - (outgoingPlayer?.currentBatting ?? 0) + (impactPlayer.currentBatting ?? 0);
+
+  let best: (BowlFirstImpactStructure & {
+    secondInningsBatting: number;
+    startingBowling: number;
+    retainedOpenerStrength: number;
+  }) | null = null;
+
+  keeperOpenerCandidates.forEach((keeperOpener) => {
+    const trialXI = startingXI
+      .filter((player) => player.id !== keeperOpener.id)
+      .concat(impactPlayer);
+    if (!hasLegalBowlingFirstStartingXI(trialXI)) return;
+    if (!isImpactPlayerWithinOverseasLimit(trialXI, keeperOpener)) return;
+
+    const trialOpeningPair = getOpeningPair(trialXI);
+    const orderedTrialXI = orderStartingXI(
+      trialXI,
+      trialOpeningPair,
+      "bowlingFirst",
+      squad,
+      hardProtectedIds,
+    );
+    if (
+      orderedTrialXI.length !== 11
+      || orderedTrialXI.some((player) => player.id === keeperOpener.id)
+      || !orderedTrialXI.some((player) => player.id === impactPlayer.id)
+    ) {
+      return;
+    }
+
+    const keepers = orderedTrialXI.filter(isKeeper);
+    const outgoingOptions = orderedTrialXI
+      .filter((player) => (
+        !hardProtectedIds.has(player.id)
+        && !(isKeeper(player) && keepers.length <= 1)
+      ))
+      .map((candidate) => {
+        const position = findOptimalImpactBattingPosition(
+          orderedTrialXI,
+          keeperOpener,
+          candidate,
+        );
+        const postImpactXI = orderedTrialXI
+          .filter((player) => player.id !== candidate.id)
+          .concat(keeperOpener);
+        return { candidate, position, postImpactXI };
+      })
+      .filter(({ position, postImpactXI }) => (
+        (position === 1 || position === 2)
+        && canPlayerBatAtPosition(keeperOpener, position)
+        && hasBaseBalance(postImpactXI, "bowlingFirst")
+      ))
+      .sort((left, right) => (
+        (left.candidate.currentBatting ?? 0) - (right.candidate.currentBatting ?? 0)
+        || currentAbility(left.candidate) - currentAbility(right.candidate)
+        || (left.candidate.currentBowling ?? 0) - (right.candidate.currentBowling ?? 0)
+      ));
+    const selectedOutgoing = outgoingOptions[0];
+    if (!selectedOutgoing) return;
+
+    const resolvedImpact = resolveBowlingFirstImpactPlayer(
+      squad,
+      orderedTrialXI,
+      keeperOpener,
+      selectedOutgoing.position,
+    );
+    if (resolvedImpact.player?.id !== keeperOpener.id) return;
+
+    const secondInningsBatting = selectedOutgoing.postImpactXI.reduce(
+      (total, player) => total + (player.currentBatting ?? 0),
+      0,
+    );
+    const startingBowling = orderedTrialXI.reduce(
+      (total, player) => total + (player.currentBowling ?? 0),
+      0,
+    );
+    if (
+      secondInningsBatting < originalSecondInningsBatting
+      || startingBowling < originalStartingBowling
+      || (
+        secondInningsBatting === originalSecondInningsBatting
+        && startingBowling === originalStartingBowling
+      )
+    ) {
+      return;
+    }
+
+    const retainedOpenerStrength = orderedTrialXI
+      .filter((player) => Boolean(player.isOpener))
+      .reduce(
+        (highest, player) => Math.max(highest, player.currentBatting ?? 0),
+        0,
+      );
+    if (
+      !best
+      || secondInningsBatting > best.secondInningsBatting
+      || (
+        secondInningsBatting === best.secondInningsBatting
+        && startingBowling > best.startingBowling
+      )
+      || (
+        secondInningsBatting === best.secondInningsBatting
+        && startingBowling === best.startingBowling
+        && retainedOpenerStrength > best.retainedOpenerStrength
+      )
+    ) {
+      best = {
+        startingXI: orderedTrialXI,
+        impactPlayer: keeperOpener,
+        outgoingPlayer: selectedOutgoing.candidate,
+        forcedImpactBattingPosition: resolvedImpact.forcePosition8
+          ? 8
+          : selectedOutgoing.position,
+        secondInningsBatting,
+        startingBowling,
+        retainedOpenerStrength,
+      };
+    }
+  });
+
+  const selectedBest = best as (BowlFirstImpactStructure & {
+    secondInningsBatting: number;
+    startingBowling: number;
+    retainedOpenerStrength: number;
+  }) | null;
+  if (!selectedBest) return null;
+  return {
+    startingXI: selectedBest.startingXI,
+    impactPlayer: selectedBest.impactPlayer,
+    outgoingPlayer: selectedBest.outgoingPlayer,
+    forcedImpactBattingPosition: selectedBest.forcedImpactBattingPosition,
+  };
+}
+
 function optimiseStrongAllRounderBowlFirstImpact(
   squad: readonly Player[],
   startingXI: readonly Player[],
@@ -1124,12 +1339,7 @@ function optimiseStrongAllRounderBowlFirstImpact(
   outgoingPlayer: Player | null,
   openingPair: readonly Player[],
   protectedIds: ReadonlySet<string>,
-): {
-  startingXI: Player[];
-  impactPlayer: Player;
-  outgoingPlayer: Player;
-  forcedImpactBattingPosition: number | null;
-} | null {
+): BowlFirstImpactStructure | null {
   if (
     !impactPlayer
     || impactPlayer.role !== "All-Rounder"
@@ -1295,6 +1505,12 @@ function buildPlan(
     ...(captainSelection.player ? [captainSelection.player.id] : []),
     ...(viceCaptain ? [viceCaptain.id] : []),
   ]);
+  const hardProtectedIds = new Set<string>([
+    ...Array.from(leadershipProtectedIds),
+    ...squad
+      .filter((player) => (player.reputation ?? 0) >= 10)
+      .map((player) => player.id),
+  ]);
   let { impactPlayer, outgoingPlayer, impactBattingPosition: forcedImpactBattingPosition } = selectImpactPlayer(
     squad,
     startingPlayers,
@@ -1304,14 +1520,22 @@ function buildPlan(
   );
 
   if (mode === "bowlingFirst") {
-    const optimisedImpactStructure = optimiseStrongAllRounderBowlFirstImpact(
+    const keeperOpenerImpactStructure = optimiseKeeperOpenerBowlFirstImpact(
       squad,
       startingPlayers,
       impactPlayer,
       outgoingPlayer,
-      openingPair,
-      protectedIds,
+      hardProtectedIds,
     );
+    const optimisedImpactStructure = keeperOpenerImpactStructure
+      ?? optimiseStrongAllRounderBowlFirstImpact(
+        squad,
+        startingPlayers,
+        impactPlayer,
+        outgoingPlayer,
+        openingPair,
+        protectedIds,
+      );
     if (optimisedImpactStructure) {
       startingPlayers = optimisedImpactStructure.startingXI;
       impactPlayer = optimisedImpactStructure.impactPlayer;

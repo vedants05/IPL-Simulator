@@ -20,6 +20,7 @@ import {
   selectBattingFirstImpactBowler,
   selectBattingFirstOutgoingBatter,
 } from "./aiLineupSelector";
+import { buildAutomaticLineupSelection } from "./automaticLineupBuilder";
 
 const player = (
   id: string,
@@ -105,6 +106,32 @@ const squad = [
   player("extra-bowler", "Spin Bowler", 28, 78),
   player("reserve", "Batsman", 70, 5),
 ];
+
+test("the canonical auto-build creates both season-entry XIs and impact benches", () => {
+  const completeSquad = [
+    ...squad,
+    player("reserve-two", "Pace Bowler", 20, 72),
+    player("reserve-three", "Batsman", 68, 5),
+    player("reserve-four", "All-Rounder", 64, 66),
+    player("reserve-five", "Spin Bowler", 24, 70),
+  ];
+  const selection = buildAutomaticLineupSelection(completeSquad, {
+    captainId: "travis-head",
+    viceCaptainId: "keeper",
+    useProvisionalCaptain: false,
+  });
+
+  assert.equal(selection.battingFirstXI.length, 11);
+  assert.equal(selection.bowlingFirstXI.length, 11);
+  assert.equal(selection.battingFirstImpactSubs.length, 5);
+  assert.equal(selection.bowlingFirstImpactSubs.length, 5);
+  assert.ok(selection.battingFirstXI.includes("travis-head"));
+  assert.ok(selection.battingFirstXI.includes("keeper"));
+  assert.ok(selection.bowlingFirstXI.includes("travis-head"));
+  assert.ok(selection.bowlingFirstXI.includes("keeper"));
+  assert.ok(selection.battingFirstImpactSubs.every((id) => !selection.battingFirstXI.includes(id)));
+  assert.ok(selection.bowlingFirstImpactSubs.every((id) => !selection.bowlingFirstXI.includes(id)));
+});
 
 test("bat-first auto impact brings in the best bowler and removes the lowest eligible batter", () => {
   const starters = [
@@ -427,6 +454,70 @@ test("bowl-first planning starts a strong all-rounder and reserves a pure batter
       .filter(isSpecialistBowler)
       .length,
     4,
+  );
+});
+
+test("bowl-first planning can bench a secondary keeper-opener and start the stronger bowling all-rounder", () => {
+  const keeperOpenerImpactSquad = [
+    player("josh-inglis", "WK-Batsman", 85, 0, {
+      nationality: "Overseas",
+      isWicketkeeper: true,
+      isOpener: true,
+    }),
+    player("tom-banton", "WK-Batsman", 77, 0, {
+      nationality: "Overseas",
+      isWicketkeeper: true,
+      isOpener: true,
+      onlyOpensOrBenched: true,
+    }),
+    player("nicholas-pooran", "WK-Batsman", 86, 0, {
+      nationality: "Overseas",
+      isWicketkeeper: true,
+      hasBattedAt3: true,
+    }),
+    player("mitchell-marsh", "All-Rounder", 84, 76, {
+      nationality: "Overseas",
+      hasBattedAt4: true,
+    }),
+    player("urvil-patel", "WK-Batsman", 83, 0, {
+      isWicketkeeper: true,
+      hasBattedAt5: true,
+    }),
+    player("suryansh-shedge", "All-Rounder", 82, 68, {
+      hasBattedAt6: true,
+    }),
+    player("nitish-kumar-reddy", "All-Rounder", 81, 76, {
+      isCoreBatter: true,
+      hasBattedAt5: true,
+    }),
+    player("kuldeep-yadav", "Spin Bowler", 15, 88),
+    player("mohammed-siraj", "Pace Bowler", 12, 84),
+    player("rahul-chahar", "Spin Bowler", 10, 83),
+    player("mohammed-shami", "Pace Bowler", 14, 86),
+    player("khaleel-ahmed", "Pace Bowler", 11, 83),
+  ];
+
+  const plan = buildAiMatchLineups(keeperOpenerImpactSquad, {
+    captainId: "mitchell-marsh",
+    viceCaptainId: "nicholas-pooran",
+  }).bowlingFirst;
+
+  assert.ok(plan.startingXI.includes("nitish-kumar-reddy"));
+  assert.equal(plan.startingXI.includes("tom-banton"), false);
+  assert.equal(plan.impactPlayerId, "tom-banton");
+  assert.equal(plan.impactBattingPosition, 2);
+  assert.ok(
+    plan.likelyOutgoingPlayerId
+    && keeperOpenerImpactSquad.find(
+      (candidate) => candidate.id === plan.likelyOutgoingPlayerId,
+    )?.role.endsWith("Bowler"),
+  );
+  assert.ok(
+    plan.startingXI.filter((id) => (
+      id === "josh-inglis"
+      || id === "nicholas-pooran"
+      || id === "urvil-patel"
+    )).length >= 2,
   );
 });
 

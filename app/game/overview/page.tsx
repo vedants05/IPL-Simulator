@@ -20,10 +20,14 @@ import {
   findOptimalImpactBattingPosition,
   selectBattingFirstImpactBowler,
 } from "@/lib/logic/aiLineupSelector";
-import { buildRecommendedImpactSubs, buildRecommendedLineups, type LineupPlan, validateLineup } from "@/lib/logic/lineupPlanner";
+import { type LineupPlan, validateLineup } from "@/lib/logic/lineupPlanner";
+import {
+  buildAutomaticLineupSelection,
+} from "@/lib/logic/automaticLineupBuilder";
 import { findSpecialOpenerPair } from "@/lib/logic/openerPairs";
 import {
   generateBalancedLeagueFixtures,
+  getLeagueSeasonStartDate,
   LEAGUE_FIXTURE_SCHEDULE_VERSION,
 } from "@/lib/logic/leagueSchedule";
 import {
@@ -44,8 +48,17 @@ import { HISTORICAL_LEAGUE_HISTORY, LEAGUE_HISTORY_TEAMS } from "@/lib/data/leag
 import LeagueHallOfFame from "@/components/history/LeagueHallOfFame";
 import LeagueRecords from "@/components/history/LeagueRecords";
 import CaptaincyPage from "@/components/squad/CaptaincyPage";
+import SquadAnalysisPage from "@/components/squad/SquadAnalysisPage";
 import TacticsLineupBuilder from "@/components/squad/TacticsLineupBuilder";
 import TeamTacticsPage from "@/components/squad/TeamTacticsPage";
+import PitchCuratorPage from "@/components/club/PitchCuratorPage";
+import StadiumManagementPage from "@/components/club/StadiumManagementPage";
+import { getCuratorPitch, getDefaultCuratorPitch, getHomeStadium } from "@/lib/data/pitchCurator";
+import {
+  calculateGroundScoringImpact,
+  calculateOutfieldScoringImpact,
+  getDefaultOutfieldSettings,
+} from "@/lib/logic/stadiumManagement";
 import {
   EMPTY_TEAM_LEADERSHIP,
   getCaptainChangeGamesRemaining,
@@ -197,13 +210,281 @@ const getCompactPlayerRole = (role: Player["role"]) => ({
 const normalizeLeagueHistoryPlayerName = (name: string) => name.toLocaleLowerCase("en-GB").replace(/[^a-z0-9]/g, "");
 const HOME_NEXT_FIXTURE_ROW_HEIGHT = 24;
 
+function ClubProfileSummaryTile({
+  team,
+  season,
+  captain,
+  viceCaptain,
+  featuredPlayers,
+}: {
+  team: Team;
+  season: number;
+  captain: Player | null;
+  viceCaptain: Player | null;
+  featuredPlayers: readonly Player[];
+}) {
+  return (
+    <Link
+      href={`/game/teams/${team.id}`}
+      className="group relative flex min-h-0 flex-col overflow-hidden rounded-lg border-2 border-border bg-surface p-6 text-left transition-colors hover:border-accent lg:col-span-2 lg:row-span-3"
+      style={{
+        backgroundImage: `linear-gradient(135deg, ${team.primaryColor}24 0%, transparent 52%)`,
+      }}
+    >
+      <div
+        className="absolute inset-x-0 top-0 h-1"
+        style={{ backgroundColor: team.primaryColor }}
+      />
+      <div className="flex shrink-0 items-start justify-between gap-4 border-b border-[#16130f]/10 pb-4">
+        <div>
+          <div className="font-space-mono text-[8px] font-bold uppercase tracking-[0.2em] text-text-secondary">
+            Your club · Season {season}
+          </div>
+          <div className="mt-1 font-anton text-[18px] uppercase text-text-primary">Club Profile</div>
+        </div>
+        <span className="flex items-center gap-1.5 rounded border border-border bg-surface/75 px-3 py-2 font-space-mono text-[8px] font-bold uppercase text-text-primary transition-colors group-hover:border-accent group-hover:text-accent">
+          Open profile <ArrowUpRight size={12} />
+        </span>
+      </div>
+
+      <div className="flex min-h-0 flex-1 flex-col items-center justify-center py-5 text-center">
+        <div
+          className="flex size-28 shrink-0 items-center justify-center rounded-full border-[6px] border-white/75 font-anton text-[30px] shadow-lg"
+          style={{ backgroundColor: team.primaryColor, color: team.secondaryColor }}
+        >
+          {team.shortName}
+        </div>
+        <div className="mt-5 min-w-0">
+          <h3 className="max-w-3xl font-anton text-[clamp(30px,3.25vw,48px)] uppercase leading-[0.92] text-text-primary">
+            {team.name}
+          </h3>
+          <div className="mt-3 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 font-space-mono text-[8px] font-bold uppercase tracking-wider text-text-secondary">
+            <span>{team.city}</span>
+            <span className="size-1 rounded-full bg-accent" />
+            <span>{team.homeGround}</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid shrink-0 gap-3 border-t border-[#16130f]/10 pt-4 md:grid-cols-[minmax(0,.8fr)_minmax(0,1.2fr)]">
+        <div className="rounded-lg border border-border bg-surface/75 p-3">
+          <div className="font-space-mono text-[7px] font-bold uppercase tracking-[0.16em] text-text-secondary">Leadership</div>
+          <div className="mt-2 grid grid-cols-2 gap-3">
+            <div className="min-w-0">
+              <div className="font-space-mono text-[6px] font-bold uppercase text-accent">Captain</div>
+              <div className="mt-0.5 truncate font-barlow text-xs font-bold text-text-primary">{captain?.name ?? "Not appointed"}</div>
+            </div>
+            <div className="min-w-0">
+              <div className="font-space-mono text-[6px] font-bold uppercase text-accent">Vice-captain</div>
+              <div className="mt-0.5 truncate font-barlow text-xs font-bold text-text-primary">{viceCaptain?.name ?? "Not appointed"}</div>
+            </div>
+          </div>
+        </div>
+        <div className="rounded-lg border border-border bg-surface/75 p-3">
+          <div className="font-space-mono text-[7px] font-bold uppercase tracking-[0.16em] text-text-secondary">Leading players</div>
+          <div className="mt-2 grid grid-cols-5 gap-2">
+            {featuredPlayers.map((player) => (
+              <div key={player.id} className="min-w-0">
+                <div className="truncate font-barlow text-[10px] font-bold text-text-primary">{player.name}</div>
+                <div className="mt-0.5 font-space-mono text-[7px] font-bold text-accent">{getPlayerRating(player)}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+function ManagerOfficeSummaryTile({ onOpen }: { onOpen: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="cursor-pointer overflow-hidden rounded-lg border-2 border-border bg-surface p-5 text-left transition-colors hover:border-accent"
+    >
+      <div className="mb-4 flex items-start justify-between border-b border-[#16130f]/10 pb-2">
+        <div className="font-anton text-[14px] uppercase text-text-primary">OFFICE SUMMARY</div>
+      </div>
+      <div className="space-y-4">
+        <div>
+          <div className="mb-1 flex justify-between font-space-mono text-xs text-text-secondary">
+            <span>BOARD CONFIDENCE</span>
+            <span className="font-bold text-text-primary">--%</span>
+          </div>
+          <div className="h-2 w-full overflow-hidden rounded bg-[#16130f]/10">
+            <div className="h-full bg-success" style={{ width: "0%" }} />
+          </div>
+        </div>
+        <div className="font-space-mono text-xs text-text-secondary">
+          CONTRACT: <span className="font-bold text-text-primary">--</span>
+        </div>
+      </div>
+    </button>
+  );
+}
+
+function PitchCuratorSummaryTile({
+  stadiumName,
+  pitchName,
+  pitchCount,
+  scoreRange,
+  onOpen,
+}: {
+  stadiumName: string;
+  pitchName: string;
+  pitchCount: number;
+  scoreRange: string;
+  onOpen: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="cursor-pointer overflow-hidden rounded-lg border-2 border-border bg-surface p-5 text-left transition-colors hover:border-accent"
+    >
+      <div className="mb-3 flex items-start justify-between gap-3 border-b border-[#16130f]/10 pb-2">
+        <div>
+          <div className="font-anton text-[14px] uppercase text-text-primary">PITCH CURATOR</div>
+          <div className="mt-1 truncate font-space-mono text-[7px] font-bold uppercase text-text-secondary">{stadiumName}</div>
+        </div>
+        <span className="rounded-full bg-accent/15 px-2 py-1 font-space-mono text-[7px] font-bold uppercase text-accent">
+          {pitchCount} pitches
+        </span>
+      </div>
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-3">
+        <div className="min-w-0">
+          <div className="font-space-mono text-[7px] font-bold uppercase tracking-wider text-text-secondary">Current surface</div>
+          <div className="mt-1 truncate text-[11px] font-bold text-text-primary">{pitchName}</div>
+        </div>
+        <div className="text-right">
+          <div className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Expected</div>
+          <div className="mt-1 font-anton text-[16px] leading-none text-success">{scoreRange}</div>
+        </div>
+      </div>
+    </button>
+  );
+}
+
+function StadiumManagementSummaryTile({
+  stadiumName,
+  capacity,
+  straightMetres,
+  wideMetres,
+  outfieldSpeed,
+  onOpen,
+}: {
+  stadiumName: string;
+  capacity: number;
+  straightMetres: number;
+  wideMetres: number;
+  outfieldSpeed: string;
+  onOpen: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="cursor-pointer overflow-hidden rounded-lg border-2 border-border bg-surface p-5 text-left transition-colors hover:border-accent"
+    >
+      <div className="mb-3 flex items-start justify-between gap-3 border-b border-[#16130f]/10 pb-2">
+        <div className="min-w-0">
+          <div className="font-anton text-[14px] uppercase text-text-primary">STADIUM MANAGEMENT</div>
+          <div className="mt-1 truncate font-space-mono text-[7px] font-bold uppercase text-text-secondary">
+            {stadiumName}
+          </div>
+        </div>
+        <span className="rounded-full bg-success/15 px-2 py-1 font-space-mono text-[7px] font-bold uppercase text-success">
+          {outfieldSpeed}
+        </span>
+      </div>
+      <div className="grid grid-cols-3 gap-3">
+        <div>
+          <div className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Capacity</div>
+          <div className="mt-1 font-anton text-[16px] leading-none text-text-primary">
+            {new Intl.NumberFormat("en-GB").format(capacity)}
+          </div>
+        </div>
+        <div>
+          <div className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Straight</div>
+          <div className="mt-1 font-anton text-[16px] leading-none text-text-primary">{straightMetres}M</div>
+        </div>
+        <div>
+          <div className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Wide</div>
+          <div className="mt-1 font-anton text-[16px] leading-none text-text-primary">{wideMetres}M</div>
+        </div>
+      </div>
+    </button>
+  );
+}
+
 // ============================================================================
 // Main component
 // ============================================================================
 function OverviewPageContent() {
   const router = useRouter();
-  const { teams, userTeamId, players, currentDate, currentSeason, fixtureSeed, auction, clubFigureTierOverrides, simulatedLeagueHistory } = useGameStore();
+  const {
+    teams,
+    userTeamId,
+    players,
+    currentDate,
+    currentSeason,
+    fixtureSeed,
+    auction,
+    clubFigureTierOverrides,
+    simulatedLeagueHistory,
+    homePitchSelections,
+    homeBoundaryDimensions,
+    boundaryPresetsByTeam,
+    homeOutfieldSettings,
+    outfieldProjectsByTeam,
+    customPitchesByTeam,
+    pitchProjectsByTeam,
+    setHomePitchSelection,
+    setHomeBoundaryDimensions,
+    saveBoundaryPreset,
+    applyBoundaryPreset,
+    deleteBoundaryPreset,
+    startOutfieldPreparation,
+    reconcileOutfieldProjects,
+    startPitchCreation,
+    startPitchDestruction,
+    reconcilePitchProjects,
+  } = useGameStore();
   const userTeam = teams[userTeamId];
+  const userHomeStadium = getHomeStadium(userTeamId);
+  const userDefaultPitch = getDefaultCuratorPitch(userTeamId);
+  const userCustomPitches = userHomeStadium
+    ? customPitchesByTeam[userHomeStadium.teamId] ?? []
+    : [];
+  const userSelectedPitch = getCuratorPitch(
+    userHomeStadium ? homePitchSelections[userHomeStadium.teamId] : "",
+  ) ?? userCustomPitches.find((pitch) => (
+    pitch.id === (userHomeStadium ? homePitchSelections[userHomeStadium.teamId] : "")
+  )) ?? userDefaultPitch;
+  const userPitchProject = userHomeStadium
+    ? pitchProjectsByTeam[userHomeStadium.teamId] ?? null
+    : null;
+  const userBoundaryDimensions = userHomeStadium
+    ? homeBoundaryDimensions[userHomeStadium.teamId]
+    : { straightMetres: 70, wideMetres: 70 };
+  const userBoundaryPresets = userHomeStadium
+    ? boundaryPresetsByTeam[userHomeStadium.teamId] ?? []
+    : [];
+  const userOutfieldSettings = userHomeStadium
+    ? homeOutfieldSettings[userHomeStadium.teamId]
+    : getDefaultOutfieldSettings(userTeamId);
+  const userOutfieldProject = userHomeStadium
+    ? outfieldProjectsByTeam[userHomeStadium.teamId] ?? null
+    : null;
+  const userOutfieldImpact = userOutfieldSettings
+    ? calculateOutfieldScoringImpact(userTeamId, userOutfieldSettings)
+    : null;
+
+  useEffect(() => {
+    reconcilePitchProjects();
+    reconcileOutfieldProjects();
+  }, [currentDate, reconcileOutfieldProjects, reconcilePitchProjects]);
 
   // Dynamically generate months based on currentSeason
   const CALENDAR_MONTHS = useMemo(() => {
@@ -227,7 +508,7 @@ function OverviewPageContent() {
   // --------------------------------------------------------------------------
   // Core UI Tabs State
   // --------------------------------------------------------------------------
-  const [activeTab, setActiveTab] = useState<"home" | "squad" | "scouting" | "season" | "history">("home");
+  const [activeTab, setActiveTab] = useState<"home" | "club" | "squad" | "scouting" | "season" | "history">("home");
   const [activeSubTab, _setActiveSubTab] = useState<string>("overview");
   const [expandedLeagueHistorySeason, setExpandedLeagueHistorySeason] = useState<number | null>(null);
 
@@ -237,16 +518,20 @@ function OverviewPageContent() {
 
   // Read URL params reactively whenever they change
   useEffect(() => {
-    if (tabParam === "home" || tabParam === "squad" || tabParam === "scouting" || tabParam === "season" || tabParam === "history") {
+    if (tabParam === "home" && subtabParam === "office") {
+      router.replace("/game/overview?tab=club&subtab=office", { scroll: false });
+      return;
+    }
+    if (tabParam === "home" || tabParam === "club" || tabParam === "squad" || tabParam === "scouting" || tabParam === "season" || tabParam === "history") {
       setActiveTab(tabParam as any);
       _setActiveSubTab(subtabParam || "overview"); // Set to url subtab or reset to overview
     }
-  }, [tabParam, subtabParam]);
+  }, [router, tabParam, subtabParam]);
 
   useEffect(() => {
     const handleSwitchTab = (e: Event) => {
       const customEvent = e as CustomEvent<{ tab: string; subtab?: string }>;
-      if (customEvent.detail?.tab && ["home", "squad", "scouting", "season", "history"].includes(customEvent.detail.tab)) {
+      if (customEvent.detail?.tab && ["home", "club", "squad", "scouting", "season", "history"].includes(customEvent.detail.tab)) {
         setActiveTab(customEvent.detail.tab as any);
         _setActiveSubTab(customEvent.detail.subtab || "overview");
       }
@@ -455,8 +740,14 @@ function OverviewPageContent() {
     return groupedFixtures;
   }, [fixtures, isFixturesAnnounced]);
 
+  const openingMatchDateString = useMemo(() => {
+    return getLeagueSeasonStartDate(currentSeason);
+  }, [currentSeason]);
+
   const getCalendarDayData = (dateString: string) => {
     const dayMatches = fixturesByDate.get(dateString) ?? [];
+    const isOpeningMatchDay = dateString === openingMatchDateString;
+    const isPreAnnouncementOpeningMatch = isOpeningMatchDay && !isFixturesAnnounced;
     return {
       date: dateKeyToLocalDate(dateString),
       dayMatches,
@@ -464,6 +755,8 @@ function OverviewPageContent() {
       hasRetention: dateString === retentionDateString,
       hasUserMatch: dayMatches.some((match) => match.teamA === userTeamId || match.teamB === userTeamId),
       isAnnouncement: dateString === formattedAnnouncementDate,
+      isOpeningMatchDay,
+      isPreAnnouncementOpeningMatch,
     };
   };
 
@@ -499,27 +792,27 @@ function OverviewPageContent() {
   // Build sensible defaults while persisted match plans are being loaded.
   useEffect(() => {
     if (userTeam && battingFirstXI.length === 0 && bowlingFirstXI.length === 0) {
-      const candidates = userTeam.squad
+      const squad = userTeam.squad
         .map((id) => players[id])
-        .filter((player): player is Player => Boolean(player))
-        .map((player) => ({
-            id: player.id,
-            nationality: player.nationality,
-            role: player.role,
-            batting: player.currentBatting,
-            bowling: player.currentBowling,
-            isWicketkeeper: player.role === "WK-Batsman" || Boolean(player.isWicketkeeper) || Boolean(player.isPartTimeWk),
-            isPartTimeWicketkeeper: Boolean(player.isPartTimeWk),
-            isOpener: player.isOpener,
-            onlyOpensOrBenched: player.onlyOpensOrBenched,
-          }));
-      const recommended = buildRecommendedLineups(candidates);
+        .filter((player): player is Player => Boolean(player));
+      const recommended = buildAutomaticLineupSelection(squad, {
+        captainId: teamLeadership.captainId,
+        viceCaptainId: teamLeadership.viceCaptainId,
+        useProvisionalCaptain: !teamLeadership.captainId,
+      });
       setBattingFirstXI(recommended.battingFirstXI);
       setBowlingFirstXI(recommended.bowlingFirstXI);
-      setBattingFirstImpactSubs(buildRecommendedImpactSubs(recommended.battingFirstXI, candidates, "battingFirst"));
-      setBowlingFirstImpactSubs(buildRecommendedImpactSubs(recommended.bowlingFirstXI, candidates, "bowlingFirst"));
+      setBattingFirstImpactSubs(recommended.battingFirstImpactSubs);
+      setBowlingFirstImpactSubs(recommended.bowlingFirstImpactSubs);
     }
-  }, [battingFirstXI.length, bowlingFirstXI.length, players, userTeam]);
+  }, [
+    battingFirstXI.length,
+    bowlingFirstXI.length,
+    players,
+    teamLeadership.captainId,
+    teamLeadership.viceCaptainId,
+    userTeam,
+  ]);
 
   // Load and save state from LocalStorage
   useEffect(() => {
@@ -777,25 +1070,22 @@ function OverviewPageContent() {
   // Initialize all career details
   const initCareer = () => {
     if (!userTeam) return;
-    const lineupCandidates = userTeam.squad
+    const squad = userTeam.squad
       .map((id) => players[id])
-      .filter((player): player is Player => Boolean(player))
-      .map((player) => ({
-          id: player.id,
-          nationality: player.nationality,
-          role: player.role,
-          batting: player.currentBatting,
-          bowling: player.currentBowling,
-          isWicketkeeper: player.role === "WK-Batsman" || Boolean(player.isWicketkeeper) || Boolean(player.isPartTimeWk),
-          isPartTimeWicketkeeper: Boolean(player.isPartTimeWk),
-          isOpener: player.isOpener,
-          onlyOpensOrBenched: player.onlyOpensOrBenched,
-        }));
-    const recommendedLineups = buildRecommendedLineups(lineupCandidates);
+      .filter((player): player is Player => Boolean(player));
+    const recommendedLineups = buildAutomaticLineupSelection(squad, {
+      captainId: teamLeadership.captainId,
+      viceCaptainId: teamLeadership.viceCaptainId,
+      useProvisionalCaptain: !teamLeadership.captainId,
+    });
     const initialBattingFirstXI = battingFirstXI.length > 0 ? battingFirstXI : recommendedLineups.battingFirstXI;
     const initialBowlingFirstXI = bowlingFirstXI.length > 0 ? bowlingFirstXI : recommendedLineups.bowlingFirstXI;
-    const initialBattingImpactSubs = battingFirstImpactSubs.length > 0 ? battingFirstImpactSubs : buildRecommendedImpactSubs(initialBattingFirstXI, lineupCandidates, "battingFirst");
-    const initialBowlingImpactSubs = bowlingFirstImpactSubs.length > 0 ? bowlingFirstImpactSubs : buildRecommendedImpactSubs(initialBowlingFirstXI, lineupCandidates, "bowlingFirst");
+    const initialBattingImpactSubs = battingFirstImpactSubs.length > 0
+      ? battingFirstImpactSubs
+      : recommendedLineups.battingFirstImpactSubs;
+    const initialBowlingImpactSubs = bowlingFirstImpactSubs.length > 0
+      ? bowlingFirstImpactSubs
+      : recommendedLineups.bowlingFirstImpactSubs;
     const initialTeamTactics = normalizeTeamTactics(teamTactics);
     const initialAiTeamLeadership = appointAiLeagueLeadership(
       teams,
@@ -1268,6 +1558,21 @@ function OverviewPageContent() {
   };
 
   // Play and simulate match logic
+  const getGroundScoringModifier = (homeTeamId: string) => {
+    const homeStadium = getHomeStadium(homeTeamId);
+    if (!homeStadium) return 1;
+    const configuredDimensions = homeBoundaryDimensions[homeStadium.teamId]
+      ?? homeStadium.defaultBoundaryDimensions;
+    const configuredOutfield = homeOutfieldSettings[homeStadium.teamId]
+      ?? getDefaultOutfieldSettings(homeStadium.teamId);
+    if (!configuredOutfield) return 1;
+    return calculateGroundScoringImpact(
+      homeStadium.teamId,
+      configuredDimensions,
+      configuredOutfield,
+    ).modifier;
+  };
+
   const handleSimulateNextRound = () => {
     if (dayTickerRef.current?.isRunning()) {
       showToast("Stop the calendar simulation before simulating a round manually.");
@@ -1308,8 +1613,9 @@ function OverviewPageContent() {
       const teamAWins = Math.random() < probA;
       const winnerId = teamAWins ? teamA : teamB;
 
-      const baseA = Math.floor(130 + Math.random() * 60 + (strengthA - 75) * 2);
-      const baseB = Math.floor(130 + Math.random() * 60 + (strengthB - 75) * 2);
+      const groundScoringModifier = getGroundScoringModifier(teamA);
+      const baseA = Math.floor((130 + Math.random() * 60 + (strengthA - 75) * 2) * groundScoringModifier);
+      const baseB = Math.floor((130 + Math.random() * 60 + (strengthB - 75) * 2) * groundScoringModifier);
 
       let runsA = 0;
       let wicketsA = 0;
@@ -1522,8 +1828,9 @@ function OverviewPageContent() {
       const teamAWins = Math.random() < probA;
       const winnerId = teamAWins ? teamA : teamB;
 
-      const baseA = Math.floor(130 + Math.random() * 60 + (strengthA - 75) * 2);
-      const baseB = Math.floor(130 + Math.random() * 60 + (strengthB - 75) * 2);
+      const groundScoringModifier = getGroundScoringModifier(teamA);
+      const baseA = Math.floor((130 + Math.random() * 60 + (strengthA - 75) * 2) * groundScoringModifier);
+      const baseB = Math.floor((130 + Math.random() * 60 + (strengthB - 75) * 2) * groundScoringModifier);
 
       let runsA = 0;
       let wicketsA = 0;
@@ -2187,12 +2494,17 @@ function OverviewPageContent() {
     home: {
       label: "Home",
       icon: InboxIcon,
-      subtabs: ["overview", "inbox", "calendar", "office"]
+      subtabs: ["overview", "inbox", "calendar"]
+    },
+    club: {
+      label: "Club",
+      icon: ShieldCheck,
+      subtabs: ["overview", "office", "pitchcurator", "stadiummanagement"]
     },
     squad: {
       label: "Squad",
       icon: Users,
-      subtabs: ["overview", "roster", "playingxi", "captaincy", "tactics"]
+      subtabs: ["overview", "roster", "analysis", "playingxi", "captaincy", "tactics"]
     },
     scouting: {
       label: "Scouting",
@@ -2215,6 +2527,7 @@ function OverviewPageContent() {
   const getSubTabLabel = (subtab: string): string => {
     if (subtab === "overview") return "Overview";
     if (subtab === "roster") return "Roster Overview";
+    if (subtab === "analysis") return "Squad Analysis";
     if (subtab === "playingxi") return "Playing XIs";
     if (subtab === "captaincy") return "Captaincy";
     if (subtab === "tactics") return "Team Tactics";
@@ -2225,6 +2538,8 @@ function OverviewPageContent() {
     if (subtab === "standings") return "Points Table";
     if (subtab === "stats") return "Tournament Stats";
     if (subtab === "office") return "Manager Office";
+    if (subtab === "pitchcurator") return "Pitch Curator";
+    if (subtab === "stadiummanagement") return "Stadium Management";
     if (subtab === "calendar") return "Season Calendar";
     if (subtab === "records") return "Records";
     if (subtab === "clubhistory") return "Club History";
@@ -2322,6 +2637,15 @@ function OverviewPageContent() {
       isOpener: player.isOpener,
       onlyOpensOrBenched: player.onlyOpensOrBenched,
     })), [players, userTeam?.squad]);
+  const clubFeaturedPlayers = useMemo(() => (userTeam?.squad ?? [])
+    .map((id) => players[id])
+    .filter((player): player is Player => Boolean(player))
+    .sort((left, right) => (
+      getPlayerRating(right) - getPlayerRating(left)
+      || (right.reputation ?? 0) - (left.reputation ?? 0)
+      || left.name.localeCompare(right.name)
+    ))
+    .slice(0, 5), [players, userTeam?.squad]);
   const emailLineupStatus = useMemo<CareerEmailLineupStatus>(() => {
     const battingValidation = validateLineup(battingFirstXI, emailLineupCandidates);
     const bowlingValidation = validateLineup(bowlingFirstXI, emailLineupCandidates);
@@ -2371,6 +2695,7 @@ function OverviewPageContent() {
       captainChangeGamesRemaining: getCaptainChangeGamesRemaining(teamLeadership, userGamesPlayed),
       lineup: emailLineupStatus,
       tacticsPreset: teamTactics.preset,
+      homePitchName: userSelectedPitch?.name ?? "Current home pitch",
     });
   }, [
     currentDate,
@@ -2388,6 +2713,7 @@ function OverviewPageContent() {
     userGamesPlayed,
     userTeam,
     userTeamId,
+    userSelectedPitch?.name,
   ]);
 
   useEffect(() => {
@@ -2568,6 +2894,7 @@ function OverviewPageContent() {
                   hasRetention,
                   hasUserMatch,
                   isAnnouncement,
+                  isPreAnnouncementOpeningMatch,
                 } = getCalendarDayData(tileDateString);
                 const isCurrentDay = offset === 0;
 
@@ -2580,7 +2907,9 @@ function OverviewPageContent() {
                         ? "scale-[1.03] border-accent bg-accent/5 shadow-lg ring-2 ring-accent/25"
                         : isAnnouncement
                           ? "border-success bg-success/5"
-                          : "border-border bg-surface"}
+                          : isPreAnnouncementOpeningMatch
+                            ? "border-accent bg-accent/5"
+                            : "border-border bg-surface"}
                       ${offset < 0 ? "opacity-[0.55]" : ""}`}
                   >
                     <div className="flex w-full items-start justify-between gap-1">
@@ -2621,11 +2950,12 @@ function OverviewPageContent() {
                         </div>
                       )}
 
-                      {(hasAuction || hasRetention || isAnnouncement) && (
+                      {(hasAuction || hasRetention || isAnnouncement || isPreAnnouncementOpeningMatch) && (
                         <div className="mt-0.5 w-full text-center font-anton text-[8px] uppercase leading-none tracking-wider sm:text-[9px]">
                           {hasAuction && <span className="block text-success">Auction</span>}
                           {hasRetention && <span className="block text-danger">Retention</span>}
                           {isAnnouncement && <span className="block rounded border border-success/30 bg-success/15 py-0.5 text-success">Fixtures</span>}
+                          {isPreAnnouncementOpeningMatch && <span className="block rounded border border-accent/40 bg-accent/15 py-0.5 text-accent">Season Opener</span>}
                         </div>
                       )}
                     </div>
@@ -2701,7 +3031,7 @@ function OverviewPageContent() {
         </header>
 
         {/* Dynamic Detail Body Screen */}
-        <div className="min-h-0 flex-1 overflow-y-auto p-8">
+        <div className={`flex min-h-0 flex-1 flex-col ${activeSubTab === "overview" || activeTab === "history" ? "overflow-y-auto p-8" : "overflow-hidden"}`}>
           
           {/* ==================================================================
               MAIN TAB: HOME
@@ -2714,7 +3044,7 @@ function OverviewPageContent() {
                   {/* Inbox column */}
                   <div
                     onClick={() => setActiveSubTab("inbox")}
-                    className="group flex min-h-0 cursor-pointer flex-col overflow-hidden border-2 border-border bg-surface p-5 transition-colors hover:border-accent"
+                    className="group flex min-h-0 cursor-pointer flex-col overflow-hidden rounded-lg border-2 border-border bg-surface p-5 transition-colors hover:border-accent"
                   >
                     <div className="flex shrink-0 items-center justify-between border-b border-[#16130f]/10 pb-3">
                       <div className="flex items-center gap-3">
@@ -2776,7 +3106,7 @@ function OverviewPageContent() {
                   <div className="grid min-h-0 grid-rows-3 gap-6">
                     <div
                       onClick={() => isFixturesAnnounced && nextUserFixture && router.push("/game/overview?tab=season&subtab=fixtures")}
-                      className={`group relative overflow-hidden border-2 border-border bg-surface transition-all ${isFixturesAnnounced && nextUserFixture ? "cursor-pointer hover:border-accent hover:shadow-md" : "cursor-default"}`}
+                      className={`group relative overflow-hidden rounded-lg border-2 border-border bg-surface transition-all ${isFixturesAnnounced && nextUserFixture ? "cursor-pointer hover:border-accent hover:shadow-md" : "cursor-default"}`}
                     >
                       {nextOpponent && (
                         <div className="absolute inset-x-0 top-0 h-1" style={{ backgroundColor: nextOpponent.primaryColor }} />
@@ -2886,7 +3216,7 @@ function OverviewPageContent() {
                       )}
                     </div>
 
-                    <div onClick={openCalendarAtCurrentDate} className="row-span-2 flex h-full min-h-0 cursor-pointer flex-col overflow-hidden border-2 border-border bg-surface p-3 transition-colors hover:border-accent">
+                    <div onClick={openCalendarAtCurrentDate} className="row-span-2 flex h-full min-h-0 cursor-pointer flex-col overflow-hidden rounded-lg border-2 border-border bg-surface p-3 transition-colors hover:border-accent">
                     <div className="grid h-full min-h-0 grid-rows-[auto_auto_auto_minmax(0,1fr)]">
                       <div className="mb-1 flex items-start justify-between border-b border-[#16130f]/10 pb-1">
                         <div className="font-anton text-[16px] uppercase text-text-primary">SEASON CALENDAR</div>
@@ -3003,29 +3333,11 @@ function OverviewPageContent() {
 
                   {/* Right column */}
                   <div className="grid min-h-0 grid-rows-3 gap-6">
-                    <div onClick={() => setActiveSubTab("office")} className="bg-surface border-2 border-border hover:border-accent p-5 cursor-pointer transition-colors overflow-hidden">
-                      <div className="flex justify-between items-start mb-4 border-b border-[#16130f]/10 pb-2">
-                        <div className="font-anton text-[14px] uppercase text-text-primary">OFFICE SUMMARY</div>
-                      </div>
-                      <div className="space-y-4">
-                        <div>
-                          <div className="flex justify-between text-xs font-space-mono text-text-secondary mb-1">
-                            <span>BOARD CONFIDENCE</span>
-                            <span className="font-bold text-text-primary">--%</span>
-                          </div>
-                          <div className="w-full bg-[#16130f]/10 h-2 rounded overflow-hidden">
-                            <div className="bg-success h-full" style={{ width: `0%` }} />
-                          </div>
-                        </div>
-                        <div className="text-xs font-space-mono text-text-secondary">
-                          CONTRACT: <span className="font-bold text-text-primary">--</span>
-                        </div>
-                      </div>
-                    </div>
+                    <ManagerOfficeSummaryTile onOpen={() => router.push("/game/overview?tab=club&subtab=office")} />
 
                     <div
                       onClick={() => isFixturesAnnounced && router.push("/game/overview?tab=season&subtab=fixtures")}
-                      className={`bg-surface border-2 border-border p-5 transition-colors overflow-hidden flex min-h-0 flex-col ${isFixturesAnnounced ? "hover:border-accent cursor-pointer" : "cursor-default"}`}
+                      className={`flex min-h-0 flex-col overflow-hidden rounded-lg border-2 border-border bg-surface p-5 transition-colors ${isFixturesAnnounced ? "cursor-pointer hover:border-accent" : "cursor-default"}`}
                     >
                       <h3 className="shrink-0 font-anton text-[14px] uppercase text-text-primary border-b border-[#16130f]/10 pb-2 mb-3">NEXT FIXTURES</h3>
                       {!isFixturesAnnounced ? (
@@ -3100,7 +3412,7 @@ function OverviewPageContent() {
                       </div>
                     </div>
 
-                    <div onClick={() => router.push("/game/overview?tab=season&subtab=standings")} className="bg-surface border-2 border-border hover:border-accent p-5 pb-6 cursor-pointer transition-colors overflow-hidden flex min-h-0 flex-col">
+                    <div onClick={() => router.push("/game/overview?tab=season&subtab=standings")} className="flex min-h-0 cursor-pointer flex-col overflow-hidden rounded-lg border-2 border-border bg-surface p-5 pb-6 transition-colors hover:border-accent">
                       <div className="flex min-h-0 w-full flex-1 flex-col">
                         <h3 className="shrink-0 font-anton text-[14px] uppercase text-text-primary border-b border-[#16130f]/10 pb-2 mb-3">LEAGUE TABLE</h3>
                         <div className="flex min-h-0 flex-1 flex-col">
@@ -3138,7 +3450,7 @@ function OverviewPageContent() {
 
               {/* Inbox page */}
               {activeSubTab === "inbox" && (
-                <div className="grid h-[calc(100vh-200px)] min-h-[500px] grid-cols-1 overflow-hidden rounded-xl border border-border bg-surface shadow-[0_18px_50px_rgba(22,19,15,0.08)] lg:grid-cols-[minmax(19rem,0.92fr)_minmax(0,2.2fr)]">
+                <div className="grid h-full flex-1 min-h-0 grid-cols-1 overflow-hidden rounded-xl border border-border bg-surface shadow-[0_18px_50px_rgba(22,19,15,0.08)] lg:grid-cols-[minmax(19rem,0.92fr)_minmax(0,2.2fr)]">
                   <aside className="flex min-h-0 flex-col border-r border-border bg-bg/45">
                     <div className="flex shrink-0 items-center justify-between border-b border-border bg-surface px-4 py-3.5">
                       <div className="flex items-center gap-3">
@@ -3324,60 +3636,9 @@ function OverviewPageContent() {
                 </div>
               )}
 
-              {/* Manager office */}
-              {activeSubTab === "office" && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-[calc(100vh-200px)] min-h-[500px]">
-                  {/* Board expectations & attributes */}
-                  <div className="bg-surface border-2 border-border p-5 flex flex-col gap-6">
-                    <div>
-                      <h3 className="font-anton text-[16px] text-text-primary uppercase border-b border-[#16130f]/10 pb-2 mb-4">BOARD EXPECTATIONS</h3>
-                      <ul className="text-xs font-barlow text-text-secondary space-y-2 list-disc list-inside">
-                        <li>Expectation details: <span className="font-semibold text-text-primary">To be implemented.</span></li>
-                      </ul>
-                    </div>
-
-                  </div>
-
-                  {/* Board confidence gauge */}
-                  <div className="bg-surface border-2 border-border p-5 flex flex-col items-center justify-center">
-                    <h3 className="font-anton text-[16px] text-text-primary uppercase border-b border-[#16130f]/10 pb-2 mb-4 w-full text-center">BOARD TRUST</h3>
-                    
-                    {/* SVG Gauge */}
-                    <div className="relative w-48 h-48 flex items-center justify-center">
-                      <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
-                        <circle cx="50" cy="50" r="40" stroke="rgba(22,19,15,.1)" strokeWidth="8" fill="transparent" />
-                        <circle
-                          cx="50"
-                          cy="50"
-                          r="40"
-                          stroke="var(--success)"
-                          strokeWidth="8"
-                          fill="transparent"
-                          strokeDasharray={251.2}
-                          strokeDashoffset={251.2}
-                          strokeLinecap="round"
-                        />
-                      </svg>
-                      <div className="absolute flex flex-col items-center">
-                        <span className="font-anton text-[36px] leading-none">--%</span>
-                        <span className="font-space-mono text-[9px] text-text-secondary uppercase mt-1">CONFIDENCE</span>
-                      </div>
-                    </div>
-
-                    <button 
-                      disabled
-                      className="mt-6 font-space-mono text-[9px] font-bold tracking-widest border border-border py-2 px-6 uppercase opacity-50 cursor-not-allowed"
-                    >
-                      REQUEST BUDGET INCREASE
-                    </button>
-
-                  </div>
-                </div>
-              )}
-
               {/* Calendar page */}
               {activeSubTab === "calendar" && (
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 w-full h-[calc(100vh-200px)] min-h-[500px] overflow-hidden">
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 w-full h-full flex-1 min-h-0 overflow-hidden">
                   {/* Left part: Calendar Grid */}
                   <div className="lg:col-span-2 bg-surface border-2 border-border p-5 flex flex-col h-full overflow-hidden">
                     <div className="flex flex-col h-full">
@@ -3445,6 +3706,7 @@ function OverviewPageContent() {
                             hasRetention: hasRetentionDeadline,
                             hasUserMatch,
                             isAnnouncement: isAnnouncementDay,
+                            isPreAnnouncementOpeningMatch,
                           } = getCalendarDayData(dateString);
 
                           return (
@@ -3457,6 +3719,7 @@ function OverviewPageContent() {
                               className={`w-full h-full p-2 border-2 text-left flex flex-col justify-between transition-colors hover:border-accent rounded-md
                                 ${isSelected ? "border-[var(--ink)] bg-[var(--ink)]/5" : "border-border bg-surface"}
                                 ${isAnnouncementDay ? "border-success bg-success/5 ring-2 ring-success/20" : ""}
+                                ${isPreAnnouncementOpeningMatch ? "border-accent bg-accent/5 ring-2 ring-accent/25" : ""}
                                 ${hasAuction || hasRetentionDeadline || hasUserMatch ? "ring-2 ring-accent/30" : ""}`}
                             >
                               <div className="flex justify-between items-center w-full">
@@ -3521,11 +3784,12 @@ function OverviewPageContent() {
                               )}
 
                               {/* Large, bold, readable event badge */}
-                              {(hasAuction || hasRetentionDeadline || isAnnouncementDay) && (
+                              {(hasAuction || hasRetentionDeadline || isAnnouncementDay || isPreAnnouncementOpeningMatch) && (
                                 <div className="w-full text-[9px] font-anton tracking-wider uppercase mt-1 leading-none">
                                   {hasAuction && <span className="text-success block">AUCTION</span>}
                                   {hasRetentionDeadline && <span className="text-danger block">RETENTION</span>}
                                   {isAnnouncementDay && <span className="text-success block bg-success/15 border border-success/30 py-1 px-1.5 rounded text-center">FIXTURES</span>}
+                                  {isPreAnnouncementOpeningMatch && <span className="text-accent block bg-accent/15 border border-accent/40 py-1 px-1.5 rounded text-center">SEASON OPENER</span>}
                                 </div>
                               )}
                             </button>
@@ -3571,7 +3835,16 @@ function OverviewPageContent() {
                                   <p className="mt-2 text-xs text-text-secondary">The complete fixture list and match schedule for the new season are officially announced today!</p>
                                 </div>
                               )}
-                              {isTournamentMonth && !isAnnouncementDay && (
+                              {dateString === openingMatchDateString && (
+                                <div className="border border-accent/30 bg-accent/10 rounded p-3">
+                                  <span className="font-space-mono text-[9px] bg-accent text-white px-2 py-0.5 rounded font-bold uppercase">Season Opener</span>
+                                  <h5 className="font-anton text-[14px] uppercase text-text-primary mt-1.5">IPL Opening Match (Match 1)</h5>
+                                  <p className="mt-1 text-xs text-text-secondary">
+                                    The first match of the {currentSeason} season takes place today. Teams &amp; fixture details will be published on schedule announcement day ({userFriendlyAnnouncementDate}).
+                                  </p>
+                                </div>
+                              )}
+                              {isTournamentMonth && !isAnnouncementDay && dateString !== openingMatchDateString && (
                                 <div className="border border-border/60 bg-[#16130f]/5 rounded p-3 text-center py-6">
                                   <span className="font-space-mono text-[9px] bg-[#16130f]/10 text-text-secondary px-2 py-0.5 rounded font-bold uppercase">Locked</span>
                                   <p className="mt-3 text-xs text-text-secondary">League fixtures have not been announced yet.</p>
@@ -3711,6 +3984,131 @@ function OverviewPageContent() {
           )}
 
           {/* ==================================================================
+              MAIN TAB: CLUB
+              ================================================================== */}
+          {activeTab === "club" && (
+            <>
+              {activeSubTab === "overview" && (
+                <div className="grid min-h-[500px] grid-cols-1 gap-4 lg:h-[calc(100vh-200px)] lg:grid-cols-[minmax(0,1.7fr)_minmax(0,1.1fr)_minmax(280px,.8fr)] lg:grid-rows-3 lg:overflow-hidden">
+                  <ClubProfileSummaryTile
+                    team={userTeam}
+                    season={currentSeason}
+                    captain={teamLeadership.captainId ? players[teamLeadership.captainId] ?? null : null}
+                    viceCaptain={teamLeadership.viceCaptainId ? players[teamLeadership.viceCaptainId] ?? null : null}
+                    featuredPlayers={clubFeaturedPlayers}
+                  />
+                  <ManagerOfficeSummaryTile onOpen={() => setActiveSubTab("office")} />
+                  {userHomeStadium && userSelectedPitch && (
+                    <PitchCuratorSummaryTile
+                      stadiumName={userHomeStadium.name}
+                      pitchName={userSelectedPitch.name}
+                      pitchCount={userHomeStadium.pitches.length + userCustomPitches.length}
+                      scoreRange={`${userSelectedPitch.expectedFirstInningsScore.min}–${userSelectedPitch.expectedFirstInningsScore.max}`}
+                      onOpen={() => setActiveSubTab("pitchcurator")}
+                    />
+                  )}
+                  {userHomeStadium && (
+                    <StadiumManagementSummaryTile
+                      stadiumName={userHomeStadium.name}
+                      capacity={userHomeStadium.capacity}
+                      straightMetres={userBoundaryDimensions.straightMetres}
+                      wideMetres={userBoundaryDimensions.wideMetres}
+                      outfieldSpeed={userOutfieldImpact?.label ?? userHomeStadium.outfield.speed}
+                      onOpen={() => setActiveSubTab("stadiummanagement")}
+                    />
+                  )}
+                </div>
+              )}
+
+              {activeSubTab === "office" && (
+                <div className="grid h-full min-h-0 flex-1 grid-cols-1 gap-6 md:grid-cols-2">
+                  <div className="flex flex-col gap-6 border-2 border-border bg-surface p-5">
+                    <div>
+                      <h3 className="mb-4 border-b border-[#16130f]/10 pb-2 font-anton text-[16px] uppercase text-text-primary">BOARD EXPECTATIONS</h3>
+                      <ul className="list-inside list-disc space-y-2 font-barlow text-xs text-text-secondary">
+                        <li>Expectation details: <span className="font-semibold text-text-primary">To be implemented.</span></li>
+                      </ul>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col items-center justify-center border-2 border-border bg-surface p-5">
+                    <h3 className="mb-4 w-full border-b border-[#16130f]/10 pb-2 text-center font-anton text-[16px] uppercase text-text-primary">BOARD TRUST</h3>
+                    <div className="relative flex h-48 w-48 items-center justify-center">
+                      <svg className="h-full w-full -rotate-90 transform" viewBox="0 0 100 100">
+                        <circle cx="50" cy="50" r="40" stroke="rgba(22,19,15,.1)" strokeWidth="8" fill="transparent" />
+                        <circle
+                          cx="50"
+                          cy="50"
+                          r="40"
+                          stroke="var(--success)"
+                          strokeWidth="8"
+                          fill="transparent"
+                          strokeDasharray={251.2}
+                          strokeDashoffset={251.2}
+                          strokeLinecap="round"
+                        />
+                      </svg>
+                      <div className="absolute flex flex-col items-center">
+                        <span className="font-anton text-[36px] leading-none">--%</span>
+                        <span className="mt-1 font-space-mono text-[9px] uppercase text-text-secondary">CONFIDENCE</span>
+                      </div>
+                    </div>
+
+                    <button
+                      disabled
+                      className="mt-6 cursor-not-allowed border border-border px-6 py-2 font-space-mono text-[9px] font-bold uppercase tracking-widest opacity-50"
+                    >
+                      REQUEST BUDGET INCREASE
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {activeSubTab === "pitchcurator" && (
+                <PitchCuratorPage
+                  teamId={userTeamId}
+                  teamName={userTeam?.name ?? userTeamId}
+                  currentDate={currentDate}
+                  selectedPitchId={userSelectedPitch?.id ?? ""}
+                  boundaryDimensions={
+                    userBoundaryDimensions
+                  }
+                  customPitches={userCustomPitches}
+                  project={userPitchProject}
+                  onSelectPitch={(pitchId) => setHomePitchSelection(userTeamId, pitchId)}
+                  onCreatePitch={(soil, sliders) => startPitchCreation(userTeamId, soil, sliders)}
+                  onDestroyPitch={(pitchId) => startPitchDestruction(userTeamId, pitchId)}
+                />
+              )}
+
+              {activeSubTab === "stadiummanagement" && userHomeStadium && userSelectedPitch && userOutfieldSettings && (
+                <StadiumManagementPage
+                  teamId={userTeamId}
+                  teamName={userTeam?.name ?? userTeamId}
+                  dimensions={userBoundaryDimensions}
+                  presets={userBoundaryPresets}
+                  currentPitchName={userSelectedPitch.name}
+                  currentPitchScoreRange={userSelectedPitch.expectedFirstInningsScore}
+                  currentDate={currentDate}
+                  outfieldSettings={userOutfieldSettings}
+                  outfieldProject={userOutfieldProject}
+                  onApplyDimensions={(nextDimensions) => {
+                    setHomeBoundaryDimensions(userTeamId, nextDimensions);
+                  }}
+                  onSavePreset={(name, nextDimensions) => (
+                    saveBoundaryPreset(userTeamId, name, nextDimensions)
+                  )}
+                  onApplyPreset={(presetId) => applyBoundaryPreset(userTeamId, presetId)}
+                  onDeletePreset={(presetId) => deleteBoundaryPreset(userTeamId, presetId)}
+                  onStartOutfieldPreparation={(settings) => (
+                    startOutfieldPreparation(userTeamId, settings)
+                  )}
+                />
+              )}
+            </>
+          )}
+
+          {/* ==================================================================
               MAIN TAB: SQUAD
               ================================================================== */}
           {activeTab === "squad" && (
@@ -3718,8 +4116,9 @@ function OverviewPageContent() {
               {/* Squad Overview tab */}
               {activeSubTab === "overview" && (
                 <div className="grid grid-cols-1 lg:grid-cols-[2fr_3fr] gap-6 h-[calc(100vh-200px)] min-h-[500px] overflow-hidden">
-                  {/* Roster overview */}
-                  <div onClick={() => setActiveSubTab("roster")} className="squad-overview-tile bg-surface border-2 border-border hover:border-accent p-5 flex min-h-0 flex-col cursor-pointer transition-colors overflow-hidden">
+                  <div className="grid min-h-0 grid-rows-[minmax(0,1fr)_7.75rem] gap-3">
+                    {/* Roster overview */}
+                    <div onClick={() => setActiveSubTab("roster")} className="squad-overview-tile flex min-h-0 cursor-pointer flex-col overflow-hidden rounded-lg border-2 border-border bg-surface p-5 transition-colors hover:border-accent">
                     <div className="flex items-end justify-between gap-3 border-b border-[#16130f]/10 pb-2 mb-3 shrink-0">
                       <h4 className="squad-overview-title whitespace-nowrap font-anton uppercase">SQUAD OVERVIEW</h4>
                       <div className="squad-overview-summary min-w-0 truncate font-space-mono text-text-secondary uppercase">
@@ -3803,6 +4202,60 @@ function OverviewPageContent() {
                         </div>
                       )}
                     </div>
+                    </div>
+
+                    {/* Squad analysis */}
+                    {(() => {
+                      const squadPlayers = userTeam.squad
+                        .map((id) => players[id])
+                        .filter((player): player is Player => Boolean(player));
+                      const averageAge = squadPlayers.length > 0
+                        ? squadPlayers.reduce((total, player) => total + player.age, 0) / squadPlayers.length
+                        : 0;
+                      const elitePlayers = squadPlayers.filter((player) => getPlayerRating(player) >= 80).length;
+                      const growthPlayers = squadPlayers.filter((player) => (
+                        Math.max(player.potentialBatting ?? 0, player.potentialBowling ?? 0)
+                        > getPlayerRating(player)
+                      )).length;
+
+                      return (
+                        <button
+                          type="button"
+                          onClick={() => setActiveSubTab("analysis")}
+                          className="group flex min-h-0 flex-col justify-between overflow-hidden rounded-lg border-2 border-border bg-surface p-3 text-left transition-all hover:border-accent hover:shadow-md"
+                        >
+                          <div className="flex items-center justify-between border-b border-[#16130f]/10 pb-2">
+                            <div className="flex items-center gap-2">
+                              <span className="flex size-7 items-center justify-center rounded-full bg-accent/15 text-accent">
+                                <Activity size={14} aria-hidden="true" />
+                              </span>
+                              <div>
+                                <h4 className="font-anton text-[14px] uppercase leading-none text-text-primary">Squad Analysis</h4>
+                                <p className="mt-1 font-space-mono text-[7px] font-bold uppercase tracking-wide text-text-secondary">
+                                  Depth, development and balance
+                                </p>
+                              </div>
+                            </div>
+                            <span className="flex items-center gap-1 font-space-mono text-[8px] font-bold uppercase text-accent">
+                              Open <ChevronRight size={12} className="transition-transform group-hover:translate-x-0.5" />
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-3 gap-2 pt-2">
+                            {[
+                              ["Average age", averageAge.toFixed(1)],
+                              ["80+ players", elitePlayers],
+                              ["Growth players", growthPlayers],
+                            ].map(([label, value]) => (
+                              <div key={label} className="rounded border border-border/60 bg-bg/40 px-2 py-1.5">
+                                <div className="font-anton text-[15px] leading-none text-text-primary">{value}</div>
+                                <div className="mt-1 truncate font-space-mono text-[6.5px] font-bold uppercase text-text-secondary">{label}</div>
+                              </div>
+                            ))}
+                          </div>
+                        </button>
+                      );
+                    })()}
                   </div>
 
                   <div className="grid min-h-0 grid-cols-2 grid-rows-[minmax(0,1.55fr)_minmax(0,0.75fr)] gap-3">
@@ -4037,7 +4490,7 @@ function OverviewPageContent() {
 
               {/* Roster Overview page */}
               {activeSubTab === "roster" && (
-                <div className="border-2 border-border bg-surface h-[calc(100vh-200px)] min-h-[500px] flex flex-col overflow-hidden">
+                <div className="border-2 border-border bg-surface h-full flex-1 min-h-0 flex flex-col overflow-hidden">
                   <div className="overflow-x-auto flex-1 overflow-y-auto">
                     <table className="w-full text-left font-barlow text-xs divide-y divide-[#16130f]/10">
                       <thead className="bg-[#16130f]/5 text-[9px] font-space-mono text-text-secondary uppercase">
@@ -4111,6 +4564,16 @@ function OverviewPageContent() {
                 </div>
               )}
 
+              {/* Squad Analysis page */}
+              {activeSubTab === "analysis" && (
+                <SquadAnalysisPage
+                  userTeam={userTeam}
+                  teams={teams}
+                  players={players}
+                  onOpenPlayer={setDetailedPlayerId}
+                />
+              )}
+
               {/* Playing XI page */}
               {activeSubTab === "playingxi" && (
                 <TacticsLineupBuilder
@@ -4167,7 +4630,7 @@ function OverviewPageContent() {
               {activeSubTab === "overview" && (
                 <div className="grid grid-cols-2 gap-6 h-[calc(100vh-200px)] min-h-[500px] overflow-hidden">
                   {/* Database search */}
-                  <div onClick={() => setActiveSubTab("search")} className="bg-surface border-2 border-border hover:border-accent p-5 flex min-h-0 flex-col cursor-pointer transition-colors overflow-hidden">
+                  <div onClick={() => setActiveSubTab("search")} className="flex min-h-0 cursor-pointer flex-col overflow-hidden rounded-lg border-2 border-border bg-surface p-5 transition-colors hover:border-accent">
                     <h4 className="font-anton text-[14px] uppercase border-b border-[#16130f]/10 pb-2 mb-3 shrink-0">GLOBAL SEARCH</h4>
                     <div className="grid grid-cols-[minmax(0,8rem)_2rem_2.5rem_5.5rem_minmax(0,1fr)] gap-1 border-b border-[#16130f]/10 pb-1.5 font-space-mono text-[10px] font-bold text-text-secondary uppercase shrink-0">
                       <span>Player</span>
@@ -4235,7 +4698,7 @@ function OverviewPageContent() {
                   </div>
 
                   {/* Auction planner */}
-                  <div onClick={() => setActiveSubTab("planner")} className="bg-surface border-2 border-border hover:border-accent p-5 flex min-h-0 flex-col justify-between cursor-pointer transition-colors overflow-hidden">
+                  <div onClick={() => setActiveSubTab("planner")} className="flex min-h-0 cursor-pointer flex-col justify-between overflow-hidden rounded-lg border-2 border-border bg-surface p-5 transition-colors hover:border-accent">
                     <div>
                       <h4 className="font-anton text-[14px] uppercase border-b border-[#16130f]/10 pb-2 mb-4">AUCTION PLANNER</h4>
                       <div className="space-y-2 text-xs font-space-mono text-text-secondary">
@@ -4249,7 +4712,7 @@ function OverviewPageContent() {
 
               {/* Player Search page */}
               {activeSubTab === "search" && (
-                <div className="flex flex-col gap-6 h-[calc(100vh-200px)] min-h-[500px] overflow-hidden">
+                <div className="flex flex-col gap-6 h-full flex-1 min-h-0 overflow-hidden">
                   {/* Search filters */}
                   <div className="bg-surface border-2 border-border p-5 grid grid-cols-1 md:grid-cols-4 gap-4">
                     <div>
@@ -4352,7 +4815,7 @@ function OverviewPageContent() {
 
               {/* Auction Planner page */}
               {activeSubTab === "planner" && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-[calc(100vh-200px)] min-h-[500px]">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-full flex-1 min-h-0">
                   {/* Cap details */}
                   <div className="bg-surface border-2 border-border p-5">
                     <h3 className="font-anton text-[16px] text-text-primary uppercase border-b border-[#16130f]/10 pb-2 mb-4">CAP LIMIT DETAILS</h3>
@@ -4410,7 +4873,7 @@ function OverviewPageContent() {
               {activeSubTab === "overview" && (
                 <div className="grid grid-cols-3 gap-6 h-[calc(100vh-200px)] min-h-[500px] overflow-hidden">
                   {/* Fixtures progress */}
-                  <div onClick={() => isFixturesAnnounced && setActiveSubTab("fixtures")} className={`bg-surface border-2 border-border p-5 flex min-h-0 flex-col overflow-hidden transition-colors ${isFixturesAnnounced ? "hover:border-accent cursor-pointer" : "opacity-75"}`}>
+                  <div onClick={() => isFixturesAnnounced && setActiveSubTab("fixtures")} className={`flex min-h-0 flex-col overflow-hidden rounded-lg border-2 border-border bg-surface p-5 transition-colors ${isFixturesAnnounced ? "cursor-pointer hover:border-accent" : "opacity-75"}`}>
                     <div className="flex min-h-0 flex-1 flex-col">
                       <div className="mb-3 flex shrink-0 items-end justify-between border-b border-[#16130f]/10 pb-2">
                         <h4 className="font-anton text-[16px] uppercase">SEASON SCHEDULE</h4>
@@ -4499,7 +4962,7 @@ function OverviewPageContent() {
                   </div>
 
                   {/* Points Table standings */}
-                  <div onClick={() => setActiveSubTab("standings")} className="bg-surface border-2 border-border hover:border-accent p-5 flex min-h-0 flex-col cursor-pointer transition-colors overflow-hidden">
+                  <div onClick={() => setActiveSubTab("standings")} className="flex min-h-0 cursor-pointer flex-col overflow-hidden rounded-lg border-2 border-border bg-surface p-5 transition-colors hover:border-accent">
                     <h4 className="font-anton text-[14px] uppercase border-b border-[#16130f]/10 pb-2 mb-4 shrink-0">POINTS TABLE</h4>
                     <div className="grid grid-cols-[1.5rem_minmax(0,1fr)_2rem_2rem_2rem_2.5rem] gap-1 border-b border-[#16130f]/10 pb-2 font-space-mono text-[8px] font-bold uppercase text-text-secondary shrink-0">
                       <span aria-hidden="true" />
@@ -4536,7 +4999,7 @@ function OverviewPageContent() {
                   </div>
 
                   {/* Caps leaders */}
-                  <div onClick={() => setActiveSubTab("stats")} className="bg-surface border-2 border-border hover:border-accent p-5 flex min-h-0 flex-col justify-between cursor-pointer transition-colors overflow-hidden">
+                  <div onClick={() => setActiveSubTab("stats")} className="flex min-h-0 cursor-pointer flex-col justify-between overflow-hidden rounded-lg border-2 border-border bg-surface p-5 transition-colors hover:border-accent">
                     <div>
                       <h4 className="font-anton text-[14px] uppercase border-b border-[#16130f]/10 pb-2 mb-4">ORANGE & PURPLE CAPS</h4>
                       <div className="font-space-mono text-[10px] space-y-2">
@@ -4550,7 +5013,7 @@ function OverviewPageContent() {
 
               {/* Fixtures & Results page */}
               {activeSubTab === "fixtures" && (
-                <div className="flex h-[calc(100vh-200px)] min-h-[500px] flex-col overflow-hidden border-2 border-border bg-surface">
+                <div className="flex h-full flex-1 min-h-0 flex-col overflow-hidden border-2 border-border bg-surface">
                   <div
                     className="relative flex shrink-0 items-center justify-between overflow-hidden border-b-2 border-border px-6 py-4"
                     style={{ background: `linear-gradient(105deg, ${userTeam.primaryColor}28 0%, transparent 58%)` }}
@@ -4697,7 +5160,7 @@ function OverviewPageContent() {
 
               {/* Points Table page */}
               {activeSubTab === "standings" && (
-                <div className="points-table-panel border-2 border-border bg-surface h-[calc(100vh-200px)] min-h-[500px] flex flex-col overflow-hidden">
+                <div className="points-table-panel border-2 border-border bg-surface h-full flex-1 min-h-0 flex flex-col overflow-hidden">
                   <div className="min-h-0 flex-1 overflow-x-auto overflow-y-hidden">
                     <table className="points-table w-full text-left font-barlow divide-y divide-[#16130f]/10">
                       <colgroup>
@@ -4754,7 +5217,7 @@ function OverviewPageContent() {
 
               {/* Tournament Stats page */}
               {activeSubTab === "stats" && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-[calc(100vh-200px)] min-h-[500px] overflow-hidden">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-full flex-1 min-h-0 overflow-hidden">
                   {/* Orange cap */}
                   <div className="bg-surface border-2 border-border p-5 flex flex-col h-full overflow-hidden">
                     <div className="flex items-center gap-2 mb-4 border-b border-[#16130f]/10 pb-2 shrink-0">
@@ -5014,7 +5477,7 @@ function OverviewPageContent() {
                         <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
                           {tierFigures.map((figure, index) => (
                             <button
-                              key={figure.overrideKey}
+                              key={figure.id}
                               type="button"
                               onClick={() => figure.playerId && setDetailedPlayerId(figure.playerId)}
                               disabled={!figure.isLinked}

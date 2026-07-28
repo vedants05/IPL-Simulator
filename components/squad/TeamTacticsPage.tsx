@@ -183,7 +183,7 @@ export default function TeamTacticsPage({ tactics, onChange, onOpenPlayingXI }: 
   });
 
   return (
-    <div className="flex h-[calc(100vh-200px)] min-h-0 flex-col overflow-hidden border-2 border-border bg-black/[0.018] dark:bg-white/[0.018]">
+    <div className="flex h-full flex-1 min-h-0 flex-col overflow-hidden border-2 border-border bg-black/[0.018] dark:bg-white/[0.018]">
       <header className="flex shrink-0 items-center justify-between gap-4 border-b-2 border-border bg-surface px-4 py-3">
         <div className="flex min-w-0 items-center gap-3">
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--team-primary)] text-[var(--team-accent-text)]"><Sliders size={19} /></span>
