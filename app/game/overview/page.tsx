@@ -744,14 +744,21 @@ function OverviewPageContent() {
     ? ""
     : `${currentCalendarMonth.year}-${String(currentCalendarMonth.month + 1).padStart(2, "0")}-${String(selectedCalendarDay).padStart(2, "0")}`;
   const canSkipToSelectedCalendarDate = selectedCalendarDateString > currentDate;
-  const isTickerAtImpasse = useMemo(
-    () => fixtures.some((match) => (
+  const pendingUserMatchdayFixture = useMemo(
+    () => fixtures
+      .filter((match) => (
       !match.played
       && (match.date ?? "") <= currentDate
       && (match.teamA === userTeamId || match.teamB === userTeamId)
-    )),
+      ))
+      .sort((left, right) => (
+        (left.date ?? "").localeCompare(right.date ?? "")
+        || (left.time ?? "").localeCompare(right.time ?? "")
+        || left.matchNumber - right.matchNumber
+      ))[0] ?? null,
     [currentDate, fixtures, userTeamId],
   );
+  const isTickerAtImpasse = Boolean(pendingUserMatchdayFixture);
   const inGameDate = dateKeyToLocalDate(currentDate);
   const openCalendarAtCurrentDate = () => {
     const currentMonthIndex = findCalendarMonthIndex(CALENDAR_MONTHS, currentDate);
@@ -2282,7 +2289,7 @@ function OverviewPageContent() {
       commitSimulatedMatch(simulatedMatch);
       setPendingMatchPreparation(null);
       setActiveCommentary(null);
-      setActiveMatchResultView("summary");
+      setActiveMatchResultView("scorecard");
       setActiveScorecard(simulatedMatch);
       showToast(simulatedMatch.simulation?.resultText ?? "Match simulation completed.");
     } catch (error) {
@@ -2869,9 +2876,7 @@ function OverviewPageContent() {
           return;
         }
         stopSimulating();
-        setActiveTab("season");
-        router.push("/game/overview?tab=season&subtab=fixtures", { scroll: false });
-        showToast("Paused at matchday. Review your plans and simulate your fixture.");
+        showToast("Paused at matchday. Use Simulate fixture to play the match.");
       }
       return;
     }
@@ -2924,9 +2929,8 @@ function OverviewPageContent() {
         && (match.teamA === userTeamId || match.teamB === userTeamId)
       ));
       if (unresolved) {
-        setActiveTab("season");
-        router.push("/game/overview?tab=season&subtab=fixtures", { scroll: false });
-        showToast("Simulate your match before continuing the calendar.");
+        continueButtonRef.current?.focus();
+        showToast("Use Simulate fixture before continuing the calendar.");
       } else {
         simulateAiFixturesOnDate(simulationDate);
         if (dayTickerRef.current?.start()) {
@@ -3976,15 +3980,26 @@ function OverviewPageContent() {
               <button
                 ref={continueButtonRef}
                 type="button"
-                onClick={startSimulating}
-                disabled={isTickerAtImpasse}
+                onClick={() => {
+                  if (pendingUserMatchdayFixture) {
+                    prepareUserFixtureSimulation(pendingUserMatchdayFixture);
+                    return;
+                  }
+                  startSimulating();
+                }}
+                disabled={Boolean(pendingUserMatchdayFixture) && !FIXTURE_SIMULATION_ENABLED}
                 aria-label={isTickerAtImpasse
-                  ? "Continue unavailable: simulate your matchday fixture first"
+                  ? `Simulate ${pendingUserMatchdayFixture?.label ?? `fixture ${pendingUserMatchdayFixture?.matchNumber}`}`
                   : "Continue day-by-day simulation"}
-                title={isTickerAtImpasse ? "Simulate your matchday fixture before continuing" : undefined}
-                className="flex items-center gap-1.5 rounded bg-success px-3.5 py-1.5 font-space-mono text-[9px] font-bold uppercase tracking-wider text-white shadow-sm transition-all hover:bg-success/80 active:scale-95 disabled:cursor-not-allowed disabled:bg-text-secondary disabled:opacity-45 disabled:hover:bg-text-secondary disabled:active:scale-100"
+                title={isTickerAtImpasse ? "Simulate this fixture, review the scorecard, then continue the season" : undefined}
+                className={`flex items-center gap-1.5 rounded px-3.5 py-1.5 font-space-mono text-[9px] font-bold uppercase tracking-wider text-white shadow-sm transition-all active:scale-95 disabled:cursor-not-allowed disabled:bg-text-secondary disabled:opacity-45 disabled:active:scale-100 ${
+                  isTickerAtImpasse
+                    ? "bg-accent hover:bg-accent/85"
+                    : "bg-success hover:bg-success/80"
+                }`}
               >
-                <Play className="size-3 fill-current" aria-hidden="true" /> Continue
+                <Play className="size-3 fill-current" aria-hidden="true" />
+                {isTickerAtImpasse ? "Simulate fixture" : "Continue"}
               </button>
             )}
           </div>
@@ -6957,14 +6972,14 @@ function OverviewPageContent() {
       {pendingMatchPreparation && (
         <div className="fixed inset-0 z-[96] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
           <div className="w-full max-w-xl overflow-hidden rounded border-2 border-border bg-surface shadow-xl">
-            <div className="flex items-start justify-between border-b-2 border-border bg-border p-5">
+            <div className="flex items-start justify-between border-b-2 border-accent bg-[var(--ink)] p-5">
               <div>
                 <div className={`font-space-mono text-[8px] font-bold uppercase tracking-[0.18em] ${
-                  pendingMatchPreparation.errors.length > 0 ? "text-danger" : "text-warning"
+                  pendingMatchPreparation.errors.length > 0 ? "text-red-300" : "text-amber-300"
                 }`}>
                   {pendingMatchPreparation.errors.length > 0 ? "Match blocked" : "Match-plan warning"}
                 </div>
-                <h3 className="mt-1 font-anton text-[22px] uppercase text-text-primary">
+                <h3 className="mt-1 font-anton text-[22px] uppercase text-white">
                   {pendingMatchPreparation.errors.length > 0
                     ? "Your XIs are not match-ready"
                     : "Conditions do not fully suit this plan"}
@@ -6973,7 +6988,7 @@ function OverviewPageContent() {
               <button
                 type="button"
                 onClick={() => setPendingMatchPreparation(null)}
-                className="flex h-8 w-8 items-center justify-center rounded border border-border bg-surface"
+                className="flex h-8 w-8 items-center justify-center rounded border border-white/30 bg-white/10 text-white transition-colors hover:bg-white/20"
                 aria-label="Close match preparation"
               >
                 <X size={15} />
