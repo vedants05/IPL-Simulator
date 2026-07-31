@@ -23,7 +23,7 @@ export default function RetentionPhase() {
     return () => observer.disconnect();
   }, []);
 
-  const { teams, players, userTeamId } = useGameStore();
+  const { teams, players, userTeamId, currentSeason } = useGameStore();
   const retainPlayer = useGameStore((s) => s.retainPlayer);
   const releaseRetention = useGameStore((s) => s.releaseRetention);
   const confirmRetentions = useGameStore((s) => s.confirmRetentions);
@@ -58,7 +58,7 @@ export default function RetentionPhase() {
       {/* Header */}
       <div className="border-b-2 border-border px-8 py-6 shrink-0">
         <div className="font-space-mono font-bold text-[10px] tracking-[.16em] text-text-secondary mb-2 uppercase">
-          Mega Auction 2027 · Pre-Season
+          Mega Auction {currentSeason} · Pre-Season
         </div>
         <h1 className="font-anton text-[44px] leading-none text-text-primary uppercase">
           Select Retentions

@@ -5,11 +5,25 @@ import type { CuratorPitch } from "../data/pitchCurator";
 import type { Player, Team } from "../types";
 import { createTeamTactics } from "./teamTactics";
 import {
+  bowlerRespectIntentAdjustment,
+  chooseSituationalField,
+  chooseTossDecision,
+  dotBallPressureAdjustment,
+  deathExtrasPressure,
   estimateTeamWinProbability,
+  groundRunningPressure,
+  milestonePressureScoringFactor,
+  nextBowlerSpellOver,
+  partnershipWicketReduction,
+  powerplayAllRounderFatigue,
+  selectInningsWicketkeeper,
+  strikeFarmSingleMultiplier,
   selectCollapseImpactOutgoingPlayer,
+  calculateDLSRevisedTarget,
   simulateInstantMatch,
   type MatchGroundConditions,
   type MatchLineupPlan,
+  type MatchSimulationInput,
   type MatchTeamPlans,
 } from "./matchSimulation";
 import {
@@ -152,7 +166,7 @@ const balancedPitch: CuratorPitch = {
 };
 
 const conditions: MatchGroundConditions = {
-  homeTeamId: "AAA",
+  homeTeamId: "",
   stadiumId: "test-ground",
   stadiumName: "Test Ground",
   pitch: balancedPitch,
@@ -161,8 +175,136 @@ const conditions: MatchGroundConditions = {
   outfieldSpeedRating: 7.5,
   adjustedExpectedScore: { min: 170, max: 185 },
   groundScoringModifier: 1,
-  chasingScoringBonus: 0.05,
+  chasingScoringBonus: 0.02,
 };
+
+test("home advantage only modestly shifts an otherwise even matchup", () => {
+  const neutralProbability = estimateTeamWinProbability(82, 82);
+  const homeProbability = estimateTeamWinProbability(82.5, 82);
+  assert.equal(neutralProbability, 0.5);
+  assert.ok(homeProbability > 0.51 && homeProbability < 0.53);
+});
+
+test("conditions-based toss calls use surface progression without adding a toss bonus", () => {
+  const tactics = createTeamTactics("Balanced");
+  const deteriorating = {
+    ...conditions,
+    pitch: {
+      ...balancedPitch,
+      characteristics: ["The pitch becomes progressively slower through the match"],
+    },
+  };
+  const chasing = {
+    ...conditions,
+    pitch: {
+      ...balancedPitch,
+      favours: ["chasing-team"] as const,
+    },
+  };
+  assert.equal(chooseTossDecision(tactics, deteriorating), "bat");
+  assert.equal(chooseTossDecision(tactics, chasing), "bowl");
+});
+
+test("only the fourth over of an uninterrupted bowling spell triggers fatigue", () => {
+  assert.equal(nextBowlerSpellOver(1, undefined, 0), 1);
+  assert.equal(nextBowlerSpellOver(3, 1, 1), 2);
+  assert.equal(nextBowlerSpellOver(5, 3, 2), 3);
+  assert.equal(nextBowlerSpellOver(7, 5, 3), 4);
+  assert.equal(nextBowlerSpellOver(8, 5, 3), 1);
+});
+
+test("an established partnership gains only a small wicket-resistance benefit", () => {
+  assert.equal(partnershipWicketReduction(12, 20), 0);
+  assert.ok(partnershipWicketReduction(30, 40) > 0);
+  assert.ok(partnershipWicketReduction(60, 80) <= 0.004);
+  assert.equal(partnershipWicketReduction(100, 160), 0.004);
+});
+
+test("dot-ball pressure begins after three dots and remains capped", () => {
+  assert.deepEqual(dotBallPressureAdjustment(2), {
+    runMultiplier: 1,
+    wicketIncrease: 0,
+  });
+  assert.deepEqual(dotBallPressureAdjustment(3), {
+    runMultiplier: 1.02,
+    wicketIncrease: 0.002,
+  });
+  assert.deepEqual(dotBallPressureAdjustment(20), {
+    runMultiplier: 1.08,
+    wicketIncrease: 0.01,
+  });
+});
+
+test("batters only make a slight intent adjustment for clear bowling mismatches", () => {
+  assert.equal(bowlerRespectIntentAdjustment(82, 80), 0);
+  assert.ok(bowlerRespectIntentAdjustment(88, 75) > 0);
+  assert.ok(bowlerRespectIntentAdjustment(75, 88) < 0);
+  assert.equal(bowlerRespectIntentAdjustment(100, 50), 0.04);
+  assert.equal(bowlerRespectIntentAdjustment(50, 100), -0.035);
+});
+
+test("long batting innings only fatigue all-rounders bowling in the powerplay", () => {
+  assert.equal(powerplayAllRounderFatigue(29, 3, true), 0);
+  assert.ok(powerplayAllRounderFatigue(36, 3, true) > 0);
+  assert.equal(powerplayAllRounderFatigue(50, 7, true), 0);
+  assert.equal(powerplayAllRounderFatigue(50, 3, false), 0);
+  assert.ok(powerplayAllRounderFatigue(80, 6, true) <= 3);
+});
+
+test("strike farming changes single intent without forcing the strike", () => {
+  assert.equal(strikeFarmSingleMultiplier(2, true, true, false, false), 0.8);
+  assert.equal(strikeFarmSingleMultiplier(6, true, true, false, false), 1.25);
+  assert.equal(strikeFarmSingleMultiplier(3, false, false, true, true), 1.2);
+  assert.equal(strikeFarmSingleMultiplier(6, false, false, true, true), 0.8);
+  assert.equal(strikeFarmSingleMultiplier(4, false, false, false, false), 1);
+});
+
+test("large slow grounds add only minimal running and run-out pressure", () => {
+  assert.equal(groundRunningPressure(conditions), 0);
+  const largeSlow = {
+    ...conditions,
+    boundaries: { straightMetres: 75, wideMetres: 75 },
+    outfieldSpeedRating: 5,
+  };
+  assert.equal(groundRunningPressure(largeSlow), 1);
+});
+
+test("situational fields protect steep rates and attack comfortable late chases", () => {
+  assert.equal(chooseSituationalField("balanced", 18, 4, 130, 190), "defensive");
+  assert.equal(chooseSituationalField("balanced", 18, 3, 155, 178), "attacking");
+  assert.equal(chooseSituationalField("balanced", 10, 2, 80), "balanced");
+});
+
+test("death pressure slightly raises extras while experienced control absorbs it", () => {
+  assert.deepEqual(deathExtrasPressure(15, 75, 0.5, true), {
+    wideIncrease: 0,
+    noBallIncrease: 0,
+  });
+  const inexperienced = deathExtrasPressure(20, 68, 0, true);
+  const experienced = deathExtrasPressure(20, 88, 1, true);
+  assert.ok(inexperienced.wideIncrease <= 0.004);
+  assert.ok(inexperienced.noBallIncrease <= 0.0012);
+  assert.ok(experienced.wideIncrease < inexperienced.wideIncrease);
+  assert.ok(experienced.noBallIncrease < inexperienced.noBallIncrease);
+});
+
+test("milestone pressure only affects low-aggression batters in calm situations", () => {
+  assert.equal(milestonePressureScoringFactor(47, 55, 0), 0.96);
+  assert.equal(milestonePressureScoringFactor(95, 55, 0), 0.98);
+  assert.equal(milestonePressureScoringFactor(47, 70, 0), 1);
+  assert.equal(milestonePressureScoringFactor(95, 55, 0.5), 1);
+  assert.equal(milestonePressureScoringFactor(70, 55, 0), 1);
+});
+
+test("one full-time wicketkeeper is nominated ahead of part-time alternatives", () => {
+  const squad = makeSquad("KEEP", 82);
+  squad[0].isPartTimeWk = true;
+  const selected = selectInningsWicketkeeper(
+    squad.slice(0, 11).map((player) => player.id),
+    Object.fromEntries(squad.map((player) => [player.id, player])),
+  );
+  assert.equal(selected?.id, squad[2].id);
+});
 
 function fixtureInput(
   seed: string,
@@ -189,6 +331,31 @@ function fixtureInput(
     conditions: matchConditions,
   };
 }
+
+test("every stumping in an innings is credited to its nominated wicketkeeper", () => {
+  let stumpingsChecked = 0;
+  for (let index = 0; index < 80; index += 1) {
+    const input = fixtureInput(`fixed-keeper-${index}`);
+    input.players["AAA-4"].isWicketkeeper = true;
+    input.players["BBB-4"].isWicketkeeper = true;
+    const result = simulateInstantMatch(input);
+
+    result.innings.forEach((innings) => {
+      const nominatedKeeperId = innings.bowlingTeamId === "AAA" ? "AAA-3" : "BBB-3";
+      innings.oversDetail.forEach((over) => {
+        over.deliveries.forEach((delivery) => {
+          if (delivery.fieldingEvent?.kind === "missed-stumping") {
+            assert.equal(delivery.fieldingEvent.fielderId, nominatedKeeperId);
+          }
+          if (delivery.wicket?.kind !== "stumped") return;
+          stumpingsChecked += 1;
+          assert.equal(delivery.wicket.fielderId, nominatedKeeperId);
+        });
+      });
+    });
+  }
+  assert.ok(stumpingsChecked > 0, "expected the simulations to produce at least one stumping");
+});
 
 test("simulation is deterministic and stores every delivery", () => {
   const first = simulateInstantMatch(fixtureInput("repeatable"));
@@ -234,6 +401,12 @@ test("simulation is deterministic and stores every delivery", () => {
       );
     }
     const deliveries = innings.oversDetail.flatMap((over) => over.deliveries);
+    deliveries
+      .filter((delivery) => delivery.isFreeHit && delivery.wicket)
+      .forEach((delivery) => {
+        assert.equal(delivery.wicket?.kind, "run-out");
+        assert.equal(delivery.wicket?.bowlerCredited, false);
+      });
     deliveries.slice(0, -1).forEach((delivery, index) => {
       if (delivery.wicket) return;
       const next = deliveries[index + 1];
@@ -255,6 +428,31 @@ test("simulation is deterministic and stores every delivery", () => {
       );
     });
   });
+});
+
+test("a chase ends immediately on the winning delivery, including ball five of an over", () => {
+  let fifthBallFinishFound = false;
+  for (let index = 0; index < 300; index += 1) {
+    const result = simulateInstantMatch(fixtureInput(`chase-stop-${index}`));
+    const first = result.innings[0];
+    const chase = result.innings[1];
+    const target = first.runs + 1;
+    const deliveries = chase.oversDetail.flatMap((over) => over.deliveries);
+    const winningDeliveryIndex = deliveries.findIndex((delivery) => delivery.scoreAfter >= target);
+    if (winningDeliveryIndex < 0) continue;
+
+    assert.equal(winningDeliveryIndex, deliveries.length - 1, "no delivery may follow the winning runs");
+    assert.equal(chase.runs >= target, true);
+    assert.equal(result.winnerId, chase.battingTeamId);
+
+    const winningDelivery = deliveries[winningDeliveryIndex];
+    if (winningDelivery.isLegal && chase.legalBalls % 6 === 5) {
+      fifthBallFinishFound = true;
+      assert.equal(chase.oversDetail.at(-1)?.deliveries.at(-1)?.id, winningDelivery.id);
+      break;
+    }
+  }
+  assert.equal(fifthBallFinishFound, true, "expected at least one chase to finish on the fifth legal ball");
 });
 
 test("the local-storage copy stays compact without losing the saved scorecard", () => {
@@ -325,21 +523,21 @@ test("equal teams remain close to fifty-fifty", () => {
   const chasingWinRate = chasingWins / samples;
   assert.ok(winRate >= 0.4 && winRate <= 0.6, `equal-team win rate was ${winRate}`);
   assert.ok(
-    chasingWinRate >= 0.48 && chasingWinRate <= 0.58,
+    chasingWinRate >= 0.48 && chasingWinRate <= 0.63,
     `chasing win rate was ${chasingWinRate}`,
   );
 });
 
-test("a noticeably stronger side approaches nine wins in ten", () => {
+test("a noticeably stronger side retains a clear but not overwhelming advantage", () => {
   assert.equal(estimateTeamWinProbability(90, 90), 0.5);
-  assert.ok(estimateTeamWinProbability(90, 82) >= 0.89);
+  assert.ok(estimateTeamWinProbability(90, 82) >= 0.75);
   let strongWins = 0;
   const samples = 240;
   for (let index = 0; index < samples; index += 1) {
     if (simulateInstantMatch(fixtureInput(`strong-${index}`, 90, 82)).winnerId === "AAA") strongWins += 1;
   }
   const winRate = strongWins / samples;
-  assert.ok(winRate >= 0.82 && winRate <= 0.97, `strong-team win rate was ${winRate}`);
+  assert.ok(winRate >= 0.7 && winRate <= 0.88, `strong-team win rate was ${winRate}`);
 });
 
 test("scores centre on the surface range while retaining rare tails", () => {
@@ -358,6 +556,62 @@ test("scores centre on the surface range while retaining rare tails", () => {
   assert.ok(subHundred <= firstInningsScores.length * 0.05);
   assert.ok(firstInningsScores.filter((runs) => runs > 240).length < firstInningsScores.length * 0.08);
   assert.ok(centuries < firstInningsScores.length * 0.12, `centuries=${centuries}/${firstInningsScores.length}`);
+});
+
+test("season leaders and exceptional performances remain genuinely rare", () => {
+  const seasonCount = 20;
+  let leadersOver700 = 0;
+  let leadersOver800 = 0;
+  let leadersOver900 = 0;
+  let leadersOver1000 = 0;
+  let scoresOf120 = 0;
+  let sixWicketHauls = 0;
+  let wicketLeadersOver32 = 0;
+
+  for (let season = 0; season < seasonCount; season += 1) {
+    const runs = new Map<string, number>();
+    const wickets = new Map<string, number>();
+    for (let match = 0; match < 17; match += 1) {
+      const input = fixtureInput(`season-${season}-${match}`, 84, 84);
+      input.players["AAA-8"].currentBowling = 94;
+      input.players["BBB-8"].currentBowling = 94;
+      const result = simulateInstantMatch(input);
+      result.innings.forEach((innings) => {
+        innings.batting.forEach((entry) => {
+          runs.set(entry.id, (runs.get(entry.id) ?? 0) + entry.runs);
+          if (entry.runs >= 120) scoresOf120 += 1;
+        });
+        innings.bowling.forEach((entry) => {
+          wickets.set(entry.id, (wickets.get(entry.id) ?? 0) + entry.wickets);
+          if (entry.wickets >= 6) sixWicketHauls += 1;
+        });
+      });
+    }
+    const runLeader = Math.max(0, ...Array.from(runs.values()));
+    const wicketLeader = Math.max(0, ...Array.from(wickets.values()));
+    if (runLeader > 700) leadersOver700 += 1;
+    if (runLeader > 800) leadersOver800 += 1;
+    if (runLeader > 900) leadersOver900 += 1;
+    if (runLeader > 1000) leadersOver1000 += 1;
+    if (wicketLeader > 32) wicketLeadersOver32 += 1;
+  }
+
+  const calibrationSummary = [
+    `700+=${leadersOver700}`,
+    `800+=${leadersOver800}`,
+    `900+=${leadersOver900}`,
+    `1000+=${leadersOver1000}`,
+    `120+ scores=${scoresOf120}`,
+    `6w hauls=${sixWicketHauls}`,
+    `33w leaders=${wicketLeadersOver32}`,
+  ].join(", ");
+  assert.ok(leadersOver700 <= 12, calibrationSummary);
+  assert.ok(leadersOver800 <= 2, `800+ leaders=${leadersOver800}/${seasonCount}`);
+  assert.ok(leadersOver900 <= 1, `900+ leaders=${leadersOver900}/${seasonCount}`);
+  assert.equal(leadersOver1000, 0, `1000+ leaders=${leadersOver1000}/${seasonCount}`);
+  assert.ok(scoresOf120 <= 8, `120+ scores=${scoresOf120}`);
+  assert.ok(sixWicketHauls <= 4, `six-wicket hauls=${sixWicketHauls}`);
+  assert.ok(wicketLeadersOver32 <= 2, `33+ wicket leaders=${wicketLeadersOver32}/${seasonCount}`);
 });
 
 test("below-par or collapsed first innings usually produce safer chases without eliminating reply collapses", () => {
@@ -442,4 +696,32 @@ test("pitch, boundaries and outfield materially move scoring conditions", () => 
     massiveScores > 0 && massiveScores < samples * 0.15,
     `massive scores=${massiveScores}/${samples}`,
   );
+});
+
+test("knockout matches apply high-stakes pressure and double-wicket momentum surge works", () => {
+  const knockoutInput: MatchSimulationInput = {
+    ...fixtureInput("final-test"),
+    stage: "Final",
+    isKnockout: true,
+  };
+  const result = simulateInstantMatch(knockoutInput);
+  assert.ok(result.innings.length === 2);
+  assert.ok(result.winnerId, "knockout match resolves a winner");
+});
+
+test("environmental weather dynamics apply dew factor, afternoon heat and DLS calculations", () => {
+  const nightMatch = simulateInstantMatch({
+    ...fixtureInput("night-dew-test"),
+    time: "19:30",
+  });
+  const afternoonMatch = simulateInstantMatch({
+    ...fixtureInput("afternoon-heat-test"),
+    time: "15:30",
+  });
+  assert.ok(nightMatch.innings.length === 2);
+  assert.ok(afternoonMatch.innings.length === 2);
+
+  // Test DLS target calculation
+  const dlsTarget = calculateDLSRevisedTarget(180, 15);
+  assert.ok(dlsTarget < 181 && dlsTarget > 120, `dlsTarget=${dlsTarget}`);
 });

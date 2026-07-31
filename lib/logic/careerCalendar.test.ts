@@ -11,6 +11,7 @@ import {
   dateKeyToLocalDate,
   findCalendarMonthIndex,
   getCareerCalendarStep,
+  getCareerFastForwardStep,
   getDaySimulationIntervalMs,
   getSkipSimulationIntervalMs,
   getSeasonScheduleAnnouncementDate,
@@ -83,6 +84,31 @@ test("career ticking stops at every unresolved fixture so matchday can be resolv
   assert.deepEqual(getCareerCalendarStep("2027-03-20", [{ ...nonUserFixture, played: true }]), {
     nextDate: "2027-03-21",
     blockedByFixture: false,
+  });
+});
+
+test("career fast-forward jumps only between meaningful events", () => {
+  const fixtures = [
+    { date: "2027-03-20", played: false },
+    { date: "2027-03-25", played: false },
+  ];
+
+  assert.deepEqual(getCareerFastForwardStep("2027-01-01", fixtures, "2028-01-01", "2027-10-31"), {
+    nextDate: "2027-03-20",
+    blockedByFixture: true,
+  });
+  const completedFixtures = fixtures.map((fixture) => ({ ...fixture, played: true }));
+  assert.deepEqual(getCareerFastForwardStep("2027-04-01", completedFixtures, "2028-01-01", "2027-10-31"), {
+    nextDate: "2027-10-31",
+    blockedByFixture: false,
+  });
+  assert.deepEqual(getCareerFastForwardStep("2027-11-01", completedFixtures, "2028-01-01", "2027-10-31"), {
+    nextDate: "2028-01-01",
+    blockedByFixture: false,
+  });
+  assert.deepEqual(getCareerFastForwardStep("2027-03-21", fixtures, "2028-01-01", "2027-10-31"), {
+    nextDate: "2027-03-20",
+    blockedByFixture: true,
   });
 });
 

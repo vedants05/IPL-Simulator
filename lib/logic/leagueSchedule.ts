@@ -8,6 +8,79 @@ export const PLAYOFF_TBD_TEAM_ID = "__PLAYOFF_TBD__";
 
 export type KnockoutStage = "qualifier1" | "eliminator" | "qualifier2" | "final";
 
+export function getKnockoutStageLabel(match: {
+  id?: string;
+  stage?: KnockoutStage | string;
+  label?: string;
+  matchNumber?: number;
+}): string | null {
+  const stage = match.stage?.toLowerCase();
+  const label = match.label?.toLowerCase();
+  const id = match.id?.toLowerCase() ?? "";
+  if (
+    stage === "qualifier1"
+    || match.matchNumber === 71
+    || label?.includes("qualifier 1")
+    || id.includes("playoff_q1")
+  ) return "Qualifier 1";
+  if (
+    stage === "eliminator"
+    || match.matchNumber === 72
+    || label?.includes("eliminator")
+    || id.includes("playoff_eliminator")
+  ) return "Eliminator";
+  if (
+    stage === "qualifier2"
+    || match.matchNumber === 73
+    || label?.includes("qualifier 2")
+    || id.includes("playoff_q2")
+  ) return "Qualifier 2";
+  if (
+    stage === "final"
+    || match.matchNumber === 74
+    || label === "final"
+    || id.includes("playoff_final")
+  ) return "Final";
+  return null;
+}
+
+export function getMatchDisplayName(
+  match: {
+    id?: string;
+    teamA: string;
+    teamB: string;
+    stage?: KnockoutStage | string;
+    label?: string;
+    matchNumber?: number;
+  },
+  teams: Record<string, { shortName: string; name: string }>,
+): { label: string; isPlayoffTbd: boolean } {
+  const isTbdA = !match.teamA || match.teamA === PLAYOFF_TBD_TEAM_ID || match.teamA.includes("TBD");
+  const isTbdB = !match.teamB || match.teamB === PLAYOFF_TBD_TEAM_ID || match.teamB.includes("TBD");
+  const knockoutLabel = getKnockoutStageLabel(match);
+  const isPlayoffStage =
+    Boolean(knockoutLabel) ||
+    Boolean(match.stage) ||
+    (match.matchNumber ?? 0) > 70 ||
+    Boolean(match.label && ["qualifier", "eliminator", "final"].some((s) => match.label!.toLowerCase().includes(s)));
+
+  if (isPlayoffStage) {
+    if (isTbdA && isTbdB) {
+      return { label: knockoutLabel ?? match.label ?? "Playoff Match", isPlayoffTbd: true };
+    }
+    if (isTbdA || isTbdB) {
+      const nameA = teams[match.teamA]?.shortName ?? "TBD";
+      const nameB = teams[match.teamB]?.shortName ?? "TBD";
+      return { label: `${nameA} v ${nameB}`, isPlayoffTbd: true };
+    }
+  }
+
+  const nameA = teams[match.teamA]?.shortName ?? (isTbdA ? "TBD" : match.teamA);
+  const nameB = teams[match.teamB]?.shortName ?? (isTbdB ? "TBD" : match.teamB);
+
+  return { label: `${nameA} v ${nameB}`, isPlayoffTbd: false };
+}
+
 const TEAM_COUNT = 10;
 const MATCHES_PER_TEAM = 14;
 const LAST_FIXTURE_DAY_OFFSET = 61;

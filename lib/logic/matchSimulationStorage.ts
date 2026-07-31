@@ -85,6 +85,35 @@ export async function loadMatchSimulations(
   return records;
 }
 
+/** Remove archived match deliveries from seasons that are no longer active. */
+export async function deleteMatchSimulationsBeforeSeason(
+  userTeamId: string,
+  activeSeason: number,
+): Promise<void> {
+  const database = await openDatabase();
+  if (!database) return;
+  await new Promise<void>((resolve, reject) => {
+    const transaction = database.transaction(STORE_NAME, "readwrite");
+    const store = transaction.objectStore(STORE_NAME);
+    const cursorRequest = store.openCursor();
+    cursorRequest.onsuccess = () => {
+      const cursor = cursorRequest.result as IDBCursorWithValue | null;
+      if (!cursor) return;
+      const record = cursor.value as StoredSimulation;
+      const [careerUser, seasonText] = record.careerId.split(":");
+      const season = Number(seasonText);
+      if (careerUser === userTeamId && Number.isFinite(season) && season < activeSeason) {
+        cursor.delete();
+      }
+      cursor.continue();
+    };
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error ?? new Error("Unable to clean old match records."));
+    transaction.onabort = () => reject(transaction.error ?? new Error("Cleaning old match records was aborted."));
+  });
+  database.close();
+}
+
 /**
  * Local storage retains everything required for standings, scorecards and
  * summaries. Delivery arrays live in IndexedDB because a full 70-match season

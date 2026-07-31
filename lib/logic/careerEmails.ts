@@ -560,9 +560,27 @@ export function buildCareerEmailDrafts(context: CareerEmailContext): CareerEmail
     const userScore = fixture.teamA === context.userTeamId ? fixture.scoreA?.runs ?? 0 : fixture.scoreB?.runs ?? 0;
     const opponentScore = fixture.teamA === opponentId ? fixture.scoreA?.runs ?? 0 : fixture.scoreB?.runs ?? 0;
     const margin = Math.abs(userScore - opponentScore);
-    const performanceNote = won
-      ? margin >= 35 ? "This was a commanding result and a strong reflection of the match plan." : "The side handled the decisive moments well."
-      : margin >= 35 ? "The margin exposed areas that require attention before the next fixture." : "The match was competitive, but the decisive moments went against us.";
+    const isPlayoffMatch = Boolean(fixture.stage) || fixture.matchNumber > 70;
+    let performanceNote = "";
+    if (won) {
+      if (isPlayoffMatch) {
+        const stageName = fixture.stage === "final" ? "Final" : fixture.stage === "qualifier1" ? "Qualifier 1" : fixture.stage === "qualifier2" ? "Qualifier 2" : "Eliminator";
+        performanceNote = `A monumental victory in the ${stageName}! The squad executed the match plan under immense pressure and advances in the tournament.`;
+      } else {
+        performanceNote = margin >= 35 ? "This was a commanding result and a strong reflection of the match plan." : "The side handled the decisive moments well.";
+      }
+    } else {
+      if (isPlayoffMatch) {
+        if (fixture.stage === "qualifier1") {
+          performanceNote = "We have been defeated in Qualifier 1. While we miss direct entry to the Final, our campaign continues in Qualifier 2.";
+        } else {
+          const stageName = fixture.stage === "final" ? "IPL Final" : fixture.stage === "qualifier2" ? "Qualifier 2" : fixture.stage === "eliminator" ? "Eliminator" : "playoff match";
+          performanceNote = `We have been knocked out of the tournament in the ${stageName}. The playoff campaign comes to an end here after a hard-fought season.`;
+        }
+      } else {
+        performanceNote = margin >= 35 ? "The margin exposed areas that require attention before the next fixture." : "The match was competitive, but the decisive moments went against us.";
+      }
+    }
 
     push({
       templateId: "match.result-report",

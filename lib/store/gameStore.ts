@@ -16,6 +16,7 @@ import { fetchPlayersFromSupabase } from "@/lib/supabase/fetchPlayers";
 import { fetchTeamsFromSupabase } from "@/lib/supabase/fetchTeams";
 import type { ClubFigureTier, ClubFigureTierOverrides } from "@/lib/data/clubFigures";
 import type { LeagueHistorySeason } from "@/lib/data/leagueHistory";
+import type { OtherLeagueRecord } from "@/lib/data/leagueRecords";
 import {
   createDefaultHomeBoundaryDimensions,
   createDefaultHomePitchSelections,
@@ -93,6 +94,7 @@ import {
   getTeamPlan,
   getSquadComp,
   getQuirks,
+  isPriorityAuctionSale,
 } from "@/lib/logic/auctionEngine";
 
 export const INITIAL_ACTIVE_SEASON = 2027;
@@ -143,6 +145,15 @@ interface GameStateAdditions {
   aiAcceleratedBackups: Record<string, string[]>;
   clubFigureTierOverrides: ClubFigureTierOverrides;
   simulatedLeagueHistory: LeagueHistorySeason[];
+  lastRolledOverSeason: number | null;
+  careerSeasonArchives: Array<{
+    season: number;
+    fixtures: unknown[];
+    standings: unknown[];
+    playerStats: Record<string, unknown>;
+    leagueRecords?: OtherLeagueRecord[];
+  }>;
+  careerFastForwardTargetDate: string | null;
   homePitchSelections: HomePitchSelections;
   homeBoundaryDimensions: HomeBoundaryDimensions;
   boundaryPresetsByTeam: Partial<Record<IplTeamId, BoundaryPreset[]>>;
@@ -190,6 +201,16 @@ interface GameActions {
   startAcceleratedAuctionFromPlanning: () => void;
   setClubFigureTierOverride: (figureId: string, tier: ClubFigureTier) => void;
   recordSimulatedLeagueSeason: (season: LeagueHistorySeason) => void;
+  beginNextSeasonRetention: () => boolean;
+  archiveCareerSeason: (archive: {
+    season: number;
+    fixtures: unknown[];
+    standings: unknown[];
+    playerStats: Record<string, unknown>;
+    leagueRecords?: OtherLeagueRecord[];
+  }) => void;
+  setCareerFastForwardTarget: (targetDate: string | null) => void;
+  completeOffseasonAutomatically: () => boolean;
   setHomePitchSelection: (teamId: string, pitchId: string) => void;
   setHomeBoundaryDimensions: (
     teamId: string,
@@ -604,7 +625,7 @@ function getAIAcceleratedNominationsAndBackups(
 
       // 5. Fit check: Fit score must be positive
       const fit = computePlayerFit(p, team, comp, quirks);
-      if (fit <= 0) return null;
+      if (fit <= 0 && !isPriorityAuctionSale(p)) return null;
 
       const rating = ratingOf(p);
       const isKeeperPriority = isKeeper(p) && (comp.keepers ?? 0) < 2;
@@ -658,6 +679,9 @@ export const useGameStore = create<Store>()(
       aiAcceleratedBackups: {},
       clubFigureTierOverrides: {},
       simulatedLeagueHistory: [],
+      lastRolledOverSeason: null,
+      careerSeasonArchives: [],
+      careerFastForwardTargetDate: null,
       homePitchSelections: createDefaultHomePitchSelections(),
       homeBoundaryDimensions: createDefaultHomeBoundaryDimensions(),
       boundaryPresetsByTeam: {},
@@ -675,6 +699,28 @@ export const useGameStore = create<Store>()(
           fetchPlayersFromSupabase(),
           fetchTeamsFromSupabase(),
         ]);
+        const validTeamIds = new Set(fetchedTeams.map((team) => team.id));
+        const responseHasTeamAssignments = fetchedPlayers.some((player) => (
+          Boolean(player.currentTeamId && validTeamIds.has(player.currentTeamId))
+        ));
+        const startingTeamByPlayer = new Map(fetchedPlayers.map((player) => {
+          const historicalTeamId = [...(player.iplHistory ?? [])]
+            .filter((entry) => (
+              entry.teamId !== "UNSOLD"
+              && validTeamIds.has(entry.teamId)
+            ))
+            .sort((left, right) => Number(right.season) - Number(left.season))[0]?.teamId;
+          const currentTeamId = (
+            player.currentTeamId
+            && validTeamIds.has(player.currentTeamId)
+          )
+            ? player.currentTeamId
+            : null;
+          const startingTeamId = responseHasTeamAssignments
+            ? currentTeamId
+            : historicalTeamId ?? null;
+          return [player.id, startingTeamId] as const;
+        }));
 
         const playersMap: Record<string, Player> = {};
         fetchedPlayers.forEach((p: Player) => {
@@ -683,9 +729,9 @@ export const useGameStore = create<Store>()(
 
         const teamsMap: Record<string, Team> = {};
         fetchedTeams.forEach((t) => {
-          const teamPlayers = fetchedPlayers.filter((p: Player) => 
-            p.currentTeamId === t.id
-          );
+          const teamPlayers = fetchedPlayers.filter((player) => (
+            startingTeamByPlayer.get(player.id) === t.id
+          ));
           teamsMap[t.id] = {
             ...t,
             squad: teamPlayers.map((p: Player) => p.id),
@@ -712,6 +758,9 @@ export const useGameStore = create<Store>()(
           auctionTargetPriorities: {},
           clubFigureTierOverrides: {},
           simulatedLeagueHistory: [],
+          lastRolledOverSeason: null,
+          careerSeasonArchives: [],
+          careerFastForwardTargetDate: null,
           homePitchSelections: createDefaultHomePitchSelections(),
           homeBoundaryDimensions: createDefaultHomeBoundaryDimensions(),
           boundaryPresetsByTeam: {},
@@ -948,6 +997,18 @@ export const useGameStore = create<Store>()(
         const updatedTeams = { ...teams };
         const updatedPlayers = { ...players };
 
+        // A completed-season squad is only the retention candidate list. Once
+        // retention choices are being confirmed, every unretained player is
+        // formally released before the auction begins.
+        Object.entries(updatedPlayers).forEach(([playerId, player]) => {
+          if (player.isRetained) return;
+          updatedPlayers[playerId] = {
+            ...player,
+            currentTeamId: null,
+            retainedByTeamId: null,
+          };
+        });
+
         Object.values(teams).forEach((team) => {
           if (team.id === userTeamId) return;
 
@@ -979,6 +1040,11 @@ export const useGameStore = create<Store>()(
             remainingPurse: TOTAL_PURSE_LAKHS - totalCost,
             spentAmount: totalCost,
             squad: retainedIds,
+            // The previous season's full-squad counter must not survive the
+            // retention cut. Auction eligibility reads this field directly.
+            overseasPlayersCurrent: retainedIds.filter(
+              (playerId) => updatedPlayers[playerId]?.nationality === "Overseas",
+            ).length,
             // RTM cards = 6 minus number of retentions (per IPL rules)
             rtmCardsTotal: Math.max(0, MAX_TOTAL_RETENTIONS - retainedIds.length),
           };
@@ -1006,6 +1072,9 @@ export const useGameStore = create<Store>()(
         updatedTeams[userTeamId] = {
           ...userTeam,
           squad: userTeam.retainedPlayers,
+          overseasPlayersCurrent: userTeam.retainedPlayers.filter(
+            (playerId) => updatedPlayers[playerId]?.nationality === "Overseas",
+          ).length,
           rtmCardsTotal: Math.max(0, MAX_TOTAL_RETENTIONS - userTeam.retainedPlayers.length),
         };
 
@@ -1381,6 +1450,10 @@ export const useGameStore = create<Store>()(
         });
         Object.values(aiAcceleratedBackups).forEach((ids) => {
           ids.forEach((id) => allNominatedIds.add(id));
+        });
+        auction.unsoldPlayerIds.forEach((id) => {
+          const player = players[id];
+          if (player && isPriorityAuctionSale(player)) allNominatedIds.add(id);
         });
 
         const unsoldPlayers = Array.from(allNominatedIds)
@@ -2718,11 +2791,121 @@ export const useGameStore = create<Store>()(
         }));
       },
 
+      beginNextSeasonRetention: () => {
+        let advanced = false;
+        set((state) => {
+          if (
+            state.lastRolledOverSeason === state.currentSeason
+            || (state.auction?.phase === "retention" && state.auction.season === state.currentSeason)
+          ) return state;
+
+          const completedSeason = state.currentSeason;
+          const nextSeason = completedSeason + 1;
+          const dates = getSeasonDates(nextSeason);
+          const resetPlayers = Object.fromEntries(Object.entries(state.players).map(([id, player]) => [
+            id,
+            { ...player, isRetained: false, retainedByTeamId: null },
+          ]));
+          const resetTeams = Object.fromEntries(Object.entries(state.teams).map(([id, team]) => [
+            id,
+            {
+              ...team,
+              // Preserve the completed squad so the retention screen can
+              // choose from it. confirmRetentions releases everyone else.
+              retainedPlayers: [],
+              remainingPurse: TOTAL_PURSE_LAKHS,
+              spentAmount: 0,
+              rtmCardsTotal: MAX_TOTAL_RETENTIONS,
+              softSquadTarget: id === state.userTeamId ? 24 : pickSoftSquadTarget(),
+            },
+          ]));
+          advanced = true;
+          return {
+            currentSeason: nextSeason,
+            currentDate: dates.retentionDate,
+            auctionCycle: state.auctionCycle + 1,
+            fixtureSeed: uuidv4(),
+            players: resetPlayers,
+            teams: resetTeams,
+            auction: {
+              type: "mega",
+              season: nextSeason,
+              phase: "retention",
+              allPlayerIds: [],
+              soldPlayerIds: [],
+              unsoldPlayerIds: [],
+              currentLotIndex: 0,
+              currentPlayer: null,
+              currentBid: 0,
+              currentHighBidderTeamId: null,
+              biddingHistory: [],
+              timerSeconds: 10,
+              sets: [],
+              currentSetIndex: 0,
+              teamPurses: {},
+              isAcceleratedPhase: false,
+              rtm: null,
+              soldFlash: null,
+              unsoldFlash: null,
+              saleHistory: [],
+            },
+            isSetupComplete: false,
+            isPaused: false,
+            skipSetSummary: null,
+            auctionTargets: {},
+            auctionTargetPriorities: {},
+            acceleratedPlanningState: null,
+            userAcceleratedTargets: [],
+            aiAcceleratedTargets: {},
+            aiAcceleratedBackups: {},
+            lastRolledOverSeason: completedSeason,
+          };
+        });
+        return advanced;
+      },
+
+      archiveCareerSeason: (archive) => {
+        set((state) => ({
+          careerSeasonArchives: [
+            archive,
+            ...state.careerSeasonArchives.filter((record) => record.season !== archive.season),
+          ].sort((left, right) => right.season - left.season),
+        }));
+      },
+
+      setCareerFastForwardTarget: (targetDate) => set({ careerFastForwardTargetDate: targetDate }),
+
+      completeOffseasonAutomatically: () => {
+        const initial = get();
+        if (initial.auction?.phase !== "retention") return false;
+        initial.autoRetainPlayers();
+        get().confirmRetentions();
+        get().startAuction();
+        for (let pass = 0; pass < 6; pass += 1) {
+          const state = get();
+          if (state.auction?.phase === "completed") return true;
+          if (state.auction?.phase !== "live") return false;
+          state.skipAllAuction();
+          const afterSkip = get();
+          if (afterSkip.auction?.phase === "completed") return true;
+          if (afterSkip.acceleratedPlanningState === "nominating") {
+            afterSkip.confirmUserAcceleratedTargets([]);
+          }
+          if (get().acceleratedPlanningState === "results") {
+            get().startAcceleratedAuctionFromPlanning();
+          }
+        }
+        return get().auction?.phase === "completed";
+      },
+
       resetGame: () => {
         set({
           saveId: "",
           saveCreatedAt: "",
           fixtureSeed: "",
+          currentDate: "2026-11-15",
+          currentSeason: INITIAL_ACTIVE_SEASON,
+          auctionCycle: 1,
           players: {},
           teams: {},
           userTeamId: "",
@@ -2730,10 +2913,18 @@ export const useGameStore = create<Store>()(
           isSetupComplete: false,
           isPaused: false,
           speed: 1,
+          skipSetSummary: null,
           auctionTargets: {},
           auctionTargetPriorities: {},
+          acceleratedPlanningState: null,
+          userAcceleratedTargets: [],
+          aiAcceleratedTargets: {},
+          aiAcceleratedBackups: {},
           clubFigureTierOverrides: {},
           simulatedLeagueHistory: [],
+          lastRolledOverSeason: null,
+          careerSeasonArchives: [],
+          careerFastForwardTargetDate: null,
           homePitchSelections: createDefaultHomePitchSelections(),
           homeBoundaryDimensions: createDefaultHomeBoundaryDimensions(),
           boundaryPresetsByTeam: {},
@@ -2765,6 +2956,9 @@ export const useGameStore = create<Store>()(
         auctionTargetPriorities: state.auctionTargetPriorities,
         clubFigureTierOverrides: state.clubFigureTierOverrides,
         simulatedLeagueHistory: state.simulatedLeagueHistory,
+        lastRolledOverSeason: state.lastRolledOverSeason,
+        careerSeasonArchives: state.careerSeasonArchives,
+        careerFastForwardTargetDate: state.careerFastForwardTargetDate,
         homePitchSelections: state.homePitchSelections,
         homeBoundaryDimensions: state.homeBoundaryDimensions,
         boundaryPresetsByTeam: state.boundaryPresetsByTeam,
@@ -2835,6 +3029,9 @@ export const useGameStore = create<Store>()(
           auctionTargetPriorities: p.auctionTargetPriorities ?? {},
           clubFigureTierOverrides: p.clubFigureTierOverrides ?? {},
           simulatedLeagueHistory: p.simulatedLeagueHistory ?? [],
+          lastRolledOverSeason: p.lastRolledOverSeason ?? null,
+          careerSeasonArchives: p.careerSeasonArchives ?? [],
+          careerFastForwardTargetDate: p.careerFastForwardTargetDate ?? null,
           homePitchSelections: normalizeHomePitchSelections(
             p.homePitchSelections,
             getAdditionalHomePitchIds(customPitchesByTeam),

@@ -3,10 +3,7 @@
 --
 -- This file documents the tables the app reads via fetchPlayers.ts /
 -- fetchTeams.ts. It is NOT the seed mechanism — data is loaded by the
--- generated scripts in scripts/:
---   * scripts/load_players.sql  (players, generated from IPLMainGameDatabase.csv)
---   * scripts/load_teams.sql    (teams config)
--- Run those in the Supabase SQL Editor to (re)create + populate the tables.
+-- The live Supabase tables are the authoritative data source.
 -- ---------------------------------------------------------------------------
 
 -- Players -------------------------------------------------------------------

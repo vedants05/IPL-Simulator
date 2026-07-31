@@ -30,8 +30,8 @@ import {
 
 const NAV_ITEMS = [
   { label: "Home", href: "/game/overview?tab=home" },
-  { label: "Club", href: "/game/overview?tab=club" },
   { label: "Squad", href: "/game/overview?tab=squad" },
+  { label: "Club", href: "/game/overview?tab=club" },
   { label: "Scouting", href: "/game/overview?tab=scouting" },
   { label: "Season", href: "/game/overview?tab=season" },
   { label: "History", href: "/game/overview?tab=history" },
@@ -50,11 +50,13 @@ export default function NavBar() {
     setPaused,
     togglePaused,
     speed,
+    careerFastForwardTargetDate,
     increaseSpeed,
     decreaseSpeed,
     skipCurrentSet,
     skipAllAuction,
     skipToAcceleratedAuction,
+    resetGame,
   } = useGameStore();
 
   const [showConfirm, setShowConfirm] = useState(false);
@@ -66,6 +68,7 @@ export default function NavBar() {
   const [showConfirmAll, setShowConfirmAll] = useState(false);
   const [wasPausedBeforeConfirmAll, setWasPausedBeforeConfirmAll] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showRestartConfirm, setShowRestartConfirm] = useState(false);
   const [showHowToPlay, setShowHowToPlay] = useState(false);
   const [activeTile, setActiveTile] = useState(0);
   const [isDarkMode, setIsDarkMode] = useState(false);
@@ -142,6 +145,15 @@ export default function NavBar() {
     const nextDark = !isDarkMode;
     setIsDarkMode(nextDark);
     switchColorMode(nextDark, userTeamId || undefined);
+  };
+
+  const handleRestartGame = () => {
+    localStorage.removeItem(getSeasonAccessStorageKey(userTeamId));
+    resetGame();
+    setShowRestartConfirm(false);
+    setShowSettings(false);
+    router.replace("/setup");
+    router.refresh();
   };
 
   const handleSettingsClick = () => {
@@ -297,7 +309,24 @@ export default function NavBar() {
 
       <div className="flex items-center gap-4 font-space-mono text-[10px]">
         {!isAuctionPage && (
-          <span className="tracking-wider" style={{ color: "var(--chrome-nav-muted)" }}>{currentDate}</span>
+          <>
+            <div className="flex items-center gap-1">
+              {[
+                ["season", "End season"],
+              ].map(([kind, label]) => (
+                <button
+                  key={kind}
+                  type="button"
+                  disabled={Boolean(careerFastForwardTargetDate)}
+                  onClick={() => window.dispatchEvent(new CustomEvent("ipl-career-fast-forward", { detail: { kind } }))}
+                  className="h-7 rounded border border-border bg-surface px-2 text-[8px] font-bold uppercase tracking-wide text-text-secondary transition-colors hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <span className="tracking-wider" style={{ color: "var(--chrome-nav-muted)" }}>{currentDate}</span>
+          </>
         )}
         {isAuctionPage && auction && auction.phase === "live" && (
           <div className="flex items-center gap-4" data-tour="auction-top-controls">
@@ -660,11 +689,74 @@ export default function NavBar() {
                     </span>
                   </button>
                 </div>
+                <div className="flex flex-col gap-2 border-t border-[var(--ink)]/15 pt-2">
+                  <span className="text-[9px] font-bold text-red-600 uppercase tracking-wider">
+                    Danger Zone
+                  </span>
+                  <button
+                    onClick={() => {
+                      setShowSettings(false);
+                      setShowRestartConfirm(true);
+                    }}
+                    className="w-full flex items-center justify-between px-3 py-1.5 rounded border border-red-600 text-red-600 hover:bg-red-600 hover:text-white text-[10px] font-bold cursor-pointer transition-all active:scale-[0.98]"
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <RefreshCw size={11} className="inline" /> Restart Game
+                    </span>
+                  </button>
+                </div>
               </div>
             </>
           )}
         </div>
       </div>
+
+      {showRestartConfirm && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="restart-game-title"
+            aria-describedby="restart-game-description"
+            className="w-full max-w-sm rounded border-2 border-[var(--ink)] p-5 font-barlow"
+            style={{
+              backgroundColor: "var(--surface, #ffffff)",
+              color: "var(--ink, #111622)",
+              boxShadow: "7px 7px 0 var(--ink)",
+            }}
+          >
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5 rounded bg-red-600 p-2 text-white">
+                <AlertTriangle size={18} />
+              </div>
+              <div>
+                <h2 id="restart-game-title" className="font-anton text-xl uppercase tracking-wide">
+                  Restart game?
+                </h2>
+                <p id="restart-game-description" className="mt-2 text-sm leading-relaxed text-text-secondary">
+                  This permanently removes the current career, auction, squads, fixtures and season progress. This action cannot be undone.
+                </p>
+              </div>
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowRestartConfirm(false)}
+                className="rounded border-2 border-[var(--ink)] px-4 py-2 font-space-mono text-[10px] font-bold uppercase transition-colors hover:bg-[var(--ink)]/5"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleRestartGame}
+                className="rounded border-2 border-red-700 bg-red-600 px-4 py-2 font-space-mono text-[10px] font-bold uppercase text-white transition-colors hover:bg-red-700"
+              >
+                Restart Game
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {false && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">

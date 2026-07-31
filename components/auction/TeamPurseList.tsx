@@ -105,9 +105,6 @@ export default function TeamPurseList() {
                     </span>
                   )}
                 </div>
-                <span className="font-barlow-condensed font-bold text-[13px] text-text-secondary shrink-0">
-                  {squadCount}p
-                </span>
                 {rtmLeft > 0 && (
                   <span
                     className="font-space-mono font-bold text-[8px] tracking-wider shrink-0 px-1.5 py-0.5 rounded-[2px]"
@@ -119,6 +116,9 @@ export default function TeamPurseList() {
                     {rtmLeft}RTM
                   </span>
                 )}
+                <span className="font-barlow-condensed font-bold text-[13px] text-text-secondary shrink-0">
+                  {squadCount}p
+                </span>
                 <span
                   className="font-barlow-condensed font-bold text-[15px] leading-none shrink-0 text-text-primary"
                 >

@@ -9,13 +9,22 @@ import {
   type RetiredRecordEntry,
   qualifiesForBattingAverageRecord,
 } from "@/lib/data/leagueRecords";
+import { computeDynamicLeagueRecords } from "@/lib/logic/leagueRecordTracker";
 import { LEAGUE_HISTORY_TEAMS } from "@/lib/data/leagueHistory";
 import type { Player, Team } from "@/lib/types";
+import type { OtherLeagueRecord } from "@/lib/data/leagueRecords";
 
 interface LeagueRecordsProps {
   players: Record<string, Player>;
   teams: Record<string, Team>;
   onOpenPlayer: (playerId: string) => void;
+  fixtures?: Array<any>;
+  seasonArchives?: Array<{
+    season: number;
+    fixtures: unknown[];
+    playerStats: Record<string, unknown>;
+    leagueRecords?: OtherLeagueRecord[];
+  }>;
 }
 
 interface ResolvedRecordEntry {
@@ -41,9 +50,42 @@ interface MajorRecordColumn {
 const normalizeName = (name: string) => name.toLocaleLowerCase("en-GB").replace(/[^a-z0-9]/g, "");
 const integer = (value: number) => Math.round(value).toLocaleString("en-IN");
 
-export default function LeagueRecords({ players, teams, onOpenPlayer }: LeagueRecordsProps) {
+export default function LeagueRecords({ players, teams, onOpenPlayer, fixtures, seasonArchives = [] }: LeagueRecordsProps) {
   const playerList = Object.values(players).filter((player) => player.iplStats.matches > 0);
   const playersByName = new Map(playerList.map((player) => [normalizeName(player.name), player]));
+
+  const replaceRecord = (records: OtherLeagueRecord[], replacement: OtherLeagueRecord) => (
+    records.map((record) => record.id === replacement.id ? replacement : record)
+  );
+  const recordsThroughArchives = [...seasonArchives]
+    .sort((left, right) => left.season - right.season)
+    .reduce<OtherLeagueRecord[]>((records, archive) => {
+      let nextRecords = archive.leagueRecords
+        ?? computeDynamicLeagueRecords(archive.fixtures as any[], players, teams, records);
+      const seasonStats = Object.values(archive.playerStats) as Array<{
+        name?: string; teamId?: string; runs?: number; wickets?: number;
+      }>;
+      const topRuns = seasonStats.sort((left, right) => (right.runs ?? 0) - (left.runs ?? 0))[0];
+      const topWickets = [...seasonStats].sort((left, right) => (right.wickets ?? 0) - (left.wickets ?? 0))[0];
+      const existingRuns = Number(nextRecords.find((record) => record.id === "batting-season")?.value.match(/\d+/)?.[0] ?? 973);
+      const existingWickets = Number(nextRecords.find((record) => record.id === "bowling-season")?.value.match(/\d+/)?.[0] ?? 32);
+      if (topRuns?.name && (topRuns.runs ?? 0) > existingRuns) {
+        nextRecords = replaceRecord(nextRecords, {
+          id: "batting-season", label: "Best batting season", value: `${topRuns.runs} runs`, holder: topRuns.name,
+          detail: `${teams[topRuns.teamId ?? ""]?.shortName ?? topRuns.teamId ?? "IPL"} · ${archive.season}`, playerNames: [topRuns.name],
+        });
+      }
+      if (topWickets?.name && (topWickets.wickets ?? 0) > existingWickets) {
+        nextRecords = replaceRecord(nextRecords, {
+          id: "bowling-season", label: "Most wickets in a season", value: `${topWickets.wickets}`, holder: topWickets.name,
+          detail: `${teams[topWickets.teamId ?? ""]?.shortName ?? topWickets.teamId ?? "IPL"} · ${archive.season}`, playerNames: [topWickets.name],
+        });
+      }
+      return nextRecords;
+    }, OTHER_LEAGUE_RECORDS);
+  const otherRecords = fixtures && fixtures.length > 0
+    ? computeDynamicLeagueRecords(fixtures, players, teams, recordsThroughArchives)
+    : recordsThroughArchives;
 
   const columnDefinitions: MajorRecordColumn[] = [
     {
@@ -196,7 +238,7 @@ export default function LeagueRecords({ players, teams, onOpenPlayer }: LeagueRe
             <h4 className="mt-1 font-anton text-[16px] uppercase leading-none text-text-primary">Other Records</h4>
           </div>
           <div className="grid min-h-0 grid-rows-8">
-            {OTHER_LEAGUE_RECORDS.map((record) => {
+            {otherRecords.map((record) => {
               const linkedPlayer = record.playerNames
                 ?.map((name) => playersByName.get(normalizeName(name)))
                 .find((player): player is Player => Boolean(player));

@@ -21,6 +21,7 @@ import type { AiLineupPlan } from "@/lib/logic/aiLineupSelector";
 import type { AiLeagueLeadership, AiTeamLeadership } from "@/lib/logic/aiLeadership";
 import { dateKeyToLocalDate, getSeasonScheduleAnnouncementDate } from "@/lib/logic/careerCalendar";
 import { useGameStore } from "@/lib/store/gameStore";
+import { PlayerProfileModal } from "@/components/player/PlayerProfileModal";
 import type { Player, Team } from "@/lib/types";
 
 type TeamProfileTab = "overview" | "squad" | "fixtures" | "lineups";
@@ -72,6 +73,20 @@ interface TeamProfileFixture {
   time?: string;
   scoreA?: { runs: number; wickets: number; overs: number };
   scoreB?: { runs: number; wickets: number; overs: number };
+  scorecard?: {
+    inningsA: {
+      batting: Array<{ id: string; name: string; runs: number; balls: number; fours: number; sixes: number; dismissal: string; notOut: boolean }>;
+      bowling: Array<{ id: string; name: string; overs: number; maidens: number; runsConceded: number; wickets: number }>;
+      extras: number;
+    };
+    inningsB: {
+      batting: Array<{ id: string; name: string; runs: number; balls: number; fours: number; sixes: number; dismissal: string; notOut: boolean }>;
+      bowling: Array<{ id: string; name: string; overs: number; maidens: number; runsConceded: number; wickets: number }>;
+      extras: number;
+    };
+  };
+  simulation?: any;
+  commentary?: string[];
 }
 
 interface TeamProfileCareer {
@@ -464,6 +479,9 @@ export default function TeamProfilePage() {
   const [aiLineupLogic, setAiLineupLogic] = useState<AiLineupModule | null>(null);
   const [fallbackAiLeadership, setFallbackAiLeadership] = useState<AiTeamLeadership | null>(null);
   const [visibleNextFixtureCount, setVisibleNextFixtureCount] = useState(3);
+  const [activeScorecard, setActiveScorecard] = useState<TeamProfileFixture | null>(null);
+  const [activeResultView, setActiveResultView] = useState<"scorecard" | "summary" | "commentary">("scorecard");
+  const [detailedPlayerId, setDetailedPlayerId] = useState<string | null>(null);
   const nextFixturesListRef = useRef<HTMLDivElement>(null);
 
 
@@ -1256,7 +1274,13 @@ export default function TeamProfilePage() {
                     return (
                       <tr key={player.id} className="transition-colors hover:bg-black/[0.03] dark:hover:bg-white/[0.03]">
                         <td className="px-6 py-3">
-                          <div className="truncate font-semibold text-text-primary">{player.name}</div>
+                          <button
+                            type="button"
+                            onClick={() => setDetailedPlayerId(player.id)}
+                            className="block truncate font-semibold text-text-primary text-left hover:text-accent hover:underline transition-colors"
+                          >
+                            {player.name}
+                          </button>
                           <div className="mt-0.5 font-space-mono text-[7px] font-bold uppercase text-text-secondary">
                             {player.nationality}{player.isCapped ? " · Capped" : " · Uncapped"}
                           </div>
@@ -1302,13 +1326,21 @@ export default function TeamProfilePage() {
                   return (
                     <article
                       key={fixture.id}
-                      className="relative overflow-hidden border border-border bg-surface px-5 py-4 shadow-sm"
+                      onClick={() => {
+                        if (fixture.played) {
+                          setActiveScorecard(fixture);
+                          setActiveResultView("scorecard");
+                        }
+                      }}
+                      className={`relative overflow-hidden border border-border bg-surface px-5 py-4 shadow-sm transition-all ${
+                        fixture.played ? "cursor-pointer hover:border-accent hover:shadow-md" : "cursor-default"
+                      }`}
                     >
                       <div className="absolute inset-x-0 top-0 h-1" style={{ backgroundColor: team.primaryColor }} />
                       <div className="flex items-center justify-between gap-4 font-space-mono text-[8px] font-bold uppercase text-text-secondary">
                         <span>Match {fixture.matchNumber} · {safeDateLabel(fixture.date, { weekday: "short", day: "numeric", month: "short" })} · {fixture.time ?? "TBC"}</span>
-                        <span className={fixture.played ? won ? "text-success" : "text-danger" : "text-accent"}>
-                          {fixture.played ? won ? "Won" : "Lost" : "Upcoming"}
+                        <span className={fixture.played ? (won ? "text-success font-bold hover:underline" : "text-danger font-bold hover:underline") : "text-accent"}>
+                          {fixture.played ? (won ? "Won · View Scorecard ➔" : "Lost · View Scorecard ➔") : "Upcoming"}
                         </span>
                       </div>
                       <div className="mt-3 grid grid-cols-[3.5rem_minmax(0,1fr)_auto] items-center gap-3">
@@ -1394,6 +1426,279 @@ export default function TeamProfilePage() {
           </div>
         )}
       </main>
+
+      {/* ======================= FIXTURE SCORECARD MODAL ======================= */}
+      {activeScorecard && (() => {
+        const isTeamABattingFirst = activeScorecard.simulation
+          ? activeScorecard.simulation.battingFirstTeamId === activeScorecard.teamA
+          : true;
+
+        const firstTeamId = isTeamABattingFirst ? activeScorecard.teamA : activeScorecard.teamB;
+        const secondTeamId = isTeamABattingFirst ? activeScorecard.teamB : activeScorecard.teamA;
+
+        const firstTeamScore = isTeamABattingFirst ? activeScorecard.scoreA : activeScorecard.scoreB;
+        const secondTeamScore = isTeamABattingFirst ? activeScorecard.scoreB : activeScorecard.scoreA;
+
+        const firstInnings = isTeamABattingFirst ? activeScorecard.scorecard?.inningsA : activeScorecard.scorecard?.inningsB;
+        const secondInnings = isTeamABattingFirst ? activeScorecard.scorecard?.inningsB : activeScorecard.scorecard?.inningsA;
+
+        return (
+          <div
+            onClick={() => setActiveScorecard(null)}
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-in fade-in duration-200"
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-lg border-2 border-border bg-surface shadow-2xl"
+            >
+              {/* Header */}
+              <div className="flex shrink-0 items-center justify-between border-b-2 border-border px-6 py-4 bg-surface">
+                <div>
+                  <span className="font-space-mono text-[9px] font-bold text-accent uppercase">
+                    MATCH {activeScorecard.matchNumber} · SCORECARD &amp; RESULT
+                  </span>
+                  <h3 className="font-anton text-[22px] uppercase text-text-primary mt-0.5">
+                    {teams[firstTeamId]?.name ?? firstTeamId} vs {teams[secondTeamId]?.name ?? secondTeamId}
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveScorecard(null)}
+                  className="rounded border border-border px-3 py-1 font-space-mono text-xs font-bold hover:bg-black/5 dark:hover:bg-white/10"
+                >
+                  ✕ Close
+                </button>
+              </div>
+
+              {/* Match Summary Banner (1st Innings on Left, 2nd Innings on Right) */}
+              <div className="flex shrink-0 items-center justify-between border-b border-border bg-black/[0.02] dark:bg-white/[0.02] px-6 py-3">
+                <div className="flex items-center gap-3">
+                  <span className="font-anton text-[18px] text-text-primary">{teams[firstTeamId]?.shortName}</span>
+                  <span className="font-anton text-[20px] text-accent">
+                    {firstTeamScore ? `${firstTeamScore.runs}/${firstTeamScore.wickets}` : "-"}
+                  </span>
+                  <span className="font-space-mono text-[9px] text-text-secondary">({firstTeamScore?.overs ?? 20} ov)</span>
+                </div>
+
+                <div className="font-space-mono text-xs font-bold text-success uppercase text-center px-4">
+                  {activeScorecard.simulation?.resultText ?? (activeScorecard.winner ? `${teams[activeScorecard.winner]?.name ?? activeScorecard.winner} won` : "Match Completed")}
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <span className="font-space-mono text-[9px] text-text-secondary">({secondTeamScore?.overs ?? 20} ov)</span>
+                  <span className="font-anton text-[20px] text-accent">
+                    {secondTeamScore ? `${secondTeamScore.runs}/${secondTeamScore.wickets}` : "-"}
+                  </span>
+                  <span className="font-anton text-[18px] text-text-primary">{teams[secondTeamId]?.shortName}</span>
+                </div>
+              </div>
+
+              {/* View Selector Bar */}
+              <div className="flex shrink-0 gap-2 border-b border-border px-6 py-2 bg-surface">
+                {(["scorecard", "summary", "commentary"] as const).map((view) => (
+                  <button
+                    key={view}
+                    type="button"
+                    onClick={() => setActiveResultView(view)}
+                    className={`px-3 py-1 font-space-mono text-[10px] font-bold uppercase rounded border transition-colors ${
+                      activeResultView === view ? "bg-accent text-white border-accent" : "border-border text-text-secondary hover:bg-black/5"
+                    }`}
+                  >
+                    {view === "scorecard" ? "Full Scorecard" : view === "summary" ? "Match Summary" : "Over Commentary"}
+                  </button>
+                ))}
+              </div>
+
+              {/* Content Body */}
+              <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-4">
+                {activeResultView === "scorecard" && firstInnings && secondInnings && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Innings 1 (Batted First) */}
+                    <div className="space-y-3">
+                      <h4 className="font-anton text-[14px] uppercase text-text-primary border-b border-border pb-1">
+                        1st Innings: {teams[firstTeamId]?.name} Batting
+                      </h4>
+                      <table className="w-full text-left font-space-mono text-[10px]">
+                        <thead>
+                          <tr className="border-b border-border text-text-secondary">
+                            <th className="py-1">Batter</th>
+                            <th className="py-1 text-right">R</th>
+                            <th className="py-1 text-right">B</th>
+                            <th className="py-1 text-right">4s</th>
+                            <th className="py-1 text-right">6s</th>
+                            <th className="py-1 text-right">SR</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border/40">
+                          {firstInnings.batting.filter((b) => (b.balls ?? 0) > 0 || (b.runs ?? 0) > 0).map((b) => (
+                            <tr key={b.id}>
+                              <td className="py-1 font-bold text-text-primary truncate max-w-[120px]">
+                                {b.name} {b.notOut ? "*" : ""}
+                              </td>
+                              <td className="py-1 text-right font-bold text-accent">{b.runs}</td>
+                              <td className="py-1 text-right text-text-secondary">{b.balls}</td>
+                              <td className="py-1 text-right text-text-secondary">{b.fours}</td>
+                              <td className="py-1 text-right text-text-secondary">{b.sixes}</td>
+                              <td className="py-1 text-right text-text-secondary">{((b.runs / Math.max(1, b.balls)) * 100).toFixed(1)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+
+                      <h4 className="font-anton text-[14px] uppercase text-text-primary border-b border-border pb-1 mt-4">
+                        {teams[secondTeamId]?.name} Bowling
+                      </h4>
+                      <table className="w-full text-left font-space-mono text-[10px]">
+                        <thead>
+                          <tr className="border-b border-border text-text-secondary">
+                            <th className="py-1">Bowler</th>
+                            <th className="py-1 text-right">O</th>
+                            <th className="py-1 text-right">M</th>
+                            <th className="py-1 text-right">R</th>
+                            <th className="py-1 text-right">W</th>
+                            <th className="py-1 text-right">Econ</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border/40">
+                          {firstInnings.bowling.filter((bowl) => (bowl.overs ?? 0) > 0).map((bowl) => (
+                            <tr key={bowl.id}>
+                              <td className="py-1 font-bold text-text-primary truncate max-w-[120px]">{bowl.name}</td>
+                              <td className="py-1 text-right text-text-secondary">{bowl.overs}</td>
+                              <td className="py-1 text-right text-text-secondary">{bowl.maidens}</td>
+                              <td className="py-1 text-right text-text-secondary">{bowl.runsConceded}</td>
+                              <td className="py-1 text-right font-bold text-accent">{bowl.wickets}</td>
+                              <td className="py-1 text-right text-text-secondary">{(bowl.runsConceded / Math.max(0.1, bowl.overs)).toFixed(1)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Innings 2 (Chasing) */}
+                    <div className="space-y-3">
+                      <h4 className="font-anton text-[14px] uppercase text-text-primary border-b border-border pb-1">
+                        2nd Innings: {teams[secondTeamId]?.name} Batting
+                      </h4>
+                      <table className="w-full text-left font-space-mono text-[10px]">
+                        <thead>
+                          <tr className="border-b border-border text-text-secondary">
+                            <th className="py-1">Batter</th>
+                            <th className="py-1 text-right">R</th>
+                            <th className="py-1 text-right">B</th>
+                            <th className="py-1 text-right">4s</th>
+                            <th className="py-1 text-right">6s</th>
+                            <th className="py-1 text-right">SR</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border/40">
+                          {secondInnings.batting.filter((b) => (b.balls ?? 0) > 0 || (b.runs ?? 0) > 0).map((b) => (
+                            <tr key={b.id}>
+                              <td className="py-1 font-bold text-text-primary truncate max-w-[120px]">
+                                {b.name} {b.notOut ? "*" : ""}
+                              </td>
+                              <td className="py-1 text-right font-bold text-accent">{b.runs}</td>
+                              <td className="py-1 text-right text-text-secondary">{b.balls}</td>
+                              <td className="py-1 text-right text-text-secondary">{b.fours}</td>
+                              <td className="py-1 text-right text-text-secondary">{b.sixes}</td>
+                              <td className="py-1 text-right text-text-secondary">{((b.runs / Math.max(1, b.balls)) * 100).toFixed(1)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+
+                      <h4 className="font-anton text-[14px] uppercase text-text-primary border-b border-border pb-1 mt-4">
+                        {teams[firstTeamId]?.name} Bowling
+                      </h4>
+                      <table className="w-full text-left font-space-mono text-[10px]">
+                        <thead>
+                          <tr className="border-b border-border text-text-secondary">
+                            <th className="py-1">Bowler</th>
+                            <th className="py-1 text-right">O</th>
+                            <th className="py-1 text-right">M</th>
+                            <th className="py-1 text-right">R</th>
+                            <th className="py-1 text-right">W</th>
+                            <th className="py-1 text-right">Econ</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border/40">
+                          {secondInnings.bowling.filter((bowl) => (bowl.overs ?? 0) > 0).map((bowl) => (
+                            <tr key={bowl.id}>
+                              <td className="py-1 font-bold text-text-primary truncate max-w-[120px]">{bowl.name}</td>
+                              <td className="py-1 text-right text-text-secondary">{bowl.overs}</td>
+                              <td className="py-1 text-right text-text-secondary">{bowl.maidens}</td>
+                              <td className="py-1 text-right text-text-secondary">{bowl.runsConceded}</td>
+                              <td className="py-1 text-right font-bold text-accent">{bowl.wickets}</td>
+                              <td className="py-1 text-right text-text-secondary">{(bowl.runsConceded / Math.max(0.1, bowl.overs)).toFixed(1)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+              {activeResultView === "summary" && activeScorecard.simulation && (
+                <div className="space-y-4">
+                  <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 font-space-mono text-[9px]">
+                    <div className="rounded border border-border bg-black/[0.02] p-3">
+                      <div className="font-bold text-text-secondary uppercase text-[8px]">Toss</div>
+                      <div className="mt-1 font-bold text-text-primary">{teams[activeScorecard.simulation.tossWinnerId]?.shortName ?? activeScorecard.simulation.tossWinnerId} chose to {activeScorecard.simulation.tossDecision}</div>
+                    </div>
+                    <div className="rounded border border-border bg-black/[0.02] p-3">
+                      <div className="font-bold text-text-secondary uppercase text-[8px]">Pitch</div>
+                      <div className="mt-1 font-bold text-text-primary">{activeScorecard.simulation.conditions.pitchName}</div>
+                    </div>
+                    <div className="rounded border border-border bg-black/[0.02] p-3">
+                      <div className="font-bold text-text-secondary uppercase text-[8px]">Ground</div>
+                      <div className="mt-1 font-bold text-text-primary">{activeScorecard.simulation.conditions.boundaries.straightMetres}m straight · {activeScorecard.simulation.conditions.boundaries.wideMetres}m wide</div>
+                    </div>
+                    <div className="rounded border border-border bg-black/[0.02] p-3">
+                      <div className="font-bold text-text-secondary uppercase text-[8px]">Expected Score</div>
+                      <div className="mt-1 font-bold text-text-primary">{activeScorecard.simulation.conditions.expectedScore.min}–{activeScorecard.simulation.conditions.expectedScore.max} runs</div>
+                    </div>
+                    <div className="rounded border border-border bg-black/[0.02] p-3">
+                      <div className="font-bold text-text-secondary uppercase text-[8px]">Player of Match</div>
+                      <div className="mt-1 font-bold text-accent">{activeScorecard.simulation.playerOfTheMatchName}</div>
+                    </div>
+                  </div>
+
+                  {activeScorecard.simulation.summary && activeScorecard.simulation.summary.length > 0 && (
+                    <div className="rounded border border-border bg-black/[0.02] p-4 space-y-1.5 font-space-mono text-[10px]">
+                      <h4 className="font-anton text-[12px] uppercase text-text-primary border-b border-border pb-1 mb-2">Match Key Notes</h4>
+                      {activeScorecard.simulation.summary.map((line: string, idx: number) => (
+                        <p key={idx} className="text-text-primary">• {line}</p>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {activeResultView === "commentary" && (
+                <div className="space-y-2 font-space-mono text-[10px] bg-black/[0.02] p-4 rounded border border-border">
+                  {(activeScorecard.commentary && activeScorecard.commentary.length > 0) ? (
+                    activeScorecard.commentary.map((line, idx) => (
+                      <div key={idx} className="border-b border-border/30 pb-1.5 flex gap-2">
+                        <span className="text-text-secondary font-bold">[{idx + 1}]</span>
+                        <span className="text-text-primary">{line}</span>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-text-secondary italic">No over commentary logged for this match.</div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    })()}
+
+      {/* Player Profile Modal */}
+      <PlayerProfileModal
+        playerId={detailedPlayerId}
+        onClose={() => setDetailedPlayerId(null)}
+        customFixtures={career.fixtures}
+      />
     </div>
   );
 }

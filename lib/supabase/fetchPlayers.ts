@@ -40,7 +40,7 @@ export function calculateBasePrice(
   if (isCapped) {
     // Capped Overseas (International) Rules
     if (nat === "Overseas") {
-      if (reputation >= 7 || rating >= 78) {
+      if (reputation >= 7 && rating >= 81) {
         return 200; // 2 Cr
       }
       return 100; // 1 Cr
@@ -49,17 +49,17 @@ export function calculateBasePrice(
     // Capped Indian rules: current ability determines the starting band,
     // while very high/low reputation can move it by at most one band.
     const priceBands = [50, 75, 100, 150, 200];
-    let bandIndex = rating >= 82
+    let bandIndex = rating >= 83
       ? 4
-      : rating >= 79
+      : rating >= 80
         ? 3
-        : rating >= 76
+        : rating >= 77
           ? 2
           : rating >= 73
             ? 1
             : 0;
 
-    if (reputation >= 8) bandIndex = Math.min(priceBands.length - 1, bandIndex + 1);
+    if (reputation >= 9) bandIndex = Math.min(priceBands.length - 1, bandIndex + 1);
     if (reputation <= 4) bandIndex = Math.max(0, bandIndex - 1);
     return priceBands[bandIndex];
   } else {
@@ -68,7 +68,7 @@ export function calculateBasePrice(
     if (rating >= 77) return 100;
 
     if (rating >= 74 || reputation >= 5) return 50;
-    if (rating >= 70 || reputation >= 4) return 40;
+    if (rating >= 71 || reputation >= 4) return 40;
     return 30;
   }
 }
@@ -203,75 +203,89 @@ export function mapRowsToPlayers(data: any[]): Player[] {
       bestFigures: `${Math.min(6, Math.floor(2 + (curBowl / 100) * 4))}/${15 + Math.floor((100 - curBowl) / 10) * 2}`,
     };
 
-    return {
-      id,
-      name,
-      age,
-      nationality: nat as Nationality,
-      role,
-      battingStyle: batHand as any,
-      bowlingStyle: bowlStyle(bowlType),
-      bowlingHand: bowlHand,
-      basePrice: base,
-      isCapped,
-      isRetained: false,
-      retainedByTeamId: null,
-      currentTeamId: teamId,
-      potential: genPotential(curBat, potBat, curBowl, potBowl, age),
-      currentBatting: curBat,
-      potentialBatting: potBat,
-      currentBowling: curBowl,
-      potentialBowling: potBowl,
-      careerStats: {
-        batting,
-        bowling,
-      },
-      iplStats,
-      iplHistory,
-      reputation,
-      captaincy,
-      isIplCaptaincyUnavailable,
-      battingAggression,
-      isWicketkeeper,
-      isPartTimeWk,
-      isOpener,
-      isFinisher,
-      isCoreBatter,
-      onlyOpensOrBenched,
-      hasBattedAt3,
-      hasBattedAt4,
-      hasBattedAt5,
-      hasBattedAt6,
-      hasBattedAt7,
-    };
+      return {
+        id,
+        name,
+        age,
+        nationality: nat as Nationality,
+        role,
+        battingStyle: batHand as any,
+        bowlingStyle: bowlStyle(bowlType),
+        bowlingHand: bowlHand,
+        basePrice: base,
+        isCapped,
+        isRetained: false,
+        retainedByTeamId: null,
+        currentTeamId: teamId,
+        potential: genPotential(curBat, potBat, curBowl, potBowl, age),
+        currentBatting: curBat,
+        potentialBatting: potBat,
+        currentBowling: curBowl,
+        potentialBowling: potBowl,
+        careerStats: {
+          batting,
+          bowling,
+        },
+        iplStats,
+        iplHistory,
+        reputation,
+        captaincy,
+        isIplCaptaincyUnavailable,
+        battingAggression,
+        isWicketkeeper,
+        isPartTimeWk,
+        isOpener,
+        isFinisher,
+        isCoreBatter,
+        onlyOpensOrBenched,
+        hasBattedAt3,
+        hasBattedAt4,
+        hasBattedAt5,
+        hasBattedAt6,
+        hasBattedAt7,
+      };
   });
 }
 let serverCachedPlayers: Player[] | null = null;
 let clientCachedPlayers: Player[] | null = null;
 
 export async function fetchPlayersFromSupabase(forceRefresh = false): Promise<Player[]> {
-  // If running in browser context, call our Next.js API route as a wrapper proxy
-  if (typeof window !== "undefined") {
-    if (clientCachedPlayers && !forceRefresh) {
-      return clientCachedPlayers;
+  try {
+    if (typeof window !== "undefined") {
+      if (clientCachedPlayers && !forceRefresh) {
+        return clientCachedPlayers;
+      }
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 1000);
+        const res = await fetch("/api/players", { signal: controller.signal });
+        clearTimeout(timeoutId);
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data) && data.length > 0) {
+            clientCachedPlayers = data;
+            return data;
+          }
+        }
+      } catch (e) {
+        // Silent fallback
+      }
+      return clientCachedPlayers ?? [];
     }
-    const res = await fetch("/api/players", { cache: "no-store" });
-    if (!res.ok) throw new Error("Browser API fetch players failed");
-    const data = await res.json();
-    clientCachedPlayers = data;
-    return data;
-  }
 
-  if (serverCachedPlayers && !forceRefresh) {
+    if (serverCachedPlayers && !forceRefresh) {
+      return serverCachedPlayers;
+    }
+
+    const { data, error } = await supabase
+      .from("players")
+      .select("*")
+      .order("name", { ascending: true });
+
+    if (error || !data) throw error || new Error("No data returned from Supabase");
+    serverCachedPlayers = mapRowsToPlayers(data);
     return serverCachedPlayers;
+  } catch (err) {
+    return serverCachedPlayers ?? [];
   }
-
-  const { data, error } = await supabase
-    .from("players")
-    .select("*")
-    .order("name", { ascending: true });
-
-  if (error) throw error;
-  serverCachedPlayers = mapRowsToPlayers(data);
-  return serverCachedPlayers;
 }

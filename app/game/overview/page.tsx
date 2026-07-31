@@ -9,6 +9,7 @@ import {
   dateKeyToLocalDate,
   findCalendarMonthIndex,
   getCareerCalendarStep,
+  getCareerFastForwardStep,
   getDaySimulationIntervalMs,
   getSkipSimulationIntervalMs,
   isCareerCalendarAtImpasse,
@@ -30,6 +31,8 @@ import {
   generateBalancedLeagueFixtures,
   generateKnockoutFixtures,
   getLeagueSeasonStartDate,
+  getMatchDisplayName,
+  getKnockoutStageLabel,
   LEAGUE_FIXTURE_COUNT,
   LEAGUE_FIXTURE_SCHEDULE_VERSION,
   PLAYOFF_TBD_TEAM_ID,
@@ -54,6 +57,8 @@ import {
 import { getClubSeasonHistory, LAST_HISTORICAL_CLUB_SEASON } from "@/lib/data/clubHistory";
 import { getClubFigures, type ClubFigureTier } from "@/lib/data/clubFigures";
 import { HISTORICAL_LEAGUE_HISTORY, LEAGUE_HISTORY_TEAMS } from "@/lib/data/leagueHistory";
+import { OTHER_LEAGUE_RECORDS } from "@/lib/data/leagueRecords";
+import { computeDynamicLeagueRecords } from "@/lib/logic/leagueRecordTracker";
 import LeagueHallOfFame from "@/components/history/LeagueHallOfFame";
 import LeagueRecords from "@/components/history/LeagueRecords";
 import CaptaincyPage from "@/components/squad/CaptaincyPage";
@@ -62,6 +67,9 @@ import TacticsLineupBuilder from "@/components/squad/TacticsLineupBuilder";
 import TeamTacticsPage from "@/components/squad/TeamTacticsPage";
 import PitchCuratorPage from "@/components/club/PitchCuratorPage";
 import StadiumManagementPage from "@/components/club/StadiumManagementPage";
+import SocialMediaPage from "@/components/social/SocialMediaPage";
+import { PlayerProfileModal } from "@/components/player/PlayerProfileModal";
+import { PlayoffDiagramContent, ScheduleTileContent } from "@/components/season/ScheduleTileContent";
 import { getCuratorPitch, getDefaultCuratorPitch, getHomeStadium } from "@/lib/data/pitchCurator";
 import {
   calculateGroundScoringImpact,
@@ -82,6 +90,7 @@ import {
 } from "@/lib/logic/matchSimulation";
 import {
   compactMatchSimulation,
+  deleteMatchSimulationsBeforeSeason,
   hasArchivedDeliveries,
   loadMatchSimulations,
   saveMatchSimulations,
@@ -150,8 +159,15 @@ interface PlayerStats {
   runsConceded: number;
   oversBowled: number;
   matches: number;
+  dismissals?: number;
   highestScore: number;
   bestBowling: string;
+  fours?: number;
+  sixes?: number;
+  dotBalls?: number;
+  catches?: number;
+  stumpings?: number;
+  mvpPoints?: number;
 }
 
 interface LeagueStandings {
@@ -211,9 +227,54 @@ interface Match {
   time?: string;
   stage?: KnockoutStage;
   label?: string;
+  archivedResultText?: string;
+}
+
+function fixturesForCareerHistory(fixtures: Match[]) {
+  return fixtures
+    .filter((fixture) => Boolean(fixture.stage) || fixture.matchNumber > LEAGUE_FIXTURE_COUNT)
+    .map((fixture) => ({
+      id: fixture.id,
+      matchNumber: fixture.matchNumber,
+      round: fixture.round,
+      teamA: fixture.teamA,
+      teamB: fixture.teamB,
+      played: fixture.played,
+      scoreA: fixture.scoreA,
+      scoreB: fixture.scoreB,
+      winner: fixture.winner,
+      date: fixture.date,
+      time: fixture.time,
+      stage: fixture.stage,
+      label: fixture.label,
+      archivedResultText: fixture.simulation?.resultText ?? fixture.archivedResultText,
+    }));
+}
+
+function getArchivedPartnershipContribution(
+  innings: MatchInnings,
+  partnershipIndex: number,
+  batterId: string | undefined,
+): { runs: number; balls: number } | null {
+  if (!batterId || innings.oversDetail.length === 0) return null;
+  let activePartnershipIndex = 0;
+  let runs = 0;
+  let balls = 0;
+  for (const over of innings.oversDetail) {
+    for (const delivery of over.deliveries) {
+      if (activePartnershipIndex === partnershipIndex && delivery.strikerId === batterId) {
+        runs += delivery.runsOffBat;
+        if (delivery.isLegal) balls += 1;
+      }
+      if (delivery.wicket) activePartnershipIndex += 1;
+      if (activePartnershipIndex > partnershipIndex) return { runs, balls };
+    }
+  }
+  return activePartnershipIndex === partnershipIndex ? { runs, balls } : null;
 }
 
 type MatchResultView = "scorecard" | "summary" | "ball-by-ball";
+const CAREER_FAST_FORWARD_RECOVERY_KEY = "ipl-career-fast-forward-target";
 
 interface PendingMatchPreparation {
   matchId: string;
@@ -239,18 +300,26 @@ interface RetentionDeadline {
   day: number;
 }
 
-type RosterSortKey = "name" | "role" | "nationality" | "rating" | "salary";
+type RosterView = "general" | "bowling" | "batting" | "ipl";
+type RosterSortKey =
+  | "name" | "age" | "role" | "nationality" | "rating" | "potential" | "salary"
+  | "bowlingCA" | "bowlingPA" | "seasonMatches" | "seasonWickets" | "seasonBowlingAverage" | "seasonEconomy" | "seasonBestBowling"
+  | "battingCA" | "battingPA" | "seasonRuns" | "seasonBattingAverage" | "seasonStrikeRate" | "seasonHighScore"
+  | "iplMatches" | "iplRuns" | "iplBattingAverage" | "iplStrikeRate" | "iplWickets" | "iplBowlingAverage";
 type SortDirection = "asc" | "desc";
 
 // ============================================================================
 // Static Data Templates
 // ============================================================================
 
-const generateNextRetentionDeadline = (auctionDate: string): RetentionDeadline => ({
-  year: Number(auctionDate.slice(0, 4)) + 1,
-  month: 10,
-  day: 10 + Math.floor(Math.random() * 11),
-});
+const generateNextRetentionDeadline = (activeSeason: number): RetentionDeadline => {
+  const retentionDate = getSeasonDates(activeSeason + 1).retentionDate;
+  return {
+    year: Number(retentionDate.slice(0, 4)),
+    month: Number(retentionDate.slice(5, 7)) - 1,
+    day: Number(retentionDate.slice(8, 10)),
+  };
+};
 
 // Helper to calculate rating of player
 const getPlayerRating = (p: Player) => Math.max(p.currentBatting ?? 0, p.currentBowling ?? 0);
@@ -488,6 +557,7 @@ function OverviewPageContent() {
     auction,
     clubFigureTierOverrides,
     simulatedLeagueHistory,
+    careerSeasonArchives,
     homePitchSelections,
     homeBoundaryDimensions,
     boundaryPresetsByTeam,
@@ -505,6 +575,12 @@ function OverviewPageContent() {
     startPitchCreation,
     startPitchDestruction,
     reconcilePitchProjects,
+    recordSimulatedLeagueSeason,
+    beginNextSeasonRetention,
+    archiveCareerSeason,
+    careerFastForwardTargetDate,
+    setCareerFastForwardTarget,
+    completeOffseasonAutomatically,
   } = useGameStore();
   const matchArchiveCareerId = `${userTeamId}:${currentSeason}:${fixtureSeed}`;
   const userTeam = teams[userTeamId];
@@ -626,6 +702,7 @@ function OverviewPageContent() {
   const [activeCommentary, setActiveCommentary] = useState<string[] | null>(null);
   const [activeScorecard, setActiveScorecard] = useState<Match | null>(null);
   const [activeMatchResultView, setActiveMatchResultView] = useState<MatchResultView>("scorecard");
+  const [activeScorecardInningsTeam, setActiveScorecardInningsTeam] = useState<"teamA" | "teamB">("teamA");
   const [pendingMatchPreparation, setPendingMatchPreparation] = useState<PendingMatchPreparation | null>(null);
   const [shortlist, setShortlist] = useState<string[]>([]);
   const [visibleHomeFixtureCount, setVisibleHomeFixtureCount] = useState(5);
@@ -639,10 +716,19 @@ function OverviewPageContent() {
   const userGamesPlayed = useMemo(() => fixtures.filter((fixture) => (
     fixture.played && (fixture.teamA === userTeamId || fixture.teamB === userTeamId)
   )).length, [fixtures, userTeamId]);
+  useEffect(() => {
+    if (!activeScorecard) return;
+    setActiveScorecardInningsTeam(
+      activeScorecard.simulation?.battingFirstTeamId === activeScorecard.teamB ? "teamB" : "teamA",
+    );
+  }, [activeScorecard?.id]);
 
   // Day-by-day career ticking simulation states & refs
   const [isSimulatingDays, setIsSimulatingDays] = useState(false);
   const [isCalendarClosing, setIsCalendarClosing] = useState(false);
+  const [fastForwardElapsedMs, setFastForwardElapsedMs] = useState(0);
+  const fastForwardStartedAtRef = useRef<number | null>(null);
+  const fastForwardOriginDateRef = useRef<string | null>(null);
   const [pendingSkipTargetDate, setPendingSkipTargetDate] = useState<string | null>(null);
   const fixturesRef = useRef<Match[]>([]);
   const playerStatsRef = useRef<Record<string, PlayerStats>>({});
@@ -698,8 +784,18 @@ function OverviewPageContent() {
         console.error("Day-by-day simulation stopped unexpectedly:", error);
         skipStartDateRef.current = null;
         skipTargetDateRef.current = null;
+        autoSimUserFixturesRef.current = false;
+        // The fast-forward target is persisted independently of the ticker.
+        // Clear it on failure so the reload watchdog cannot repeatedly restart
+        // the same failing calendar event and leave its overlay blocking input.
+        useGameStore.getState().setCareerFastForwardTarget(null);
+        sessionStorage.removeItem(CAREER_FAST_FORWARD_RECOVERY_KEY);
         setIsSimulatingDays(false);
-        setToastMessage("Simulation paused because the next day could not be completed.");
+        setToastMessage(
+          error instanceof Error
+            ? `Fast-forward stopped: ${error.message}`
+            : "Fast-forward stopped because the next event could not be completed.",
+        );
         setTimeout(() => setToastMessage(null), 3000);
       },
     });
@@ -744,6 +840,39 @@ function OverviewPageContent() {
     ? ""
     : `${currentCalendarMonth.year}-${String(currentCalendarMonth.month + 1).padStart(2, "0")}-${String(selectedCalendarDay).padStart(2, "0")}`;
   const canSkipToSelectedCalendarDate = selectedCalendarDateString > currentDate;
+
+  useEffect(() => {
+    if (!careerFastForwardTargetDate) {
+      fastForwardStartedAtRef.current = null;
+      fastForwardOriginDateRef.current = null;
+      setFastForwardElapsedMs(0);
+      return;
+    }
+    if (fastForwardStartedAtRef.current === null) {
+      fastForwardStartedAtRef.current = Date.now();
+      fastForwardOriginDateRef.current = currentDate;
+    }
+    const updateElapsed = () => setFastForwardElapsedMs(
+      Date.now() - (fastForwardStartedAtRef.current ?? Date.now()),
+    );
+    updateElapsed();
+    const intervalId = window.setInterval(updateElapsed, 250);
+    return () => window.clearInterval(intervalId);
+  }, [careerFastForwardTargetDate]);
+
+  const fastForwardProgress = (() => {
+    if (!careerFastForwardTargetDate || !fastForwardOriginDateRef.current) return 0;
+    const toUtcDay = (dateKey: string) => {
+      const date = dateKeyToLocalDate(dateKey);
+      return Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / 86_400_000;
+    };
+    const totalDays = Math.max(1, toUtcDay(careerFastForwardTargetDate) - toUtcDay(fastForwardOriginDateRef.current));
+    const completedDays = Math.max(0, toUtcDay(currentDate) - toUtcDay(fastForwardOriginDateRef.current));
+    return Math.min(1, completedDays / totalDays);
+  })();
+  const fastForwardRemainingSeconds = fastForwardProgress > 0.02
+    ? Math.max(0, Math.ceil((fastForwardElapsedMs / 1000) * ((1 - fastForwardProgress) / fastForwardProgress)))
+    : null;
   const pendingUserMatchdayFixture = useMemo(
     () => fixtures
       .filter((match) => (
@@ -891,6 +1020,18 @@ function OverviewPageContent() {
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
+        const savedSeason = Number.isFinite(Number(parsed.season))
+          ? Number(parsed.season)
+          : Number(String(parsed.fixtures?.[0]?.date ?? "").slice(0, 4));
+
+        // Season statistics are deliberately isolated by year. A career save
+        // left behind by the previous season must never seed the new cap race.
+        if (Number.isFinite(savedSeason) && savedSeason !== currentSeason) {
+          localStorage.removeItem(`ipl_career_${userTeamId}`);
+          initCareer();
+          setIsCareerLoaded(true);
+          return;
+        }
         
         // Self-healing validation: check if loaded fixtures are valid (no days with > 2 matches, starts on second-last Sat of March)
         let isValidSchedule = true;
@@ -898,6 +1039,22 @@ function OverviewPageContent() {
           parsed.fixtures
           && (parsed.fixtures.length === LEAGUE_FIXTURE_COUNT || parsed.fixtures.length === TOTAL_FIXTURE_COUNT)
         ) {
+          // Local storage keeps the compact simulation as the canonical
+          // scorecard. Rebuild the legacy UI shape on load instead of storing
+          // the same batting and bowling tables twice for every match.
+          parsed.fixtures = (parsed.fixtures as Match[]).map((fixture) => (
+            fixture.simulation && !fixture.scorecard
+              ? {
+                ...fixture,
+                commentary: fixture.commentary ?? fixture.simulation.summary,
+                scorecard: simulationToLegacyScorecard(
+                  fixture.simulation,
+                  fixture.teamA,
+                  fixture.teamB,
+                ),
+              }
+              : fixture
+          ));
           const persistedLeagueFixtures = parsed.fixtures.slice(0, LEAGUE_FIXTURE_COUNT);
           const expectedStartDate = new Date(currentSeason, 2, 31);
           while (expectedStartDate.getDay() !== 6) {
@@ -988,15 +1145,20 @@ function OverviewPageContent() {
           playerStatsRef.current = parsed.playerStats;
           setPlayerStats(parsed.playerStats);
         }
+        // Historical views use compact league/knockout summaries; full
+        // scorecards and delivery archives are only needed for the active
+        // season. Remove older IndexedDB match archives after rollover.
+        void deleteMatchSimulationsBeforeSeason(userTeamId, currentSeason)
+          .catch((error) => console.error("Unable to clean old match archives:", error));
         setInbox(normalizeCareerEmails(parsed.inbox));
         const legacyXI = Array.isArray(parsed.startingXI) ? parsed.startingXI : [];
         const loadedBattingXI = Array.isArray(parsed.battingFirstXI) ? parsed.battingFirstXI : legacyXI;
         const loadedBowlingXI = Array.isArray(parsed.bowlingFirstXI) ? parsed.bowlingFirstXI : legacyXI;
 
-        const userSquadCandidates = (userTeam?.squad ?? [])
+        const currentSquadPlayers = (userTeam?.squad ?? [])
           .map((id) => players[id])
-          .filter((player): player is Player => Boolean(player))
-          .map((player) => ({
+          .filter((player): player is Player => Boolean(player));
+        const userSquadCandidates = currentSquadPlayers.map((player) => ({
             id: player.id,
             nationality: player.nationality,
             role: player.role,
@@ -1007,25 +1169,54 @@ function OverviewPageContent() {
             isOpener: player.isOpener,
           }));
 
-        const cleanXI = (rawXI: string[]) => {
-          if (rawXI.length !== 11 || userSquadCandidates.length === 0) return rawXI;
-          // A saved XI is user configuration. Preserve its exact batting order
-          // when all eleven IDs are still valid; automatic position-8/tail
-          // sanitisation belongs only to recommendation generation, not page
-          // navigation or career reloads.
-          const validIds = new Set(userSquadCandidates.map((candidate) => candidate.id));
-          if (new Set(rawXI).size !== 11 || rawXI.some((id) => !validIds.has(id))) return rawXI;
-          return rawXI;
-        };
+        const validSquadIds = new Set(userSquadCandidates.map((candidate) => candidate.id));
+        const isValidXI = (lineup: string[]) => (
+          lineup.length === 11
+          && new Set(lineup).size === 11
+          && lineup.every((id) => validSquadIds.has(id))
+        );
+        const loadedBattingImpactSubs = Array.isArray(parsed.battingFirstImpactSubs) ? parsed.battingFirstImpactSubs : [];
+        const loadedBowlingImpactSubs = Array.isArray(parsed.bowlingFirstImpactSubs) ? parsed.bowlingFirstImpactSubs : [];
+        const isValidImpactBench = (bench: string[], lineup: string[]) => (
+          bench.length === 5
+          && new Set(bench).size === 5
+          && bench.every((id) => validSquadIds.has(id) && !lineup.includes(id))
+        );
+        const savedPlanIsValid = (
+          isValidXI(loadedBattingXI)
+          && isValidXI(loadedBowlingXI)
+          && isValidImpactBench(loadedBattingImpactSubs, loadedBattingXI)
+          && isValidImpactBench(loadedBowlingImpactSubs, loadedBowlingXI)
+        );
 
-        if (loadedBattingXI.length > 0) {
-          setBattingFirstXI(cleanXI(loadedBattingXI));
+        if (savedPlanIsValid) {
+          setBattingFirstXI(loadedBattingXI);
+          setBowlingFirstXI(loadedBowlingXI);
+          setBattingFirstImpactSubs(loadedBattingImpactSubs);
+          setBowlingFirstImpactSubs(loadedBowlingImpactSubs);
+        } else {
+          const rebuiltPlan = buildAutomaticLineupSelection(currentSquadPlayers, {
+            captainId: parsed.teamLeadership?.captainId,
+            viceCaptainId: parsed.teamLeadership?.viceCaptainId,
+            useProvisionalCaptain: !parsed.teamLeadership?.captainId,
+          });
+          setBattingFirstXI(rebuiltPlan.battingFirstXI);
+          setBowlingFirstXI(rebuiltPlan.bowlingFirstXI);
+          setBattingFirstImpactSubs(rebuiltPlan.battingFirstImpactSubs);
+          setBowlingFirstImpactSubs(rebuiltPlan.bowlingFirstImpactSubs);
+          parsed.battingFirstXI = rebuiltPlan.battingFirstXI;
+          parsed.bowlingFirstXI = rebuiltPlan.bowlingFirstXI;
+          parsed.battingFirstImpactSubs = rebuiltPlan.battingFirstImpactSubs;
+          parsed.bowlingFirstImpactSubs = rebuiltPlan.bowlingFirstImpactSubs;
+          parsed.startingXI = rebuiltPlan.battingFirstXI;
+          parsed.battingFirstImpactPlayerId = null;
+          parsed.battingFirstOutgoingPlayerId = null;
+          parsed.battingFirstImpactBattingPosition = null;
+          parsed.bowlingFirstImpactPlayerId = null;
+          parsed.bowlingFirstOutgoingPlayerId = null;
+          parsed.bowlingFirstImpactBattingPosition = null;
+          localStorage.setItem(`ipl_career_${userTeamId}`, JSON.stringify(parsed));
         }
-        if (loadedBowlingXI.length > 0) {
-          setBowlingFirstXI(cleanXI(loadedBowlingXI));
-        }
-        if (Array.isArray(parsed.battingFirstImpactSubs)) setBattingFirstImpactSubs(parsed.battingFirstImpactSubs);
-        if (Array.isArray(parsed.bowlingFirstImpactSubs)) setBowlingFirstImpactSubs(parsed.bowlingFirstImpactSubs);
         if (typeof parsed.battingFirstImpactPlayerId === "string" || parsed.battingFirstImpactPlayerId === null) {
           setBattingFirstImpactPlayerId(parsed.battingFirstImpactPlayerId);
         }
@@ -1097,7 +1288,7 @@ function OverviewPageContent() {
         }
         if (parsed.shortlist) setShortlist(parsed.shortlist);
         const savedDeadline = parsed.retentionDeadline as RetentionDeadline | undefined;
-        const nextDeadline = savedDeadline ?? generateNextRetentionDeadline(currentDate);
+        const nextDeadline = savedDeadline ?? generateNextRetentionDeadline(currentSeason);
         setRetentionDeadline(nextDeadline);
         if (!savedDeadline) {
           localStorage.setItem(`ipl_career_${userTeamId}`, JSON.stringify({ ...parsed, retentionDeadline: nextDeadline }));
@@ -1123,6 +1314,7 @@ function OverviewPageContent() {
     }
 
     const fallbackState = {
+      season: currentSeason,
       scheduleVersion: LEAGUE_FIXTURE_SCHEDULE_VERSION,
       fixtures,
       standings,
@@ -1150,6 +1342,7 @@ function OverviewPageContent() {
       ...fallbackState,
       ...latestSavedState,
       ...updatedData,
+      season: currentSeason,
       scheduleVersion: LEAGUE_FIXTURE_SCHEDULE_VERSION,
       // Keep the legacy XI synchronized only when the batting-first XI changes.
       startingXI: updatedData.battingFirstXI
@@ -1182,12 +1375,29 @@ function OverviewPageContent() {
       }
       currentState.fixtures = (currentState.fixtures as Match[]).map((fixture) => (
         fixture.simulation
-          ? { ...fixture, simulation: compactMatchSimulation(fixture.simulation) }
+          ? {
+            ...fixture,
+            // Both fields are derived from the compact simulation during load.
+            // Omitting them prevents 74 duplicate scorecards and summaries
+            // from exhausting the synchronous local-storage quota.
+            commentary: undefined,
+            scorecard: undefined,
+            simulation: compactMatchSimulation(fixture.simulation),
+          }
           : fixture
       ));
     }
-    localStorage.setItem(storageKey, JSON.stringify(currentState));
-  }, [userTeamId, fixtures, standings, playerStats, inbox, battingFirstXI, bowlingFirstXI, battingFirstImpactSubs, bowlingFirstImpactSubs, battingFirstImpactPlayerId, battingFirstOutgoingPlayerId, battingFirstImpactBattingPosition, bowlingFirstImpactPlayerId, bowlingFirstOutgoingPlayerId, bowlingFirstImpactBattingPosition, teamTactics, teamLeadership, aiTeamLeadership, shortlist, retentionDeadline, matchArchiveCareerId]);
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(currentState));
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "QuotaExceededError") {
+        throw new Error(
+          "Career storage is full. Fast-forward has stopped safely at the last completed date; reload once to compact the existing save.",
+        );
+      }
+      throw error;
+    }
+  }, [userTeamId, currentSeason, fixtures, standings, playerStats, inbox, battingFirstXI, bowlingFirstXI, battingFirstImpactSubs, bowlingFirstImpactSubs, battingFirstImpactPlayerId, battingFirstOutgoingPlayerId, battingFirstImpactBattingPosition, bowlingFirstImpactPlayerId, bowlingFirstOutgoingPlayerId, bowlingFirstImpactBattingPosition, teamTactics, teamLeadership, aiTeamLeadership, shortlist, retentionDeadline, matchArchiveCareerId]);
 
   useEffect(() => {
     if (!isCareerLoaded || !userTeamId || (battingFirstXI.length === 0 && bowlingFirstXI.length === 0)) return;
@@ -1198,6 +1408,66 @@ function OverviewPageContent() {
       bowlingFirstImpactSubs,
     });
   }, [isCareerLoaded, userTeamId, battingFirstXI, bowlingFirstXI, battingFirstImpactSubs, bowlingFirstImpactSubs, saveCareerState]);
+
+  // Commit a completed season on Final day. Previously this only happened when
+  // the following retention window began, leaving both history pages stale.
+  useEffect(() => {
+    if (!isCareerLoaded || simulatedLeagueHistory.some((season) => season.season === currentSeason)) return;
+
+    const final = fixtures.find((fixture) => fixture.stage === "final" && fixture.played && fixture.winner);
+    if (!final?.winner) return;
+
+    const orangeCap = Object.values(playerStats)
+      .filter((stats) => stats.runs > 0 && teams[stats.teamId])
+      .sort((left, right) => right.runs - left.runs || left.name.localeCompare(right.name))[0];
+    const purpleCap = Object.values(playerStats)
+      .filter((stats) => stats.wickets > 0 && teams[stats.teamId])
+      .sort((left, right) => right.wickets - left.wickets || left.name.localeCompare(right.name))[0];
+    if (!orangeCap || !purpleCap) return;
+
+    recordSimulatedLeagueSeason({
+      season: currentSeason,
+      championTeamId: final.winner,
+      runnerUpTeamId: final.winner === final.teamA ? final.teamB : final.teamA,
+      orangeCap: { name: orangeCap.name, teamId: orangeCap.teamId },
+      purpleCap: { name: purpleCap.name, teamId: purpleCap.teamId },
+      source: "career",
+      standings: standings.map((standing) => ({
+        teamId: standing.teamId,
+        teamName: standing.teamName,
+        played: standing.played,
+        won: standing.won,
+        lost: standing.lost,
+        noResults: standing.noResults,
+        points: standing.points,
+        nrr: standing.nrr,
+      })),
+    });
+    archiveCareerSeason({
+      season: currentSeason,
+      fixtures: fixturesForCareerHistory(fixtures),
+      standings,
+      playerStats: {},
+      leagueRecords: computeDynamicLeagueRecords(
+        fixtures as any[],
+        players,
+        teams,
+        careerSeasonArchives.find((archive) => archive.season < currentSeason)?.leagueRecords ?? OTHER_LEAGUE_RECORDS,
+      ),
+    });
+  }, [
+    archiveCareerSeason,
+    careerSeasonArchives,
+    currentSeason,
+    fixtures,
+    isCareerLoaded,
+    playerStats,
+    players,
+    recordSimulatedLeagueSeason,
+    simulatedLeagueHistory,
+    standings,
+    teams,
+  ]);
 
 
 
@@ -1245,7 +1515,7 @@ function OverviewPageContent() {
 
     // 3. Generate initial inbox messages
     const initialInbox: CareerEmail[] = [];
-    const nextRetentionDeadline = generateNextRetentionDeadline(currentDate);
+    const nextRetentionDeadline = generateNextRetentionDeadline(currentSeason);
 
     // Set and save
     fixturesRef.current = GeneratedFixtures;
@@ -1745,7 +2015,7 @@ function OverviewPageContent() {
       groundScoringModifier: groundImpact.modifier,
       // Deliberately isolated so a future league/season rule can change it
       // without modifying delivery generation.
-      chasingScoringBonus: 0.05,
+      chasingScoringBonus: 0.02,
     };
   };
 
@@ -1871,12 +2141,34 @@ function OverviewPageContent() {
   ): MatchTeamPlans => {
     const isUserControlled = teamId === userTeamId;
     if (isUserControlled) {
-      const selection = userSelection ?? {
+      const requestedSelection = userSelection ?? {
         battingFirstXI,
         bowlingFirstXI,
         battingFirstImpactSubs,
         bowlingFirstImpactSubs,
       };
+      const currentSquad = getTeamSquad(teamId);
+      const currentSquadIds = new Set(currentSquad.map((player) => player.id));
+      const savedIds = [
+        ...requestedSelection.battingFirstXI,
+        ...requestedSelection.bowlingFirstXI,
+        ...requestedSelection.battingFirstImpactSubs,
+        ...requestedSelection.bowlingFirstImpactSubs,
+      ];
+      const requestedPlanIsCurrent = (
+        requestedSelection.battingFirstXI.length === 11
+        && requestedSelection.bowlingFirstXI.length === 11
+        && requestedSelection.battingFirstImpactSubs.length === 5
+        && requestedSelection.bowlingFirstImpactSubs.length === 5
+        && savedIds.every((playerId) => currentSquadIds.has(playerId))
+      );
+      const selection = requestedPlanIsCurrent
+        ? requestedSelection
+        : buildAutomaticLineupSelection(currentSquad, {
+            captainId: teamLeadership.captainId,
+            viceCaptainId: teamLeadership.viceCaptainId,
+            useProvisionalCaptain: !teamLeadership.captainId,
+          });
       return {
         teamId,
         isUserControlled: true,
@@ -2049,6 +2341,40 @@ function OverviewPageContent() {
       inningsB: convertInnings(teamBInnings),
     };
   };
+
+  // Compact career saves deliberately omit the duplicate legacy scorecard,
+  // keeping the canonical innings inside `simulation`. Every route that can
+  // load or replace fixtures (including a new-season rollover) must expose the
+  // derived scorecard to the UI, not only the initial local-storage loader.
+  useEffect(() => {
+    let repaired = false;
+    const repairedFixtures = fixtures.map((fixture) => {
+      if (fixture.scorecard || !fixture.simulation) return fixture;
+      const hasBothInnings = fixture.simulation.innings.some(
+        (innings) => innings.battingTeamId === fixture.teamA,
+      ) && fixture.simulation.innings.some(
+        (innings) => innings.battingTeamId === fixture.teamB,
+      );
+      if (!hasBothInnings) return fixture;
+      repaired = true;
+      return {
+        ...fixture,
+        commentary: fixture.commentary ?? fixture.simulation.summary,
+        scorecard: simulationToLegacyScorecard(
+          fixture.simulation,
+          fixture.teamA,
+          fixture.teamB,
+        ),
+      };
+    });
+    if (!repaired) return;
+    fixturesRef.current = repairedFixtures;
+    setFixtures(repairedFixtures);
+    setActiveScorecard((current) => {
+      if (!current || current.scorecard) return current;
+      return repairedFixtures.find((fixture) => fixture.id === current.id) ?? current;
+    });
+  }, [fixtures]);
 
   const resolveKnockoutBracket = (
     sourceFixtures: Match[],
@@ -2831,19 +3157,126 @@ function OverviewPageContent() {
     }, 430);
   }, []);
 
+  const cancelCareerFastForward = useCallback((message = "Fast-forward stopped. Your career is safe at the last completed date.") => {
+    stopSimulating();
+    useGameStore.getState().setCareerFastForwardTarget(null);
+    sessionStorage.removeItem(CAREER_FAST_FORWARD_RECOVERY_KEY);
+    setPendingSkipTargetDate(null);
+    showToast(message);
+  }, [stopSimulating]);
+
+  const rolloverToNextSeason = () => {
+    const final = fixturesRef.current.find((fixture) => fixture.stage === "final" && fixture.played && fixture.winner);
+    if (!final?.winner) {
+      stopSimulating();
+      useGameStore.getState().setCareerFastForwardTarget(null);
+      sessionStorage.removeItem(CAREER_FAST_FORWARD_RECOVERY_KEY);
+      showToast("Cannot begin the offseason until the season final has a recorded winner.");
+      return false;
+    }
+    const runnerUpTeamId = final.winner === final.teamA ? final.teamB : final.teamA;
+    const rankedBatters = Object.values(playerStatsRef.current)
+      .filter((stats) => stats.runs > 0 && teams[stats.teamId])
+      .sort((a, b) => b.runs - a.runs || a.name.localeCompare(b.name));
+    const rankedBowlers = Object.values(playerStatsRef.current)
+      .filter((stats) => stats.wickets > 0 && teams[stats.teamId])
+      .sort((a, b) => b.wickets - a.wickets || a.name.localeCompare(b.name));
+    const orangeCap = rankedBatters[0];
+    const purpleCap = rankedBowlers[0];
+    if (!orangeCap || !purpleCap) {
+      stopSimulating();
+      useGameStore.getState().setCareerFastForwardTarget(null);
+      sessionStorage.removeItem(CAREER_FAST_FORWARD_RECOVERY_KEY);
+      showToast("Cannot archive the season because its batting or bowling statistics are incomplete.");
+      return false;
+    }
+
+    recordSimulatedLeagueSeason({
+      season: currentSeason,
+      championTeamId: final.winner,
+      runnerUpTeamId,
+      orangeCap: { name: orangeCap.name, teamId: orangeCap.teamId },
+      purpleCap: { name: purpleCap.name, teamId: purpleCap.teamId },
+      source: "career",
+      standings: standings.map((standing) => ({
+        teamId: standing.teamId,
+        teamName: standing.teamName,
+        played: standing.played,
+        won: standing.won,
+        lost: standing.lost,
+        noResults: standing.noResults,
+        points: standing.points,
+        nrr: standing.nrr,
+      })),
+    });
+    archiveCareerSeason({
+      season: currentSeason,
+      fixtures: fixturesForCareerHistory(fixturesRef.current),
+      standings,
+      playerStats: {},
+      leagueRecords: computeDynamicLeagueRecords(
+        fixturesRef.current as any[],
+        players,
+        teams,
+        careerSeasonArchives.find((archive) => archive.season < currentSeason)?.leagueRecords ?? OTHER_LEAGUE_RECORDS,
+      ),
+    });
+    const advanced = beginNextSeasonRetention();
+    if (!advanced) return false;
+    // The completed totals are safely archived above; live totals now belong
+    // to the new season and must start from zero.
+    playerStatsRef.current = {};
+    setPlayerStats({});
+    const fastForwardTarget = useGameStore.getState().careerFastForwardTargetDate;
+    if (fastForwardTarget) {
+      const auctionCompleted = completeOffseasonAutomatically();
+      if (!auctionCompleted) {
+        useGameStore.getState().setCareerFastForwardTarget(null);
+        sessionStorage.removeItem(CAREER_FAST_FORWARD_RECOVERY_KEY);
+        stopSimulating();
+        showToast("Automatic offseason simulation could not complete safely.");
+        router.push("/game/auction");
+        return false;
+      }
+      localStorage.setItem(`ipl_continued_to_season_${userTeamId}`, "true");
+      localStorage.removeItem(`ipl_career_${userTeamId}`);
+      stopSimulating();
+      // The large Zustand save can be at the browser quota during an auction.
+      // Carry the small target in both session storage and the reload URL so
+      // automatic match simulation cannot silently become manual afterwards.
+      sessionStorage.setItem(CAREER_FAST_FORWARD_RECOVERY_KEY, fastForwardTarget);
+      window.location.assign(`/game/overview?tab=home&fastForwardTarget=${encodeURIComponent(fastForwardTarget)}`);
+      return true;
+    }
+    localStorage.removeItem(`ipl_continued_to_season_${userTeamId}`);
+    stopSimulating();
+    router.push("/game/auction");
+    return true;
+  };
+
   const advanceOneDay = () => {
     const currentDateString = useGameStore.getState().currentDate;
     const unplayedMatches = fixturesRef.current.filter((match) => !match.played);
+    const skipTargetDate = skipTargetDateRef.current;
     const {
       nextDate: nextDateString,
       blockedByFixture: fixtureBlocksProgress,
-    } = getCareerCalendarStep(currentDateString, unplayedMatches);
+    } = skipTargetDate
+      ? getCareerFastForwardStep(
+        currentDateString,
+        unplayedMatches,
+        skipTargetDate,
+        retentionDateString,
+      )
+      : getCareerCalendarStep(currentDateString, unplayedMatches);
     const isCatchingUpCurrentDate = nextDateString <= currentDateString;
 
     if (fixtureBlocksProgress) {
       if (!FIXTURE_SIMULATION_ENABLED) {
         useGameStore.setState({ currentDate: nextDateString });
         stopSimulating();
+        useGameStore.getState().setCareerFastForwardTarget(null);
+        sessionStorage.removeItem(CAREER_FAST_FORWARD_RECOVERY_KEY);
         showToast("Paused before the fixtures begin. Fixture simulation is not currently enabled.");
         return;
       }
@@ -2855,7 +3288,6 @@ function OverviewPageContent() {
         && (match.teamA === userTeamId || match.teamB === userTeamId)
       ));
       if (userFixture) {
-        const skipTargetDate = skipTargetDateRef.current;
         if (
           autoSimUserFixturesRef.current
           && skipTargetDate
@@ -2871,6 +3303,8 @@ function OverviewPageContent() {
           } catch (error) {
             console.error("Unable to auto-simulate calendar fixture:", error);
             stopSimulating();
+            useGameStore.getState().setCareerFastForwardTarget(null);
+            sessionStorage.removeItem(CAREER_FAST_FORWARD_RECOVERY_KEY);
             showToast(error instanceof Error ? error.message : "Unable to auto-simulate your fixture.");
           }
           return;
@@ -2881,7 +3315,6 @@ function OverviewPageContent() {
       return;
     }
 
-    const skipTargetDate = skipTargetDateRef.current;
     if (!isCatchingUpCurrentDate && skipTargetDate && nextDateString >= skipTargetDate) {
       useGameStore.setState({ currentDate: skipTargetDate });
       stopSimulating();
@@ -2891,9 +3324,7 @@ function OverviewPageContent() {
 
     // Milestones pause on the milestone date before another timer is queued.
     if (!isCatchingUpCurrentDate && nextDateString === retentionDateString) {
-      useGameStore.setState({ currentDate: nextDateString });
-      stopSimulating();
-      showToast("Paused: Retention Deadline today!");
+      rolloverToNextSeason();
       return;
     }
 
@@ -2901,12 +3332,6 @@ function OverviewPageContent() {
       useGameStore.setState({ currentDate: nextDateString });
       stopSimulating();
       showToast("Paused: Player Auction today!");
-      return;
-    }
-
-    if (!isCatchingUpCurrentDate && nextDateString >= seasonStartDateString && unplayedMatches.length === 0) {
-      stopSimulating();
-      showToast("Paused: All fixtures of the season completed!");
       return;
     }
 
@@ -2922,17 +3347,49 @@ function OverviewPageContent() {
 
   const startSimulating = useCallback(() => {
     const simulationDate = useGameStore.getState().currentDate;
+    const followingDate = addDaysToDateKey(simulationDate, 1);
+
+    // Retention is a navigation boundary, not a normal ticking day. Handling
+    // it directly avoids leaving a career stranded on the preceding date when
+    // the ticker has stopped or been recreated after a reload.
+    if (
+      retentionDateString
+      && (simulationDate === retentionDateString || followingDate === retentionDateString)
+    ) {
+      rolloverToNextSeason();
+      return;
+    }
+
     if (isCareerCalendarAtImpasse(simulationDate, fixturesRef.current)) {
-      const unresolved = fixturesRef.current.find((match) => (
+      const earliestOverdueDate = fixturesRef.current
+        .filter((match) => !match.played && Boolean(match.date && match.date <= simulationDate))
+        .map((match) => match.date as string)
+        .sort()[0];
+      if (!earliestOverdueDate) return;
+
+      const { nextFixtures } = simulateAiFixturesOnDate(earliestOverdueDate);
+      const unresolvedUserFixture = nextFixtures.find((match) => (
         !match.played
-        && (match.date ?? "") <= simulationDate
+        && match.date === earliestOverdueDate
         && (match.teamA === userTeamId || match.teamB === userTeamId)
       ));
-      if (unresolved) {
+      if (unresolvedUserFixture && earliestOverdueDate < simulationDate) {
+        // Repair careers whose date was incorrectly advanced past matchday by
+        // the old rollover bug. These games were part of an automatic skip and
+        // must not require the user to play months-old fixtures manually.
+        try {
+          const simulatedMatch = buildSimulatedMatch(unresolvedUserFixture);
+          commitSimulatedMatch(simulatedMatch, nextFixtures, playerStatsRef.current);
+          if (dayTickerRef.current?.start()) setIsSimulatingDays(true);
+        } catch (error) {
+          cancelCareerFastForward(
+            error instanceof Error ? error.message : "Unable to repair the overdue fixture.",
+          );
+        }
+      } else if (unresolvedUserFixture) {
         continueButtonRef.current?.focus();
         showToast("Use Simulate fixture before continuing the calendar.");
       } else {
-        simulateAiFixturesOnDate(simulationDate);
         if (dayTickerRef.current?.start()) {
           setIsSimulatingDays(true);
         }
@@ -2948,7 +3405,7 @@ function OverviewPageContent() {
     if (dayTickerRef.current?.start()) {
       setIsSimulatingDays(true);
     }
-  }, [router, userTeamId]);
+  }, [cancelCareerFastForward, retentionDateString, router, userTeamId]);
 
   const skipToCalendarDate = useCallback((targetDate: string, autoSimUserFixtures = false) => {
     const simulationDate = useGameStore.getState().currentDate;
@@ -2959,6 +3416,91 @@ function OverviewPageContent() {
     setPendingSkipTargetDate(null);
     startSimulating();
   }, [startSimulating]);
+
+  useEffect(() => {
+    const startFastForward = (targetDate: string) => {
+      if (targetDate <= useGameStore.getState().currentDate) return;
+      sessionStorage.setItem(CAREER_FAST_FORWARD_RECOVERY_KEY, targetDate);
+      setCareerFastForwardTarget(targetDate);
+      skipToCalendarDate(targetDate, true);
+    };
+    const handler = (event: Event) => {
+      const kind = (event as CustomEvent<{ kind: "season" | "year" | "three-years" }>).detail?.kind;
+      if (kind === "season") {
+        const finalDate = fixturesRef.current
+          .map((fixture) => fixture.date ?? "")
+          .sort((left, right) => right.localeCompare(left))[0];
+        if (finalDate) startFastForward(finalDate);
+        return;
+      }
+      const years = kind === "three-years" ? 3 : 1;
+      const source = dateKeyToLocalDate(useGameStore.getState().currentDate);
+      const targetYear = source.getFullYear() + years;
+      const month = source.getMonth();
+      const day = Math.min(source.getDate(), new Date(targetYear, month + 1, 0).getDate());
+      startFastForward(`${targetYear}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`);
+    };
+    window.addEventListener("ipl-career-fast-forward", handler);
+    return () => window.removeEventListener("ipl-career-fast-forward", handler);
+  }, [setCareerFastForwardTarget, skipToCalendarDate]);
+
+  // Restore an in-progress multi-season job only after initCareer has created
+  // the new season's fixtures. This prevents an empty fixture list from making
+  // the calendar jump directly past every match.
+  useEffect(() => {
+    if (!isCareerLoaded || fixturesRef.current.length < TOTAL_FIXTURE_COUNT) return;
+    const recoveryTarget = searchParams.get("fastForwardTarget")
+      ?? sessionStorage.getItem(CAREER_FAST_FORWARD_RECOVERY_KEY);
+    if (!recoveryTarget) return;
+    const liveDate = useGameStore.getState().currentDate;
+    if (recoveryTarget <= liveDate) {
+      sessionStorage.removeItem(CAREER_FAST_FORWARD_RECOVERY_KEY);
+      return;
+    }
+    if (useGameStore.getState().careerFastForwardTargetDate !== recoveryTarget) {
+      setCareerFastForwardTarget(recoveryTarget);
+    }
+    if (!dayTickerRef.current?.isRunning()) {
+      skipToCalendarDate(recoveryTarget, true);
+    }
+  }, [fixtures.length, isCareerLoaded, searchParams, setCareerFastForwardTarget, skipToCalendarDate]);
+
+  useEffect(() => {
+    if (
+      !isCareerLoaded
+      || !careerFastForwardTargetDate
+      || fixturesRef.current.length < TOTAL_FIXTURE_COUNT
+    ) return;
+    if (currentDate >= careerFastForwardTargetDate) {
+      setCareerFastForwardTarget(null);
+      sessionStorage.removeItem(CAREER_FAST_FORWARD_RECOVERY_KEY);
+      stopSimulating();
+      showToast("Career fast-forward complete.");
+      return;
+    }
+    if (!dayTickerRef.current?.isRunning()) skipToCalendarDate(careerFastForwardTargetDate, true);
+  }, [careerFastForwardTargetDate, currentDate, fixtures.length, isCareerLoaded, setCareerFastForwardTarget, skipToCalendarDate, stopSimulating]);
+
+  // A season rollover reloads the page. If hydration or a long synchronous
+  // match calculation leaves the ticker stopped, resume the persisted job
+  // without requiring the user to press the button again.
+  useEffect(() => {
+    if (
+      !isCareerLoaded
+      || !careerFastForwardTargetDate
+      || fixturesRef.current.length < TOTAL_FIXTURE_COUNT
+    ) return;
+    const watchdogId = window.setInterval(() => {
+      const liveDate = useGameStore.getState().currentDate;
+      if (
+        liveDate < careerFastForwardTargetDate
+        && !dayTickerRef.current?.isRunning()
+      ) {
+        skipToCalendarDate(careerFastForwardTargetDate, true);
+      }
+    }, 1000);
+    return () => window.clearInterval(watchdogId);
+  }, [careerFastForwardTargetDate, fixtures.length, isCareerLoaded, skipToCalendarDate]);
 
   const countUserFixturesBeforeCalendarDate = (targetDate: string) => {
     const simulationDate = useGameStore.getState().currentDate;
@@ -2973,14 +3515,17 @@ function OverviewPageContent() {
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || !dayTickerRef.current?.isRunning()) return;
+      if (
+        event.key !== "Escape"
+        || (!dayTickerRef.current?.isRunning() && !useGameStore.getState().careerFastForwardTargetDate)
+      ) return;
       event.preventDefault();
-      stopSimulating();
+      cancelCareerFastForward();
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [stopSimulating]);
+  }, [cancelCareerFastForward]);
 
   // Calculate league standings from actual group-stage results and scorecards.
   const calculateStandings = (allMatches: Match[]): LeagueStandings[] => {
@@ -3119,6 +3664,9 @@ function OverviewPageContent() {
       if (!simulation) pStat.matches++;
       pStat.runs += bat.runs ?? 0;
       pStat.balls += bat.balls ?? 0;
+      if (bat.dismissal && bat.dismissal !== "not out" && bat.dismissal !== "did not bat") {
+        pStat.dismissals = (pStat.dismissals ?? 0) + 1;
+      }
       if ((bat.runs ?? 0) > pStat.highestScore) {
         pStat.highestScore = bat.runs ?? 0;
       }
@@ -3202,6 +3750,7 @@ function OverviewPageContent() {
   // Roster details selection helper
   // --------------------------------------------------------------------------
   const [detailedPlayerId, setDetailedPlayerId] = useState<string | null>(null);
+  const [rosterView, setRosterView] = useState<RosterView>("general");
   const [rosterSort, setRosterSort] = useState<{ key: RosterSortKey; direction: SortDirection }>({
     key: "name",
     direction: "asc",
@@ -3242,32 +3791,116 @@ function OverviewPageContent() {
 
     return rosterPlayers.sort((left, right) => {
       let comparison = 0;
+      const leftSeason = playerStats[left.id];
+      const rightSeason = playerStats[right.id];
+      const numericValue = (player: Player, stats: PlayerStats | undefined, key: RosterSortKey) => {
+        if (key === "age") return player.age;
+        if (key === "rating") return getPlayerRating(player);
+        if (key === "potential") return Math.max(player.potentialBatting, player.potentialBowling);
+        if (key === "bowlingCA") return player.currentBowling;
+        if (key === "bowlingPA") return player.potentialBowling;
+        if (key === "battingCA") return player.currentBatting;
+        if (key === "battingPA") return player.potentialBatting;
+        if (key === "seasonMatches") return stats?.matches ?? 0;
+        if (key === "seasonWickets") return stats?.wickets ?? 0;
+        if (key === "seasonBowlingAverage") return stats?.wickets ? stats.runsConceded / stats.wickets : Number.POSITIVE_INFINITY;
+        if (key === "seasonEconomy") {
+          const legalBalls = stats?.oversBowled
+            ? Math.floor(stats.oversBowled) * 6 + Math.round((stats.oversBowled - Math.floor(stats.oversBowled)) * 10)
+            : 0;
+          return legalBalls ? stats!.runsConceded / (legalBalls / 6) : Number.POSITIVE_INFINITY;
+        }
+        if (key === "seasonBestBowling") return Number(stats?.bestBowling?.split("/")[0] ?? 0) * 1000 - Number(stats?.bestBowling?.split("/")[1] ?? 999);
+        if (key === "seasonRuns") return stats?.runs ?? 0;
+        if (key === "seasonBattingAverage") {
+          const dismissals = stats?.dismissals ?? stats?.matches ?? 0;
+          return dismissals ? (stats?.runs ?? 0) / dismissals : stats?.runs ?? 0;
+        }
+        if (key === "seasonStrikeRate") return stats?.balls ? (stats.runs / stats.balls) * 100 : 0;
+        if (key === "seasonHighScore") return stats?.highestScore ?? 0;
+        if (key === "iplMatches") return player.iplStats?.matches ?? 0;
+        if (key === "iplRuns") return player.iplStats?.runs ?? 0;
+        if (key === "iplBattingAverage") return player.iplStats?.battingAverage ?? 0;
+        if (key === "iplStrikeRate") return player.iplStats?.strikeRate ?? 0;
+        if (key === "iplWickets") return player.iplStats?.wickets ?? 0;
+        if (key === "iplBowlingAverage") return player.iplStats?.bowlingAverage || Number.POSITIVE_INFINITY;
+        return 0;
+      };
       if (rosterSort.key === "name") comparison = left.name.localeCompare(right.name);
       if (rosterSort.key === "role") comparison = left.role.localeCompare(right.role);
       if (rosterSort.key === "nationality") comparison = left.nationality.localeCompare(right.nationality);
-      if (rosterSort.key === "rating") comparison = getPlayerRating(left) - getPlayerRating(right);
       if (rosterSort.key === "salary") {
         comparison = (currentSeasonHistoryByPlayer.get(left.id)?.price ?? -1)
           - (currentSeasonHistoryByPlayer.get(right.id)?.price ?? -1);
+      } else if (!(["name", "role", "nationality"] as RosterSortKey[]).includes(rosterSort.key)) {
+        comparison = numericValue(left, leftSeason, rosterSort.key) - numericValue(right, rightSeason, rosterSort.key);
       }
 
       return comparison === 0
         ? left.name.localeCompare(right.name)
         : comparison * directionMultiplier;
     });
-  }, [currentSeasonHistoryByPlayer, players, rosterSort, userTeam?.squad]);
+  }, [currentSeasonHistoryByPlayer, playerStats, players, rosterSort, userTeam?.squad]);
 
   const toggleRosterSort = (key: RosterSortKey) => {
     setRosterSort((current) => ({
       key,
       direction: current.key === key
         ? current.direction === "asc" ? "desc" : "asc"
-        : key === "rating" || key === "salary" ? "desc" : "asc",
+        : key === "name" || key === "role" || key === "nationality" || key === "age" ? "asc" : "desc",
     }));
   };
 
   const rosterSortIndicator = (key: RosterSortKey) =>
     rosterSort.key === key ? (rosterSort.direction === "asc" ? "↑" : "↓") : "↕";
+
+  const rosterColumns: Array<{
+    key: RosterSortKey; label: string; align?: "left" | "center" | "right";
+    render: (player: Player) => React.ReactNode;
+  }> = (() => {
+    const season = (player: Player) => playerStats[player.id];
+    const number = (value: number | undefined, digits = 0) => value === undefined || !Number.isFinite(value) ? "—" : value.toFixed(digits);
+    if (rosterView === "general") return [
+      { key: "name", label: "Name", render: (player) => player.name },
+      { key: "age", label: "Age", align: "center", render: (player) => player.age },
+      { key: "role", label: "Role", render: (player) => player.role },
+      { key: "nationality", label: "Nationality", render: (player) => player.nationality },
+      { key: "rating", label: "CA", align: "center", render: (player) => getPlayerRating(player) },
+      { key: "potential", label: "PA", align: "center", render: (player) => Math.max(player.potentialBatting, player.potentialBowling) },
+      { key: "salary", label: `${rosterSeason} Salary`, align: "right", render: (player) => {
+        const entry = currentSeasonHistoryByPlayer.get(player.id); return entry ? formatPrice(entry.price) : "—";
+      } },
+    ];
+    if (rosterView === "bowling") return [
+      { key: "name", label: "Name", render: (player) => player.name },
+      { key: "bowlingCA", label: "Bowl CA", align: "center", render: (player) => player.currentBowling },
+      { key: "bowlingPA", label: "Bowl PA", align: "center", render: (player) => player.potentialBowling },
+      { key: "seasonMatches", label: "Mat", align: "center", render: (player) => season(player)?.matches ?? 0 },
+      { key: "seasonWickets", label: "Wkts", align: "center", render: (player) => season(player)?.wickets ?? 0 },
+      { key: "seasonBowlingAverage", label: "Avg", align: "center", render: (player) => { const stats = season(player); return stats?.wickets ? number(stats.runsConceded / stats.wickets, 2) : "—"; } },
+      { key: "seasonEconomy", label: "Econ", align: "center", render: (player) => { const stats = season(player); const balls = stats?.oversBowled ? Math.floor(stats.oversBowled) * 6 + Math.round((stats.oversBowled - Math.floor(stats.oversBowled)) * 10) : 0; return stats && balls ? number(stats.runsConceded / (balls / 6), 2) : "—"; } },
+      { key: "seasonBestBowling", label: "Best", align: "center", render: (player) => season(player)?.bestBowling ?? "—" },
+    ];
+    if (rosterView === "batting") return [
+      { key: "name", label: "Name", render: (player) => player.name },
+      { key: "battingCA", label: "Bat CA", align: "center", render: (player) => player.currentBatting },
+      { key: "battingPA", label: "Bat PA", align: "center", render: (player) => player.potentialBatting },
+      { key: "seasonMatches", label: "Mat", align: "center", render: (player) => season(player)?.matches ?? 0 },
+      { key: "seasonRuns", label: "Runs", align: "center", render: (player) => season(player)?.runs ?? 0 },
+      { key: "seasonBattingAverage", label: "Avg", align: "center", render: (player) => { const stats = season(player); const outs = stats?.dismissals ?? stats?.matches ?? 0; return stats && outs ? number(stats.runs / outs, 2) : stats?.runs ? number(stats.runs, 2) : "—"; } },
+      { key: "seasonStrikeRate", label: "SR", align: "center", render: (player) => { const stats = season(player); return stats?.balls ? number((stats.runs / stats.balls) * 100, 2) : "—"; } },
+      { key: "seasonHighScore", label: "HS", align: "center", render: (player) => season(player)?.highestScore ?? "—" },
+    ];
+    return [
+      { key: "name", label: "Name", render: (player) => player.name },
+      { key: "iplMatches", label: "Matches", align: "center", render: (player) => player.iplStats?.matches ?? 0 },
+      { key: "iplRuns", label: "Runs", align: "center", render: (player) => player.iplStats?.runs ?? 0 },
+      { key: "iplBattingAverage", label: "Bat Avg", align: "center", render: (player) => number(player.iplStats?.battingAverage, 2) },
+      { key: "iplStrikeRate", label: "SR", align: "center", render: (player) => number(player.iplStats?.strikeRate, 2) },
+      { key: "iplWickets", label: "Wkts", align: "center", render: (player) => player.iplStats?.wickets ?? 0 },
+      { key: "iplBowlingAverage", label: "Bowl Avg", align: "center", render: (player) => player.iplStats?.wickets ? number(player.iplStats?.bowlingAverage, 2) : "—" },
+    ];
+  })();
 
   const handleMatchPlanChange = (plan: LineupPlan, lineup: string[], impactSubs: string[]) => {
     if (plan === "bowlingFirst") {
@@ -3405,17 +4038,17 @@ function OverviewPageContent() {
     home: {
       label: "Home",
       icon: InboxIcon,
-      subtabs: ["overview", "inbox", "calendar"]
-    },
-    club: {
-      label: "Club",
-      icon: ShieldCheck,
-      subtabs: ["overview", "office", "pitchcurator", "stadiummanagement"]
+      subtabs: ["overview", "inbox", "social", "calendar"]
     },
     squad: {
       label: "Squad",
       icon: Users,
       subtabs: ["overview", "roster", "analysis", "playingxi", "captaincy", "tactics"]
+    },
+    club: {
+      label: "Club",
+      icon: ShieldCheck,
+      subtabs: ["overview", "office", "pitchcurator", "stadiummanagement"]
     },
     scouting: {
       label: "Scouting",
@@ -3452,6 +4085,7 @@ function OverviewPageContent() {
     if (subtab === "pitchcurator") return "Pitch Curator";
     if (subtab === "stadiummanagement") return "Stadium Management";
     if (subtab === "calendar") return "Season Calendar";
+    if (subtab === "social") return "Social Media";
     if (subtab === "records") return "Records";
     if (subtab === "clubhistory") return "Club History";
     if (subtab === "clubfigures") return "Club Figures";
@@ -3532,6 +4166,33 @@ function OverviewPageContent() {
   const purpleCapLeaders = useMemo(() => {
     return Object.values(playerStats)
       .sort((a,b) => b.wickets - a.wickets)
+      .slice(0, 5);
+  }, [playerStats]);
+
+  const mvpLeaders = useMemo(() => {
+    return Object.values(playerStats)
+      .map((player) => {
+        const fours = player.fours ?? Math.floor((player.runs || 0) * 0.4 / 4);
+        const sixes = player.sixes ?? Math.floor((player.runs || 0) * 0.2 / 6);
+        const dotBalls = player.dotBalls ?? Math.max(0, Math.round((player.oversBowled || 0) * 6 - (player.runsConceded || 0) / 1.6));
+        const catches = player.catches ?? 0;
+        const stumpings = player.stumpings ?? 0;
+        const wickets = player.wickets || 0;
+
+        const pts = (fours * 2.5) + (sixes * 3.5) + (wickets * 3.5) + (dotBalls * 1.0) + (catches * 2.5) + (stumpings * 2.5);
+
+        return {
+          ...player,
+          fours,
+          sixes,
+          dotBalls,
+          catches,
+          stumpings,
+          mvpPoints: Math.round(pts * 10) / 10,
+        };
+      })
+      .filter((p) => p.mvpPoints > 0)
+      .sort((a, b) => b.mvpPoints - a.mvpPoints)
       .slice(0, 5);
   }, [playerStats]);
 
@@ -3706,7 +4367,23 @@ function OverviewPageContent() {
     );
   }
 
-  const clubSeasonHistory = getClubSeasonHistory(userTeamId, userTeam.name);
+  const clubSeasonHistoryBySeason = new Map(
+    getClubSeasonHistory(userTeamId, userTeam.name).map((season) => [season.season, season]),
+  );
+  simulatedLeagueHistory.forEach((season) => {
+    clubSeasonHistoryBySeason.set(season.season, {
+      season: season.season,
+      clubName: userTeam.name,
+      outcome: season.championTeamId === userTeamId
+        ? "Champions"
+        : season.runnerUpTeamId === userTeamId
+          ? "Runners-up"
+          : "League season",
+    });
+  });
+  const clubSeasonHistory = Array.from(clubSeasonHistoryBySeason.values())
+    .sort((left, right) => right.season - left.season);
+  const latestClubHistorySeason = clubSeasonHistory[0]?.season ?? LAST_HISTORICAL_CLUB_SEASON;
   const clubTitles = clubSeasonHistory.filter((season) => season.outcome === "Champions");
   const clubRunnerUpFinishes = clubSeasonHistory.filter((season) => season.outcome === "Runners-up");
   const clubSeasonsPlayed = clubSeasonHistory.filter((season) => season.outcome !== "Did not participate").length;
@@ -3805,6 +4482,15 @@ function OverviewPageContent() {
     }
   };
 
+  const markAllInboxRead = () => {
+    if (!inbox.some((message) => message.unread)) return;
+    const nextInbox = inbox.map((message) => (
+      message.unread ? { ...message, unread: false } : message
+    ));
+    setInbox(nextInbox);
+    saveCareerState({ inbox: nextInbox });
+  };
+
   const handleEmailAction = (action: CareerEmailAction) => {
     if (action.kind === "player" && action.entityId && players[action.entityId]) {
       setDetailedPlayerId(action.entityId);
@@ -3836,8 +4522,36 @@ function OverviewPageContent() {
         </div>
       )}
 
+      {/* Fast-forward runs behind a stable progress screen rather than flashing calendar days. */}
+      {careerFastForwardTargetDate && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-[#0b1018]/95 px-6 text-white backdrop-blur-sm" role="status" aria-live="polite">
+          <div className="w-full max-w-lg border-2 border-white/15 bg-[#111925] p-8 shadow-2xl">
+            <p className="font-space-mono text-[9px] font-bold uppercase tracking-[0.24em] text-accent">Career simulation in progress</p>
+            <h2 className="mt-3 font-anton text-3xl uppercase">Fast-forwarding</h2>
+            <p className="mt-2 text-sm text-white/60">Simulating every match, retention window and auction through {careerFastForwardTargetDate}.</p>
+            <div className="mt-7 h-2 overflow-hidden rounded-full bg-white/10">
+              <div className="h-full bg-accent transition-[width] duration-300" style={{ width: `${Math.max(1, fastForwardProgress * 100)}%` }} />
+            </div>
+            <div className="mt-3 flex justify-between font-space-mono text-[10px] font-bold uppercase tracking-wider text-white/65">
+              <span>{Math.round(fastForwardProgress * 100)}% · {currentDate}</span>
+              <span>{fastForwardRemainingSeconds === null ? "Calculating time" : `About ${fastForwardRemainingSeconds}s left`}</span>
+            </div>
+            <div className="mt-6 flex items-center justify-between border-t border-white/10 pt-4 font-space-mono text-[9px] uppercase text-white/45">
+              <span>Elapsed {(fastForwardElapsedMs / 1000).toFixed(1)}s</span>
+              <button
+                type="button"
+                onClick={() => cancelCareerFastForward()}
+                className="border border-white/20 px-3 py-2 font-space-mono text-[9px] font-bold uppercase tracking-wider text-white/75 transition hover:border-white/50 hover:text-white"
+              >
+                Stop simulation
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Ticking Calendar Overlay */}
-      {(isSimulatingDays || isCalendarClosing) && (
+      {!careerFastForwardTargetDate && (isSimulatingDays || isCalendarClosing) && (
         <div
           className={`${isSimulatingDays ? "ticking-calendar-drop" : "ticking-calendar-pull-up"} fixed inset-x-0 top-0 z-[120] flex items-center gap-3 border-b-2 border-border bg-surface px-3 py-3 shadow-2xl sm:px-5`}
           role="region"
@@ -4256,9 +4970,24 @@ function OverviewPageContent() {
                               {dayData.dayMatches.length > 0 && (
                                 <div className="absolute inset-x-0.5 bottom-0.5 top-[14px] flex flex-col justify-end gap-px overflow-hidden">
                                   {dayData.dayMatches.slice(0, 2).map((match) => {
-                                    const isUserGame = match.teamA === userTeamId || match.teamB === userTeamId;
+                                    const isTbdA = !match.teamA || match.teamA === PLAYOFF_TBD_TEAM_ID || match.teamA.includes("TBD");
+                                    const isTbdB = !match.teamB || match.teamB === PLAYOFF_TBD_TEAM_ID || match.teamB.includes("TBD");
+                                    const display = getMatchDisplayName(match, teams);
+                                    const isUserGame = (match.teamA === userTeamId || match.teamB === userTeamId) && !isTbdA && !isTbdB;
                                     const opponentId = match.teamA === userTeamId ? match.teamB : match.teamA;
                                     const opponent = teams[opponentId];
+
+                                    if (isTbdA && isTbdB && display.isPlayoffTbd) {
+                                      return (
+                                        <div
+                                          key={`mini-fixture-${match.id}`}
+                                          className="flex min-h-0 items-center justify-center overflow-hidden rounded-[2px] border border-accent/40 bg-accent/10 px-1 py-1 text-center font-space-mono text-[8px] font-bold uppercase leading-none text-accent shadow-sm"
+                                          title={display.label}
+                                        >
+                                          <span className="truncate">{display.label}</span>
+                                        </div>
+                                      );
+                                    }
 
                                     return isUserGame ? (
                                       <div
@@ -4277,12 +5006,12 @@ function OverviewPageContent() {
                                       <div
                                         key={`mini-fixture-${match.id}`}
                                         className="flex min-h-0 items-center justify-center gap-1 overflow-hidden rounded-[2px] border border-border/70 bg-surface px-1 py-1 font-space-mono text-[8px] font-bold uppercase leading-none tracking-[-0.03em] text-text-primary shadow-sm"
-                                        title={`${teams[match.teamA]?.name ?? match.teamA} vs ${teams[match.teamB]?.name ?? match.teamB}`}
+                                        title={`${!match.teamA || match.teamA === PLAYOFF_TBD_TEAM_ID ? "TBD" : teams[match.teamA]?.name ?? match.teamA} vs ${!match.teamB || match.teamB === PLAYOFF_TBD_TEAM_ID ? "TBD" : teams[match.teamB]?.name ?? match.teamB}`}
                                       >
                                         <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: teams[match.teamA]?.primaryColor ?? "#777777" }} />
-                                        <span className="truncate">{teams[match.teamA]?.shortName ?? match.teamA}</span>
+                                        <span className="truncate">{!match.teamA || match.teamA === PLAYOFF_TBD_TEAM_ID ? "TBD" : teams[match.teamA]?.shortName ?? match.teamA}</span>
                                         <span className="shrink-0 text-text-secondary">v</span>
-                                        <span className="truncate">{teams[match.teamB]?.shortName ?? match.teamB}</span>
+                                        <span className="truncate">{!match.teamB || match.teamB === PLAYOFF_TBD_TEAM_ID ? "TBD" : teams[match.teamB]?.shortName ?? match.teamB}</span>
                                         <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: teams[match.teamB]?.primaryColor ?? "#777777" }} />
                                       </div>
                                     );
@@ -4314,6 +5043,17 @@ function OverviewPageContent() {
                       onClick={() => isFixturesAnnounced && router.push("/game/overview?tab=season&subtab=fixtures")}
                       className={`flex min-h-0 flex-col overflow-hidden rounded-lg border-2 border-border bg-surface p-5 transition-colors ${isFixturesAnnounced ? "cursor-pointer hover:border-accent" : "cursor-default"}`}
                     >
+                      {fixtures.filter((fixture) => !fixture.stage && fixture.matchNumber <= LEAGUE_FIXTURE_COUNT).length > 0
+                        && fixtures.filter((fixture) => !fixture.stage && fixture.matchNumber <= LEAGUE_FIXTURE_COUNT).every((fixture) => fixture.played) ? (
+                        <ScheduleTileContent
+                          fixtures={fixtures}
+                          teams={teams}
+                          userTeamId={userTeamId}
+                          isFixturesAnnounced={isFixturesAnnounced}
+                          variant="dashboard"
+                        />
+                      ) : (
+                      <>
                       <h3 className="shrink-0 font-anton text-[14px] uppercase text-text-primary border-b border-[#16130f]/10 pb-2 mb-3">NEXT FIXTURES</h3>
                       {!isFixturesAnnounced ? (
                         <div className="flex min-h-0 flex-1 items-center justify-center text-center font-space-mono text-xs uppercase text-text-secondary">
@@ -4385,6 +5125,8 @@ function OverviewPageContent() {
                           });
                         })()}
                       </div>
+                      </>
+                      )}
                     </div>
 
                     <div onClick={() => router.push("/game/overview?tab=season&subtab=standings")} className="flex min-h-0 cursor-pointer flex-col overflow-hidden rounded-lg border-2 border-border bg-surface p-5 pb-6 transition-colors hover:border-accent">
@@ -4423,6 +5165,21 @@ function OverviewPageContent() {
                 </div>
               )}
 
+              {activeSubTab === "social" && (
+                <SocialMediaPage
+                  team={userTeam}
+                  players={players}
+                  playerStats={playerStats}
+                  battingFirstXI={battingFirstXI}
+                  bowlingFirstXI={bowlingFirstXI}
+                  fixtures={fixtures}
+                  captainId={teamLeadership.captainId}
+                  impactPlayerIds={[battingFirstImpactPlayerId, bowlingFirstImpactPlayerId]}
+                  currentDate={currentDate}
+                  currentSeason={currentSeason}
+                />
+              )}
+
               {/* Inbox page */}
               {activeSubTab === "inbox" && (
                 <div className="grid h-full flex-1 min-h-0 grid-cols-1 overflow-hidden rounded-xl border border-border bg-surface shadow-[0_18px_50px_rgba(22,19,15,0.08)] lg:grid-cols-[minmax(19rem,0.92fr)_minmax(0,2.2fr)]">
@@ -4439,9 +5196,19 @@ function OverviewPageContent() {
                           </p>
                         </div>
                       </div>
-                      <span className={`rounded-full px-2 py-1 font-space-mono text-[8px] font-bold uppercase tracking-wide ${inbox.some((message) => message.unread) ? "bg-danger text-white shadow-sm" : "bg-success/10 text-success"}`}>
-                        {inbox.filter((message) => message.unread).length} unread
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={markAllInboxRead}
+                          disabled={!inbox.some((message) => message.unread)}
+                          className="rounded border border-border bg-surface px-2.5 py-1.5 font-space-mono text-[7px] font-bold uppercase tracking-wide text-text-secondary transition-colors enabled:hover:border-accent enabled:hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          Mark all as read
+                        </button>
+                        <span className={`rounded-full px-2 py-1 font-space-mono text-[8px] font-bold uppercase tracking-wide ${inbox.some((message) => message.unread) ? "bg-danger text-white shadow-sm" : "bg-success/10 text-success"}`}>
+                          {inbox.filter((message) => message.unread).length} unread
+                        </span>
+                      </div>
                     </div>
 
                     <div className="min-h-0 flex-1 space-y-1 overflow-y-auto p-2">
@@ -4738,6 +5505,10 @@ function OverviewPageContent() {
                                     const isUserGame = m.teamA === userTeamId || m.teamB === userTeamId;
                                     const opponentId = m.teamA === userTeamId ? m.teamB : m.teamA;
                                     const opp = teams[opponentId];
+                                    const knockoutLabel = getKnockoutStageLabel(m);
+                                    const hasUnresolvedPlayoffTeam = [m.teamA, m.teamB].some(
+                                      (teamId) => !teamId || teamId === PLAYOFF_TBD_TEAM_ID || teamId.includes("TBD"),
+                                    );
 
                                     return (
                                       <div
@@ -4750,7 +5521,9 @@ function OverviewPageContent() {
                                               : "bg-[#16130f]/5 border border-border/40 text-text-primary"}`}
                                         style={isUserGame && userTeam ? { backgroundColor: userTeam.primaryColor, color: userTeam.secondaryColor } : undefined}
                                       >
-                                        {isUserGame ? (
+                                        {knockoutLabel && hasUnresolvedPlayoffTeam ? (
+                                          <span>{knockoutLabel}</span>
+                                        ) : isUserGame ? (
                                           <div className="flex flex-col items-center justify-center gap-1 py-0.5 leading-none">
                                             <span 
                                               className="text-[8px] font-extrabold px-1.5 py-0.5 rounded-full border border-white/10 shadow-sm leading-none shrink-0"
@@ -4893,6 +5666,15 @@ function OverviewPageContent() {
                             )}
                             {dayMatches.map((m) => {
                               const isUserGame = m.teamA === userTeamId || m.teamB === userTeamId;
+                              const knockoutLabel = getKnockoutStageLabel(m);
+                              const teamAName = teams[m.teamA]?.name
+                                ?? (m.teamA === PLAYOFF_TBD_TEAM_ID ? "To be determined" : m.teamA);
+                              const teamBName = teams[m.teamB]?.name
+                                ?? (m.teamB === PLAYOFF_TBD_TEAM_ID ? "To be determined" : m.teamB);
+                              const teamAShortName = teams[m.teamA]?.shortName
+                                ?? (m.teamA === PLAYOFF_TBD_TEAM_ID ? "TBD" : m.teamA.slice(0, 3));
+                              const teamBShortName = teams[m.teamB]?.shortName
+                                ?? (m.teamB === PLAYOFF_TBD_TEAM_ID ? "TBD" : m.teamB.slice(0, 3));
                               return (
                                 <div
                                   key={m.id}
@@ -4901,7 +5683,7 @@ function OverviewPageContent() {
                                 >
                                   <div className="flex justify-between items-center mb-2">
                                     <span className="font-space-mono text-[9px] font-bold text-text-secondary uppercase">
-                                      Match {m.matchNumber} · {m.time}
+                                      {knockoutLabel ?? `Match ${m.matchNumber}`} · {m.time}
                                     </span>
                                     {isUserGame && (
                                       <span
@@ -4915,16 +5697,16 @@ function OverviewPageContent() {
                                   <div className="flex items-center justify-between text-xs font-bold text-text-primary gap-4">
                                     <div className="flex items-center gap-2 flex-1 truncate">
                                       <span className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold shrink-0" style={{ backgroundColor: teams[m.teamA]?.primaryColor ?? "#ccc", color: teams[m.teamA]?.secondaryColor ?? "#000" }}>
-                                        {teams[m.teamA]?.shortName.slice(0, 3)}
+                                        {teamAShortName.slice(0, 3)}
                                       </span>
-                                      <span className="truncate">{teams[m.teamA]?.name}</span>
+                                      <span className="truncate">{teamAName}</span>
                                     </div>
                                     <span className="text-text-secondary font-normal font-space-mono text-[9px] shrink-0">vs</span>
                                     <div className="flex items-center gap-2 flex-row-reverse flex-1 truncate">
                                       <span className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold shrink-0" style={{ backgroundColor: teams[m.teamB]?.primaryColor ?? "#ccc", color: teams[m.teamB]?.secondaryColor ?? "#000" }}>
-                                        {teams[m.teamB]?.shortName.slice(0, 3)}
+                                        {teamBShortName.slice(0, 3)}
                                       </span>
-                                      <span className="truncate text-right">{teams[m.teamB]?.name}</span>
+                                      <span className="truncate text-right">{teamBName}</span>
                                     </div>
                                   </div>
                                   {m.played && m.scoreA && m.scoreB && (
@@ -5502,8 +6284,40 @@ function OverviewPageContent() {
               {/* Roster Overview page */}
               {activeSubTab === "roster" && (
                 <div className="border-2 border-border bg-surface h-full flex-1 min-h-0 flex flex-col overflow-hidden">
+                  <div className="flex shrink-0 items-center justify-between border-b border-border px-5 py-3">
+                    <div><h3 className="font-anton text-[18px] uppercase text-text-primary">Squad Analysis</h3><p className="font-space-mono text-[8px] uppercase tracking-wider text-text-secondary">Every column sorts both directions</p></div>
+                    <div className="flex rounded border border-border bg-bg/50 p-1">
+                      {(["general", "bowling", "batting", "ipl"] as RosterView[]).map((view) => (
+                        <button key={view} type="button" onClick={() => { setRosterView(view); setRosterSort({ key: "name", direction: "asc" }); }} className={`rounded px-3 py-1.5 font-space-mono text-[9px] font-bold uppercase tracking-wider ${rosterView === view ? "bg-accent text-white" : "text-text-secondary hover:text-text-primary"}`}>
+                          {view === "ipl" ? "IPL Career" : view}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                   <div className="overflow-x-auto flex-1 overflow-y-auto">
-                    <table className="w-full text-left font-barlow text-xs divide-y divide-[#16130f]/10">
+                    <table className="w-full min-w-[850px] text-left font-barlow text-xs divide-y divide-[#16130f]/10">
+                      <thead className="sticky top-0 z-10 bg-surface text-[9px] font-space-mono text-text-secondary uppercase shadow-sm">
+                        <tr>{rosterColumns.map((column) => (
+                          <th key={column.key} className="px-5 py-3.5" aria-sort={rosterSort.key === column.key ? (rosterSort.direction === "asc" ? "ascending" : "descending") : "none"}>
+                            <button type="button" onClick={() => toggleRosterSort(column.key)} className={`flex w-full items-center gap-1 hover:text-accent ${column.align === "center" ? "justify-center" : column.align === "right" ? "justify-end" : "justify-start"}`}>
+                              {column.label} <span aria-hidden="true">{rosterSortIndicator(column.key)}</span>
+                            </button>
+                          </th>
+                        ))}</tr>
+                      </thead>
+                      <tbody className="divide-y divide-[#16130f]/10">
+                        {sortedRosterPlayers.map((player) => (
+                          <tr key={player.id} onClick={() => setDetailedPlayerId(player.id)} className="cursor-pointer transition-colors hover:bg-black/5 dark:hover:bg-white/5">
+                            {rosterColumns.map((column, index) => (
+                              <td key={column.key} className={`px-5 py-4 font-space-mono text-[10px] ${column.align === "center" ? "text-center" : column.align === "right" ? "text-right" : "text-left"} ${index === 0 ? "font-barlow text-xs font-semibold text-text-primary" : "text-text-secondary"}`}>
+                                {column.render(player)}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <table className="hidden w-full text-left font-barlow text-xs divide-y divide-[#16130f]/10">
                       <thead className="bg-[#16130f]/5 text-[9px] font-space-mono text-text-secondary uppercase">
                         <tr>
                           <th className="px-6 py-3.5" aria-sort={rosterSort.key === "name" ? (rosterSort.direction === "asc" ? "ascending" : "descending") : "none"}>
@@ -5885,6 +6699,16 @@ function OverviewPageContent() {
                 <div className="grid grid-cols-3 gap-6 h-[calc(100vh-200px)] min-h-[500px] overflow-hidden">
                   {/* Fixtures progress */}
                   <div onClick={() => isFixturesAnnounced && setActiveSubTab("fixtures")} className={`flex min-h-0 flex-col overflow-hidden rounded-lg border-2 border-border bg-surface p-5 transition-colors ${isFixturesAnnounced ? "cursor-pointer hover:border-accent" : "opacity-75"}`}>
+                    {fixtures.filter((fixture) => !fixture.stage && fixture.matchNumber <= LEAGUE_FIXTURE_COUNT).length > 0
+                      && fixtures.filter((fixture) => !fixture.stage && fixture.matchNumber <= LEAGUE_FIXTURE_COUNT).every((fixture) => fixture.played) ? (
+                      <ScheduleTileContent
+                        fixtures={fixtures}
+                        teams={teams}
+                        userTeamId={userTeamId}
+                        isFixturesAnnounced={isFixturesAnnounced}
+                        variant="overview"
+                      />
+                    ) : (
                     <div className="flex min-h-0 flex-1 flex-col">
                       <div className="mb-3 flex shrink-0 items-end justify-between border-b border-[#16130f]/10 pb-2">
                         <h4 className="font-anton text-[16px] uppercase">SEASON SCHEDULE</h4>
@@ -5970,6 +6794,7 @@ function OverviewPageContent() {
                         </div>
                       )}
                     </div>
+                    )}
                   </div>
 
                   {/* Points Table standings */}
@@ -6259,9 +7084,9 @@ function OverviewPageContent() {
 
               {/* Tournament Stats page */}
               {activeSubTab === "stats" && (
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:grid-rows-2 h-full flex-1 min-h-0 overflow-y-auto md:overflow-hidden">
+                <div className="grid grid-cols-1 gap-4 lg:grid-cols-3 h-full flex-1 min-h-0 overflow-y-auto p-1">
                   {/* Orange cap */}
-                  <div className="bg-surface border-2 border-border p-5 flex flex-col h-full overflow-hidden">
+                  <div className="bg-surface border-2 border-border p-5 flex flex-col h-full min-h-[300px] overflow-hidden">
                     <div className="flex items-center gap-2 mb-4 border-b border-[#16130f]/10 pb-2 shrink-0">
                       <div className="w-4 h-4 bg-orange-500 rounded-full" />
                       <h3 className="font-anton text-[16px] text-text-primary uppercase leading-none">ORANGE CAP LEADERBOARD</h3>
@@ -6287,7 +7112,7 @@ function OverviewPageContent() {
                   </div>
 
                   {/* Purple cap */}
-                  <div className="bg-surface border-2 border-border p-5 flex flex-col h-full overflow-hidden">
+                  <div className="bg-surface border-2 border-border p-5 flex flex-col h-full min-h-[300px] overflow-hidden">
                     <div className="flex items-center gap-2 mb-4 border-b border-[#16130f]/10 pb-2 shrink-0">
                       <div className="w-4 h-4 bg-purple-700 rounded-full" />
                       <h3 className="font-anton text-[16px] text-text-primary uppercase leading-none">PURPLE CAP LEADERBOARD</h3>
@@ -6312,8 +7137,44 @@ function OverviewPageContent() {
                     </div>
                   </div>
 
+                  {/* MVP Race */}
+                  <div className="bg-surface border-2 border-border p-5 flex flex-col h-full min-h-[300px] overflow-hidden">
+                    <div className="flex items-center justify-between mb-4 border-b border-[#16130f]/10 pb-2 shrink-0">
+                      <div className="flex items-center gap-2">
+                        <Crown className="w-4 h-4 text-amber-500" />
+                        <h3 className="font-anton text-[16px] text-text-primary uppercase leading-none">MVP RACE</h3>
+                      </div>
+                      <span className="font-space-mono text-[8px] font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20 uppercase">
+                        Top 5
+                      </span>
+                    </div>
+                    <div className="divide-y divide-[#16130f]/10 text-xs flex-1 overflow-y-auto pr-2">
+                      {mvpLeaders.length === 0 ? (
+                        <div className="text-center font-barlow text-text-secondary p-8">No stats recorded yet. Simulate rounds first.</div>
+                      ) : (
+                        mvpLeaders.map((player, idx) => (
+                          <div key={player.id} className="py-2.5 flex justify-between items-center">
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <span className="w-4 font-space-mono text-[10px] font-bold text-text-secondary shrink-0">#{idx + 1}</span>
+                              <div className="min-w-0">
+                                <div className="font-bold text-text-primary truncate">{player.name}</div>
+                                <div className="font-space-mono text-[8px] text-text-secondary uppercase truncate">
+                                  {teams[player.teamId]?.shortName} · {player.runs}R ({player.fours}x4, {player.sixes}x6) · {player.wickets}W
+                                </div>
+                              </div>
+                            </div>
+                            <div className="text-right font-space-mono shrink-0 ml-2">
+                              <span className="font-bold text-amber-600 dark:text-amber-400 text-sm">{player.mvpPoints}</span>
+                              <span className="text-[8px] text-text-secondary ml-1">pts</span>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
                   {/* Best bowling figures */}
-                  <div className="bg-surface border-2 border-border p-5 flex flex-col h-full min-h-0 overflow-hidden">
+                  <div className="bg-surface border-2 border-border p-5 flex flex-col h-full min-h-[300px] overflow-hidden lg:col-span-1">
                     <div className="flex items-center gap-2 mb-4 border-b border-[#16130f]/10 pb-2 shrink-0">
                       <div className="h-4 w-1 bg-success" />
                       <h3 className="font-anton text-[16px] text-text-primary uppercase leading-none">BEST BOWLING FIGURES</h3>
@@ -6342,7 +7203,7 @@ function OverviewPageContent() {
                   </div>
 
                   {/* Best batting performances */}
-                  <div className="bg-surface border-2 border-border p-5 flex flex-col h-full min-h-0 overflow-hidden">
+                  <div className="bg-surface border-2 border-border p-5 flex flex-col h-full min-h-[300px] overflow-hidden lg:col-span-2">
                     <div className="flex items-center gap-2 mb-4 border-b border-[#16130f]/10 pb-2 shrink-0">
                       <div className="h-4 w-1 bg-accent" />
                       <h3 className="font-anton text-[16px] text-text-primary uppercase leading-none">BEST BATTING PERFORMANCES</h3>
@@ -6501,7 +7362,7 @@ function OverviewPageContent() {
                   <section className="flex min-h-0 flex-col overflow-hidden border-2 border-border bg-surface p-5">
                     <div className="mb-4 flex shrink-0 items-end justify-between border-b border-[#16130f]/10 pb-3">
                       <div>
-                        <p className="font-space-mono text-[8px] font-bold uppercase tracking-[0.2em] text-text-secondary">IPL record through {LAST_HISTORICAL_CLUB_SEASON}</p>
+                        <p className="font-space-mono text-[8px] font-bold uppercase tracking-[0.2em] text-text-secondary">IPL record through {latestClubHistorySeason}</p>
                         <h3 className="mt-1 font-anton text-[22px] uppercase leading-none text-text-primary">{userTeam.name}</h3>
                       </div>
                       <div className="flex gap-6 text-right font-space-mono">
@@ -6655,7 +7516,9 @@ function OverviewPageContent() {
                         const purpleCapTeam = getLeagueHistoryTeam(season.purpleCap.teamId);
                         const orangeCapPlayer = leagueHistoryPlayerByName.get(normalizeLeagueHistoryPlayerName(season.orangeCap.name));
                         const purpleCapPlayer = leagueHistoryPlayerByName.get(normalizeLeagueHistoryPlayerName(season.purpleCap.name));
-                        const canExpand = season.source === "career" && Boolean(season.standings?.length);
+                        const seasonArchive = careerSeasonArchives.find((archive) => archive.season === season.season);
+                        const archivedFixtures = (seasonArchive?.fixtures ?? []) as Match[];
+                        const canExpand = season.source === "career" && Boolean(season.standings?.length || archivedFixtures.length);
                         const isExpanded = canExpand && expandedLeagueHistorySeason === season.season;
 
                         return (
@@ -6749,16 +7612,27 @@ function OverviewPageContent() {
                               </span>
                             </div>
 
-                            {isExpanded && season.standings && (
+                            {isExpanded && (
                               <div className="border-b-2 border-accent/30 bg-black/[0.025] px-10 py-5 dark:bg-white/[0.025]">
-                                <div className="mb-3 flex items-end justify-between">
+                                <div className="mb-5 flex items-end justify-between">
                                   <div>
                                     <p className="font-space-mono text-[8px] font-bold uppercase tracking-[0.18em] text-accent">Saved career season</p>
-                                    <h4 className="mt-1 font-anton text-[18px] uppercase text-text-primary">{season.season} Final League Table</h4>
+                                    <h4 className="mt-1 font-anton text-[18px] uppercase text-text-primary">{season.season} Season Review</h4>
                                   </div>
-                                  <span className="font-space-mono text-[8px] uppercase text-text-secondary">Final standings</span>
+                                  <span className="font-space-mono text-[8px] uppercase text-text-secondary">Playoffs and final standings</span>
                                 </div>
-                                <div className="overflow-hidden border border-border bg-surface">
+
+                                <div className="mb-6 min-h-[205px] border border-border bg-surface p-4">
+                                  <PlayoffDiagramContent
+                                    fixtures={archivedFixtures}
+                                    teams={teams}
+                                    standings={season.standings}
+                                    championTeamId={season.championTeamId}
+                                    runnerUpTeamId={season.runnerUpTeamId}
+                                  />
+                                </div>
+
+                                {season.standings && <div className="overflow-hidden border border-border bg-surface">
                                   <div className="grid grid-cols-[3rem_minmax(14rem,1fr)_4rem_4rem_4rem_4rem_5rem_4rem] border-b border-border bg-black/[0.04] px-3 py-2 font-space-mono text-[8px] font-bold uppercase text-text-secondary dark:bg-white/[0.04]">
                                     <span>Pos</span><span>Team</span><span className="text-center">P</span><span className="text-center">W</span><span className="text-center">L</span><span className="text-center">NR</span><span className="text-center">NRR</span><span className="text-center">Pts</span>
                                   </div>
@@ -6777,7 +7651,7 @@ function OverviewPageContent() {
                                       </div>
                                     );
                                   })}
-                                </div>
+                                </div>}
                               </div>
                             )}
                           </div>
@@ -6801,6 +7675,8 @@ function OverviewPageContent() {
                   players={players}
                   teams={teams}
                   onOpenPlayer={setDetailedPlayerId}
+                  fixtures={fixtures}
+                  seasonArchives={careerSeasonArchives}
                 />
               )}
 
@@ -6819,7 +7695,12 @@ function OverviewPageContent() {
       {/* ==================================================================
           MODAL: PLAYER DETAILED STATS POPUP
           ================================================================== */}
-      {detailedPlayer && (
+      <PlayerProfileModal
+        playerId={detailedPlayerId}
+        onClose={() => setDetailedPlayerId(null)}
+        customFixtures={fixtures}
+      />
+      {(false as boolean) && detailedPlayer && (
         <div
           className="fixed inset-0 z-[95] flex items-center justify-center bg-black/70 p-12 backdrop-blur-sm animate-in fade-in duration-200"
           onMouseDown={() => setDetailedPlayerId(null)}
@@ -7056,10 +7937,10 @@ function OverviewPageContent() {
       {activeScorecard && (
         <div className="fixed inset-0 bg-black/60 z-[95] flex items-center justify-center p-4 backdrop-blur-sm overflow-y-auto py-10 animate-in fade-in duration-200">
           <div className="flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded border-2 border-border bg-surface text-left font-barlow shadow-xl animate-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-between border-b-2 border-accent bg-[var(--ink)] p-5">
+            <div className="flex items-center justify-between border-b-2 border-accent bg-[#16130f] p-5 dark:bg-[#0f1420]">
               <div>
                 <span className="font-space-mono text-[9px] font-bold text-accent uppercase">MATCH {activeScorecard.matchNumber} · RESULT</span>
-                <h3 className="mt-0.5 font-anton text-[24px] uppercase leading-tight text-bg">
+                <h3 className="mt-0.5 font-anton text-[24px] uppercase leading-tight text-white">
                   {teams[activeScorecard.teamA]?.name} vs {teams[activeScorecard.teamB]?.name}
                 </h3>
               </div>
@@ -7113,7 +7994,7 @@ function OverviewPageContent() {
                   className={`px-4 py-1.5 font-space-mono text-[10px] font-bold uppercase rounded border transition-all
                     ${activeMatchResultView === "scorecard" ? "bg-[var(--ink)] text-bg border-[var(--ink)]" : "border-border text-text-secondary hover:bg-black/5"}`}
                 >
-                  Scorecard Detail
+                  Scorecard
                 </button>
                 <button
                   onClick={() => {
@@ -7139,9 +8020,35 @@ function OverviewPageContent() {
                 )}
               </div>
 
-              {/* Scorecard detail tab */}
+              {activeMatchResultView === "scorecard" && activeScorecard.scorecard && (
+                <div className="flex flex-wrap gap-2">
+                  {(["teamA", "teamB"] as const).map((inningsTeam) => {
+                    const teamId = activeScorecard[inningsTeam];
+                    const isActive = activeScorecardInningsTeam === inningsTeam;
+                    return (
+                      <button
+                        key={inningsTeam}
+                        type="button"
+                        onClick={() => setActiveScorecardInningsTeam(inningsTeam)}
+                        aria-pressed={isActive}
+                        className={`rounded border px-4 py-2 font-space-mono text-[9px] font-bold uppercase transition-colors ${
+                          isActive
+                            ? "border-accent bg-accent text-white"
+                            : "border-border bg-surface text-text-secondary hover:border-accent hover:text-text-primary"
+                        }`}
+                      >
+                        {teams[teamId]?.name ?? teamId}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Scorecard tab */}
               {activeMatchResultView === "scorecard" && activeScorecard.scorecard && (
                 <div className="flex flex-col gap-6">
+                  {activeScorecardInningsTeam === "teamA" && (
+                    <>
                   {/* Innings 1 scorecard */}
                   <div className={activeScorecard.simulation?.battingFirstTeamId === activeScorecard.teamB ? "order-3" : "order-1"}>
                     <h4 className="font-anton text-[13px] text-text-primary border-l-4 border-accent pl-2 mb-3 uppercase">
@@ -7247,7 +8154,11 @@ function OverviewPageContent() {
                       </tbody>
                     </table>
                   </div>
+                    </>
+                  )}
 
+                  {activeScorecardInningsTeam === "teamB" && (
+                    <>
                   {/* Innings 2 scorecard */}
                   <div className={activeScorecard.simulation?.battingFirstTeamId === activeScorecard.teamB ? "order-1" : "order-3"}>
                     <h4 className="font-anton text-[13px] text-text-primary border-l-4 border-accent pl-2 mb-3 uppercase">
@@ -7353,11 +8264,16 @@ function OverviewPageContent() {
                       </tbody>
                     </table>
                   </div>
+                    </>
+                  )}
 
                   {activeScorecard.simulation && (
                     <div className="order-5 grid gap-4 md:grid-cols-2">
-                      {activeScorecard.simulation.innings.map((innings) => (
-                        <div key={innings.inningsNumber} className="rounded border border-border bg-bg p-4">
+                      {activeScorecard.simulation.innings
+                        .filter((innings) => innings.battingTeamId === activeScorecard[activeScorecardInningsTeam])
+                        .map((innings) => (
+                        <div key={innings.inningsNumber} className="contents">
+                        <div className="rounded border border-border bg-bg p-4">
                           <h4 className="font-anton text-[13px] uppercase text-text-primary">
                             {teams[innings.battingTeamId]?.shortName ?? innings.battingTeamId} innings detail
                           </h4>
@@ -7369,14 +8285,75 @@ function OverviewPageContent() {
                                 : "No wickets lost"}
                             </p>
                           </div>
-                          <div className="mt-3">
-                            <div className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Partnerships</div>
-                            <p className="mt-1 font-space-mono text-[8px] leading-relaxed text-text-primary">
-                              {innings.partnerships.map((partnership) => (
-                                `${partnership.runs} (${partnership.balls}) ${partnership.batterNames.join(" / ")}`
-                              )).join(" · ")}
-                            </p>
-                          </div>
+                        </div>
+                        <div className="rounded border border-border bg-bg p-4">
+                          <h4 className="font-anton text-[13px] uppercase text-text-primary">Partnership tree</h4>
+                          {innings.partnerships.length > 0 ? (
+                            <div className="relative mt-4 space-y-3" role="list" aria-label="Batting partnerships">
+                              <span className="pointer-events-none absolute bottom-4 left-1/2 top-4 w-px -translate-x-1/2 bg-border" aria-hidden="true" />
+                              {innings.partnerships.map((partnership, partnershipIndex) => {
+                                const archivedLeftContribution = getArchivedPartnershipContribution(
+                                  innings,
+                                  partnershipIndex,
+                                  partnership.batterIds[0],
+                                );
+                                const archivedRightContribution = getArchivedPartnershipContribution(
+                                  innings,
+                                  partnershipIndex,
+                                  partnership.batterIds[1],
+                                );
+                                const leftRuns = partnership.batterRuns?.[0] ?? archivedLeftContribution?.runs;
+                                const rightRuns = partnership.batterRuns?.[1] ?? archivedRightContribution?.runs;
+                                const leftBalls = partnership.batterBalls?.[0] ?? archivedLeftContribution?.balls;
+                                const rightBalls = partnership.batterBalls?.[1] ?? archivedRightContribution?.balls;
+                                // Each half of the tree represents this partnership only. Scaling
+                                // against innings totals made the bars unrelated to the contribution
+                                // figures displayed alongside them.
+                                const partnershipRuns = Math.max(1, partnership.runs);
+                                const leftWidth = leftRuns === undefined ? 0 : Math.min(100, (leftRuns / partnershipRuns) * 100);
+                                const rightWidth = rightRuns === undefined ? 0 : Math.min(100, (rightRuns / partnershipRuns) * 100);
+                                return (
+                                  <div
+                                    key={`${partnershipIndex}-${partnership.batterIds.join("-")}`}
+                                    className="relative grid grid-cols-[3.25rem_minmax(0,1fr)_4.5rem_minmax(0,1fr)_3.25rem] items-end gap-2"
+                                    role="listitem"
+                                  >
+                                    <div className="pb-0.5 text-right font-space-mono text-[8px] font-bold text-text-primary">
+                                      {leftRuns ?? "—"}{leftBalls === undefined ? "" : ` (${leftBalls})`}
+                                    </div>
+                                    <div className="min-w-0">
+                                      <div className="mb-1.5 truncate text-right font-space-mono text-[9px] font-semibold text-text-primary">
+                                        {partnership.batterNames[0] ?? "Unknown"}
+                                      </div>
+                                      <div className="relative h-2 rounded-l bg-black/[0.06] dark:bg-white/[0.08]">
+                                        <span className="absolute inset-y-0 right-0 rounded-l bg-accent" style={{ width: `${leftWidth}%` }} />
+                                      </div>
+                                    </div>
+                                    <div className="relative z-10 rounded border border-accent/40 bg-surface px-1.5 py-1.5 text-center shadow-sm">
+                                      <div className="font-anton text-[14px] leading-none text-accent">{partnership.runs}</div>
+                                      <div className="mt-0.5 font-space-mono text-[6px] font-bold uppercase text-text-secondary">
+                                        {partnership.balls} balls
+                                      </div>
+                                    </div>
+                                    <div className="min-w-0">
+                                      <div className="mb-1.5 truncate font-space-mono text-[9px] font-semibold text-text-primary">
+                                        {partnership.batterNames[1] ?? "Unknown"}
+                                      </div>
+                                      <div className="relative h-2 rounded-r bg-black/[0.06] dark:bg-white/[0.08]">
+                                        <span className="absolute inset-y-0 left-0 rounded-r bg-accent" style={{ width: `${rightWidth}%` }} />
+                                      </div>
+                                    </div>
+                                    <div className="pb-0.5 font-space-mono text-[8px] font-bold text-text-primary">
+                                      {rightRuns ?? "—"}{rightBalls === undefined ? "" : ` (${rightBalls})`}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <p className="mt-3 font-space-mono text-[8px] text-text-secondary">No partnership data available</p>
+                          )}
+                        </div>
                         </div>
                       ))}
                     </div>

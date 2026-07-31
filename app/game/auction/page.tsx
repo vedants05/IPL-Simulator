@@ -1699,7 +1699,6 @@ function TeamSquadCard({
                       .find((entry) => entry.playerId === p.id);
                     const price = auctionSale?.price
                       ?? sale?.price
-                      ?? p.iplHistory.find((h) => h.season === "2026")?.price
                       ?? p.iplHistory.find((h) => h.teamId !== "UNSOLD" && h.price > 0)?.price
                       ?? p.basePrice;
                     const isRtm = auctionSale ? wasPlayerAcquiredViaRtm(auctionSale) : false;

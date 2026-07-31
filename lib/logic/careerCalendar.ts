@@ -1,7 +1,7 @@
 export const DAY_SIMULATION_INTERVAL_MS = 1000;
 export const FAST_DAY_SIMULATION_INTERVAL_MS = DAY_SIMULATION_INTERVAL_MS / 2;
-export const SKIP_SIMULATION_MAX_SPEED_INTERVAL_MS = 50;
-export const SKIP_SIMULATION_SLOW_INTERVAL_MS = 400;
+export const SKIP_SIMULATION_MAX_SPEED_INTERVAL_MS = 5;
+export const SKIP_SIMULATION_SLOW_INTERVAL_MS = 30;
 
 export const TICKING_CALENDAR_OFFSETS = [-1, 0, 1, 2, 3, 4, 5] as const;
 
@@ -99,6 +99,37 @@ export function getCareerCalendarStep(
     blockedByFixture: Boolean(
       earliestUnplayedFixtureDate && earliestUnplayedFixtureDate <= nextDate,
     ),
+  };
+}
+
+/**
+ * Fast-forwarding does not need to persist every empty calendar day. Jump to
+ * the next fixture, season boundary, or requested target while preserving the
+ * exact order in which those events are processed.
+ */
+export function getCareerFastForwardStep(
+  currentDate: string,
+  fixtures: ReadonlyArray<CareerCalendarFixture>,
+  targetDate: string,
+  seasonBoundaryDate?: string | null,
+): CareerCalendarStep {
+  const normalStep = getCareerCalendarStep(currentDate, fixtures);
+  if (normalStep.blockedByFixture) return normalStep;
+
+  const earliestFutureFixtureDate = fixtures
+    .filter((fixture) => !fixture.played && Boolean(fixture.date && fixture.date > currentDate))
+    .map((fixture) => fixture.date as string)
+    .sort()[0];
+  const candidates = [
+    targetDate,
+    earliestFutureFixtureDate,
+    seasonBoundaryDate && seasonBoundaryDate > currentDate ? seasonBoundaryDate : null,
+  ].filter((date): date is string => Boolean(date && date > currentDate));
+  const nextDate = candidates.sort()[0] ?? normalStep.nextDate;
+
+  return {
+    nextDate,
+    blockedByFixture: nextDate === earliestFutureFixtureDate,
   };
 }
 

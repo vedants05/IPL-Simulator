@@ -4,9 +4,12 @@ import test from "node:test";
 import { dateKeyToLocalDate } from "./careerCalendar";
 import {
   LEAGUE_FIXTURE_COUNT,
+  PLAYOFF_TBD_TEAM_ID,
   generateBalancedLeagueFixtures,
   generateKnockoutFixtures,
+  getKnockoutStageLabel,
   getLeagueSeasonStartDate,
+  getMatchDisplayName,
 } from "./leagueSchedule";
 
 const teamIds = ["CSK", "DC", "GT", "KKR", "LSG", "MI", "PBKS", "RR", "RCB", "SRH"];
@@ -147,4 +150,23 @@ test("knockout fixtures follow the IPL bracket and requested spacing", () => {
   const eliminatorToQualifier2 = dayOffset(playoffs[1].date, playoffs[2].date);
   const qualifier2ToFinal = dayOffset(playoffs[2].date, playoffs[3].date);
   assert.ok(Math.abs(eliminatorToQualifier2 - qualifier2ToFinal) <= 1);
+});
+
+test("playoff labels survive legacy fixtures without stage metadata", () => {
+  assert.equal(getKnockoutStageLabel({ id: "playoff_q1_2027" }), "Qualifier 1");
+  assert.equal(getKnockoutStageLabel({ matchNumber: 72 }), "Eliminator");
+  assert.equal(getKnockoutStageLabel({ id: "playoff_q2_2027" }), "Qualifier 2");
+  assert.equal(getKnockoutStageLabel({ id: "playoff_final_2027" }), "Final");
+
+  assert.deepEqual(
+    getMatchDisplayName(
+      {
+        id: "playoff_q1_2027",
+        teamA: PLAYOFF_TBD_TEAM_ID,
+        teamB: PLAYOFF_TBD_TEAM_ID,
+      },
+      {},
+    ),
+    { label: "Qualifier 1", isPlayoffTbd: true },
+  );
 });

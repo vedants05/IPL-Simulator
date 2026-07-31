@@ -187,20 +187,12 @@ export function buildAuctionSets(players: Player[], isAccelerated = false): Auct
     return chunks;
   };
 
-  // 1. Marquee: anyone rated 85+ headlines the auction — a proven uncapped
-  // superstar (Suryavanshi-type) is marquee billing too, and must come up
-  // while teams still have full purses.
-  const marqueeEligible = playerPool.filter((p) => getRating(p) >= 84);
+  // Expanded marquee phase: every 81+ player is called while teams still have
+  // full purses, with stronger players assigned to earlier marquee tiers.
+  const marqueeEligible = playerPool.filter((p) => getRating(p) > 80);
   const marqueeIds = new Set(marqueeEligible.map((p) => p.id));
   const nonMarquee = playerPool.filter((p) => !marqueeIds.has(p.id));
-  const priorityUncappedIndianBowlers = nonMarquee.filter((p) =>
-    !p.isCapped &&
-    p.nationality === "Indian" &&
-    (p.role === "Pace Bowler" || p.role === "Spin Bowler") &&
-    getRating(p) >= 77
-  );
-  const priorityUncappedIndianBowlerIds = new Set(priorityUncappedIndianBowlers.map((p) => p.id));
-  const regularNonMarquee = nonMarquee.filter((p) => !priorityUncappedIndianBowlerIds.has(p.id));
+  const regularNonMarquee = nonMarquee;
 
   const rawSets: Array<{ id: string; name: string; pool: Player[] }> = [];
 
@@ -212,11 +204,6 @@ export function buildAuctionSets(players: Player[], isAccelerated = false): Auct
       pool: shuffleArray(chunk),
     });
   });
-
-  // High-rated uncapped Indian bowlers get quality sets of their own. They are
-  // inserted after the first capped-role cycle below: early enough for teams
-  // to have money, but not alongside the opening marquee lots.
-  const priorityBowlerTiers = buildTiers(priorityUncappedIndianBowlers);
 
   // 2. Capped then uncapped, in round-robin tier order: every category's
   // Set A first (best 10 of each role), then every Set B, then C, … so the
@@ -265,15 +252,6 @@ export function buildAuctionSets(players: Player[], isAccelerated = false): Auct
 
   const cappedNonMarquee = regularNonMarquee.filter((p) => p.isCapped);
   addRoundRobinTiers(cappedNonMarquee, "capped", 0, 1);
-  priorityBowlerTiers.forEach((chunk, i) => {
-    rawSets.push({
-      id: priorityBowlerTiers.length === 1 ? "priority_uncapped_indian_bowlers" : `priority_uncapped_indian_bowlers_${i + 1}`,
-      name: priorityBowlerTiers.length === 1
-        ? "High-Rated Uncapped Indian Bowlers"
-        : `High-Rated Uncapped Indian Bowlers Set ${String.fromCharCode(65 + i)}`,
-      pool: shuffleArray(chunk),
-    });
-  });
   addRoundRobinTiers(cappedNonMarquee, "capped", 1);
   addRoundRobinTiers(regularNonMarquee.filter((p) => !p.isCapped), "uncapped");
 
