@@ -107,23 +107,23 @@ export default function MatchScorecardModal({
       wickets: safeNum(inn.wickets),
       overs: safeNum(inn.overs),
       batting: (inn.batting ?? []).map((b) => ({
-        playerId: b.playerId ?? b.name,
+        playerId: b.id ?? b.name,
         name: b.name,
         dismissal: b.dismissal,
         runs: safeNum(b.runs),
         balls: safeNum(b.balls),
         fours: safeNum(b.fours),
         sixes: safeNum(b.sixes),
-        strikeRate: safeNum(b.strikeRate, b.balls ? (safeNum(b.runs) / Math.max(1, b.balls)) * 100 : 0),
+        strikeRate: b.balls ? (safeNum(b.runs) / Math.max(1, b.balls)) * 100 : 0,
       })),
       bowling: (inn.bowling ?? []).map((bw) => ({
-        playerId: bw.playerId ?? bw.name,
+        playerId: bw.id ?? bw.name,
         name: bw.name,
         overs: safeNum(bw.overs),
         maidens: safeNum(bw.maidens),
         runsConceded: safeNum(bw.runsConceded),
         wickets: safeNum(bw.wickets),
-        economy: safeNum(bw.economy, bw.overs ? safeNum(bw.runsConceded) / Math.max(0.1, bw.overs) : 0),
+        economy: bw.overs ? (safeNum(bw.runsConceded) * 6) / Math.max(1, bw.balls) : 0,
       })),
     }));
   } else if (match.scorecard) {
@@ -191,7 +191,7 @@ export default function MatchScorecardModal({
   const currentInnings = inningsList[selectedInningsIndex] ?? inningsList[0] ?? null;
 
   const resultText =
-    sim?.summary?.resultText ??
+    sim?.resultText ??
     match.archivedResultText ??
     (match.winner && match.winner !== "TIE"
       ? `${teams[match.winner]?.name ?? match.winner} won`
@@ -199,8 +199,8 @@ export default function MatchScorecardModal({
       ? "Match Completed"
       : "Upcoming Match");
 
-  const potmPlayer = sim?.summary?.playerOfTheMatch
-    ? players[sim.summary.playerOfTheMatch] ?? { name: sim.summary.playerOfTheMatch }
+  const potmPlayer = sim?.playerOfTheMatchId
+    ? players[sim.playerOfTheMatchId] ?? { name: sim.playerOfTheMatchName }
     : null;
 
   return (
@@ -276,7 +276,7 @@ export default function MatchScorecardModal({
           >
             Match Scorecard
           </button>
-          {sim?.ballByBall && sim.ballByBall.length > 0 && (
+          {sim?.innings?.some((innings) => innings.oversDetail.length > 0) && (
             <button
               type="button"
               onClick={() => setActiveTab("ballbyball")}
@@ -286,7 +286,7 @@ export default function MatchScorecardModal({
                   : "border-transparent text-text-secondary hover:text-text-primary"
               }`}
             >
-              Ball by Ball ({sim.ballByBall.length} Balls)
+              Ball by Ball
             </button>
           )}
           <button
@@ -437,7 +437,7 @@ export default function MatchScorecardModal({
                     {sim?.conditions?.stadiumName ?? teamA?.homeGround ?? "IPL Stadium"}
                   </div>
                   <div className="mt-1 font-space-mono text-xs text-text-secondary">
-                    Pitch Type: {sim?.conditions?.pitch?.type ?? "Standard Flat"}
+                    Pitch Type: {sim?.conditions?.pitchType ?? "Standard Flat"}
                   </div>
                 </div>
 
@@ -454,13 +454,13 @@ export default function MatchScorecardModal({
                 </div>
               </div>
 
-              {sim?.toss && (
+              {sim?.tossWinnerId && (
                 <div className="rounded-lg border border-border bg-bg p-4">
                   <div className="flex items-center gap-2 font-space-mono text-xs font-bold text-accent uppercase">
                     <Shield size={16} /> Toss Decision
                   </div>
                   <div className="mt-2 font-barlow text-sm text-text-primary">
-                    {teams[sim.toss.winnerId]?.name ?? sim.toss.winnerId} won the toss and elected to {sim.toss.decision}.
+                    {teams[sim.tossWinnerId]?.name ?? sim.tossWinnerId} won the toss and elected to {sim.tossDecision}.
                   </div>
                 </div>
               )}

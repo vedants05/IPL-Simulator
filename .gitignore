@@ -39,6 +39,7 @@ next-env.d.ts
 # build checks & simulation caches
 .next-runtime-check/
 .next-build-check/
+/.next-*-check/
 scripts/.player_cache.json
 simulation_*_report.json
 

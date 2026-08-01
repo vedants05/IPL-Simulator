@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, useLayoutEffect, useMemo, useRef, Suspense, useCallback, type CSSProperties } from "react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useGameStore, getSeasonDates } from "@/lib/store/gameStore";
 import { formatPrice } from "@/lib/logic/auctionRules";
@@ -59,15 +60,15 @@ import { getClubFigures, type ClubFigureTier } from "@/lib/data/clubFigures";
 import { HISTORICAL_LEAGUE_HISTORY, LEAGUE_HISTORY_TEAMS } from "@/lib/data/leagueHistory";
 import { OTHER_LEAGUE_RECORDS } from "@/lib/data/leagueRecords";
 import { computeDynamicLeagueRecords } from "@/lib/logic/leagueRecordTracker";
-import LeagueHallOfFame from "@/components/history/LeagueHallOfFame";
-import LeagueRecords from "@/components/history/LeagueRecords";
-import CaptaincyPage from "@/components/squad/CaptaincyPage";
-import SquadAnalysisPage from "@/components/squad/SquadAnalysisPage";
+const LeagueHallOfFame = dynamic(() => import("@/components/history/LeagueHallOfFame"), { ssr: false });
+const LeagueRecords = dynamic(() => import("@/components/history/LeagueRecords"), { ssr: false });
+const CaptaincyPage = dynamic(() => import("@/components/squad/CaptaincyPage"), { ssr: false });
+const SquadAnalysisPage = dynamic(() => import("@/components/squad/SquadAnalysisPage"), { ssr: false });
 import TacticsLineupBuilder from "@/components/squad/TacticsLineupBuilder";
-import TeamTacticsPage from "@/components/squad/TeamTacticsPage";
-import PitchCuratorPage from "@/components/club/PitchCuratorPage";
-import StadiumManagementPage from "@/components/club/StadiumManagementPage";
-import SocialMediaPage from "@/components/social/SocialMediaPage";
+const TeamTacticsPage = dynamic(() => import("@/components/squad/TeamTacticsPage"), { ssr: false });
+const PitchCuratorPage = dynamic(() => import("@/components/club/PitchCuratorPage"), { ssr: false });
+const StadiumManagementPage = dynamic(() => import("@/components/club/StadiumManagementPage"), { ssr: false });
+const SocialMediaPage = dynamic(() => import("@/components/social/SocialMediaPage"), { ssr: false });
 import { PlayerProfileModal } from "@/components/player/PlayerProfileModal";
 import { PlayoffDiagramContent, ScheduleTileContent } from "@/components/season/ScheduleTileContent";
 import { getCuratorPitch, getDefaultCuratorPitch, getHomeStadium } from "@/lib/data/pitchCurator";
@@ -147,6 +148,7 @@ import {
   ArrowUpRight,
   Crown,
   ShieldCheck,
+  FastForward,
 } from "lucide-react";
 
 interface PlayerStats {
@@ -731,6 +733,7 @@ function OverviewPageContent() {
   const fastForwardOriginDateRef = useRef<string | null>(null);
   const [pendingSkipTargetDate, setPendingSkipTargetDate] = useState<string | null>(null);
   const fixturesRef = useRef<Match[]>([]);
+  const lastCareerSaveRef = useRef<string | null>(null);
   const playerStatsRef = useRef<Record<string, PlayerStats>>({});
   const advanceOneDayRef = useRef<() => void>(() => undefined);
   const dayTickerRef = useRef<DayTickerController | null>(null);
@@ -1354,6 +1357,10 @@ function OverviewPageContent() {
         ?? teamTactics?.preset
         ?? "custom",
     };
+    // These fields are retained only as migration inputs for older saves.
+    // Do not keep them in new saves because they duplicate canonical values.
+    delete currentState.startingXI;
+    delete currentState.teamStrategy;
     if (Array.isArray(currentState.fixtures)) {
       const alreadySavedSimulationKeys = new Set(
         (Array.isArray(latestSavedState.fixtures) ? latestSavedState.fixtures as Match[] : [])
@@ -1387,8 +1394,11 @@ function OverviewPageContent() {
           : fixture
       ));
     }
+    const serializedState = JSON.stringify(currentState);
+    if (lastCareerSaveRef.current === serializedState) return;
     try {
-      localStorage.setItem(storageKey, JSON.stringify(currentState));
+      localStorage.setItem(storageKey, serializedState);
+      lastCareerSaveRef.current = serializedState;
     } catch (error) {
       if (error instanceof DOMException && error.name === "QuotaExceededError") {
         throw new Error(
@@ -3183,7 +3193,7 @@ function OverviewPageContent() {
         if (match.played && match.simulation?.innings) {
           match.simulation.innings.forEach((inn) => {
             (inn.batting ?? []).forEach((b) => {
-              const pId = b.playerId || b.name;
+              const pId = (b as any).playerId || b.name;
               if (!statsRecord[pId]) {
                 statsRecord[pId] = {
                   id: pId,
@@ -3203,7 +3213,7 @@ function OverviewPageContent() {
               statsRecord[pId].balls += b.balls ?? 0;
             });
             (inn.bowling ?? []).forEach((bw) => {
-              const pId = bw.playerId || bw.name;
+              const pId = (bw as any).playerId || bw.name;
               if (!statsRecord[pId]) {
                 statsRecord[pId] = {
                   id: pId,
@@ -4750,32 +4760,54 @@ function OverviewPageContent() {
             })}
           </div>
 
-          <div className="flex shrink-0 items-center">
+          <div className="flex shrink-0 items-center gap-2">
             {!isSimulatingDays && (
-              <button
-                ref={continueButtonRef}
-                type="button"
-                onClick={() => {
-                  if (pendingUserMatchdayFixture) {
-                    prepareUserFixtureSimulation(pendingUserMatchdayFixture);
-                    return;
-                  }
-                  startSimulating();
-                }}
-                disabled={Boolean(pendingUserMatchdayFixture) && !FIXTURE_SIMULATION_ENABLED}
-                aria-label={isTickerAtImpasse
-                  ? `Simulate ${pendingUserMatchdayFixture?.label ?? `fixture ${pendingUserMatchdayFixture?.matchNumber}`}`
-                  : "Continue day-by-day simulation"}
-                title={isTickerAtImpasse ? "Simulate this fixture, review the scorecard, then continue the season" : undefined}
-                className={`flex items-center gap-1.5 rounded px-3.5 py-1.5 font-space-mono text-[9px] font-bold uppercase tracking-wider text-white shadow-sm transition-all active:scale-95 disabled:cursor-not-allowed disabled:bg-text-secondary disabled:opacity-45 disabled:active:scale-100 ${
-                  isTickerAtImpasse
-                    ? "bg-accent hover:bg-accent/85"
-                    : "bg-success hover:bg-success/80"
-                }`}
-              >
-                <Play className="size-3 fill-current" aria-hidden="true" />
-                {isTickerAtImpasse ? "Simulate fixture" : "Continue"}
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const target = retentionDateString || getSeasonDates(currentSeason + 1).retentionDate;
+                    if (target && target > currentDate) {
+                      sessionStorage.setItem(CAREER_FAST_FORWARD_RECOVERY_KEY, target);
+                      setCareerFastForwardTarget(target);
+                      skipToCalendarDate(target, true);
+                    } else {
+                      showToast("Already at or past Retention Day.");
+                    }
+                  }}
+                  disabled={isSimulatingDays}
+                  className="flex items-center gap-1.5 rounded border border-danger/40 bg-danger/10 px-3 py-1.5 font-space-mono text-[9px] font-bold uppercase tracking-wider text-danger hover:bg-danger hover:text-white transition-all active:scale-95 disabled:opacity-45"
+                  title="Fast forward all matches straight to Retention Day"
+                >
+                  <FastForward className="size-3" aria-hidden="true" />
+                  Skip to Retention
+                </button>
+
+                <button
+                  ref={continueButtonRef}
+                  type="button"
+                  onClick={() => {
+                    if (pendingUserMatchdayFixture) {
+                      prepareUserFixtureSimulation(pendingUserMatchdayFixture);
+                      return;
+                    }
+                    startSimulating();
+                  }}
+                  disabled={Boolean(pendingUserMatchdayFixture) && !FIXTURE_SIMULATION_ENABLED}
+                  aria-label={isTickerAtImpasse
+                    ? `Simulate ${pendingUserMatchdayFixture?.label ?? `fixture ${pendingUserMatchdayFixture?.matchNumber}`}`
+                    : "Continue day-by-day simulation"}
+                  title={isTickerAtImpasse ? "Simulate this fixture, review the scorecard, then continue the season" : undefined}
+                  className={`flex items-center gap-1.5 rounded px-3.5 py-1.5 font-space-mono text-[9px] font-bold uppercase tracking-wider text-white shadow-sm transition-all active:scale-95 disabled:cursor-not-allowed disabled:bg-text-secondary disabled:opacity-45 disabled:active:scale-100 ${
+                    isTickerAtImpasse
+                      ? "bg-accent hover:bg-accent/85"
+                      : "bg-success hover:bg-success/80"
+                  }`}
+                >
+                  <Play className="size-3 fill-current" aria-hidden="true" />
+                  {isTickerAtImpasse ? "Simulate fixture" : "Continue"}
+                </button>
+              </>
             )}
           </div>
         </header>

@@ -127,14 +127,13 @@ export function mapRowsToPlayers(data: any[]): Player[] {
     const isIplCaptaincyUnavailable = name === "MS Dhoni" || row.ipl_captain_desire === false;
     const battingAggression = parseInt(row.batting_aggression) || 50;
     
-    const isRahane = name === "Ajinkya Rahane";
     const isPhillips = name === "Glenn Phillips";
     const isTripathi = name === "Rahul Tripathi";
     const hasBattedAt3 = isPhillips ? true : row.has_batted_at_3 === true;
-    const hasBattedAt4 = isRahane ? false : row.has_batted_at_4 === true;
-    const hasBattedAt5 = isRahane ? false : row.has_batted_at_5 === true;
-    const hasBattedAt6 = (isRahane || isTripathi) ? false : row.has_batted_at_6 === true;
-    const hasBattedAt7 = (isRahane || isTripathi) ? false : row.has_batted_at_7 === true;
+    const hasBattedAt4 = row.has_batted_at_4 === true;
+    const hasBattedAt5 = row.has_batted_at_5 === true;
+    const hasBattedAt6 = isTripathi ? false : row.has_batted_at_6 === true;
+    const hasBattedAt7 = isTripathi ? false : row.has_batted_at_7 === true;
 
     const playerRating = Math.max(curBat, curBowl);
     const base = calculateBasePrice(isCapped, nat, playerRating, reputation);

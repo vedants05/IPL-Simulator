@@ -24,7 +24,7 @@ export default function MatchTile({
   const teamBLabel = teamB?.shortName ?? match.teamB;
 
   const resultText =
-    match.simulation?.summary?.resultText ??
+    match.simulation?.resultText ??
     match.archivedResultText ??
     (match.winner && match.winner !== "TIE"
       ? `${teams[match.winner]?.shortName ?? match.winner} won`
