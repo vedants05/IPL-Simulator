@@ -24,23 +24,24 @@ function InningsHeader({
   innings: MatchInnings;
   teams: Record<string, Team>;
 }) {
+  const oversNum = typeof innings?.overs === "number" ? innings.overs : 0;
   return (
     <div className="flex flex-wrap items-end justify-between gap-3 border-b-2 border-border pb-3">
       <div>
         <div className="font-space-mono text-[8px] font-bold uppercase tracking-[0.18em] text-text-secondary">
-          Innings {innings.inningsNumber}
+          Innings {innings?.inningsNumber ?? 1}
         </div>
         <div className="mt-1 font-anton text-[20px] uppercase text-text-primary">
-          {teams[innings.battingTeamId]?.name ?? innings.battingTeamId}
+          {teams[innings?.battingTeamId]?.name ?? innings?.battingTeamId ?? "Batting Team"}
         </div>
       </div>
       <div className="text-right">
         <div className="font-anton text-[28px] leading-none text-text-primary">
-          {innings.runs}/{innings.wickets}
+          {innings?.runs ?? 0}/{innings?.wickets ?? 0}
         </div>
         <div className="mt-1 font-space-mono text-[8px] uppercase text-text-secondary">
-          {innings.overs.toFixed(1)} overs
-          {innings.target ? ` · Target ${innings.target}` : ""}
+          {oversNum.toFixed(1)} overs
+          {innings?.target ? ` · Target ${innings.target}` : ""}
         </div>
       </div>
     </div>
@@ -55,12 +56,25 @@ export default function BallByBallSummary({
   teams: Record<string, Team>;
 }) {
   const [inningsNumber, setInningsNumber] = useState<1 | 2>(1);
-  const innings = simulation.innings[inningsNumber - 1];
-  const overs = useMemo(() => (
-    Array.from({ length: 20 }, (_, index) => (
+
+  if (!simulation || !simulation.innings || simulation.innings.length === 0) {
+    return (
+      <div className="py-8 text-center font-space-mono text-xs text-text-secondary">
+        No ball-by-ball delivery log recorded for this match.
+      </div>
+    );
+  }
+
+  const innings = simulation.innings[inningsNumber - 1] ?? simulation.innings[0];
+
+  const overs = useMemo(() => {
+    if (!innings || !innings.oversDetail) return [];
+    return Array.from({ length: 20 }, (_, index) => (
       innings.oversDetail.find((over) => over.number === index + 1) ?? null
-    ))
-  ), [innings]);
+    ));
+  }, [innings]);
+
+  if (!innings) return null;
 
   return (
     <div className="space-y-4">
@@ -69,7 +83,7 @@ export default function BallByBallSummary({
           <button
             key={candidate.inningsNumber}
             type="button"
-            onClick={() => setInningsNumber(candidate.inningsNumber)}
+            onClick={() => setInningsNumber(candidate.inningsNumber as 1 | 2)}
             className={`min-w-[130px] rounded-md border-2 px-3 py-2 text-left transition-colors ${
               inningsNumber === candidate.inningsNumber
                 ? "border-accent bg-accent/10"
@@ -100,58 +114,55 @@ export default function BallByBallSummary({
             {over ? (
               <>
                 <div className="min-w-0">
-                  <div className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Bowler</div>
-                  <div className="truncate font-space-mono text-[9px] font-bold text-text-primary">{over.bowlerName}</div>
-                </div>
-                <div className="min-w-0">
-                  <div className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Batters faced</div>
-                  <div className="truncate font-space-mono text-[8px] text-text-primary">
-                    {over.batterNames.join(" · ")}
+                  <div className="truncate font-barlow text-xs font-bold text-text-primary">
+                    {over.bowlerName}
+                  </div>
+                  <div className="font-space-mono text-[8px] text-text-secondary">
+                    {over.runsConceded} runs · {over.wickets} wickets
                   </div>
                 </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {over.deliveries.map((delivery) => (
-                    <div key={delivery.id} className="group relative">
-                      <button
-                        type="button"
-                        aria-label={`${delivery.displayBall}: ${delivery.bowlerName} to ${delivery.strikerName}, ${delivery.commentary}`}
-                        className={`flex h-7 min-w-7 items-center justify-center rounded-full border px-1.5 font-space-mono text-[8px] font-bold ${deliveryTone(delivery)}`}
-                      >
-                        {delivery.resultCode}
-                      </button>
-                      <div
-                        className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 hidden w-64 -translate-x-1/2 isolate rounded-md border-2 border-[var(--ink)] p-3 text-left opacity-100 shadow-2xl group-hover:block group-focus-within:block"
-                        style={{ backgroundColor: "var(--surface)" }}
-                      >
-                        <div className="font-space-mono text-[7px] font-bold uppercase text-accent">
-                          Ball {delivery.displayBall}
-                        </div>
-                        <div className="mt-1 font-space-mono text-[9px] font-bold text-text-primary">
-                          {delivery.bowlerName} to {delivery.strikerName}
-                        </div>
-                        <div className="mt-1 font-space-mono text-[7px] text-text-secondary">
-                          Non-striker: {delivery.nonStrikerName}
-                        </div>
-                        <div className="mt-2 border-t border-border pt-2 font-space-mono text-[8px] leading-relaxed text-text-primary">
-                          {delivery.commentary}
-                        </div>
-                        <div className="mt-2 font-space-mono text-[7px] font-bold uppercase text-text-secondary">
-                          Score: {delivery.scoreAfter}/{delivery.wicketsAfter}
-                        </div>
-                      </div>
+
+                <div className="min-w-0">
+                  <div className="truncate font-barlow text-xs text-text-primary">
+                    {over.batterNames.join(" & ")}
+                  </div>
+                  <div className="font-space-mono text-[8px] text-text-secondary">
+                    {over.deliveries.length} balls
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-1">
+                  {over.deliveries.map((delivery, dIndex) => (
+                    <div
+                      key={dIndex}
+                      className={`flex size-6 items-center justify-center rounded border font-space-mono text-[9px] font-bold ${deliveryTone(
+                        delivery
+                      )}`}
+                      title={`${delivery.bowlerName} to ${delivery.batterName}: ${delivery.commentary}`}
+                    >
+                      {delivery.wicket
+                        ? "W"
+                        : delivery.runsOffBat > 0
+                        ? delivery.runsOffBat
+                        : delivery.extras > 0
+                        ? `+${delivery.extras}`
+                        : "•"}
                     </div>
                   ))}
                 </div>
+
                 <div className="text-right">
-                  <div className="font-anton text-[15px] text-text-primary">{over.runs} run{over.runs === 1 ? "" : "s"}</div>
-                  <div className="font-space-mono text-[7px] text-text-secondary">
-                    {over.scoreAfter}/{over.wicketsAfter}
+                  <div className="font-anton text-base text-text-primary">
+                    {over.runsConceded}
+                  </div>
+                  <div className="font-space-mono text-[8px] uppercase text-text-secondary">
+                    Over runs
                   </div>
                 </div>
               </>
             ) : (
-              <div className="col-span-4 font-space-mono text-[8px] uppercase text-text-secondary/60">
-                Not bowled
+              <div className="col-span-4 font-space-mono text-xs text-text-secondary">
+                Over not bowled
               </div>
             )}
           </div>

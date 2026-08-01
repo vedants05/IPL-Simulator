@@ -35,3 +35,10 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 .env.local
+
+# build checks & simulation caches
+.next-runtime-check/
+.next-build-check/
+scripts/.player_cache.json
+simulation_*_report.json
+
