@@ -27,7 +27,7 @@ import {
   buildAutomaticLineupSelection,
   playerToLineupCandidate,
 } from "@/lib/logic/automaticLineupBuilder";
-import type { PlayerInjury } from "@/lib/logic/injuries";
+import { type PlayerInjury, getInjuryReturnLabel } from "@/lib/logic/injuries";
 import type { Player, Team } from "@/lib/types";
 
 interface TacticsLineupBuilderProps {
@@ -108,18 +108,37 @@ const OverseasMarker = () => (
   </span>
 );
 
-const InjuryMarker = ({ injury }: { injury?: PlayerInjury }) => injury ? (
-  <span
-    title={`${injury.conditionName} · ${injury.category === "major" ? "Unavailable" : `${injury.worseningRisk} worsening risk`}`}
-    className={`shrink-0 rounded-[2px] px-1.5 py-0.5 font-space-mono text-[9px] font-bold uppercase leading-none ${
-      injury.category === "major"
-        ? "bg-red-500/15 text-red-700 dark:text-red-300"
-        : "bg-amber-500/15 text-amber-700 dark:text-amber-300"
-    }`}
-  >
-    {injury.category}
-  </span>
-) : null;
+const InjuryMarker = ({ injury }: { injury?: PlayerInjury }) => {
+  if (!injury) return null;
+  const isMajor = injury.category === "major";
+  const colorClass = isMajor 
+    ? "bg-red-600 text-white hover:bg-red-700" 
+    : "bg-amber-500 text-black hover:bg-amber-600";
+  
+  return (
+    <span className="relative group inline-block cursor-help shrink-0">
+      <span className={`rounded px-1 py-[1px] font-space-mono text-[7px] font-bold uppercase leading-none tracking-tight ${colorClass}`}>
+        INJ
+      </span>
+      <span className={`pointer-events-none absolute bottom-full left-1/2 z-[999] mb-2 w-56 -translate-x-1/2 scale-95 rounded-lg border p-2.5 shadow-xl opacity-0 transition-all duration-150 group-hover:pointer-events-auto group-hover:opacity-100 group-hover:scale-100 ${isMajor ? "bg-red-950/95 border-red-500 text-red-100" : "bg-amber-950/95 border-amber-500 text-amber-100"}`}>
+        <span className="block font-bold text-xs uppercase mb-1 tracking-wide">{injury.conditionName}</span>
+        <span className="block text-[10px] opacity-90 leading-tight">
+          Severity: <strong className="capitalize">{injury.category}</strong>
+        </span>
+        <span className="block text-[10px] opacity-90 leading-tight mt-0.5">
+          {getInjuryReturnLabel(injury)}
+        </span>
+        {isMajor ? (
+          <span className="block text-[10px] text-red-400 font-bold mt-1.5 uppercase tracking-wide">Unavailable for Selection</span>
+        ) : (
+          <span className="block text-[10px] opacity-90 leading-tight mt-0.5">
+            Worsening Risk: <strong className="capitalize">{injury.worseningRisk}</strong>
+          </span>
+        )}
+      </span>
+    </span>
+  );
+};
 
 export default function TacticsLineupBuilder({
   team,
@@ -412,7 +431,7 @@ export default function TacticsLineupBuilder({
                   }}
                   onDragEnd={finishPlayerDrag}
                   title="Drop in the centre to swap positions, or on the top/bottom edge to insert"
-                  className={`relative grid min-h-0 cursor-grab grid-cols-[1.5rem_2.25rem_minmax(8rem,1fr)] items-center gap-2 overflow-hidden border bg-surface px-2.5 shadow-sm transition-[border-color,background-color,opacity,box-shadow] active:cursor-grabbing ${
+                  className={`relative grid min-h-0 cursor-grab grid-cols-[1.5rem_2.25rem_minmax(8rem,1fr)] items-center gap-2 overflow-visible border bg-surface px-2.5 shadow-sm transition-[border-color,background-color,opacity,box-shadow] active:cursor-grabbing ${
                     preview?.placement === "swap"
                       ? "border-accent bg-accent/[0.09] ring-2 ring-inset ring-accent"
                       : draggedPlayer?.id === player.id && draggedPlayer.source === "lineup"
@@ -440,7 +459,7 @@ export default function TacticsLineupBuilder({
                   <span className="flex h-[min(2rem,calc(100%_-_0.25rem))] aspect-square shrink-0 items-center justify-center self-center rounded-full bg-black/[0.05] font-anton text-[16px] leading-none text-text-primary dark:bg-white/[0.06]">
                     {index + 1}
                   </span>
-                  <button type="button" onClick={() => onOpenPlayer(player.id)} className="flex h-full min-h-0 min-w-0 flex-col justify-center self-center overflow-hidden text-left">
+                  <button type="button" onClick={() => onOpenPlayer(player.id)} className="flex h-full min-h-0 min-w-0 flex-col justify-center self-center overflow-visible text-left">
                     <span className="flex min-h-4 items-center gap-1.5 leading-none"><span className="truncate text-[14px] font-bold leading-none text-text-primary hover:underline">{player.name}</span>{player.nationality === "Overseas" && <OverseasMarker />}<InjuryMarker injury={injury} />{keeper && <span className={`inline-flex items-center px-1.5 py-0.5 font-space-mono text-[10px] font-bold leading-none ${keeper === "PT WK" ? "bg-amber-500/15 text-amber-700 dark:text-amber-300" : "bg-success/15 text-success"}`}>{keeper}</span>}</span>
                     <span className="mt-1 block truncate font-space-mono text-[10px] font-bold uppercase leading-none text-text-secondary [@media(max-height:650px)]:hidden">{roleLabel(player.role)}{player.isOpener ? " · Opener" : ""} · BAT {player.currentBatting} · BOWL {player.currentBowling}</span>
                   </button>
@@ -496,7 +515,7 @@ export default function TacticsLineupBuilder({
                       completeImpactDrop(index);
                     }}
                     onDragEnd={finishPlayerDrag}
-                    className={`relative flex h-full min-h-0 cursor-grab items-center gap-1.5 overflow-hidden border px-2 shadow-sm active:cursor-grabbing [@media(max-height:650px)]:px-1 ${
+                    className={`relative flex h-full min-h-0 cursor-grab items-center gap-1.5 overflow-visible border px-2 shadow-sm active:cursor-grabbing [@media(max-height:650px)]:px-1 ${
                       isPlayerIneligibleOS
                         ? "border-red-500/40 bg-red-500/[0.04]"
                         : preview
@@ -513,10 +532,10 @@ export default function TacticsLineupBuilder({
                     )}
                     <GripVertical size={14} className="shrink-0 text-text-secondary/55 [@media(max-height:650px)]:hidden" />
                     <span className={`flex h-[min(1.5rem,calc(100%_-_0.125rem))] aspect-square shrink-0 items-center justify-center rounded-full font-anton text-[12px] leading-none [@media(max-height:650px)]:text-[10px] ${isPlayerIneligibleOS ? "bg-red-500 text-white" : "bg-accent text-[#16130f]"}`}>{index + 1}</span>
-                    <button type="button" onClick={() => onOpenPlayer(player.id)} className="flex h-full min-h-0 min-w-0 flex-1 flex-col justify-center overflow-hidden text-left"><span className="flex items-center gap-1 text-[13px] font-bold leading-none text-text-primary"><span className="truncate hover:underline">{player.name}</span>{player.nationality === "Overseas" && <OverseasMarker />}</span><span className="mt-0.5 font-space-mono text-[9px] font-bold uppercase leading-none text-text-primary/75 [@media(max-height:800px)]:hidden">{roleLabel(player.role)}{keeper ? ` · ${keeper}` : ""}</span></button>
+                    <button type="button" onClick={() => onOpenPlayer(player.id)} className="flex h-full min-h-0 min-w-0 flex-1 flex-col justify-center overflow-visible text-left"><span className="flex items-center gap-1 text-[13px] font-bold leading-none text-text-primary"><span className="truncate hover:underline">{player.name}</span>{player.nationality === "Overseas" && <OverseasMarker />}</span><span className="mt-0.5 font-space-mono text-[9px] font-bold uppercase leading-none text-text-primary/75 [@media(max-height:800px)]:hidden">{roleLabel(player.role)}{keeper ? ` · ${keeper}` : ""}</span></button>
                     <InjuryMarker injury={injury} />
                     {isPlayerIneligibleOS && (
-                      <span className="shrink-0 rounded border border-red-500/30 bg-red-500/15 px-1.5 py-0.5 font-space-mono text-[9px] font-bold text-red-600 dark:text-red-400" title="Starting XI already has 4 Overseas players; this player cannot be subbed in">
+                      <span className="shrink-0 rounded border border-red-500/30 bg-red-500/15 px-1.5 py-0.5 font-space-mono text-[7px] font-bold text-red-600 dark:text-red-400" title="Starting XI already has 4 Overseas players; this player cannot be subbed in">
                         Ineligible (4 OS)
                       </span>
                     )}

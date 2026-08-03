@@ -133,97 +133,6 @@ const isCloseFixture = (fixture: SocialFixture) => {
   return Math.abs(fixture.scoreA.runs - fixture.scoreB.runs) <= 15;
 };
 
-/** Prevent individual-match copy from contradicting the scorecard. */
-function supportsMatchPerformanceComment(text: string, stats: SocialPlayerStats, tag?: string): boolean {
-  const lower = text.toLowerCase();
-  const runs = stats.runs ?? 0;
-  const balls = stats.balls ?? 0;
-  const strikeRate = balls > 0 ? runs / balls * 100 : 0;
-  const overs = stats.oversBowled ?? 0;
-  const wickets = stats.wickets ?? 0;
-  const fours = stats.fours ?? 0;
-  const sixes = stats.sixes ?? 0;
-  const economyRate = overs > 0 ? stats.runsConceded / overs : 0;
-  // Claims for which this scorecard does not currently expose a reliable
-  // player-level value are deliberately withheld. This keeps every template
-  // tied to a readable statistic instead of allowing a plausible-sounding
-  // but unverifiable sentence through.
-  if (/\b(catches?|stumpings?|run[- ]outs?|maidens?|extras?|dot balls?|fielding|new ball|powerplay|power play|middle overs?|death overs?|final delivery|final ball|last ball|last over|final over|over\s+\d+|required|off\s+\d+|chase|chasing|defend(?:ed|ing)?|winning runs|close(?:d|s)? it out)\b/.test(lower)) return false;
-  const halfCenturyClaim = /\b(half[- ]centur(?:y|ies)|fift(?:y|ies))\b/.test(lower);
-  const runClaim = lower.match(/\b(\d+)\s*[- ]?runs?\b/);
-  const wicketClaim = lower.match(/\b(\d+)\s*[- ]?wickets?\b/);
-  if (halfCenturyClaim && runs < 50) return false;
-  if (runClaim && !/\b(30s|thirties)\b/.test(lower) && runs < Number(runClaim[1])) return false;
-  if (wicketClaim && wickets < Number(wicketClaim[1])) return false;
-  // Explicit cricket language gets explicit thresholds. These checks run
-  // before the broader sentiment rules below so weak performances cannot be
-  // described with inflated wording.
-  if (/\b(explosive|explosively|brutal hitting|carnage|smashed|blitzed)\b/.test(lower)
-    && (balls < 3 || strikeRate < 180)) return false;
-  if (/\b(clean hitting|aggressive hitting|boundary hitting|boundary hitter|power hitting)\b/.test(lower)
-    && (balls < 5 || (strikeRate < 140 && fours + sixes < 3))) return false;
-  if (/\b(sixes|six-hitting|cleared the ropes)\b/.test(lower) && sixes < 1) return false;
-  if (/\b(boundar(?:y|ies)|boundary hitter)\b/.test(lower) && fours + sixes < 2 && strikeRate < 140) return false;
-  if (/\b(centur(?:y|ies)|hundred)\b/.test(lower) && runs < 100) return false;
-  if (/\b(double wicket|two wickets)\b/.test(lower) && wickets < 2) return false;
-  if (/\b(anchoring|anchor(?:ed)? the innings|responsible knock)\b/.test(lower)) {
-    const claimsHighSR = /150\+/.test(lower);
-    if (claimsHighSR) {
-      if (balls < 15 || strikeRate < 150 || runs < 40) return false;
-    } else {
-      if (balls < 10 || strikeRate > 145 || runs < 20) return false;
-    }
-  }
-  if (/\b(tight bowling|tight spell|lockdown bowling|lockdown spell|choking the run|run flow under control|economical|economy below)\b/.test(lower)
-    && (overs < 2 || economyRate > 7.5)) return false;
-  if (/\b(wicket-taking|wicket taker|wickets on lock|tearing through|breakthrough)\b/.test(lower)
-    && wickets < 2) return false;
-  // The current scorecard stores totals, not ball-by-ball phase splits. Do not
-  // publish player-specific powerplay/death/new-ball claims that cannot be
-  // proven from the available match data.
-  if (/\b(powerplay|power play|death overs?|new ball|middle overs?|over\s+\d+|final delivery)\b/.test(lower)) return false;
-  const isDismissalBattingComment = /\b(threw away|losing your wicket|wicket like that|disappointing dismissal|dismissal|low.?percentage shot)\b/.test(lower);
-  const explicitBattingClaim = /\b(bat|batter|batting|innings|runs?|strike rate|sixes|hitting|knock|scor(?:e|ing)|anchor|delivery|deliveries|boundar(?:y|ies)|clearing|ropes)\b/.test(lower) || isDismissalBattingComment;
-  const explicitBowlingClaim = /\b(bowl|bowler|bowling|wicket|yorker|economy|spinner|spin attack|pacer|pace attack|spell|turn|swing)\b/.test(lower);
-  if (explicitBattingClaim && balls <= 0) return false;
-  if (explicitBowlingClaim && overs <= 0) return false;
-  const isBowling = /\b(bowl|bowler|bowling|wicket|yorker|economy|spinner|spin attack|pacer|pace attack|death overs?|spell|new ball)\b/.test(lower)
-    && !isDismissalBattingComment;
-  const forcedBatting = tag === "batting_form";
-  const forcedBowling = tag === "bowling_form";
-  const isBatting = forcedBatting || isDismissalBattingComment || (!forcedBowling && !isBowling && /\b(bat|batter|batting|innings|runs?|strike rate|sixes|hitting|knock|scor(?:e|ing)|anchor|powerplay|delivery|deliveries|too long|bogged|dot balls|boundar(?:y|ies)|clearing|ropes)\b/.test(lower));
-  const isBowlingPerformance = forcedBowling || (!forcedBatting && isBowling);
-  if (isBatting) {
-    if (balls <= 0) return false;
-    if (/\b(threw away|losing your wicket|wicket like that|dismissal)\b/.test(lower)) {
-      return Boolean(stats.dismissal) && runs >= 15 && balls >= 10;
-    }
-    if (/\b(too many deliveries|taking too long|dot balls|slow|rusty|needs? to|struggl|poor|bad|rough|disappoint|pressure|bogged)\b/.test(lower)) {
-      return balls >= 10 && strikeRate <= 110 && runs <= 25;
-    }
-    // A “great innings/masterclass/crucial knock” needs a meaningful sample;
-    // three-ball cameos cannot satisfy these claims.
-    if (/\b(great|good|masterclass|clean hitting|what a way|setting the tempo|anchoring|pure class|freedom|timing|crucial knock|dominant|excellent|superb|brilliant|sensational|stellar|highest order|standout|bright spot|valuable|impact|performed|delivering|magic|flow|perfection|saver|clutch|flawless|champion|hero|heroics|splendid|unstoppable|class|elite|special|quality|unbelievable|incredible|dominating|domination|carrying|carry|bargain|prodigy|firing|star)\b/.test(lower)) {
-      return (runs >= 35 && balls >= 10) || (runs >= 29 && strikeRate >= 160 && balls >= 8);
-    }
-    if (/\b(powerplay|tempo|hitting|knock|innings)\b/.test(lower)) return runs >= 29 && (balls >= 8 || strikeRate >= 140);
-  }
-  if (isBowlingPerformance) {
-    if (overs <= 0) return false;
-    if (/\b(leaked|too many runs|radar|extras|expensive|poor|bad|struggl|rough|off)\b/.test(lower)) {
-      return economyRate >= 9.5 || (overs >= 2 && economyRate >= 9.0 && wickets === 0);
-    }
-    if (/\b(wicket|breakthrough|yorker|masterclass|quality|good|great|brilliant|sensational|stellar|choking|control|spell|swinging|turn|pace|standout|bright spot|valuable|impact|performed)\b/.test(lower)) {
-      return wickets >= 3 || (overs >= 3 && wickets >= 1 && economyRate <= 7.2) || (overs >= 2 && wickets >= 2 && economyRate <= 8.0);
-    }
-  }
-  if (tag && ["carry_to_top4", "final_performances", "playoff_games", "clutch", "team_retention"].includes(tag)) {
-    // Generic match-impact copy still needs measurable evidence even when its
-    // wording does not explicitly say batting or bowling.
-    return (balls >= 8 && runs >= 20) || (overs >= 2 && (wickets >= 1 || economyRate <= 7.5));
-  }
-  return true;
-}
 const TEAM_COLOUR_NAMES: Record<string, string> = {
   MI: "blue and gold", CSK: "yellow", KKR: "purple and gold", RCB: "red and black", DC: "red and blue",
   SRH: "orange and black", PBKS: "red and silver", RR: "pink and blue", GT: "navy and gold", LSG: "blue and orange",
@@ -866,18 +775,78 @@ function buildFeed(props: SocialMediaPageProps, activePlatform: SocialPlatform):
     phaseContext.phase === "pre_season"
     && /\b(pre-season form|looks? (intense|sharp|fit|lethal|settled|unplayable|in unbelievable touch)|camp|fitness levels?|interviews?|media day|no injury|arrived early|acclimatized|dressing room|coaching staff|tactical meetings?|preparation has been|squad bond)\b/i.test(text)
   );
-  const candidates = SOCIAL_COMMENTS.filter((template) => (
-    template.platforms.includes(activePlatform)
-    && !isTrainingComment(template.text)
-    && !referencesUnsupportedFeature(template.text)
-    && !isUnverifiedPreSeasonClaim(template.text)
-    && topicEligible(template.topic)
-    && (template.topic !== "team_form" || supportsTeamFormComment(template.text))
-    && supportsResultTone(template.text, template.topic)
-    && supportsMatchResultClaim(template.text, template.topic)
-    && (!template.tag.startsWith("losing_cause_") || Boolean(recent?.winner && recent.winner !== team.id))
-    && (template.topic === phaseContext.phase || template.phases.includes(phaseContext.phase))
-  ));
+  const standingsPoints = new Map<string, number>();
+  fixtures.forEach((f) => {
+    if (f.played && f.winner) {
+      standingsPoints.set(f.winner, (standingsPoints.get(f.winner) ?? 0) + 2);
+      const loser = f.winner === f.teamA ? f.teamB : f.teamA;
+      standingsPoints.set(loser, standingsPoints.get(loser) ?? 0);
+    }
+  });
+  const sortedTeams = Array.from(standingsPoints.entries())
+    .sort((a, b) => b[1] - a[1]);
+  const teamRank = sortedTeams.findIndex(([teamId]) => teamId === team.id) + 1;
+  const hasStandings = sortedTeams.length > 0;
+
+  const candidates = SOCIAL_COMMENTS.filter((template) => {
+    if (!template.platforms.includes(activePlatform)) return false;
+    if (isTrainingComment(template.text)) return false;
+    if (referencesUnsupportedFeature(template.text)) return false;
+    if (isUnverifiedPreSeasonClaim(template.text)) return false;
+    if (!topicEligible(template.topic)) return false;
+    if (template.topic !== phaseContext.phase && !template.phases.includes(phaseContext.phase)) return false;
+    
+    // Strict Win/Loss validation
+    const lastResult = lastTeamResult;
+    const reqs = template.requirements || [];
+    const isLossReq = reqs.some(r => r.includes("lost recent") || r.includes("team lost"));
+    const isWinReq = reqs.some(r => r.includes("won recent") || r.includes("team won"));
+    
+    if (isLossReq && lastResult !== "L") return false;
+    if (isWinReq && lastResult !== "W") return false;
+    
+    if (template.topic === "team_form") {
+      if (template.tone === "critical" && lastResult !== "L") return false;
+      if (["enthusiastic", "celebratory"].includes(template.tone) && lastResult !== "W") return false;
+    }
+    
+    if (template.tag.startsWith("losing_cause_") && lastResult !== "L") return false;
+
+    // Streaks
+    const winStreakReq = reqs.some(r => r.includes("winning streak") || r.includes("win streak"));
+    const lossStreakReq = reqs.some(r => r.includes("losing streak") || r.includes("loss streak"));
+    if (winStreakReq && (lastResult !== "W" || currentResultStreak < 2)) return false;
+    if (lossStreakReq && (lastResult !== "L" || currentResultStreak < 2)) return false;
+
+    // Standings / Positions
+    const topOfTableReq = reqs.some(r => r.includes("top of the table") || r.includes("first place"));
+    const top4Req = reqs.some(r => r.includes("top 4") || r.includes("top four"));
+    const top2Req = reqs.some(r => r.includes("top 2") || r.includes("top two"));
+    const bottomHalfReq = reqs.some(r => r.includes("bottom half") || r.includes("lower half"));
+    const qualifiedReq = reqs.some(r => r.includes("qualified") || r.includes("playoff qualification"));
+    
+    if (topOfTableReq && (!hasStandings || teamRank !== 1)) return false;
+    if (top4Req && (!hasStandings || teamRank < 1 || teamRank > 4)) return false;
+    if (top2Req && (!hasStandings || teamRank < 1 || teamRank > 2)) return false;
+    if (bottomHalfReq && (!hasStandings || teamRank <= 4)) return false;
+    if (qualifiedReq && (!hasStandings || teamRank > 4 || playedTeamFixtures.length < 10)) return false;
+
+    // Strict Chase vs Defend validation
+    if (recent && recent.scorecard && ["clutch", "individual_match", "team_form"].includes(template.topic)) {
+      const lowerText = template.text.toLowerCase();
+      const userBattedFirst = recent.scorecard.inningsA.batting.some(player => squad.some(p => p.id === player.id));
+      const teamWasChasing = !userBattedFirst;
+      const teamWasDefending = userBattedFirst;
+      
+      const claimsChase = /\b(needed \d+ off|chase|chasing|get \d+ runs off|get over the line)\b/i.test(lowerText);
+      const claimsDefend = /\b(defend|defended|defending|protect|choking the chase)\b/i.test(lowerText);
+      
+      if (claimsChase && !teamWasChasing) return false;
+      if (claimsDefend && !teamWasDefending) return false;
+    }
+    
+    return true;
+  });
   const seed = playedTeamFixtures.reduce((sum, fixture) => sum + fixture.matchNumber * 17 + (fixture.winner === team.id ? 7 : 3), team.id.length * 19);
   const rotated = candidates.length ? [...candidates.slice(seed % candidates.length), ...candidates.slice(0, seed % candidates.length)] : [];
   const pick = (pool: Player[], index: number) => pool[index % Math.max(1, pool.length)] ?? fallback[index % Math.max(1, fallback.length)];
@@ -990,6 +959,31 @@ function buildFeed(props: SocialMediaPageProps, activePlatform: SocialPlatform):
       if (currentEntry && structuredTemplate.maxPrice !== undefined && currentEntry.price > structuredTemplate.maxPrice) continue;
       if (currentEntry && structuredTemplate.minPrice !== undefined && currentEntry.price < structuredTemplate.minPrice) continue;
       if (!matchesEligibility(subject, structuredTemplate.eligible)) continue;
+
+      // Strict player-centric metadata requirements checks
+      const reqs = structuredTemplate.requirements || [];
+      const price = currentEntry ? currentEntry.price : 0;
+      
+      const priceHighReq = reqs.some(r => r.includes("price >= 1000") || r.includes("bought for price >= 1000") || r.includes("price >= 800") || r.includes("price >= 600"));
+      const priceLowReq = reqs.some(r => r.includes("price <= 400") || r.includes("bought for price <= 400") || r.includes("price <= 300"));
+      const youngsterReq = reqs.some(r => r.includes("youngster") || r.includes("young"));
+      const veteranReq = reqs.some(r => r.includes("veteran") || r.includes("senior"));
+      
+      if (priceHighReq) {
+        let minPriceLimit = 600;
+        if (reqs.some(r => r.includes("price >= 1000"))) minPriceLimit = 1000;
+        else if (reqs.some(r => r.includes("price >= 800"))) minPriceLimit = 800;
+        if (price < minPriceLimit) continue;
+      }
+      
+      if (priceLowReq) {
+        let maxPriceLimit = 400;
+        if (reqs.some(r => r.includes("price <= 300"))) maxPriceLimit = 300;
+        if (price > maxPriceLimit || price <= 0) continue;
+      }
+      
+      if (youngsterReq && subject.age >= 26) continue;
+      if (veteranReq && subject.age < 30) continue;
 
       // In-season performance/stats verification for all topics
       const hasSeasonStatsPhase = ["early_season", "mid_season", "late_season", "playoffs", "knocked_out", "next_season"].includes(phaseContext.phase);
@@ -1106,9 +1100,35 @@ function buildFeed(props: SocialMediaPageProps, activePlatform: SocialPlatform):
       const thirties = scores.filter((score) => score >= 30 && score < 50).length;
       if (thirties < 2) continue;
     }
-    if (performanceTopic && !template.tag.startsWith("losing_cause_") && (!stats || !supportsMatchPerformanceComment(template.text, stats, template.tag))) continue;
     if (structuredTemplate?.validatePerformance) {
-      if (!stats || !structuredTemplate.validatePerformance(stats)) continue;
+      const isDummy = structuredTemplate.validatePerformance.toString().replace(/\s/g, '').includes("=>true");
+      if (!isDummy) {
+        if (!stats || !structuredTemplate.validatePerformance(stats)) continue;
+      } else {
+        if (!stats) continue;
+        const tag = template.tag;
+        const isBatter = subject.currentBatting >= subject.currentBowling;
+        
+        if (tag === "batting_form") {
+          const runs = stats.runs ?? 0;
+          if (runs < 29) continue;
+        }
+        if (tag === "bowling_form") {
+          const wickets = stats.wickets ?? 0;
+          const overs = stats.oversBowled ?? 0;
+          const econ = overs > 0 ? stats.runsConceded / overs : 10;
+          if (wickets < 2 && econ > 7.0) continue;
+        }
+        if (tag === "price_tag_pressure") {
+          if (isBatter) {
+            const avg = stats.runs / Math.max(1, stats.matches || 1);
+            if (stats.runs < 80 || avg < 25) continue;
+          } else {
+            const econ = stats.oversBowled > 0 ? (stats.runsConceded / stats.oversBowled) : 10;
+            if (stats.wickets < 4 || econ > 8.5) continue;
+          }
+        }
+      }
     }
     if (template.tag.startsWith("losing_cause_") && stats) {
       const isBattingCause = template.tag === "losing_cause_batting";
@@ -1132,10 +1152,12 @@ function buildFeed(props: SocialMediaPageProps, activePlatform: SocialPlatform):
       : `₹${price} Lakhs`;
 
     const getStatsBracket = (): string => {
+      if (!template.text.includes("{a}")) return "";
       const lowerText = template.text.toLowerCase();
       const isBatter = subject.currentBatting >= subject.currentBowling;
       const isRecentForm = /\b(form|consistency|maintaining|continue|continuing|streak|rhythm|keeps? (it )?going|momentum|slump|decline|declining|in a row|consecutive|slumping|recent|last \d+ matches|last \d+ games)\b/i.test(lowerText);
-      const isSeason = /\b(season|year|campaign|price|auction|signing|bargain|value|mid-season|late-season)\b/i.test(lowerText) || ["price_tag", "youngsters"].includes(template.topic);
+      const isClutchOrMatch = ["individual_match", "clutch"].includes(template.topic);
+      const isSeason = !isClutchOrMatch && (/\b(season|year|campaign|price|auction|signing|bargain|value|mid-season|late-season)\b/i.test(lowerText) || ["price_tag", "youngsters"].includes(template.topic));
 
       const pStats = playerStats[subject.id];
       const rStats = recentMatchStats[subject.id];

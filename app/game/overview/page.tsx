@@ -6560,7 +6560,7 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}`;
                     })()}
                   </div>
 
-                  <div className="grid min-h-0 grid-cols-2 grid-rows-[minmax(0,1.55fr)_minmax(0,0.75fr)] gap-3">
+                  <div className="grid h-full min-h-0 grid-cols-[1fr_1fr] gap-3">
                     {/* Playing XIs Preview Tile */}
                     {(() => {
                       const batFirstSub = (battingFirstImpactPlayerId && players[battingFirstImpactPlayerId])
@@ -6603,7 +6603,7 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}`;
                         <button
                           type="button"
                           onClick={() => setActiveSubTab("playingxi")}
-                          className="group col-span-2 flex min-h-0 flex-col overflow-hidden rounded-lg border-2 border-border bg-surface p-3 text-left transition-all hover:border-accent hover:shadow-md"
+                          className="group col-span-1 flex h-full min-h-0 flex-col overflow-hidden rounded-lg border-2 border-border bg-surface p-3 text-left transition-all hover:border-accent hover:shadow-md"
                         >
                           <div className="mb-2 flex shrink-0 items-center justify-between border-b border-[#16130f]/10 pb-2">
                             <div className="flex items-center gap-2">
@@ -6665,11 +6665,14 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}`;
                       );
                     })()}
 
-                    {/* Team Tactics Preview Tile */}
+                    {/* Right Column: Stacks Tactics, Captaincy, and Injury Hub vertically */}
+                    <div className="flex h-full min-h-0 flex-col gap-3">
+                      {/* Team Tactics Preview Tile */}
                     <button
                       type="button"
                       onClick={() => setActiveSubTab("tactics")}
                       className="group flex min-h-0 flex-col justify-between overflow-hidden rounded-lg border-2 border-border bg-surface p-3 text-left transition-all hover:border-accent hover:shadow-md"
+                      style={{ flex: "1.5 1 0%" }}
                     >
                       <div>
                         <div className="mb-2 flex items-center justify-between border-b border-[#16130f]/10 pb-2">
@@ -6742,6 +6745,7 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}`;
                           type="button"
                           onClick={() => setActiveSubTab("captaincy")}
                           className="group flex min-h-0 flex-col overflow-hidden rounded-lg border-2 border-border bg-surface p-3 text-left transition-all hover:border-accent hover:shadow-md"
+                          style={{ flex: "1 1 0%" }}
                         >
                           <div className="mb-2 flex shrink-0 items-center justify-between border-b border-[#16130f]/10 pb-2">
                             <div className="flex items-center gap-2">
@@ -6785,6 +6789,64 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}`;
                         </button>
                       );
                     })()}
+
+                    {/* Injury Hub Preview Tile */}
+                    {(() => {
+                      const scopedActive = Object.values(activeInjuries).filter((injury) => (
+                        players[injury.playerId]?.currentTeamId === userTeam.id || injury.teamId === userTeam.id
+                      ));
+                      const majorCount = scopedActive.filter((injury) => injury.category === "major").length;
+                      const minorCount = scopedActive.filter((injury) => injury.category === "minor").length;
+                      const recoveredCount = injuryHistory.filter((injury) => (
+                        injury.teamId === userTeam.id
+                      )).length;
+
+                      return (
+                        <button
+                          type="button"
+                          onClick={() => setActiveSubTab("injuryhub")}
+                          className="group flex min-h-0 flex-col justify-between overflow-hidden rounded-lg border-2 border-border bg-surface p-2.5 text-left transition-all hover:border-accent hover:shadow-md"
+                          style={{ flex: "0.7 1 0%" }}
+                        >
+                          <div className="mb-1.5 flex shrink-0 items-center justify-between border-b border-[#16130f]/10 pb-1.5 w-full">
+                            <div className="flex items-center gap-1.5">
+                              <span className="flex size-6 items-center justify-center rounded-full bg-danger/15 text-danger">
+                                <Activity size={12} aria-hidden="true" />
+                              </span>
+                              <div>
+                                <h4 className="font-anton text-[13px] uppercase leading-none text-text-primary">Injury Hub</h4>
+                                <p className="mt-0.5 font-space-mono text-[6.5px] font-bold uppercase tracking-wide text-text-secondary">
+                                  Squad availability & physical condition
+                                </p>
+                              </div>
+                            </div>
+                            <span className="font-space-mono text-[8px] font-bold uppercase text-accent group-hover:underline">
+                              Open Hub →
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-4 gap-1.5 w-full">
+                            <div className="rounded border border-border/60 bg-bg/40 px-1.5 py-1 text-center">
+                              <div className="font-anton text-[14px] leading-none text-text-primary">{scopedActive.length}</div>
+                              <div className="mt-0.5 truncate font-space-mono text-[6px] font-bold uppercase text-text-secondary">Active</div>
+                            </div>
+                            <div className="rounded border border-border/60 bg-bg/40 px-1.5 py-1 text-center">
+                              <div className="font-anton text-[14px] leading-none text-amber-600 dark:text-amber-300">{minorCount}</div>
+                              <div className="mt-0.5 truncate font-space-mono text-[6px] font-bold uppercase text-text-secondary">Minor</div>
+                            </div>
+                            <div className="rounded border border-border/60 bg-bg/40 px-1.5 py-1 text-center">
+                              <div className="font-anton text-[14px] leading-none text-danger">{majorCount}</div>
+                              <div className="mt-0.5 truncate font-space-mono text-[6px] font-bold uppercase text-text-secondary">Major</div>
+                            </div>
+                            <div className="rounded border border-border/60 bg-bg/40 px-1.5 py-1 text-center">
+                              <div className="font-anton text-[14px] leading-none text-success">{recoveredCount}</div>
+                              <div className="mt-0.5 truncate font-space-mono text-[6px] font-bold uppercase text-text-secondary">Recovered</div>
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })()}
+                    </div>
                   </div>
 
                 </div>
