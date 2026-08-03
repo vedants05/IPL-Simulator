@@ -22,8 +22,12 @@ const isObject = (value: unknown): value is Record<string, unknown> => (
   Boolean(value) && typeof value === "object"
 );
 
-export const isInterestedInIplCaptaincy = (player: Player): boolean => (
+export const isInterestedInIplCaptaincy = (player: Player, activeSeason = 0): boolean => (
   !player.isIplCaptaincyUnavailable
+  && (
+    player.iplCaptaincyUninterestedThroughSeason === undefined
+    || (activeSeason > 0 && player.iplCaptaincyUninterestedThroughSeason < activeSeason)
+  )
 );
 
 export interface CaptaincyInterestStatus {
@@ -38,7 +42,7 @@ export function getCaptaincyInterestStatus(
   leadership: TeamLeadership,
   activeSeason: number,
 ): CaptaincyInterestStatus {
-  if (!isInterestedInIplCaptaincy(player) || leadership.permanentlyUninterestedPlayerIds.includes(player.id)) {
+  if (player.isIplCaptaincyUnavailable || leadership.permanentlyUninterestedPlayerIds.includes(player.id)) {
     return {
       interested: false,
       temporarilyUnavailable: false,
@@ -47,13 +51,16 @@ export function getCaptaincyInterestStatus(
     };
   }
 
-  const uninterestedThroughSeason = leadership.temporaryUninterestedThroughSeason[player.id] ?? null;
-  const temporarilyUnavailable = uninterestedThroughSeason !== null && uninterestedThroughSeason >= activeSeason;
+  const uninterestedThroughSeason = Math.max(
+    leadership.temporaryUninterestedThroughSeason[player.id] ?? -1,
+    player.iplCaptaincyUninterestedThroughSeason ?? -1,
+  );
+  const temporarilyUnavailable = uninterestedThroughSeason >= activeSeason;
   return {
     interested: !temporarilyUnavailable,
     temporarilyUnavailable,
     permanentlyUnavailable: false,
-    uninterestedThroughSeason,
+    uninterestedThroughSeason: temporarilyUnavailable ? uninterestedThroughSeason : null,
   };
 }
 
@@ -93,7 +100,7 @@ export function normalizeTeamLeadership(
 
   Object.entries(rawTemporaryInterest).forEach(([playerId, value]) => {
     const player = squadById.get(playerId);
-    if (!player || !isInterestedInIplCaptaincy(player) || typeof value !== "number" || !Number.isFinite(value)) return;
+    if (!player || !isInterestedInIplCaptaincy(player, activeSeason) || typeof value !== "number" || !Number.isFinite(value)) return;
     if (player.age >= 33) {
       permanentlyUninterestedPlayerIds.add(playerId);
       return;
@@ -110,7 +117,7 @@ export function normalizeTeamLeadership(
     : {};
   Object.entries(legacyTemporaryInterest).forEach(([playerId, value]) => {
     const player = squadById.get(playerId);
-    if (!player || !isInterestedInIplCaptaincy(player) || typeof value !== "number" || value <= gamesPlayed) return;
+    if (!player || !isInterestedInIplCaptaincy(player, activeSeason) || typeof value !== "number" || value <= gamesPlayed) return;
     if (player.age >= 33) {
       permanentlyUninterestedPlayerIds.add(playerId);
     } else {
@@ -122,7 +129,7 @@ export function normalizeTeamLeadership(
     const player = squadById.get(playerId);
     return Boolean(
       player
-      && isInterestedInIplCaptaincy(player)
+      && isInterestedInIplCaptaincy(player, activeSeason)
       && !permanentlyUninterestedPlayerIds.has(playerId)
       && temporaryUninterestedThroughSeason[playerId] === undefined,
     );

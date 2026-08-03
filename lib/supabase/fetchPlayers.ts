@@ -93,14 +93,16 @@ export function genPotential(curBat: number, potBat: number, curBowl: number, po
 export function mapRowsToPlayers(data: any[]): Player[] {
   const seenIds = new Set<string>();
 
-  return data.map((row: any) => {
+  return data
+    .filter((row: any) => String(row.name ?? "").trim().toLocaleLowerCase("en-GB") !== "ajinkya rahane")
+    .map((row: any) => {
     const rawTeam = row.team || "";
     const teamId = TEAM_MAP[rawTeam] || null;
     const name = row.name;
     const age = parseInt(row.age) || 0;
     const salary = parseFloat(row.ipl_2026_salary) || 0;
     const nat = row.overseas_status === "Overseas" ? "Overseas" : "Indian";
-    const isCapped = row.status === "Capped";
+    const isCapped = row.status === "Capped" || name === "Yash Thakur";
     const role = (ROLE_MAP[row.primary_role] ?? "Batsman") as Role;
     const bowlType = row.bowling_type || "NA";
     const batHand = (row.batting_hand || "").includes("LHB") || (row.batting_hand || "").toLowerCase().includes("left") ? "Left-hand" : "Right-hand";
@@ -207,6 +209,7 @@ export function mapRowsToPlayers(data: any[]): Player[] {
         name,
         age,
         nationality: nat as Nationality,
+        country: row.nationality || (nat === "Indian" ? "India" : "Overseas"),
         role,
         battingStyle: batHand as any,
         bowlingStyle: bowlStyle(bowlType),
@@ -243,7 +246,7 @@ export function mapRowsToPlayers(data: any[]): Player[] {
         hasBattedAt6,
         hasBattedAt7,
       };
-  });
+    });
 }
 let serverCachedPlayers: Player[] | null = null;
 let clientCachedPlayers: Player[] | null = null;

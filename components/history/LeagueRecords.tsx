@@ -13,9 +13,13 @@ import { computeDynamicLeagueRecords } from "@/lib/logic/leagueRecordTracker";
 import { LEAGUE_HISTORY_TEAMS } from "@/lib/data/leagueHistory";
 import type { Player, Team } from "@/lib/types";
 import type { OtherLeagueRecord } from "@/lib/data/leagueRecords";
+import type { HistoricalPlayerSnapshot } from "@/lib/logic/careerLifecycle";
+import { formatStatValue } from "@/lib/logic/statFormatting";
+import { getTeamColorStyle } from "@/lib/theme/teamColors";
 
 interface LeagueRecordsProps {
   players: Record<string, Player>;
+  retiredPlayerSnapshots?: Record<string, HistoricalPlayerSnapshot>;
   teams: Record<string, Team>;
   onOpenPlayer: (playerId: string) => void;
   fixtures?: Array<any>;
@@ -42,17 +46,48 @@ interface MajorRecordColumn {
   accent: string;
   icon: typeof Trophy;
   format: (value: number) => string;
-  liveValue: (player: Player) => number;
-  qualifies: (player: Player) => boolean;
+  liveValue: (player: CareerRecordCandidate) => number;
+  qualifies: (player: CareerRecordCandidate) => boolean;
   retiredQualifies?: (entry: RetiredRecordEntry) => boolean;
+}
+
+interface CareerRecordCandidate {
+  id: string;
+  name: string;
+  currentTeamId: string | null;
+  iplStats: Player["iplStats"];
 }
 
 const normalizeName = (name: string) => name.toLocaleLowerCase("en-GB").replace(/[^a-z0-9]/g, "");
 const integer = (value: number) => Math.round(value).toLocaleString("en-IN");
 
-export default function LeagueRecords({ players, teams, onOpenPlayer, fixtures, seasonArchives = [] }: LeagueRecordsProps) {
+export default function LeagueRecords({
+  players,
+  retiredPlayerSnapshots = {},
+  teams,
+  onOpenPlayer,
+  fixtures,
+  seasonArchives = [],
+}: LeagueRecordsProps) {
   const playerList = Object.values(players).filter((player) => player.iplStats.matches > 0);
-  const playersByName = new Map(playerList.map((player) => [normalizeName(player.name), player]));
+  const activePlayerIds = new Set(Object.keys(players));
+  const activePlayerNames = new Set(Object.values(players).map((player) => normalizeName(player.name)));
+  const retiredPlayerList: CareerRecordCandidate[] = Object.values(retiredPlayerSnapshots)
+    .filter((snapshot) => (
+      snapshot.iplStats.matches > 0
+      && !activePlayerIds.has(snapshot.id)
+      && !activePlayerNames.has(normalizeName(snapshot.name))
+    ))
+    .map((snapshot) => ({
+      id: snapshot.id,
+      name: snapshot.name,
+      currentTeamId: null,
+      iplStats: snapshot.iplStats,
+    }));
+  const playersByName = new Map([
+    ...retiredPlayerList.map((player) => [normalizeName(player.name), player] as const),
+    ...playerList.map((player) => [normalizeName(player.name), player] as const),
+  ]);
 
   const replaceRecord = (records: OtherLeagueRecord[], replacement: OtherLeagueRecord) => (
     records.map((record) => record.id === replacement.id ? replacement : record)
@@ -124,7 +159,7 @@ export default function LeagueRecords({ players, teams, onOpenPlayer, fixtures, 
       qualifier: "50 games · 1,000 runs",
       accent: "#16876f",
       icon: Sparkles,
-      format: (value) => value.toFixed(2),
+      format: formatStatValue,
       liveValue: (player) => player.iplStats.battingAverage,
       qualifies: (player) => qualifiesForBattingAverageRecord(player.iplStats),
       retiredQualifies: (entry) => qualifiesForBattingAverageRecord({
@@ -145,13 +180,24 @@ export default function LeagueRecords({ players, teams, onOpenPlayer, fixtures, 
         playerId: player.id,
         retired: false,
       }));
-    const liveNames = new Set(liveEntries.map((entry) => normalizeName(entry.name)));
-    const retiredEntries = RETIRED_MAJOR_RECORDS[column.id]
+    const careerRetiredEntries = retiredPlayerList
+      .filter(column.qualifies)
+      .map((player) => ({
+        name: player.name,
+        value: column.liveValue(player),
+        teamId: player.currentTeamId,
+        playerId: player.id,
+        retired: true,
+      }));
+    const resolvedNames = new Set(
+      [...liveEntries, ...careerRetiredEntries].map((entry) => normalizeName(entry.name)),
+    );
+    const historicRetiredEntries = RETIRED_MAJOR_RECORDS[column.id]
       .filter((entry) => column.retiredQualifies?.(entry) ?? true)
-      .filter((entry) => !liveNames.has(normalizeName(entry.name)))
+      .filter((entry) => !resolvedNames.has(normalizeName(entry.name)))
       .map((entry) => ({ ...entry, playerId: null, retired: true }));
 
-    return [...liveEntries, ...retiredEntries]
+    return [...liveEntries, ...careerRetiredEntries, ...historicRetiredEntries]
       .sort((left, right) => right.value - left.value)
       .slice(0, 5);
   };
@@ -206,7 +252,12 @@ export default function LeagueRecords({ players, teams, onOpenPlayer, fixtures, 
                         <span className="min-w-0">
                           <span className="block truncate text-[11px] font-semibold text-text-primary">{entry.name}</span>
                           <span className="mt-0.5 flex items-center gap-1.5 font-space-mono text-[7px] font-bold uppercase text-text-secondary">
-                            {team && <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: team.primaryColor }} />}
+                            {team && (
+                              <span
+                                className="h-1.5 w-1.5 rounded-full bg-[var(--team-primary-color)] dark:bg-[var(--team-primary-color-dark)]"
+                                style={getTeamColorStyle(team)}
+                              />
+                            )}
                             {entry.retired ? "Retired" : entry.teamId ? team?.shortName ?? entry.teamId : "Free agent"}
                           </span>
                         </span>
@@ -241,7 +292,7 @@ export default function LeagueRecords({ players, teams, onOpenPlayer, fixtures, 
             {otherRecords.map((record) => {
               const linkedPlayer = record.playerNames
                 ?.map((name) => playersByName.get(normalizeName(name)))
-                .find((player): player is Player => Boolean(player));
+                .find((player): player is CareerRecordCandidate => Boolean(player));
               const content = (
                 <>
                   <span className="min-w-0 flex-1">

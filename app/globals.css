@@ -66,6 +66,35 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* Highest-score values in Tournament Stats establish the minimum readable
+   compact type size. Keep every smaller app utility at that 11px floor. */
+.readable-ui :where(
+  [class~="text-[6px]"],
+  [class~="text-[6.5px]"],
+  [class~="text-[7px]"],
+  [class~="text-[7.5px]"],
+  [class~="text-[8px]"],
+  [class~="text-[8.5px]"],
+  [class~="text-[9px]"],
+  [class~="text-[9.5px]"],
+  [class~="text-[10px]"],
+  [class~="text-[10.5px]"]
+) {
+  font-size: 0.6875rem !important;
+}
+
+/* History pages intentionally retain their denser archival typography. */
+.readable-ui .compact-history :where([class~="text-[6px]"]) { font-size: 6px !important; }
+.readable-ui .compact-history :where([class~="text-[6.5px]"]) { font-size: 6.5px !important; }
+.readable-ui .compact-history :where([class~="text-[7px]"]) { font-size: 7px !important; }
+.readable-ui .compact-history :where([class~="text-[7.5px]"]) { font-size: 7.5px !important; }
+.readable-ui .compact-history :where([class~="text-[8px]"]) { font-size: 8px !important; }
+.readable-ui .compact-history :where([class~="text-[8.5px]"]) { font-size: 8.5px !important; }
+.readable-ui .compact-history :where([class~="text-[9px]"]) { font-size: 9px !important; }
+.readable-ui .compact-history :where([class~="text-[9.5px]"]) { font-size: 9.5px !important; }
+.readable-ui .compact-history :where([class~="text-[10px]"]) { font-size: 10px !important; }
+.readable-ui .compact-history :where([class~="text-[10.5px]"]) { font-size: 10.5px !important; }
+
 html,
 body {
   width: 100%;
@@ -144,7 +173,7 @@ body {
 
 .squad-overview-summary,
 .squad-overview-heading {
-  font-size: clamp(0.4375rem, 1.8cqi, 0.5rem);
+  font-size: 0.6875rem;
 }
 
 .squad-overview-grid {
@@ -156,11 +185,11 @@ body {
 }
 
 .squad-overview-row {
-  font-size: clamp(0.5625rem, 2.35cqi, 0.75rem);
+  font-size: clamp(0.6875rem, 2.35cqi, 0.75rem);
 }
 
 .squad-overview-role {
-  font-size: clamp(0.5rem, 2cqi, 0.625rem);
+  font-size: 0.6875rem;
 }
 
 .squad-overview-ability-grid {
@@ -168,11 +197,11 @@ body {
 }
 
 .squad-overview-rating {
-  font-size: clamp(0.5625rem, 2.2cqi, 0.6875rem);
+  font-size: 0.6875rem;
 }
 
 .squad-overview-allrounder-rating {
-  font-size: clamp(0.4375rem, 1.85cqi, 0.625rem);
+  font-size: 0.6875rem;
 }
 
 .points-table-panel {
@@ -186,7 +215,7 @@ body {
 }
 
 .points-table-header {
-  font-size: clamp(0.5rem, 1.8cqh, 0.6875rem);
+  font-size: 0.6875rem;
 }
 
 .points-table-header th {
@@ -195,7 +224,7 @@ body {
 }
 
 .points-table-body {
-  font-size: clamp(0.625rem, 2cqh, 0.875rem);
+  font-size: clamp(0.6875rem, 2cqh, 0.875rem);
 }
 
 .points-table-body tr {
@@ -212,7 +241,7 @@ body {
 }
 
 .points-table-position {
-  font-size: clamp(0.5625rem, 1.8cqh, 0.75rem);
+  font-size: clamp(0.6875rem, 1.8cqh, 0.75rem);
 }
 
 .points-table-team {

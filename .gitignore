@@ -43,3 +43,13 @@ next-env.d.ts
 scripts/.player_cache.json
 simulation_*_report.json
 
+# Local-only simulation/calibration tooling
+/scripts/calibrate_*.ts
+/scripts/calculate_*_mvp.ts
+/scripts/run_*calibration*.ts
+/scripts/run_*simulation*.ts
+
+# Tests and local tooling are not required by the runtime bundle
+*.test.ts
+/scripts/
+

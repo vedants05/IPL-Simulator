@@ -348,14 +348,21 @@ function getOpeningPair(squad: readonly Player[]): Player[] {
 
 function getCaptain(squad: readonly Player[], requestedCaptainId?: string | null) {
   const requestedCaptain = requestedCaptainId
-    ? squad.find((player) => player.id === requestedCaptainId)
+    ? squad.find((player) => (
+        player.id === requestedCaptainId
+        && !player.isIplCaptaincyUnavailable
+        && player.iplCaptaincyUninterestedThroughSeason === undefined
+      ))
     : undefined;
   if (requestedCaptain) {
     return { player: requestedCaptain, provisional: false };
   }
 
   const provisionalCaptain = [...squad]
-    .filter((player) => !player.isIplCaptaincyUnavailable)
+    .filter((player) => (
+      !player.isIplCaptaincyUnavailable
+      && player.iplCaptaincyUninterestedThroughSeason === undefined
+    ))
     .sort((left, right) => (
       (right.captaincy ?? 0) - (left.captaincy ?? 0)
       || (right.reputation ?? 0) - (left.reputation ?? 0)

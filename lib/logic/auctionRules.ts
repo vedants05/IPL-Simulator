@@ -1,4 +1,5 @@
 import { Player, Team, AuctionSet } from "@/lib/types";
+import { getAuctionBowlingRating, getAuctionRating } from "./auctionMarket";
 
 export const TOTAL_PURSE_LAKHS = 12000; // ₹120 crore in lakhs
 export const MAX_AUCTION_TARGETS = 5;
@@ -42,8 +43,8 @@ export function getPlayerRetentionCost(
     })
     .map((id) => players[id])
     .sort((a, b) => {
-      const rA = Math.max(a.currentBatting || 0, a.currentBowling || 0);
-      const rB = Math.max(b.currentBatting || 0, b.currentBowling || 0);
+      const rA = getAuctionRating(a);
+      const rB = getAuctionRating(b);
       if (rB !== rA) return rB - rA;
       return a.id.localeCompare(b.id);
     });
@@ -65,8 +66,8 @@ export function calculateTotalRetentionCost(
     })
     .map((id) => players[id])
     .sort((a, b) => {
-      const rA = Math.max(a.currentBatting || 0, a.currentBowling || 0);
-      const rB = Math.max(b.currentBatting || 0, b.currentBowling || 0);
+      const rA = getAuctionRating(a);
+      const rB = getAuctionRating(b);
       if (rB !== rA) return rB - rA;
       return a.id.localeCompare(b.id);
     });
@@ -123,7 +124,7 @@ function shuffleArray<T>(array: T[]): T[] {
 }
 
 function getRating(p: Player): number {
-  return Math.max(p.currentBatting || 0, p.currentBowling || 0);
+  return getAuctionRating(p);
 }
 
 function getRoleGroup(p: Player): "WK" | "BAT" | "AR" | "PACE" | "SPIN" {
@@ -325,10 +326,10 @@ export function canTeamAffordBid(
 
     const fullTimeKeepersCount = squadPlayers.filter(isFullTimeKeeper).length;
     const spinnersCount = squadPlayers.filter(p => p.role === "Spin Bowler").length;
-    const qualitySpinOptionsCount = squadPlayers.filter(p => isSpinBowlingPlayer(p) && (p.currentBowling ?? 0) > 74).length;
+    const qualitySpinOptionsCount = squadPlayers.filter(p => isSpinBowlingPlayer(p) && getAuctionBowlingRating(p) > 74).length;
     
     const isIndianBatter = (p: Player) => p.nationality === "Indian" && (p.role === "Batsman" || p.role === "WK-Batsman");
-    const ratingOf = (p: Player) => Math.max(p.currentBatting ?? 0, p.currentBowling ?? 0);
+    const ratingOf = getAuctionRating;
     
     const indianBowlersCount = squadPlayers.filter(p => p.nationality === "Indian" && (p.role === "Pace Bowler" || p.role === "Spin Bowler")).length;
     const indianBatters74Count = squadPlayers.filter(p => isIndianBatter(p) && ratingOf(p) > 74).length;
@@ -392,7 +393,7 @@ export function getSquadConstraintWarnings(team: Team, players: Record<string, P
   }
 
   const isIndianBatter = (p: Player) => p.nationality === "Indian" && (p.role === "Batsman" || p.role === "WK-Batsman");
-  const ratingOf = (p: Player) => Math.max(p.currentBatting ?? 0, p.currentBowling ?? 0);
+  const ratingOf = getAuctionRating;
 
   const indianBatters74Count = squadPlayers.filter(p => isIndianBatter(p) && ratingOf(p) > 74).length;
   if (indianBatters74Count < 5) {

@@ -54,7 +54,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           }}
         />
       </head>
-      <body className="antialiased bg-bg text-text-primary font-barlow">
+      <body className="readable-ui antialiased bg-bg text-text-primary font-barlow">
         <ViewportScaler>{children}</ViewportScaler>
       </body>
     </html>

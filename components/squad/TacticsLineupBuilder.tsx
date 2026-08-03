@@ -27,6 +27,7 @@ import {
   buildAutomaticLineupSelection,
   playerToLineupCandidate,
 } from "@/lib/logic/automaticLineupBuilder";
+import type { PlayerInjury } from "@/lib/logic/injuries";
 import type { Player, Team } from "@/lib/types";
 
 interface TacticsLineupBuilderProps {
@@ -44,6 +45,7 @@ interface TacticsLineupBuilderProps {
   bowlingFirstImpactBattingPosition?: number | null;
   captainId?: string | null;
   viceCaptainId?: string | null;
+  activeInjuries?: Record<string, PlayerInjury>;
   onChangePlan: (plan: LineupPlan, lineup: string[], impactSubs: string[]) => void;
   onChangeBothPlans: (
     battingFirstXI: string[],
@@ -106,6 +108,19 @@ const OverseasMarker = () => (
   </span>
 );
 
+const InjuryMarker = ({ injury }: { injury?: PlayerInjury }) => injury ? (
+  <span
+    title={`${injury.conditionName} · ${injury.category === "major" ? "Unavailable" : `${injury.worseningRisk} worsening risk`}`}
+    className={`shrink-0 rounded-[2px] px-1.5 py-0.5 font-space-mono text-[9px] font-bold uppercase leading-none ${
+      injury.category === "major"
+        ? "bg-red-500/15 text-red-700 dark:text-red-300"
+        : "bg-amber-500/15 text-amber-700 dark:text-amber-300"
+    }`}
+  >
+    {injury.category}
+  </span>
+) : null;
+
 export default function TacticsLineupBuilder({
   team,
   players,
@@ -121,6 +136,7 @@ export default function TacticsLineupBuilder({
   bowlingFirstImpactBattingPosition,
   captainId,
   viceCaptainId,
+  activeInjuries = {},
   onChangePlan,
   onChangeBothPlans,
   onChangeImpactStrategy,
@@ -146,6 +162,10 @@ export default function TacticsLineupBuilder({
   const squad = useMemo(
     () => team.squad.map((id) => players[id]).filter((player): player is Player => Boolean(player)),
     [players, team.squad],
+  );
+  const selectableSquad = useMemo(
+    () => squad.filter((player) => activeInjuries[player.id]?.category !== "major"),
+    [activeInjuries, squad],
   );
   const candidates = useMemo(() => squad.map(playerToLineupCandidate), [squad]);
   const playerById = useMemo(() => new Map(squad.map((player) => [player.id, player])), [squad]);
@@ -185,6 +205,10 @@ export default function TacticsLineupBuilder({
   const setActivePlanState = (lineup: string[], impactSubs: string[]) => onChangePlan(activePlan, lineup, impactSubs);
 
   const beginPlayerDrag = (event: DragEvent<HTMLDivElement>, playerId: string, source: DragSource) => {
+    if (source === "pool" && activeInjuries[playerId]?.category === "major") {
+      event.preventDefault();
+      return;
+    }
     setDraggedPlayer({ id: playerId, source });
     setDragPreview(null);
     event.dataTransfer.effectAllowed = "move";
@@ -241,7 +265,7 @@ export default function TacticsLineupBuilder({
 
   const copyOtherPlan = () => setActivePlanState([...otherXI], [...otherImpactSubs]);
   const autoBuild = () => {
-    const recommended = buildAutomaticLineupSelection(squad, {
+    const recommended = buildAutomaticLineupSelection(selectableSquad, {
       captainId,
       viceCaptainId,
       useProvisionalCaptain: !captainId,
@@ -258,20 +282,20 @@ export default function TacticsLineupBuilder({
   const partTimeKeepers = activePlayers.filter((player) => player.isPartTimeWk);
 
   const handleQuickSubIntoXI = (player: Player) => {
-    if (activeXI.includes(player.id)) return;
+    if (activeXI.includes(player.id) || activeInjuries[player.id]?.category === "major") return;
     const targetPos = activeXI.length < 11 ? activeXI.length : 10;
     const next = dropPlayerIntoLineup(activeXI, activeImpactSubs, player.id, targetPos, "swap");
     setActivePlanState(next.lineup, next.impactSubs);
   };
 
   return (
-    <div className="flex h-full flex-1 min-h-0 flex-col overflow-hidden border-2 border-border bg-surface">
-      <div className="flex shrink-0 items-center justify-between border-b-2 border-border bg-[linear-gradient(110deg,rgba(var(--team-primary-rgb),0.12),transparent_48%)] px-5 py-3">
-        <div>
+    <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden border-2 border-border bg-surface">
+      <div className="flex min-w-0 shrink-0 items-center justify-between gap-3 border-b-2 border-border bg-[linear-gradient(110deg,rgba(var(--team-primary-rgb),0.12),transparent_48%)] px-5 py-3">
+        <div className="min-w-0">
           <p className="font-space-mono text-[12px] font-bold uppercase tracking-[0.18em] text-text-secondary">Matchday selection</p>
           <h3 className="mt-1 font-anton text-[26px] uppercase leading-none text-text-primary">Playing XI Builder</h3>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 shrink-0 items-center gap-2">
           <button type="button" onClick={autoBuild} className="flex items-center gap-2 border border-border bg-surface px-3 py-2 font-space-mono text-[12px] font-bold uppercase text-text-primary transition-colors hover:border-accent">
             <Sparkles size={16} className="text-accent" /> Auto-build both
           </button>
@@ -301,8 +325,8 @@ export default function TacticsLineupBuilder({
         })}
       </div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-[minmax(20rem,0.9fr)_minmax(28rem,1.3fr)_minmax(18rem,0.8fr)]">
-        <section className="flex min-h-0 flex-col border-r border-border">
+      <div className="grid min-h-0 min-w-0 flex-1 grid-cols-[minmax(18rem,0.9fr)_minmax(24rem,1.2fr)_minmax(20rem,1fr)] overflow-hidden">
+        <section className="flex min-h-0 min-w-0 flex-col overflow-hidden border-r border-border">
           <div className="shrink-0 border-b border-border p-3">
             <div className="flex items-center justify-between">
               <div><p className="font-space-mono text-[12px] font-bold uppercase tracking-[0.14em] text-text-secondary">Available squad</p><h4 className="mt-1 font-anton text-[20px] uppercase text-text-primary">Player pool</h4></div>
@@ -315,13 +339,15 @@ export default function TacticsLineupBuilder({
               const inXI = activeXI.includes(player.id);
               const isImpact = activeImpactSubs.includes(player.id);
               const keeper = keeperLabel(player, activePlayers);
+              const injury = activeInjuries[player.id];
+              const isUnavailable = injury?.category === "major";
               return (
                 <div
                   key={player.id}
-                  draggable
+                  draggable={!isUnavailable}
                   onDragStart={(event) => beginPlayerDrag(event, player.id, "pool")}
                   onDragEnd={finishPlayerDrag}
-                  className={`mb-1 grid min-h-14 cursor-grab grid-cols-[1.5rem_minmax(0,1fr)_3rem_3rem_5.5rem] items-center gap-1.5 border px-2.5 py-2 active:cursor-grabbing ${
+                  className={`mb-1 grid min-h-14 grid-cols-[1.5rem_minmax(0,1fr)_3rem_3rem_5.5rem] items-center gap-1.5 border px-2.5 py-2 ${isUnavailable ? "cursor-not-allowed opacity-65" : "cursor-grab active:cursor-grabbing"} ${
                     draggedPlayer?.id === player.id && draggedPlayer.source === "pool"
                       ? "border-accent opacity-40"
                       : inXI
@@ -333,23 +359,24 @@ export default function TacticsLineupBuilder({
                 >
                   <GripVertical size={16} className="text-text-secondary/55" />
                   <button type="button" onClick={() => onOpenPlayer(player.id)} className="min-w-0 text-left">
-                    <span className="flex min-h-4 items-center gap-1.5 leading-none"><span className="truncate text-[14px] font-bold leading-none text-text-primary hover:underline">{player.name}</span>{player.nationality === "Overseas" && <OverseasMarker />}{keeper && <span className={`inline-flex items-center px-1.5 py-0.5 font-space-mono text-[10px] font-bold leading-none ${keeper === "PT WK" ? "bg-amber-500/15 text-amber-700 dark:text-amber-300" : "bg-success/15 text-success"}`}>{keeper}</span>}</span>
+                    <span className="flex min-h-4 items-center gap-1.5 leading-none"><span className="truncate text-[14px] font-bold leading-none text-text-primary hover:underline">{player.name}</span>{player.nationality === "Overseas" && <OverseasMarker />}<InjuryMarker injury={injury} />{keeper && <span className={`inline-flex items-center px-1.5 py-0.5 font-space-mono text-[10px] font-bold leading-none ${keeper === "PT WK" ? "bg-amber-500/15 text-amber-700 dark:text-amber-300" : "bg-success/15 text-success"}`}>{keeper}</span>}</span>
                     <span className="mt-0.5 block font-space-mono text-[12px] font-bold uppercase text-text-secondary">{roleLabel(player.role)}</span>
                   </button>
                   <span className="text-center font-space-mono text-[13px] font-bold text-text-primary" title="Batting rating">{player.currentBatting}</span>
                   <span className="text-center font-space-mono text-[13px] font-bold text-text-primary" title="Bowling rating">{player.currentBowling}</span>
                   <div className="flex flex-col items-center justify-center gap-1 min-w-0">
                     <span className={`text-center font-space-mono text-[10px] font-bold uppercase tracking-wide ${inXI ? "text-success" : isImpact ? "text-accent" : "text-text-secondary/70"}`}>
-                      {inXI ? `XI #${activeXI.indexOf(player.id) + 1}` : isImpact ? `Impact #${activeImpactSubs.indexOf(player.id) + 1}` : "Available"}
+                      {inXI ? `XI #${activeXI.indexOf(player.id) + 1}` : isImpact ? `Impact #${activeImpactSubs.indexOf(player.id) + 1}` : isUnavailable ? "Unavailable" : "Available"}
                     </span>
                     {!inXI && (
                       <button
                         type="button"
+                        disabled={isUnavailable}
                         onClick={(e) => {
                           e.stopPropagation();
                           handleQuickSubIntoXI(player);
                         }}
-                        className="px-2 py-0.5 font-space-mono text-[9px] font-bold uppercase bg-accent text-[#16130f] rounded hover:bg-accent/80 transition-colors shadow-sm"
+                        className="rounded bg-accent px-2 py-0.5 font-space-mono text-[9px] font-bold uppercase text-[#16130f] shadow-sm transition-colors hover:bg-accent/80 disabled:cursor-not-allowed disabled:bg-border disabled:text-text-secondary"
                         title={`Sub ${player.name} into Playing XI`}
                       >
                         + XI
@@ -362,11 +389,12 @@ export default function TacticsLineupBuilder({
           </div>
         </section>
 
-        <section className="min-h-0 overflow-hidden border-r border-border bg-black/[0.015] dark:bg-white/[0.015]">
+        <section className="min-h-0 min-w-0 overflow-hidden border-r border-border bg-black/[0.015] dark:bg-white/[0.015]">
           <div className="grid h-full min-h-0 grid-rows-[repeat(11,minmax(0,1fr))] gap-1 p-2">
             {Array.from({ length: 11 }, (_, index) => {
               const player = activePlayers[index];
               const keeper = player ? keeperLabel(player, activePlayers) : null;
+              const injury = player ? activeInjuries[player.id] : undefined;
               const preview = dragPreview?.zone === "lineup" && dragPreview.targetIndex === index ? dragPreview : null;
               const dropPosition = preview && draggedPlayer
                 ? getLineupDropPosition(activeXI, draggedPlayer.id, index, preview.placement)
@@ -413,7 +441,7 @@ export default function TacticsLineupBuilder({
                     {index + 1}
                   </span>
                   <button type="button" onClick={() => onOpenPlayer(player.id)} className="flex h-full min-h-0 min-w-0 flex-col justify-center self-center overflow-hidden text-left">
-                    <span className="flex min-h-4 items-center gap-1.5 leading-none"><span className="truncate text-[14px] font-bold leading-none text-text-primary hover:underline">{player.name}</span>{player.nationality === "Overseas" && <OverseasMarker />}{keeper && <span className={`inline-flex items-center px-1.5 py-0.5 font-space-mono text-[10px] font-bold leading-none ${keeper === "PT WK" ? "bg-amber-500/15 text-amber-700 dark:text-amber-300" : "bg-success/15 text-success"}`}>{keeper}</span>}</span>
+                    <span className="flex min-h-4 items-center gap-1.5 leading-none"><span className="truncate text-[14px] font-bold leading-none text-text-primary hover:underline">{player.name}</span>{player.nationality === "Overseas" && <OverseasMarker />}<InjuryMarker injury={injury} />{keeper && <span className={`inline-flex items-center px-1.5 py-0.5 font-space-mono text-[10px] font-bold leading-none ${keeper === "PT WK" ? "bg-amber-500/15 text-amber-700 dark:text-amber-300" : "bg-success/15 text-success"}`}>{keeper}</span>}</span>
                     <span className="mt-1 block truncate font-space-mono text-[10px] font-bold uppercase leading-none text-text-secondary [@media(max-height:650px)]:hidden">{roleLabel(player.role)}{player.isOpener ? " · Opener" : ""} · BAT {player.currentBatting} · BOWL {player.currentBowling}</span>
                   </button>
                 </div>
@@ -445,7 +473,7 @@ export default function TacticsLineupBuilder({
           </div>
         </section>
 
-        <aside className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto_auto] gap-2 overflow-hidden p-2 [@media(max-height:850px)]:gap-1 [@media(max-height:850px)]:p-1">
+        <aside className="grid min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_auto_auto] gap-2 overflow-hidden p-2 [@media(max-height:850px)]:gap-1 [@media(max-height:850px)]:p-1">
           <div className="flex h-full min-h-0 flex-col overflow-hidden border border-border bg-surface p-2 shadow-sm [@media(max-height:850px)]:p-1">
             <div className="flex items-end justify-between"><div><p className="font-space-mono text-[10px] font-bold uppercase tracking-[0.14em] text-text-secondary [@media(max-height:650px)]:hidden">Named reserves</p><h4 className="font-anton text-[17px] uppercase leading-none text-text-primary [@media(max-height:650px)]:text-[14px]">Impact substitutes</h4></div><span className="font-space-mono text-[11px] font-bold leading-none text-text-secondary">{activeImpactSubs.length}/5</span></div>
             <p className="mt-1 text-[11px] leading-tight text-text-secondary [@media(max-height:900px)]:hidden">Drag players here from the squad, or drag these tabs onto each other to swap their order.</p>
@@ -453,6 +481,7 @@ export default function TacticsLineupBuilder({
               {Array.from({ length: 5 }, (_, index) => {
                 const player = activeImpactPlayers[index];
                 const keeper = player ? keeperLabel(player, activePlayers) : null;
+                const injury = player ? activeInjuries[player.id] : undefined;
                 const preview = dragPreview?.zone === "impact" && dragPreview.targetIndex === index;
                 const startersOverseas = activePlayers.filter((p) => p.nationality === "Overseas").length;
                 const isPlayerIneligibleOS = Boolean(player && player.nationality === "Overseas" && startersOverseas >= 4);
@@ -485,6 +514,7 @@ export default function TacticsLineupBuilder({
                     <GripVertical size={14} className="shrink-0 text-text-secondary/55 [@media(max-height:650px)]:hidden" />
                     <span className={`flex h-[min(1.5rem,calc(100%_-_0.125rem))] aspect-square shrink-0 items-center justify-center rounded-full font-anton text-[12px] leading-none [@media(max-height:650px)]:text-[10px] ${isPlayerIneligibleOS ? "bg-red-500 text-white" : "bg-accent text-[#16130f]"}`}>{index + 1}</span>
                     <button type="button" onClick={() => onOpenPlayer(player.id)} className="flex h-full min-h-0 min-w-0 flex-1 flex-col justify-center overflow-hidden text-left"><span className="flex items-center gap-1 text-[13px] font-bold leading-none text-text-primary"><span className="truncate hover:underline">{player.name}</span>{player.nationality === "Overseas" && <OverseasMarker />}</span><span className="mt-0.5 font-space-mono text-[9px] font-bold uppercase leading-none text-text-primary/75 [@media(max-height:800px)]:hidden">{roleLabel(player.role)}{keeper ? ` · ${keeper}` : ""}</span></button>
+                    <InjuryMarker injury={injury} />
                     {isPlayerIneligibleOS && (
                       <span className="shrink-0 rounded border border-red-500/30 bg-red-500/15 px-1.5 py-0.5 font-space-mono text-[9px] font-bold text-red-600 dark:text-red-400" title="Starting XI already has 4 Overseas players; this player cannot be subbed in">
                         Ineligible (4 OS)
@@ -514,9 +544,9 @@ export default function TacticsLineupBuilder({
           </div>
 
           {/* Impact Substitute Strategy Card */}
-          <div className="shrink-0 border border-border bg-surface p-2 shadow-sm [@media(max-height:850px)]:p-1">
-            <div className="flex items-center justify-between">
-              <div>
+          <div className="min-w-0 shrink-0 overflow-hidden border border-border bg-surface p-2 shadow-sm [@media(max-height:850px)]:p-1">
+            <div className="flex min-w-0 items-center justify-between">
+              <div className="min-w-0">
                 <p className="font-space-mono text-[8px] font-bold uppercase leading-none tracking-[0.12em] text-accent [@media(max-height:650px)]:hidden">
                   Impact Strategy ({activePlan === "battingFirst" ? "Bat First Plan" : "Bowl First Plan"})
                 </p>
@@ -531,7 +561,7 @@ export default function TacticsLineupBuilder({
 
             <div className="mt-1.5 space-y-1 [@media(max-height:650px)]:mt-1 [@media(max-height:650px)]:space-y-0.5">
               {/* 1. Player Coming In */}
-              <div>
+              <div className="min-w-0">
                 <label className="block font-space-mono text-[8px] font-bold uppercase leading-none text-text-secondary [@media(max-height:650px)]:sr-only">
                   Player Coming In ({activePlan === "battingFirst" ? "Impact Bowler" : "Impact Batter"})
                 </label>
@@ -543,7 +573,7 @@ export default function TacticsLineupBuilder({
                     autoOutgoingByPlan[activePlan] ? null : currentOutgoingPlayerId ?? null,
                     activePlan === "bowlingFirst" ? currentImpactPosition ?? null : null,
                   )}
-                  className="mt-0.5 h-7 w-full rounded border border-border/80 bg-background px-2 py-0 text-[10px] font-bold text-text-primary focus:border-accent focus:outline-none [@media(max-height:650px)]:mt-0 [@media(max-height:650px)]:h-5 [@media(max-height:650px)]:text-[9px]"
+                  className="mt-0.5 h-7 min-w-0 max-w-full w-full rounded border border-border/80 bg-background px-2 py-0 text-[10px] font-bold text-text-primary focus:border-accent focus:outline-none [@media(max-height:650px)]:mt-0 [@media(max-height:650px)]:h-5 [@media(max-height:650px)]:text-[9px]"
                   style={{ color: "var(--ink)", backgroundColor: "var(--surface2)", colorScheme: "light" }}
                   aria-label="Select player coming in"
                 >
@@ -557,7 +587,7 @@ export default function TacticsLineupBuilder({
               </div>
 
               {/* 2. Player Going Out */}
-              <div>
+              <div className="min-w-0">
                 <label className="block font-space-mono text-[8px] font-bold uppercase leading-none text-text-secondary [@media(max-height:650px)]:sr-only">
                   Player Going Out (Subbed Out)
                 </label>
@@ -573,7 +603,7 @@ export default function TacticsLineupBuilder({
                       activePlan === "bowlingFirst" ? currentImpactPosition ?? null : null,
                     );
                   }}
-                  className="mt-0.5 h-7 w-full rounded border border-border/80 bg-background px-2 py-0 text-[10px] font-bold text-text-primary focus:border-accent focus:outline-none [@media(max-height:650px)]:mt-0 [@media(max-height:650px)]:h-5 [@media(max-height:650px)]:text-[9px]"
+                  className="mt-0.5 h-7 min-w-0 max-w-full w-full rounded border border-border/80 bg-background px-2 py-0 text-[10px] font-bold text-text-primary focus:border-accent focus:outline-none [@media(max-height:650px)]:mt-0 [@media(max-height:650px)]:h-5 [@media(max-height:650px)]:text-[9px]"
                   style={{ color: "var(--ink)", backgroundColor: "var(--surface2)", colorScheme: "light" }}
                   aria-label="Select player going out"
                 >
@@ -590,7 +620,7 @@ export default function TacticsLineupBuilder({
               </div>
 
               {/* 3. Entry Position (only relevant when bowling first) */}
-              {activePlan === "bowlingFirst" && <div>
+              {activePlan === "bowlingFirst" && <div className="min-w-0">
                 <label className="block font-space-mono text-[8px] font-bold uppercase leading-none text-text-secondary [@media(max-height:650px)]:sr-only">
                   Entry Batting / Bowling Position
                 </label>
@@ -602,7 +632,7 @@ export default function TacticsLineupBuilder({
                     currentOutgoingPlayerId ?? null,
                     e.target.value === "" ? null : Number(e.target.value),
                   )}
-                  className="mt-0.5 h-7 w-full rounded border border-border/80 bg-background px-2 py-0 text-[10px] font-bold text-text-primary focus:border-accent focus:outline-none [@media(max-height:650px)]:mt-0 [@media(max-height:650px)]:h-5 [@media(max-height:650px)]:text-[9px]"
+                  className="mt-0.5 h-7 min-w-0 max-w-full w-full rounded border border-border/80 bg-background px-2 py-0 text-[10px] font-bold text-text-primary focus:border-accent focus:outline-none [@media(max-height:650px)]:mt-0 [@media(max-height:650px)]:h-5 [@media(max-height:650px)]:text-[9px]"
                   style={{ color: "var(--ink)", backgroundColor: "var(--surface2)", colorScheme: "light" }}
                   aria-label="Select entry position"
                 >

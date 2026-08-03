@@ -5,6 +5,7 @@ import { X, Award, MapPin, Calendar, Clock, Shield } from "lucide-react";
 
 import BallByBallSummary from "@/components/match/BallByBallSummary";
 import type { MatchSimulationRecord, MatchInnings } from "@/lib/logic/matchSimulation";
+import { appendRainAffectedResultLabel, isRainAffectedMatch } from "@/lib/logic/matchWeather";
 import type { Player, Team } from "@/lib/types";
 
 export interface UnifiedMatchRecord {
@@ -190,14 +191,16 @@ export default function MatchScorecardModal({
 
   const currentInnings = inningsList[selectedInningsIndex] ?? inningsList[0] ?? null;
 
-  const resultText =
+  const resultText = appendRainAffectedResultLabel(
     sim?.resultText ??
-    match.archivedResultText ??
-    (match.winner && match.winner !== "TIE"
-      ? `${teams[match.winner]?.name ?? match.winner} won`
-      : match.played
-      ? "Match Completed"
-      : "Upcoming Match");
+      match.archivedResultText ??
+      (match.winner && match.winner !== "TIE"
+        ? `${teams[match.winner]?.name ?? match.winner} won`
+        : match.played
+        ? "Match Completed"
+        : "Upcoming Match"),
+    isRainAffectedMatch(match),
+  );
 
   const potmPlayer = sim?.playerOfTheMatchId
     ? players[sim.playerOfTheMatchId] ?? { name: sim.playerOfTheMatchName }

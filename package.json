@@ -7,9 +7,11 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test:career-clock": "tsx --test lib/logic/aiLeadership.test.ts lib/logic/aiLineupSelector.test.ts lib/logic/careerCalendar.test.ts lib/logic/dayTicker.test.ts lib/logic/leagueSchedule.test.ts lib/logic/lineupPlanner.test.ts lib/logic/teamTactics.test.ts lib/store/gameStore.rollover.test.ts",
+    "test:career-clock": "tsx --test lib/logic/aiLeadership.test.ts lib/logic/aiLineupSelector.test.ts lib/logic/careerCalendar.test.ts lib/logic/careerLifecycle.test.ts lib/logic/dayTicker.test.ts lib/logic/injuries.test.ts lib/logic/leagueSchedule.test.ts lib/logic/lineupPlanner.test.ts lib/logic/seasonAwards.test.ts lib/logic/teamTactics.test.ts lib/store/gameStore.rollover.test.ts",
+    "test:injuries": "tsx --test lib/logic/injuries.test.ts",
     "test:match-simulation": "tsx --test lib/logic/matchSimulation.test.ts",
     "calibrate:seasons": "tsx scripts/calibrate_seasons.ts",
+    "calibrate:career": "tsx scripts/calibrate_career_lifecycle.ts",
     "test:club-figures": "tsx --test lib/data/clubFigures.test.ts",
     "test:player-history": "tsx --test lib/logic/playerHistory.test.ts"
   },

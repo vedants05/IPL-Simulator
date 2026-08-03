@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Check } from "lucide-react";
 import { dateKeyToLocalDate } from "@/lib/logic/careerCalendar";
 import { PLAYOFF_TBD_TEAM_ID, LEAGUE_FIXTURE_COUNT } from "@/lib/logic/leagueSchedule";
+import { appendRainAffectedResultLabel, isRainAffectedMatch } from "@/lib/logic/matchWeather";
 import type { Player, Team } from "@/lib/types";
 
 interface MatchScorecard {
@@ -31,6 +32,8 @@ interface Match {
   label?: string;
   archivedResultText?: string;
 }
+
+const isRainAffected = (fixture: Match) => isRainAffectedMatch(fixture);
 
 interface ScheduleTileContentProps {
   fixtures: Match[];
@@ -87,13 +90,16 @@ export function PlayoffDiagramContent({
       ?? archivedResult;
     if (savedResult) {
       const margin = savedResult.match(/\bwon\s+(.+)$/i)?.[1];
-      if (margin) return `${winner} beat ${loser} ${margin}`;
+      if (margin) return appendRainAffectedResultLabel(`${winner} beat ${loser} ${margin}`, isRainAffected(match));
     }
     if (match.scoreA && match.scoreB) {
       const margin = Math.abs(match.scoreA.runs - match.scoreB.runs);
-      return `${winner} beat ${loser}${margin > 0 ? ` by ${margin} run${margin === 1 ? "" : "s"}` : ""}`;
+      return appendRainAffectedResultLabel(
+        `${winner} beat ${loser}${margin > 0 ? ` by ${margin} run${margin === 1 ? "" : "s"}` : ""}`,
+        isRainAffected(match),
+      );
     }
-    return `${winner} beat ${loser}`;
+    return appendRainAffectedResultLabel(`${winner} beat ${loser}`, isRainAffected(match));
   };
 
   const q1TeamA = q1?.teamA ?? pos1;
@@ -136,7 +142,7 @@ export function PlayoffDiagramContent({
             <div className={`rounded-md border p-2 flex flex-col justify-between shadow-sm ${q1?.played || (championTeamId && runnerUpTeamId) ? "border-border bg-black/5 dark:bg-white/5" : "border-accent/40 bg-accent/10"}`}>
               <div className="mb-1 flex items-start justify-between gap-2 font-barlow-condensed text-[12px] font-extrabold uppercase tracking-wide text-accent">
                 <span className="shrink-0">Qualifier 1</span>
-                {getResultDescriptor(q1) && (
+                  {getResultDescriptor(q1) && (
                   <span className="min-w-0 truncate text-right font-space-mono text-[10px] font-bold normal-case tracking-normal text-success">{getResultDescriptor(q1)}</span>
                 )}
               </div>
@@ -283,7 +289,7 @@ export function ChampionTileContent({
         <div className="font-anton text-[20px] uppercase leading-none text-text-primary tracking-wide">{champion?.name ?? "Champions"}</div>
         {finalFixture.simulation?.resultText && (
           <div className="font-space-mono text-[8.5px] font-bold text-accent">
-            {finalFixture.simulation.resultText}
+            {appendRainAffectedResultLabel(finalFixture.simulation.resultText, isRainAffected(finalFixture))}
           </div>
         )}
       </div>

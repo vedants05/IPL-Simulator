@@ -11,6 +11,7 @@ import {
   type TeamStrategy,
 } from "@/lib/logic/teamTactics";
 import { selectBattingFirstOutgoingBatter } from "@/lib/logic/aiLineupSelector";
+import { appendRainAffectedResultLabel, hasRainReducedOvers } from "@/lib/logic/matchWeather";
 import type { Player, Team } from "@/lib/types";
 
 export const MATCH_SIMULATION_VERSION = 1;
@@ -60,6 +61,28 @@ export interface MatchGroundConditions {
   chasingScoringBonus?: number;
 }
 
+export type WeatherScenarioKind =
+  | "clear"
+  | "delayed-start"
+  | "innings-break-rain"
+  | "multiple-showers"
+  // Retained so older saves and explicit test scenarios remain readable.
+  | "first-innings-shower"
+  | "chase-shower";
+
+export interface MatchWeatherScenario {
+  kind: WeatherScenarioKind;
+  rainDelayMinutes: number;
+  firstInningsOvers: number;
+  secondInningsOvers: number;
+  summary: string;
+  dlsApplied?: boolean;
+  originalTarget?: number;
+  revisedTarget?: number;
+  firstInningsResourcePercentage?: number;
+  secondInningsResourcePercentage?: number;
+}
+
 export interface MatchSimulationInput {
   fixtureId: string;
   matchNumber: number;
@@ -76,6 +99,7 @@ export interface MatchSimulationInput {
   recentScorecards?: Array<any>;
   stage?: string;
   isKnockout?: boolean;
+  weatherScenario?: MatchWeatherScenario;
 }
 
 export interface DeliveryExtras {
@@ -282,7 +306,7 @@ export interface MatchSimulationRecord {
     expectedScore: { min: number; max: number };
     boundaries: BoundaryDimensions;
     outfieldSpeedRating: number;
-    weather: null;
+    weather: MatchWeatherScenario;
   };
   lineups: Record<string, MatchLineupSnapshot>;
   impactDecisions: MatchImpactDecision[];
@@ -324,6 +348,7 @@ interface InningsContext {
   stage?: string;
   isKnockout?: boolean;
   time?: string;
+  maxOvers?: number;
 }
 
 const clamp = (value: number, minimum: number, maximum: number) => (
@@ -608,22 +633,31 @@ function bowlingPitchAdjustment(player: Player, pitch: CuratorPitch): number {
   return adjustment;
 }
 
+function inningsPhaseThresholds(maxOvers = 20) {
+  const powerplayEnd = Math.max(2, Math.round(maxOvers * 0.3));
+  const deathLength = Math.max(2, Math.round(maxOvers * 0.25));
+  const deathStart = Math.max(powerplayEnd + 1, maxOvers - deathLength + 1);
+  return { powerplayEnd, deathStart };
+}
+
 function battingIntent(
   tactics: TeamTactics,
   overNumber: number,
   wickets: number,
   runs: number,
   target?: number,
+  maxOvers = 20,
 ): number {
-  let intent = overNumber <= 6
+  const { powerplayEnd, deathStart } = inningsPhaseThresholds(maxOvers);
+  let intent = overNumber <= powerplayEnd
     ? ({ cautious: -0.12, balanced: 0, attack: 0.13 }[tactics.batting.powerplay])
-    : overNumber <= 15
+    : overNumber < deathStart
       ? ({ rebuild: -0.12, rotate: -0.02, dominate: 0.12 }[tactics.batting.middle])
       : ({ preserve: -0.08, flexible: 0.06, "all-out": 0.2 }[tactics.batting.death]);
 
   const collapse = (
-    (overNumber <= 8 && wickets >= 3)
-    || (overNumber <= 13 && wickets >= 5)
+    (overNumber <= powerplayEnd + 2 && wickets >= 3)
+    || (overNumber < deathStart && wickets >= 5)
   );
   if (collapse) {
     intent += {
@@ -634,15 +668,16 @@ function battingIntent(
   }
 
   if (target) {
-    const ballsRemaining = Math.max(1, 120 - ((overNumber - 1) * 6));
+    const inningsBalls = maxOvers * 6;
+    const ballsRemaining = Math.max(1, inningsBalls - ((overNumber - 1) * 6));
     const requiredRate = Math.max(0, target - runs) / ballsRemaining;
-    const parPerBall = target / 120;
+    const parPerBall = target / inningsBalls;
     const pressure = clamp((requiredRate - parPerBall) * 0.28, -0.1, 0.28);
     intent += pressure;
     intent += {
       "stay-with-rate": 0,
       "preserve-wickets": wickets >= 4 ? -0.07 : -0.03,
-      "front-load": overNumber <= 10 ? 0.08 : 0.03,
+      "front-load": overNumber <= Math.ceil(maxOvers / 2) ? 0.08 : 0.03,
     }[tactics.batting.chaseApproach];
   }
 
@@ -655,17 +690,19 @@ export function chooseSituationalField(
   wickets: number,
   runs: number,
   target?: number,
+  maxOvers = 20,
 ): FieldSetting {
+  const { deathStart } = inningsPhaseThresholds(maxOvers);
   if (target && runs < target) {
-    const ballsRemaining = Math.max(1, 120 - (overNumber - 1) * 6);
+    const ballsRemaining = Math.max(1, maxOvers * 6 - (overNumber - 1) * 6);
     const remainingRuns = target - runs;
     const requiredRunRate = remainingRuns / (ballsRemaining / 6);
     if (requiredRunRate >= 12) return "defensive";
     if (ballsRemaining <= 30 && requiredRunRate <= 8 && wickets < 7) return "attacking";
-  } else if (overNumber >= 16 && wickets <= 4) {
+  } else if (overNumber >= deathStart && wickets <= 4) {
     return "attacking";
   }
-  if (wickets >= 4 && overNumber <= 15) return "attacking";
+  if (wickets >= 4 && overNumber < deathStart) return "attacking";
   return selectedField;
 }
 
@@ -674,7 +711,9 @@ function bowlingTacticalAdjustment(
   overNumber: number,
   bowler: Player,
   field: FieldSetting,
+  maxOvers = 20,
 ): { wicket: number; scoring: number } {
+  const { powerplayEnd, deathStart } = inningsPhaseThresholds(maxOvers);
   let wicket = field === "attacking"
     ? 0.004
     : field === "defensive"
@@ -686,10 +725,10 @@ function bowlingTacticalAdjustment(
       ? -0.025
       : 0;
 
-  if (overNumber <= 6) {
+  if (overNumber <= powerplayEnd) {
     if (tactics.bowling.powerplay === "swing-attack" && isPacer(bowler)) wicket += 0.006;
     if (tactics.bowling.powerplay === "contain") scoring -= 0.04;
-  } else if (overNumber <= 15) {
+  } else if (overNumber < deathStart) {
     if (tactics.bowling.middle === "spin-choke" && isSpinner(bowler)) {
       wicket += 0.005;
       scoring -= 0.04;
@@ -762,6 +801,7 @@ export function nextBowlerSpellOver(
 
 function chooseBowler(
   overNumber: number,
+  inningsOvers: number,
   fieldingIds: readonly string[],
   players: Record<string, Player>,
   ballsByBowler: ReadonlyMap<string, number>,
@@ -772,6 +812,8 @@ function chooseBowler(
   unavailableUntilOver: ReadonlyMap<string, number>,
   rng: SimulationRandom,
 ): Player {
+  const { powerplayEnd, deathStart } = inningsPhaseThresholds(inningsOvers);
+  const maxBowlerOvers = Math.ceil(inningsOvers / 5);
   const candidates = fieldingIds
     .map((playerId) => players[playerId])
     .filter((player): player is Player => Boolean(player) && isBowlingOption(player));
@@ -789,17 +831,17 @@ function chooseBowler(
         ...fallback.filter((player) => !candidates.some((candidate) => candidate.id === player.id)),
       ].slice(0, Math.min(5, fallback.length));
   const withCapacity = pool.filter((player) => (
-    (ballsByBowler.get(player.id) ?? 0) < 24
+    (ballsByBowler.get(player.id) ?? 0) < maxBowlerOvers * 6
     && player.id !== previousBowlerId
   ));
   const restedWithCapacity = withCapacity.filter((player) => (
     (unavailableUntilOver.get(player.id) ?? 0) <= overNumber
   ));
-  const remainingOversAfterThis = 20 - overNumber;
+  const remainingOversAfterThis = inningsOvers - overNumber;
   const feasible = restedWithCapacity.filter((candidate) => {
     const remainingCapacity = new Map(pool.map((player) => [
       player.id,
-      Math.max(0, 4 - Math.floor((ballsByBowler.get(player.id) ?? 0) / 6)),
+      Math.max(0, maxBowlerOvers - Math.floor((ballsByBowler.get(player.id) ?? 0) / 6)),
     ]));
     remainingCapacity.set(
       candidate.id,
@@ -819,7 +861,7 @@ function chooseBowler(
     // A cooldown must never make completing 20 legal overs impossible.
     : withCapacity.length > 0
     ? withCapacity
-    : pool.filter((player) => (ballsByBowler.get(player.id) ?? 0) < 24);
+    : pool.filter((player) => (ballsByBowler.get(player.id) ?? 0) < maxBowlerOvers * 6);
   const frontlineBowlerIds = new Set(
     [...pool]
       .sort((left, right) => right.currentBowling - left.currentBowling)
@@ -843,28 +885,28 @@ function chooseBowler(
     let score = player.currentBowling + bowlingPitchAdjustment(player, pitch);
     const ballsBowled = ballsByBowler.get(player.id) ?? 0;
     let phaseFit = 0;
-    if (overNumber <= 6 && isPacer(player)) phaseFit += 5;
-    if (overNumber >= 7 && overNumber <= 15 && isSpinner(player)) phaseFit += 5;
-    if (overNumber >= 16 && isPacer(player)) phaseFit += 4;
-    if (overNumber <= 6 && tactics.bowling.powerplay === "swing-attack" && isPacer(player)) phaseFit += 3;
-    if (overNumber >= 7 && overNumber <= 15 && tactics.bowling.middle === "spin-choke" && isSpinner(player)) phaseFit += 4;
-    if (overNumber >= 16 && tactics.bowling.death === "yorkers" && isPacer(player)) phaseFit += 3;
+    if (overNumber <= powerplayEnd && isPacer(player)) phaseFit += 5;
+    if (overNumber > powerplayEnd && overNumber < deathStart && isSpinner(player)) phaseFit += 5;
+    if (overNumber >= deathStart && isPacer(player)) phaseFit += 4;
+    if (overNumber <= powerplayEnd && tactics.bowling.powerplay === "swing-attack" && isPacer(player)) phaseFit += 3;
+    if (overNumber > powerplayEnd && overNumber < deathStart && tactics.bowling.middle === "spin-choke" && isSpinner(player)) phaseFit += 4;
+    if (overNumber >= deathStart && tactics.bowling.death === "yorkers" && isPacer(player)) phaseFit += 3;
     score += phaseFit * phaseFitMultiplier;
     const oversBowled = Math.floor(ballsBowled / 6);
     if (frontlineBowlerIds.has(player.id)) {
-      const oversStillWanted = Math.max(0, 4 - oversBowled);
+      const oversStillWanted = Math.max(0, maxBowlerOvers - oversBowled);
       // Frontline quality becomes increasingly decisive late in the innings,
       // preventing surface preferences from leaving superior bowlers unused.
-      score += oversStillWanted * (overNumber >= 16 ? 5 : overNumber >= 12 ? 2.5 : 1);
-      if (overNumber >= 17 && oversStillWanted >= 2) score += 9;
+      score += oversStillWanted * (overNumber >= deathStart ? 5 : overNumber >= Math.ceil(inningsOvers * 0.6) ? 2.5 : 1);
+      if (overNumber >= deathStart + 1 && oversStillWanted >= 2) score += 9;
     }
     if (deathBowlerIds.has(player.id)) {
-      if (overNumber <= 12 && oversBowled >= 2) score -= 9;
-      if (overNumber <= 15 && oversBowled >= 3) score -= 12;
-      if (overNumber >= 16) score += 7;
+      if (overNumber <= Math.ceil(inningsOvers * 0.6) && oversBowled >= Math.max(1, maxBowlerOvers - 2)) score -= 9;
+      if (overNumber < deathStart && oversBowled >= Math.max(2, maxBowlerOvers - 1)) score -= 12;
+      if (overNumber >= deathStart) score += 7;
     }
     // Heavy penalty for part-timers in death overs to keep death overs strictly for specialists
-    if (overNumber >= 16 && (!isBowlingOption(player) || player.currentBowling < 65)) {
+    if (overNumber >= deathStart && (!isBowlingOption(player) || player.currentBowling < 65)) {
       score -= 50;
     }
     // Selection penalty for batting all-rounders so primary specialist bowlers bowl first
@@ -875,7 +917,7 @@ function chooseBowler(
       }
     }
     // Frontline pacers get massive priority in overs 18-20
-    if (overNumber >= 17 && isPacer(player) && player.currentBowling >= 75) {
+    if (overNumber >= deathStart + 1 && isPacer(player) && player.currentBowling >= 75) {
       score += 15;
     }
     score -= ballsBowled * 0.12;
@@ -1053,9 +1095,12 @@ export function deathExtrasPressure(
   bowlingRating: number,
   composure: number,
   closeChase: boolean,
+  maxOvers = 20,
 ): { wideIncrease: number; noBallIncrease: number } {
-  if (overNumber < 16) return { wideIncrease: 0, noBallIncrease: 0 };
-  const phasePressure = clamp((overNumber - 15) / 5 + (closeChase ? 0.25 : 0), 0, 1);
+  const { deathStart } = inningsPhaseThresholds(maxOvers);
+  if (overNumber < deathStart) return { wideIncrease: 0, noBallIncrease: 0 };
+  const deathLength = Math.max(1, maxOvers - deathStart + 1);
+  const phasePressure = clamp((overNumber - deathStart + 1) / deathLength + (closeChase ? 0.25 : 0), 0, 1);
   const control = clamp(
     clamp((bowlingRating - 70) / 20, 0, 1) * 0.65
     + clamp(composure, 0, 1) * 0.35,
@@ -1078,6 +1123,56 @@ export function milestonePressureScoringFactor(
   if (runs >= 90 && runs < 100) return 0.98;
   if (runs >= 45 && runs < 50) return 0.96;
   return 1;
+}
+
+export interface BattingAggressionScoringProfile {
+  fourMultiplier: number;
+  sixMultiplier: number;
+  wicketProbabilityAdjustment: number;
+}
+
+/**
+ * Converts batting aggression into a distinct scoring style. Ratings around
+ * 65 are neutral, while 90+ hitters receive a deliberately steeper six-hitting
+ * increase. The small wicket adjustment prevents aggression becoming a free
+ * all-round batting upgrade.
+ */
+export function battingAggressionScoringProfile(
+  battingAggression: number,
+): BattingAggressionScoringProfile {
+  const aggression = clamp(battingAggression, 1, 99);
+  const aggressionDelta = aggression - 65;
+  const eliteSixHitting = Math.max(0, aggression - 90);
+  return {
+    fourMultiplier: clamp(1 + aggressionDelta * 0.006, 0.78, 1.22),
+    sixMultiplier: clamp(1 + aggressionDelta * 0.009 + eliteSixHitting * 0.045, 0.65, 1.65),
+    wicketProbabilityAdjustment: clamp(aggressionDelta * 0.00013, -0.0025, 0.0045),
+  };
+}
+
+export function lowerRatedCenturyConversionAdjustment(
+  battingRating: number,
+  runs: number,
+): { scoringFactor: number; wicketIncrease: number } {
+  if (battingRating >= 78 || runs < 85) {
+    return { scoringFactor: 1, wicketIncrease: 0 };
+  }
+  const ratingWeight = clamp((78 - battingRating) / 8, 0.6, 1);
+  const milestoneProgress = clamp((runs - 85) / 15, 0, 1);
+  return {
+    scoringFactor: 1 - (0.04 + milestoneProgress * 0.06) * ratingWeight,
+    wicketIncrease: (0.0015 + milestoneProgress * 0.0035) * ratingWeight,
+  };
+}
+
+export function lowerRatedBowlingHaulMultiplier(
+  bowlingRating: number,
+  creditedWickets: number,
+): number {
+  if (bowlingRating >= 77 || creditedWickets < 4) return 1;
+  const ratingDeficit = clamp((77 - bowlingRating) / 10, 0, 1);
+  const baseMultiplier = creditedWickets === 4 ? 0.72 : 0.58;
+  return clamp(baseMultiplier - ratingDeficit * 0.12, 0.42, 0.72);
 }
 
 function isPartTimeKeeper(player: Player | undefined): boolean {
@@ -1180,7 +1275,9 @@ function sampleBatRuns(
   boundaryOpportunityMultiplier: number = 1,
   rotationMultiplier: number = 1,
   singleOpportunityMultiplier: number = 1,
+  battingAggression: number = 65,
 ): number {
+  const aggressionProfile = battingAggressionScoringProfile(battingAggression);
   let boundaryFactor = clamp(
     scoringFactor * (1 + intent * 0.75) * boundaryOpportunityMultiplier,
     0.55,
@@ -1206,8 +1303,8 @@ function sampleBatRuns(
     { value: 1, weight: 0.37 * rotationMultiplier * singleOpportunityMultiplier },
     { value: 2, weight: 0.09 * rotationMultiplier * twoRunMultiplier * clamp(1.05 - conditions.outfieldSpeedRating * 0.02, 0.82, 1.05) },
     { value: 3, weight: 0.0035 * threeRunFactor },
-    { value: 4, weight: 0.14 * boundaryFactor * clamp(conditions.outfieldSpeedRating / 7.5, 0.72, 1.25) },
-    { value: 6, weight: 0.052 * boundaryFactor ** 1.35 * clamp(69 / averageBoundary, 0.8, 1.3) },
+    { value: 4, weight: 0.14 * boundaryFactor * aggressionProfile.fourMultiplier * clamp(conditions.outfieldSpeedRating / 7.5, 0.72, 1.25) },
+    { value: 6, weight: 0.052 * boundaryFactor ** 1.35 * aggressionProfile.sixMultiplier * clamp(69 / averageBoundary, 0.8, 1.3) },
   ]);
 }
 
@@ -1241,29 +1338,9 @@ export function getEffectiveBattingRating(
   seed?: string,
 ): number {
   let rating = player.currentBatting;
-  const potential = player.potentialBatting ?? rating;
-  const gap = potential - rating;
-
-  if (gap > 0 && player.age <= 25) {
-    // Multi-year age factor (younger players progress in measured annual steps over 4-7+ seasons)
-    const ageFactor = player.age <= 20 ? 0.25 : player.age <= 22 ? 0.22 : 0.18;
-    const baseAnnualStep = gap * ageFactor;
-
-    // Seasonal realization multiplier (Boom / Steady / Bust)
-    const realizationMultiplier = getPlayerPotentialRealization(player.id, seed);
-    const seasonBoost = baseAnnualStep * realizationMultiplier;
-    rating += Math.max(-0.5, Math.min(3.5, seasonBoost));
-
-    // Match-level performance flash (occasional match-day upside burst)
-    if (rng && realizationMultiplier > 0) {
-      const flashRoll = rng.next();
-      if (flashRoll < 0.18) {
-        const flashAmount = 1.0 + rng.next() * 1.5;
-        rating += Math.min(flashAmount, Math.max(0, potential - rating));
-      }
-    }
-  }
-
+  // Permanent development is applied once after each completed season. Match
+  // form/luck is handled separately by createPlayerLuck below, so potential is
+  // deliberately not added a second time here.
   return rating;
 }
 
@@ -1273,26 +1350,6 @@ export function getEffectiveBowlingRating(
   seed?: string,
 ): number {
   let rating = player.currentBowling;
-  const potential = player.potentialBowling ?? rating;
-  const gap = potential - rating;
-
-  if (gap > 0 && player.age <= 25) {
-    const ageFactor = player.age <= 20 ? 0.25 : player.age <= 22 ? 0.22 : 0.18;
-    const baseAnnualStep = gap * ageFactor;
-
-    const realizationMultiplier = getPlayerPotentialRealization(player.id, seed);
-    const seasonBoost = baseAnnualStep * realizationMultiplier;
-    rating += Math.max(-0.5, Math.min(3.5, seasonBoost));
-
-    if (rng && realizationMultiplier > 0) {
-      const flashRoll = rng.next();
-      if (flashRoll < 0.18) {
-        const flashAmount = 1.0 + rng.next() * 1.5;
-        rating += Math.min(flashAmount, Math.max(0, potential - rating));
-      }
-    }
-  }
-
   return rating;
 }
 
@@ -1714,34 +1771,160 @@ export function isAfternoonMatch(time?: string): boolean {
   return t.includes("15") || t.includes("14") || t.includes("3:") || t.includes("4:");
 }
 
-// Official ICC DLS Standard Resource Percentages (R2/R1) for 20-over T20 matches (5 to 20 overs)
-const DLS_T20_RESOURCES: Record<number, number> = {
-  20: 100.0,
-  19: 96.8,
-  18: 93.4,
-  17: 89.8,
-  16: 86.0,
-  15: 82.0,
-  14: 77.8,
-  13: 73.3,
-  12: 68.6,
-  11: 63.7,
-  10: 58.4,
-  9:  53.0,
-  8:  47.3,
-  7:  41.3,
-  6:  35.0,
-  5:  28.4,
+// ICC Standard Edition DLS resource percentages for whole overs. The
+// Professional Edition used by the IPL is proprietary; this published ICC
+// table is the official deterministic fallback and is materially more
+// accurate than treating overs and wickets as independent multipliers.
+const DLS_STANDARD_RESOURCES: Record<number, readonly number[]> = {
+  20: [56.6, 54.8, 52.4, 49.1, 44.6, 38.6, 30.8, 21.2, 11.9, 4.7],
+  19: [54.4, 52.8, 50.5, 47.5, 43.4, 37.7, 30.3, 21.1, 11.9, 4.7],
+  18: [52.2, 50.7, 48.6, 45.9, 42.0, 36.8, 29.8, 20.9, 11.9, 4.7],
+  17: [49.9, 48.5, 46.7, 44.1, 40.6, 35.8, 29.2, 20.7, 11.9, 4.7],
+  16: [47.6, 46.3, 44.7, 42.3, 39.1, 34.7, 28.5, 20.5, 11.8, 4.7],
+  15: [45.2, 44.1, 42.6, 40.5, 37.6, 33.5, 27.8, 20.2, 11.8, 4.7],
+  14: [42.7, 41.7, 40.4, 38.5, 35.9, 32.2, 27.0, 19.9, 11.8, 4.7],
+  13: [40.2, 39.3, 38.1, 36.5, 34.2, 30.8, 26.1, 19.5, 11.7, 4.7],
+  12: [37.6, 36.8, 35.8, 34.3, 32.3, 29.4, 25.1, 19.0, 11.6, 4.7],
+  11: [34.9, 34.2, 33.4, 32.1, 30.4, 27.8, 24.0, 18.5, 11.5, 4.7],
+  10: [32.1, 31.6, 30.8, 29.8, 28.3, 26.1, 22.8, 17.9, 11.4, 4.7],
+  9: [29.3, 28.9, 28.2, 27.4, 26.1, 24.2, 21.4, 17.1, 11.2, 4.7],
+  8: [26.4, 26.0, 25.5, 24.8, 23.8, 22.3, 19.9, 16.2, 10.9, 4.7],
+  7: [23.4, 23.1, 22.7, 22.2, 21.4, 20.1, 18.2, 15.2, 10.5, 4.7],
+  6: [20.3, 20.1, 19.8, 19.4, 18.8, 17.8, 16.4, 13.9, 10.1, 4.6],
+  5: [17.2, 17.0, 16.8, 16.5, 16.1, 15.4, 14.3, 12.5, 9.4, 4.6],
 };
 
-export function calculateDLSRevisedTarget(firstInningsRuns: number, oversAvailable: number): number {
-  if (oversAvailable >= 20) return firstInningsRuns + 1;
-  const clampedOvers = Math.max(5, Math.min(19, Math.floor(oversAvailable)));
-  const resourcePct = (DLS_T20_RESOURCES[clampedOvers] ?? 100.0) / 100.0;
-  
-  // ICC Standard DLS Formula: Target = floor(FirstInningsRuns * (R2 / R1)) + 1
-  const revisedTarget = Math.floor(firstInningsRuns * resourcePct) + 1;
-  return Math.max(1, revisedTarget);
+export function dlsResourcePercentage(oversRemaining: number, wicketsLost = 0): number {
+  const overs = Math.max(0, Math.min(20, Math.floor(oversRemaining)));
+  if (overs === 0) return 0;
+  const wickets = Math.max(0, Math.min(10, Math.floor(wicketsLost)));
+  if (wickets >= 10) return 0;
+  return (DLS_STANDARD_RESOURCES[Math.max(5, overs)]?.[wickets] ?? 0) / 100;
+}
+
+export function calculateDLSRevisedTarget(
+  firstInningsRuns: number,
+  oversAvailable: number,
+  firstInningsWicketsLost = 0,
+  secondInningsWicketsLost = 0,
+  firstInningsOvers = 20,
+): number {
+  const firstResources = dlsResourcePercentage(firstInningsOvers, firstInningsWicketsLost);
+  const secondResources = dlsResourcePercentage(oversAvailable, secondInningsWicketsLost);
+  if (firstResources <= 0) return Math.max(1, Math.floor(firstInningsRuns) + 1);
+  if (Math.abs(secondResources - firstResources) < 0.00001) {
+    return Math.max(1, Math.floor(firstInningsRuns) + 1);
+  }
+  if (secondResources < firstResources) {
+    return Math.max(1, Math.floor(firstInningsRuns * (secondResources / firstResources)) + 1);
+  }
+  const standardEditionG50 = 245;
+  return Math.max(
+    1,
+    Math.floor(firstInningsRuns + ((secondResources - firstResources) * standardEditionG50)) + 1,
+  );
+}
+
+function stableWeatherRoll(seed: string, stadiumId: string, date?: string): number {
+  let hash = 2166136261;
+  for (const character of `${seed}|${stadiumId}|${date ?? ""}`) {
+    hash ^= character.charCodeAt(0);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0) / 4294967296;
+}
+
+interface VenueRainProfile {
+  march: number;
+  earlyApril: number;
+  lateApril: number;
+  may: number;
+}
+
+const DEFAULT_RAIN_PROFILE: VenueRainProfile = {
+  march: 0.025,
+  earlyApril: 0.04,
+  lateApril: 0.055,
+  may: 0.075,
+};
+
+// Pre-monsoon rain is highly regional. In particular, Kolkata's nor'wester
+// season is represented from early April rather than using one IPL-wide roll.
+const VENUE_RAIN_PROFILES: Record<string, VenueRainProfile> = {
+  "eden-gardens": { march: 0.06, earlyApril: 0.14, lateApril: 0.13, may: 0.17 },
+  "m-chinnaswamy-stadium": { march: 0.035, earlyApril: 0.07, lateApril: 0.10, may: 0.15 },
+  "wankhede-stadium": { march: 0.008, earlyApril: 0.012, lateApril: 0.025, may: 0.07 },
+  "ma-chidambaram-stadium": { march: 0.02, earlyApril: 0.025, lateApril: 0.04, may: 0.065 },
+  "arun-jaitley-stadium": { march: 0.025, earlyApril: 0.03, lateApril: 0.04, may: 0.055 },
+  "ekana-cricket-stadium": { march: 0.03, earlyApril: 0.04, lateApril: 0.055, may: 0.075 },
+  "rajiv-gandhi-international-stadium": { march: 0.02, earlyApril: 0.035, lateApril: 0.055, may: 0.09 },
+  "narendra-modi-stadium": { march: 0.012, earlyApril: 0.018, lateApril: 0.025, may: 0.04 },
+  "sawai-mansingh-stadium": { march: 0.01, earlyApril: 0.015, lateApril: 0.02, may: 0.03 },
+  "maharaja-yadavindra-singh-stadium": { march: 0.035, earlyApril: 0.04, lateApril: 0.045, may: 0.055 },
+};
+
+export function venueRainProbability(stadiumId: string, date?: string): number {
+  if (!date) return 0;
+  const month = Number(date.slice(5, 7));
+  const day = Number(date.slice(8, 10));
+  const profile = VENUE_RAIN_PROFILES[stadiumId] ?? DEFAULT_RAIN_PROFILE;
+  if (month <= 3) return profile.march;
+  if (month === 4) return day <= 15 ? profile.earlyApril : profile.lateApril;
+  if (month === 5) return profile.may;
+  return Math.min(0.2, profile.may * 1.25);
+}
+
+export function createWeatherScenario(
+  seed: string,
+  stadiumId: string,
+  date?: string,
+): MatchWeatherScenario {
+  if (!date) {
+    return { kind: "clear", rainDelayMinutes: 0, firstInningsOvers: 20, secondInningsOvers: 20, summary: "Clear conditions allowed a full 20-over match." };
+  }
+  const roll = stableWeatherRoll(seed, stadiumId, date);
+  const rainChance = venueRainProbability(stadiumId, date);
+  if (roll >= rainChance) {
+    return { kind: "clear", rainDelayMinutes: 0, firstInningsOvers: 20, secondInningsOvers: 20, summary: "Clear conditions allowed a full 20-over match." };
+  }
+  const pattern = stableWeatherRoll(`${seed}|pattern`, stadiumId, date);
+  const severity = stableWeatherRoll(`${seed}|severity`, stadiumId, date);
+  const pick = (values: readonly number[]) => values[Math.min(values.length - 1, Math.floor(severity * values.length))];
+
+  let kind: WeatherScenarioKind;
+  let firstInningsOvers: number;
+  let secondInningsOvers: number;
+  let rainDelayMinutes: number;
+  let summary: string;
+
+  if (pattern < 0.3) {
+    kind = "delayed-start";
+    firstInningsOvers = pick([18, 16, 14, 12]);
+    secondInningsOvers = firstInningsOvers;
+    rainDelayMinutes = (20 - firstInningsOvers) * 9 + 20;
+    summary = `Rain before the start reduced the match to ${firstInningsOvers} overs per side.`;
+  } else if (pattern < 0.78) {
+    kind = "innings-break-rain";
+    firstInningsOvers = 20;
+    secondInningsOvers = pick([16, 14, 12, 10, 8]);
+    rainDelayMinutes = (20 - secondInningsOvers) * 8 + 20;
+    summary = `Rain during the innings break reduced the chase to ${secondInningsOvers} overs.`;
+  } else {
+    kind = "multiple-showers";
+    firstInningsOvers = pick([18, 16, 14, 12]);
+    const furtherReduction = pick([3, 4, 5, 6]);
+    secondInningsOvers = Math.max(5, firstInningsOvers - furtherReduction);
+    rainDelayMinutes = ((20 - firstInningsOvers) + (firstInningsOvers - secondInningsOvers)) * 8 + 35;
+    summary = `Repeated showers reduced the first innings to ${firstInningsOvers} overs and the chase to ${secondInningsOvers} overs.`;
+  }
+
+  return {
+    kind,
+    rainDelayMinutes,
+    firstInningsOvers,
+    secondInningsOvers,
+    summary,
+  };
 }
 
 function simulateInnings(context: InningsContext): MatchInnings {
@@ -1753,6 +1936,8 @@ function simulateInnings(context: InningsContext): MatchInnings {
     conditions,
     target,
   } = context;
+  const maxOvers = context.maxOvers ?? 20;
+  const { powerplayEnd, deathStart } = inningsPhaseThresholds(maxOvers);
   const isNight = isNightMatch(context.time);
   const isAfternoon = isAfternoonMatch(context.time);
   const allParticipantIds = Array.from(new Set([
@@ -1872,7 +2057,7 @@ function simulateInnings(context: InningsContext): MatchInnings {
   if (tailRoll > 0.98 && expectedCentre >= 195) inningsEnvironment *= 1.28;
 
   while (
-    legalBalls < 120
+    legalBalls < maxOvers * 6
     && wickets < 10
     && strikerId
     && nonStrikerId
@@ -1881,6 +2066,7 @@ function simulateInnings(context: InningsContext): MatchInnings {
     const overNumber = Math.floor(legalBalls / 6) + 1;
     const bowler = chooseBowler(
       overNumber,
+      maxOvers,
       bowling.finalXI,
       players,
       new Map(Array.from(bowlingEntries.entries()).map(([id, entry]) => [id, entry.balls])),
@@ -1909,7 +2095,7 @@ function simulateInnings(context: InningsContext): MatchInnings {
 
     while (
       legalBallsThisOver < 6
-      && legalBalls < 120
+        && legalBalls < maxOvers * 6
       && wickets < 10
       && strikerId
       && nonStrikerId
@@ -1928,7 +2114,7 @@ function simulateInnings(context: InningsContext): MatchInnings {
       const displayLegalBall = legalBallsThisOver + 1;
       const displayBall = `${overNumber - 1}.${displayLegalBall}`;
 
-      const isDewActive = context.inningsNumber === 2 && isNight && overNumber >= 10;
+      const isDewActive = context.inningsNumber === 2 && isNight && overNumber >= Math.ceil(maxOvers / 2);
       const dewBowlerPenalty = isDewActive ? (bowler.role === "Spin Bowler" ? -2.5 : -1.2) : 0;
       const heatBowlerPenalty = isAfternoon && spellOverNumber >= 2 ? -1.5 : 0;
       const heatBatterPenalty = isAfternoon && strikerEntry.balls >= 35 ? -1.5 : 0;
@@ -1977,6 +2163,7 @@ function simulateInnings(context: InningsContext): MatchInnings {
         wickets,
         runs,
         target,
+        maxOvers,
       ) + bowlerRespectIntentAdjustment(battingRating, bowlingRating);
       const tacticalBowling = bowlingTacticalAdjustment(
         context.bowlingTactics,
@@ -1988,11 +2175,13 @@ function simulateInnings(context: InningsContext): MatchInnings {
           wickets,
           runs,
           target,
+          maxOvers,
         ),
+        maxOvers,
       );
       const closeDeathChase = Boolean(
         target
-        && overNumber >= 16
+        && overNumber >= deathStart
         && target - runs <= 50
       );
       const extrasPressure = deathExtrasPressure(
@@ -2000,6 +2189,7 @@ function simulateInnings(context: InningsContext): MatchInnings {
         bowlingRating,
         inferredPressureComposure(bowler),
         closeDeathChase,
+        maxOvers,
       );
       const wideProbability = clamp(
         0.015 + (75 - bowlingRating) * 0.00045 + extrasPressure.wideIncrease,
@@ -2035,9 +2225,9 @@ function simulateInnings(context: InningsContext): MatchInnings {
         strikerEntry.balls += 1;
 
         const skillDelta = battingRating - bowlingRating;
-        const isPowerplay = overNumber <= 6;
-        const isMiddleOvers = overNumber >= 7 && overNumber <= 15;
-        const isDeathOvers = overNumber >= 16;
+        const isPowerplay = overNumber <= powerplayEnd;
+        const isMiddleOvers = overNumber > powerplayEnd && overNumber < deathStart;
+        const isDeathOvers = overNumber >= deathStart;
 
         let phaseRunModifier = 1.0;
         let phaseWicketModifier = 0.0;
@@ -2193,7 +2383,12 @@ function simulateInnings(context: InningsContext): MatchInnings {
           striker.battingAggression ?? 65,
           battingPressure,
         );
+        const centuryConversionAdjustment = lowerRatedCenturyConversionAdjustment(
+          striker.currentBatting,
+          strikerEntry.runs,
+        );
         const dotBallPressure = dotBallPressureAdjustment(consecutiveDotBalls);
+        const aggressionProfile = battingAggressionScoringProfile(striker.battingAggression ?? 65);
         const runningPressure = groundRunningPressure(conditions);
         const dewScoringMultiplier = isDewActive ? 1.06 : 1.0;
         const runEnvironment = clamp(
@@ -2204,6 +2399,7 @@ function simulateInnings(context: InningsContext): MatchInnings {
           * (1 + context.performanceTilt)
           * individualScoreScoringFactor
           * milestoneScoringFactor
+          * centuryConversionAdjustment.scoringFactor
           * phaseRunModifier
           * matchupRunModifier
           * rrrRunModifier
@@ -2229,7 +2425,7 @@ function simulateInnings(context: InningsContext): MatchInnings {
           ? 0
           : wickets >= 3
             ? 0.3
-            : wickets >= 2 && overNumber <= 8
+            : wickets >= 2 && overNumber <= powerplayEnd + 2
               ? 0.6
               : 1;
         const easyChaseWicketRelief = clamp(
@@ -2306,14 +2502,20 @@ function simulateInnings(context: InningsContext): MatchInnings {
           - lowTotalSurvivalRelief
           - battingAllRounderRelief
           + individualScoreWicketPressure
+          + centuryConversionAdjustment.wicketIncrease
+          + aggressionProfile.wicketProbabilityAdjustment
           - Math.min(0, intent) * -0.014,
           0.018,
           0.16,
         );
 
+        const bowlingHaulMultiplier = lowerRatedBowlingHaulMultiplier(
+          bowler.currentBowling,
+          bowlerEntry.wickets,
+        );
         const effectiveWicketProbability = isFreeHit
           ? 0.002 + runningPressure * 0.001
-          : wicketProbability;
+          : wicketProbability * bowlingHaulMultiplier;
         const wicketOutcomeRoll = rng.next();
         if (!isNoBall && wicketOutcomeRoll < effectiveWicketProbability) {
           const wicketChance: DeliveryWicket = isFreeHit
@@ -2443,6 +2645,7 @@ function simulateInnings(context: InningsContext): MatchInnings {
                 strikerIsWeak,
                 nonStrikerIsEstablished,
               ),
+              striker.battingAggression ?? 65,
             );
             strikerEntry.runs += runsOffBat;
             if (runsOffBat === 4) strikerEntry.fours += 1;
@@ -2802,6 +3005,7 @@ function resultText(
   battingFirstTeamId: string,
   inningsOne: MatchInnings,
   inningsTwo: MatchInnings,
+  target: number,
   teams: Record<string, Team>,
   superOver?: SuperOverResult,
 ): string {
@@ -2810,7 +3014,7 @@ function resultText(
   }
   if (!winnerId) return "Match tied";
   if (winnerId === battingFirstTeamId) {
-    const margin = inningsOne.runs - inningsTwo.runs;
+    const margin = Math.max(1, (target - 1) - inningsTwo.runs);
     return `${teams[winnerId]?.name ?? winnerId} won by ${margin} run${margin === 1 ? "" : "s"}`;
   }
   const wicketsRemaining = 10 - inningsTwo.wickets;
@@ -2819,6 +3023,9 @@ function resultText(
 
 export function simulateInstantMatch(input: MatchSimulationInput): MatchSimulationRecord {
   const rng = new SimulationRandom(`${input.seed}|engine-${MATCH_SIMULATION_VERSION}`);
+  const weatherScenario = input.weatherScenario
+    ?? createWeatherScenario(input.seed, input.conditions.stadiumId, input.date);
+  const rainAffected = hasRainReducedOvers(weatherScenario);
   const tossWinner = rng.next() < 0.5 ? input.teamA : input.teamB;
   const tossWinnerPlans = tossWinner.id === input.teamA.id
     ? input.teamAPlans
@@ -2899,7 +3106,20 @@ export function simulateInstantMatch(input: MatchSimulationInput): MatchSimulati
     stage: input.stage,
     isKnockout: input.isKnockout,
     time: input.time,
+    maxOvers: weatherScenario.firstInningsOvers,
   });
+
+  const originalTarget = firstInnings.runs + 1;
+  const dlsApplied = weatherScenario.secondInningsOvers < weatherScenario.firstInningsOvers;
+  const revisedTarget = dlsApplied
+    ? calculateDLSRevisedTarget(
+      firstInnings.runs,
+      weatherScenario.secondInningsOvers,
+      0,
+      0,
+      weatherScenario.firstInningsOvers,
+    )
+    : originalTarget;
 
   activateBowlFirstImpact(
     bowlingFirstState,
@@ -2918,10 +3138,10 @@ export function simulateInstantMatch(input: MatchSimulationInput): MatchSimulati
     bowling: battingFirstState,
     players: input.players,
     tactics: bowlingFirstPlans.tactics,
-    bowlingTactics: bowlingFirstPlans.tactics,
+    bowlingTactics: battingFirstPlans.tactics,
     conditions: input.conditions,
     rng,
-    target: firstInnings.runs + 1,
+    target: revisedTarget,
     firstInningsWickets: firstInnings.wickets,
     skillEdge: -strengthEdge,
     performanceTilt: -performanceEdge,
@@ -2934,6 +3154,7 @@ export function simulateInstantMatch(input: MatchSimulationInput): MatchSimulati
     stage: input.stage,
     isKnockout: input.isKnockout,
     time: input.time,
+    maxOvers: weatherScenario.secondInningsOvers,
   });
 
   const chasingImpact = bowlingFirstState.impactDecision;
@@ -2943,7 +3164,7 @@ export function simulateInstantMatch(input: MatchSimulationInput): MatchSimulati
     && chasingImpact.incomingPlayerId
     && chasingImpact.outgoingPlayerId
     && chasingImpactPosition
-    && secondInnings.runs >= firstInnings.runs + 1
+    && secondInnings.runs >= revisedTarget
     // With W wickets lost, only positions 1 through W + 2 can have been
     // required. A planned player below that point never entered the match.
     && chasingImpactPosition > secondInnings.wickets + 2,
@@ -2967,9 +3188,9 @@ export function simulateInstantMatch(input: MatchSimulationInput): MatchSimulati
     );
   }
 
-  let winnerId: string = secondInnings.runs > firstInnings.runs
+  let winnerId: string = secondInnings.runs >= revisedTarget
     ? bowlingFirstTeam.id
-    : secondInnings.runs < firstInnings.runs
+    : secondInnings.runs < revisedTarget - 1
       ? battingFirstTeam.id
       : "";
 
@@ -3000,14 +3221,36 @@ export function simulateInstantMatch(input: MatchSimulationInput): MatchSimulati
       + input.conditions.adjustedExpectedScore.max
     ) / 2,
   );
-  const finalResultText = resultText(
+  const baseResultText = resultText(
     winnerId,
     battingFirstTeam.id,
     firstInnings,
     secondInnings,
+    revisedTarget,
     teams,
     superOver,
   );
+  const finalResultText = dlsApplied
+    ? `${baseResultText} (DLS method - Rain affected)`
+    : appendRainAffectedResultLabel(baseResultText, rainAffected);
+  const firstInningsResourcePercentage = dlsResourcePercentage(weatherScenario.firstInningsOvers, 0) * 100;
+  const secondInningsResourcePercentage = dlsResourcePercentage(weatherScenario.secondInningsOvers, 0) * 100;
+  const weatherMatchSummary = rainAffected
+    ? dlsApplied
+      ? weatherScenario.kind === "multiple-showers"
+        ? `Repeated rain caused a ${weatherScenario.rainDelayMinutes}-minute delay, reducing ${battingFirstTeam.name}'s allocation from 20 to ${weatherScenario.firstInningsOvers} overs and then reducing ${bowlingFirstTeam.name}'s chase further to ${weatherScenario.secondInningsOvers} overs. After ${battingFirstTeam.name} made ${firstInnings.runs}/${firstInnings.wickets}, DLS compared ${firstInningsResourcePercentage.toFixed(1)}% resources for the first innings with ${secondInningsResourcePercentage.toFixed(1)}% for the chase and revised the target from ${originalTarget} to ${revisedTarget} runs from ${weatherScenario.secondInningsOvers} overs.`
+        : `Rain during the innings break caused a ${weatherScenario.rainDelayMinutes}-minute delay and reduced ${bowlingFirstTeam.name}'s chase from 20 to ${weatherScenario.secondInningsOvers} overs. After ${battingFirstTeam.name} made ${firstInnings.runs}/${firstInnings.wickets} from its full allocation, DLS reduced the target from ${originalTarget} to ${revisedTarget} runs from ${weatherScenario.secondInningsOvers} overs (${firstInningsResourcePercentage.toFixed(1)}% resources versus ${secondInningsResourcePercentage.toFixed(1)}%).`
+      : `Rain before play caused a ${weatherScenario.rainDelayMinutes}-minute delay and reduced the match from 20 to ${weatherScenario.firstInningsOvers} overs per side. ${battingFirstTeam.name} made ${firstInnings.runs}/${firstInnings.wickets}, so ${bowlingFirstTeam.name} needed ${revisedTarget} from ${weatherScenario.secondInningsOvers} overs. The target remained one more than the first-innings score because both teams received the same allocation, so no DLS adjustment was required.`
+    : weatherScenario.summary;
+  const resolvedWeatherScenario: MatchWeatherScenario = {
+    ...weatherScenario,
+    summary: weatherMatchSummary,
+    dlsApplied,
+    originalTarget,
+    revisedTarget,
+    firstInningsResourcePercentage,
+    secondInningsResourcePercentage,
+  };
   const summary = [
     `${tossWinner.name} won the toss and chose to ${tossDecision}.`,
     `${battingFirstTeam.name} scored ${firstInnings.runs}/${firstInnings.wickets} in ${firstInnings.overs.toFixed(1)} overs.`,
@@ -3015,6 +3258,7 @@ export function simulateInstantMatch(input: MatchSimulationInput): MatchSimulati
       .filter((decision) => decision.used)
       .map((decision) => decision.explanation),
     `${bowlingFirstTeam.name} scored ${secondInnings.runs}/${secondInnings.wickets} in ${secondInnings.overs.toFixed(1)} overs.`,
+    ...(rainAffected ? [weatherMatchSummary] : []),
     finalResultText,
     `${pom.name} was named Player of the Match.`,
   ];
@@ -3040,7 +3284,7 @@ export function simulateInstantMatch(input: MatchSimulationInput): MatchSimulati
       expectedScore: { ...input.conditions.adjustedExpectedScore },
       boundaries: { ...input.conditions.boundaries },
       outfieldSpeedRating: input.conditions.outfieldSpeedRating,
-      weather: null,
+      weather: resolvedWeatherScenario,
     },
     lineups: {
       [battingFirstTeam.id]: {

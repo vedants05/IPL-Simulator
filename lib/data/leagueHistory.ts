@@ -20,6 +20,8 @@ export interface LeagueHistorySeason {
   runnerUpTeamId: string;
   orangeCap: LeagueHistoryHonour;
   purpleCap: LeagueHistoryHonour;
+  emergingPlayer?: LeagueHistoryHonour;
+  mvp?: LeagueHistoryHonour;
   source: "historical" | "career";
   standings?: LeagueHistoryStanding[];
 }
@@ -61,23 +63,23 @@ export const LEAGUE_HISTORY_TEAMS: Record<string, LeagueHistoryTeam> = {
 };
 
 export const HISTORICAL_LEAGUE_HISTORY: LeagueHistorySeason[] = [
-  { season: 2026, championTeamId: "RCB", runnerUpTeamId: "GT", orangeCap: { name: "Vaibhav Suryavanshi", teamId: "RR" }, purpleCap: { name: "Kagiso Rabada", teamId: "GT" }, source: "historical" },
-  { season: 2025, championTeamId: "RCB", runnerUpTeamId: "PBKS", orangeCap: { name: "Sai Sudharsan", teamId: "GT" }, purpleCap: { name: "Prasidh Krishna", teamId: "GT" }, source: "historical" },
-  { season: 2024, championTeamId: "KKR", runnerUpTeamId: "SRH", orangeCap: { name: "Virat Kohli", teamId: "RCB" }, purpleCap: { name: "Harshal Patel", teamId: "PBKS" }, source: "historical" },
-  { season: 2023, championTeamId: "CSK", runnerUpTeamId: "GT", orangeCap: { name: "Shubman Gill", teamId: "GT" }, purpleCap: { name: "Mohammed Shami", teamId: "GT" }, source: "historical" },
-  { season: 2022, championTeamId: "GT", runnerUpTeamId: "RR", orangeCap: { name: "Jos Buttler", teamId: "RR" }, purpleCap: { name: "Yuzvendra Chahal", teamId: "RR" }, source: "historical" },
-  { season: 2021, championTeamId: "CSK", runnerUpTeamId: "KKR", orangeCap: { name: "Ruturaj Gaikwad", teamId: "CSK" }, purpleCap: { name: "Harshal Patel", teamId: "RCB" }, source: "historical" },
-  { season: 2020, championTeamId: "MI", runnerUpTeamId: "DC", orangeCap: { name: "KL Rahul", teamId: "KXIP" }, purpleCap: { name: "Kagiso Rabada", teamId: "DC" }, source: "historical" },
-  { season: 2019, championTeamId: "MI", runnerUpTeamId: "CSK", orangeCap: { name: "David Warner", teamId: "SRH" }, purpleCap: { name: "Imran Tahir", teamId: "CSK" }, source: "historical" },
-  { season: 2018, championTeamId: "CSK", runnerUpTeamId: "SRH", orangeCap: { name: "Kane Williamson", teamId: "SRH" }, purpleCap: { name: "Andrew Tye", teamId: "KXIP" }, source: "historical" },
-  { season: 2017, championTeamId: "MI", runnerUpTeamId: "RPS", orangeCap: { name: "David Warner", teamId: "SRH" }, purpleCap: { name: "Bhuvneshwar Kumar", teamId: "SRH" }, source: "historical" },
-  { season: 2016, championTeamId: "SRH", runnerUpTeamId: "RCB", orangeCap: { name: "Virat Kohli", teamId: "RCB" }, purpleCap: { name: "Bhuvneshwar Kumar", teamId: "SRH" }, source: "historical" },
-  { season: 2015, championTeamId: "MI", runnerUpTeamId: "CSK", orangeCap: { name: "David Warner", teamId: "SRH" }, purpleCap: { name: "Dwayne Bravo", teamId: "CSK" }, source: "historical" },
-  { season: 2014, championTeamId: "KKR", runnerUpTeamId: "KXIP", orangeCap: { name: "Robin Uthappa", teamId: "KKR" }, purpleCap: { name: "Mohit Sharma", teamId: "CSK" }, source: "historical" },
-  { season: 2013, championTeamId: "MI", runnerUpTeamId: "CSK", orangeCap: { name: "Michael Hussey", teamId: "CSK" }, purpleCap: { name: "Dwayne Bravo", teamId: "CSK" }, source: "historical" },
-  { season: 2012, championTeamId: "KKR", runnerUpTeamId: "CSK", orangeCap: { name: "Chris Gayle", teamId: "RCB" }, purpleCap: { name: "Morne Morkel", teamId: "DD" }, source: "historical" },
-  { season: 2011, championTeamId: "CSK", runnerUpTeamId: "RCB", orangeCap: { name: "Chris Gayle", teamId: "RCB" }, purpleCap: { name: "Lasith Malinga", teamId: "MI" }, source: "historical" },
-  { season: 2010, championTeamId: "CSK", runnerUpTeamId: "MI", orangeCap: { name: "Sachin Tendulkar", teamId: "MI" }, purpleCap: { name: "Pragyan Ojha", teamId: "DCG" }, source: "historical" },
-  { season: 2009, championTeamId: "DCG", runnerUpTeamId: "RCB", orangeCap: { name: "Matthew Hayden", teamId: "CSK" }, purpleCap: { name: "RP Singh", teamId: "DCG" }, source: "historical" },
-  { season: 2008, championTeamId: "RR", runnerUpTeamId: "CSK", orangeCap: { name: "Shaun Marsh", teamId: "KXIP" }, purpleCap: { name: "Sohail Tanvir", teamId: "RR" }, source: "historical" },
+  { season: 2026, championTeamId: "RCB", runnerUpTeamId: "GT", orangeCap: { name: "Vaibhav Suryavanshi", teamId: "RR" }, purpleCap: { name: "Kagiso Rabada", teamId: "GT" }, emergingPlayer: { name: "Vaibhav Suryavanshi", teamId: "RR" }, mvp: { name: "Vaibhav Suryavanshi", teamId: "RR" }, source: "historical" },
+  { season: 2025, championTeamId: "RCB", runnerUpTeamId: "PBKS", orangeCap: { name: "Sai Sudharsan", teamId: "GT" }, purpleCap: { name: "Prasidh Krishna", teamId: "GT" }, emergingPlayer: { name: "Sai Sudharsan", teamId: "GT" }, mvp: { name: "Suryakumar Yadav", teamId: "MI" }, source: "historical" },
+  { season: 2024, championTeamId: "KKR", runnerUpTeamId: "SRH", orangeCap: { name: "Virat Kohli", teamId: "RCB" }, purpleCap: { name: "Harshal Patel", teamId: "PBKS" }, emergingPlayer: { name: "Nitish Kumar Reddy", teamId: "SRH" }, mvp: { name: "Sunil Narine", teamId: "KKR" }, source: "historical" },
+  { season: 2023, championTeamId: "CSK", runnerUpTeamId: "GT", orangeCap: { name: "Shubman Gill", teamId: "GT" }, purpleCap: { name: "Mohammed Shami", teamId: "GT" }, emergingPlayer: { name: "Yashasvi Jaiswal", teamId: "RR" }, mvp: { name: "Shubman Gill", teamId: "GT" }, source: "historical" },
+  { season: 2022, championTeamId: "GT", runnerUpTeamId: "RR", orangeCap: { name: "Jos Buttler", teamId: "RR" }, purpleCap: { name: "Yuzvendra Chahal", teamId: "RR" }, emergingPlayer: { name: "Umran Malik", teamId: "SRH" }, mvp: { name: "Jos Buttler", teamId: "RR" }, source: "historical" },
+  { season: 2021, championTeamId: "CSK", runnerUpTeamId: "KKR", orangeCap: { name: "Ruturaj Gaikwad", teamId: "CSK" }, purpleCap: { name: "Harshal Patel", teamId: "RCB" }, emergingPlayer: { name: "Ruturaj Gaikwad", teamId: "CSK" }, mvp: { name: "Harshal Patel", teamId: "RCB" }, source: "historical" },
+  { season: 2020, championTeamId: "MI", runnerUpTeamId: "DC", orangeCap: { name: "KL Rahul", teamId: "KXIP" }, purpleCap: { name: "Kagiso Rabada", teamId: "DC" }, emergingPlayer: { name: "Devdutt Padikkal", teamId: "RCB" }, mvp: { name: "Jofra Archer", teamId: "RR" }, source: "historical" },
+  { season: 2019, championTeamId: "MI", runnerUpTeamId: "CSK", orangeCap: { name: "David Warner", teamId: "SRH" }, purpleCap: { name: "Imran Tahir", teamId: "CSK" }, emergingPlayer: { name: "Shubman Gill", teamId: "KKR" }, mvp: { name: "Andre Russell", teamId: "KKR" }, source: "historical" },
+  { season: 2018, championTeamId: "CSK", runnerUpTeamId: "SRH", orangeCap: { name: "Kane Williamson", teamId: "SRH" }, purpleCap: { name: "Andrew Tye", teamId: "KXIP" }, emergingPlayer: { name: "Rishabh Pant", teamId: "DD" }, mvp: { name: "Sunil Narine", teamId: "KKR" }, source: "historical" },
+  { season: 2017, championTeamId: "MI", runnerUpTeamId: "RPS", orangeCap: { name: "David Warner", teamId: "SRH" }, purpleCap: { name: "Bhuvneshwar Kumar", teamId: "SRH" }, emergingPlayer: { name: "Basil Thampi", teamId: "GL" }, mvp: { name: "Ben Stokes", teamId: "RPS" }, source: "historical" },
+  { season: 2016, championTeamId: "SRH", runnerUpTeamId: "RCB", orangeCap: { name: "Virat Kohli", teamId: "RCB" }, purpleCap: { name: "Bhuvneshwar Kumar", teamId: "SRH" }, emergingPlayer: { name: "Mustafizur Rahman", teamId: "SRH" }, mvp: { name: "Virat Kohli", teamId: "RCB" }, source: "historical" },
+  { season: 2015, championTeamId: "MI", runnerUpTeamId: "CSK", orangeCap: { name: "David Warner", teamId: "SRH" }, purpleCap: { name: "Dwayne Bravo", teamId: "CSK" }, emergingPlayer: { name: "Shreyas Iyer", teamId: "DD" }, mvp: { name: "Andre Russell", teamId: "KKR" }, source: "historical" },
+  { season: 2014, championTeamId: "KKR", runnerUpTeamId: "KXIP", orangeCap: { name: "Robin Uthappa", teamId: "KKR" }, purpleCap: { name: "Mohit Sharma", teamId: "CSK" }, emergingPlayer: { name: "Axar Patel", teamId: "KXIP" }, mvp: { name: "Glenn Maxwell", teamId: "KXIP" }, source: "historical" },
+  { season: 2013, championTeamId: "MI", runnerUpTeamId: "CSK", orangeCap: { name: "Michael Hussey", teamId: "CSK" }, purpleCap: { name: "Dwayne Bravo", teamId: "CSK" }, emergingPlayer: { name: "Sanju Samson", teamId: "RR" }, mvp: { name: "Shane Watson", teamId: "RR" }, source: "historical" },
+  { season: 2012, championTeamId: "KKR", runnerUpTeamId: "CSK", orangeCap: { name: "Chris Gayle", teamId: "RCB" }, purpleCap: { name: "Morne Morkel", teamId: "DD" }, emergingPlayer: { name: "Mandeep Singh", teamId: "KXIP" }, mvp: { name: "Sunil Narine", teamId: "KKR" }, source: "historical" },
+  { season: 2011, championTeamId: "CSK", runnerUpTeamId: "RCB", orangeCap: { name: "Chris Gayle", teamId: "RCB" }, purpleCap: { name: "Lasith Malinga", teamId: "MI" }, emergingPlayer: { name: "Iqbal Abdulla", teamId: "KKR" }, mvp: { name: "Chris Gayle", teamId: "RCB" }, source: "historical" },
+  { season: 2010, championTeamId: "CSK", runnerUpTeamId: "MI", orangeCap: { name: "Sachin Tendulkar", teamId: "MI" }, purpleCap: { name: "Pragyan Ojha", teamId: "DCG" }, emergingPlayer: { name: "Saurabh Tiwary", teamId: "MI" }, mvp: { name: "Sachin Tendulkar", teamId: "MI" }, source: "historical" },
+  { season: 2009, championTeamId: "DCG", runnerUpTeamId: "RCB", orangeCap: { name: "Matthew Hayden", teamId: "CSK" }, purpleCap: { name: "RP Singh", teamId: "DCG" }, emergingPlayer: { name: "Rohit Sharma", teamId: "DCG" }, mvp: { name: "Adam Gilchrist", teamId: "DCG" }, source: "historical" },
+  { season: 2008, championTeamId: "RR", runnerUpTeamId: "CSK", orangeCap: { name: "Shaun Marsh", teamId: "KXIP" }, purpleCap: { name: "Sohail Tanvir", teamId: "RR" }, emergingPlayer: { name: "Shreevats Goswami", teamId: "RCB" }, mvp: { name: "Shane Watson", teamId: "RR" }, source: "historical" },
 ];

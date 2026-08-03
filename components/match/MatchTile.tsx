@@ -1,6 +1,7 @@
 "use client";
 
 import { Calendar, Clock, ChevronRight } from "lucide-react";
+import { appendRainAffectedResultLabel, isRainAffectedMatch } from "@/lib/logic/matchWeather";
 import type { Team } from "@/lib/types";
 import type { UnifiedMatchRecord } from "./MatchScorecardModal";
 
@@ -22,8 +23,9 @@ export default function MatchTile({
 
   const teamALabel = teamA?.shortName ?? match.teamA;
   const teamBLabel = teamB?.shortName ?? match.teamB;
+  const rainAffected = isRainAffectedMatch(match);
 
-  const resultText =
+  const baseResultText =
     match.simulation?.resultText ??
     match.archivedResultText ??
     (match.winner && match.winner !== "TIE"
@@ -31,6 +33,9 @@ export default function MatchTile({
       : match.played
       ? "Match Tied"
       : null);
+  const resultText = baseResultText
+    ? appendRainAffectedResultLabel(baseResultText, rainAffected)
+    : null;
 
   // Variant 1: CLUB PROFILE CARD (Compact grid item for Club Page)
   if (variant === "club") {
@@ -40,7 +45,7 @@ export default function MatchTile({
         className="group cursor-pointer rounded-lg border border-border bg-surface p-4 transition-all hover:border-accent/60 hover:shadow-md"
       >
         <div className="flex items-center justify-between border-b border-border/50 pb-2.5">
-          <span className="font-space-mono text-[10px] font-bold uppercase text-accent">
+          <span className="flex items-center gap-2 font-space-mono text-[10px] font-bold uppercase text-accent">
             {match.label || `Match ${match.matchNumber}`}
           </span>
           <span className="flex items-center gap-1 font-space-mono text-[9px] uppercase text-text-secondary">
@@ -94,7 +99,7 @@ export default function MatchTile({
         className="group flex cursor-pointer items-center justify-between gap-4 rounded-lg border border-border bg-surface px-4 py-3 transition-all hover:border-accent/60 hover:bg-surface-elevated"
       >
         <div className="flex min-w-[130px] flex-col">
-          <span className="font-space-mono text-[10px] font-bold uppercase text-accent">
+          <span className="flex items-center gap-2 font-space-mono text-[10px] font-bold uppercase text-accent">
             {match.label || `Match ${match.matchNumber}`}
           </span>
           <span className="flex items-center gap-1 font-space-mono text-[9px] uppercase text-text-secondary">

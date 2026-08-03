@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useParams } from "next/navigation";
 import {
   Activity,
@@ -20,13 +21,28 @@ import { formatPrice } from "@/lib/logic/auctionRules";
 import type { AiLineupPlan } from "@/lib/logic/aiLineupSelector";
 import type { AiLeagueLeadership, AiTeamLeadership } from "@/lib/logic/aiLeadership";
 import { dateKeyToLocalDate, getSeasonScheduleAnnouncementDate } from "@/lib/logic/careerCalendar";
+import { isRainAffectedMatch } from "@/lib/logic/matchWeather";
+import { getPlayerSeasonHistory } from "@/lib/logic/playerHistory";
+import { cacheTeamProfileCareer, getCachedTeamProfileCareer } from "@/lib/logic/teamProfileCareerCache";
 import { useGameStore } from "@/lib/store/gameStore";
-import { PlayerProfileModal } from "@/components/player/PlayerProfileModal";
-import MatchScorecardModal from "@/components/match/MatchScorecardModal";
-import MatchTile from "@/components/match/MatchTile";
 import type { Player, Team } from "@/lib/types";
 
+const PlayerProfileModal = dynamic(
+  () => import("@/components/player/PlayerProfileModal").then((module) => module.PlayerProfileModal),
+  { ssr: false },
+);
+const MatchScorecardModal = dynamic(
+  () => import("@/components/match/MatchScorecardModal"),
+  { ssr: false },
+);
+
 type TeamProfileTab = "overview" | "squad" | "fixtures" | "lineups";
+type ClubSquadView = "general" | "bowling" | "batting";
+type ClubSquadSortKey =
+  | "name" | "age" | "role" | "nationality" | "rating" | "potential" | "acquisition"
+  | "bowlingCA" | "bowlingPA" | "seasonMatches" | "seasonWickets" | "seasonBowlingAverage" | "seasonEconomy" | "seasonBestBowling"
+  | "battingCA" | "battingPA" | "seasonRuns" | "seasonBattingAverage" | "seasonStrikeRate" | "seasonHighScore";
+type ClubSquadSortDirection = "asc" | "desc";
 type AiLineupModule = typeof import("@/lib/logic/aiLineupSelector");
 
 const TEAM_PROFILE_TABS: readonly TeamProfileTab[] = ["overview", "squad", "fixtures", "lineups"];
@@ -60,7 +76,11 @@ interface TeamProfilePlayerStats {
   balls: number;
   wickets: number;
   runsConceded: number;
+  oversBowled?: number;
   matches: number;
+  dismissals?: number;
+  highestScore?: number;
+  bestBowling?: string;
 }
 
 interface TeamProfileFixture {
@@ -160,6 +180,9 @@ function normalizeTeamProfileCareer(parsed: Partial<TeamProfileCareer>): TeamPro
 }
 
 function readTeamProfileCareer(userTeamId: string): TeamProfileCareer {
+  const inMemoryCareer = getCachedTeamProfileCareer<TeamProfileCareer>(userTeamId);
+  if (inMemoryCareer) return inMemoryCareer;
+
   const storageKey = `ipl_career_${userTeamId}`;
   const serialized = localStorage.getItem(storageKey);
   if (
@@ -174,6 +197,7 @@ function readTeamProfileCareer(userTeamId: string): TeamProfileCareer {
     ? normalizeTeamProfileCareer(JSON.parse(serialized) as Partial<TeamProfileCareer>)
     : EMPTY_CAREER;
   cachedCareerSnapshot = { storageKey, serialized, career };
+  cacheTeamProfileCareer(userTeamId, career);
   return career;
 }
 
@@ -475,15 +499,24 @@ export default function TeamProfilePage() {
   const auction = useGameStore((state) => state.auction);
   const simulatedLeagueHistory = useGameStore((state) => state.simulatedLeagueHistory);
   const [hasMounted, setHasMounted] = useState(false);
-  const [hasLoadedCareer, setHasLoadedCareer] = useState(false);
+  const [hasLoadedCareer, setHasLoadedCareer] = useState(() => Boolean(
+    getCachedTeamProfileCareer<TeamProfileCareer>(userTeamId),
+  ));
   const [activeTab, setActiveTab] = useState<TeamProfileTab>("overview");
-  const [career, setCareer] = useState<TeamProfileCareer>(EMPTY_CAREER);
+  const [career, setCareer] = useState<TeamProfileCareer>(() => (
+    getCachedTeamProfileCareer<TeamProfileCareer>(userTeamId) ?? EMPTY_CAREER
+  ));
   const [aiLineupLogic, setAiLineupLogic] = useState<AiLineupModule | null>(null);
   const [fallbackAiLeadership, setFallbackAiLeadership] = useState<AiTeamLeadership | null>(null);
   const [visibleNextFixtureCount, setVisibleNextFixtureCount] = useState(3);
   const [activeScorecard, setActiveScorecard] = useState<TeamProfileFixture | null>(null);
   const [activeResultView, setActiveResultView] = useState<"scorecard" | "summary" | "commentary">("scorecard");
   const [detailedPlayerId, setDetailedPlayerId] = useState<string | null>(null);
+  const [clubSquadView, setClubSquadView] = useState<ClubSquadView>("general");
+  const [clubSquadSort, setClubSquadSort] = useState<{ key: ClubSquadSortKey; direction: ClubSquadSortDirection }>({
+    key: "name",
+    direction: "asc",
+  });
   const nextFixturesListRef = useRef<HTMLDivElement>(null);
 
 
@@ -544,6 +577,11 @@ export default function TeamProfilePage() {
     }
     setHasLoadedCareer(true);
   }, [hasMounted, userTeamId]);
+
+  useEffect(() => {
+    if (!hasLoadedCareer || !userTeamId) return;
+    cacheTeamProfileCareer(userTeamId, career);
+  }, [career, hasLoadedCareer, userTeamId]);
 
   const squad = useMemo(() => {
     if (!team) return [];
@@ -892,6 +930,7 @@ export default function TeamProfilePage() {
 
   const completedFixtures = teamFixtures.filter((fixture) => fixture.played);
   const upcomingFixtures = teamFixtures.filter((fixture) => !fixture.played);
+  const rainAffectedFixtures = completedFixtures.filter(isRainAffectedMatch);
   const recentFixtures = [...completedFixtures].reverse().slice(0, 5);
   const fixtureAnnouncementDate = getSeasonScheduleAnnouncementDate(currentSeason);
   const fixturesAnnounced = currentDate >= fixtureAnnouncementDate;
@@ -923,6 +962,138 @@ export default function TeamProfilePage() {
       .filter((sale) => sale.teamId === teamId)
       .map((sale) => [sale.playerId, sale.price]),
   );
+  const squadSeason = String(auction?.season ?? currentSeason);
+  const squadSeasonStats = (player: Player) => career.playerStats[player.id];
+  const acquisitionPrice = (player: Player) => {
+    const salePrice = seasonSales.get(player.id);
+    if (salePrice !== undefined) return salePrice;
+    const history = getPlayerSeasonHistory(player.iplHistory, squadSeason);
+    return history?.teamId === teamId && history.price > 0 ? history.price : undefined;
+  };
+  const clubSquadNumericValue = (player: Player, key: ClubSquadSortKey) => {
+    const stats = squadSeasonStats(player);
+    if (key === "age") return player.age;
+    if (key === "rating") return playerRating(player);
+    if (key === "potential") return Math.max(player.potentialBatting, player.potentialBowling);
+    if (key === "acquisition") return acquisitionPrice(player) ?? -1;
+    if (key === "bowlingCA") return player.currentBowling;
+    if (key === "bowlingPA") return player.potentialBowling;
+    if (key === "battingCA") return player.currentBatting;
+    if (key === "battingPA") return player.potentialBatting;
+    if (key === "seasonMatches") return stats?.matches ?? 0;
+    if (key === "seasonWickets") return stats?.wickets ?? 0;
+    if (key === "seasonBowlingAverage") return stats?.wickets ? stats.runsConceded / stats.wickets : Number.POSITIVE_INFINITY;
+    if (key === "seasonEconomy") {
+      const completeOvers = Math.floor(stats?.oversBowled ?? 0);
+      const balls = completeOvers * 6 + Math.round(((stats?.oversBowled ?? 0) - completeOvers) * 10);
+      return balls ? (stats?.runsConceded ?? 0) / (balls / 6) : Number.POSITIVE_INFINITY;
+    }
+    if (key === "seasonBestBowling") {
+      const [wickets = "0", runs = "999"] = (stats?.bestBowling ?? "0/999").split("/");
+      return Number(wickets) * 1000 - Number(runs);
+    }
+    if (key === "seasonRuns") return stats?.runs ?? 0;
+    if (key === "seasonBattingAverage") {
+      const dismissals = stats?.dismissals ?? stats?.matches ?? 0;
+      return dismissals ? (stats?.runs ?? 0) / dismissals : stats?.runs ?? 0;
+    }
+    if (key === "seasonStrikeRate") return stats?.balls ? (stats.runs / stats.balls) * 100 : 0;
+    if (key === "seasonHighScore") return stats?.highestScore ?? 0;
+    return 0;
+  };
+  const sortedClubSquad = [...squad].sort((left, right) => {
+    let comparison = 0;
+    if (clubSquadSort.key === "name") comparison = left.name.localeCompare(right.name);
+    else if (clubSquadSort.key === "role") comparison = left.role.localeCompare(right.role);
+    else if (clubSquadSort.key === "nationality") comparison = left.nationality.localeCompare(right.nationality);
+    else comparison = clubSquadNumericValue(left, clubSquadSort.key) - clubSquadNumericValue(right, clubSquadSort.key);
+    return comparison === 0
+      ? left.name.localeCompare(right.name)
+      : comparison * (clubSquadSort.direction === "asc" ? 1 : -1);
+  });
+  const toggleClubSquadSort = (key: ClubSquadSortKey) => {
+    setClubSquadSort((current) => ({
+      key,
+      direction: current.key === key
+        ? current.direction === "asc" ? "desc" : "asc"
+        : key === "name" || key === "role" || key === "nationality" || key === "age" ? "asc" : "desc",
+    }));
+  };
+  const clubSquadSortIndicator = (key: ClubSquadSortKey) => (
+    clubSquadSort.key === key
+      ? clubSquadSort.direction === "asc" ? "\u2191" : "\u2193"
+      : "\u2195"
+  );
+  const squadNumber = (value: number | undefined, digits = 0) => (
+    value === undefined || !Number.isFinite(value) ? "\u2014" : value.toFixed(digits)
+  );
+  const playerNameCell = (player: Player) => (
+    <div className="min-w-0">
+      <button
+        type="button"
+        onClick={() => setDetailedPlayerId(player.id)}
+        className="block max-w-full truncate text-left font-semibold text-text-primary transition-colors hover:text-accent hover:underline"
+      >
+        {player.name}
+      </button>
+      <div className="mt-0.5 font-space-mono text-[7px] font-bold uppercase text-text-secondary">
+        {player.nationality}{player.isCapped ? " \u00b7 Capped" : " \u00b7 Uncapped"}
+      </div>
+    </div>
+  );
+  const clubSquadColumns: Array<{
+    key: ClubSquadSortKey;
+    label: string;
+    align?: "left" | "center" | "right";
+    render: (player: Player) => ReactNode;
+  }> = (() => {
+    if (clubSquadView === "general") return [
+      { key: "name", label: "Name", render: playerNameCell },
+      { key: "age", label: "Age", align: "center", render: (player) => player.age },
+      { key: "role", label: "Role", render: (player) => ROLE_LABELS[player.role] },
+      { key: "nationality", label: "Nationality", render: (player) => player.nationality },
+      { key: "rating", label: "CA", align: "center", render: playerRating },
+      { key: "potential", label: "PA", align: "center", render: (player) => Math.max(player.potentialBatting, player.potentialBowling) },
+      { key: "acquisition", label: "Acquisition", align: "right", render: (player) => {
+        if (retainedIds.has(player.id) || player.isRetained) return "Retained";
+        const price = acquisitionPrice(player);
+        return price === undefined ? "Squad" : formatPrice(price);
+      } },
+    ];
+    if (clubSquadView === "bowling") return [
+      { key: "name", label: "Name", render: playerNameCell },
+      { key: "bowlingCA", label: "Bowl CA", align: "center", render: (player) => player.currentBowling },
+      { key: "bowlingPA", label: "Bowl PA", align: "center", render: (player) => player.potentialBowling },
+      { key: "seasonMatches", label: "Mat", align: "center", render: (player) => squadSeasonStats(player)?.matches ?? 0 },
+      { key: "seasonWickets", label: "Wkts", align: "center", render: (player) => squadSeasonStats(player)?.wickets ?? 0 },
+      { key: "seasonBowlingAverage", label: "Avg", align: "center", render: (player) => {
+        const stats = squadSeasonStats(player); return stats?.wickets ? squadNumber(stats.runsConceded / stats.wickets, 2) : "\u2014";
+      } },
+      { key: "seasonEconomy", label: "Econ", align: "center", render: (player) => {
+        const stats = squadSeasonStats(player);
+        const completeOvers = Math.floor(stats?.oversBowled ?? 0);
+        const balls = completeOvers * 6 + Math.round(((stats?.oversBowled ?? 0) - completeOvers) * 10);
+        return stats && balls ? squadNumber(stats.runsConceded / (balls / 6), 2) : "\u2014";
+      } },
+      { key: "seasonBestBowling", label: "Best", align: "center", render: (player) => squadSeasonStats(player)?.bestBowling ?? "\u2014" },
+    ];
+    return [
+      { key: "name", label: "Name", render: playerNameCell },
+      { key: "battingCA", label: "Bat CA", align: "center", render: (player) => player.currentBatting },
+      { key: "battingPA", label: "Bat PA", align: "center", render: (player) => player.potentialBatting },
+      { key: "seasonMatches", label: "Mat", align: "center", render: (player) => squadSeasonStats(player)?.matches ?? 0 },
+      { key: "seasonRuns", label: "Runs", align: "center", render: (player) => squadSeasonStats(player)?.runs ?? 0 },
+      { key: "seasonBattingAverage", label: "Avg", align: "center", render: (player) => {
+        const stats = squadSeasonStats(player);
+        const dismissals = stats?.dismissals ?? stats?.matches ?? 0;
+        return stats && dismissals ? squadNumber(stats.runs / dismissals, 2) : stats?.runs ? squadNumber(stats.runs, 2) : "\u2014";
+      } },
+      { key: "seasonStrikeRate", label: "SR", align: "center", render: (player) => {
+        const stats = squadSeasonStats(player); return stats?.balls ? squadNumber((stats.runs / stats.balls) * 100, 2) : "\u2014";
+      } },
+      { key: "seasonHighScore", label: "HS", align: "center", render: (player) => squadSeasonStats(player)?.highestScore ?? "\u2014" },
+    ];
+  })();
 
   const roleCounts = squad.reduce<Record<Player["role"], number>>((counts, player) => {
     counts[player.role] += 1;
@@ -1158,7 +1329,7 @@ export default function TeamProfilePage() {
                         <span className="truncate font-space-mono text-[8px] font-bold uppercase tracking-[0.06em] text-text-secondary">{label}</span>
                       </div>
                       <div className="flex min-h-0 min-w-0 flex-1 items-end justify-between gap-2 pt-1">
-                        <span className="line-clamp-2 min-w-0 text-[13px] font-bold leading-[0.95] text-text-primary" title={player?.name}>
+                        <span className="line-clamp-2 min-w-0 pb-0.5 text-[13px] font-bold leading-[1.1] text-text-primary" title={player?.name}>
                           {player?.name ?? "No player"}
                         </span>
                         <span className="shrink-0 font-anton text-[28px] leading-[0.8] text-accent">
@@ -1245,59 +1416,68 @@ export default function TeamProfilePage() {
 
         {activeTab === "squad" && (
           <section className="flex h-full min-h-0 flex-col overflow-hidden border-2 border-border bg-surface">
-            <div className="flex shrink-0 items-center justify-between border-b-2 border-border px-6 py-4">
+            <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b-2 border-border px-6 py-4">
               <div>
                 <p className="font-space-mono text-[8px] font-bold uppercase tracking-[0.15em] text-accent">{currentSeason} registered squad</p>
                 <h2 className="mt-1 font-anton text-[22px] uppercase leading-none text-text-primary">{team.shortName} playing staff</h2>
               </div>
-              <div className="flex gap-5 font-space-mono text-[8px] font-bold uppercase text-text-secondary">
-                <span>{squad.length}/{team.maxSquadSize} players</span>
-                <span>{overseasCount}/{team.overseasPlayersMax} overseas</span>
-                <span>{retainedIds.size} retained</span>
+              <div className="flex flex-wrap items-center justify-end gap-4">
+                <div className="hidden gap-5 font-space-mono text-[8px] font-bold uppercase text-text-secondary xl:flex">
+                  <span>{squad.length}/{team.maxSquadSize} players</span>
+                  <span>{overseasCount}/{team.overseasPlayersMax} overseas</span>
+                  <span>{retainedIds.size} retained</span>
+                </div>
+                <div className="flex rounded border border-border bg-bg/50 p-1">
+                  {(["general", "bowling", "batting"] as ClubSquadView[]).map((view) => (
+                    <button
+                      key={view}
+                      type="button"
+                      onClick={() => {
+                        setClubSquadView(view);
+                        setClubSquadSort({ key: "name", direction: "asc" });
+                      }}
+                      className={`rounded px-3 py-1.5 font-space-mono text-[9px] font-bold uppercase tracking-wider ${clubSquadView === view ? "bg-accent text-white" : "text-text-secondary hover:text-text-primary"}`}
+                    >
+                      {view}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
-            <div className="min-h-0 flex-1 overflow-y-auto">
-              <table className="w-full table-fixed text-left text-[11px]">
-                <thead className="sticky top-0 z-10 border-b border-border bg-bg font-space-mono text-[8px] font-bold uppercase tracking-wider text-text-secondary">
+            <div className="min-h-0 flex-1 overflow-auto">
+              <table className="w-full min-w-[850px] text-left text-[11px]">
+                <thead className="sticky top-0 z-10 border-b border-border bg-bg font-space-mono text-[8px] font-bold uppercase tracking-wider text-text-secondary shadow-sm">
                   <tr>
-                    <th className="w-[28%] px-6 py-3">Player</th>
-                    <th className="w-[18%] px-4 py-3">Role</th>
-                    <th className="w-[8%] px-4 py-3 text-center">Age</th>
-                    <th className="w-[10%] px-4 py-3 text-center">Bat</th>
-                    <th className="w-[10%] px-4 py-3 text-center">Bowl</th>
-                    <th className="w-[10%] px-4 py-3 text-center">Overall</th>
-                    <th className="w-[16%] px-6 py-3 text-right">Acquisition</th>
+                    {clubSquadColumns.map((column) => (
+                      <th
+                        key={column.key}
+                        className="px-5 py-3.5"
+                        aria-sort={clubSquadSort.key === column.key ? (clubSquadSort.direction === "asc" ? "ascending" : "descending") : "none"}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => toggleClubSquadSort(column.key)}
+                          className={`flex w-full items-center gap-1 hover:text-accent ${column.align === "center" ? "justify-center" : column.align === "right" ? "justify-end" : "justify-start"}`}
+                        >
+                          {column.label} <span aria-hidden="true">{clubSquadSortIndicator(column.key)}</span>
+                        </button>
+                      </th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/70">
-                  {squad.map((player) => {
-                    const purchasePrice = seasonSales.get(player.id);
-                    const retained = retainedIds.has(player.id) || player.isRetained;
-                    return (
-                      <tr key={player.id} className="transition-colors hover:bg-black/[0.03] dark:hover:bg-white/[0.03]">
-                        <td className="px-6 py-3">
-                          <button
-                            type="button"
-                            onClick={() => setDetailedPlayerId(player.id)}
-                            className="block truncate font-semibold text-text-primary text-left hover:text-accent hover:underline transition-colors"
-                          >
-                            {player.name}
-                          </button>
-                          <div className="mt-0.5 font-space-mono text-[7px] font-bold uppercase text-text-secondary">
-                            {player.nationality}{player.isCapped ? " · Capped" : " · Uncapped"}
-                          </div>
+                  {sortedClubSquad.map((player) => (
+                    <tr key={player.id} className="transition-colors hover:bg-black/[0.03] dark:hover:bg-white/[0.03]">
+                      {clubSquadColumns.map((column, index) => (
+                        <td
+                          key={column.key}
+                          className={`px-5 py-3 font-space-mono text-[10px] ${column.align === "center" ? "text-center" : column.align === "right" ? "text-right" : "text-left"} ${index === 0 ? "font-barlow text-[11px] text-text-primary" : "text-text-secondary"}`}
+                        >
+                          {column.render(player)}
                         </td>
-                        <td className="truncate px-4 py-3 text-text-secondary">{ROLE_LABELS[player.role]}</td>
-                        <td className="px-4 py-3 text-center font-space-mono text-text-secondary">{player.age}</td>
-                        <td className="px-4 py-3 text-center font-space-mono font-bold text-text-primary">{player.currentBatting}</td>
-                        <td className="px-4 py-3 text-center font-space-mono font-bold text-text-primary">{player.currentBowling}</td>
-                        <td className="px-4 py-3 text-center font-space-mono font-bold text-accent">{playerRating(player)}</td>
-                        <td className="px-6 py-3 text-right font-space-mono text-[8px] font-bold uppercase text-text-secondary">
-                          {retained ? "Retained" : purchasePrice !== undefined ? formatPrice(purchasePrice) : "Squad"}
-                        </td>
-                      </tr>
-                    );
-                  })}
+                      ))}
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
@@ -1314,6 +1494,7 @@ export default function TeamProfilePage() {
               <div className="flex gap-5 font-space-mono text-[8px] font-bold uppercase text-text-secondary">
                 <span>{completedFixtures.length} played</span>
                 <span>{upcomingFixtures.length} upcoming</span>
+                <span className="text-blue-600 dark:text-blue-300">{rainAffectedFixtures.length} rain affected</span>
               </div>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto bg-bg/40 p-4">
@@ -1325,6 +1506,7 @@ export default function TeamProfilePage() {
                   const teamScore = isHome ? fixture.scoreA : fixture.scoreB;
                   const opponentScore = isHome ? fixture.scoreB : fixture.scoreA;
                   const won = fixture.played && fixture.winner === teamId;
+                  const rainAffected = isRainAffectedMatch(fixture);
                   return (
                     <article
                       key={fixture.id}
@@ -1342,7 +1524,9 @@ export default function TeamProfilePage() {
                       <div className="flex items-center justify-between gap-4 font-space-mono text-[8px] font-bold uppercase text-text-secondary">
                         <span>Match {fixture.matchNumber} · {safeDateLabel(fixture.date, { weekday: "short", day: "numeric", month: "short" })} · {fixture.time ?? "TBC"}</span>
                         <span className={fixture.played ? (won ? "text-success font-bold hover:underline" : "text-danger font-bold hover:underline") : "text-accent"}>
-                          {fixture.played ? (won ? "Won · View Scorecard ➔" : "Lost · View Scorecard ➔") : "Upcoming"}
+                          {fixture.played
+                            ? `${won ? "Won" : "Lost"}${rainAffected ? " · Rain affected" : ""} · View Scorecard ➔`
+                            : "Upcoming"}
                         </span>
                       </div>
                       <div className="mt-3 grid grid-cols-[3.5rem_minmax(0,1fr)_auto] items-center gap-3">

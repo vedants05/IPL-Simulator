@@ -3,7 +3,7 @@ import { useState, useEffect, useLayoutEffect, useMemo, useRef, Suspense, useCal
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useGameStore, getSeasonDates } from "@/lib/store/gameStore";
+import { useGameStore, getSeasonDates, INITIAL_ACTIVE_SEASON } from "@/lib/store/gameStore";
 import { formatPrice } from "@/lib/logic/auctionRules";
 import {
   addDaysToDateKey,
@@ -60,17 +60,39 @@ import { getClubFigures, type ClubFigureTier } from "@/lib/data/clubFigures";
 import { HISTORICAL_LEAGUE_HISTORY, LEAGUE_HISTORY_TEAMS } from "@/lib/data/leagueHistory";
 import { OTHER_LEAGUE_RECORDS } from "@/lib/data/leagueRecords";
 import { computeDynamicLeagueRecords } from "@/lib/logic/leagueRecordTracker";
+import { appendRainAffectedResultLabel, isRainAffectedMatch } from "@/lib/logic/matchWeather";
+import type { IplCareerMatchUpdate } from "@/lib/logic/iplCareerStats";
+import { formatStatValue } from "@/lib/logic/statFormatting";
+import {
+  getInjuryReturnLabel,
+  getPlayerMinorInjury,
+  isPlayerMajorInjured,
+  type InjuryProcessingResult,
+  type PlayerInjury,
+} from "@/lib/logic/injuries";
+import { getTeamColorStyle } from "@/lib/theme/teamColors";
+import { cacheTeamProfileCareer } from "@/lib/logic/teamProfileCareerCache";
+import {
+  calculateBattingPerformanceBonus,
+  calculateBowlingPerformanceBonus,
+  extractMvpEventStats,
+  rankEmergingPlayerCandidates,
+  rankMvpCandidates,
+} from "@/lib/logic/seasonAwards";
 const LeagueHallOfFame = dynamic(() => import("@/components/history/LeagueHallOfFame"), { ssr: false });
 const LeagueRecords = dynamic(() => import("@/components/history/LeagueRecords"), { ssr: false });
 const CaptaincyPage = dynamic(() => import("@/components/squad/CaptaincyPage"), { ssr: false });
 const SquadAnalysisPage = dynamic(() => import("@/components/squad/SquadAnalysisPage"), { ssr: false });
+const InjuryHubPage = dynamic(() => import("@/components/squad/InjuryHubPage"), { ssr: false });
 import TacticsLineupBuilder from "@/components/squad/TacticsLineupBuilder";
 const TeamTacticsPage = dynamic(() => import("@/components/squad/TeamTacticsPage"), { ssr: false });
 const PitchCuratorPage = dynamic(() => import("@/components/club/PitchCuratorPage"), { ssr: false });
 const StadiumManagementPage = dynamic(() => import("@/components/club/StadiumManagementPage"), { ssr: false });
 const SocialMediaPage = dynamic(() => import("@/components/social/SocialMediaPage"), { ssr: false });
+const NewsPage = dynamic(() => import("@/components/news/NewsPage"), { ssr: false });
 import { PlayerProfileModal } from "@/components/player/PlayerProfileModal";
 import { PlayoffDiagramContent, ScheduleTileContent } from "@/components/season/ScheduleTileContent";
+import TournamentStatsDashboard from "@/components/season/TournamentStatsDashboard";
 import { getCuratorPitch, getDefaultCuratorPitch, getHomeStadium } from "@/lib/data/pitchCurator";
 import {
   calculateGroundScoringImpact,
@@ -148,7 +170,6 @@ import {
   ArrowUpRight,
   Crown,
   ShieldCheck,
-  FastForward,
 } from "lucide-react";
 
 interface PlayerStats {
@@ -169,6 +190,10 @@ interface PlayerStats {
   dotBalls?: number;
   catches?: number;
   stumpings?: number;
+  runOuts?: number;
+  maidens?: number;
+  battingPerformanceBonus?: number;
+  bowlingPerformanceBonus?: number;
   mvpPoints?: number;
 }
 
@@ -232,6 +257,42 @@ interface Match {
   archivedResultText?: string;
 }
 
+function toIplCareerMatchUpdate(match: Match, season: number): IplCareerMatchUpdate | null {
+  if (!match.played || !match.simulation) return null;
+  const fixtureSeasonText = String(match.date ?? "").slice(0, 4);
+  const fixtureSeason = Number(fixtureSeasonText);
+  if (fixtureSeasonText && Number.isFinite(fixtureSeason) && fixtureSeason !== season) return null;
+  return {
+    key: `${season}:${match.simulation.fixtureId}:${match.simulation.seed}`,
+    simulation: match.simulation,
+  };
+}
+
+function calculateSeasonAwardLeaders(
+  stats: Record<string, PlayerStats>,
+  players: Record<string, Player>,
+  season: number,
+  simulatedHistory: Array<{ season: number; emergingPlayer?: { name: string } }>,
+) {
+  const seasonStats = Object.values(stats);
+  const previousEmergingWinners = [
+    ...HISTORICAL_LEAGUE_HISTORY,
+    ...simulatedHistory,
+  ]
+    .filter((record) => record.season < season && record.emergingPlayer)
+    .map((record) => record.emergingPlayer!.name);
+  return {
+    mvp: rankMvpCandidates(seasonStats)[0] ?? null,
+    emerging: rankEmergingPlayerCandidates({
+      stats: seasonStats,
+      players,
+      season,
+      initialSeason: INITIAL_ACTIVE_SEASON,
+      previousWinnerNames: previousEmergingWinners,
+    })[0] ?? null,
+  };
+}
+
 function fixturesForCareerHistory(fixtures: Match[]) {
   return fixtures
     .filter((fixture) => Boolean(fixture.stage) || fixture.matchNumber > LEAGUE_FIXTURE_COUNT)
@@ -282,6 +343,7 @@ interface PendingMatchPreparation {
   matchId: string;
   errors: string[];
   warnings: string[];
+  warningDestination: "playingxi" | "tactics";
 }
 
 const isIncomingImpactPlayer = (match: Match, playerId: string) => (
@@ -578,11 +640,20 @@ function OverviewPageContent() {
     startPitchDestruction,
     reconcilePitchProjects,
     recordSimulatedLeagueSeason,
+    recordIplMatchStats,
     beginNextSeasonRetention,
     archiveCareerSeason,
     careerFastForwardTargetDate,
     setCareerFastForwardTarget,
     completeOffseasonAutomatically,
+    activeInjuries,
+    injuryHistory,
+    retiredPlayerSnapshots,
+    lastCareerRetirements,
+    careerRetirementHistory,
+    processMatchInjuries,
+    processBackgroundInjuries,
+    reconcileInjuries,
   } = useGameStore();
   const matchArchiveCareerId = `${userTeamId}:${currentSeason}:${fixtureSeed}`;
   const userTeam = teams[userTeamId];
@@ -708,6 +779,48 @@ function OverviewPageContent() {
   const [pendingMatchPreparation, setPendingMatchPreparation] = useState<PendingMatchPreparation | null>(null);
   const [shortlist, setShortlist] = useState<string[]>([]);
   const [visibleHomeFixtureCount, setVisibleHomeFixtureCount] = useState(5);
+
+  // Club profiles are reached from this page, so keep their read-only career
+  // projection in memory. This avoids synchronously reading and parsing the
+  // complete localStorage career save during navigation.
+  useEffect(() => {
+    if (!isCareerLoaded || !userTeamId) return;
+    cacheTeamProfileCareer(userTeamId, {
+      fixtures,
+      standings,
+      playerStats,
+      battingFirstXI,
+      bowlingFirstXI,
+      battingFirstImpactSubs,
+      bowlingFirstImpactSubs,
+      battingFirstImpactPlayerId,
+      battingFirstOutgoingPlayerId,
+      battingFirstImpactBattingPosition,
+      bowlingFirstImpactPlayerId,
+      bowlingFirstOutgoingPlayerId,
+      bowlingFirstImpactBattingPosition,
+      teamLeadership,
+      aiTeamLeadership,
+    });
+  }, [
+    aiTeamLeadership,
+    battingFirstImpactBattingPosition,
+    battingFirstImpactPlayerId,
+    battingFirstImpactSubs,
+    battingFirstOutgoingPlayerId,
+    battingFirstXI,
+    bowlingFirstImpactBattingPosition,
+    bowlingFirstImpactPlayerId,
+    bowlingFirstImpactSubs,
+    bowlingFirstOutgoingPlayerId,
+    bowlingFirstXI,
+    fixtures,
+    isCareerLoaded,
+    playerStats,
+    standings,
+    teamLeadership,
+    userTeamId,
+  ]);
   
   // Local state for interactive tools
   const [searchQuery, setSearchQuery] = useState("");
@@ -1419,6 +1532,17 @@ function OverviewPageContent() {
     });
   }, [isCareerLoaded, userTeamId, battingFirstXI, bowlingFirstXI, battingFirstImpactSubs, bowlingFirstImpactSubs, saveCareerState]);
 
+  // Backfill completed fixtures in an existing active-season save. The store
+  // records stable match keys, so reloading or revisiting this page cannot add
+  // the same scorecard to a player's IPL career twice.
+  useEffect(() => {
+    if (!isCareerLoaded) return;
+    const updates = fixtures
+      .map((fixture) => toIplCareerMatchUpdate(fixture, currentSeason))
+      .filter((update): update is IplCareerMatchUpdate => Boolean(update));
+    if (updates.length > 0) recordIplMatchStats(updates);
+  }, [currentSeason, fixtures, isCareerLoaded, recordIplMatchStats]);
+
   // Commit a completed season on Final day. Previously this only happened when
   // the following retention window began, leaving both history pages stale.
   useEffect(() => {
@@ -1434,6 +1558,13 @@ function OverviewPageContent() {
       .filter((stats) => stats.wickets > 0 && teams[stats.teamId])
       .sort((left, right) => right.wickets - left.wickets || left.name.localeCompare(right.name))[0];
     if (!orangeCap || !purpleCap) return;
+    const seasonAwards = calculateSeasonAwardLeaders(
+      playerStats,
+      players,
+      currentSeason,
+      simulatedLeagueHistory,
+    );
+    if (!seasonAwards.mvp) return;
 
     recordSimulatedLeagueSeason({
       season: currentSeason,
@@ -1441,6 +1572,10 @@ function OverviewPageContent() {
       runnerUpTeamId: final.winner === final.teamA ? final.teamB : final.teamA,
       orangeCap: { name: orangeCap.name, teamId: orangeCap.teamId },
       purpleCap: { name: purpleCap.name, teamId: purpleCap.teamId },
+      emergingPlayer: seasonAwards.emerging
+        ? { name: seasonAwards.emerging.name, teamId: seasonAwards.emerging.teamId }
+        : undefined,
+      mvp: { name: seasonAwards.mvp.name, teamId: seasonAwards.mvp.teamId },
       source: "career",
       standings: standings.map((standing) => ({
         teamId: standing.teamId,
@@ -1457,7 +1592,7 @@ function OverviewPageContent() {
       season: currentSeason,
       fixtures: fixturesForCareerHistory(fixtures),
       standings,
-      playerStats: {},
+      playerStats,
       leagueRecords: computeDynamicLeagueRecords(
         fixtures as any[],
         players,
@@ -1487,10 +1622,18 @@ function OverviewPageContent() {
     const squad = userTeam.squad
       .map((id) => players[id])
       .filter((player): player is Player => Boolean(player));
+    const retainedCaptainId = userTeam.captainContinuityId
+      && userTeam.retainedPlayers.includes(userTeam.captainContinuityId)
+      ? userTeam.captainContinuityId
+      : null;
+    const initialTeamLeadership = normalizeTeamLeadership({
+      ...teamLeadership,
+      captainId: retainedCaptainId,
+    }, squad, 0, currentSeason);
     const recommendedLineups = buildAutomaticLineupSelection(squad, {
-      captainId: teamLeadership.captainId,
-      viceCaptainId: teamLeadership.viceCaptainId,
-      useProvisionalCaptain: !teamLeadership.captainId,
+      captainId: initialTeamLeadership.captainId,
+      viceCaptainId: initialTeamLeadership.viceCaptainId,
+      useProvisionalCaptain: !initialTeamLeadership.captainId,
     });
     const initialBattingFirstXI = battingFirstXI.length > 0 ? battingFirstXI : recommendedLineups.battingFirstXI;
     const initialBowlingFirstXI = bowlingFirstXI.length > 0 ? bowlingFirstXI : recommendedLineups.bowlingFirstXI;
@@ -1540,6 +1683,7 @@ function OverviewPageContent() {
     setBattingFirstImpactSubs(initialBattingImpactSubs);
     setBowlingFirstImpactSubs(initialBowlingImpactSubs);
     setTeamTactics(initialTeamTactics);
+    setTeamLeadership(initialTeamLeadership);
     setAiTeamLeadership(initialAiTeamLeadership);
     
     saveCareerState({
@@ -1553,7 +1697,7 @@ function OverviewPageContent() {
       battingFirstImpactSubs: initialBattingImpactSubs,
       bowlingFirstImpactSubs: initialBowlingImpactSubs,
       teamTactics: initialTeamTactics,
-      teamLeadership,
+      teamLeadership: initialTeamLeadership,
       aiTeamLeadership: initialAiTeamLeadership,
     });
   };
@@ -1922,8 +2066,12 @@ function OverviewPageContent() {
   };
 
   const getSimulationSquad = (teamId: string, batsFirst: boolean): Player[] => {
+    const liveInjuries = useGameStore.getState().activeInjuries;
     const availablePlayers = Object.values(players)
-      .filter((player) => player.currentTeamId === teamId)
+      .filter((player) => (
+        player.currentTeamId === teamId
+        && !isPlayerMajorInjured(liveInjuries, player.id)
+      ))
       .sort((left, right) => getPlayerRating(right) - getPlayerRating(left));
 
     if (teamId !== userTeamId) {
@@ -2038,6 +2186,12 @@ function OverviewPageContent() {
     return Object.values(players).filter((player) => player.currentTeamId === teamId);
   };
 
+  const getSelectableTeamSquad = (teamId: string) => (
+    getTeamSquad(teamId).filter((player) => (
+      !isPlayerMajorInjured(useGameStore.getState().activeInjuries, player.id)
+    ))
+  );
+
   const toMatchLineupPlan = (
     startingXI: readonly string[],
     impactSubs: readonly string[],
@@ -2148,9 +2302,11 @@ function OverviewPageContent() {
       bowlingFirstImpactSubs: string[];
     },
     conditions?: MatchGroundConditions,
+    match?: Match,
+    assistantManageUser = true,
   ): MatchTeamPlans => {
     const isUserControlled = teamId === userTeamId;
-    if (isUserControlled) {
+    if (isUserControlled && !assistantManageUser) {
       const requestedSelection = userSelection ?? {
         battingFirstXI,
         bowlingFirstXI,
@@ -2158,6 +2314,7 @@ function OverviewPageContent() {
         bowlingFirstImpactSubs,
       };
       const currentSquad = getTeamSquad(teamId);
+      const selectableSquad = currentSquad.filter((player) => !isPlayerMajorInjured(activeInjuries, player.id));
       const currentSquadIds = new Set(currentSquad.map((player) => player.id));
       const savedIds = [
         ...requestedSelection.battingFirstXI,
@@ -2174,7 +2331,7 @@ function OverviewPageContent() {
       );
       const selection = requestedPlanIsCurrent
         ? requestedSelection
-        : buildAutomaticLineupSelection(currentSquad, {
+        : buildAutomaticLineupSelection(selectableSquad, {
             captainId: teamLeadership.captainId,
             viceCaptainId: teamLeadership.viceCaptainId,
             useProvisionalCaptain: !teamLeadership.captainId,
@@ -2204,8 +2361,14 @@ function OverviewPageContent() {
       };
     }
 
-    const squad = getTeamSquad(teamId);
-    const leadership = aiTeamLeadership[teamId];
+    const selectableSquad = getSelectableTeamSquad(teamId);
+    const liveInjuries = useGameStore.getState().activeInjuries;
+    const healthySquad = selectableSquad.filter((player) => !liveInjuries[player.id]);
+    // AI teams avoid playing through minor injuries in routine league matches
+    // when they can still name both complete plans. Knockouts and depleted
+    // squads may justify accepting the worsening risk.
+    const squad = !match?.stage && healthySquad.length >= 16 ? healthySquad : selectableSquad;
+    const leadership = isUserControlled ? teamLeadership : aiTeamLeadership[teamId];
     const selection = buildAutomaticLineupSelection(squad, {
       captainId: leadership?.captainId,
       viceCaptainId: leadership?.viceCaptainId,
@@ -2241,7 +2404,7 @@ function OverviewPageContent() {
     );
     return {
       teamId,
-      isUserControlled: false,
+      isUserControlled,
       tactics: pitch
         ? createIntelligentAiTactics(teams[teamId], pitch)
         : createTeamTactics(teams[teamId]?.aiPersonality === "Aggressive" ? "Ultra Aggressive" : "Balanced"),
@@ -2352,6 +2515,131 @@ function OverviewPageContent() {
     };
   };
 
+  const getSeasonFinalDate = () => (
+    fixturesRef.current.find((fixture) => fixture.stage === "final")?.date
+  );
+
+  const publishUserInjuryUpdates = (result: InjuryProcessingResult, date: string) => {
+    const updates = [
+      ...result.created.map((injury) => ({ injury, kind: "created" as const })),
+      ...result.worsened.map((injury) => ({ injury, kind: "worsened" as const })),
+      ...result.recovered.map((injury) => ({ injury, kind: "recovered" as const })),
+    ].filter(({ injury }) => (
+      injury.teamId === userTeamId || players[injury.playerId]?.currentTeamId === userTeamId
+    ));
+    if (updates.length === 0) return;
+
+    setInbox((currentInbox) => {
+      const existingIds = new Set(currentInbox.map((message) => message.dedupeKey));
+      let sequence = currentInbox
+        .filter((message) => message.date === date)
+        .reduce((highest, message) => Math.max(highest, message.daySequence), 0);
+      const messages: CareerEmail[] = updates.flatMap(({ injury, kind }) => {
+        const dedupeKey = `injury:${kind}:${injury.id}`;
+        if (existingIds.has(dedupeKey)) return [];
+        sequence += 1;
+        const isRecovery = kind === "recovered";
+        const isWorsening = kind === "worsened";
+        const riskLabel = injury.worseningRisk
+          ? `${injury.worseningRisk[0].toUpperCase()}${injury.worseningRisk.slice(1)} risk of worsening if selected.`
+          : "The player is unavailable for selection.";
+        const statusText = isRecovery
+          ? `${injury.playerName} has recovered from ${injury.conditionName.toLowerCase()} and is available at full ability.`
+          : `${injury.playerName} has ${isWorsening ? "aggravated an existing condition and now has" : "been diagnosed with"} ${injury.conditionName.toLowerCase()}.
+
+${injury.category === "minor" ? riskLabel : "This is a major condition and the player cannot be selected."}
+
+${getInjuryReturnLabel(injury, getSeasonFinalDate())}`;
+        return [{
+          id: `${dedupeKey}:${sequence}`,
+          templateId: `injury-${kind}`,
+          dedupeKey,
+          threadId: `medical:${injury.playerId}`,
+          daySequence: sequence,
+          sender: "Medical Update",
+          subject: isRecovery
+            ? `${injury.playerName} cleared to return`
+            : isWorsening
+              ? `${injury.playerName}'s injury has worsened`
+              : `${injury.playerName}: ${injury.conditionName}`,
+          preview: isRecovery
+            ? "Available for selection at full ability."
+            : injury.category === "major"
+              ? "Unavailable for selection."
+              : `${injury.worseningRisk ?? "mild"} risk of worsening if selected.`,
+          body: statusText,
+          category: "squad" as const,
+          priority: injury.category === "major" && !isRecovery ? "urgent" as const : "important" as const,
+          date,
+          unread: true,
+          requiresAction: false,
+          actionCompleted: false,
+          actions: [{ label: "Open Injury Hub", kind: "navigate" as const, tab: "squad" as const, subtab: "injuryhub" }],
+        }];
+      });
+      if (messages.length === 0) return currentInbox;
+      const nextInbox = [...messages, ...currentInbox];
+      saveCareerState({ inbox: nextInbox });
+      return nextInbox;
+    });
+  };
+
+  const processCompletedMatchInjuries = (match: Match): InjuryProcessingResult => {
+    if (!match.simulation) return { created: [], worsened: [], recovered: [] };
+    const participantsById = new Map<string, { player: Player; teamId: string }>();
+    Object.values(match.simulation.lineups).forEach((lineup) => {
+      Array.from(new Set([...lineup.startingXI, ...lineup.finalXI])).forEach((playerId) => {
+        const player = players[playerId];
+        if (player) participantsById.set(playerId, { player, teamId: lineup.teamId });
+      });
+    });
+    const date = match.date ?? currentDate;
+    const result = processMatchInjuries({
+      matchId: match.id,
+      date,
+      season: currentSeason,
+      seed: `${fixtureSeed}:${match.id}`,
+      teamIds: [match.teamA, match.teamB],
+      participants: Array.from(participantsById.values()),
+    });
+    publishUserInjuryUpdates(result, date);
+    return result;
+  };
+
+  const processCalendarInjuries = (date: string) => {
+    const finalDate = getSeasonFinalDate();
+    const firstFixtureDate = fixturesRef.current
+      .map((fixture) => fixture.date)
+      .filter((fixtureDate): fixtureDate is string => Boolean(fixtureDate))
+      .sort()[0];
+    const liveAuction = useGameStore.getState().auction;
+    const result = processBackgroundInjuries({
+      date,
+      season: currentSeason,
+      seed: fixtureSeed,
+      preseason: Boolean(firstFixtureDate && date <= firstFixtureDate),
+      preseasonStartDate: auctionDateString,
+      firstFixtureDate,
+      seasonFinalDate: finalDate,
+      generationEnabled: Boolean(
+        liveAuction?.phase === "completed"
+        && finalDate
+        && date <= finalDate
+      ),
+    });
+    publishUserInjuryUpdates(result, date);
+    return result;
+  };
+
+  useEffect(() => {
+    const recovered = reconcileInjuries(currentDate);
+    if (recovered.length > 0) {
+      publishUserInjuryUpdates({ created: [], worsened: [], recovered }, currentDate);
+    }
+  // Recovery is date-driven; the store action and email dedupe make reloads safe.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentDate]);
+
   // Compact career saves deliberately omit the duplicate legacy scorecard,
   // keeping the canonical innings inside `simulation`. Every route that can
   // load or replace fixtures (including a new-season rollover) must expose the
@@ -2440,6 +2728,7 @@ function OverviewPageContent() {
       battingFirstImpactSubs: string[];
       bowlingFirstImpactSubs: string[];
     },
+    assistantManageUser = true,
   ): Match => {
     if (!FIXTURE_SIMULATION_ENABLED) {
       throw new Error("Fixture simulation is not currently enabled.");
@@ -2459,8 +2748,8 @@ function OverviewPageContent() {
       teamA,
       teamB,
       players,
-      teamAPlans: buildTeamMatchPlans(match.teamA, userSelection, conditions),
-      teamBPlans: buildTeamMatchPlans(match.teamB, userSelection, conditions),
+      teamAPlans: buildTeamMatchPlans(match.teamA, userSelection, conditions, match, assistantManageUser),
+      teamBPlans: buildTeamMatchPlans(match.teamB, userSelection, conditions, match, assistantManageUser),
       conditions,
       formAdjustments: getRecentFormAdjustments(match),
     });
@@ -2520,6 +2809,9 @@ function OverviewPageContent() {
         simulatedMatch.simulation,
       );
     }
+    const careerUpdate = toIplCareerMatchUpdate(simulatedMatch, currentSeason);
+    if (careerUpdate) recordIplMatchStats([careerUpdate]);
+    processCompletedMatchInjuries(simulatedMatch);
     const nextStandings = calculateStandings(nextFixtures);
     nextFixtures = resolveKnockoutBracket(nextFixtures, nextStandings);
     fixturesRef.current = nextFixtures;
@@ -2562,6 +2854,13 @@ function OverviewPageContent() {
       if (subs.some((id) => ids.includes(id) || !candidates.some((candidate) => candidate.id === id))) {
         problems.push(`${label} has an ineligible Impact substitute.`);
       }
+      const majorInjuredIds = Array.from(new Set([...ids, ...subs].filter((id) => (
+        isPlayerMajorInjured(activeInjuries, id)
+      ))));
+      majorInjuredIds.forEach((playerId) => {
+        const injury = activeInjuries[playerId];
+        problems.push(`${players[playerId]?.name ?? injury.playerName} cannot be selected because of a major ${injury.conditionName.toLowerCase()}.`);
+      });
       const selectedImpact = impactPlayerId ? players[impactPlayerId] : null;
       const selectedOutgoing = outgoingPlayerId ? players[outgoingPlayerId] : null;
       const overseasStarters = ids.filter((id) => players[id]?.nationality === "Overseas").length;
@@ -2573,7 +2872,7 @@ function OverviewPageContent() {
       }
       return problems;
     };
-    return [
+    return Array.from(new Set([
       ...describe(
         "battingFirst",
         battingFirstXI,
@@ -2588,25 +2887,42 @@ function OverviewPageContent() {
         bowlingFirstImpactPlayerId,
         bowlingFirstOutgoingPlayerId,
       ),
-    ];
+    ]));
   };
 
   const getUserPreparationWarnings = (match: Match) => {
     const conditions = getMatchConditions(match);
     if (!conditions) return ["The selected stadium conditions could not be loaded."];
+    const simulatedPlans = buildTeamMatchPlans(userTeamId, undefined, conditions, match, true);
+    const battingFirstIds = simulatedPlans.battingFirst.startingXI;
+    const bowlingFirstIds = simulatedPlans.bowlingFirst.startingXI;
     const warnings = [
       ...getMatchPreparationWarnings(
-        battingFirstXI.map((id) => players[id]).filter((player): player is Player => Boolean(player)),
-        teamTactics,
+        battingFirstIds.map((id) => players[id]).filter((player): player is Player => Boolean(player)),
+        simulatedPlans.tactics,
         conditions,
       ),
       ...getMatchPreparationWarnings(
-        bowlingFirstXI.map((id) => players[id]).filter((player): player is Player => Boolean(player)),
-        teamTactics,
+        bowlingFirstIds.map((id) => players[id]).filter((player): player is Player => Boolean(player)),
+        simulatedPlans.tactics,
         conditions,
       ),
     ];
-    return Array.from(new Set(warnings));
+    const selectedIds = Array.from(new Set([
+      ...battingFirstIds,
+      ...bowlingFirstIds,
+      ...simulatedPlans.battingFirst.impactSubs,
+      ...simulatedPlans.bowlingFirst.impactSubs,
+    ]));
+    const injuryWarnings = selectedIds.flatMap((playerId) => {
+      const injury = getPlayerMinorInjury(activeInjuries, playerId);
+      if (!injury) return [];
+      const risk = injury.worseningRisk
+        ? `${injury.worseningRisk[0].toUpperCase()}${injury.worseningRisk.slice(1)}`
+        : "Mild";
+      return [`${players[playerId]?.name ?? injury.playerName} is carrying ${injury.conditionName.toLowerCase()}. ${risk} risk of injury worsening if selected.`];
+    });
+    return Array.from(new Set([...injuryWarnings, ...warnings]));
   };
 
   const runFixtureSimulation = (
@@ -2635,10 +2951,15 @@ function OverviewPageContent() {
   };
 
   const prepareUserFixtureSimulation = (match: Match) => {
-    const errors = getUserLineupErrors();
-    const warnings = errors.length === 0 ? getUserPreparationWarnings(match) : [];
-    if (errors.length > 0 || warnings.length > 0) {
-      setPendingMatchPreparation({ matchId: match.id, errors, warnings });
+    const warnings = getUserPreparationWarnings(match);
+    if (warnings.length > 0) {
+      const containsInjuryWarning = warnings.some((warning) => warning.includes("risk of injury worsening"));
+      setPendingMatchPreparation({
+        matchId: match.id,
+        errors: [],
+        warnings,
+        warningDestination: containsInjuryWarning ? "playingxi" : "tactics",
+      });
       return;
     }
     runFixtureSimulation(match.id);
@@ -2655,6 +2976,7 @@ function OverviewPageContent() {
       && match.teamA !== userTeamId
       && match.teamB !== userTeamId
     ));
+    const careerUpdates: IplCareerMatchUpdate[] = [];
 
     matches.forEach((match) => {
       const simulatedMatch = buildSimulatedMatch(match);
@@ -2670,9 +2992,13 @@ function OverviewPageContent() {
           simulatedMatch.simulation,
         );
       }
+      const careerUpdate = toIplCareerMatchUpdate(simulatedMatch, currentSeason);
+      if (careerUpdate) careerUpdates.push(careerUpdate);
+      processCompletedMatchInjuries(simulatedMatch);
     });
 
     if (matches.length > 0) {
+      recordIplMatchStats(careerUpdates);
       const nextStandings = calculateStandings(nextFixtures);
       nextFixtures = resolveKnockoutBracket(nextFixtures, nextStandings);
       fixturesRef.current = nextFixtures;
@@ -2691,7 +3017,7 @@ function OverviewPageContent() {
 
   const autoFixAndSimulatePendingMatch = () => {
     if (!pendingMatchPreparation) return;
-    const squad = getTeamSquad(userTeamId);
+    const squad = getSelectableTeamSquad(userTeamId);
     const selection = buildAutomaticLineupSelection(squad, {
       captainId: teamLeadership.captainId,
       viceCaptainId: teamLeadership.viceCaptainId,
@@ -3261,6 +3587,17 @@ function OverviewPageContent() {
       name: allStatsList[0]?.name ?? fallbackPlayer.name,
       teamId: allStatsList[0]?.teamId ?? fallbackPlayer.currentTeamId ?? final.winner,
     };
+    const seasonAwards = calculateSeasonAwardLeaders(
+      statsRecord,
+      players,
+      currentSeason,
+      simulatedLeagueHistory,
+    );
+    const mvpName = seasonAwards.mvp?.name ?? allStatsList[0]?.name ?? fallbackPlayer.name;
+    const mvpTeamId = seasonAwards.mvp?.teamId
+      ?? allStatsList[0]?.teamId
+      ?? fallbackPlayer.currentTeamId
+      ?? final.winner;
 
     recordSimulatedLeagueSeason({
       season: currentSeason,
@@ -3268,6 +3605,13 @@ function OverviewPageContent() {
       runnerUpTeamId,
       orangeCap: { name: orangeCap.name, teamId: orangeCap.teamId },
       purpleCap: { name: purpleCap.name, teamId: purpleCap.teamId },
+      emergingPlayer: seasonAwards.emerging
+        ? { name: seasonAwards.emerging.name, teamId: seasonAwards.emerging.teamId }
+        : undefined,
+      mvp: {
+        name: mvpName,
+        teamId: mvpTeamId,
+      },
       source: "career",
       standings: standings.map((standing) => ({
         teamId: standing.teamId,
@@ -3284,7 +3628,7 @@ function OverviewPageContent() {
       season: currentSeason,
       fixtures: fixturesForCareerHistory(fixturesRef.current),
       standings,
-      playerStats: {},
+      playerStats: statsRecord,
       leagueRecords: computeDynamicLeagueRecords(
         fixturesRef.current as any[],
         players,
@@ -3292,7 +3636,14 @@ function OverviewPageContent() {
         careerSeasonArchives.find((archive) => archive.season < currentSeason)?.leagueRecords ?? OTHER_LEAGUE_RECORDS,
       ),
     });
-    const advanced = beginNextSeasonRetention();
+    const captainIdsByTeam: Record<string, string | null> = {
+      [userTeamId]: teamLeadership.captainId,
+      ...Object.fromEntries(Object.entries(aiTeamLeadership).map(([teamId, leadership]) => [
+        teamId,
+        leadership.captainId,
+      ])),
+    };
+    const advanced = beginNextSeasonRetention(captainIdsByTeam);
     if (!advanced) return false;
     // The completed totals are safely archived above; live totals now belong
     // to the new season and must start from zero.
@@ -3341,6 +3692,15 @@ function OverviewPageContent() {
       )
       : getCareerCalendarStep(currentDateString, unplayedMatches);
     const isCatchingUpCurrentDate = nextDateString <= currentDateString;
+    if (isCatchingUpCurrentDate) {
+      processCalendarInjuries(nextDateString);
+    } else {
+      let injuryDate = addDaysToDateKey(currentDateString, 1);
+      while (injuryDate <= nextDateString) {
+        processCalendarInjuries(injuryDate);
+        injuryDate = addDaysToDateKey(injuryDate, 1);
+      }
+    }
 
     if (fixtureBlocksProgress) {
       if (!FIXTURE_SIMULATION_ENABLED) {
@@ -3449,7 +3809,7 @@ function OverviewPageContent() {
         // the old rollover bug. These games were part of an automatic skip and
         // must not require the user to play months-old fixtures manually.
         try {
-          const simulatedMatch = buildSimulatedMatch(unresolvedUserFixture);
+          const simulatedMatch = buildSimulatedMatch(unresolvedUserFixture, undefined, true);
           commitSimulatedMatch(simulatedMatch, nextFixtures, playerStatsRef.current);
           if (dayTickerRef.current?.start()) setIsSimulatingDays(true);
         } catch (error) {
@@ -3478,7 +3838,10 @@ function OverviewPageContent() {
     }
   }, [cancelCareerFastForward, retentionDateString, router, userTeamId]);
 
-  const skipToCalendarDate = useCallback((targetDate: string, autoSimUserFixtures = false) => {
+  const skipToCalendarDate = useCallback((
+    targetDate: string,
+    autoSimUserFixtures = false,
+  ) => {
     const simulationDate = useGameStore.getState().currentDate;
     if (targetDate <= simulationDate) return;
     skipStartDateRef.current = simulationDate;
@@ -3496,12 +3859,21 @@ function OverviewPageContent() {
       skipToCalendarDate(targetDate, true);
     };
     const handler = (event: Event) => {
-      const kind = (event as CustomEvent<{ kind: "season" | "year" | "three-years" }>).detail?.kind;
+      const kind = (event as CustomEvent<{ kind: "season" | "retention" | "year" | "three-years" }>).detail?.kind;
       if (kind === "season") {
         const finalDate = fixturesRef.current
           .map((fixture) => fixture.date ?? "")
           .sort((left, right) => right.localeCompare(left))[0];
         if (finalDate) startFastForward(finalDate);
+        return;
+      }
+      if (kind === "retention") {
+        const target = retentionDateString || getSeasonDates(currentSeason + 1).retentionDate;
+        if (target && target > useGameStore.getState().currentDate) {
+          startFastForward(target);
+        } else {
+          showToast("Already at or past Retention Day.");
+        }
         return;
       }
       const years = kind === "three-years" ? 3 : 1;
@@ -3513,7 +3885,7 @@ function OverviewPageContent() {
     };
     window.addEventListener("ipl-career-fast-forward", handler);
     return () => window.removeEventListener("ipl-career-fast-forward", handler);
-  }, [setCareerFastForwardTarget, skipToCalendarDate]);
+  }, [currentSeason, retentionDateString, setCareerFastForwardTarget, showToast, skipToCalendarDate]);
 
   // Restore an in-progress multi-season job only after initCareer has created
   // the new season's fixtures. This prevents an empty fixture list from making
@@ -3735,6 +4107,12 @@ function OverviewPageContent() {
       if (!simulation) pStat.matches++;
       pStat.runs += bat.runs ?? 0;
       pStat.balls += bat.balls ?? 0;
+      pStat.battingPerformanceBonus = (pStat.battingPerformanceBonus ?? 0)
+        + calculateBattingPerformanceBonus(bat.runs ?? 0);
+      if (!simulation) {
+        pStat.fours = (pStat.fours ?? 0) + (bat.fours ?? 0);
+        pStat.sixes = (pStat.sixes ?? 0) + (bat.sixes ?? 0);
+      }
       if (bat.dismissal && bat.dismissal !== "not out" && bat.dismissal !== "did not bat") {
         pStat.dismissals = (pStat.dismissals ?? 0) + 1;
       }
@@ -3761,6 +4139,14 @@ function OverviewPageContent() {
       }
       const pStat = newStats[bowl.id];
       pStat.wickets += bowl.wickets ?? 0;
+      pStat.bowlingPerformanceBonus = (pStat.bowlingPerformanceBonus ?? 0)
+        + calculateBowlingPerformanceBonus(
+          bowl.wickets ?? 0,
+          bowl.overs ?? 0,
+          bowl.runsConceded ?? 0,
+          bowl.maidens ?? 0,
+        );
+      pStat.maidens = (pStat.maidens ?? 0) + (bowl.maidens ?? 0);
       pStat.runsConceded += bowl.runsConceded ?? 0;
       const oversToLegalBalls = (overs: number) => (
         Math.floor(overs) * 6 + Math.round((overs - Math.floor(overs)) * 10)
@@ -3811,6 +4197,37 @@ function OverviewPageContent() {
           }
           newStats[playerId].matches++;
         });
+      });
+
+      const exactMvpEvents = extractMvpEventStats(simulation);
+      Object.entries(exactMvpEvents).forEach(([playerId, events]) => {
+        const player = players[playerId];
+        if (!newStats[playerId] && player) {
+          const lineup = Object.values(simulation.lineups).find((entry) => (
+            entry.startingXI.includes(playerId) || entry.finalXI.includes(playerId)
+          ));
+          newStats[playerId] = {
+            id: playerId,
+            name: player.name,
+            teamId: lineup?.teamId ?? player.currentTeamId ?? "",
+            runs: 0,
+            balls: 0,
+            wickets: 0,
+            runsConceded: 0,
+            oversBowled: 0,
+            matches: 0,
+            highestScore: 0,
+            bestBowling: "0/0",
+          };
+        }
+        const stats = newStats[playerId];
+        if (!stats) return;
+        stats.fours = (stats.fours ?? 0) + events.fours;
+        stats.sixes = (stats.sixes ?? 0) + events.sixes;
+        stats.dotBalls = (stats.dotBalls ?? 0) + events.dotBalls;
+        stats.catches = (stats.catches ?? 0) + events.catches;
+        stats.stumpings = (stats.stumpings ?? 0) + events.stumpings;
+        stats.runOuts = (stats.runOuts ?? 0) + events.runOuts;
       });
     }
   };
@@ -3966,10 +4383,10 @@ function OverviewPageContent() {
       { key: "name", label: "Name", render: (player) => player.name },
       { key: "iplMatches", label: "Matches", align: "center", render: (player) => player.iplStats?.matches ?? 0 },
       { key: "iplRuns", label: "Runs", align: "center", render: (player) => player.iplStats?.runs ?? 0 },
-      { key: "iplBattingAverage", label: "Bat Avg", align: "center", render: (player) => number(player.iplStats?.battingAverage, 2) },
-      { key: "iplStrikeRate", label: "SR", align: "center", render: (player) => number(player.iplStats?.strikeRate, 2) },
+      { key: "iplBattingAverage", label: "Bat Avg", align: "center", render: (player) => number(player.iplStats?.battingAverage, 1) },
+      { key: "iplStrikeRate", label: "SR", align: "center", render: (player) => number(player.iplStats?.strikeRate, 1) },
       { key: "iplWickets", label: "Wkts", align: "center", render: (player) => player.iplStats?.wickets ?? 0 },
-      { key: "iplBowlingAverage", label: "Bowl Avg", align: "center", render: (player) => player.iplStats?.wickets ? number(player.iplStats?.bowlingAverage, 2) : "—" },
+      { key: "iplBowlingAverage", label: "Bowl Avg", align: "center", render: (player) => player.iplStats?.wickets ? number(player.iplStats?.bowlingAverage, 1) : "—" },
     ];
   })();
 
@@ -4109,12 +4526,12 @@ function OverviewPageContent() {
     home: {
       label: "Home",
       icon: InboxIcon,
-      subtabs: ["overview", "inbox", "social", "calendar"]
+      subtabs: ["overview", "inbox", "social", "news", "calendar"]
     },
     squad: {
       label: "Squad",
       icon: Users,
-      subtabs: ["overview", "roster", "analysis", "playingxi", "captaincy", "tactics"]
+      subtabs: ["overview", "roster", "analysis", "playingxi", "captaincy", "tactics", "injuryhub"]
     },
     club: {
       label: "Club",
@@ -4124,7 +4541,7 @@ function OverviewPageContent() {
     scouting: {
       label: "Scouting",
       icon: Search,
-      subtabs: ["overview", "search", "planner"]
+      subtabs: ["overview", "search", "planner", "injuries"]
     },
     season: {
       label: "Season",
@@ -4146,17 +4563,20 @@ function OverviewPageContent() {
     if (subtab === "playingxi") return "Playing XIs";
     if (subtab === "captaincy") return "Captaincy";
     if (subtab === "tactics") return "Team Tactics";
+    if (subtab === "injuryhub") return "Injury Hub";
     if (subtab === "search") return "Player Search";
     if (subtab === "reports") return "Scout Reports";
     if (subtab === "planner") return "Auction Planner";
+    if (subtab === "injuries") return "Injuries";
     if (subtab === "fixtures") return "Fixtures & Results";
     if (subtab === "standings") return "Points Table";
-    if (subtab === "stats") return "Tournament Stats";
+    if (subtab === "stats") return "Tournament Key Players";
     if (subtab === "office") return "Manager Office";
     if (subtab === "pitchcurator") return "Pitch Curator";
     if (subtab === "stadiummanagement") return "Stadium Management";
     if (subtab === "calendar") return "Season Calendar";
     if (subtab === "social") return "Social Media";
+    if (subtab === "news") return "News";
     if (subtab === "records") return "Records";
     if (subtab === "clubhistory") return "Club History";
     if (subtab === "clubfigures") return "Club Figures";
@@ -4241,31 +4661,24 @@ function OverviewPageContent() {
   }, [playerStats]);
 
   const mvpLeaders = useMemo(() => {
-    return Object.values(playerStats)
-      .map((player) => {
-        const fours = player.fours ?? Math.floor((player.runs || 0) * 0.4 / 4);
-        const sixes = player.sixes ?? Math.floor((player.runs || 0) * 0.2 / 6);
-        const dotBalls = player.dotBalls ?? Math.max(0, Math.round((player.oversBowled || 0) * 6 - (player.runsConceded || 0) / 1.6));
-        const catches = player.catches ?? 0;
-        const stumpings = player.stumpings ?? 0;
-        const wickets = player.wickets || 0;
-
-        const pts = (fours * 2.5) + (sixes * 3.5) + (wickets * 3.5) + (dotBalls * 1.0) + (catches * 2.5) + (stumpings * 2.5);
-
-        return {
-          ...player,
-          fours,
-          sixes,
-          dotBalls,
-          catches,
-          stumpings,
-          mvpPoints: Math.round(pts * 10) / 10,
-        };
-      })
-      .filter((p) => p.mvpPoints > 0)
-      .sort((a, b) => b.mvpPoints - a.mvpPoints)
-      .slice(0, 5);
+    return rankMvpCandidates(Object.values(playerStats)).slice(0, 5);
   }, [playerStats]);
+
+  const emergingPlayerLeaders = useMemo(() => {
+    const previousWinnerNames = [
+      ...HISTORICAL_LEAGUE_HISTORY,
+      ...simulatedLeagueHistory,
+    ]
+      .filter((record) => record.season < currentSeason && record.emergingPlayer)
+      .map((record) => record.emergingPlayer!.name);
+    return rankEmergingPlayerCandidates({
+      stats: Object.values(playerStats),
+      players,
+      season: currentSeason,
+      initialSeason: INITIAL_ACTIVE_SEASON,
+      previousWinnerNames,
+    }).slice(0, 5);
+  }, [currentSeason, playerStats, players, simulatedLeagueHistory]);
 
   const bestBattingPerformances = useMemo(() => fixtures
     .filter((match) => match.played && match.scorecard)
@@ -4585,7 +4998,7 @@ function OverviewPageContent() {
   };
 
   return (
-    <div className="overview-page h-[calc(100vh-3rem)] flex overflow-hidden bg-bg relative">
+    <div className={`overview-page h-[calc(100vh-3rem)] flex overflow-hidden bg-bg relative ${activeTab === "history" ? "compact-history" : ""}`}>
       {/* Global Toast Alert */}
       {toastMessage && (
         <div className="fixed bottom-6 right-6 z-[100] bg-[var(--ink)] text-bg border border-border/20 px-4 py-3 rounded shadow-lg text-xs font-space-mono font-semibold uppercase tracking-wider animate-in fade-in slide-in-from-bottom-3 duration-200">
@@ -4763,26 +5176,6 @@ function OverviewPageContent() {
           <div className="flex shrink-0 items-center gap-2">
             {!isSimulatingDays && (
               <>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const target = retentionDateString || getSeasonDates(currentSeason + 1).retentionDate;
-                    if (target && target > currentDate) {
-                      sessionStorage.setItem(CAREER_FAST_FORWARD_RECOVERY_KEY, target);
-                      setCareerFastForwardTarget(target);
-                      skipToCalendarDate(target, true);
-                    } else {
-                      showToast("Already at or past Retention Day.");
-                    }
-                  }}
-                  disabled={isSimulatingDays}
-                  className="flex items-center gap-1.5 rounded border border-danger/40 bg-danger/10 px-3 py-1.5 font-space-mono text-[9px] font-bold uppercase tracking-wider text-danger hover:bg-danger hover:text-white transition-all active:scale-95 disabled:opacity-45"
-                  title="Fast forward all matches straight to Retention Day"
-                >
-                  <FastForward className="size-3" aria-hidden="true" />
-                  Skip to Retention
-                </button>
-
                 <button
                   ref={continueButtonRef}
                   type="button"
@@ -5273,32 +5666,44 @@ function OverviewPageContent() {
                 />
               )}
 
+              {activeSubTab === "news" && (
+                <NewsPage
+                  players={players}
+                  teams={teams}
+                  playerStats={playerStats}
+                  standings={standings}
+                  retirements={lastCareerRetirements}
+                  retirementHistory={careerRetirementHistory}
+                  currentSeason={currentSeason}
+                />
+              )}
+
               {/* Inbox page */}
               {activeSubTab === "inbox" && (
                 <div className="grid h-full flex-1 min-h-0 grid-cols-1 overflow-hidden rounded-xl border border-border bg-surface shadow-[0_18px_50px_rgba(22,19,15,0.08)] lg:grid-cols-[minmax(19rem,0.92fr)_minmax(0,2.2fr)]">
                   <aside className="flex min-h-0 flex-col border-r border-border bg-bg/45">
                     <div className="flex shrink-0 items-center justify-between border-b border-border bg-surface px-4 py-3.5">
-                      <div className="flex items-center gap-3">
+                      <div className="flex min-w-0 items-center gap-3">
                         <span className="flex size-10 items-center justify-center rounded-lg bg-[var(--ink)] text-bg shadow-sm">
                           <InboxIcon size={19} strokeWidth={1.9} aria-hidden="true" />
                         </span>
-                        <div>
+                        <div className="min-w-0">
                           <h2 className="font-anton text-[18px] uppercase leading-none text-text-primary">Inbox</h2>
-                          <p className="mt-1 font-space-mono text-[8px] font-bold uppercase tracking-[0.15em] text-text-secondary">
+                          <p className="mt-1 whitespace-nowrap font-space-mono text-[6px] font-bold uppercase tracking-[0.08em] text-text-secondary">
                             {inboxThreads.length} conversations
                           </p>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex shrink-0 items-center gap-1">
                         <button
                           type="button"
                           onClick={markAllInboxRead}
                           disabled={!inbox.some((message) => message.unread)}
-                          className="rounded border border-border bg-surface px-2.5 py-1.5 font-space-mono text-[7px] font-bold uppercase tracking-wide text-text-secondary transition-colors enabled:hover:border-accent enabled:hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-40"
+                          className="whitespace-nowrap rounded border border-border bg-surface px-1.5 py-1.5 font-space-mono text-[6px] font-bold uppercase tracking-normal text-text-secondary transition-colors enabled:hover:border-accent enabled:hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-40"
                         >
                           Mark all as read
                         </button>
-                        <span className={`rounded-full px-2 py-1 font-space-mono text-[8px] font-bold uppercase tracking-wide ${inbox.some((message) => message.unread) ? "bg-danger text-white shadow-sm" : "bg-success/10 text-success"}`}>
+                        <span className={`whitespace-nowrap rounded-full px-1.5 py-1 font-space-mono text-[6px] font-bold uppercase tracking-normal ${inbox.some((message) => message.unread) ? "bg-danger text-white shadow-sm" : "bg-success/10 text-success"}`}>
                           {inbox.filter((message) => message.unread).length} unread
                         </span>
                       </div>
@@ -5826,7 +6231,7 @@ function OverviewPageContent() {
                                 countUserFixturesBeforeCalendarDate(pendingSkipTargetDate) === 1 ? "match" : "matches"
                               } will take place before this date. Continuing will automatically simulate ${
                                 countUserFixturesBeforeCalendarDate(pendingSkipTargetDate) === 1 ? "it" : "them"
-                              } using your default tactics. Continue to ${dateKeyToLocalDate(pendingSkipTargetDate).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}?`
+                              } with the same pitch-aware selection and tactics preparation used by AI teams before continuing to ${dateKeyToLocalDate(pendingSkipTargetDate).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}.`
                             : `Simulate to ${dateKeyToLocalDate(pendingSkipTargetDate).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}?`}
                         </span>
                         <button
@@ -5836,16 +6241,23 @@ function OverviewPageContent() {
                         >
                           Cancel
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => skipToCalendarDate(
-                            pendingSkipTargetDate,
-                            countUserFixturesBeforeCalendarDate(pendingSkipTargetDate) > 0,
-                          )}
-                          className="border border-[var(--ink)] bg-[var(--ink)] px-2 py-1 font-space-mono text-[8px] font-bold uppercase text-bg"
-                        >
-                          Confirm
-                        </button>
+                        {countUserFixturesBeforeCalendarDate(pendingSkipTargetDate) > 0 ? (
+                          <button
+                            type="button"
+                            onClick={() => skipToCalendarDate(pendingSkipTargetDate, true)}
+                            className="border border-[var(--ink)] bg-[var(--ink)] px-2 py-1 font-space-mono text-[8px] font-bold uppercase text-bg"
+                          >
+                            Confirm
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => skipToCalendarDate(pendingSkipTargetDate)}
+                            className="border border-[var(--ink)] bg-[var(--ink)] px-2 py-1 font-space-mono text-[8px] font-bold uppercase text-bg"
+                          >
+                            Confirm
+                          </button>
+                        )}
                       </div>
                     ) : (
                       <button
@@ -6509,6 +6921,7 @@ function OverviewPageContent() {
                   bowlingFirstImpactBattingPosition={bowlingFirstImpactBattingPosition}
                   captainId={teamLeadership?.captainId}
                   viceCaptainId={teamLeadership?.viceCaptainId}
+                  activeInjuries={activeInjuries}
                   onChangePlan={handleMatchPlanChange}
                   onChangeBothPlans={handleBothMatchPlansChange}
                   onChangeImpactStrategy={handleImpactStrategyChange}
@@ -6533,6 +6946,18 @@ function OverviewPageContent() {
                   tactics={teamTactics}
                   onChange={handleTacticsChange}
                   onOpenPlayingXI={() => setActiveSubTab("playingxi")}
+                />
+              )}
+
+              {activeSubTab === "injuryhub" && (
+                <InjuryHubPage
+                  mode="club"
+                  userTeamId={userTeamId}
+                  activeInjuries={activeInjuries}
+                  injuryHistory={injuryHistory}
+                  players={players}
+                  teams={teams}
+                  seasonFinalDate={fixtures.find((fixture) => fixture.stage === "final")?.date}
                 />
               )}
 
@@ -6778,6 +7203,18 @@ function OverviewPageContent() {
                   </div>
                 </div>
               )}
+
+              {activeSubTab === "injuries" && (
+                <InjuryHubPage
+                  mode="league"
+                  userTeamId={userTeamId}
+                  activeInjuries={activeInjuries}
+                  injuryHistory={injuryHistory}
+                  players={players}
+                  teams={teams}
+                  seasonFinalDate={fixtures.find((fixture) => fixture.stage === "final")?.date}
+                />
+              )}
             </>
           )}
 
@@ -6927,14 +7364,72 @@ function OverviewPageContent() {
                     </div>
                   </div>
 
-                  {/* Caps leaders */}
-                  <div onClick={() => setActiveSubTab("stats")} className="flex min-h-0 cursor-pointer flex-col justify-between overflow-hidden rounded-lg border-2 border-border bg-surface p-5 transition-colors hover:border-accent">
-                    <div>
-                      <h4 className="font-anton text-[14px] uppercase border-b border-[#16130f]/10 pb-2 mb-4">ORANGE & PURPLE CAPS</h4>
-                      <div className="font-space-mono text-[10px] space-y-2">
-                        <div>ORANGE: <span className="font-bold text-text-primary">{orangeCapLeaders[0]?.name ?? "None"} ({orangeCapLeaders[0]?.runs ?? 0} Runs)</span></div>
-                        <div>PURPLE: <span className="font-bold text-text-primary">{purpleCapLeaders[0]?.name ?? "None"} ({purpleCapLeaders[0]?.wickets ?? 0} Wickets)</span></div>
+                  {/* Tournament key players */}
+                  <div
+                    onClick={() => setActiveSubTab("stats")}
+                    className="group relative flex min-h-0 cursor-pointer flex-col overflow-hidden rounded-xl border-2 border-border bg-surface p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-accent hover:shadow-md"
+                  >
+                    <div className="pointer-events-none absolute -right-10 -top-16 h-32 w-32 rounded-full bg-sky-500/10 blur-3xl" />
+                    <div className="relative mb-3 flex shrink-0 items-start justify-between border-b border-border pb-3">
+                      <div>
+                        <p className="font-space-mono text-[7px] font-bold uppercase tracking-[0.18em] text-text-secondary">{currentSeason} award races</p>
+                        <h4 className="mt-1 font-anton text-[17px] uppercase leading-none text-text-primary">Tournament Key Players</h4>
                       </div>
+                      <ArrowUpRight size={16} className="text-accent transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
+                    </div>
+
+                    <div className="relative grid min-h-0 flex-1 grid-cols-2 grid-rows-3 gap-2">
+                      {[
+                        {
+                          label: "Top runs",
+                          name: orangeCapLeaders[0]?.name,
+                          value: orangeCapLeaders[0] ? `${orangeCapLeaders[0].runs} runs` : "Awaiting matches",
+                          color: "#f97316",
+                        },
+                        {
+                          label: "Highest score",
+                          name: bestBattingPerformances[0]?.name,
+                          value: bestBattingPerformances[0]
+                            ? `${bestBattingPerformances[0].runs ?? 0}${bestBattingPerformances[0].dismissal === "not out" ? "*" : ""} (${bestBattingPerformances[0].balls ?? 0})`
+                            : "Awaiting matches",
+                          color: "#df6b20",
+                        },
+                        {
+                          label: "Top wickets",
+                          name: purpleCapLeaders[0]?.name,
+                          value: purpleCapLeaders[0] ? `${purpleCapLeaders[0].wickets} wickets` : "Awaiting matches",
+                          color: "#7e22ce",
+                        },
+                        {
+                          label: "Best figures",
+                          name: bestBowlingFigures[0]?.name,
+                          value: bestBowlingFigures[0]
+                            ? `${bestBowlingFigures[0].wickets ?? 0}/${bestBowlingFigures[0].runsConceded ?? 0}`
+                            : "Awaiting matches",
+                          color: "#16876f",
+                        },
+                        {
+                          label: "MVP",
+                          name: mvpLeaders[0]?.name,
+                          value: mvpLeaders[0] ? `${mvpLeaders[0].mvpPoints} pts` : "Awaiting matches",
+                          color: "#d69b24",
+                        },
+                        {
+                          label: "Emerging",
+                          name: emergingPlayerLeaders[0]?.name,
+                          value: emergingPlayerLeaders[0] ? `${emergingPlayerLeaders[0].emergingPoints} pts` : "Awaiting matches",
+                          color: "#0ea5e9",
+                        },
+                      ].map((category) => (
+                        <div key={category.label} className="flex min-h-0 min-w-0 flex-col justify-center rounded-lg border border-border bg-black/[0.015] px-2.5 py-2 dark:bg-white/[0.025]">
+                          <div className="flex items-center gap-1.5 font-space-mono text-[7px] font-bold uppercase tracking-wider text-text-secondary">
+                            <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: category.color }} />
+                            <span className="truncate">{category.label}</span>
+                          </div>
+                          <div className="mt-1 truncate text-[10px] font-bold text-text-primary">{category.name ?? "No leader"}</div>
+                          <div className="mt-0.5 truncate font-space-mono text-[8px] font-bold" style={{ color: category.color }}>{category.value}</div>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 </div>
@@ -6952,11 +7447,12 @@ function OverviewPageContent() {
                       <h3 className="mt-1 font-anton text-[24px] uppercase leading-none text-text-primary">Fixtures &amp; Results</h3>
                     </div>
                     {isFixturesAnnounced && (
-                      <div className="relative grid grid-cols-3 divide-x divide-[#16130f]/15 border border-border bg-surface/80">
+                      <div className="relative grid grid-cols-4 divide-x divide-[#16130f]/15 border border-border bg-surface/80">
                         {[
                           ["Played", fixtures.filter((match) => match.played).length],
                           ["Upcoming", fixtures.filter((match) => !match.played).length],
                           ["Your club", fixtures.filter((match) => match.teamA === userTeamId || match.teamB === userTeamId).length],
+                          ["Rain affected", fixtures.filter((match) => match.played && isRainAffectedMatch(match)).length],
                         ].map(([label, value]) => (
                           <div key={label} className="min-w-24 px-4 py-2 text-center">
                             <div className="font-anton text-xl leading-none text-text-primary">{value}</div>
@@ -7094,7 +7590,10 @@ function OverviewPageContent() {
                                             ) : (
                                               <span className={`shrink-0 text-right font-space-mono text-[8px] font-bold uppercase ${match.played ? "text-success" : "text-text-secondary"}`}>
                                                 {match.played
-                                                  ? match.simulation?.resultText ?? `${winner?.shortName ?? "Match"} won`
+                                                  ? appendRainAffectedResultLabel(
+                                                    match.simulation?.resultText ?? `${winner?.shortName ?? "Match"} won`,
+                                                    isRainAffectedMatch(match),
+                                                  )
                                                   : !FIXTURE_SIMULATION_ENABLED
                                                     ? "Simulation locked"
                                                   : isUserMatch
@@ -7177,157 +7676,18 @@ function OverviewPageContent() {
 
               {/* Tournament Stats page */}
               {activeSubTab === "stats" && (
-                <div className="grid grid-cols-1 gap-4 lg:grid-cols-3 h-full flex-1 min-h-0 overflow-y-auto p-1">
-                  {/* Orange cap */}
-                  <div className="bg-surface border-2 border-border p-5 flex flex-col h-full min-h-[300px] overflow-hidden">
-                    <div className="flex items-center gap-2 mb-4 border-b border-[#16130f]/10 pb-2 shrink-0">
-                      <div className="w-4 h-4 bg-orange-500 rounded-full" />
-                      <h3 className="font-anton text-[16px] text-text-primary uppercase leading-none">ORANGE CAP LEADERBOARD</h3>
-                    </div>
-                    <div className="divide-y divide-[#16130f]/10 text-xs flex-1 overflow-y-auto pr-2">
-                      {orangeCapLeaders.length === 0 ? (
-                        <div className="text-center font-barlow text-text-secondary p-8">No stats recorded yet. Simulate rounds first.</div>
-                      ) : (
-                        orangeCapLeaders.map((player, idx) => (
-                          <div key={player.id} className="py-2.5 flex justify-between items-center">
-                            <div>
-                              <div className="font-bold text-text-primary">{player.name}</div>
-                              <span className="font-space-mono text-[8px] text-text-secondary uppercase">{teams[player.teamId]?.shortName}</span>
-                            </div>
-                            <div className="text-right font-space-mono">
-                              <span className="font-bold text-accent">{player.runs}</span> Runs
-                              <div className="text-[9px] text-text-secondary">SR: {((player.runs / (player.balls || 1)) * 100).toFixed(1)}</div>
-                            </div>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Purple cap */}
-                  <div className="bg-surface border-2 border-border p-5 flex flex-col h-full min-h-[300px] overflow-hidden">
-                    <div className="flex items-center gap-2 mb-4 border-b border-[#16130f]/10 pb-2 shrink-0">
-                      <div className="w-4 h-4 bg-purple-700 rounded-full" />
-                      <h3 className="font-anton text-[16px] text-text-primary uppercase leading-none">PURPLE CAP LEADERBOARD</h3>
-                    </div>
-                    <div className="divide-y divide-[#16130f]/10 text-xs flex-1 overflow-y-auto pr-2">
-                      {purpleCapLeaders.length === 0 ? (
-                        <div className="text-center font-barlow text-text-secondary p-8">No stats recorded yet. Simulate rounds first.</div>
-                      ) : (
-                        purpleCapLeaders.map((player, idx) => (
-                          <div key={player.id} className="py-2.5 flex justify-between items-center">
-                            <div>
-                              <div className="font-bold text-text-primary">{player.name}</div>
-                              <span className="font-space-mono text-[8px] text-text-secondary uppercase">{teams[player.teamId]?.shortName}</span>
-                            </div>
-                            <div className="text-right font-space-mono">
-                              <span className="font-bold text-purple-700">{player.wickets}</span> Wkts
-                              <div className="text-[9px] text-text-secondary">Econ: {((player.runsConceded / (player.oversBowled || 1))).toFixed(2)}</div>
-                            </div>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-
-                  {/* MVP Race */}
-                  <div className="bg-surface border-2 border-border p-5 flex flex-col h-full min-h-[300px] overflow-hidden">
-                    <div className="flex items-center justify-between mb-4 border-b border-[#16130f]/10 pb-2 shrink-0">
-                      <div className="flex items-center gap-2">
-                        <Crown className="w-4 h-4 text-amber-500" />
-                        <h3 className="font-anton text-[16px] text-text-primary uppercase leading-none">MVP RACE</h3>
-                      </div>
-                      <span className="font-space-mono text-[8px] font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20 uppercase">
-                        Top 5
-                      </span>
-                    </div>
-                    <div className="divide-y divide-[#16130f]/10 text-xs flex-1 overflow-y-auto pr-2">
-                      {mvpLeaders.length === 0 ? (
-                        <div className="text-center font-barlow text-text-secondary p-8">No stats recorded yet. Simulate rounds first.</div>
-                      ) : (
-                        mvpLeaders.map((player, idx) => (
-                          <div key={player.id} className="py-2.5 flex justify-between items-center">
-                            <div className="flex items-center gap-2.5 min-w-0">
-                              <span className="w-4 font-space-mono text-[10px] font-bold text-text-secondary shrink-0">#{idx + 1}</span>
-                              <div className="min-w-0">
-                                <div className="font-bold text-text-primary truncate">{player.name}</div>
-                                <div className="font-space-mono text-[8px] text-text-secondary uppercase truncate">
-                                  {teams[player.teamId]?.shortName} · {player.runs}R ({player.fours}x4, {player.sixes}x6) · {player.wickets}W
-                                </div>
-                              </div>
-                            </div>
-                            <div className="text-right font-space-mono shrink-0 ml-2">
-                              <span className="font-bold text-amber-600 dark:text-amber-400 text-sm">{player.mvpPoints}</span>
-                              <span className="text-[8px] text-text-secondary ml-1">pts</span>
-                            </div>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Best bowling figures */}
-                  <div className="bg-surface border-2 border-border p-5 flex flex-col h-full min-h-[300px] overflow-hidden lg:col-span-1">
-                    <div className="flex items-center gap-2 mb-4 border-b border-[#16130f]/10 pb-2 shrink-0">
-                      <div className="h-4 w-1 bg-success" />
-                      <h3 className="font-anton text-[16px] text-text-primary uppercase leading-none">BEST BOWLING FIGURES</h3>
-                    </div>
-                    <div className="divide-y divide-[#16130f]/10 text-xs flex-1 min-h-0 overflow-y-auto pr-2">
-                      {bestBowlingFigures.length === 0 ? (
-                        <div className="p-8 text-center font-barlow text-text-secondary">No bowling performances recorded yet.</div>
-                      ) : bestBowlingFigures.map((performance, index) => (
-                        <div key={`${performance.matchNumber}-${performance.id}-${index}`} className="flex items-center justify-between gap-3 py-2.5">
-                          <div className="flex min-w-0 items-center gap-3">
-                            <span className="w-5 shrink-0 text-center font-space-mono text-[9px] font-bold text-text-secondary">{index + 1}</span>
-                            <div className="min-w-0">
-                              <div className="truncate font-bold text-text-primary">{performance.name}</div>
-                              <div className="truncate font-space-mono text-[8px] uppercase text-text-secondary">
-                                {teams[performance.teamId]?.shortName} vs {teams[performance.opponentId]?.shortName} · Match {performance.matchNumber}
-                              </div>
-                            </div>
-                          </div>
-                          <div className="shrink-0 text-right font-space-mono">
-                            <div className="font-bold text-success">{performance.wickets ?? 0}/{performance.runsConceded ?? 0}</div>
-                            <div className="text-[8px] text-text-secondary">{performance.overs ?? 0} overs</div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Best batting performances */}
-                  <div className="bg-surface border-2 border-border p-5 flex flex-col h-full min-h-[300px] overflow-hidden lg:col-span-2">
-                    <div className="flex items-center gap-2 mb-4 border-b border-[#16130f]/10 pb-2 shrink-0">
-                      <div className="h-4 w-1 bg-accent" />
-                      <h3 className="font-anton text-[16px] text-text-primary uppercase leading-none">BEST BATTING PERFORMANCES</h3>
-                    </div>
-                    <div className="divide-y divide-[#16130f]/10 text-xs flex-1 min-h-0 overflow-y-auto pr-2">
-                      {bestBattingPerformances.length === 0 ? (
-                        <div className="p-8 text-center font-barlow text-text-secondary">No batting performances recorded yet.</div>
-                      ) : bestBattingPerformances.map((performance, index) => {
-                        const strikeRate = ((performance.runs ?? 0) / Math.max(1, performance.balls ?? 0)) * 100;
-                        const notOut = performance.dismissal === "not out";
-                        return (
-                          <div key={`${performance.matchNumber}-${performance.id}-${index}`} className="flex items-center justify-between gap-3 py-2.5">
-                            <div className="flex min-w-0 items-center gap-3">
-                              <span className="w-5 shrink-0 text-center font-space-mono text-[9px] font-bold text-text-secondary">{index + 1}</span>
-                              <div className="min-w-0">
-                                <div className="truncate font-bold text-text-primary">{performance.name}</div>
-                                <div className="truncate font-space-mono text-[8px] uppercase text-text-secondary">
-                                  {teams[performance.teamId]?.shortName} vs {teams[performance.opponentId]?.shortName} · Match {performance.matchNumber}
-                                </div>
-                              </div>
-                            </div>
-                            <div className="shrink-0 text-right font-space-mono">
-                              <div className="font-bold text-accent">{performance.runs ?? 0}{notOut ? "*" : ""} <span className="font-normal text-text-secondary">({performance.balls ?? 0})</span></div>
-                              <div className="text-[8px] text-text-secondary">SR {strikeRate.toFixed(1)}</div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
+                <TournamentStatsDashboard
+                  season={currentSeason}
+                  completedMatches={fixtures.filter((match) => match.played).length}
+                  teams={teams}
+                  orangeCapLeaders={orangeCapLeaders}
+                  purpleCapLeaders={purpleCapLeaders}
+                  mvpLeaders={mvpLeaders}
+                  emergingPlayerLeaders={emergingPlayerLeaders}
+                  bestBattingPerformances={bestBattingPerformances}
+                  bestBowlingFigures={bestBowlingFigures}
+                  onOpenPlayer={setDetailedPlayerId}
+                />
               )}
             </>
           )}
@@ -7593,12 +7953,14 @@ function OverviewPageContent() {
                   </div>
 
                   <div className="min-h-0 flex-1 overflow-auto">
-                    <div className="min-w-[900px]">
-                      <div className="sticky top-0 z-10 grid grid-cols-[5rem_minmax(18rem,1.35fr)_minmax(13rem,1fr)_minmax(13rem,1fr)_2.5rem] items-center border-b border-border bg-surface px-5 py-3 font-space-mono text-[8px] font-bold uppercase tracking-[0.14em] text-text-secondary shadow-sm">
+                    <div className="min-w-[1340px]">
+                      <div className="sticky top-0 z-10 grid grid-cols-[5rem_minmax(30rem,2.2fr)_minmax(9.5rem,0.75fr)_minmax(9.5rem,0.75fr)_minmax(9.5rem,0.75fr)_minmax(9.5rem,0.75fr)_2.5rem] items-center border-b border-border bg-[#efece3] px-5 py-3 font-space-mono text-[8px] font-bold uppercase tracking-[0.14em] text-text-secondary shadow-sm dark:bg-[#171a25]">
                         <span>Season</span>
                         <span>Finalists</span>
                         <span className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-orange-500" />Orange Cap</span>
                         <span className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-purple-700" />Purple Cap</span>
+                        <span className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-sky-500" />Emerging Player</span>
+                        <span className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-amber-500" />MVP</span>
                         <span />
                       </div>
 
@@ -7607,8 +7969,18 @@ function OverviewPageContent() {
                         const runnerUp = getLeagueHistoryTeam(season.runnerUpTeamId);
                         const orangeCapTeam = getLeagueHistoryTeam(season.orangeCap.teamId);
                         const purpleCapTeam = getLeagueHistoryTeam(season.purpleCap.teamId);
+                        const emergingPlayerTeam = season.emergingPlayer
+                          ? getLeagueHistoryTeam(season.emergingPlayer.teamId)
+                          : null;
+                        const mvpTeam = season.mvp ? getLeagueHistoryTeam(season.mvp.teamId) : null;
                         const orangeCapPlayer = leagueHistoryPlayerByName.get(normalizeLeagueHistoryPlayerName(season.orangeCap.name));
                         const purpleCapPlayer = leagueHistoryPlayerByName.get(normalizeLeagueHistoryPlayerName(season.purpleCap.name));
+                        const emergingPlayerProfile = season.emergingPlayer
+                          ? leagueHistoryPlayerByName.get(normalizeLeagueHistoryPlayerName(season.emergingPlayer.name))
+                          : null;
+                        const mvpPlayer = season.mvp
+                          ? leagueHistoryPlayerByName.get(normalizeLeagueHistoryPlayerName(season.mvp.name))
+                          : null;
                         const seasonArchive = careerSeasonArchives.find((archive) => archive.season === season.season);
                         const archivedFixtures = (seasonArchive?.fixtures ?? []) as Match[];
                         const canExpand = season.source === "career" && Boolean(season.standings?.length || archivedFixtures.length);
@@ -7628,7 +8000,7 @@ function OverviewPageContent() {
                                 }
                               } : undefined}
                               aria-expanded={canExpand ? isExpanded : undefined}
-                              className={`grid min-h-[74px] w-full grid-cols-[5rem_minmax(18rem,1.35fr)_minmax(13rem,1fr)_minmax(13rem,1fr)_2.5rem] items-center border-b border-[#16130f]/10 px-5 text-left transition-colors ${canExpand ? "cursor-pointer hover:bg-accent/[0.07]" : "cursor-default"}`}
+                              className={`grid min-h-[74px] w-full grid-cols-[5rem_minmax(30rem,2.2fr)_minmax(9.5rem,0.75fr)_minmax(9.5rem,0.75fr)_minmax(9.5rem,0.75fr)_minmax(9.5rem,0.75fr)_2.5rem] items-center border-b border-[#16130f]/10 px-5 text-left transition-colors ${canExpand ? "cursor-pointer hover:bg-accent/[0.07]" : "cursor-default"}`}
                             >
                               <span>
                                 <span className="block font-anton text-[21px] leading-none text-text-primary">{season.season}</span>
@@ -7639,17 +8011,17 @@ function OverviewPageContent() {
 
                               <span className="flex min-w-0 items-center gap-3 pr-5">
                                 <span
-                                  className="flex min-w-0 items-center gap-2 border px-3 py-2 shadow-sm"
-                                  style={{ backgroundColor: champion.primaryColor, borderColor: champion.primaryColor, color: champion.secondaryColor }}
+                                  className="flex shrink-0 items-center gap-2 border border-[var(--team-primary-color)] bg-[var(--team-primary-color)] px-3 py-2 shadow-sm dark:border-[var(--team-primary-color-dark)] dark:bg-[var(--team-primary-color-dark)]"
+                                  style={{ ...getTeamColorStyle(champion), color: champion.secondaryColor }}
                                   title={`${champion.name}, champions`}
                                 >
                                   <Trophy size={13} className="shrink-0" />
-                                  <span className="truncate font-bold">{champion.name}</span>
+                                  <span className="whitespace-nowrap font-bold">{champion.name}</span>
                                   <span className="shrink-0 font-space-mono text-[7px] font-bold uppercase opacity-70">Champion</span>
                                 </span>
                                 <span className="shrink-0 font-space-mono text-[8px] font-bold uppercase text-text-secondary">def.</span>
                                 <span className="flex min-w-0 items-center gap-2">
-                                  <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: runnerUp.primaryColor }} />
+                                  <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-[var(--team-primary-color)] dark:bg-[var(--team-primary-color-dark)]" style={getTeamColorStyle(runnerUp)} />
                                   <span className="truncate text-xs font-semibold text-text-primary">{runnerUp.name}</span>
                                 </span>
                               </span>
@@ -7672,7 +8044,7 @@ function OverviewPageContent() {
                                   <span className="block truncate text-[13px] font-bold text-text-primary">{season.orangeCap.name}</span>
                                 )}
                                 <span className="mt-1 flex items-center gap-1.5 font-space-mono text-[8px] font-bold uppercase text-text-secondary">
-                                  <span className="h-2 w-2 rounded-full" style={{ backgroundColor: orangeCapTeam.primaryColor }} />
+                                  <span className="h-2 w-2 rounded-full bg-[var(--team-primary-color)] dark:bg-[var(--team-primary-color-dark)]" style={getTeamColorStyle(orangeCapTeam)} />
                                   {orangeCapTeam.shortName}
                                 </span>
                               </span>
@@ -7695,9 +8067,67 @@ function OverviewPageContent() {
                                   <span className="block truncate text-[13px] font-bold text-text-primary">{season.purpleCap.name}</span>
                                 )}
                                 <span className="mt-1 flex items-center gap-1.5 font-space-mono text-[8px] font-bold uppercase text-text-secondary">
-                                  <span className="h-2 w-2 rounded-full" style={{ backgroundColor: purpleCapTeam.primaryColor }} />
+                                  <span className="h-2 w-2 rounded-full bg-[var(--team-primary-color)] dark:bg-[var(--team-primary-color-dark)]" style={getTeamColorStyle(purpleCapTeam)} />
                                   {purpleCapTeam.shortName}
                                 </span>
+                              </span>
+
+                              <span className="min-w-0 pr-4">
+                                {season.emergingPlayer ? (
+                                  <>
+                                    {emergingPlayerProfile ? (
+                                      <button
+                                        type="button"
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          setDetailedPlayerId(emergingPlayerProfile.id);
+                                        }}
+                                        className="group flex max-w-full items-center gap-1 text-[13px] font-bold text-text-primary hover:text-accent"
+                                        title={`Open ${emergingPlayerProfile.name}'s player profile`}
+                                      >
+                                        <span className="truncate group-hover:underline">{season.emergingPlayer.name}</span>
+                                        <ChevronRight size={12} className="shrink-0 opacity-55" />
+                                      </button>
+                                    ) : (
+                                      <span className="block truncate text-[13px] font-bold text-text-primary">{season.emergingPlayer.name}</span>
+                                    )}
+                                    <span className="mt-1 flex items-center gap-1.5 font-space-mono text-[8px] font-bold uppercase text-text-secondary">
+                                      <span className="h-2 w-2 rounded-full bg-[var(--team-primary-color)] dark:bg-[var(--team-primary-color-dark)]" style={getTeamColorStyle(emergingPlayerTeam)} />
+                                      {emergingPlayerTeam?.shortName}
+                                    </span>
+                                  </>
+                                ) : (
+                                  <span className="font-space-mono text-[8px] font-bold uppercase text-text-secondary">Not recorded</span>
+                                )}
+                              </span>
+
+                              <span className="min-w-0 pr-4">
+                                {season.mvp ? (
+                                  <>
+                                    {mvpPlayer ? (
+                                      <button
+                                        type="button"
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          setDetailedPlayerId(mvpPlayer.id);
+                                        }}
+                                        className="group flex max-w-full items-center gap-1 text-[13px] font-bold text-text-primary hover:text-accent"
+                                        title={`Open ${mvpPlayer.name}'s player profile`}
+                                      >
+                                        <span className="truncate group-hover:underline">{season.mvp.name}</span>
+                                        <ChevronRight size={12} className="shrink-0 opacity-55" />
+                                      </button>
+                                    ) : (
+                                      <span className="block truncate text-[13px] font-bold text-text-primary">{season.mvp.name}</span>
+                                    )}
+                                    <span className="mt-1 flex items-center gap-1.5 font-space-mono text-[8px] font-bold uppercase text-text-secondary">
+                                      <span className="h-2 w-2 rounded-full bg-[var(--team-primary-color)] dark:bg-[var(--team-primary-color-dark)]" style={getTeamColorStyle(mvpTeam)} />
+                                      {mvpTeam?.shortName}
+                                    </span>
+                                  </>
+                                ) : (
+                                  <span className="font-space-mono text-[8px] font-bold uppercase text-text-secondary">Not recorded</span>
+                                )}
                               </span>
 
                               <span className="flex justify-end text-text-secondary">
@@ -7715,7 +8145,7 @@ function OverviewPageContent() {
                                   <span className="font-space-mono text-[8px] uppercase text-text-secondary">Playoffs and final standings</span>
                                 </div>
 
-                                <div className="mb-6 min-h-[205px] border border-border bg-surface p-4">
+                                <div className="isolate mb-6 min-h-[205px] border border-border bg-surface p-4">
                                   <PlayoffDiagramContent
                                     fixtures={archivedFixtures}
                                     teams={teams}
@@ -7734,7 +8164,7 @@ function OverviewPageContent() {
                                     return (
                                       <div key={standing.teamId} className={`grid grid-cols-[3rem_minmax(14rem,1fr)_4rem_4rem_4rem_4rem_5rem_4rem] items-center border-b border-[#16130f]/10 px-3 py-2 text-xs last:border-b-0 ${standing.teamId === userTeamId ? "bg-accent/[0.08] font-bold" : ""}`}>
                                         <span className="font-space-mono font-bold text-text-primary">{index + 1}</span>
-                                        <span className="flex min-w-0 items-center gap-2 font-semibold text-text-primary"><span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: standingTeam.primaryColor }} /><span className="truncate">{standing.teamName || standingTeam.name}</span></span>
+                                        <span className="flex min-w-0 items-center gap-2 font-semibold text-text-primary"><span className="h-2.5 w-2.5 shrink-0 rounded-full bg-[var(--team-primary-color)] dark:bg-[var(--team-primary-color-dark)]" style={getTeamColorStyle(standingTeam)} /><span className="truncate">{standing.teamName || standingTeam.name}</span></span>
                                         <span className="text-center font-space-mono text-text-secondary">{standing.played}</span>
                                         <span className="text-center font-space-mono text-text-secondary">{standing.won}</span>
                                         <span className="text-center font-space-mono text-text-secondary">{standing.lost}</span>
@@ -7766,6 +8196,7 @@ function OverviewPageContent() {
               {activeSubTab === "records" && (
                 <LeagueRecords
                   players={players}
+                  retiredPlayerSnapshots={retiredPlayerSnapshots}
                   teams={teams}
                   onOpenPlayer={setDetailedPlayerId}
                   fixtures={fixtures}
@@ -7886,7 +8317,7 @@ function OverviewPageContent() {
                     ].map(([label, value]) => (
                       <div key={label} className="rounded border border-border bg-surface px-2 py-3 text-center">
                         <div className="font-space-mono text-[8px] font-bold uppercase text-text-secondary">{label}</div>
-                        <div className="mt-1 font-anton text-[18px] text-text-primary">{value}</div>
+                        <div className="mt-1 font-anton text-[18px] text-text-primary">{formatStatValue(Number(value))}</div>
                       </div>
                     ))}
                   </div>
@@ -7906,7 +8337,7 @@ function OverviewPageContent() {
                     ].map(([label, value]) => (
                       <div key={label} className="rounded border border-border bg-surface px-2 py-3 text-center">
                         <div className="font-space-mono text-[8px] font-bold uppercase text-text-secondary">{label}</div>
-                        <div className="mt-1 font-anton text-[18px] text-text-primary">{value}</div>
+                        <div className="mt-1 font-anton text-[18px] text-text-primary">{formatStatValue(Number(value))}</div>
                       </div>
                     ))}
                   </div>
@@ -7956,7 +8387,7 @@ function OverviewPageContent() {
                 <h3 className="mt-1 font-anton text-[22px] uppercase text-white">
                   {pendingMatchPreparation.errors.length > 0
                     ? "Your XIs are not match-ready"
-                    : "Conditions do not fully suit this plan"}
+                    : "Review your lineup issues"}
                 </h3>
               </div>
               <button
@@ -7992,14 +8423,14 @@ function OverviewPageContent() {
                   onClick={() => {
                     const destination = pendingMatchPreparation.errors.length > 0
                       ? "playingxi"
-                      : "tactics";
+                      : pendingMatchPreparation.warningDestination;
                     setPendingMatchPreparation(null);
                     setActiveTab("squad");
                     router.push(`/game/overview?tab=squad&subtab=${destination}`, { scroll: false });
                   }}
                   className="rounded border-2 border-border px-4 py-2 font-space-mono text-[9px] font-bold uppercase text-text-primary hover:border-accent"
                 >
-                  Manually fix
+                  Amend lineup
                 </button>
                 {pendingMatchPreparation.errors.length > 0 ? (
                   <button
@@ -8071,10 +8502,13 @@ function OverviewPageContent() {
 
               {/* Match Result announcement */}
               <div className="text-center font-anton text-[16px] text-success bg-success/5 border border-success/15 py-2.5 uppercase tracking-wide">
-                {activeScorecard.simulation?.resultText
-                  ?? (activeScorecard.winner
-                    ? `${teams[activeScorecard.winner]?.name ?? activeScorecard.winner} won the match`
-                    : "Match tied")}
+                {appendRainAffectedResultLabel(
+                  activeScorecard.simulation?.resultText
+                    ?? (activeScorecard.winner
+                      ? `${teams[activeScorecard.winner]?.name ?? activeScorecard.winner} won the match`
+                      : "Match tied"),
+                  isRainAffectedMatch(activeScorecard),
+                )}
               </div>
 
               {/* Detail Tabs selector */}

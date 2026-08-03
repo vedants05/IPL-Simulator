@@ -1,6 +1,7 @@
 "use client";
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
+import { gameStateStorage } from "@/lib/storage/gameStateStorage";
 import { v4 as uuidv4 } from "uuid";
 import {
   GameState,
@@ -12,11 +13,17 @@ import {
   BidEntry,
   AuctionTargetPriority,
 } from "@/lib/types";
-import { fetchPlayersFromSupabase } from "@/lib/supabase/fetchPlayers";
+import { calculateBasePrice, fetchPlayersFromSupabase } from "@/lib/supabase/fetchPlayers";
 import { fetchTeamsFromSupabase } from "@/lib/supabase/fetchTeams";
 import type { ClubFigureTier, ClubFigureTierOverrides } from "@/lib/data/clubFigures";
 import type { LeagueHistorySeason } from "@/lib/data/leagueHistory";
-import type { OtherLeagueRecord } from "@/lib/data/leagueRecords";
+import { HISTORICAL_LEAGUE_HISTORY } from "@/lib/data/leagueHistory";
+import {
+  OTHER_LEAGUE_RECORDS,
+  RETIRED_MAJOR_RECORDS,
+  qualifiesForBattingAverageRecord,
+  type OtherLeagueRecord,
+} from "@/lib/data/leagueRecords";
 import {
   createDefaultHomeBoundaryDimensions,
   createDefaultHomePitchSelections,
@@ -96,6 +103,43 @@ import {
   getQuirks,
   isPriorityAuctionSale,
 } from "@/lib/logic/auctionEngine";
+import {
+  applyMatchToIplCareerStats,
+  applyMatchToT20CareerStats,
+  type IplCareerMatchUpdate,
+} from "@/lib/logic/iplCareerStats";
+import {
+  processBackgroundInjuries as resolveBackgroundInjuries,
+  processMatchInjuries as resolveMatchInjuries,
+  reconcileInjuryRecoveries,
+  type InjuryProcessingResult,
+  type InjurySystemState,
+  type MatchInjuryParticipant,
+  type PlayerInjury,
+} from "@/lib/logic/injuries";
+import {
+  createHistoricalPlayerSnapshot,
+  initializeCareerPlayers,
+  isHistoricallyImportantRetiree,
+  normalizeCareerSeasonPerformance,
+  prepareRetentionPlayerPool,
+  processPostAuctionCareer,
+  processPostSeasonCareer,
+  type CareerLifecycleResult,
+  type CareerRetirementRecord,
+  type HistoricalPlayerSnapshot,
+} from "@/lib/logic/careerLifecycle";
+import {
+  applyAuctionMarketRatings,
+  getAuctionBowlingRating,
+  createAuctionMarketProfile,
+  getAuctionRating,
+  getRawAuctionRating,
+  isPlayerAuctionEligible,
+  normalizeAuctionMarketProfile,
+  type AuctionMarketProfile,
+} from "@/lib/logic/auctionMarket";
+import { rankEmergingPlayerCandidates } from "@/lib/logic/seasonAwards";
 
 export const INITIAL_ACTIVE_SEASON = 2027;
 
@@ -153,6 +197,9 @@ interface GameStateAdditions {
     playerStats: Record<string, unknown>;
     leagueRecords?: OtherLeagueRecord[];
   }>;
+  careerIplProcessedMatchKeys: string[];
+  careerT20ProcessedMatchKeys: string[];
+  careerIplTrackingSeason: number | null;
   careerFastForwardTargetDate: string | null;
   homePitchSelections: HomePitchSelections;
   homeBoundaryDimensions: HomeBoundaryDimensions;
@@ -161,6 +208,19 @@ interface GameStateAdditions {
   outfieldProjectsByTeam: Partial<Record<IplTeamId, OutfieldPreparationProject>>;
   customPitchesByTeam: Partial<Record<IplTeamId, CustomCuratorPitch[]>>;
   pitchProjectsByTeam: Partial<Record<IplTeamId, PitchProject>>;
+  activeInjuries: Record<string, PlayerInjury>;
+  injuryHistory: PlayerInjury[];
+  processedInjuryMatchIds: string[];
+  processedInjuryDateKeys: string[];
+  auctionMarketProfile: AuctionMarketProfile | null;
+  retiredPlayerSnapshots: Record<string, HistoricalPlayerSnapshot>;
+  lastCareerPostseasonSeason: number | null;
+  lastCareerAgedSeason: number | null;
+  lastCareerAuctionProcessedSeason: number | null;
+  pendingRetirementIntake: number;
+  lastCareerRetirements: CareerRetirementRecord[];
+  careerRetirementHistory: CareerRetirementRecord[];
+  lastCareerGeneratedPlayerIds: string[];
 }
 
 interface GameActions {
@@ -201,7 +261,8 @@ interface GameActions {
   startAcceleratedAuctionFromPlanning: () => void;
   setClubFigureTierOverride: (figureId: string, tier: ClubFigureTier) => void;
   recordSimulatedLeagueSeason: (season: LeagueHistorySeason) => void;
-  beginNextSeasonRetention: () => boolean;
+  recordIplMatchStats: (updates: IplCareerMatchUpdate[]) => number;
+  beginNextSeasonRetention: (captainIdsByTeam?: Record<string, string | null | undefined>) => boolean;
   archiveCareerSeason: (archive: {
     season: number;
     fixtures: unknown[];
@@ -232,12 +293,159 @@ interface GameActions {
   ) => boolean;
   startPitchDestruction: (teamId: string, pitchId: string) => boolean;
   reconcilePitchProjects: () => void;
+  processMatchInjuries: (input: {
+    matchId: string;
+    date: string;
+    season: number;
+    seed: string;
+    teamIds: [string, string];
+    participants: MatchInjuryParticipant[];
+  }) => InjuryProcessingResult;
+  processBackgroundInjuries: (input: {
+    date: string;
+    season: number;
+    seed: string;
+    generationEnabled: boolean;
+    preseason?: boolean;
+    preseasonStartDate?: string;
+    firstFixtureDate?: string;
+    seasonFinalDate?: string;
+  }) => InjuryProcessingResult;
+  reconcileInjuries: (date: string) => PlayerInjury[];
+  processCompletedAuctionCareer: () => CareerRetirementRecord[];
 }
 
 // ---------------------------------------------------------------------------
 // Full store type
 // ---------------------------------------------------------------------------
 type Store = GameState & GameStateAdditions & GameActions;
+
+function withAdaptiveBasePrices(players: Record<string, Player>): Record<string, Player> {
+  return Object.fromEntries(Object.entries(players).map(([id, player]) => [id, {
+    ...player,
+    basePrice: calculateBasePrice(
+      player.isCapped,
+      player.nationality,
+      getAuctionRating(player),
+      player.reputation ?? 5,
+    ),
+  }]));
+}
+
+function appendHistoricalRetirees(
+  existing: Record<string, HistoricalPlayerSnapshot>,
+  lifecycle: CareerLifecycleResult,
+  referencedPlayerIds: Set<string> = new Set(),
+): Record<string, HistoricalPlayerSnapshot> {
+  if (lifecycle.retirements.length === 0) return existing;
+  const majorRecordPlayerIds = getMajorRecordPlayerIds(
+    [...Object.values(lifecycle.players), ...lifecycle.retiredPlayers],
+    existing,
+  );
+  const protectedPlayerIds = new Set([
+    ...Array.from(referencedPlayerIds),
+    ...Array.from(majorRecordPlayerIds),
+  ]);
+  const records = new Map(lifecycle.retirements.map((record) => [record.playerId, record]));
+  const output = { ...existing };
+  lifecycle.retiredPlayers.forEach((player) => {
+    const record = records.get(player.id);
+    if (!record || !isHistoricallyImportantRetiree(player, protectedPlayerIds)) return;
+    output[player.id] = createHistoricalPlayerSnapshot(player, record);
+  });
+  return output;
+}
+
+const normalizeRecordPlayerName = (name: string) => name
+  .normalize("NFKD")
+  .replace(/[\u0300-\u036f]/g, "")
+  .toLocaleLowerCase("en-GB")
+  .replace(/[^a-z0-9]/g, "");
+
+function getReferencedRecordPlayerIds(
+  players: Record<string, Player>,
+  archives: Array<{ leagueRecords?: OtherLeagueRecord[] }>,
+): Set<string> {
+  const referencedNames = new Set(
+    [OTHER_LEAGUE_RECORDS, ...archives.map((archive) => archive.leagueRecords ?? [])]
+      .flat()
+      .flatMap((record) => [...(record.playerNames ?? []), record.holder])
+      .map(normalizeRecordPlayerName),
+  );
+  return new Set(Object.values(players)
+    .filter((player) => referencedNames.has(normalizeRecordPlayerName(player.name)))
+    .map((player) => player.id));
+}
+
+function getMajorRecordPlayerIds(
+  players: Player[],
+  existing: Record<string, HistoricalPlayerSnapshot>,
+): Set<string> {
+  const dynamicPlayers = [
+    ...players.map((player) => ({ id: player.id, name: player.name, iplStats: player.iplStats })),
+    ...Object.values(existing).map((player) => ({ id: player.id, name: player.name, iplStats: player.iplStats })),
+  ];
+  const resolvedNames = new Set(dynamicPlayers.map((player) => normalizeRecordPlayerName(player.name)));
+  const protectedIds = new Set<string>();
+  const categories = [
+    {
+      id: "appearances" as const,
+      value: (player: (typeof dynamicPlayers)[number]) => player.iplStats.matches,
+      qualifies: () => true,
+    },
+    {
+      id: "runs" as const,
+      value: (player: (typeof dynamicPlayers)[number]) => player.iplStats.runs,
+      qualifies: (player: (typeof dynamicPlayers)[number]) => player.iplStats.runs > 0,
+    },
+    {
+      id: "wickets" as const,
+      value: (player: (typeof dynamicPlayers)[number]) => player.iplStats.wickets,
+      qualifies: (player: (typeof dynamicPlayers)[number]) => player.iplStats.wickets > 0,
+    },
+    {
+      id: "batting-average" as const,
+      value: (player: (typeof dynamicPlayers)[number]) => player.iplStats.battingAverage,
+      qualifies: (player: (typeof dynamicPlayers)[number]) => qualifiesForBattingAverageRecord(player.iplStats),
+    },
+  ];
+
+  categories.forEach((category) => {
+    const dynamicEntries = dynamicPlayers
+      .filter(category.qualifies)
+      .map((player) => ({ id: player.id, value: category.value(player) }));
+    const staticEntries = RETIRED_MAJOR_RECORDS[category.id]
+      .filter((entry) => !resolvedNames.has(normalizeRecordPlayerName(entry.name)))
+      .filter((entry) => category.id !== "batting-average" || qualifiesForBattingAverageRecord({
+        matches: entry.matches ?? 0,
+        runs: entry.runs ?? 0,
+        battingAverage: entry.value,
+      }))
+      .map((entry) => ({ id: null, value: entry.value }));
+    [...dynamicEntries, ...staticEntries]
+      .sort((left, right) => right.value - left.value)
+      .slice(0, 5)
+      .forEach((entry) => {
+        if (entry.id) protectedIds.add(entry.id);
+      });
+  });
+
+  return protectedIds;
+}
+
+function withoutRetiredInjuries(
+  injuries: Record<string, PlayerInjury>,
+  retiredIds: Set<string>,
+): Record<string, PlayerInjury> {
+  return Object.fromEntries(Object.entries(injuries).filter(([playerId]) => !retiredIds.has(playerId)));
+}
+
+function withoutRetiredInjuryHistory(
+  injuries: PlayerInjury[],
+  retiredIds: Set<string>,
+): PlayerInjury[] {
+  return injuries.filter((injury) => !retiredIds.has(injury.playerId));
+}
 
 function getAdditionalHomePitchIds(
   customPitchesByTeam: Partial<Record<IplTeamId, CustomCuratorPitch[]>>,
@@ -434,7 +642,7 @@ function getTargetBidBlockReason(
     const spinners = squad.filter((p) => p.role === "Spin Bowler").length;
     const keepers = squad.filter(isKeeperPlayer).length;
     const indianBowlers = squad.filter((p) => p.nationality === "Indian" && (p.role === "Pace Bowler" || p.role === "Spin Bowler")).length;
-    const rating = (p: Player) => Math.max(p.currentBatting ?? 0, p.currentBowling ?? 0);
+    const rating = getAuctionRating;
     const indianBatters = squad.filter((p) => p.nationality === "Indian" && (p.role === "Batsman" || p.role === "WK-Batsman"));
     const missingRoles = bowlers < 5 || spinners < 2 || keepers < 2 || indianBowlers < 4 ||
       indianBatters.filter((p) => rating(p) > 74).length < 5 ||
@@ -681,6 +889,9 @@ export const useGameStore = create<Store>()(
       simulatedLeagueHistory: [],
       lastRolledOverSeason: null,
       careerSeasonArchives: [],
+      careerIplProcessedMatchKeys: [],
+      careerT20ProcessedMatchKeys: [],
+      careerIplTrackingSeason: null,
       careerFastForwardTargetDate: null,
       homePitchSelections: createDefaultHomePitchSelections(),
       homeBoundaryDimensions: createDefaultHomeBoundaryDimensions(),
@@ -689,6 +900,19 @@ export const useGameStore = create<Store>()(
       outfieldProjectsByTeam: {},
       customPitchesByTeam: {},
       pitchProjectsByTeam: {},
+      activeInjuries: {},
+      injuryHistory: [],
+      processedInjuryMatchIds: [],
+      processedInjuryDateKeys: [],
+      auctionMarketProfile: null,
+      retiredPlayerSnapshots: {},
+      lastCareerPostseasonSeason: null,
+      lastCareerAgedSeason: null,
+      lastCareerAuctionProcessedSeason: null,
+      pendingRetirementIntake: 0,
+      lastCareerRetirements: [],
+      careerRetirementHistory: [],
+      lastCareerGeneratedPlayerIds: [],
 
       // ----- Actions -----
       initNewGame: async (userTeamId) => {
@@ -722,12 +946,12 @@ export const useGameStore = create<Store>()(
           return [player.id, startingTeamId] as const;
         }));
 
-        const playersMap: Record<string, Player> = {};
+        let playersMap: Record<string, Player> = {};
         fetchedPlayers.forEach((p: Player) => {
           playersMap[p.id] = { ...p, currentTeamId: null, isRetained: false, retainedByTeamId: null };
         });
 
-        const teamsMap: Record<string, Team> = {};
+        let teamsMap: Record<string, Team> = {};
         fetchedTeams.forEach((t) => {
           const teamPlayers = fetchedPlayers.filter((player) => (
             startingTeamByPlayer.get(player.id) === t.id
@@ -744,6 +968,17 @@ export const useGameStore = create<Store>()(
         });
 
         const newSaveId = uuidv4();
+        const initializedPlayers = initializeCareerPlayers(playersMap, INITIAL_ACTIVE_SEASON - 1);
+        const auctionMarketProfile = createAuctionMarketProfile(Object.values(initializedPlayers));
+        const preparedPool = prepareRetentionPlayerPool({
+          players: initializedPlayers,
+          teams: teamsMap,
+          season: INITIAL_ACTIVE_SEASON,
+          seed: newSaveId,
+          baselineMarketProfile: auctionMarketProfile,
+        });
+        playersMap = withAdaptiveBasePrices(preparedPool.players);
+        teamsMap = preparedPool.teams;
         set({
           saveId: newSaveId,
           saveCreatedAt: new Date().toISOString(),
@@ -760,6 +995,9 @@ export const useGameStore = create<Store>()(
           simulatedLeagueHistory: [],
           lastRolledOverSeason: null,
           careerSeasonArchives: [],
+          careerIplProcessedMatchKeys: [],
+          careerT20ProcessedMatchKeys: [],
+          careerIplTrackingSeason: INITIAL_ACTIVE_SEASON,
           careerFastForwardTargetDate: null,
           homePitchSelections: createDefaultHomePitchSelections(),
           homeBoundaryDimensions: createDefaultHomeBoundaryDimensions(),
@@ -768,6 +1006,23 @@ export const useGameStore = create<Store>()(
           outfieldProjectsByTeam: {},
           customPitchesByTeam: {},
           pitchProjectsByTeam: {},
+          activeInjuries: {},
+          injuryHistory: [],
+          processedInjuryMatchIds: [],
+          processedInjuryDateKeys: [],
+          auctionMarketProfile,
+          retiredPlayerSnapshots: appendHistoricalRetirees(
+            {},
+            preparedPool,
+            getReferencedRecordPlayerIds(initializedPlayers, []),
+          ),
+          lastCareerPostseasonSeason: null,
+          lastCareerAgedSeason: INITIAL_ACTIVE_SEASON,
+          lastCareerAuctionProcessedSeason: null,
+          pendingRetirementIntake: 0,
+          lastCareerRetirements: preparedPool.retirements,
+          careerRetirementHistory: preparedPool.retirements,
+          lastCareerGeneratedPlayerIds: preparedPool.generatedPlayers.map((player) => player.id),
           auction: {
             type: "mega",
             season: INITIAL_ACTIVE_SEASON,
@@ -840,9 +1095,19 @@ export const useGameStore = create<Store>()(
 
           refreshedPlayers[freshPlayer.id] = {
             ...freshPlayer,
+            age: savedPlayer.age,
+            currentBatting: savedPlayer.currentBatting,
+            currentBowling: savedPlayer.currentBowling,
+            potentialBatting: savedPlayer.potentialBatting,
+            potentialBowling: savedPlayer.potentialBowling,
+            potential: savedPlayer.potential,
+            country: savedPlayer.country ?? freshPlayer.country,
+            careerState: savedPlayer.careerState,
             currentTeamId: savedPlayer.currentTeamId,
             isRetained: savedPlayer.isRetained,
             retainedByTeamId: savedPlayer.retainedByTeamId,
+            iplStats: savedPlayer.iplStats ?? freshPlayer.iplStats,
+            careerStats: savedPlayer.careerStats ?? freshPlayer.careerStats,
             iplHistory,
           };
         });
@@ -861,8 +1126,12 @@ export const useGameStore = create<Store>()(
             }
           : null;
 
+        const refreshedMarketPlayers = withAdaptiveBasePrices(applyAuctionMarketRatings(
+          refreshedPlayers,
+          state.auctionMarketProfile ?? createAuctionMarketProfile(Object.values(refreshedPlayers)),
+        ));
         set({
-          players: refreshedPlayers,
+          players: refreshedMarketPlayers,
           auction: state.auction
             ? { ...state.auction, currentPlayer: refreshedCurrentPlayer }
             : null,
@@ -879,6 +1148,7 @@ export const useGameStore = create<Store>()(
 
         const player = players[playerId];
         if (!player) return;
+        if (!isPlayerAuctionEligible(player)) return;
 
         const isPlayerCapped = player.isCapped || player.nationality === "Overseas";
         const cappedCount = team.retainedPlayers.filter((id) => {
@@ -981,7 +1251,22 @@ export const useGameStore = create<Store>()(
       },
 
       confirmRetentions: () => {
-        const { teams, players, userTeamId } = get();
+        const currentState = get();
+        const { teams, userTeamId } = currentState;
+        const auctionMarketProfile = normalizeAuctionMarketProfile(
+          currentState.auctionMarketProfile,
+          Object.values(currentState.players),
+        );
+        const marketPlayers = withAdaptiveBasePrices(applyAuctionMarketRatings(
+          currentState.players,
+          auctionMarketProfile,
+        ));
+        const players = Object.fromEntries(Object.entries(marketPlayers).map(([id, player]) => [
+          id,
+          isPlayerAuctionEligible(player)
+            ? player
+            : { ...player, isRetained: false, retainedByTeamId: null },
+        ]));
 
         // Fresh per-auction AI quirks (fuzzed roster targets, temperament,
         // budget envelopes) — sampled once per auction inside the engine
@@ -989,7 +1274,7 @@ export const useGameStore = create<Store>()(
 
         // Build player pool: all non-retained players
         const allPlayerIds = Object.values(players)
-          .filter((p) => !p.isRetained)
+          .filter((p) => !p.isRetained && isPlayerAuctionEligible(p))
           .map((p) => p.id);
 
         // AI teams: engine weighs each player's estimated worth against the
@@ -1013,6 +1298,17 @@ export const useGameStore = create<Store>()(
           if (team.id === userTeamId) return;
 
           const retainedIds = decideAIRetentions(team, players);
+          const releasedCaptainId = team.captainContinuityId;
+          if (
+            releasedCaptainId
+            && !retainedIds.includes(releasedCaptainId)
+            && updatedPlayers[releasedCaptainId]
+          ) {
+            updatedPlayers[releasedCaptainId] = {
+              ...updatedPlayers[releasedCaptainId],
+              iplCaptaincyUninterestedThroughSeason: get().currentSeason,
+            };
+          }
           retainedIds.forEach((pid) => {
             const p = players[pid];
             if (!p) return;
@@ -1037,6 +1333,9 @@ export const useGameStore = create<Store>()(
           updatedTeams[team.id] = {
             ...team,
             retainedPlayers: retainedIds,
+            captainContinuityId: retainedIds.includes(team.captainContinuityId ?? "")
+              ? team.captainContinuityId
+              : null,
             remainingPurse: TOTAL_PURSE_LAKHS - totalCost,
             spentAmount: totalCost,
             squad: retainedIds,
@@ -1052,10 +1351,24 @@ export const useGameStore = create<Store>()(
 
         // User team retentions history update
         const userTeam = updatedTeams[userTeamId];
-        userTeam.retainedPlayers.forEach((pid) => {
+        const releasedUserCaptainId = userTeam.captainContinuityId;
+        if (
+          releasedUserCaptainId
+          && !userTeam.retainedPlayers.includes(releasedUserCaptainId)
+          && updatedPlayers[releasedUserCaptainId]
+        ) {
+          updatedPlayers[releasedUserCaptainId] = {
+            ...updatedPlayers[releasedUserCaptainId],
+            iplCaptaincyUninterestedThroughSeason: get().currentSeason,
+          };
+        }
+        const validUserRetainedPlayers = userTeam.retainedPlayers.filter((pid) => (
+          Boolean(updatedPlayers[pid]) && isPlayerAuctionEligible(updatedPlayers[pid])
+        ));
+        validUserRetainedPlayers.forEach((pid) => {
           const p = updatedPlayers[pid];
           if (!p) return;
-          const retentionCost = getPlayerRetentionCost(pid, userTeam.retainedPlayers, players);
+          const retentionCost = getPlayerRetentionCost(pid, validUserRetainedPlayers, players);
           const updatedHistory = [
             ...p.iplHistory.filter((h) => h.season !== getActiveSeasonYear()),
             { teamId: userTeamId, season: getActiveSeasonYear(), price: retentionCost },
@@ -1071,11 +1384,15 @@ export const useGameStore = create<Store>()(
 
         updatedTeams[userTeamId] = {
           ...userTeam,
-          squad: userTeam.retainedPlayers,
-          overseasPlayersCurrent: userTeam.retainedPlayers.filter(
+          retainedPlayers: validUserRetainedPlayers,
+          squad: validUserRetainedPlayers,
+          captainContinuityId: validUserRetainedPlayers.includes(userTeam.captainContinuityId ?? "")
+            ? userTeam.captainContinuityId
+            : null,
+          overseasPlayersCurrent: validUserRetainedPlayers.filter(
             (playerId) => updatedPlayers[playerId]?.nationality === "Overseas",
           ).length,
-          rtmCardsTotal: Math.max(0, MAX_TOTAL_RETENTIONS - userTeam.retainedPlayers.length),
+          rtmCardsTotal: Math.max(0, MAX_TOTAL_RETENTIONS - validUserRetainedPlayers.length),
         };
 
         const sets = buildAuctionSets(
@@ -1088,6 +1405,7 @@ export const useGameStore = create<Store>()(
         set((state) => ({
           teams: updatedTeams,
           players: updatedPlayers,
+          auctionMarketProfile,
           currentDate: dates.auctionDate,
           isSetupComplete: true,
           auction: state.auction
@@ -1110,7 +1428,7 @@ export const useGameStore = create<Store>()(
 
         let activeSets = auction.sets;
         if (!activeSets || activeSets.length === 0) {
-          const unretained = Object.values(players).filter((p) => !p.isRetained);
+          const unretained = Object.values(players).filter((p) => !p.isRetained && isPlayerAuctionEligible(p));
           activeSets = buildAuctionSets(unretained.length > 0 ? unretained : Object.values(players));
           set((state) => ({
             auction: state.auction ? { ...state.auction, sets: activeSets, currentSetIndex: 0 } : null,
@@ -1532,6 +1850,7 @@ export const useGameStore = create<Store>()(
                 }
               : null,
           }));
+          get().processCompletedAuctionCareer();
         }
       },
 
@@ -1804,6 +2123,7 @@ export const useGameStore = create<Store>()(
               rtm: null,
             },
           });
+          get().processCompletedAuctionCareer();
         } else {
           const soldResultIds = results
             .filter((result) => result.status === "sold")
@@ -2182,6 +2502,7 @@ export const useGameStore = create<Store>()(
             unsoldFlash: null,
           },
         });
+        get().processCompletedAuctionCareer();
       },
 
       skipToAcceleratedAuction: () => {
@@ -2499,6 +2820,7 @@ export const useGameStore = create<Store>()(
               rtm: null,
             },
           });
+          get().processCompletedAuctionCareer();
         }
       },
 
@@ -2791,7 +3113,45 @@ export const useGameStore = create<Store>()(
         }));
       },
 
-      beginNextSeasonRetention: () => {
+      recordIplMatchStats: (updates) => {
+        let applied = 0;
+        set((state) => {
+          const isCurrentTrackingSeason = state.careerIplTrackingSeason === state.currentSeason;
+          const processedIplKeys = new Set(
+            isCurrentTrackingSeason ? state.careerIplProcessedMatchKeys : [],
+          );
+          const processedT20Keys = new Set(
+            isCurrentTrackingSeason ? state.careerT20ProcessedMatchKeys : [],
+          );
+          let updatedPlayers = state.players;
+
+          updates.forEach((update) => {
+            let appliedThisMatch = false;
+            if (!processedIplKeys.has(update.key)) {
+              updatedPlayers = applyMatchToIplCareerStats(updatedPlayers, update.simulation);
+              processedIplKeys.add(update.key);
+              appliedThisMatch = true;
+            }
+            if (!processedT20Keys.has(update.key)) {
+              updatedPlayers = applyMatchToT20CareerStats(updatedPlayers, update.simulation);
+              processedT20Keys.add(update.key);
+              appliedThisMatch = true;
+            }
+            if (appliedThisMatch) applied += 1;
+          });
+
+          if (applied === 0 && isCurrentTrackingSeason) return state;
+          return {
+            players: updatedPlayers,
+            careerIplProcessedMatchKeys: Array.from(processedIplKeys),
+            careerT20ProcessedMatchKeys: Array.from(processedT20Keys),
+            careerIplTrackingSeason: state.currentSeason,
+          };
+        });
+        return applied;
+      },
+
+      beginNextSeasonRetention: (captainIdsByTeam) => {
         let advanced = false;
         set((state) => {
           if (
@@ -2802,17 +3162,57 @@ export const useGameStore = create<Store>()(
           const completedSeason = state.currentSeason;
           const nextSeason = completedSeason + 1;
           const dates = getSeasonDates(nextSeason);
-          const resetPlayers = Object.fromEntries(Object.entries(state.players).map(([id, player]) => [
+          const fallbackPostseason = state.lastCareerPostseasonSeason === completedSeason
+            ? { players: state.players, teams: state.teams, retirements: [], retiredPlayers: [] }
+            : processPostSeasonCareer({
+                players: state.players,
+                teams: state.teams,
+                performance: {},
+                completedSeason,
+                seed: state.saveId || state.fixtureSeed,
+                injuredPlayerIds: new Set(Object.keys(state.activeInjuries)),
+              });
+          const marketProfile = normalizeAuctionMarketProfile(
+            state.auctionMarketProfile,
+            Object.values(fallbackPostseason.players),
+          );
+          const preparedPool = prepareRetentionPlayerPool({
+            players: fallbackPostseason.players,
+            teams: fallbackPostseason.teams,
+            season: nextSeason,
+            seed: state.saveId || state.fixtureSeed,
+            baselineMarketProfile: marketProfile,
+          });
+          const careerRetirements = [...fallbackPostseason.retirements, ...preparedPool.retirements];
+          const retiredIds = new Set(careerRetirements.map((record) => record.playerId));
+          const reconciledInjuries = reconcileInjuryRecoveries({
+            activeInjuries: withoutRetiredInjuries(state.activeInjuries, retiredIds),
+            injuryHistory: withoutRetiredInjuryHistory(state.injuryHistory, retiredIds),
+            processedInjuryMatchIds: state.processedInjuryMatchIds,
+            processedInjuryDateKeys: state.processedInjuryDateKeys,
+          }, dates.retentionDate).state;
+          const resetPlayers = withAdaptiveBasePrices(Object.fromEntries(Object.entries(preparedPool.players).map(([id, player]) => [
             id,
-            { ...player, isRetained: false, retainedByTeamId: null },
-          ]));
-          const resetTeams = Object.fromEntries(Object.entries(state.teams).map(([id, team]) => [
+            {
+              ...player,
+              isRetained: false,
+              retainedByTeamId: null,
+              iplCaptaincyUninterestedThroughSeason:
+                (player.iplCaptaincyUninterestedThroughSeason ?? -1) >= nextSeason
+                  ? player.iplCaptaincyUninterestedThroughSeason
+                  : undefined,
+            },
+          ])));
+          const resetTeams = Object.fromEntries(Object.entries(preparedPool.teams).map(([id, team]) => [
             id,
             {
               ...team,
               // Preserve the completed squad so the retention screen can
               // choose from it. confirmRetentions releases everyone else.
               retainedPlayers: [],
+              captainContinuityId: captainIdsByTeam
+                ? (captainIdsByTeam[id] && resetPlayers[captainIdsByTeam[id]!] ? captainIdsByTeam[id] : null)
+                : (team.captainContinuityId && resetPlayers[team.captainContinuityId] ? team.captainContinuityId : null),
               remainingPurse: TOTAL_PURSE_LAKHS,
               spentAmount: 0,
               rtmCardsTotal: MAX_TOTAL_RETENTIONS,
@@ -2859,18 +3259,253 @@ export const useGameStore = create<Store>()(
             aiAcceleratedTargets: {},
             aiAcceleratedBackups: {},
             lastRolledOverSeason: completedSeason,
+            careerIplProcessedMatchKeys: [],
+            careerT20ProcessedMatchKeys: [],
+            careerIplTrackingSeason: nextSeason,
+            activeInjuries: reconciledInjuries.activeInjuries,
+            injuryHistory: [],
+            processedInjuryMatchIds: [],
+            processedInjuryDateKeys: [],
+            auctionMarketProfile: marketProfile,
+            retiredPlayerSnapshots: appendHistoricalRetirees(
+              appendHistoricalRetirees(
+                state.retiredPlayerSnapshots,
+                fallbackPostseason,
+                getReferencedRecordPlayerIds(state.players, state.careerSeasonArchives),
+              ),
+              preparedPool,
+              getReferencedRecordPlayerIds(state.players, state.careerSeasonArchives),
+            ),
+            lastCareerPostseasonSeason: completedSeason,
+            lastCareerAgedSeason: nextSeason,
+            lastCareerAuctionProcessedSeason: null,
+            pendingRetirementIntake: 0,
+            lastCareerRetirements: careerRetirements,
+            careerRetirementHistory: [
+              ...state.careerRetirementHistory,
+              ...careerRetirements,
+            ].filter((record, index, records) => records.findIndex((candidate) => candidate.playerId === record.playerId && candidate.season === record.season) === index),
+            lastCareerGeneratedPlayerIds: preparedPool.generatedPlayers.map((player) => player.id),
           };
         });
         return advanced;
       },
 
       archiveCareerSeason: (archive) => {
-        set((state) => ({
-          careerSeasonArchives: [
-            archive,
+        set((state) => {
+          const compactArchive = { ...archive, playerStats: {} };
+          const careerSeasonArchives = [
+            compactArchive,
             ...state.careerSeasonArchives.filter((record) => record.season !== archive.season),
-          ].sort((left, right) => right.season - left.season),
-        }));
+          ].sort((left, right) => right.season - left.season);
+          if (state.lastCareerPostseasonSeason === archive.season) return { careerSeasonArchives };
+
+          // Keep a compact per-season contribution on the player's history.
+          // The full fixture archive is intentionally compacted for storage,
+          // but profiles must still be able to show a player's 2027/2028/etc.
+          // output after the live fixtures have rolled over.
+          const archivedSeason = String(archive.season);
+          const archivedStats = archive.playerStats as Record<string, {
+            matches?: number;
+            runs?: number;
+            balls?: number;
+            wickets?: number;
+            runsConceded?: number;
+            oversBowled?: number;
+          }>;
+          const playersWithSeasonStats = Object.fromEntries(Object.entries(state.players).map(([id, player]) => {
+            const stats = archivedStats[id];
+            if (!stats) return [id, player];
+            const seasonStats = {
+              matches: stats.matches ?? 0,
+              runs: stats.runs ?? 0,
+              balls: stats.balls ?? 0,
+              wickets: stats.wickets ?? 0,
+              runsConceded: stats.runsConceded ?? 0,
+              oversBowled: stats.oversBowled ?? 0,
+            };
+            return [id, {
+              ...player,
+              iplHistory: player.iplHistory.map((entry) => (
+                entry.season === archivedSeason ? { ...entry, seasonStats } : entry
+              )),
+            }];
+          }));
+
+          const injuredPlayerIds = new Set([
+            ...Object.keys(state.activeInjuries),
+            ...state.injuryHistory
+              .filter((injury) => injury.season === archive.season)
+              .map((injury) => injury.playerId),
+          ]);
+          const performance = normalizeCareerSeasonPerformance(archive.playerStats);
+          const previousEmergingWinners = [
+            ...HISTORICAL_LEAGUE_HISTORY,
+            ...state.simulatedLeagueHistory,
+          ]
+            .filter((record) => record.season < archive.season && record.emergingPlayer)
+            .map((record) => record.emergingPlayer!.name);
+          const emergingCandidates = rankEmergingPlayerCandidates({
+            stats: Object.entries(performance).map(([id, stats]) => ({
+              ...stats,
+              id,
+              name: stats.name ?? state.players[id]?.name ?? id,
+              teamId: stats.teamId ?? state.players[id]?.currentTeamId ?? "",
+            })),
+            players: state.players,
+            season: archive.season,
+            initialSeason: INITIAL_ACTIVE_SEASON,
+            previousWinnerNames: previousEmergingWinners,
+          });
+          const emergingByPlayerId = new Map(emergingCandidates.map((candidate) => [candidate.id, candidate]));
+          const developmentPerformance = Object.fromEntries(Object.entries(performance).map(([id, stats]) => {
+            const emerging = emergingByPlayerId.get(id);
+            return [id, {
+              ...stats,
+              emergingPoints: emerging?.emergingPoints ?? 0,
+              emergingBattingImpact: emerging?.battingImpact ?? 0,
+              emergingBowlingImpact: emerging?.bowlingImpact ?? 0,
+            }];
+          }));
+          const lifecycle = processPostSeasonCareer({
+            players: state.players,
+            teams: state.teams,
+            performance: developmentPerformance,
+            completedSeason: archive.season,
+            seed: state.saveId || state.fixtureSeed,
+            injuredPlayerIds,
+          });
+          const retiredIds = new Set(lifecycle.retirements.map((record) => record.playerId));
+          const developedPlayersWithSeasonStats = Object.fromEntries(Object.entries(lifecycle.players).map(([id, player]) => [
+            id,
+            {
+              ...player,
+              iplHistory: playersWithSeasonStats[id]?.iplHistory ?? player.iplHistory,
+            },
+          ]));
+          return {
+            careerSeasonArchives,
+            players: developedPlayersWithSeasonStats,
+            teams: lifecycle.teams,
+            activeInjuries: withoutRetiredInjuries(state.activeInjuries, retiredIds),
+            injuryHistory: withoutRetiredInjuryHistory(state.injuryHistory, retiredIds),
+            auctionTargets: removeResolvedAuctionTargets(state.auctionTargets, retiredIds),
+            auctionTargetPriorities: removeResolvedAuctionTargets(state.auctionTargetPriorities, retiredIds),
+            retiredPlayerSnapshots: appendHistoricalRetirees(
+              state.retiredPlayerSnapshots,
+              lifecycle,
+              getReferencedRecordPlayerIds(state.players, careerSeasonArchives),
+            ),
+            lastCareerPostseasonSeason: archive.season,
+            pendingRetirementIntake: state.pendingRetirementIntake + lifecycle.retirements.length,
+            lastCareerRetirements: lifecycle.retirements,
+            careerRetirementHistory: [
+              ...state.careerRetirementHistory,
+              ...lifecycle.retirements,
+            ].filter((record, index, records) => records.findIndex((candidate) => candidate.playerId === record.playerId && candidate.season === record.season) === index),
+          };
+        });
+      },
+
+      processMatchInjuries: (input) => {
+        let result: InjuryProcessingResult = { created: [], worsened: [], recovered: [] };
+        set((state) => {
+          const injuryState: InjurySystemState = {
+            activeInjuries: state.activeInjuries,
+            injuryHistory: state.injuryHistory,
+            processedInjuryMatchIds: state.processedInjuryMatchIds,
+            processedInjuryDateKeys: state.processedInjuryDateKeys,
+          };
+          const processed = resolveMatchInjuries(injuryState, input);
+          result = processed.result;
+          return processed.state;
+        });
+        return result;
+      },
+
+      processBackgroundInjuries: (input) => {
+        let result: InjuryProcessingResult = { created: [], worsened: [], recovered: [] };
+        set((state) => {
+          const injuryState: InjurySystemState = {
+            activeInjuries: state.activeInjuries,
+            injuryHistory: state.injuryHistory,
+            processedInjuryMatchIds: state.processedInjuryMatchIds,
+            processedInjuryDateKeys: state.processedInjuryDateKeys,
+          };
+          const squadPlayers = Object.values(state.teams).flatMap((team) => (
+            team.squad
+              .map((playerId) => state.players[playerId])
+              .filter((player): player is Player => Boolean(player) && player.currentTeamId === team.id)
+              .map((player) => ({ player, teamId: team.id }))
+          ));
+          const processed = resolveBackgroundInjuries(injuryState, { ...input, squadPlayers });
+          result = processed.result;
+          return processed.state;
+        });
+        return result;
+      },
+
+      reconcileInjuries: (date) => {
+        let recovered: PlayerInjury[] = [];
+        set((state) => {
+          const injuryState: InjurySystemState = {
+            activeInjuries: state.activeInjuries,
+            injuryHistory: state.injuryHistory,
+            processedInjuryMatchIds: state.processedInjuryMatchIds,
+            processedInjuryDateKeys: state.processedInjuryDateKeys,
+          };
+          const reconciled = reconcileInjuryRecoveries(injuryState, date);
+          recovered = reconciled.recovered;
+          return reconciled.state;
+        });
+        return recovered;
+      },
+
+      processCompletedAuctionCareer: () => {
+        let retirements: CareerRetirementRecord[] = [];
+        set((state) => {
+          const auction = state.auction;
+          if (
+            !auction
+            || auction.phase !== "completed"
+            || state.lastCareerAuctionProcessedSeason === auction.season
+          ) return state;
+          const lifecycle = processPostAuctionCareer({
+            players: state.players,
+            teams: state.teams,
+            auctionedPlayerIds: auction.allPlayerIds,
+            season: auction.season,
+          });
+          retirements = lifecycle.retirements;
+          const retiredIds = new Set(retirements.map((record) => record.playerId));
+          return {
+            players: lifecycle.players,
+            teams: lifecycle.teams,
+            auction: {
+              ...auction,
+              allPlayerIds: auction.allPlayerIds.filter((id) => !retiredIds.has(id)),
+              soldPlayerIds: auction.soldPlayerIds.filter((id) => !retiredIds.has(id)),
+              unsoldPlayerIds: auction.unsoldPlayerIds.filter((id) => !retiredIds.has(id)),
+              sets: auction.sets.map((set) => ({
+                ...set,
+                playerIds: set.playerIds.filter((id) => !retiredIds.has(id)),
+              })),
+            },
+            activeInjuries: withoutRetiredInjuries(state.activeInjuries, retiredIds),
+            injuryHistory: withoutRetiredInjuryHistory(state.injuryHistory, retiredIds),
+            auctionTargets: removeResolvedAuctionTargets(state.auctionTargets, retiredIds),
+            auctionTargetPriorities: removeResolvedAuctionTargets(state.auctionTargetPriorities, retiredIds),
+            retiredPlayerSnapshots: appendHistoricalRetirees(
+              state.retiredPlayerSnapshots,
+              lifecycle,
+              getReferencedRecordPlayerIds(state.players, state.careerSeasonArchives),
+            ),
+            lastCareerAuctionProcessedSeason: auction.season,
+            pendingRetirementIntake: state.pendingRetirementIntake + retirements.length,
+            lastCareerRetirements: retirements,
+          };
+        });
+        return retirements;
       },
 
       setCareerFastForwardTarget: (targetDate) => set({ careerFastForwardTargetDate: targetDate }),
@@ -2924,6 +3559,9 @@ export const useGameStore = create<Store>()(
           simulatedLeagueHistory: [],
           lastRolledOverSeason: null,
           careerSeasonArchives: [],
+          careerIplProcessedMatchKeys: [],
+          careerT20ProcessedMatchKeys: [],
+          careerIplTrackingSeason: null,
           careerFastForwardTargetDate: null,
           homePitchSelections: createDefaultHomePitchSelections(),
           homeBoundaryDimensions: createDefaultHomeBoundaryDimensions(),
@@ -2932,12 +3570,25 @@ export const useGameStore = create<Store>()(
           outfieldProjectsByTeam: {},
           customPitchesByTeam: {},
           pitchProjectsByTeam: {},
+          activeInjuries: {},
+          injuryHistory: [],
+          processedInjuryMatchIds: [],
+          processedInjuryDateKeys: [],
+          auctionMarketProfile: null,
+          retiredPlayerSnapshots: {},
+          lastCareerPostseasonSeason: null,
+          lastCareerAgedSeason: null,
+          lastCareerAuctionProcessedSeason: null,
+          pendingRetirementIntake: 0,
+          lastCareerRetirements: [],
+          careerRetirementHistory: [],
+          lastCareerGeneratedPlayerIds: [],
         });
       },
     }),
     {
       name: "ipl-simulator-save-v5",
-      storage: createJSONStorage(() => localStorage),
+      storage: createJSONStorage(() => gameStateStorage),
       partialize: (state) => ({
         saveId: state.saveId,
         saveCreatedAt: state.saveCreatedAt,
@@ -2958,6 +3609,9 @@ export const useGameStore = create<Store>()(
         simulatedLeagueHistory: state.simulatedLeagueHistory,
         lastRolledOverSeason: state.lastRolledOverSeason,
         careerSeasonArchives: state.careerSeasonArchives,
+        careerIplProcessedMatchKeys: state.careerIplProcessedMatchKeys,
+        careerT20ProcessedMatchKeys: state.careerT20ProcessedMatchKeys,
+        careerIplTrackingSeason: state.careerIplTrackingSeason,
         careerFastForwardTargetDate: state.careerFastForwardTargetDate,
         homePitchSelections: state.homePitchSelections,
         homeBoundaryDimensions: state.homeBoundaryDimensions,
@@ -2966,6 +3620,17 @@ export const useGameStore = create<Store>()(
         outfieldProjectsByTeam: state.outfieldProjectsByTeam,
         customPitchesByTeam: state.customPitchesByTeam,
         pitchProjectsByTeam: state.pitchProjectsByTeam,
+        activeInjuries: state.activeInjuries,
+        injuryHistory: state.injuryHistory,
+        processedInjuryMatchIds: state.processedInjuryMatchIds,
+        processedInjuryDateKeys: state.processedInjuryDateKeys,
+        auctionMarketProfile: state.auctionMarketProfile,
+        retiredPlayerSnapshots: state.retiredPlayerSnapshots,
+        lastCareerPostseasonSeason: state.lastCareerPostseasonSeason,
+        lastCareerAgedSeason: state.lastCareerAgedSeason,
+        lastCareerAuctionProcessedSeason: state.lastCareerAuctionProcessedSeason,
+        pendingRetirementIntake: state.pendingRetirementIntake,
+        careerRetirementHistory: state.careerRetirementHistory,
       }),
       merge: (persisted, current) => {
         const p = persisted as Partial<Store>;
@@ -2990,7 +3655,26 @@ export const useGameStore = create<Store>()(
               },
             ]))
           : current.teams;
-        const migratedPlayers = p.players ? { ...p.players } : current.players;
+        const migratedPlayers = initializeCareerPlayers(
+          p.players ? { ...p.players } : current.players,
+          migratedCurrentSeason - 1,
+        );
+        Object.entries(migratedPlayers).forEach(([id, player]) => {
+          if (player.name.trim().toLocaleLowerCase("en-GB") === "ajinkya rahane") {
+            delete migratedPlayers[id];
+          }
+        });
+        const cleanedTeams = Object.fromEntries(Object.entries(migratedTeams).map(([id, team]) => [
+          id,
+          {
+            ...team,
+            squad: team.squad.filter((playerId) => Boolean(migratedPlayers[playerId])),
+            retainedPlayers: team.retainedPlayers.filter((playerId) => Boolean(migratedPlayers[playerId])),
+            captainContinuityId: team.captainContinuityId && migratedPlayers[team.captainContinuityId]
+              ? team.captainContinuityId
+              : null,
+          },
+        ]));
         Object.entries(migratedPlayers).forEach(([id, player]) => {
           if (player.name !== "Riyan Parag") return;
           migratedPlayers[id] = {
@@ -3017,21 +3701,45 @@ export const useGameStore = create<Store>()(
         });
         const customPitchesByTeam = normalizeCustomPitches(p.customPitchesByTeam);
         const pitchProjectsByTeam = normalizePitchProjects(p.pitchProjectsByTeam);
+        const auctionMarketProfile = normalizeAuctionMarketProfile(
+          p.auctionMarketProfile,
+          Object.values(migratedPlayers),
+        );
+        const marketPlayers = withAdaptiveBasePrices(applyAuctionMarketRatings(
+          migratedPlayers,
+          auctionMarketProfile,
+        ));
         return {
           ...current,
           ...p,
           currentSeason: migratedCurrentSeason,
           fixtureSeed: migratedFixtureSeed,
           auction: migratedAuction ?? null,
-          teams: migratedTeams,
-          players: migratedPlayers,
+          teams: cleanedTeams,
+          players: marketPlayers,
           auctionTargets: p.auctionTargets ?? {},
           auctionTargetPriorities: p.auctionTargetPriorities ?? {},
           clubFigureTierOverrides: p.clubFigureTierOverrides ?? {},
           simulatedLeagueHistory: p.simulatedLeagueHistory ?? [],
           lastRolledOverSeason: p.lastRolledOverSeason ?? null,
           careerSeasonArchives: p.careerSeasonArchives ?? [],
+          careerIplProcessedMatchKeys: p.careerIplProcessedMatchKeys ?? [],
+          careerT20ProcessedMatchKeys: p.careerT20ProcessedMatchKeys ?? [],
+          careerIplTrackingSeason: p.careerIplTrackingSeason ?? null,
           careerFastForwardTargetDate: p.careerFastForwardTargetDate ?? null,
+          activeInjuries: p.activeInjuries ?? {},
+          injuryHistory: p.injuryHistory ?? [],
+          processedInjuryMatchIds: p.processedInjuryMatchIds ?? [],
+          processedInjuryDateKeys: p.processedInjuryDateKeys ?? [],
+          auctionMarketProfile,
+          retiredPlayerSnapshots: p.retiredPlayerSnapshots ?? {},
+          lastCareerPostseasonSeason: p.lastCareerPostseasonSeason ?? null,
+          lastCareerAgedSeason: p.lastCareerAgedSeason ?? null,
+          lastCareerAuctionProcessedSeason: p.lastCareerAuctionProcessedSeason ?? null,
+          pendingRetirementIntake: p.pendingRetirementIntake ?? 0,
+          lastCareerRetirements: [],
+          careerRetirementHistory: p.careerRetirementHistory ?? p.lastCareerRetirements ?? [],
+          lastCareerGeneratedPlayerIds: [],
           homePitchSelections: normalizeHomePitchSelections(
             p.homePitchSelections,
             getAdditionalHomePitchIds(customPitchesByTeam),
@@ -3505,6 +4213,7 @@ function advanceToNextLot() {
       auctionTargetPriorities: {},
       auction: s.auction ? { ...s.auction, phase: "completed", currentPlayer: null, soldFlash: null, unsoldFlash: null } : null,
     }));
+    useGameStore.getState().processCompletedAuctionCareer();
     return;
   }
 
@@ -3633,14 +4342,14 @@ function ensureMinimumSquadSizes(
   const isFullTimeKeeper = (p: Player) => !!((p.isWicketkeeper || p.role === "WK-Batsman") && !p.isPartTimeWk);
   const isIndianBatter = (p: Player) => p.nationality === "Indian" && (p.role === "Batsman" || p.role === "WK-Batsman");
   const isSpinBowlingPlayer = (p: Player) => p.role === "Spin Bowler" || /spin|orthodox/i.test(p.bowlingStyle ?? "");
-  const ratingOf = (p: Player) => Math.max(p.currentBatting ?? 0, p.currentBowling ?? 0);
+  const ratingOf = getAuctionRating;
 
   const getMinSize = (t: Team) => fillToTarget ? (t.softSquadTarget ?? 24) : 18;
 
   const getBowlersCount = (t: Team) => t.squad.map(id => players[id]).filter(p => p && (p.role === "Pace Bowler" || p.role === "Spin Bowler")).length;
   const getKeepersCount = (t: Team) => t.squad.map(id => players[id]).filter(p => p && isWK(p)).length;
   const getSpinnersCount = (t: Team) => t.squad.map(id => players[id]).filter(p => p && p.role === "Spin Bowler").length;
-  const getQualitySpinOptionsCount = (t: Team) => t.squad.map(id => players[id]).filter(p => p && isSpinBowlingPlayer(p) && (p.currentBowling ?? 0) > 74).length;
+  const getQualitySpinOptionsCount = (t: Team) => t.squad.map(id => players[id]).filter(p => p && isSpinBowlingPlayer(p) && getAuctionBowlingRating(p) > 74).length;
   const getIndianBowlersCount = (t: Team) => t.squad.map(id => players[id]).filter(p => p && p.nationality === "Indian" && (p.role === "Pace Bowler" || p.role === "Spin Bowler")).length;
   const getIndianBattersCount = (t: Team) => t.squad.map(id => players[id]).filter(p => p && isIndianBatter(p)).length;
   
@@ -3659,7 +4368,10 @@ function ensureMinimumSquadSizes(
   Object.values(teams).forEach(t => t.squad.forEach(id => takenPlayerIds.add(id)));
 
   const pool = Object.values(players).filter(
-    p => !p.isRetained && !takenPlayerIds.has(p.id) && p.currentTeamId === null
+    p => !p.isRetained
+      && !takenPlayerIds.has(p.id)
+      && p.currentTeamId === null
+      && isPlayerAuctionEligible(p)
   );
 
   const sortedPool = [...pool].sort((a, b) => {
@@ -3696,7 +4408,7 @@ function ensureMinimumSquadSizes(
         const tempCandidate = sortedPool[candidateIdx];
         const isBowler = tempCandidate.role === "Pace Bowler" || tempCandidate.role === "Spin Bowler";
         const isSpinner = tempCandidate.role === "Spin Bowler";
-        const isQualitySpinOption = isSpinBowlingPlayer(tempCandidate) && (tempCandidate.currentBowling ?? 0) > 74;
+        const isQualitySpinOption = isSpinBowlingPlayer(tempCandidate) && getAuctionBowlingRating(tempCandidate) > 74;
         const isWkCandidate = isWK(tempCandidate);
         const isIndBowler = tempCandidate.nationality === "Indian" && isBowler;
         const isIndBatter = isIndianBatter(tempCandidate);

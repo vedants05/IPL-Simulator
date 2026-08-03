@@ -16,6 +16,9 @@ export interface BattingStats {
   strikeRate: number;
   fifties: number;
   hundreds: number;
+  /** Persisted denominators used to keep simulated-career rates exact. */
+  balls?: number;
+  dismissals?: number;
 }
 
 export interface BowlingStats {
@@ -24,6 +27,9 @@ export interface BowlingStats {
   economy: number;
   average: number;
   bestFigures: string;
+  /** Persisted denominators used to keep simulated-career rates exact. */
+  balls?: number;
+  runsConceded?: number;
 }
 
 export interface CareerStats {
@@ -39,6 +45,11 @@ export interface IPLStats {
   bowlingInnings: number;
   bowlingAverage: number;
   wickets: number;
+  /** Persisted denominators used to keep simulated-career rates exact. */
+  battingBalls?: number;
+  battingDismissals?: number;
+  bowlingBalls?: number;
+  bowlingRunsConceded?: number;
 }
 
 export interface IPLHistoryEntry {
@@ -46,6 +57,44 @@ export interface IPLHistoryEntry {
   season: string;
   price: number;
   isRtm?: boolean;
+  /** Compact season output retained for player profiles after fixtures roll over. */
+  seasonStats?: {
+    matches: number;
+    runs: number;
+    balls: number;
+    wickets: number;
+    runsConceded: number;
+    oversBowled: number;
+  };
+}
+
+export interface PlayerCareerRatingHistoryEntry {
+  season: number;
+  batting: number;
+  bowling: number;
+  potentialBatting: number;
+  potentialBowling: number;
+}
+
+export interface PlayerCareerState {
+  origin: "database" | "generated";
+  generatedSeason?: number;
+  unsoldAuctionStreak: number;
+  consecutiveLowUsageSeasons: number;
+  lastDevelopmentSeason?: number;
+  lastAgedSeason?: number;
+  initialPotentialBatting: number;
+  initialPotentialBowling: number;
+  battingDevelopmentBank: number;
+  bowlingDevelopmentBank: number;
+  potentialBattingBank: number;
+  potentialBowlingBank: number;
+  unrealizedPotentialBattingLoss: number;
+  unrealizedPotentialBowlingLoss: number;
+  lastSeasonMatches: number;
+  lastSeasonRuns: number;
+  lastSeasonWickets: number;
+  ratingHistory: PlayerCareerRatingHistoryEntry[];
 }
 
 export interface Player {
@@ -53,6 +102,8 @@ export interface Player {
   name: string;
   age: number;
   nationality: Nationality;
+  /** Specific cricket nation. `nationality` remains the IPL Indian/overseas eligibility flag. */
+  country?: string;
   role: Role;
   battingStyle: BattingStyle;
   bowlingStyle: BowlingType | null;
@@ -70,9 +121,16 @@ export interface Player {
   potentialBatting: number;
   currentBowling: number;
   potentialBowling: number;
+  /** Percentile-normalized auction values. Career rules always use the raw ratings above. */
+  auctionRating?: number;
+  auctionBattingRating?: number;
+  auctionBowlingRating?: number;
+  auctionPotentialRating?: number;
+  careerState?: PlayerCareerState;
   reputation?: number;
   captaincy?: number;
   isIplCaptaincyUnavailable?: boolean;
+  iplCaptaincyUninterestedThroughSeason?: number;
   battingAggression?: number;
   isWicketkeeper?: boolean;
   isPartTimeWk?: boolean;
@@ -127,6 +185,7 @@ export interface Team {
   remainingPurse: number;
   squad: string[];
   retainedPlayers: string[];
+  captainContinuityId?: string | null;
   rtmCardsUsed: number;
   rtmCardsTotal: number;
   maxSquadSize: number;

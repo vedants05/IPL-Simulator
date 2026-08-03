@@ -4,13 +4,43 @@ import React, { useMemo } from "react";
 import { X } from "lucide-react";
 import { useGameStore } from "@/lib/store/gameStore";
 import { formatPrice } from "@/lib/logic/auctionRules";
+import { formatStatValue } from "@/lib/logic/statFormatting";
 import {
   getPlayerSeasonHistory,
   mergePlayerIplHistory,
   upsertPlayerIplHistory,
   wasPlayerAcquiredViaRtm,
 } from "@/lib/logic/playerHistory";
+import type { HistoricalPlayerSnapshot } from "@/lib/logic/careerLifecycle";
 import type { Player, IPLHistoryEntry } from "@/lib/types";
+
+function retiredSnapshotPlayer(snapshot: HistoricalPlayerSnapshot): Player {
+  return {
+    id: snapshot.id,
+    name: snapshot.name,
+    age: snapshot.retirementAge,
+    nationality: snapshot.nationality,
+    country: snapshot.country,
+    role: snapshot.role,
+    battingStyle: snapshot.battingStyle ?? "Right-hand",
+    bowlingStyle: snapshot.bowlingStyle ?? null,
+    bowlingHand: snapshot.bowlingHand ?? null,
+    careerStats: snapshot.careerStats,
+    iplStats: snapshot.iplStats,
+    iplHistory: snapshot.iplHistory,
+    basePrice: 0,
+    isCapped: snapshot.isCapped ?? true,
+    isRetained: false,
+    retainedByTeamId: null,
+    currentTeamId: null,
+    potential: "Established",
+    currentBatting: snapshot.currentBatting ?? snapshot.finalRating,
+    potentialBatting: snapshot.potentialBatting ?? snapshot.currentBatting ?? snapshot.finalRating,
+    currentBowling: snapshot.currentBowling ?? snapshot.finalRating,
+    potentialBowling: snapshot.potentialBowling ?? snapshot.currentBowling ?? snapshot.finalRating,
+    isWicketkeeper: snapshot.role === "WK-Batsman",
+  };
+}
 
 export interface ProfileModalMatch {
   id: string;
@@ -68,8 +98,15 @@ export function PlayerProfileModal({
   const teams = useGameStore((state) => state.teams);
   const currentSeason = useGameStore((state) => state.currentSeason);
   const auction = useGameStore((state) => state.auction);
+  const retiredPlayerSnapshots = useGameStore((state) => state.retiredPlayerSnapshots);
 
-  const detailedPlayer: Player | null = playerId ? players[playerId] ?? null : null;
+  const activePlayer = playerId ? players[playerId] ?? null : null;
+  const retiredSnapshot = playerId && !activePlayer
+    ? retiredPlayerSnapshots[playerId] ?? null
+    : null;
+  const detailedPlayer: Player | null = playerId
+    ? activePlayer ?? (retiredSnapshot ? retiredSnapshotPlayer(retiredSnapshot) : null)
+    : null;
 
   const rosterSeason = String(auction?.season ?? currentSeason);
 
@@ -192,10 +229,10 @@ export function PlayerProfileModal({
 
     const matches = playerMatchSet.size;
     const dismissals = Math.max(1, batInnings - notOuts);
-    const batAvg = batInnings > 0 ? (runs / dismissals).toFixed(2) : "-";
+    const batAvg = batInnings > 0 ? formatStatValue(runs / dismissals) : "-";
     const batSR = balls > 0 ? ((runs / balls) * 100).toFixed(1) : "-";
 
-    const bowlAvg = bowlWickets > 0 ? (bowlRunsConceded / bowlWickets).toFixed(2) : "-";
+    const bowlAvg = bowlWickets > 0 ? formatStatValue(bowlRunsConceded / bowlWickets) : "-";
     const bowlSR = bowlWickets > 0 ? (bowlBalls / bowlWickets).toFixed(1) : "-";
     const bestFiguresStr = bestWickets > 0 || bestRunsConceded < 999 ? `${bestWickets}/${bestRunsConceded === 999 ? 0 : bestRunsConceded}` : "-";
 
@@ -219,6 +256,11 @@ export function PlayerProfileModal({
   if (!detailedPlayer) return null;
 
   const currentTeam = teams[detailedPlayer.currentTeamId ?? ""];
+  const nationalityLabel = detailedPlayer.nationality === "Overseas"
+    && detailedPlayer.country
+    && detailedPlayer.country !== "Overseas"
+    ? detailedPlayer.country
+    : detailedPlayer.nationality;
 
   return (
     <div
@@ -245,7 +287,8 @@ export function PlayerProfileModal({
             </div>
             <h3 className="truncate font-anton text-[28px] uppercase leading-none text-text-primary">{detailedPlayer.name}</h3>
             <p className="mt-2 font-space-mono text-[10px] uppercase text-text-secondary">
-              {detailedPlayer.role} · Age {detailedPlayer.age} · {currentTeam?.name ?? "No current club"}
+              {detailedPlayer.role} · Age {detailedPlayer.age} · {currentTeam?.name
+                ?? (retiredSnapshot ? `Retired ${retiredSnapshot.retirementSeason}` : "No current club")}
             </p>
           </div>
           <button
@@ -265,7 +308,7 @@ export function PlayerProfileModal({
               <h4 className="mb-3 border-b border-border pb-2 font-anton text-[13px] uppercase text-text-primary">Player Details</h4>
               <div className="space-y-2.5 font-space-mono text-[10px]">
                 {[
-                  ["Nationality", detailedPlayer.nationality],
+                  ["Nationality", nationalityLabel],
                   ["Batting", detailedPlayer.battingStyle],
                   ["Bowling", (() => {
                     if (!detailedPlayer.bowlingStyle) return "DNB";
@@ -318,7 +361,7 @@ export function PlayerProfileModal({
                 ].map(([label, value]) => (
                   <div key={label} className="rounded border border-border bg-surface px-2 py-3 text-center">
                     <div className="font-space-mono text-[8px] font-bold uppercase text-text-secondary">{label}</div>
-                    <div className="mt-1 font-anton text-[18px] text-text-primary">{value}</div>
+                    <div className="mt-1 font-anton text-[18px] text-text-primary">{formatStatValue(Number(value))}</div>
                   </div>
                 ))}
               </div>
@@ -339,7 +382,7 @@ export function PlayerProfileModal({
                 ].map(([label, value]) => (
                   <div key={label} className="rounded border border-border bg-surface px-2 py-3 text-center">
                     <div className="font-space-mono text-[8px] font-bold uppercase text-text-secondary">{label}</div>
-                    <div className="mt-1 font-anton text-[18px] text-text-primary">{value}</div>
+                    <div className="mt-1 font-anton text-[18px] text-text-primary">{formatStatValue(Number(value))}</div>
                   </div>
                 ))}
               </div>
@@ -442,7 +485,14 @@ export function PlayerProfileModal({
                       className="grid min-h-9 grid-cols-[4rem_minmax(0,1fr)_5rem_4rem] items-center gap-3 border-b border-border/60 text-[10px]"
                     >
                       <span className="font-space-mono text-text-secondary">{entry.season}</span>
-                      <span className="truncate font-semibold text-text-primary">{teams[entry.teamId]?.name ?? entry.teamId}</span>
+                      <span className="min-w-0 truncate font-semibold text-text-primary">
+                        {teams[entry.teamId]?.name ?? entry.teamId}
+                        {entry.seasonStats && (
+                          <span className="ml-2 font-space-mono text-[8px] font-normal text-text-secondary">
+                            {entry.seasonStats.runs} runs · {entry.seasonStats.wickets} wkts
+                          </span>
+                        )}
+                      </span>
                       <span className="text-right font-space-mono text-text-primary">{entry.price > 0 ? formatPrice(entry.price) : "—"}</span>
                       <span className="text-right font-space-mono text-[8px] font-bold uppercase text-text-secondary">
                         {entry.isRtm ? "RTM" : "Signed"}

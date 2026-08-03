@@ -313,6 +313,7 @@ export default function NavBar() {
             <div className="flex items-center gap-1">
               {[
                 ["season", "End season"],
+                ["retention", "Skip to retention"],
               ].map(([kind, label]) => (
                 <button
                   key={kind}

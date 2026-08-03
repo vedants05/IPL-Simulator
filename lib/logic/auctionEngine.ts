@@ -1,5 +1,13 @@
 import { Player, Team, SegmentFocus } from "@/lib/types";
 import { getNextBidAmount, canTeamBidOnPlayer, canTeamAffordBid, getCappedRetentionSlabsForCount } from "./auctionRules";
+import {
+  getAuctionBattingRating,
+  getAuctionBowlingRating,
+  getAuctionPotentialRating,
+  getAuctionRating,
+  getRawAuctionRating,
+  isPlayerAuctionEligible,
+} from "./auctionMarket";
 
 // ---------------------------------------------------------------------------
 // Per-lot valuation cache — computed once per team per player lot
@@ -51,7 +59,7 @@ function clamp(v: number, lo: number, hi: number): number {
 // ---------------------------------------------------------------------------
 
 export function ratingOf(p: Player): number {
-  return Math.max(p.currentBatting ?? 0, p.currentBowling ?? 0);
+  return getAuctionRating(p);
 }
 
 /** Reputation 1-10; fallback derives from star rating for legacy data. */
@@ -68,7 +76,38 @@ function isFullTimeKeeper(p: Player): boolean {
 }
 
 function isFinisherType(p: Player): boolean {
-  return !!(p.isFinisher || ((p.battingAggression ?? 0) >= 85 && !p.isOpener && (p.currentBatting ?? 0) >= 65));
+  return !!(p.isFinisher || ((p.battingAggression ?? 0) >= 85 && !p.isOpener && getAuctionBattingRating(p) >= 65));
+}
+
+function isBattingAllRounder(p: Player): boolean {
+  return p.role === "All-Rounder"
+    && getAuctionBattingRating(p) >= 78
+    && getAuctionBattingRating(p) >= getAuctionBowlingRating(p) + 7;
+}
+
+function isIndianBattingOption(p: Player): boolean {
+  return p.nationality === "Indian"
+    && (p.role === "Batsman" || p.role === "WK-Batsman" || isBattingAllRounder(p));
+}
+
+function allRounderPrimarySkillQuality(p: Player): number {
+  if (p.role !== "All-Rounder") return ratingOf(p);
+  const stronger = Math.max(getAuctionBattingRating(p), getAuctionBowlingRating(p));
+  const weaker = Math.min(getAuctionBattingRating(p), getAuctionBowlingRating(p));
+  // A genuine 84+ batting or bowling option can be selected in that primary
+  // discipline. Keep the agreed blended AR rating, but do not price the elite
+  // skill as though it were only the blend.
+  return weaker >= 68 ? Math.max(ratingOf(p), stronger - 1) : ratingOf(p);
+}
+
+function isMarqueeQualityPlayer(p: Player): boolean {
+  const eliteAllRounderSkill = p.role === "All-Rounder"
+    && Math.max(getAuctionBattingRating(p), getAuctionBowlingRating(p)) >= 84
+    && Math.min(getAuctionBattingRating(p), getAuctionBowlingRating(p)) >= 68;
+  return ratingOf(p) >= 84
+    || eliteAllRounderSkill
+    || ((p.reputation ?? 0) >= 9 && ratingOf(p) >= 77)
+    || (p.role === "Pace Bowler" && ratingOf(p) >= 80);
 }
 
 function isLeader(p: Player): boolean {
@@ -117,13 +156,13 @@ export function resetAIBidRejectionTelemetry(): void {
 
 /** Counts specialist pacers AND pace-bowling all-rounders. */
 function isQualityPaceOption(p: Player, minRating = 78): boolean {
-  if ((p.currentBowling ?? 0) < minRating) return false;
+  if (getAuctionBowlingRating(p) < minRating) return false;
   if (p.role === "Pace Bowler") return true;
   return p.role === "All-Rounder" && /fast|medium|pace/i.test(p.bowlingStyle ?? "");
 }
 
 function potentialOf(p: Player): number {
-  return Math.max(p.potentialBatting ?? 0, p.potentialBowling ?? 0);
+  return getAuctionPotentialRating(p);
 }
 
 function isYoungGun(p: Player): boolean {
@@ -300,25 +339,25 @@ export function getSquadComp(squad: Player[]): SquadComp {
   for (const item of indiansWithDiff) {
     const p = item.player;
     if (item.diff > 0) {
-      if ((p.currentBatting ?? 0) > 78) battingIndians78++;
+      if (getAuctionBattingRating(p) > 78) battingIndians78++;
     } else if (item.diff < 0) {
-      if ((p.currentBowling ?? 0) > 77) bowlingIndians77++;
+      if (getAuctionBowlingRating(p) > 77) bowlingIndians77++;
     } else {
       if (battingIndians78 < 5 && bowlingIndians77 >= 4) {
-        if ((p.currentBatting ?? 0) > 78) battingIndians78++;
+        if (getAuctionBattingRating(p) > 78) battingIndians78++;
       } else if (bowlingIndians77 < 4 && battingIndians78 >= 5) {
-        if ((p.currentBowling ?? 0) > 77) bowlingIndians77++;
+        if (getAuctionBowlingRating(p) > 77) bowlingIndians77++;
       } else if (battingIndians78 < 5 && bowlingIndians77 < 4) {
         if (5 - battingIndians78 > 4 - bowlingIndians77) {
-          if ((p.currentBatting ?? 0) > 78) battingIndians78++;
+          if (getAuctionBattingRating(p) > 78) battingIndians78++;
         } else {
-          if ((p.currentBowling ?? 0) > 77) bowlingIndians77++;
+          if (getAuctionBowlingRating(p) > 77) bowlingIndians77++;
         }
       } else {
         if (battingIndians78 <= bowlingIndians77) {
-          if ((p.currentBatting ?? 0) > 78) battingIndians78++;
+          if (getAuctionBattingRating(p) > 78) battingIndians78++;
         } else {
-          if ((p.currentBowling ?? 0) > 77) bowlingIndians77++;
+          if (getAuctionBowlingRating(p) > 77) bowlingIndians77++;
         }
       }
     }
@@ -340,9 +379,8 @@ export function getSquadComp(squad: Player[]): SquadComp {
     }
   }
 
-  const isIndianBatter = (p: Player) => p.nationality === "Indian" && (p.role === "Batsman" || p.role === "WK-Batsman");
-  const indianBatters74 = squad.filter(p => isIndianBatter(p) && ratingOf(p) > 74).length;
-  const indianBatters77 = squad.filter(p => isIndianBatter(p) && ratingOf(p) > 77).length;
+  const indianBatters74 = squad.filter(p => isIndianBattingOption(p) && getAuctionBattingRating(p) > 74).length;
+  const indianBatters77 = squad.filter(p => isIndianBattingOption(p) && getAuctionBattingRating(p) > 77).length;
   const indianBowlers = squad.filter(p => p.nationality === "Indian" && (p.role === "Pace Bowler" || p.role === "Spin Bowler")).length;
 
   return {
@@ -367,10 +405,10 @@ export function getSquadComp(squad: Player[]): SquadComp {
     qualityKeepers: squad.filter(p => isKeeper(p) && ratingOf(p) >= 77).length,
     battingIndians78,
     bowlingIndians77,
-    spinOptions75: squad.filter(p => isSpinBowlingPlayer(p) && (p.currentBowling ?? 0) > 74).length,
+    spinOptions75: squad.filter(p => isSpinBowlingPlayer(p) && getAuctionBowlingRating(p) > 74).length,
     openers75: squad.filter(p => !!p.isOpener && ratingOf(p) >= 75).length,
     coreBatters75: squad.filter(p => !!p.isCoreBatter && ratingOf(p) >= 75).length,
-    pacers78: squad.filter(p => p.role === "Pace Bowler" && (p.currentBowling ?? 0) >= 78).length,
+    pacers78: squad.filter(p => p.role === "Pace Bowler" && getAuctionBowlingRating(p) >= 78).length,
     uncoveredBattingSlots: uncovered,
     overseasMiddleOrderCount,
     elitePacersCount: squad.filter(p => p.role === "Pace Bowler" && ratingOf(p) >= 80).length,
@@ -579,7 +617,7 @@ export function computePlayerFit(
   }
 
   // Pacer requirements: At least 3 pacers rated 78+ (over 77)
-  if (player.role === "Pace Bowler" && (player.currentBowling ?? 0) >= 78) {
+  if (player.role === "Pace Bowler" && getAuctionBowlingRating(player) >= 78) {
     if ((comp.pacers78 ?? 0) < 3) {
       fit += u(0.90, 1.40);
     }
@@ -590,21 +628,21 @@ export function computePlayerFit(
   if (player.role === "Spin Bowler" && comp.spinners < 2) {
     fit += u(1.80, 2.60);
   }
-  if (isSpinBowlingPlayer(player) && (player.currentBowling ?? 0) > 74 && comp.spinOptions75 < 2) {
+  if (isSpinBowlingPlayer(player) && getAuctionBowlingRating(player) > 74 && comp.spinOptions75 < 2) {
     fit += u(1.80, 2.60);
   }
 
   if (player.nationality === "Indian") {
     const isBattingPrimarily = (player.currentBatting ?? 0) >= (player.currentBowling ?? 0);
-    if (isBattingPrimarily && (player.currentBatting ?? 0) > 78) {
+    if (isBattingPrimarily && getAuctionBattingRating(player) > 78) {
       if ((comp.battingIndians78 ?? 0) < 5) fit += u(0.35, 0.55);
-    } else if (!isBattingPrimarily && (player.currentBowling ?? 0) > 77) {
+    } else if (!isBattingPrimarily && getAuctionBowlingRating(player) > 77) {
       if ((comp.bowlingIndians77 ?? 0) < 4) fit += u(0.35, 0.55);
     }
   }
 
   // Indian specific hard minimum targets (5 batters > 74, 3 batters > 77, 4 bowlers)
-  const isIndBatter = player.nationality === "Indian" && (player.role === "Batsman" || player.role === "WK-Batsman");
+  const isIndBatter = isIndianBattingOption(player);
   if (isIndBatter) {
     if (rating > 77 && (comp.indianBatters77 ?? 0) < 3) {
       fit += u(1.80, 2.60);
@@ -665,7 +703,7 @@ export function computePlayerFit(
 
 function doesPlayerFillNeed(player: Player, comp: SquadComp): boolean {
   const rating = ratingOf(player);
-  const isBat = player.role === "Batsman" || player.role === "WK-Batsman";
+  const isBat = player.role === "Batsman" || player.role === "WK-Batsman" || isBattingAllRounder(player);
   const isBowler = player.role === "Pace Bowler" || player.role === "Spin Bowler";
   const isSpinBowler = player.role === "Spin Bowler" || /spin|orthodox/i.test(player.bowlingStyle ?? "");
   const isKeeperRole = isKeeper(player);
@@ -684,9 +722,9 @@ function doesPlayerFillNeed(player: Player, comp: SquadComp): boolean {
   }
 
   if (isBowler) {
-    if (player.role === "Pace Bowler" && (player.currentBowling ?? 0) >= 78 && (comp.pacers78 ?? 0) < 3) return true;
+    if (player.role === "Pace Bowler" && getAuctionBowlingRating(player) >= 78 && (comp.pacers78 ?? 0) < 3) return true;
     if (player.role === "Spin Bowler" && (comp.spinners ?? 0) < 2) return true;
-    if (isSpinBowler && (player.currentBowling ?? 0) > 74 && (comp.spinOptions75 ?? 0) < 2) return true;
+    if (isSpinBowler && getAuctionBowlingRating(player) > 74 && (comp.spinOptions75 ?? 0) < 2) return true;
     if (player.nationality === "Indian" && (comp.indianBowlers ?? 0) < 4) return true;
   }
 
@@ -699,7 +737,7 @@ function doesPlayerFillNeed(player: Player, comp: SquadComp): boolean {
 // (prior IPL salary).
 // ---------------------------------------------------------------------------
 function effectiveQuality(player: Player): number {
-  const rating = ratingOf(player);
+  const rating = allRounderPrimarySkillQuality(player);
   const rep = repOf(player);
   // For stronger players, reputation should matter much less than current ability.
   let q = rating <= 78
@@ -761,12 +799,12 @@ function intrinsicValue(
 
   let premium = 0.55 + fit * 0.46;
   const rating = ratingOf(player);
-  const isIndBatter = player.nationality === "Indian" && (player.role === "Batsman" || player.role === "WK-Batsman");
+  const isIndBatter = isIndianBattingOption(player);
   const needsOpeners = player.isOpener && ((comp.openers ?? 0) < 3 || (rating >= 75 && (comp.openers75 ?? 0) < 2));
   const needsCoreBatters = player.isCoreBatter && rating >= 75 && (comp.coreBatters75 ?? 0) < 4;
-  const needsPacers = player.role === "Pace Bowler" && (player.currentBowling ?? 0) >= 78 && (comp.pacers78 ?? 0) < 3;
+  const needsPacers = player.role === "Pace Bowler" && getAuctionBowlingRating(player) >= 78 && (comp.pacers78 ?? 0) < 3;
   const needsSpinners = (player.role === "Spin Bowler" && comp.spinners < 2) ||
-    (isSpinBowlingPlayer(player) && (player.currentBowling ?? 0) > 74 && comp.spinOptions75 < 2);
+    (isSpinBowlingPlayer(player) && getAuctionBowlingRating(player) > 74 && comp.spinOptions75 < 2);
   const needsAnyWK = isKeeper(player) && (comp.keepers ?? 0) < 2;
   const needsQualityWK = isKeeper(player) && ratingOf(player) >= 77 && (comp.qualityKeepers ?? 0) === 0;
   const needsWKs76 = isFullTimeKeeper(player) && rating >= 76 && (comp.wks76 ?? 0) < 2;
@@ -846,8 +884,7 @@ function intrinsicValue(
   }
 
   // Depth Discount: if squad size >= 16, bid more conservatively on non-marquee targets to keep depth players cheap
-  const isMarquee = ratingOf(player) >= 84 || ((player.reputation ?? 0) >= 9 && ratingOf(player) >= 77) ||
-    (player.role === "Pace Bowler" && ratingOf(player) >= 80);
+  const isMarquee = isMarqueeQualityPlayer(player);
   if (comp.total >= (team.softSquadTarget ?? 24) && !isMarquee) {
     raw *= 0.85; // 15% discount on depth targets
   }
@@ -894,7 +931,7 @@ export function getTeamPlan(team: Team, allPlayers: Record<string, Player>): Tea
 
   // Auction pool = everyone not retained and not already bought this auction.
   const pool = Object.values(allPlayers).filter(
-    p => !p.isRetained && (p.currentTeamId == null)
+    p => !p.isRetained && (p.currentTeamId == null) && isPlayerAuctionEligible(p)
   );
 
   // Teams aim for their hidden 23–25 player preference. The separate
@@ -1088,23 +1125,23 @@ export function computeTeamValuation(
   let fit = computePlayerFit(player, team, comp, quirks);
   const averageTop = (
     candidates: Player[],
-    key: "currentBatting" | "currentBowling",
+    rating: (candidate: Player) => number,
     count: number,
   ) => {
     const values = candidates
-      .map(candidate => candidate[key] ?? 0)
+      .map(rating)
       .sort((left, right) => right - left)
       .slice(0, count);
     // Unfilled core places remain a real weakness; do not let one retained
     // superstar make an incomplete projected XI look balanced.
     return values.reduce((sum, value) => sum + value, 0) / count;
   };
-  const projectedBattingCore = averageTop(squad, "currentBatting", 7);
-  const projectedBowlingCore = averageTop(squad, "currentBowling", 5);
-  if (projectedBattingCore < 82.25 && (player.currentBatting ?? 0) >= 76) {
+  const projectedBattingCore = averageTop(squad, getAuctionBattingRating, 7);
+  const projectedBowlingCore = averageTop(squad, getAuctionBowlingRating, 5);
+  if (projectedBattingCore < 82.25 && getAuctionBattingRating(player) >= 76) {
     fit += clamp((82.25 - projectedBattingCore) / 5.5, 0.15, 0.85);
   }
-  if (projectedBowlingCore < 82.25 && (player.currentBowling ?? 0) >= 76) {
+  if (projectedBowlingCore < 82.25 && getAuctionBowlingRating(player) >= 76) {
     fit += clamp((82.25 - projectedBowlingCore) / 5.5, 0.15, 0.85);
   }
   if (acceleratedRelaxation > 0) {
@@ -1129,7 +1166,7 @@ export function computeTeamValuation(
 
   // Emergency Shortlist Bypass: If a team has critical role deficits,
   // treat them as a planned target to bypass the unplanned price penalty
-  const isIndBatter = player.nationality === "Indian" && (player.role === "Batsman" || player.role === "WK-Batsman");
+  const isIndBatter = isIndianBattingOption(player);
   const isEmergencyWK = (isKeeper(player) && (comp.keepers ?? 0) < 2) || (isKeeper(player) && ratingOf(player) >= 77 && (comp.qualityKeepers ?? 0) === 0);
   const isEmergencyOverseasDepth = (
     player.nationality === "Overseas"
@@ -1138,11 +1175,8 @@ export function computeTeamValuation(
   );
   const isEmergencyIndBowler = player.nationality === "Indian" && (player.role === "Pace Bowler" || player.role === "Spin Bowler") && (comp.indianBowlers ?? 0) < 4;
   const isEmergencyIndBatter = isIndBatter && ((ratingOf(player) > 77 && (comp.indianBatters77 ?? 0) < 3) || (ratingOf(player) > 74 && (comp.indianBatters74 ?? 0) < 5));
-  const indianSpecialistBatters = squad.filter(candidate =>
-    candidate.nationality === "Indian" &&
-    (candidate.role === "Batsman" || candidate.role === "WK-Batsman")
-  ).length;
-  const fillsHardIndianBattingMinimum = isIndBatter && indianSpecialistBatters < 5;
+  const indianBattingOptions = squad.filter(isIndianBattingOption).length;
+  const fillsHardIndianBattingMinimum = isIndBatter && indianBattingOptions < 5;
   const specialistBatters = squad.filter(candidate =>
     candidate.role === "Batsman" || candidate.role === "WK-Batsman"
   ).length;
@@ -1170,8 +1204,8 @@ export function computeTeamValuation(
       if (remainingKeepers <= 4) fit += 0.60;
       else if (remainingKeepers <= 8) fit += 0.30;
     }
-    if (isSpinBowlingPlayer(player) && (player.currentBowling ?? 0) > 74 && comp.spinOptions75 < 2) {
-      const remainingSpinners = remainingPlayers.filter(p => isSpinBowlingPlayer(p) && (p.currentBowling ?? 0) > 74).length;
+    if (isSpinBowlingPlayer(player) && getAuctionBowlingRating(player) > 74 && comp.spinOptions75 < 2) {
+      const remainingSpinners = remainingPlayers.filter(p => isSpinBowlingPlayer(p) && getAuctionBowlingRating(p) > 74).length;
       if (remainingSpinners <= 4) fit += 1.20;
       else if (remainingSpinners <= 8) fit += 0.60;
     }
@@ -1317,9 +1351,7 @@ export function computeTeamValuation(
   // hardest, so several teams bid them into the ₹12-18 Cr range, while depth stays
   // cheap enough to still round out the squad.
   const isElitePacerOption = player.role === "Pace Bowler" && ratingOf(player) >= 80;
-  const marquee = ratingOf(player) >= 84 ||
-                  ((player.reputation ?? 0) >= 9 && ratingOf(player) >= 77) ||
-                  isElitePacerOption;
+  const marquee = isMarqueeQualityPlayer(player) || isElitePacerOption;
   let concentration: number;
   if (marquee)                 concentration = u(3.2, 5.2);
   else if (isRivalReleasedSuperstar) concentration = u(2.8, 4.4); // Boost concentration for rival superstars
@@ -1524,11 +1556,14 @@ export function computeTeamValuation(
     // every team to reject that opening bid and incorrectly leave stars unsold.
     value = getNextBidAmount(player.basePrice);
   }
-  if (rating >= 70 && rating <= 83) {
+  const pricingRating = allRounderPrimarySkillQuality(player);
+  if (pricingRating >= 70 && pricingRating <= 83) {
     // A continuous, rating-scaled market ceiling prevents the old threshold
     // inversion where a 76-rated player was uncapped but a 77-83 priority
     // player was restricted to the same flat 1.75x purse-per-slot ceiling.
-    const ratingMarketMultiplier = 1.35 + (rating - 70) * 0.12;
+    // Elite primary-skill all-rounders use that skill for the ceiling so an
+    // 85 batter is not price-capped as an ordinary 82-rated squad option.
+    const ratingMarketMultiplier = 1.35 + (pricingRating - 70) * 0.12;
     const ratingMarketCeiling = Math.max(
       getNextBidAmount(player.basePrice),
       avgPerSlot * ratingMarketMultiplier,
@@ -1669,7 +1704,9 @@ export function canAIBidAtAmount(
     (ctx.isAcceleratedPhase || isPriorityOpeningBid) ? "accelerated-5-plus-5" : "original"
   )) return reject("reserve");
 
-  const squad = team.squad.map(id => allPlayers[id]).filter(Boolean);
+  const squad = team.squad
+    .map(id => allPlayers[id])
+    .filter((player): player is Player => Boolean(player) && isPlayerAuctionEligible(player));
   const comp = getSquadComp(squad);
   const indianSpecialistBatters = squad.filter(candidate =>
     candidate.nationality === "Indian" &&
@@ -1923,7 +1960,9 @@ export function decideAIRetentions(
   team: Team,
   allPlayers: Record<string, Player>
 ): string[] {
-  const squad = team.squad.map(id => allPlayers[id]).filter(Boolean);
+  const squad = team.squad
+    .map(id => allPlayers[id])
+    .filter((player): player is Player => Boolean(player) && isPlayerAuctionEligible(player));
   const loyaltyNorm = team.dna.loyalty / 100;
   const quirks = getQuirks(team);
   const appetite = quirks.retentionAppetite; // <1 → hunter, saves for auction
@@ -1984,7 +2023,7 @@ export function decideAIRetentions(
     let uncappedUsed = 0;
     let totalSpend = 0;
 
-    for (const { p, worth, isCapped, cornerstone } of allCandidates) {
+    for (const { p, worth, isCapped, cornerstone, isRep10 } of allCandidates) {
       if (retainedList.length >= MAX_TOTAL) break;
 
       // Check slot limits
@@ -1997,7 +2036,7 @@ export function decideAIRetentions(
       const slabCost = isCapped ? slabs[cappedUsed] : UNCAPPED_SLAB;
       const spendCap = cornerstone ? cornerstoneSpendCap : maxRetentionSpend;
 
-      if (totalSpend + slabCost > spendCap) {
+      if (totalSpend + slabCost > spendCap && !isRep10) {
         if (cornerstone) continue; // never let a cheaper non-icon block the queue
         continue;
       }

@@ -2,7 +2,7 @@ import type { Player, Team } from "@/lib/types";
 
 import { buildAiMatchLineups, currentAbility } from "./aiLineupSelector";
 
-export type AiCaptainReason = "sole-elite-leader" | "indian-three-year-leader" | "best-current-leader";
+export type AiCaptainReason = "retained-captain" | "sole-elite-leader" | "indian-three-year-leader" | "best-current-leader";
 export type AiViceCaptainReason = "franchise-successor" | "second-best-current-leader";
 
 export interface AiTeamLeadership {
@@ -68,7 +68,10 @@ export function appointAiTeamLeadership(
   const commonStarterIds = new Set(bothLineups);
   const eligible = squad
     .filter((player) => commonStarterIds.has(player.id))
-    .filter((player) => !player.isIplCaptaincyUnavailable);
+    .filter((player) => (
+      !player.isIplCaptaincyUnavailable
+      && (player.iplCaptaincyUninterestedThroughSeason ?? -1) < season
+    ));
 
   const eliteLeaders = eligible
     .filter((player) => (player.captaincy ?? 0) > 86)
@@ -81,12 +84,23 @@ export function appointAiTeamLeadership(
       && hasConsecutiveFranchiseSeasons(player, team.id, season)
     ))
     .sort(leadershipRanking);
-  const captain = soleEliteLeader
+  const retainedCaptain = team.captainContinuityId
+    && team.retainedPlayers.includes(team.captainContinuityId)
+    ? squad.find((player) => (
+        player.id === team.captainContinuityId
+        && !player.isIplCaptaincyUnavailable
+        && (player.iplCaptaincyUninterestedThroughSeason ?? -1) < season
+      )) ?? null
+    : null;
+  const captain = retainedCaptain
+    ?? soleEliteLeader
     ?? threeYearIndianLeaders[0]
     ?? [...eligible].sort(leadershipRanking)[0]
     ?? null;
   const captainReason: AiCaptainReason | null = captain
-    ? soleEliteLeader?.id === captain.id
+    ? retainedCaptain?.id === captain.id
+      ? "retained-captain"
+      : soleEliteLeader?.id === captain.id
       ? "sole-elite-leader"
       : threeYearIndianLeaders.some((player) => player.id === captain.id)
       ? "indian-three-year-leader"
