@@ -81,6 +81,7 @@ import {
 } from "@/lib/logic/seasonAwards";
 const LeagueHallOfFame = dynamic(() => import("@/components/history/LeagueHallOfFame"), { ssr: false });
 const LeagueRecords = dynamic(() => import("@/components/history/LeagueRecords"), { ssr: false });
+const MinorRecords = dynamic(() => import("@/components/history/MinorRecords"), { ssr: false });
 const CaptaincyPage = dynamic(() => import("@/components/squad/CaptaincyPage"), { ssr: false });
 const SquadAnalysisPage = dynamic(() => import("@/components/squad/SquadAnalysisPage"), { ssr: false });
 const InjuryHubPage = dynamic(() => import("@/components/squad/InjuryHubPage"), { ssr: false });
@@ -2728,7 +2729,9 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}`;
       battingFirstImpactSubs: string[];
       bowlingFirstImpactSubs: string[];
     },
-    assistantManageUser = true,
+    // A user simulation must use the saved match plan by default. Assistant
+    // management is opt-in for explicit recovery/auto-management flows.
+    assistantManageUser = false,
   ): Match => {
     if (!FIXTURE_SIMULATION_ENABLED) {
       throw new Error("Fixture simulation is not currently enabled.");
@@ -2893,7 +2896,7 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}`;
   const getUserPreparationWarnings = (match: Match) => {
     const conditions = getMatchConditions(match);
     if (!conditions) return ["The selected stadium conditions could not be loaded."];
-    const simulatedPlans = buildTeamMatchPlans(userTeamId, undefined, conditions, match, true);
+    const simulatedPlans = buildTeamMatchPlans(userTeamId, undefined, conditions, match, false);
     const battingFirstIds = simulatedPlans.battingFirst.startingXI;
     const bowlingFirstIds = simulatedPlans.bowlingFirst.startingXI;
     const warnings = [
@@ -3809,7 +3812,7 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}`;
         // the old rollover bug. These games were part of an automatic skip and
         // must not require the user to play months-old fixtures manually.
         try {
-          const simulatedMatch = buildSimulatedMatch(unresolvedUserFixture, undefined, true);
+          const simulatedMatch = buildSimulatedMatch(unresolvedUserFixture);
           commitSimulatedMatch(simulatedMatch, nextFixtures, playerStatsRef.current);
           if (dayTickerRef.current?.start()) setIsSimulatingDays(true);
         } catch (error) {
@@ -4551,7 +4554,7 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}`;
     history: {
       label: "History",
       icon: HistoryIcon,
-      subtabs: ["overview", "records", "clubhistory", "clubfigures", "leaguehistory", "leaguehalloffame"]
+      subtabs: ["overview", "records", "minorrecords", "clubhistory", "clubfigures", "leaguehistory", "leaguehalloffame"]
     }
   };
 
@@ -4578,6 +4581,7 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}`;
     if (subtab === "social") return "Social Media";
     if (subtab === "news") return "News";
     if (subtab === "records") return "Records";
+    if (subtab === "minorrecords") return "Minor Records";
     if (subtab === "clubhistory") return "Club History";
     if (subtab === "clubfigures") return "Club Figures";
     if (subtab === "leaguehistory") return "League History";
@@ -8204,11 +8208,14 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}`;
                 />
               )}
 
-              {activeSubTab !== "overview" && activeSubTab !== "records" && activeSubTab !== "clubhistory" && activeSubTab !== "clubfigures" && activeSubTab !== "leaguehistory" && activeSubTab !== "leaguehalloffame" && (
+              {activeSubTab !== "overview" && activeSubTab !== "records" && activeSubTab !== "minorrecords" && activeSubTab !== "clubhistory" && activeSubTab !== "clubfigures" && activeSubTab !== "leaguehistory" && activeSubTab !== "leaguehalloffame" && (
                 <div className="bg-surface border-2 border-border p-8 text-center h-[calc(100vh-200px)] min-h-[500px] flex flex-col items-center justify-center">
                   <h3 className="font-anton text-[18px] text-text-primary uppercase">{getSubTabLabel(activeSubTab)}</h3>
                   <p className="mt-3 text-xs text-text-secondary">No history has been recorded yet.</p>
                 </div>
+              )}
+              {activeSubTab === "minorrecords" && (
+                <MinorRecords />
               )}
             </>
           )}

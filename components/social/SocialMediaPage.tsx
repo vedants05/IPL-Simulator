@@ -9,6 +9,7 @@ import { SOCIAL_COMMENTS, matchesEligibility, type SocialPlatform } from "@/lib/
 
 interface SocialPlayerStats {
   id: string; runs: number; balls: number; wickets: number; runsConceded: number; oversBowled: number; matches: number;
+  dismissal?: string; fours?: number; sixes?: number;
 }
 interface SocialFixture {
   id: string; matchNumber: number; teamA: string; teamB: string; played: boolean; winner?: string; date?: string;
@@ -21,7 +22,7 @@ interface SocialFixture {
   stage?: string;
 }
 interface SocialScorecardPlayer {
-  id: string; runs?: number; balls?: number; fours?: number; sixes?: number; wickets?: number; runsConceded?: number; overs?: number;
+  id: string; runs?: number; balls?: number; fours?: number; sixes?: number; wickets?: number; runsConceded?: number; overs?: number; dismissal?: string;
 }
 interface SocialMediaPageProps {
   team: Team; players: Record<string, Player>; playerStats: Record<string, SocialPlayerStats>;
@@ -124,13 +125,102 @@ const isCloseFixture = (fixture: SocialFixture) => {
   if (fixture.winner === fixture.teamB) return fixture.scoreB.overs >= 19;
   return Math.abs(fixture.scoreA.runs - fixture.scoreB.runs) <= 15;
 };
+
+/** Prevent individual-match copy from contradicting the scorecard. */
+function supportsMatchPerformanceComment(text: string, stats: SocialPlayerStats, tag?: string): boolean {
+  const lower = text.toLowerCase();
+  const runs = stats.runs ?? 0;
+  const balls = stats.balls ?? 0;
+  const strikeRate = balls > 0 ? runs / balls * 100 : 0;
+  const overs = stats.oversBowled ?? 0;
+  const wickets = stats.wickets ?? 0;
+  const fours = stats.fours ?? 0;
+  const sixes = stats.sixes ?? 0;
+  const economyRate = overs > 0 ? stats.runsConceded / overs : 0;
+  // Claims for which this scorecard does not currently expose a reliable
+  // player-level value are deliberately withheld. This keeps every template
+  // tied to a readable statistic instead of allowing a plausible-sounding
+  // but unverifiable sentence through.
+  if (/\b(catches?|stumpings?|run[- ]outs?|maidens?|extras?|dot balls?|fielding|new ball|powerplay|power play|middle overs?|death overs?|final delivery|final ball|last ball|last over|final over|over\s+\d+|required|off\s+\d+|chase|chasing|defend(?:ed|ing)?|winning runs|close(?:d|s)? it out)\b/.test(lower)) return false;
+  const halfCenturyClaim = /\b(half[- ]centur(?:y|ies)|fift(?:y|ies))\b/.test(lower);
+  const runClaim = lower.match(/\b(\d+)\s*[- ]?runs?\b/);
+  const wicketClaim = lower.match(/\b(\d+)\s*[- ]?wickets?\b/);
+  if (halfCenturyClaim && runs < 50) return false;
+  if (runClaim && !/\b(30s|thirties)\b/.test(lower) && runs < Number(runClaim[1])) return false;
+  if (wicketClaim && wickets < Number(wicketClaim[1])) return false;
+  // Explicit cricket language gets explicit thresholds. These checks run
+  // before the broader sentiment rules below so weak performances cannot be
+  // described with inflated wording.
+  if (/\b(explosive|explosively|brutal hitting|carnage|smashed|blitzed)\b/.test(lower)
+    && (balls < 3 || strikeRate < 180)) return false;
+  if (/\b(clean hitting|aggressive hitting|boundary hitting|boundary hitter|power hitting)\b/.test(lower)
+    && (balls < 5 || (strikeRate < 140 && fours + sixes < 3))) return false;
+  if (/\b(sixes|six-hitting|cleared the ropes)\b/.test(lower) && sixes < 1) return false;
+  if (/\b(boundar(?:y|ies)|boundary hitter)\b/.test(lower) && fours + sixes < 2 && strikeRate < 140) return false;
+  if (/\b(centur(?:y|ies)|hundred)\b/.test(lower) && runs < 100) return false;
+  if (/\b(double wicket|two wickets)\b/.test(lower) && wickets < 2) return false;
+  if (/\b(anchoring|anchor(?:ed)? the innings|responsible knock)\b/.test(lower)
+    && (balls < 10 || strikeRate > 145 || runs < 20)) return false;
+  if (/\b(tight bowling|tight spell|lockdown bowling|lockdown spell|choking the run|run flow under control|economical|economy below)\b/.test(lower)
+    && (overs < 2 || economyRate > 7.5)) return false;
+  if (/\b(wicket-taking|wicket taker|wickets on lock|tearing through|breakthrough)\b/.test(lower)
+    && wickets < 2) return false;
+  // The current scorecard stores totals, not ball-by-ball phase splits. Do not
+  // publish player-specific powerplay/death/new-ball claims that cannot be
+  // proven from the available match data.
+  if (/\b(powerplay|power play|death overs?|new ball|middle overs?|over\s+\d+|final delivery)\b/.test(lower)) return false;
+  const isDismissalBattingComment = /\b(threw away|losing your wicket|wicket like that|disappointing dismissal|dismissal|low.?percentage shot)\b/.test(lower);
+  const explicitBattingClaim = /\b(bat|batter|batting|innings|runs?|strike rate|sixes|hitting|knock|scor(?:e|ing)|anchor|delivery|deliveries|boundar(?:y|ies)|clearing|ropes)\b/.test(lower) || isDismissalBattingComment;
+  const explicitBowlingClaim = /\b(bowl|bowler|bowling|wicket|yorker|economy|spinner|spin attack|pacer|pace attack|spell|turn|swing)\b/.test(lower);
+  if (explicitBattingClaim && balls <= 0) return false;
+  if (explicitBowlingClaim && overs <= 0) return false;
+  const isBowling = /\b(bowl|bowler|bowling|wicket|yorker|economy|spinner|spin attack|pacer|pace attack|death overs?|spell|new ball)\b/.test(lower)
+    && !isDismissalBattingComment;
+  const forcedBatting = tag === "batting_form";
+  const forcedBowling = tag === "bowling_form";
+  const isBatting = forcedBatting || isDismissalBattingComment || (!forcedBowling && !isBowling && /\b(bat|batter|batting|innings|runs?|strike rate|sixes|hitting|knock|scor(?:e|ing)|anchor|powerplay|delivery|deliveries|too long|bogged|dot balls|boundar(?:y|ies)|clearing|ropes)\b/.test(lower));
+  const isBowlingPerformance = forcedBowling || (!forcedBatting && isBowling);
+  if (isBatting) {
+    if (balls <= 0) return false;
+    if (/\b(threw away|losing your wicket|wicket like that|dismissal)\b/.test(lower)) {
+      return Boolean(stats.dismissal) && runs >= 8 && balls >= 5;
+    }
+    if (/\b(too many deliveries|taking too long|dot balls|slow|rusty|needs? to|struggl|poor|bad|rough|disappoint|pressure|bogged)\b/.test(lower)) {
+      return balls >= 8 && (runs <= 15 || strikeRate <= 115);
+    }
+    // A “great innings/masterclass/crucial knock” needs a meaningful sample;
+    // three-ball cameos cannot satisfy these claims.
+    if (/\b(great|good|masterclass|clean hitting|what a way|setting the tempo|anchoring|pure class|freedom|timing|crucial knock|dominant|excellent|superb|brilliant|sensational|stellar|highest order|standout|bright spot|valuable|impact|performed)\b/.test(lower)) {
+      return (runs >= 25 && balls >= 8) || (runs >= 15 && strikeRate >= 150 && balls >= 5);
+    }
+    if (/\b(powerplay|tempo|hitting|knock|innings)\b/.test(lower)) return runs >= 10 && (balls >= 5 || strikeRate >= 140);
+  }
+  if (isBowlingPerformance) {
+    if (overs <= 0) return false;
+    if (/\b(leaked|too many runs|radar|extras|expensive|poor|bad|struggl|rough|off)\b/.test(lower)) return economyRate >= 9.5;
+    if (/\b(wicket|breakthrough|yorker|masterclass|quality|good|great|brilliant|sensational|stellar|choking|control|spell|swinging|turn|pace|standout|bright spot|valuable|impact|performed)\b/.test(lower)) {
+      return wickets >= 2 || (overs >= 2 && economyRate <= 7.5);
+    }
+  }
+  if (tag && ["carry_to_top4", "final_performances", "playoff_games", "clutch", "team_retention"].includes(tag)) {
+    // Generic match-impact copy still needs measurable evidence even when its
+    // wording does not explicitly say batting or bowling.
+    return (balls >= 8 && runs >= 20) || (overs >= 2 && (wickets >= 1 || economyRate <= 7.5));
+  }
+  return true;
+}
 const TEAM_COLOUR_NAMES: Record<string, string> = {
   MI: "blue and gold", CSK: "yellow", KKR: "purple and gold", RCB: "red and black", DC: "red and blue",
   SRH: "orange and black", PBKS: "red and silver", RR: "pink and blue", GT: "navy and gold", LSG: "blue and orange",
 };
 
 function positionSuitability(player: Player, lineup: string[]) {
-  const slot = Math.max(0, lineup.indexOf(player.id));
+  const lineupIndex = lineup.indexOf(player.id);
+  // Players outside the selected XI do not have a batting position. Treating
+  // index -1 as the opener was causing lower-order squad players to be used in
+  // opening/powerplay comments.
+  if (lineupIndex < 0) return { positionName: "squad role", isSuitable: true, reason: "is not in the selected batting XI" };
+  const slot = lineupIndex;
   if (slot <= 1) return { positionName: "Opening", isSuitable: Boolean(player.isOpener), reason: player.isOpener ? "is a recognised opener" : "is normally a middle-order batter" };
   if (slot === 2) return { positionName: "#3", isSuitable: Boolean(player.hasBattedAt3), reason: player.hasBattedAt3 ? "has experience at number three" : "has rarely batted at number three" };
   if (slot === 3) return { positionName: "#4", isSuitable: Boolean(player.hasBattedAt4), reason: player.hasBattedAt4 ? "is comfortable at number four" : "is being used outside a familiar role" };
@@ -206,6 +296,78 @@ function buildFeed(props: SocialMediaPageProps, activePlatform: SocialPlatform):
   const playedTeamFixtures = fixtures.filter((fixture) => fixture.played && (fixture.teamA === team.id || fixture.teamB === team.id));
   const recent = phaseContext.recent;
   const closeRecentMatch = Boolean(recent && isCloseFixture(recent));
+  const seasonBattingScores: Record<string, number[]> = {};
+  playedTeamFixtures.forEach((fixture) => {
+    if (!fixture.scorecard) return;
+    const innings = fixture.teamA === team.id ? fixture.scorecard.inningsA : fixture.scorecard.inningsB;
+    innings.batting.forEach((entry) => {
+      if (!entry.id || (entry.balls ?? 0) <= 0) return;
+      (seasonBattingScores[entry.id] ??= []).push(entry.runs ?? 0);
+    });
+  });
+  const teamResults = playedTeamFixtures
+    .slice()
+    .sort((a, b) => a.matchNumber - b.matchNumber)
+    .map((fixture) => fixture.winner === team.id ? "W" : fixture.winner ? "L" : null)
+    .filter((result): result is "W" | "L" => Boolean(result));
+  const teamWins = teamResults.filter((result) => result === "W").length;
+  const teamLosses = teamResults.filter((result) => result === "L").length;
+  const lastTeamResult = teamResults.at(-1);
+  const currentResultStreak = (() => {
+    if (!lastTeamResult) return 0;
+    let count = 0;
+    for (let index = teamResults.length - 1; index >= 0 && teamResults[index] === lastTeamResult; index -= 1) count += 1;
+    return count;
+  })();
+  const winsInLast = (count: number) => teamResults.slice(-count).filter((result) => result === "W").length;
+  const supportsTeamFormComment = (text: string) => {
+    const lower = text.toLowerCase();
+    if (!teamResults.length) return false;
+    // Standings/qualification claims need the actual table, which is not part
+    // of this feed's context. Suppress them rather than guessing from form.
+    if (/\b(top 4|top four|top 2|top two|top of the table|bottom half|playoff qualification|playoff chances|qualified|qualify|playoffs?)\b/.test(lower)) return false;
+    if (/\b(nrr|net run rate|away game|away win|home game|home win)\b/.test(lower)) return false;
+    const record = lower.match(/\b(\d+)\s*[-/]\s*(\d+)\b/);
+    if (record) {
+      const wins = Number(record[1]);
+      const losses = Number(record[2]);
+      if (lower.includes("win") && lower.includes("out of")) return winsInLast(losses || wins) === wins && teamResults.length >= (losses || wins);
+      if (lower.includes("start") || lower.includes("record")) return teamWins === wins && teamLosses === losses;
+      if (lower.includes("2 points") || lower.includes("points")) return lastTeamResult === "W";
+    }
+    const streak = lower.match(/\b(\d+)\s*(?:[- ]match\s*)?(?:consecutive\s+)?(winning|wins?|losing|losses?)\s*(?:run|streak|in a row)?\b/);
+    if (streak) {
+      const count = Number(streak[1]);
+      const wantsWin = streak[2].startsWith("win");
+      return currentResultStreak >= count && (wantsWin ? lastTeamResult === "W" : lastTeamResult === "L");
+    }
+    if (/\b(unbeaten|undefeated)\b/.test(lower)) return teamLosses === 0;
+    if (/\b(loss|lost|defeat|defeated|heartbroken|regroup|recalibrate|rebuild|reset)\b/.test(lower)
+      && /\b(today|match|game|result|loss|defeat|lost|tough|season is over)\b/.test(lower)) return lastTeamResult === "L";
+    if (/\b(win|victory|winning|won|dominant display|dominant win|2 points|momentum)\b/.test(lower)
+      && !/\b(loss|lost|defeat|without)\b/.test(lower)) return lastTeamResult === "W";
+    return true;
+  };
+  const supportsResultTone = (text: string, topic: SocialPostTopic) => {
+    if (topic !== "team_form" || !lastTeamResult) return true;
+    const lower = text.toLowerCase();
+    const negative = /\b(loss|lost|defeat|defeated|poor|slump|struggl|painful|failed|failure|mistake|concern|rebuild|reset|disappoint|bottom|eliminat|under pressure)\b/.test(lower);
+    const positive = /\b(win|wins|victory|winning|won|great|perfect|dominant|momentum|unbeaten|undefeated|champion|firing|confidence|masterclass|massive|excellent|top)\b/.test(lower);
+    if (lastTeamResult === "W" && negative && !positive) return false;
+    if (lastTeamResult === "L" && positive && !negative) return false;
+    return true;
+  };
+  const supportsMatchResultClaim = (text: string, topic: SocialPostTopic) => {
+    if (!["individual_match", "clutch"].includes(topic) || !lastTeamResult) return true;
+    const lower = text.toLowerCase();
+    const claimsWin = /\b(win|wins|winning|won|victory|victorious|winning score|seal(?:ed)? the win|title contenders)\b/.test(lower);
+    const claimsLoss = /\b(loss|lost|losing|defeat|defeated|losing cause|fell short|couldn't get over the line|rough spell|poor outing)\b/.test(lower);
+    // Individual brilliance is allowed in defeat, but a post cannot claim the
+    // team won or lost when the fixture result says otherwise.
+    if (claimsWin && lastTeamResult !== "W" && !/\bindividual|losing cause\b/.test(lower)) return false;
+    if (claimsLoss && lastTeamResult !== "L" && !/\bindividual|losing cause\b/.test(lower)) return false;
+    return true;
+  };
   const recentMatchStats: Record<string, SocialPlayerStats> = {};
   if (recent?.scorecard) {
     const userBatting = recent.teamA === team.id ? recent.scorecard.inningsA.batting : recent.scorecard.inningsB.batting;
@@ -215,6 +377,8 @@ function buildFeed(props: SocialMediaPageProps, activePlatform: SocialPlatform):
       recentMatchStats[entry.id] = {
         id: entry.id, runs: entry.runs ?? 0, balls: entry.balls ?? 0,
         wickets: 0, runsConceded: 0, oversBowled: 0, matches: 1,
+        dismissal: entry.dismissal,
+        fours: entry.fours ?? 0, sixes: entry.sixes ?? 0,
       };
     });
     userBowling.forEach((entry) => {
@@ -686,6 +850,10 @@ function buildFeed(props: SocialMediaPageProps, activePlatform: SocialPlatform):
     && !referencesUnsupportedFeature(template.text)
     && !isUnverifiedPreSeasonClaim(template.text)
     && topicEligible(template.topic)
+    && (template.topic !== "team_form" || supportsTeamFormComment(template.text))
+    && supportsResultTone(template.text, template.topic)
+    && supportsMatchResultClaim(template.text, template.topic)
+    && (!template.tag.startsWith("losing_cause_") || Boolean(recent?.winner && recent.winner !== team.id))
     && (template.topic === phaseContext.phase || template.phases.includes(phaseContext.phase))
   ));
   const seed = playedTeamFixtures.reduce((sum, fixture) => sum + fixture.matchNumber * 17 + (fixture.winner === team.id ? 7 : 3), team.id.length * 19);
@@ -701,6 +869,22 @@ function buildFeed(props: SocialMediaPageProps, activePlatform: SocialPlatform):
     const isFinishingComment = /\b(finisher|finishing|finish games|death-over hitting)\b/.test(lower);
     const isBowlingComment = /\b(bowl|bowler|bowling|wicket|yorker|economy|spinner|spin attack|pacer|pace attack|death overs?|slower ball)\b/.test(lower);
     const isBattingComment = /\b(bat|batter|batting|runs?|innings|strike rate|orange cap|sixes|boundary hitter|top order|middle order)\b/.test(lower);
+    const isTopOrderComment = /\b(top order|top-order|opening pair|open(?:ing)?|at the top)\b/.test(lower);
+    const powerplayBattingSignal = /\b(bat|batter|batting|runs?|score|scoring|strike rate|sixes|boundary|aggression|advantage|middle order|top order)\b/.test(lower);
+    const isPowerplayBattingComment = /\b(powerplay|power play)\b/.test(lower) && powerplayBattingSignal && !isBowlingComment;
+    const battingLineup = battingFirstXI.length ? battingFirstXI : bowlingFirstXI;
+    const topOrderBatters = battingLineup.length
+      ? batters.filter((player) => { const index = battingLineup.indexOf(player.id); return index >= 0 && index <= 2; })
+      : batters;
+    const powerplayBatters = battingLineup.length
+      ? batters.filter((player) => { const index = battingLineup.indexOf(player.id); return index >= 0 && index <= 3; })
+      : batters;
+    const openingBatters = battingLineup.length
+      ? batters.filter((player) => { const index = battingLineup.indexOf(player.id); return index >= 0 && index <= 1; })
+      : openers.length ? openers : batters;
+    const middleOrderBatters = battingLineup.length
+      ? batters.filter((player) => { const index = battingLineup.indexOf(player.id); return index >= 0 && index >= 2 && index <= 5; })
+      : batters;
     let primary = defaultPool;
     const requiresOrangeCapCandidate = /orange cap/i.test(text);
     const requiresDebutant = /\b(make (his|their) debut|ipl debut|first ipl)\b/i.test(text);
@@ -710,16 +894,27 @@ function buildFeed(props: SocialMediaPageProps, activePlatform: SocialPlatform):
     else if (requiresBreakoutCandidate) primary = breakoutCandidates;
     else if (isCaptainComment && captain) primary = [captain];
     else if (isKeeperComment && keeper) primary = [keeper];
-    else if (isOpeningComment) primary = openers.length ? openers : batters;
+    else if (isOpeningComment) primary = openingBatters;
     else if (isFinishingComment) primary = finishers.length ? finishers : batters;
     else if (isBowlingComment) primary = bowlers;
+    else if (isTopOrderComment) primary = topOrderBatters;
+    else if (/middle[- ]order/.test(lower)) primary = middleOrderBatters;
+    else if (isPowerplayBattingComment) primary = powerplayBatters;
     else if (isBattingComment) primary = batters;
 
     let secondary = primary;
+    if (isTopOrderComment) secondary = topOrderBatters;
+    else if (/middle[- ]order/.test(lower)) secondary = middleOrderBatters;
+    else if (isPowerplayBattingComment) secondary = powerplayBatters;
     if (/\b(young|youngster|uncapped)\s+\{b\}/i.test(text)) secondary = youngsters;
     else if (/\b(senior|veteran)\s+\{b\}/i.test(text)) secondary = veterans;
     else if (/\{b\}[^.]{0,45}\b(bowl|bowling|wicket|yorker)/i.test(text)) secondary = bowlers;
     else if (/\{b\}[^.]{0,45}\b(bat|runs?|score|hit|anchor|floater|opening)/i.test(text)) secondary = batters;
+    // Youth/veteran comparison comments often describe both players. Select
+    // the second subject from the group explicitly referenced by the prose,
+    // rather than falling back to the whole squad.
+    if (/\b(young|youth|youngster|uncapped|prospect)\b[^.]{0,55}\{b\}/i.test(text)) secondary = youngsters;
+    else if (/\b(veteran|senior|legend|experience|experienced)\b[^.]{0,55}\{b\}/i.test(text)) secondary = veterans;
     const requiresSpecialCandidate = requiresOrangeCapCandidate || requiresDebutant || requiresBreakoutCandidate;
     return {
       primary: primary.length ? primary : requiresSpecialCandidate ? [] : defaultPool,
@@ -741,6 +936,9 @@ function buildFeed(props: SocialMediaPageProps, activePlatform: SocialPlatform):
       });
       if (filtered.length === 0) continue;
       primaryPool = filtered;
+    }
+    if (template.topic === "veteran_vs_youngster" || /^pre_season_youth_/.test(template.id)) {
+      rolePools.secondary = primaryPool.some((player) => player.age >= 32) ? youngsters : veterans;
     }
     let subject = template.topic === "captaincy" ? captain : pick(primaryPool, index);
     if (!subject) continue;
@@ -767,12 +965,52 @@ function buildFeed(props: SocialMediaPageProps, activePlatform: SocialPlatform):
     }
     let alternative = pick(rolePools.secondary, index + 1);
     if (alternative?.id === subject.id) alternative = pick(rolePools.secondary, index + 2);
+    // Never render an unresolved or semantically impossible second subject.
+    // A generic fallback name made otherwise valid-looking posts claim that a
+    // random squad player was the intended comparison (especially in youth /
+    // veteran posts).  Templates requiring a second name must have a real,
+    // distinct player from the appropriate semantic pool.
+    if (template.text.includes("{b}")) {
+      if (!alternative || alternative.id === subject.id) continue;
+      const secondIsYoung = /\b(young|youth|youngster|uncapped|prospect)\b[^.]{0,70}\{b\}/i.test(template.text);
+      const secondIsVeteran = /\b(veteran|senior|legend|experience|experienced)\b[^.]{0,70}\{b\}/i.test(template.text);
+      if (secondIsYoung && alternative.age >= 27) continue;
+      if (secondIsVeteran && alternative.age < 30) continue;
+      // Role-specific comparisons must not silently substitute an unrelated
+      // player when the requested pool is empty.
+      if (/\{b\}[^.]{0,55}\b(bowl|bowling|wicket|yorker|spinner|spin|pace|pacer)\b/i.test(template.text)
+        && !(alternative.role === "Pace Bowler" || alternative.role === "Spin Bowler" || (alternative.role === "All-Rounder" && alternative.currentBowling > alternative.currentBatting))) continue;
+      if (/\{b\}[^.]{0,55}\b(bat|runs?|score|hit|anchor|floater|opening)\b/i.test(template.text)
+        && alternative.currentBatting < alternative.currentBowling) continue;
+    }
+    if (template.text.includes("{keeper}") && !keeper) continue;
+    if (template.text.includes("{captain}") && !captain) continue;
     const usesMatchStats = template.topic === "individual_match" || template.topic === "clutch";
-    const stats = usesMatchStats ? recentMatchStats[subject.id] : playerStats[subject.id];
+    const performanceTopic = usesMatchStats || (
+      template.text.includes("{a}")
+      && ["balance", "youngsters", "role_misuse", "impact_sub"].includes(template.topic)
+      && /\b(bat|batter|batting|innings|runs?|strike rate|sixes|hitting|knock|scor(?:e|ing)|wicket|bowling|bowler|economy|spell|boundar(?:y|ies)|clearing|ropes)\b/i.test(template.text)
+    );
+    const stats = performanceTopic ? recentMatchStats[subject.id] : playerStats[subject.id];
+    if (performanceTopic && /\bthrowing away 30s|convert(?:ing)? 30s|thirties\b/i.test(template.text)) {
+      const scores = seasonBattingScores[subject.id] ?? [];
+      const thirties = scores.filter((score) => score >= 30 && score < 50).length;
+      if (thirties < 2) continue;
+    }
+    if (performanceTopic && !template.tag.startsWith("losing_cause_") && (!stats || !supportsMatchPerformanceComment(template.text, stats, template.tag))) continue;
+    if (template.tag.startsWith("losing_cause_") && stats) {
+      const isBattingCause = template.tag === "losing_cause_batting";
+      const isBowlingCause = template.tag === "losing_cause_bowling";
+      const battingValue = stats.balls >= 5 && stats.runs >= 12;
+      const bowlingValue = stats.oversBowled >= 1 && (stats.wickets >= 1 || economy(stats) <= 8);
+      if ((isBattingCause && !battingValue) || (isBowlingCause && !bowlingValue) || (!isBattingCause && !isBowlingCause && !(battingValue || bowlingValue))) continue;
+    }
     const price = latestPrice(subject);
     if (template.text.includes("{runs}") && !stats?.runs) continue;
     if (template.text.includes("{sr}") && !stats?.balls) continue;
     if (template.text.includes("{econ}") && !stats?.oversBowled) continue;
+    if (template.text.includes("{runsConceded}") && !stats?.oversBowled) continue;
+    if (template.text.includes("{wickets}") && !stats?.oversBowled) continue;
     if (template.text.includes("{price}") && price === undefined) continue;
     if (["individual_match", "team_form", "clutch"].includes(template.topic) && !(stats?.matches > 0)) continue;
     const position = positionSuitability(subject, battingFirstXI.length ? battingFirstXI : bowlingFirstXI);
@@ -788,7 +1026,15 @@ function buildFeed(props: SocialMediaPageProps, activePlatform: SocialPlatform):
       .replaceAll("{colours}", TEAM_COLOUR_NAMES[team.id] ?? "the club colours")
       .replaceAll("{pos}", position.positionName).replaceAll("{reason}", position.reason)
       .replaceAll("{runs}", `${stats?.runs ?? 0}`).replaceAll("{sr}", stats?.balls ? `${Math.round(stats.runs / stats.balls * 100)}` : "")
-      .replaceAll("{econ}", stats?.oversBowled ? economy(stats).toFixed(1) : "");
+      .replaceAll("{econ}", stats?.oversBowled ? economy(stats).toFixed(1) : "")
+      .replaceAll("{runsConceded}", `${stats?.runsConceded ?? 0}`)
+      .replaceAll("{wickets}", `${stats?.wickets ?? 0}`);
+    if (performanceTopic && stats) {
+      const battingEvidence = stats.balls > 0 ? `${stats.runs} runs off ${stats.balls} balls (SR ${Math.round(stats.runs / stats.balls * 100)})` : "";
+      const bowlingEvidence = stats.oversBowled > 0 ? `${stats.wickets} wickets for ${stats.runsConceded} runs in ${stats.oversBowled} overs (Econ ${economy(stats).toFixed(1)})` : "";
+      const evidence = [battingEvidence, bowlingEvidence].filter(Boolean).join("; ");
+      if (evidence) comment += ` [Match figures: ${evidence}]`;
+    }
     const referencedSeason = phaseContext.phase === "next_season" ? props.currentSeason + 1 : props.currentSeason;
     comment = comment.replaceAll("2026", String(referencedSeason)).replaceAll("2027", String(referencedSeason));
     if (/keeper|glovework|stumping/i.test(comment) && keeper) comment = comment.replaceAll(subject.name, keeper.name);
