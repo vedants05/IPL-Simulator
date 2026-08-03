@@ -43,6 +43,13 @@ function PlatformLogo({ platform, size = 16 }: { platform: SocialPlatform; size?
   return <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="5" /><circle cx="12" cy="12" r="4" /><circle cx="17.5" cy="6.5" r=".8" fill="currentColor" stroke="none" /></svg>;
 }
 const hashtagSafe = (value: string) => value.replace(/[^A-Za-z0-9]/g, "");
+const toCamelCase = (str: string): string => {
+  return str
+    .replace(/^team_/, "")
+    .split(/[_\s]+/)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join("");
+};
 const navIcon = (label: string, platform: SocialPlatform) => {
   const size = 19;
   if (platform === "x") {
@@ -159,8 +166,14 @@ function supportsMatchPerformanceComment(text: string, stats: SocialPlayerStats,
   if (/\b(boundar(?:y|ies)|boundary hitter)\b/.test(lower) && fours + sixes < 2 && strikeRate < 140) return false;
   if (/\b(centur(?:y|ies)|hundred)\b/.test(lower) && runs < 100) return false;
   if (/\b(double wicket|two wickets)\b/.test(lower) && wickets < 2) return false;
-  if (/\b(anchoring|anchor(?:ed)? the innings|responsible knock)\b/.test(lower)
-    && (balls < 10 || strikeRate > 145 || runs < 20)) return false;
+  if (/\b(anchoring|anchor(?:ed)? the innings|responsible knock)\b/.test(lower)) {
+    const claimsHighSR = /150\+/.test(lower);
+    if (claimsHighSR) {
+      if (balls < 15 || strikeRate < 150 || runs < 40) return false;
+    } else {
+      if (balls < 10 || strikeRate > 145 || runs < 20) return false;
+    }
+  }
   if (/\b(tight bowling|tight spell|lockdown bowling|lockdown spell|choking the run|run flow under control|economical|economy below)\b/.test(lower)
     && (overs < 2 || economyRate > 7.5)) return false;
   if (/\b(wicket-taking|wicket taker|wickets on lock|tearing through|breakthrough)\b/.test(lower)
@@ -183,23 +196,25 @@ function supportsMatchPerformanceComment(text: string, stats: SocialPlayerStats,
   if (isBatting) {
     if (balls <= 0) return false;
     if (/\b(threw away|losing your wicket|wicket like that|dismissal)\b/.test(lower)) {
-      return Boolean(stats.dismissal) && runs >= 8 && balls >= 5;
+      return Boolean(stats.dismissal) && runs >= 15 && balls >= 10;
     }
     if (/\b(too many deliveries|taking too long|dot balls|slow|rusty|needs? to|struggl|poor|bad|rough|disappoint|pressure|bogged)\b/.test(lower)) {
-      return balls >= 8 && (runs <= 15 || strikeRate <= 115);
+      return balls >= 10 && strikeRate <= 110 && runs <= 25;
     }
     // A “great innings/masterclass/crucial knock” needs a meaningful sample;
     // three-ball cameos cannot satisfy these claims.
-    if (/\b(great|good|masterclass|clean hitting|what a way|setting the tempo|anchoring|pure class|freedom|timing|crucial knock|dominant|excellent|superb|brilliant|sensational|stellar|highest order|standout|bright spot|valuable|impact|performed)\b/.test(lower)) {
-      return (runs >= 25 && balls >= 8) || (runs >= 15 && strikeRate >= 150 && balls >= 5);
+    if (/\b(great|good|masterclass|clean hitting|what a way|setting the tempo|anchoring|pure class|freedom|timing|crucial knock|dominant|excellent|superb|brilliant|sensational|stellar|highest order|standout|bright spot|valuable|impact|performed|delivering|magic|flow|perfection|saver|clutch|flawless|champion|hero|heroics|splendid|unstoppable|class|elite|special|quality|unbelievable|incredible|dominating|domination|carrying|carry|bargain|prodigy|firing|star)\b/.test(lower)) {
+      return (runs >= 35 && balls >= 10) || (runs >= 29 && strikeRate >= 160 && balls >= 8);
     }
-    if (/\b(powerplay|tempo|hitting|knock|innings)\b/.test(lower)) return runs >= 10 && (balls >= 5 || strikeRate >= 140);
+    if (/\b(powerplay|tempo|hitting|knock|innings)\b/.test(lower)) return runs >= 29 && (balls >= 8 || strikeRate >= 140);
   }
   if (isBowlingPerformance) {
     if (overs <= 0) return false;
-    if (/\b(leaked|too many runs|radar|extras|expensive|poor|bad|struggl|rough|off)\b/.test(lower)) return economyRate >= 9.5;
+    if (/\b(leaked|too many runs|radar|extras|expensive|poor|bad|struggl|rough|off)\b/.test(lower)) {
+      return economyRate >= 9.5 || (overs >= 2 && economyRate >= 9.0 && wickets === 0);
+    }
     if (/\b(wicket|breakthrough|yorker|masterclass|quality|good|great|brilliant|sensational|stellar|choking|control|spell|swinging|turn|pace|standout|bright spot|valuable|impact|performed)\b/.test(lower)) {
-      return wickets >= 2 || (overs >= 2 && economyRate <= 7.5);
+      return wickets >= 3 || (overs >= 3 && wickets >= 1 && economyRate <= 7.2) || (overs >= 2 && wickets >= 2 && economyRate <= 8.0);
     }
   }
   if (tag && ["carry_to_top4", "final_performances", "playoff_games", "clutch", "team_retention"].includes(tag)) {
@@ -297,12 +312,19 @@ function buildFeed(props: SocialMediaPageProps, activePlatform: SocialPlatform):
   const recent = phaseContext.recent;
   const closeRecentMatch = Boolean(recent && isCloseFixture(recent));
   const seasonBattingScores: Record<string, number[]> = {};
+  const seasonBowlingWickets: Record<string, string[]> = {};
   playedTeamFixtures.forEach((fixture) => {
     if (!fixture.scorecard) return;
-    const innings = fixture.teamA === team.id ? fixture.scorecard.inningsA : fixture.scorecard.inningsB;
-    innings.batting.forEach((entry) => {
+    const isTeamA = fixture.teamA === team.id;
+    const battingInnings = isTeamA ? fixture.scorecard.inningsA : fixture.scorecard.inningsB;
+    const bowlingInnings = isTeamA ? fixture.scorecard.inningsB : fixture.scorecard.inningsA;
+    battingInnings.batting.forEach((entry) => {
       if (!entry.id || (entry.balls ?? 0) <= 0) return;
       (seasonBattingScores[entry.id] ??= []).push(entry.runs ?? 0);
+    });
+    bowlingInnings.bowling.forEach((entry) => {
+      if (!entry.id || (entry.balls ?? 0) <= 0) return;
+      (seasonBowlingWickets[entry.id] ??= []).push(`${entry.wickets ?? 0}/${entry.runsConceded ?? 0}`);
     });
   });
   const teamResults = playedTeamFixtures
@@ -869,6 +891,7 @@ function buildFeed(props: SocialMediaPageProps, activePlatform: SocialPlatform):
     const isFinishingComment = /\b(finisher|finishing|finish games|death-over hitting)\b/.test(lower);
     const isBowlingComment = /\b(bowl|bowler|bowling|wicket|yorker|economy|spinner|spin attack|pacer|pace attack|death overs?|slower ball)\b/.test(lower);
     const isBattingComment = /\b(bat|batter|batting|runs?|innings|strike rate|orange cap|sixes|boundary hitter|top order|middle order)\b/.test(lower);
+    const isAllRounderComment = /\b(all-round|all-rounder|all rounder|bat and ball|both departments|two-way|two-skill|all round|multi-skill)\b/.test(lower);
     const isTopOrderComment = /\b(top order|top-order|opening pair|open(?:ing)?|at the top)\b/.test(lower);
     const powerplayBattingSignal = /\b(bat|batter|batting|runs?|score|scoring|strike rate|sixes|boundary|aggression|advantage|middle order|top order)\b/.test(lower);
     const isPowerplayBattingComment = /\b(powerplay|power play)\b/.test(lower) && powerplayBattingSignal && !isBowlingComment;
@@ -898,13 +921,17 @@ function buildFeed(props: SocialMediaPageProps, activePlatform: SocialPlatform):
     else if (isFinishingComment) primary = finishers.length ? finishers : batters;
     else if (isBowlingComment) primary = bowlers;
     else if (isTopOrderComment) primary = topOrderBatters;
-    else if (/middle[- ]order/.test(lower)) primary = middleOrderBatters;
+    else if (/ middle[- ]order /.test(lower)) primary = middleOrderBatters;
     else if (isPowerplayBattingComment) primary = powerplayBatters;
+    else if (isAllRounderComment) {
+      const allRounders = squad.filter(player => player.role === "All-Rounder");
+      primary = allRounders.length ? allRounders : squad;
+    }
     else if (isBattingComment) primary = batters;
 
     let secondary = primary;
     if (isTopOrderComment) secondary = topOrderBatters;
-    else if (/middle[- ]order/.test(lower)) secondary = middleOrderBatters;
+    else if (/ middle[- ]order /.test(lower)) secondary = middleOrderBatters;
     else if (isPowerplayBattingComment) secondary = powerplayBatters;
     if (/\b(young|youngster|uncapped)\s+\{b\}/i.test(text)) secondary = youngsters;
     else if (/\b(senior|veteran)\s+\{b\}/i.test(text)) secondary = veterans;
@@ -942,6 +969,7 @@ function buildFeed(props: SocialMediaPageProps, activePlatform: SocialPlatform):
     }
     let subject = template.topic === "captaincy" ? captain : pick(primaryPool, index);
     if (!subject) continue;
+
     const structuredTemplate = SOCIAL_COMMENTS.find((item) => item.id === template.id);
     if (structuredTemplate) {
       const currentEntry = (subject.iplHistory ?? []).find((entry) => entry.season === String(props.currentSeason) && entry.teamId === team.id && entry.price > 0);
@@ -962,6 +990,87 @@ function buildFeed(props: SocialMediaPageProps, activePlatform: SocialPlatform):
       if (currentEntry && structuredTemplate.maxPrice !== undefined && currentEntry.price > structuredTemplate.maxPrice) continue;
       if (currentEntry && structuredTemplate.minPrice !== undefined && currentEntry.price < structuredTemplate.minPrice) continue;
       if (!matchesEligibility(subject, structuredTemplate.eligible)) continue;
+
+      // In-season performance/stats verification for all topics
+      const hasSeasonStatsPhase = ["early_season", "mid_season", "late_season", "playoffs", "knocked_out", "next_season"].includes(phaseContext.phase);
+      if (hasSeasonStatsPhase && ["price_tag", "youngsters", "balance", "role_misuse", "impact_sub"].includes(template.topic)) {
+        const stats = playerStats[subject.id];
+        const played = (stats?.matches ?? 0) > 0;
+        
+        const mentionsOnField = /\b(form|performance|delivering|contribution|play|playing|on the field|spell|knock|runs|wickets|average|strike rate|economy|bargain|value|underperforming|flop|waste|bargain|star|shining|hero|dominant|impact)\b/i.test(structuredTemplate.text);
+        if (mentionsOnField && !played) continue; // Must have played to make on-field claims!
+
+        if (played && stats) {
+          const isBatter = subject.currentBatting >= subject.currentBowling;
+          const isPositive = structuredTemplate.tone === "positive" || structuredTemplate.tone === "hype" || structuredTemplate.tone === "optimistic";
+          const isNegative = structuredTemplate.tone === "critical" || structuredTemplate.tone === "banter";
+
+          // Verify that their last game wasn't a failure when praised for maintaining consistency/form
+          const recentStats = recentMatchStats[subject.id];
+          if (recentStats && recentStats.matches > 0) {
+            if (isPositive) {
+              const isFormComment = /\b(form|consistency|maintaining|continue|continuing|streak|rhythm|keeps? (it )?going|momentum)\b/i.test(structuredTemplate.text);
+              if (isFormComment) {
+                if (isBatter && (recentStats.runs ?? 0) < 29) continue;
+                if (!isBatter && (recentStats.wickets ?? 0) === 0 && (recentStats.oversBowled ?? 0) > 0) continue;
+              }
+            }
+          }
+          
+          if (isPositive) {
+            if (isBatter) {
+              const minRuns = ["early_season", "knocked_out", "next_season"].includes(phaseContext.phase) ? 30 : 75;
+              if ((stats.runs ?? 0) < minRuns) continue;
+            } else {
+              const minWickets = ["early_season", "knocked_out", "next_season"].includes(phaseContext.phase) ? 1 : 3;
+              if ((stats.wickets ?? 0) < minWickets) continue;
+            }
+          } else if (isNegative) {
+            if (isBatter) {
+              const avg = stats.runs / Math.max(1, stats.matches);
+              const sr = stats.balls > 0 ? (stats.runs / stats.balls) * 100 : 0;
+              if (stats.runs > 100 && avg > 30 && sr > 130) continue;
+            } else {
+              const econ = stats.runsConceded / Math.max(0.1, stats.oversBowled);
+              if (stats.wickets >= 5 && econ < 8.0) continue;
+            }
+          }
+        }
+      }
+
+      // Verify specific templates
+      if (hasSeasonStatsPhase) {
+        // Verify critical template: make sure they haven't actually won any games with 40+ runs
+        if (template.id === "mid_price_x_002") {
+          let matchWinningKnocks = 0;
+          playedTeamFixtures.forEach((fixture) => {
+            if (fixture.winner === team.id && fixture.scorecard) {
+              const isTeamA = fixture.teamA === team.id;
+              const batting = isTeamA ? fixture.scorecard.inningsA.batting : fixture.scorecard.inningsB.batting;
+              const entry = batting.find(e => e.id === subject.id);
+              if (entry && (entry.runs ?? 0) >= 40) {
+                matchWinningKnocks++;
+              }
+            }
+          });
+          if (matchWinningKnocks > 0) continue;
+        }
+
+        // Verify peak mid-season fitness comment
+        if (template.id === "mid_match_reddit_024") {
+          const mStats = recentMatchStats[subject.id];
+          if (!mStats) continue;
+          const dismissalText = (mStats.dismissal ?? "").toLowerCase();
+          if (dismissalText.includes("run out") || dismissalText.includes("run-out")) continue;
+          const runningRuns = mStats.runs - ((mStats.fours ?? 0) * 4 + (mStats.sixes ?? 0) * 6);
+          if (runningRuns < 12) continue;
+        }
+      }
+
+      // Check base price claims
+      if (structuredTemplate.text.toLowerCase().includes("at base price")) {
+        if (currentEntry && currentEntry.price !== subject.basePrice) continue;
+      }
     }
     let alternative = pick(rolePools.secondary, index + 1);
     if (alternative?.id === subject.id) alternative = pick(rolePools.secondary, index + 2);
@@ -998,11 +1107,14 @@ function buildFeed(props: SocialMediaPageProps, activePlatform: SocialPlatform):
       if (thirties < 2) continue;
     }
     if (performanceTopic && !template.tag.startsWith("losing_cause_") && (!stats || !supportsMatchPerformanceComment(template.text, stats, template.tag))) continue;
+    if (structuredTemplate?.validatePerformance) {
+      if (!stats || !structuredTemplate.validatePerformance(stats)) continue;
+    }
     if (template.tag.startsWith("losing_cause_") && stats) {
       const isBattingCause = template.tag === "losing_cause_batting";
       const isBowlingCause = template.tag === "losing_cause_bowling";
-      const battingValue = stats.balls >= 5 && stats.runs >= 12;
-      const bowlingValue = stats.oversBowled >= 1 && (stats.wickets >= 1 || economy(stats) <= 8);
+      const battingValue = stats.balls >= 15 && stats.runs >= 30;
+      const bowlingValue = stats.oversBowled >= 2 && (stats.wickets >= 2 || (stats.wickets >= 1 && economy(stats) <= 7.5));
       if ((isBattingCause && !battingValue) || (isBowlingCause && !bowlingValue) || (!isBattingCause && !isBowlingCause && !(battingValue || bowlingValue))) continue;
     }
     const price = latestPrice(subject);
@@ -1018,6 +1130,62 @@ function buildFeed(props: SocialMediaPageProps, activePlatform: SocialPlatform):
     const priceText = price === undefined ? "the recorded fee" : price >= 100
       ? `₹${(price / 100).toFixed(price % 100 === 0 ? 0 : 2)} Cr`
       : `₹${price} Lakhs`;
+
+    const getStatsBracket = (): string => {
+      const lowerText = template.text.toLowerCase();
+      const isBatter = subject.currentBatting >= subject.currentBowling;
+      const isRecentForm = /\b(form|consistency|maintaining|continue|continuing|streak|rhythm|keeps? (it )?going|momentum|slump|decline|declining|in a row|consecutive|slumping|recent|last \d+ matches|last \d+ games)\b/i.test(lowerText);
+      const isSeason = /\b(season|year|campaign|price|auction|signing|bargain|value|mid-season|late-season)\b/i.test(lowerText) || ["price_tag", "youngsters"].includes(template.topic);
+
+      const pStats = playerStats[subject.id];
+      const rStats = recentMatchStats[subject.id];
+
+      if (isRecentForm) {
+        if (isBatter) {
+          const scores = seasonBattingScores[subject.id] ?? [];
+          if (scores.length > 0) {
+            let matchCount = 3;
+            const numMatch = lowerText.match(/\b(\d+)\s*(?:consecutive|matches|games|low|wins|losses|-match|-game)/);
+            if (numMatch) matchCount = parseInt(numMatch[1]);
+            const recentScores = scores.slice(-matchCount);
+            return `[Recent: ${recentScores.join(", ")}]`;
+          }
+        } else {
+          const wicketsList = seasonBowlingWickets[subject.id] ?? [];
+          if (wicketsList.length > 0) {
+            let matchCount = 3;
+            const numMatch = lowerText.match(/\b(\d+)\s*(?:consecutive|matches|games|low|wins|losses|-match|-game)/);
+            if (numMatch) matchCount = parseInt(numMatch[1]);
+            const recentWickets = wicketsList.slice(-matchCount);
+            return `[Recent: ${recentWickets.join(", ")}]`;
+          }
+        }
+      } else if (isSeason) {
+        if (pStats && pStats.matches > 0) {
+          if (isBatter) {
+            const avg = (pStats.runs / pStats.matches).toFixed(1);
+            const sr = pStats.balls > 0 ? Math.round(pStats.runs / pStats.balls * 100) : 0;
+            return `[Season: ${pStats.runs} runs @ ${avg} Avg, ${sr} SR]`;
+          } else {
+            const econ = pStats.oversBowled > 0 ? (pStats.runsConceded / pStats.oversBowled).toFixed(1) : "0.0";
+            return `[Season: ${pStats.wickets} wkts @ ${econ} Econ]`;
+          }
+        }
+      } else {
+        if (rStats && rStats.matches > 0) {
+          if (isBatter) {
+            return `[Last match: ${rStats.runs} (${rStats.balls})]`;
+          } else {
+            const econ = rStats.oversBowled > 0 ? (rStats.runsConceded / rStats.oversBowled).toFixed(1) : "0.0";
+            return `[Last match: ${rStats.wickets}/${rStats.runsConceded} (${econ} Econ)]`;
+          }
+        }
+      }
+      return "";
+    };
+
+    const bracket = getStatsBracket();
+
     let comment = template.text
       .replaceAll("{a}", subject.name).replaceAll("{b}", alternative?.name ?? "another squad player")
       .replaceAll("{keeper}", keeper?.name ?? "our wicketkeeper").replaceAll("{captain}", captain?.name ?? "our captain")
@@ -1029,23 +1197,29 @@ function buildFeed(props: SocialMediaPageProps, activePlatform: SocialPlatform):
       .replaceAll("{econ}", stats?.oversBowled ? economy(stats).toFixed(1) : "")
       .replaceAll("{runsConceded}", `${stats?.runsConceded ?? 0}`)
       .replaceAll("{wickets}", `${stats?.wickets ?? 0}`);
-    if (performanceTopic && stats) {
-      const battingEvidence = stats.balls > 0 ? `${stats.runs} runs off ${stats.balls} balls (SR ${Math.round(stats.runs / stats.balls * 100)})` : "";
-      const bowlingEvidence = stats.oversBowled > 0 ? `${stats.wickets} wickets for ${stats.runsConceded} runs in ${stats.oversBowled} overs (Econ ${economy(stats).toFixed(1)})` : "";
-      const evidence = [battingEvidence, bowlingEvidence].filter(Boolean).join("; ");
-      if (evidence) comment += ` [Match figures: ${evidence}]`;
+
+    if (bracket) {
+      comment += ` ${bracket}`;
     }
+
     const referencedSeason = phaseContext.phase === "next_season" ? props.currentSeason + 1 : props.currentSeason;
     comment = comment.replaceAll("2026", String(referencedSeason)).replaceAll("2027", String(referencedSeason));
     if (/keeper|glovework|stumping/i.test(comment) && keeper) comment = comment.replaceAll(subject.name, keeper.name);
+
     output.push({
       id: `${template.id}_${seed}_${output.length}`,
       username: `Fan ${seed + output.length + 1}`,
       comment,
       topic: template.topic,
-      tag: structuredTemplate
-        ? `${hashtagSafe(team.shortName).toUpperCase()}${structuredTemplate.tag.replace(/^team_/, "")}`
-        : template.topic.replaceAll("_", " "),
+      tag: (() => {
+        const isPlayerSpecific = ["individual_match", "clutch", "price_tag", "youngsters", "role_misuse", "balance", "impact_sub"].includes(template.topic);
+        if (isPlayerSpecific && subject) {
+          const nameParts = subject.name.trim().split(/\s+/);
+          return hashtagSafe(nameParts[nameParts.length - 1]);
+        }
+        const tagPart = structuredTemplate ? toCamelCase(structuredTemplate.tag) : toCamelCase(template.topic);
+        return `${hashtagSafe(team.shortName)}${tagPart}`;
+      })(),
       publishedAt: recent?.date ?? props.currentDate,
     });
   }
@@ -1064,7 +1238,10 @@ export default function SocialMediaPage(props: SocialMediaPageProps) {
   const trending = useMemo(() => {
     const counts = new Map<string, number>();
     feed.posts.forEach((post) => counts.set(post.tag, (counts.get(post.tag) ?? 0) + 1));
-    return Array.from(counts.entries()).sort((a, b) => b[1] - a[1]).slice(0, 8);
+    return Array.from(counts.entries())
+      .filter((entry) => entry[1] > 1)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 8);
   }, [feed.posts]);
   const visiblePosts = selectedTrend ? feed.posts.filter((post) => post.tag.toLowerCase() === selectedTrend.toLowerCase()) : feed.posts;
   const togglePostState = (setter: Dispatch<SetStateAction<Record<string, boolean>>>, id: string) => setter((current) => ({ ...current, [id]: !current[id] }));
