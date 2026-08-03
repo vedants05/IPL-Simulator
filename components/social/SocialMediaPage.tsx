@@ -1,10 +1,11 @@
 "use client";
-
-import { Award, MessageCircle, Shield, Users, Zap } from "lucide-react";
+import { useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
+import { Award, BadgeCheck, Bell, Bookmark, CalendarDays, Camera, ChevronDown, CircleHelp, Compass, Heart, Home, Image, Mail, MessageCircle, MoreHorizontal, Play, Plus, Search, Send, Settings, Shield, Smile, Star, Users, Video, Zap } from "lucide-react";
 import type { Player, Team } from "@/lib/types";
-import { SOCIAL_POST_TEMPLATES, type SeasonPhase, type SocialPostTopic } from "@/lib/data/socialMediaPosts";
+import { type SeasonPhase, type SocialPostTopic } from "@/lib/data/socialMediaPosts";
 import { SOCIAL_OPINION_TEMPLATES, type SocialOpinionTrigger } from "@/lib/data/socialMediaOpinions";
 import { getTriggeredTeamSocialComments } from "@/lib/data/socialMediaTeamComments";
+import { SOCIAL_COMMENTS, matchesEligibility, type SocialPlatform } from "@/lib/data/socialComments";
 
 interface SocialPlayerStats {
   id: string; runs: number; balls: number; wickets: number; runsConceded: number; oversBowled: number; matches: number;
@@ -30,6 +31,59 @@ interface SocialMediaPageProps {
 interface FanPost {
   id: string; username: string; comment: string; topic: SocialPostTopic; tag: string; publishedAt: string;
 }
+
+function PlatformLogo({ platform, size = 16 }: { platform: SocialPlatform; size?: number }) {
+  if (platform === "x") {
+    return <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24h-6.657l-5.214-6.817-5.966 6.817H1.68l7.73-8.835L1.254 2.25h6.826l4.713 6.231 5.451-6.231Zm-1.161 17.52h1.833L7.084 4.126H5.117L17.083 19.77Z" /></svg>;
+  }
+  if (platform === "reddit") {
+    return <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="currentColor"><path d="M21.5 12.1c0-1.3-1.05-2.35-2.35-2.35-.64 0-1.22.26-1.64.68-1.3-.9-2.98-1.48-4.84-1.55l.82-3.85 2.67.57a1.65 1.65 0 1 0 .23-1.02l-3.23-.69a.5.5 0 0 0-.6.38l-.95 4.59c-1.9.05-3.62.63-4.94 1.54a2.35 2.35 0 1 0-3.95 1.7c-.04.24-.06.48-.06.73 0 3.67 4.18 6.65 9.34 6.65s9.34-2.98 9.34-6.65c0-.25-.02-.49-.06-.73.14-.01.28-.03.42-.05 1.06-.16 1.86-1.08 1.86-2.15ZM8.5 13.2a1.1 1.1 0 1 1 0-2.2 1.1 1.1 0 0 1 0 2.2Zm6.98 3.3c-1.05 1-2.74 1.5-5.03 1.5s-3.98-.5-5.03-1.5a.5.5 0 1 1 .69-.72c.8.77 2.21 1.22 4.34 1.22s3.54-.45 4.34-1.22a.5.5 0 1 1 .69.72Zm.02-3.3a1.1 1.1 0 1 1 0-2.2 1.1 1.1 0 0 1 0 2.2Z" /></svg>;
+  }
+  return <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="5" /><circle cx="12" cy="12" r="4" /><circle cx="17.5" cy="6.5" r=".8" fill="currentColor" stroke="none" /></svg>;
+}
+const hashtagSafe = (value: string) => value.replace(/[^A-Za-z0-9]/g, "");
+const navIcon = (label: string, platform: SocialPlatform) => {
+  const size = 19;
+  if (platform === "x") {
+    const icons: Record<string, ReactNode> = { Home: <Home size={size} />, Explore: <Search size={size} />, Notifications: <Bell size={size} />, Messages: <Mail size={size} />, Bookmarks: <Bookmark size={size} />, Profile: <Users size={size} /> };
+    return icons[label] ?? <MoreHorizontal size={size} />;
+  }
+  if (platform === "reddit") {
+    const icons: Record<string, ReactNode> = { Home: <Home size={size} />, Popular: <TrendingIcon size={size} />, All: <Compass size={size} />, Communities: <Users size={size} />, "Custom Feeds": <Bookmark size={size} /> };
+    return icons[label] ?? <MoreHorizontal size={size} />;
+  }
+  const icons: Record<string, ReactNode> = { Home: <Home size={size} />, Search: <Search size={size} />, Explore: <Compass size={size} />, Reels: <Play size={size} />, Messages: <Send size={size} />, Profile: <Users size={size} /> };
+  return icons[label] ?? <MoreHorizontal size={size} />;
+};
+function TrendingIcon({ size = 19 }: { size?: number }) { return <span style={{ fontSize: size, lineHeight: 1 }}>↗</span>; }
+function PlusIcon() { return <Plus size={17} />; }
+function OfficialBadge() { return <BadgeCheck aria-label="Verified official account" className="inline-block shrink-0 text-sky-400" size={16} fill="currentColor" stroke="black" />; }
+const fanNamePrefixes = ["Diehard", "Loyal", "True", "Proud", "United", "Daily", "Super", "Ultimate", "Real", "The"];
+const fanNameSuffixes = ["Army", "FanClub", "Faithful", "Supporters", "Addict", "Nation", "Central", "Updates", "Corner", "Club"];
+const regionalFanPrefixes = ["City", "Metro", "Capital", "Eastern", "Western", "Northern", "Southern", "Coastal", "Local", "State"];
+const regionalFanSuffixes = ["Fans", "Supporters", "Followers", "Voices", "Army"];
+const TEAM_REGION: Record<string, string> = { KKR: "Kolkata", MI: "Mumbai", RCB: "Bengaluru", CSK: "Chennai", DC: "Delhi", SRH: "Hyderabad", RR: "Rajasthan", PBKS: "Punjab", GT: "Gujarat", LSG: "Lucknow" };
+const REGIONAL_NAMES: Record<string, string[]> = {
+  KKR: ["Anirban Das", "Soham Banerjee", "Ritwick Ghosh", "Madhurima Sen", "Arindam Roy", "Debarati Bose", "Sayan Mukherjee", "Ishita Chatterjee", "Kunal Bhattacharya", "Moumita Dutta", "Anirban Ghosh", "Soham Roy", "Ritwick Das", "Madhurima Bose", "Arindam Sen", "Debarati Roy", "Sayan Banerjee", "Ishita Dutta", "Kunal Ghosh", "Moumita Sen", "Abir Chatterjee", "Riya Mukherjee", "Pratik Das", "Tania Bose", "Subhajit Roy", "Ananya Sen", "Joy Banerjee", "Poulomi Ghosh", "Niladri Dutta", "Sreya Chatterjee", "Aritra Bose", "Roshni Das", "Kaushik Sen", "Nandita Roy", "Soumya Banerjee", "Mainak Ghosh", "Rupsa Dutta", "Tanmay Mukherjee", "Diya Bose", "Arnab Chatterjee", "Payel Sen", "Sourav Das", "Mitali Roy", "Debojit Banerjee", "Tuli Ghosh", "Abhishek Dutta", "Rimjhim Bose", "Rajdeep Sen", "Sohini Roy", "Ayan Mukherjee"],
+  MI: ["Aarav Mehta", "Isha Shah", "Rohan Desai", "Kavya Patel", "Aditya Joshi", "Neha Kulkarni", "Siddharth Naik", "Aditi Bhosale", "Rahul More", "Mira Kamat", "Arjun Mehta", "Pooja Shah", "Vivek Desai", "Riya Patel", "Nikhil Joshi", "Ananya Kulkarni", "Omkar Naik", "Sneha Bhosale", "Yash More", "Tara Kamat", "Dhruv Mehta", "Mansi Shah", "Karan Desai", "Priya Patel", "Amit Joshi", "Rutuja Kulkarni", "Sahil Naik", "Mrunal Bhosale", "Tejas More", "Avni Kamat", "Harsh Mehta", "Diya Shah", "Manav Desai", "Ira Patel", "Rishabh Joshi", "Sayali Kulkarni", "Atharva Naik", "Tanvi Bhosale", "Samar More", "Naina Kamat", "Ved Mehta", "Shreya Shah", "Anuj Desai", "Kriti Patel", "Parth Joshi", "Madhavi Kulkarni", "Sanket Naik", "Rhea Bhosale", "Akash More", "Sonal Kamat"],
+  RCB: ["Arjun Gowda", "Kavya Shetty", "Rohan Hegde", "Ananya Rao", "Kiran Kumar", "Divya Nair", "Vikram Reddy", "Meera Pai", "Aditya Bhat", "Sneha Murthy", "Rahul Gowda", "Pooja Shetty", "Sanjay Hegde", "Nisha Rao", "Varun Kumar", "Deepa Nair", "Pranav Reddy", "Asha Pai", "Manoj Bhat", "Ritu Murthy", "Darshan Gowda", "Shreya Shetty", "Nithin Hegde", "Swathi Rao", "Harish Kumar", "Lakshmi Nair", "Abhishek Reddy", "Radhika Pai", "Karthik Bhat", "Shalini Murthy", "Yash Gowda", "Pallavi Shetty", "Suraj Hegde", "Nandini Rao", "Suresh Kumar", "Keerthi Nair", "Naveen Reddy", "Anu Pai", "Girish Bhat", "Maya Murthy", "Dhanush Gowda", "Ishani Shetty", "Manoj Hegde", "Aishwarya Rao", "Rakesh Kumar", "Sahana Nair", "Ravi Reddy", "Nikita Pai", "Vijay Bhat", "Chaitra Murthy"],
+  CSK: ["Arun Subramanian", "Meena Krishnan", "Karthik Iyer", "Anjali Natarajan", "Vignesh Kumar", "Divya Srinivasan", "Suresh Balaji", "Lakshmi Rajan", "Pradeep Shankar", "Kavitha Menon", "Aravind Subramanian", "Janani Krishnan", "Ramesh Iyer", "Shalini Natarajan", "Dinesh Kumar", "Revathi Srinivasan", "Mohan Balaji", "Meera Rajan", "Sathish Shankar", "Priya Menon", "Bharath Subramanian", "Nithya Krishnan", "Gokul Iyer", "Swetha Natarajan", "Surya Kumar", "Harini Srinivasan", "Vijay Balaji", "Aarthi Rajan", "Muthu Shankar", "Anu Menon", "Sanjay Subramanian", "Keerthana Krishnan", "Ravi Iyer", "Deepa Natarajan", "Prakash Kumar", "Sangeetha Srinivasan", "Kannan Balaji", "Malar Rajan", "Mani Shankar", "Vani Menon", "Ashwin Subramanian", "Gayathri Krishnan", "Vimal Iyer", "Divya Natarajan", "Hari Kumar", "Nandhini Srinivasan", "Arun Balaji", "Pavithra Rajan", "Siva Shankar", "Revathi Menon"],
+  DC: ["Arjun Sharma", "Aditi Malhotra", "Rohan Kapoor", "Neha Verma", "Kunal Bhatia", "Riya Sethi", "Manav Khanna", "Ishita Suri", "Rahul Arora", "Simran Ahuja", "Aman Sharma", "Pooja Malhotra", "Varun Kapoor", "Nisha Verma", "Aditya Bhatia", "Ananya Sethi", "Siddharth Khanna", "Kritika Suri", "Vivek Arora", "Mehak Ahuja", "Yuvraj Sharma", "Sakshi Malhotra", "Harsh Kapoor", "Tanya Verma", "Ankit Bhatia", "Shreya Sethi", "Rishabh Khanna", "Aarohi Suri", "Nakul Arora", "Divya Ahuja", "Mohit Sharma", "Ritika Malhotra", "Kabir Kapoor", "Ira Verma", "Gaurav Bhatia", "Kashish Sethi", "Varun Khanna", "Mansi Suri", "Abhinav Arora", "Nandini Ahuja", "Aakash Sharma", "Prerna Malhotra", "Kartik Kapoor", "Radhika Verma", "Samar Bhatia", "Ishani Sethi", "Vikrant Khanna", "Aanya Suri", "Rajat Arora", "Sonal Ahuja"],
+  SRH: ["Arjun Reddy", "Kavya Rao", "Rohan Varma", "Ananya Naidu", "Vikram Goud", "Divya Rani", "Sandeep Yadav", "Meghana Prasad", "Nikhil Raju", "Lakshmi Devi", "Aditya Reddy", "Pooja Rao", "Harish Varma", "Siri Naidu", "Kiran Goud", "Swathi Rani", "Ravi Yadav", "Keerthi Prasad", "Manoj Raju", "Anusha Devi", "Sumanth Reddy", "Nitya Rao", "Tarun Varma", "Bhavya Naidu", "Mahesh Goud", "Pallavi Rani", "Rakesh Yadav", "Akhila Prasad", "Vamsi Raju", "Sravani Devi", "Sai Reddy", "Mounika Rao", "Vishal Varma", "Lasya Naidu", "Ravi Goud", "Harika Rani", "Praveen Yadav", "Madhavi Prasad", "Karthik Raju", "Sowmya Devi", "Naveen Reddy", "Apoorva Rao", "Girish Varma", "Tejaswini Naidu", "Raghu Goud", "Niharika Rani", "Srinivas Yadav", "Bhavani Prasad", "Chandu Raju", "Uma Devi"],
+  RR: ["Aarav Singh", "Diya Rathore", "Rohan Sharma", "Kavya Chauhan", "Vikram Singh", "Meera Shekhawat", "Aditya Rajput", "Isha Solanki", "Manav Gehlot", "Nisha Kachhwaha", "Arjun Singh", "Pooja Rathore", "Karan Sharma", "Ananya Chauhan", "Rahul Singh", "Riya Shekhawat", "Yash Rajput", "Simran Solanki", "Sahil Gehlot", "Aditi Kachhwaha", "Dhruv Singh", "Mansi Rathore", "Mohit Sharma", "Tanya Chauhan", "Aman Singh", "Kriti Shekhawat", "Rajat Rajput", "Neha Solanki", "Harsh Gehlot", "Pallavi Kachhwaha", "Rishabh Singh", "Sakshi Rathore", "Nakul Sharma", "Ira Chauhan", "Vivek Singh", "Shreya Shekhawat", "Kunal Rajput", "Mira Solanki", "Gaurav Gehlot", "Radhika Kachhwaha", "Yuvraj Singh", "Kashish Rathore", "Ankit Sharma", "Aarohi Chauhan", "Varun Singh", "Nandini Shekhawat", "Samar Rajput", "Roshni Solanki", "Vikas Gehlot", "Asha Kachhwaha"],
+  PBKS: ["Gurpreet Singh", "Jasleen Kaur", "Harpreet Gill", "Simran Sandhu", "Amrit Bains", "Navjot Dhillon", "Maninder Sidhu", "Rajveer Brar", "Amandeep Saini", "Kiran Chahal", "Gagandeep Singh", "Mandeep Kaur", "Balraj Gill", "Preet Sandhu", "Jasbir Bains", "Sukhwinder Dhillon", "Davinder Sidhu", "Harman Brar", "Ravinder Saini", "Gurkirat Chahal", "Jagdeep Singh", "Navneet Kaur", "Karan Gill", "Taran Sandhu", "Anoop Bains", "Manpreet Dhillon", "Gurman Sidhu", "Amar Brar", "Dilpreet Saini", "Jasraj Chahal", "Sandeep Singh", "Kirandeep Kaur", "Hardeep Gill", "Sukhman Sandhu", "Balwinder Bains", "Jaskaran Dhillon", "Gursharan Sidhu", "Rupinder Brar", "Tejinder Saini", "Manraj Chahal", "Kuldeep Singh", "Amandeep Kaur", "Gurtej Gill", "Harnoor Sandhu", "Jatinder Bains", "Parminder Dhillon", "Sarabjit Sidhu", "Ranjit Brar", "Kamal Saini", "Gurleen Chahal"],
+  GT: ["Aarav Patel", "Diya Shah", "Rohan Desai", "Kavya Mehta", "Dhruv Joshi", "Isha Trivedi", "Harsh Dave", "Mira Vyas", "Karan Bhatt", "Pooja Modi", "Aditya Patel", "Riya Shah", "Vivek Desai", "Ananya Mehta", "Nikhil Joshi", "Neha Trivedi", "Yash Dave", "Sonal Vyas", "Parth Bhatt", "Aditi Modi", "Meet Patel", "Kajal Shah", "Siddharth Desai", "Mansi Mehta", "Jay Joshi", "Krisha Trivedi", "Mihir Dave", "Riddhi Vyas", "Kunal Bhatt", "Rupal Modi", "Dev Patel", "Pallavi Shah", "Manan Desai", "Ira Mehta", "Hiren Joshi", "Janki Trivedi", "Raj Dave", "Nisha Vyas", "Aakash Bhatt", "Hetal Modi", "Kartik Patel", "Nandini Shah", "Chirag Desai", "Ami Mehta", "Rakesh Joshi", "Bhavika Trivedi", "Tushar Dave", "Mitali Vyas", "Sahil Bhatt", "Sonali Modi"],
+  LSG: ["Aarav Singh", "Ananya Tripathi", "Rohan Verma", "Kavya Mishra", "Aditya Srivastava", "Isha Shukla", "Vivek Yadav", "Neha Tiwari", "Kunal Pandey", "Riya Awasthi", "Arjun Singh", "Pooja Tripathi", "Rahul Verma", "Diya Mishra", "Siddharth Srivastava", "Nisha Shukla", "Amit Yadav", "Meera Tiwari", "Varun Pandey", "Simran Awasthi", "Yash Singh", "Kriti Tripathi", "Mohit Verma", "Tanya Mishra", "Rishabh Srivastava", "Anjali Shukla", "Harsh Yadav", "Shreya Tiwari", "Samar Pandey", "Ira Awasthi", "Vikrant Singh", "Radhika Tripathi", "Ankit Verma", "Aarohi Mishra", "Nakul Srivastava", "Mansi Shukla", "Gaurav Yadav", "Pallavi Tiwari", "Kartik Pandey", "Nandini Awasthi", "Aman Singh", "Ritu Tripathi", "Saurabh Verma", "Poonam Mishra", "Abhishek Srivastava", "Sakshi Shukla", "Ravi Yadav", "Swati Tiwari", "Dev Pandey", "Kashish Awasthi"],
+};
+const fanAccountName = (teamCode: string, index: number) => {
+  const clean = hashtagSafe(teamCode).toUpperCase();
+  const region = TEAM_REGION[clean] ?? clean;
+  // The two generated pools provide 100 club handles and 50 regional handles
+  // per club, while the index keeps the result stable between renders.
+  if (index % 3 === 0) return REGIONAL_NAMES[clean]?.[index % 50] ?? `${region}${regionalFanPrefixes[index % 10]}${regionalFanSuffixes[Math.floor(index / 10) % 5]}`;
+  return `${clean}${fanNamePrefixes[index % 10]}${fanNameSuffixes[Math.floor(index / 10) % 10]}`;
+};
+const legacyCommentsEnabled = () => false;
 
 const displayGameDate = (value: string) => {
   const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
@@ -104,7 +158,8 @@ function derivePhase(teamId: string, fixtures: SocialFixture[], currentDate: str
   else if (eliminatedInPlayoff) phase = "knocked_out";
   else if (regularPlayed <= 4) phase = "early_season";
   else if (regularPlayed <= 10) phase = "mid_season";
-  else if (regularPlayed < 14 || hasFutureMatch || champion) phase = "late_season";
+  else if (regularPlayed < 14) phase = "late_season";
+  else if (hasFutureMatch || champion) phase = "playoffs";
   else phase = month >= 6 ? "next_season" : "knocked_out";
   const lastThree = played.slice(-3).map((fixture) => fixture.winner === teamId ? "W" : "L").join("–");
   return {
@@ -114,7 +169,7 @@ function derivePhase(teamId: string, fixtures: SocialFixture[], currentDate: str
   };
 }
 
-function buildFeed(props: SocialMediaPageProps): { posts: FanPost[]; phase: SeasonPhase; label: string } {
+function buildFeed(props: SocialMediaPageProps, activePlatform: SocialPlatform): { posts: FanPost[]; phase: SeasonPhase; label: string } {
   const { team, players, playerStats, battingFirstXI, bowlingFirstXI, fixtures } = props;
   const squad = team.squad.map((id) => players[id]).filter((player): player is Player => Boolean(player));
   const fallback = [...squad].sort((a, b) => playerRating(b) - playerRating(a));
@@ -185,7 +240,9 @@ function buildFeed(props: SocialMediaPageProps): { posts: FanPost[]; phase: Seas
       return impact(rightStats) - impact(leftStats);
     });
 
-  if (["early_season", "mid_season", "late_season", "knocked_out"].includes(phaseContext.phase) && recent?.scorecard) {
+  // Legacy event/opinion comments are intentionally disabled. All active
+  // reactions must come from the structured catalogue below.
+  if (legacyCommentsEnabled() && ["early_season", "mid_season", "late_season", "playoffs", "knocked_out"].includes(phaseContext.phase) && recent?.scorecard) {
     const userWon = recent.winner === team.id;
     const opponentId = recent.teamA === team.id ? recent.teamB : recent.teamA;
     const userScore = recent.teamA === team.id ? recent.scoreA : recent.scoreB;
@@ -592,7 +649,7 @@ function buildFeed(props: SocialMediaPageProps): { posts: FanPost[]; phase: Seas
 
   const pools: Record<SocialPostTopic, Player[]> = {
     post_auction: squad, pre_season: squad, early_season: selected, mid_season: selected,
-    late_season: selected, knocked_out: squad, next_season: squad,
+    late_season: selected, playoffs: selected, knocked_out: squad, next_season: squad,
     individual_match: recentPerformers, role_misuse: selected,
     team_form: underperformers.length ? underperformers : selected, yoy_comparison: [],
     ex_player: [], price_tag: pricedPlayers, youngsters: breakoutCandidates,
@@ -623,8 +680,9 @@ function buildFeed(props: SocialMediaPageProps): { posts: FanPost[]; phase: Seas
     phaseContext.phase === "pre_season"
     && /\b(pre-season form|looks? (intense|sharp|fit|lethal|settled|unplayable|in unbelievable touch)|camp|fitness levels?|interviews?|media day|no injury|arrived early|acclimatized|dressing room|coaching staff|tactical meetings?|preparation has been|squad bond)\b/i.test(text)
   );
-  const candidates = SOCIAL_POST_TEMPLATES.filter((template) => (
-    !isTrainingComment(template.text)
+  const candidates = SOCIAL_COMMENTS.filter((template) => (
+    template.platforms.includes(activePlatform)
+    && !isTrainingComment(template.text)
     && !referencesUnsupportedFeature(template.text)
     && !isUnverifiedPreSeasonClaim(template.text)
     && topicEligible(template.topic)
@@ -673,9 +731,40 @@ function buildFeed(props: SocialMediaPageProps): { posts: FanPost[]; phase: Seas
     let template = rotated[index];
     const pool = pools[template.topic];
     const rolePools = semanticPools(template.text, pool.length ? pool : fallback);
-    if (rolePools.primary.length === 0) continue;
-    let subject = template.topic === "captaincy" ? captain : pick(rolePools.primary, index);
+    let primaryPool = rolePools.primary;
+    if ('eligible' in template) {
+      const rule = (template as any).eligible;
+      const filtered = primaryPool.filter(p => {
+        if (typeof rule === "function") return rule(p);
+        if (typeof rule === "string") return matchesEligibility(p, rule);
+        return true;
+      });
+      if (filtered.length === 0) continue;
+      primaryPool = filtered;
+    }
+    let subject = template.topic === "captaincy" ? captain : pick(primaryPool, index);
     if (!subject) continue;
+    const structuredTemplate = SOCIAL_COMMENTS.find((item) => item.id === template.id);
+    if (structuredTemplate) {
+      const currentEntry = (subject.iplHistory ?? []).find((entry) => entry.season === String(props.currentSeason) && entry.teamId === team.id && entry.price > 0);
+      const previousEntry = (subject.iplHistory ?? []).find((entry) => entry.season === String(props.currentSeason - 1));
+      const isNewAuctionSigning = Boolean(currentEntry && !subject.isRetained && previousEntry?.teamId !== team.id);
+      const isRetention = subject.isRetained === true;
+      const isRtm = Boolean(currentEntry?.isRtm);
+      const isSquadAnalysis = structuredTemplate.tag === "team_squad_analysis";
+      const isDeparture = structuredTemplate.tag === "team_departures";
+      // Post-auction sections are mutually exclusive. This prevents a new
+      // auction signing from being described as a retention or RTM player.
+      if (structuredTemplate.tag === "team_retention" && !isRetention) continue;
+      if (structuredTemplate.tag === "team_rtm" && !isRtm) continue;
+      if (structuredTemplate.tag === "team_bargains" && !isNewAuctionSigning) continue;
+      if (structuredTemplate.tag === "team_needs" && !isNewAuctionSigning) continue;
+      if (isDeparture || (!isSquadAnalysis && !isRetention && !isRtm && !isNewAuctionSigning)) continue;
+      if (!isSquadAnalysis && !currentEntry) continue;
+      if (currentEntry && structuredTemplate.maxPrice !== undefined && currentEntry.price > structuredTemplate.maxPrice) continue;
+      if (currentEntry && structuredTemplate.minPrice !== undefined && currentEntry.price < structuredTemplate.minPrice) continue;
+      if (!matchesEligibility(subject, structuredTemplate.eligible)) continue;
+    }
     let alternative = pick(rolePools.secondary, index + 1);
     if (alternative?.id === subject.id) alternative = pick(rolePools.secondary, index + 2);
     const usesMatchStats = template.topic === "individual_match" || template.topic === "clutch";
@@ -687,7 +776,7 @@ function buildFeed(props: SocialMediaPageProps): { posts: FanPost[]; phase: Seas
     if (template.text.includes("{price}") && price === undefined) continue;
     if (["individual_match", "team_form", "clutch"].includes(template.topic) && !(stats?.matches > 0)) continue;
     const position = positionSuitability(subject, battingFirstXI.length ? battingFirstXI : bowlingFirstXI);
-    if (template.topic === "role_misuse" && Boolean(template.isPraiseVariant) !== position.isSuitable) continue;
+    if (template.topic === "role_misuse" && Boolean((template as any).isPraiseVariant) !== position.isSuitable) continue;
     const priceText = price === undefined ? "the recorded fee" : price >= 100
       ? `₹${(price / 100).toFixed(price % 100 === 0 ? 0 : 2)} Cr`
       : `₹${price} Lakhs`;
@@ -708,7 +797,9 @@ function buildFeed(props: SocialMediaPageProps): { posts: FanPost[]; phase: Seas
       username: `Fan ${seed + output.length + 1}`,
       comment,
       topic: template.topic,
-      tag: template.topic.replaceAll("_", " "),
+      tag: structuredTemplate
+        ? `${hashtagSafe(team.shortName).toUpperCase()}${structuredTemplate.tag.replace(/^team_/, "")}`
+        : template.topic.replaceAll("_", " "),
       publishedAt: recent?.date ?? props.currentDate,
     });
   }
@@ -716,51 +807,64 @@ function buildFeed(props: SocialMediaPageProps): { posts: FanPost[]; phase: Seas
 }
 
 export default function SocialMediaPage(props: SocialMediaPageProps) {
-  const feed = buildFeed(props);
-  return (
-    <div className="h-full overflow-y-auto bg-bg px-6 py-5">
-      <div className="mx-auto max-w-3xl">
-        <div className="mb-4 flex flex-col gap-3 rounded-lg border border-border bg-surface px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h2 className="font-anton text-xl uppercase tracking-wide text-text-primary">{props.team.shortName} Supporter Feed</h2>
-            <p className="mt-1 font-barlow text-sm capitalize text-text-secondary">{feed.label} · {feed.phase.replaceAll("_", " ")}</p>
-          </div>
-          <div className="flex items-center gap-2 rounded-full bg-accent/10 px-3 py-1.5 font-space-mono text-[10px] font-bold uppercase tracking-wide text-accent">
-            <Users size={13} aria-hidden="true" /> {feed.posts.length} relevant posts
-          </div>
-        </div>
-        <div className="mb-4 flex flex-wrap items-center gap-2">
-          <div className="flex items-center gap-1.5 rounded-md border border-border bg-surface px-3 py-1 font-space-mono text-[10px] text-text-secondary"><Shield size={12} className="text-accent" /> Event filtered</div>
-          <div className="flex items-center gap-1.5 rounded-md border border-border bg-surface px-3 py-1 font-space-mono text-[10px] text-text-secondary"><Award size={12} className="text-accent" /> Actual captain</div>
-          <div className="flex items-center gap-1.5 rounded-md border border-border bg-surface px-3 py-1 font-space-mono text-[10px] text-text-secondary"><Zap size={12} className="text-accent" /> Real stats only</div>
-        </div>
-        {feed.posts.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-border bg-surface p-8 text-center font-barlow text-sm text-text-secondary">No supporter reactions have been triggered yet.</div>
-        ) : (
-          <div className="space-y-2.5">
-            {feed.posts.map((post) => (
-              <article key={post.id} className="rounded-lg border border-border bg-surface px-4 py-3.5 shadow-sm">
-                <div className="flex items-start gap-3">
-                  <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-accent/12 font-space-mono text-[10px] font-bold text-accent">F</div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex min-w-0 items-baseline gap-2">
-                        <span className="truncate font-barlow text-sm font-bold text-text-primary">{post.username}</span>
-                        <time dateTime={post.publishedAt} className="shrink-0 font-space-mono text-[9px] uppercase text-text-secondary">
-                          {displayGameDate(post.publishedAt)}
-                        </time>
-                      </div>
-                      <span className="shrink-0 rounded bg-accent/10 px-2 py-0.5 font-space-mono text-[9px] uppercase text-accent">#{post.tag}</span>
-                    </div>
-                    <p className="mt-1.5 font-barlow text-[15px] leading-6 text-text-primary/90">{post.comment}</p>
-                    <div className="mt-2 flex items-center gap-1 font-space-mono text-[9px] uppercase text-text-secondary/70"><MessageCircle size={12} /> Comment</div>
-                  </div>
-                </div>
-              </article>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
+  const [activePlatform, setActivePlatform] = useState<SocialPlatform>("x");
+  const [selectedTrend, setSelectedTrend] = useState<string | null>(null);
+  const [likedPosts, setLikedPosts] = useState<Record<string, boolean>>({});
+  const [repostedPosts, setRepostedPosts] = useState<Record<string, boolean>>({});
+  const [savedPosts, setSavedPosts] = useState<Record<string, boolean>>({});
+  const [votedPosts, setVotedPosts] = useState<Record<string, "up" | "down" | undefined>>({});
+  const officialHandle = `${hashtagSafe(props.team.shortName)}Official`;
+  const feed = buildFeed(props, activePlatform);
+  const trending = useMemo(() => {
+    const counts = new Map<string, number>();
+    feed.posts.forEach((post) => counts.set(post.tag, (counts.get(post.tag) ?? 0) + 1));
+    return Array.from(counts.entries()).sort((a, b) => b[1] - a[1]).slice(0, 8);
+  }, [feed.posts]);
+  const visiblePosts = selectedTrend ? feed.posts.filter((post) => post.tag.toLowerCase() === selectedTrend.toLowerCase()) : feed.posts;
+  const togglePostState = (setter: Dispatch<SetStateAction<Record<string, boolean>>>, id: string) => setter((current) => ({ ...current, [id]: !current[id] }));
+  const baseMetric = (id: string, offset: number) => 18 + ((id.length * 13 + offset) % 83);
+  const switcher = <div className="sticky top-4 z-50 ml-auto flex w-fit max-w-[calc(100%-1rem)] items-center gap-1 overflow-hidden rounded-full border border-white/15 bg-black/80 p-1 shadow-2xl backdrop-blur-md">
+    {(["x", "reddit", "instagram"] as const).map((platform) => <button key={platform} onClick={() => setActivePlatform(platform)} aria-label={`Open ${platform}`} className={`flex size-9 items-center justify-center rounded-full transition ${activePlatform === platform ? "bg-white text-black" : "text-white/65 hover:bg-white/15 hover:text-white"}`}><PlatformLogo platform={platform} size={17} /></button>)}
+  </div>;
+  const empty = <div className="border border-dashed border-white/15 p-10 text-center text-sm text-white/55">No reactions are available for this phase yet.</div>;
+  const posts = visiblePosts.length ? visiblePosts.map((post, index) => {
+    const fanAccount = fanAccountName(props.team.shortName, index + post.id.length);
+    if (activePlatform === "reddit") return <article key={post.id} className="flex gap-3 border-b border-white/10 bg-[#1a1a1b] px-4 py-4"><div className="flex w-8 shrink-0 flex-col items-center text-[#818384]"><button type="button" aria-label="Upvote" onClick={() => setVotedPosts((current) => ({ ...current, [post.id]: current[post.id] === "up" ? undefined : "up" }))} className={votedPosts[post.id] === "up" ? "text-[#ff4500]" : "hover:text-[#ff4500]"}>▲</button><span className="font-space-mono text-xs">{12 + post.id.length % 88 + (votedPosts[post.id] ? 1 : 0)}</span><button type="button" aria-label="Downvote" onClick={() => setVotedPosts((current) => ({ ...current, [post.id]: current[post.id] === "down" ? undefined : "down" }))} className={votedPosts[post.id] === "down" ? "text-[#7193ff]" : "hover:text-[#7193ff]"}>▼</button></div><div className="min-w-0 flex-1"><div className="flex items-center gap-2 text-xs text-[#818384]"><span className="font-bold text-white">u/{fanAccount}</span><span>·</span><span>{displayGameDate(post.publishedAt)}</span></div><p className="mt-2 text-[15px] text-[#d7dadc]">{post.comment}</p><div className="mt-3 flex gap-5 text-xs font-bold text-[#818384]"><button type="button" onClick={() => togglePostState(setSavedPosts, post.id)} className={savedPosts[post.id] ? "text-white" : "hover:text-white"}>🔖 Save</button><button type="button" onClick={() => togglePostState(setRepostedPosts, post.id)} className={repostedPosts[post.id] ? "text-white" : "hover:text-white"}>↗ Share</button></div></div></article>;
+    if (activePlatform === "instagram") return <article key={post.id} className="overflow-hidden border-b border-white/10 bg-[#000]"><div className="flex items-center gap-3 px-4 py-3"><div className="flex size-8 items-center justify-center rounded-full bg-gradient-to-tr from-[#f09433] via-[#dc2743] to-[#bc1888] text-xs font-bold text-white">{fanAccount[0]}</div><span className="font-semibold text-white">{fanAccount}</span><span className="ml-auto text-white">•••</span></div><div className="flex min-h-40 items-center bg-gradient-to-br from-[#241329] via-[#321328] to-[#19152d] px-8 py-10"><p className="text-lg font-semibold leading-7 text-white">{post.comment}</p></div><div className="px-4 py-3"><div className="flex items-center gap-4 text-2xl text-white"><button type="button" aria-label="Like" onClick={() => togglePostState(setLikedPosts, post.id)} className={likedPosts[post.id] ? "text-red-500" : "hover:text-red-400"}>♥</button><button type="button" aria-label="Share" onClick={() => togglePostState(setRepostedPosts, post.id)} className={repostedPosts[post.id] ? "text-sky-400" : "hover:text-sky-300"}>⌁</button><button type="button" aria-label="Save" onClick={() => togglePostState(setSavedPosts, post.id)} className={`ml-auto text-xl ${savedPosts[post.id] ? "text-amber-300" : "hover:text-amber-200"}`}><Bookmark size={20} fill={savedPosts[post.id] ? "currentColor" : "none"} /></button></div><p className="mt-1 text-xs text-white/65">{baseMetric(post.id, 3) + (likedPosts[post.id] ? 1 : 0)} likes</p><p className="mt-2 text-xs font-semibold text-white">{post.tag}</p><p className="mt-1 text-xs text-white/60">View all comments · {displayGameDate(post.publishedAt)}</p></div></article>;
+    return <article key={post.id} className="border-b border-white/10 bg-black px-4 py-4"><div className="flex gap-3"><div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-white text-sm font-bold text-black">{fanAccount[0]}</div><div className="min-w-0 flex-1"><div className="flex items-center gap-2"><span className="font-bold text-white">{fanAccount}</span><span className="text-white/45">· {displayGameDate(post.publishedAt)}</span><span className="ml-auto text-white/50">•••</span></div><p className="mt-1 text-[15px] text-white/90">{post.comment} <span className="text-sky-400">#{post.tag}</span></p><div className="mt-3 flex justify-between text-xs text-white/45"><span>💬 Reply</span><button type="button" onClick={() => togglePostState(setRepostedPosts, post.id)} className={repostedPosts[post.id] ? "text-emerald-400" : "hover:text-white"}>↻ {repostedPosts[post.id] ? "Reposted" : "Repost"}</button><button type="button" onClick={() => togglePostState(setLikedPosts, post.id)} className={likedPosts[post.id] ? "text-pink-400" : "hover:text-pink-300"}>♡ {likedPosts[post.id] ? "Liked" : "Like"}</button><button type="button" onClick={() => togglePostState(setSavedPosts, post.id)} className={savedPosts[post.id] ? "text-amber-300" : "hover:text-white"}>🔖</button></div></div></div></article>;
+  }) : [empty];
+  const platformShell = activePlatform === "reddit" ? "bg-[#030303] text-white" : activePlatform === "instagram" ? "bg-black text-white" : "bg-black text-white";
+  const sideNav = activePlatform === "x"
+    ? ["Home", "Explore", "Notifications", "Messages", "Bookmarks", "Profile"]
+    : activePlatform === "reddit"
+      ? ["Home", "Popular", "All", "Communities", "Custom Feeds"]
+      : ["Home", "Search", "Explore", "Reels", "Messages", "Profile"];
+  const sideTone = activePlatform === "x"
+    ? "text-white/75 hover:bg-white/10"
+    : activePlatform === "reddit"
+      ? "text-[#818384] hover:bg-[#272729]"
+      : "text-white/75 hover:bg-white/10";
+  const trendTone = activePlatform === "x" ? "text-sky-300" : activePlatform === "reddit" ? "text-[#ff6a32]" : "text-pink-300";
+  const trendHeading = activePlatform === "x" ? "What’s happening" : activePlatform === "reddit" ? "Trending communities" : "Explore trends";
+  const trendSubheading = activePlatform === "x" ? "Trends for you" : activePlatform === "reddit" ? "Popular in this community" : "What supporters are talking about";
+  const platformFont = activePlatform === "x"
+    ? '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif'
+    : activePlatform === "reddit"
+      ? '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif'
+      : '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+  return <div style={{ fontFamily: platformFont }} className={`relative min-h-full overflow-y-auto ${platformShell}`}><div className="relative mx-auto min-h-full max-w-[1400px] px-3 sm:px-5">{switcher}<div className={`grid grid-cols-1 gap-5 pt-0 lg:grid-cols-[190px_minmax(0,680px)_240px] ${activePlatform === "reddit" ? "lg:gap-4" : activePlatform === "instagram" ? "lg:gap-8" : ""}`}>
+    <aside className="hidden lg:block lg:pt-8"><div className="sticky top-5 space-y-1">{sideNav.map((item, index) => <button key={item} type="button" className={`flex w-full items-center gap-4 rounded-full px-4 py-3 text-left text-[15px] transition ${index === 0 ? (activePlatform === "reddit" ? "bg-[#272729] font-bold text-white" : "bg-white/10 font-bold text-white") : sideTone}`}>{navIcon(item, activePlatform)}{item}</button>)}{activePlatform === "x" && <button type="button" className="mt-4 w-full rounded-full bg-sky-500 px-4 py-3 text-sm font-bold text-white">Post</button>}{activePlatform === "reddit" && <button type="button" className="mt-4 flex w-full items-center justify-center gap-2 rounded-full bg-[#ff4500] px-4 py-3 text-sm font-bold text-white"><PlusIcon /> Create</button>}{activePlatform === "instagram" && <button type="button" className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-[#f09433] via-[#dc2743] to-[#bc1888] px-4 py-3 text-sm font-bold text-white"><Camera size={17} /> Create</button>}</div></aside>
+    <section className="min-w-0">
+    {activePlatform === "reddit" && <header className="border-b border-white/10 bg-[#1a1a1b] px-5 py-4"><p className="text-xs text-[#818384]">Home / r/{props.team.shortName.toLowerCase()}fans</p><div className="mt-1 flex items-center gap-2"><h1 className="text-2xl font-bold">u/{officialHandle}</h1><OfficialBadge /></div><p className="mt-1 text-sm text-[#818384]">Official {props.team.shortName} squad updates and analysis</p></header>}
+    {activePlatform === "x" && <header className="sticky top-0 z-10 border-b border-white/10 bg-black/85 px-5 py-4 backdrop-blur"><div className="flex items-center gap-3"><PlatformLogo platform="x" size={22} /><h1 className="text-xl font-bold">Home</h1></div><div className="mt-3 flex gap-8 text-sm font-bold"><span className="border-b-2 border-sky-400 pb-3 text-white">For you</span><span className="text-white/45">Following</span></div></header>}
+    {activePlatform === "instagram" && <header className="sticky top-0 z-10 border-b border-white/10 bg-black/90 px-5 py-4 backdrop-blur"><div className="flex items-center justify-between"><h1 className="text-2xl font-semibold tracking-tight">Instagram</h1><div className="flex gap-4 text-xl">♡　✉</div></div><div className="mt-4 flex items-center gap-3"><div className="flex size-12 items-center justify-center rounded-full bg-gradient-to-tr from-[#f09433] via-[#dc2743] to-[#bc1888] font-bold">{props.team.shortName[0]}</div><div><div className="flex items-center gap-1"><p className="font-bold">{officialHandle}</p><OfficialBadge /></div><p className="text-xs text-white/55">Official {props.team.shortName} account · {feed.posts.length} posts</p></div></div></header>}
+    <main>
+      {activePlatform === "x" && <div className="border-b border-white/10 bg-black px-4 py-4"><div className="flex gap-3"><div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-white font-bold text-black">{props.team.shortName[0]}</div><div className="min-w-0 flex-1"><div className="min-h-12 rounded-xl border border-white/10 px-3 py-3 text-[15px] text-white/45">What is happening?!</div><div className="mt-3 flex items-center justify-between"><div className="flex gap-4 text-sky-400"><Image size={18} /><Video size={18} /><Smile size={18} /><CalendarDays size={18} /></div><button type="button" className="rounded-full bg-sky-500 px-5 py-2 text-sm font-bold text-white">Post</button></div></div></div></div>}
+      {activePlatform === "reddit" && <div className="border-b border-[#343536] bg-[#1a1a1b] p-3"><div className="rounded-md border border-[#343536] bg-[#0f0f10] px-4 py-3 text-sm text-[#818384]">Create a post in r/{props.team.shortName.toLowerCase()}fans</div><div className="mt-2 flex gap-2"><button type="button" className="flex items-center gap-2 rounded-full border border-[#343536] px-3 py-2 text-xs font-bold text-white"><Image size={16} /> Image</button><button type="button" className="flex items-center gap-2 rounded-full border border-[#343536] px-3 py-2 text-xs font-bold text-white"><Video size={16} /> Link</button><button type="button" className="ml-auto rounded-full bg-[#ff4500] px-4 py-2 text-xs font-bold text-white">Create post</button></div></div>}
+      {activePlatform === "instagram" && <div className="border-b border-white/10 bg-black px-4 py-4"><div className="mb-4 flex gap-4 overflow-hidden"><div className="flex shrink-0 flex-col items-center gap-1 text-[10px] text-white/65"><div className="flex size-16 items-center justify-center rounded-full border-2 border-pink-500 bg-gradient-to-tr from-[#f09433] via-[#dc2743] to-[#bc1888] text-xl font-bold">+</div><span>Your story</span></div><div className="flex shrink-0 flex-col items-center gap-1 text-[10px] text-white/65"><div className="flex size-16 items-center justify-center rounded-full border-2 border-pink-500 bg-white/10"><Camera size={22} /></div><span>Supporters</span></div></div><div className="flex items-center gap-3 border-t border-white/10 pt-3"><div className="flex size-9 items-center justify-center rounded-full bg-gradient-to-tr from-[#f09433] via-[#dc2743] to-[#bc1888] font-bold">{props.team.shortName[0]}</div><span className="flex-1 text-sm text-white/45">Share a photo or thought...</span><button type="button" className="rounded-lg bg-gradient-to-r from-[#f09433] via-[#dc2743] to-[#bc1888] px-4 py-2 text-xs font-bold">Share</button></div></div>}
+      {posts}
+    </main>
+    </section>
+    <aside className="hidden lg:block lg:pt-8"><div className={`sticky top-5 overflow-hidden rounded-2xl border ${activePlatform === "reddit" ? "border-[#343536] bg-[#1a1a1b]" : activePlatform === "instagram" ? "border-white/10 bg-[#121212]" : "border-white/10 bg-[#16181c]"}`}><div className="border-b border-white/10 px-4 py-3"><p className="text-lg font-bold">{trendHeading}</p><p className="mt-1 text-xs text-white/45">{trendSubheading}</p></div>{trending.length ? trending.map(([tag, count]) => <button key={tag} type="button" onClick={() => setSelectedTrend(selectedTrend === tag ? null : tag)} className={`block w-full border-b border-white/5 px-4 py-3 text-left transition ${selectedTrend === tag ? "bg-white/10" : "hover:bg-white/10"}`}><p className={`text-sm font-bold ${trendTone}`}>#{tag}</p><p className="mt-1 text-xs text-white/45">{count} posts on {activePlatform === "x" ? "X" : activePlatform === "reddit" ? "Reddit" : "Instagram"}</p></button>) : <p className="p-4 text-xs text-white/45">No topics trending yet.</p>}{selectedTrend && <button type="button" onClick={() => setSelectedTrend(null)} className="w-full px-4 py-3 text-left text-xs font-bold text-white/60 hover:text-white">Clear trending filter</button>}</div></aside>
+  </div></div></div>;
 }

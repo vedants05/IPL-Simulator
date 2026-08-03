@@ -132,13 +132,6 @@ export function PlayerProfileModal({
     return historyByPlayer;
   }, [auction?.saleHistory, players, rosterSeason]);
 
-  const detailedPlayerHistory = useMemo(() => {
-    if (!detailedPlayer) return [];
-    const mergedHistory = mergePlayerIplHistory([], detailedPlayer.iplHistory);
-    const currentEntry = currentSeasonHistoryByPlayer.get(detailedPlayer.id);
-    return currentEntry ? upsertPlayerIplHistory(mergedHistory, currentEntry) : mergedHistory;
-  }, [currentSeasonHistoryByPlayer, detailedPlayer]);
-
   // Calculate Current Season Stats from fixtures
   const seasonStats = useMemo(() => {
     if (!detailedPlayer) return null;
@@ -252,6 +245,36 @@ export function PlayerProfileModal({
       bestFiguresStr,
     };
   }, [customFixtures, detailedPlayer]);
+
+  const detailedPlayerHistory = useMemo(() => {
+    if (!detailedPlayer) return [];
+    const mergedHistory = mergePlayerIplHistory([], detailedPlayer.iplHistory);
+    const currentEntry = currentSeasonHistoryByPlayer.get(detailedPlayer.id);
+    let history = currentEntry ? upsertPlayerIplHistory(mergedHistory, currentEntry) : mergedHistory;
+
+    // Attach live current season stats if available from current season fixtures
+    if (seasonStats && seasonStats.matches > 0) {
+      const currentSeasonStr = String(currentSeason);
+      history = history.map((entry) => {
+        if (entry.season === currentSeasonStr) {
+          return {
+            ...entry,
+            seasonStats: {
+              matches: seasonStats.matches,
+              runs: seasonStats.runs,
+              balls: 0,
+              wickets: seasonStats.bowlWickets,
+              runsConceded: 0,
+              oversBowled: 0,
+            },
+          };
+        }
+        return entry;
+      });
+    }
+
+    return history;
+  }, [currentSeasonHistoryByPlayer, currentSeason, detailedPlayer, seasonStats]);
 
   if (!detailedPlayer) return null;
 
@@ -426,7 +449,7 @@ export function PlayerProfileModal({
                         <div className="font-anton text-[16px] text-text-primary mt-0.5">{seasonStats.sixes}</div>
                       </div>
                       <div>
-                        <div className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">High Score</div>
+                        <div className="font-space-mono text-[7px] font-bold uppercase text-text-secondary whitespace-nowrap">H. Score</div>
                         <div className="font-anton text-[16px] text-accent mt-0.5">{seasonStats.highScore}</div>
                       </div>
                     </div>
@@ -457,7 +480,7 @@ export function PlayerProfileModal({
                         <div className="font-anton text-[16px] text-text-primary mt-0.5">{seasonStats.threeFers}</div>
                       </div>
                       <div>
-                        <div className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Best Figs</div>
+                        <div className="font-space-mono text-[7px] font-bold uppercase text-text-secondary whitespace-nowrap">B. Figs</div>
                         <div className="font-anton text-[16px] text-accent mt-0.5">{seasonStats.bestFiguresStr}</div>
                       </div>
                     </div>

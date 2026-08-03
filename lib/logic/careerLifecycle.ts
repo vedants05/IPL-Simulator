@@ -616,6 +616,9 @@ function removePlayers(
     captainContinuityId: team.captainContinuityId && ids.has(team.captainContinuityId)
       ? null
       : team.captainContinuityId,
+    viceCaptainContinuityId: team.viceCaptainContinuityId && ids.has(team.viceCaptainContinuityId)
+      ? null
+      : team.viceCaptainContinuityId,
   }]));
   return {
     players: remainingPlayers,

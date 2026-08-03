@@ -4,6 +4,7 @@ export type SeasonPhase =
   | "early_season"
   | "mid_season"
   | "late_season"
+  | "playoffs"
   | "knocked_out"
   | "next_season";
 
@@ -13,6 +14,7 @@ export type SocialPostTopic =
   | "early_season"
   | "mid_season"
   | "late_season"
+  | "playoffs"
   | "knocked_out"
   | "next_season"
   | "individual_match"
@@ -1130,5 +1132,21 @@ export const SOCIAL_POST_TEMPLATES: SocialPostTemplate[] = [
     "Why play two identical middle-overs spinners on a fast green pitch? Bad squad selection.",
     "Our Indian domestic core provides the stability that allows overseas stars to play with freedom.",
     "Championship-winning squad balance: top-order firepower, middle-overs spin choke, death yorkers!"
+  ]),
+
+  // =========================================================================
+  // 21. PLAYOFFS & CHAMPIONSHIP (10 Unique Messages)
+  // =========================================================================
+  ...g("playoffs", ["playoffs"], [
+    "Playoffs time! No second chances from here on out. Win or go home!",
+    "Qualifier 1 is here! Two top teams battling for a direct spot in the final.",
+    "Eliminator drama! Win or pack your bags, everything is on the line today.",
+    "Qualifier 2 matches are always the most intense. Who wants it more?",
+    "We are in the finals! One match away from history!",
+    "CHAMPIONS! {team} has won the tournament! Absolute scenes at the stadium!",
+    "Unbelievable campaign ends with the trophy! We are the champions!",
+    "Playoffs pressure is different. The crowd noise at the stadium is deafening.",
+    "From starting the tournament to winning the final, what a journey for {team}!",
+    "Playoff atmosphere is unmatched. Every ball is a high-leverage event!"
   ]),
 ];

@@ -1336,6 +1336,9 @@ export const useGameStore = create<Store>()(
             captainContinuityId: retainedIds.includes(team.captainContinuityId ?? "")
               ? team.captainContinuityId
               : null,
+            viceCaptainContinuityId: retainedIds.includes(team.viceCaptainContinuityId ?? "")
+              ? team.viceCaptainContinuityId
+              : null,
             remainingPurse: TOTAL_PURSE_LAKHS - totalCost,
             spentAmount: totalCost,
             squad: retainedIds,
@@ -1388,6 +1391,9 @@ export const useGameStore = create<Store>()(
           squad: validUserRetainedPlayers,
           captainContinuityId: validUserRetainedPlayers.includes(userTeam.captainContinuityId ?? "")
             ? userTeam.captainContinuityId
+            : null,
+          viceCaptainContinuityId: validUserRetainedPlayers.includes(userTeam.viceCaptainContinuityId ?? "")
+            ? userTeam.viceCaptainContinuityId
             : null,
           overseasPlayersCurrent: validUserRetainedPlayers.filter(
             (playerId) => updatedPlayers[playerId]?.nationality === "Overseas",
@@ -3213,6 +3219,9 @@ export const useGameStore = create<Store>()(
               captainContinuityId: captainIdsByTeam
                 ? (captainIdsByTeam[id] && resetPlayers[captainIdsByTeam[id]!] ? captainIdsByTeam[id] : null)
                 : (team.captainContinuityId && resetPlayers[team.captainContinuityId] ? team.captainContinuityId : null),
+              viceCaptainContinuityId: team.viceCaptainContinuityId && resetPlayers[team.viceCaptainContinuityId]
+                ? team.viceCaptainContinuityId
+                : null,
               remainingPurse: TOTAL_PURSE_LAKHS,
               spentAmount: 0,
               rtmCardsTotal: MAX_TOTAL_RETENTIONS,

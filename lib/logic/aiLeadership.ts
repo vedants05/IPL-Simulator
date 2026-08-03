@@ -108,6 +108,16 @@ export function appointAiTeamLeadership(
     : null;
 
   const viceCandidates = eligible.filter((player) => player.id !== captain?.id);
+  const retainedViceCaptain = team.viceCaptainContinuityId
+    && team.retainedPlayers.includes(team.viceCaptainContinuityId)
+    ? squad.find((player) => (
+        player.id === team.viceCaptainContinuityId
+        && player.id !== captain?.id
+        && !player.isIplCaptaincyUnavailable
+        && (player.iplCaptaincyUninterestedThroughSeason ?? -1) < season
+      )) ?? null
+    : null;
+
   const successionCandidates = viceCandidates
     .filter((player) => isFranchiseSuccessor(player, team.id, season))
     .sort((left, right) => (
@@ -116,9 +126,14 @@ export function appointAiTeamLeadership(
         - Math.max(left.potentialBatting ?? 0, left.potentialBowling ?? 0)
       || leadershipRanking(left, right)
     ));
-  const viceCaptain = successionCandidates[0] ?? [...viceCandidates].sort(leadershipRanking)[0] ?? null;
+  const viceCaptain = retainedViceCaptain
+    ?? successionCandidates[0]
+    ?? [...viceCandidates].sort(leadershipRanking)[0]
+    ?? null;
   const viceCaptainReason: AiViceCaptainReason | null = viceCaptain
-    ? successionCandidates.some((player) => player.id === viceCaptain.id)
+    ? retainedViceCaptain?.id === viceCaptain.id
+      ? "franchise-successor"
+      : successionCandidates.some((player) => player.id === viceCaptain.id)
       ? "franchise-successor"
       : "second-best-current-leader"
     : null;

@@ -186,6 +186,7 @@ export interface Team {
   squad: string[];
   retainedPlayers: string[];
   captainContinuityId?: string | null;
+  viceCaptainContinuityId?: string | null;
   rtmCardsUsed: number;
   rtmCardsTotal: number;
   maxSquadSize: number;
