@@ -5,7 +5,7 @@ export interface ArticleTemplate {
   author: string;
   readTime: string;
   imageMockupPrompt: string;
-  triggerType: "user_win" | "user_loss" | "user_default" | "mid_season" | "post_season" | "player_milestone" | "player_retirement" | "league_standing" | "auction_review" | "user_thrilling_win" | "user_heavy_defeat" | "user_heartbreak_loss" | "franchise_form_surge" | "franchise_extended_surge" | "franchise_freefall" | "franchise_severe_freefall" | "player_century" | "player_fivefer" | "player_season_benchmark" | "player_rookie_spotlight" | "early_pace_setter" | "early_slow_starter" | "early_table_shakeup" | "early_warning_signs" | "early_points_table" | "early_form_tracker" | "playoff_nrr_maze" | "playoff_permutations" | "playoff_squeaky_bum" | "playoff_must_win" | "playoff_nrr_calc" | "playoff_top4_battle" | "elimination_threshold" | "elimination_brink" | "top2_q1_premium" | "top2_spot_battle" | "auction_bargain_cricbuzz" | "auction_bargain_newsletter" | "auction_bigmoney_good" | "auction_bigmoney_poor" | "rookie_spotlight_newsletter" | "franchise_freefall_crisis" | "mid_season_mvp" | "retire_young_toporder" | "retire_young_middle" | "retire_young_keeper" | "retire_young_bowler" | "retire_ok_toporder" | "retire_ok_middle" | "retire_ok_keeper" | "retire_ok_bowler" | "retire_good_toporder" | "retire_good_middle" | "retire_good_keeper" | "retire_good_bowler" | "retire_vet_normal_toporder" | "retire_vet_normal_middle" | "retire_vet_normal_keeper" | "retire_vet_normal_bowler" | "retire_legend_toporder" | "retire_legend_middle" | "retire_legend_keeper" | "retire_legend_bowler" | "post_auction_summary" | "post_auction_retained_indians_only" | "post_auction_retained_youngster" | "post_auction_retained_strongest_core" | "post_auction_three_biggest_buys" | "post_auction_user_team_summary" | "pre_season_fixtures_announced";
+  triggerType: "user_win" | "user_loss" | "user_default" | "mid_season" | "post_season" | "player_milestone" | "player_retirement" | "league_standing" | "auction_review" | "user_playoff_match" | "user_thrilling_win" | "user_heavy_defeat" | "user_heartbreak_loss" | "franchise_form_surge" | "franchise_extended_surge" | "franchise_freefall" | "franchise_severe_freefall" | "player_century" | "player_fivefer" | "player_season_benchmark" | "player_rookie_spotlight" | "early_pace_setter" | "early_slow_starter" | "early_table_shakeup" | "early_warning_signs" | "early_points_table" | "early_form_tracker" | "playoff_nrr_maze" | "playoff_permutations" | "playoff_squeaky_bum" | "playoff_must_win" | "playoff_nrr_calc" | "playoff_top4_battle" | "elimination_threshold" | "elimination_brink" | "top2_q1_premium" | "top2_spot_battle" | "auction_bargain_cricbuzz" | "auction_bargain_newsletter" | "auction_bigmoney_good" | "auction_bigmoney_poor" | "rookie_spotlight_newsletter" | "franchise_freefall_crisis" | "mid_season_mvp" | "retire_young_toporder" | "retire_young_middle" | "retire_young_keeper" | "retire_young_bowler" | "retire_ok_toporder" | "retire_ok_middle" | "retire_ok_keeper" | "retire_ok_bowler" | "retire_good_toporder" | "retire_good_middle" | "retire_good_keeper" | "retire_good_bowler" | "retire_vet_normal_toporder" | "retire_vet_normal_middle" | "retire_vet_normal_keeper" | "retire_vet_normal_bowler" | "retire_legend_toporder" | "retire_legend_middle" | "retire_legend_keeper" | "retire_legend_bowler" | "post_auction_summary" | "post_auction_retained_indians_only" | "post_auction_retained_youngster" | "post_auction_retained_strongest_core" | "post_auction_three_biggest_buys" | "post_auction_user_team_summary" | "pre_season_fixtures_announced";
   timestamp: string;
   title: string;
   subheading: string;
@@ -16,6 +16,8 @@ export interface ArticleTemplate {
   requiresFinalPreview?: boolean;
   requiresFinalResult?: boolean;
   requiresFinalRunnerUp?: boolean;
+  requiresLeaguePhaseComplete?: boolean;
+  requiresUserPlayoffMatch?: boolean;
   requiresNonUserPlayoffSummary?: boolean;
   playoffSummaryStage?: "qualifier1" | "qualifier2" | "eliminator";
   chaseOrDefend?: "chasing" | "defending";
@@ -271,6 +273,51 @@ export const newsTemplates: ArticleTemplate[] = [
     title: "FINAL COUNTDOWN: {finalistAName} meet {finalistBName}",
     subheading: "Who lifts the trophy?",
     content: "The final showdown is confirmed at {finalVenue}. {finalistAName} take on {finalistBName} for the trophy. Their league records are {finalistARecord} and {finalistBRecord}, with NRRs of {finalistANrr} and {finalistBNrr}.\n\nThe numbers suggest two distinct routes to the final. {finalistAName} have delivered a {finalistAStrikeRate} strike rate, {finalistAFours} fours and {finalistASixes} sixes; {finalistABatter} leads them with {finalistARuns} runs. Their bowling attack, led by {finalistABowler}, has collected {finalistAWickets} wickets at an economy of {finalistAEconomy}.\n\n{finalistBName} counter with a {finalistBStrikeRate} strike rate, {finalistBFours} fours and {finalistBSixes} sixes. {finalistBBatter} has scored {finalistBRuns}, while {finalistBBowler} has taken {finalistBWickets} wickets for an attack economy of {finalistBEconomy}. The tactical battle between those strengths will decide the champion."
+  },
+  {
+    id: "art-user-playoff-result-cricinfo",
+    category: "user_team",
+    tag: "Playoff Match Report",
+    author: "Sidharth Monga",
+    readTime: "4 min read",
+    imageMockupPrompt: "Knockout playoff match action and scoreboard",
+    triggerType: "user_playoff_match",
+    requiresUserPlayoffMatch: true,
+    brand: "cricinfo",
+    timestamp: "1 hour ago",
+    title: "{userPlayoffHeadline}",
+    subheading: "A detailed user-team playoff result report",
+    content: "{userPlayoffLead} At {venue}, the scoreboard finished {userRuns}/{userWickets} to {opponentRuns}/{opponentWickets}, with {winMargin} deciding the contest. {playoffOutcomeNarrative}"
+  },
+  {
+    id: "art-user-playoff-result-cricbuzz",
+    category: "user_team",
+    tag: "Playoff Match Report",
+    author: "Harsha Bhogle",
+    readTime: "3 min read",
+    imageMockupPrompt: "Cricbuzz-style playoff result card",
+    triggerType: "user_playoff_match",
+    requiresUserPlayoffMatch: true,
+    brand: "cricbuzz",
+    timestamp: "1 hour ago",
+    title: "{userPlayoffHeadline}",
+    subheading: "Knockout cricket delivers again",
+    content: "{userPlayoffLead} The match at {venue} ended {userRuns}/{userWickets} to {opponentRuns}/{opponentWickets}, settled by {winMargin}. {playoffOutcomeNarrative}"
+  },
+  {
+    id: "art-user-playoff-result-newsletter",
+    category: "user_team",
+    tag: "Playoff Match Report",
+    author: "Ian Bishop",
+    readTime: "2 min read",
+    imageMockupPrompt: "Bright playoff result graphic with knockout bracket",
+    triggerType: "user_playoff_match",
+    requiresUserPlayoffMatch: true,
+    brand: "newsletter",
+    timestamp: "1 hour ago",
+    title: "{userPlayoffHeadline}",
+    subheading: "The knockout journey continues",
+    content: "{userPlayoffLead} The final figures were {userRuns}/{userWickets} and {opponentRuns}/{opponentWickets}, with {winMargin} separating the sides. {playoffOutcomeNarrative}"
   },
   {
     id: "art-final-result-cricinfo",
@@ -563,7 +610,7 @@ export const newsTemplates: ArticleTemplate[] = [
     timestamp: "4 hours ago",
     title: "Mechanics of a streak: How {surgingTeamName} built a {teamConsecutiveWins}-game winning run",
     subheading: "Unstoppable Momentum",
-    content: "Momentum in franchise cricket is rarely accidental. {surgingTeamName} have surged up the table after completing a {teamConsecutiveWins}-game winning run, a streak defined by structural consistency. During this unbeaten run, their top order has averaged {surgingTeamStreakPowerplayRuns} runs in the powerplay while losing just {surgingTeamStreakPowerplayWickets} wickets per match. Key to this turnaround has been {hotPlayerName}, who has contributed {hotPlayerStreakRuns} runs at a strike rate of {hotPlayerStreakStrikeRate} across these last {teamConsecutiveWins} outings. With their bowling unit producing {surgingTeamStreakDotBallPercentage}% dot balls in the death overs, {surgingTeamShort} have established a repeatable formula for success as the tournament progresses."
+    content: "Momentum in franchise cricket is rarely accidental. {surgingTeamName} have surged up the table after completing a {teamConsecutiveWins}-game winning run, a streak defined by structural consistency. During this unbeaten run, their batting unit has scored at {surgingTeamStreakPowerplayRuns} runs per over in the powerplay while losing just {surgingTeamStreakPowerplayWickets} wickets per match. Key to this turnaround has been {hotPlayerName}, who has contributed {hotPlayerStreakRuns} runs at a strike rate of {hotPlayerStreakStrikeRate} across these last {teamConsecutiveWins} outings. With their bowling unit producing {surgingTeamStreakDotBallPercentage}% dot balls in the death overs, {surgingTeamShort} have established a repeatable formula for success as the tournament progresses."
   },
   {
     id: "art-cricinfo-surge-v2",
@@ -934,6 +981,7 @@ export const newsTemplates: ArticleTemplate[] = [
     readTime: "5 min read",
     imageMockupPrompt: "Cricketers grouping in circle celebrating qualifying final spots",
     triggerType: "post_season",
+    requiresLeaguePhaseComplete: true,
     brand: "cricbuzz",
     timestamp: "12 hours ago",
     title: "GROUP STAGE WRAP! The elite four advance as heavyweights crash out!",
@@ -948,6 +996,7 @@ export const newsTemplates: ArticleTemplate[] = [
     readTime: "5 min read",
     imageMockupPrompt: "Dramatic final standings board listing team logos, green and red neon flags",
     triggerType: "post_season",
+    requiresLeaguePhaseComplete: true,
     brand: "cricbuzz",
     timestamp: "12 hours ago",
     title: "League phase complete! Who conquered and who crumbled?",

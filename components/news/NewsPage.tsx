@@ -30,7 +30,7 @@ import type { Player, Team } from "@/lib/types";
 import { newsTemplates } from "@/lib/data/newsTemplates";
 import type { ArticleTemplate } from "@/lib/data/newsTemplates";
 import type { UnifiedMatchRecord } from "@/components/match/MatchScorecardModal";
-import { getSeasonDates } from "@/lib/store/gameStore";
+import { getSeasonDates, useGameStore } from "@/lib/store/gameStore";
 import { getLeagueSeasonStartDate } from "@/lib/logic/leagueSchedule";
 
 interface NewsFixture {
@@ -88,6 +88,7 @@ export interface NewsArticle {
   tag?: string;
   timestamp: string;
   publishedAt?: string;
+  expiresAt?: string;
   playerId?: string;
   teamId?: string;
   associatedEntityIds?: { playerId?: string; teamId?: string };
@@ -95,6 +96,7 @@ export interface NewsArticle {
   imagePlaceholder?: string;
   author: string;
   readTime: string;
+  brand?: "cricinfo" | "cricbuzz" | "newsletter";
   isBreaking?: boolean;
 }
 
@@ -123,6 +125,7 @@ export default function NewsPage({
   currentDate = "",
   onViewAllFixtures
 }: NewsPageProps) {
+  const saveId = useGameStore((state) => state.saveId);
   const [layout, setLayout] = useState<NewsLayout>("cricinfo");
   const [activeTab, setActiveTab] = useState<NewsTab>("all");
   const [selectedArticleId, setSelectedArticleId] = useState<string | null>(null);
@@ -134,11 +137,10 @@ export default function NewsPage({
     const team = teams[teamId];
     const continuityCaptain = team?.captainContinuityId ? players[team.captainContinuityId] : undefined;
     if (continuityCaptain) return continuityCaptain.name;
-    const squadCaptain = (team?.squad || [])
-      .map((id) => players[id])
-      .filter((player): player is Player => Boolean(player))
-      .sort((a, b) => (b.captaincy || 0) - (a.captaincy || 0) || (b.reputation || 0) - (a.reputation || 0))[0];
-    return squadCaptain?.name || "the captain";
+    // A captaincy rating is not the same as the selected captain. Never
+    // substitute a highly rated player from the squad and risk attributing a
+    // quote to the wrong person.
+    return "the captain";
   };
 
   // Resolve final retirees list with fallback options so it's never empty, sorted by reputation descending
@@ -689,6 +691,123 @@ export default function NewsPage({
 
     // Filter templates to show generic articles or templates matching the current layout brand
     const filteredTemplates = newsTemplates.filter((t) => !t.brand || t.brand === layout);
+    const totalMatchesPerTeam = standings.length > 0
+      ? Math.max(14, Math.round(fixtures.length / standings.length))
+      : 14;
+    const playoffQualificationSettled = standings.length >= 4 && standings.slice(4).every((standing) => {
+      const remaining = Math.max(0, totalMatchesPerTeam - standing.played);
+      return standing.points + remaining * 2 < standings[3].points;
+    });
+    const playoffHasStarted = fixtures.some((fixture) => Boolean(fixture.stage) && fixture.played);
+    const finalHasBeenPlayed = fixtures.some((fixture) => {
+      const stage = String(fixture.stage || "").toLowerCase().replace(/[\s_-]/g, "");
+      const label = String(fixture.label || "").toLowerCase();
+      return (stage === "final" || label.includes("final") || fixture.matchNumber === 74) && fixture.played;
+    });
+    const matchArticleTriggers = new Set<ArticleTemplate["triggerType"]>([
+      "user_win", "user_loss", "user_thrilling_win", "user_heavy_defeat", "user_heartbreak_loss",
+      "user_playoff_match", "player_century", "player_fivefer", "player_season_benchmark", "player_rookie_spotlight"
+    ]);
+    const teamFormArticleTriggers = new Set<ArticleTemplate["triggerType"]>([
+      "franchise_form_surge", "franchise_extended_surge", "franchise_freefall", "franchise_severe_freefall",
+      "early_pace_setter", "early_slow_starter", "early_table_shakeup", "early_warning_signs", "early_points_table",
+      "early_form_tracker", "playoff_nrr_maze", "playoff_permutations", "playoff_squeaky_bum", "playoff_must_win",
+      "playoff_nrr_calc", "playoff_top4_battle", "elimination_threshold", "elimination_brink", "top2_q1_premium", "top2_spot_battle"
+    ]);
+    const repeatingArticleTriggers = new Set<ArticleTemplate["triggerType"]>([
+      "league_standing", "mid_season", "player_milestone", "player_season_benchmark", "player_century", "player_fivefer",
+      "player_rookie_spotlight", "auction_review", ...Array.from(teamFormArticleTriggers)
+    ]);
+    const playoffScenarioTrigger = (triggerType: unknown) => triggerType === "league_standing"
+      || String(triggerType || "").startsWith("playoff_")
+      || String(triggerType || "").startsWith("elimination_");
+    const addDays = (dateKey: string, days: number) => {
+      const [year, month, day] = dateKey.split("-").map(Number);
+      const date = new Date(year, (month || 1) - 1, day || 1);
+      date.setDate(date.getDate() + days);
+      const pad = (value: number) => String(value).padStart(2, "0");
+      return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+    };
+    const publicationOffset = (template: ArticleTemplate) => {
+      const recurring = teamFormArticleTriggers.has(template.triggerType)
+        || template.triggerType === "league_standing"
+        || template.triggerType === "mid_season"
+        || template.triggerType === "player_milestone"
+        || template.triggerType === "player_season_benchmark"
+        || template.triggerType === "player_century"
+        || template.triggerType === "player_fivefer"
+        || template.triggerType === "player_rookie_spotlight";
+      if (!recurring) return 0;
+      const hash = Array.from(template.id).reduce((sum, character) => sum + character.charCodeAt(0), 0);
+      return hash % 3;
+    };
+    const articlePublicationDate = (template: ArticleTemplate) => {
+      if (matchArticleTriggers.has(template.triggerType)) return lastMatch?.date || currentDate;
+      if (template.triggerType === "auction_review" && valuationTopBuy) {
+        const meaningfulDates = fixtures
+          .filter((fixture) => fixture.played && fixture.date)
+          .filter((fixture) => {
+            const battingEntry = [...(fixture.scorecard?.inningsA?.batting || []), ...(fixture.scorecard?.inningsB?.batting || [])]
+              .find((entry: any) => entry.id === valuationTopBuy.id);
+            const bowlingEntry = [...(fixture.scorecard?.inningsA?.bowling || []), ...(fixture.scorecard?.inningsB?.bowling || [])]
+              .find((entry: any) => entry.id === valuationTopBuy.id);
+            return Boolean((battingEntry?.balls || 0) > 0 || (bowlingEntry?.overs || 0) > 0 || (bowlingEntry?.wickets || 0) > 0);
+          })
+          .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+        return meaningfulDates[1]?.date || meaningfulDates[0]?.date || currentDate;
+      }
+      if (template.triggerType === "player_retirement") return currentDate;
+      if (template.triggerType === "post_auction_summary") return auctionDateKey || currentDate;
+      if (template.triggerType.startsWith("post_auction_retained_")) return dates.retentionDate || currentDate;
+      if (template.triggerType.startsWith("post_auction_")) {
+        const hash = Array.from(template.id).reduce((sum, character) => sum + character.charCodeAt(0), 0);
+        return auctionDateKey ? addDays(auctionDateKey, 1 + (hash % 3)) : currentDate;
+      }
+      if (template.triggerType === "pre_season_fixtures_announced") return fixtureAnnouncementDateKey || currentDate;
+      if (template.triggerType === "post_season") {
+        if (template.requiresLeaguePhaseComplete) {
+          const latestLeagueFixture = [...fixtures]
+            .filter((fixture) => !fixture.stage && fixture.played)
+            .sort((a, b) => (b.matchNumber || 0) - (a.matchNumber || 0))[0];
+          return latestLeagueFixture?.date || currentDate;
+        }
+        if (template.requiresNonUserPlayoffSummary) {
+          const summaryFixture = [...fixtures]
+            .filter((fixture) => fixture.played && isPlayoffStageFixture(fixture, template.playoffSummaryStage))
+            .sort((a, b) => (b.matchNumber || 0) - (a.matchNumber || 0))[0];
+          return summaryFixture?.date || currentDate;
+        }
+        if (template.requiresPlayoffPreview) {
+          const latestLeagueFixture = [...fixtures]
+            .filter((fixture) => !fixture.stage && fixture.played)
+            .sort((a, b) => (b.matchNumber || 0) - (a.matchNumber || 0))[0];
+          return latestLeagueFixture?.date || currentDate;
+        }
+        const relevantFixture = [...fixtures].filter((fixture) => fixture.played && (fixture.stage || fixture.matchNumber >= 71)).sort((a, b) => (b.matchNumber || 0) - (a.matchNumber || 0))[0];
+        return relevantFixture?.date || currentDate;
+      }
+      if (teamFormArticleTriggers.has(template.triggerType)
+        || template.triggerType === "league_standing"
+        || template.triggerType === "mid_season"
+        || template.triggerType === "player_milestone"
+        || template.triggerType === "player_season_benchmark"
+        || template.triggerType === "player_century"
+        || template.triggerType === "player_fivefer"
+        || template.triggerType === "player_rookie_spotlight") {
+        const eventDate = lastMatch?.date || currentDate;
+        return eventDate ? addDays(eventDate, publicationOffset(template)) : currentDate;
+      }
+      return lastMatch?.date || currentDate;
+    };
+    const articleDurationDays = (template: ArticleTemplate) => {
+      if (template.requiresNonUserPlayoffSummary) return 1;
+      if (template.isBreaking || template.requiresFinalPreview || template.requiresFinalResult) return 7;
+      if (matchArticleTriggers.has(template.triggerType)) return 3;
+      if (teamFormArticleTriggers.has(template.triggerType)) return 5;
+      return 5;
+    };
+    const articleCacheKey = `ipl-news-article-cache-v18-${saveId || "unsaved"}-${currentSeason}`;
+    const articleMatchesLayout = (article: NewsArticle) => !article.brand || article.brand === layout;
 
     const isPlayoffStageFixture = (fixture: any, stage?: ArticleTemplate["playoffSummaryStage"]) => {
       const rawStage = String(fixture.stage || "").toLowerCase().replace(/[\s_-]/g, "");
@@ -703,7 +822,29 @@ export default function NewsPage({
       return Boolean(resolvedStage && (!stage || resolvedStage === stage));
     };
 
-    return filteredTemplates.map((template) => {
+    const platformTemplates = [...filteredTemplates].sort((a, b) => Number(b.brand === layout) - Number(a.brand === layout));
+    const seenMatchTriggerTypes = new Set<ArticleTemplate["triggerType"]>();
+    const selectedTemplates = platformTemplates.filter((template) => {
+      if (!matchArticleTriggers.has(template.triggerType)) return true;
+      if (seenMatchTriggerTypes.has(template.triggerType)) return false;
+      seenMatchTriggerTypes.add(template.triggerType);
+      return true;
+    });
+    const selectedMatchSpecialist = lastMatch?.winner === userTeamId
+      ? "user_thrilling_win"
+      : lastMatch && isLastMatchHeavyDefeat
+        ? "user_heavy_defeat"
+        : lastMatch && isLastMatchHeartbreakLoss
+          ? "user_heartbreak_loss"
+          : null;
+    const dedupedTemplates = selectedTemplates.filter((template) => {
+      if (template.triggerType === "user_thrilling_win" || template.triggerType === "user_heavy_defeat" || template.triggerType === "user_heartbreak_loss") {
+        return template.triggerType === selectedMatchSpecialist;
+      }
+      return true;
+    });
+
+    const freshArticles = dedupedTemplates.map((template) => {
       const sim = lastMatch?.simulation;
       
       // Chase or defend gating
@@ -1222,7 +1363,11 @@ export default function NewsPage({
 
       switch (template.triggerType) {
         case "user_win":
-          isTriggered = Boolean(lastMatch && lastMatch.winner === userTeamId && !isLastMatchThrillingWin);
+          if (template.requiresUserPlayoffMatch) {
+            isTriggered = Boolean(lastMatch && lastMatch.winner === userTeamId && Boolean(lastMatch.stage));
+          } else {
+            isTriggered = Boolean(lastMatch && lastMatch.winner === userTeamId && !isLastMatchThrillingWin);
+          }
           break;
         case "user_thrilling_win":
           isTriggered = isLastMatchThrillingWin;
@@ -1236,6 +1381,9 @@ export default function NewsPage({
         case "user_heartbreak_loss":
           isTriggered = isLastMatchHeartbreakLoss;
           break;
+        case "user_playoff_match":
+          isTriggered = Boolean(lastMatch && Boolean(lastMatch.stage) && (lastMatch.teamA === userTeamId || lastMatch.teamB === userTeamId));
+          break;
         case "user_default":
           isTriggered = userFixtures.length > 0;
           break;
@@ -1243,7 +1391,10 @@ export default function NewsPage({
           isTriggered = (completedPercent >= 35 && completedPercent <= 65) || completedPercent === 100;
           break;
         case "post_season":
-          if (template.requiresFinalResult || template.requiresFinalRunnerUp) {
+          if (template.requiresLeaguePhaseComplete) {
+            const leagueFixtures = fixtures.filter((fixture) => !fixture.stage && fixture.matchNumber <= 70);
+            isTriggered = leagueFixtures.length > 0 && leagueFixtures.every((fixture) => fixture.played);
+          } else if (template.requiresFinalResult || template.requiresFinalRunnerUp) {
             const finalPlayed = fixtures.some((fixture) => {
               const stage = String(fixture.stage || "").toLowerCase().replace(/[\s_-]/g, "");
               const label = String(fixture.label || "").toLowerCase();
@@ -1308,7 +1459,9 @@ export default function NewsPage({
           // of results. Every franchise must have a meaningful sample first.
           isTriggered = standings.length >= 8
             && standings.every((standing) => standing.played >= 2)
-            && playedFixtures.length >= standings.length * 2;
+            && playedFixtures.length >= standings.length * 2
+            && completedPercent < 100
+            && !playoffQualificationSettled;
           break;
         case "retire_young_toporder":
           isTriggered = findYoungRetiree((p) => Boolean(p.isOpener || p.hasBattedAt3)) !== undefined;
@@ -1467,35 +1620,35 @@ export default function NewsPage({
             && standings.every((standing) => standing.played >= 2);
           break;
         case "playoff_nrr_maze":
-          isTriggered = completedPercent >= 70 && completedPercent < 100 && standings.length >= 5 && standings[3].points === standings[4].points;
+          isTriggered = completedPercent >= 70 && completedPercent < 100 && !playoffQualificationSettled && standings.length >= 5 && standings[3].points === standings[4].points;
           break;
         case "playoff_permutations":
-          isTriggered = completedPercent >= 70 && completedPercent < 100 && standings.length >= 3 && standings[0].points - standings[2].points <= 2;
+          isTriggered = completedPercent >= 70 && completedPercent < 100 && !playoffQualificationSettled && standings.length >= 3 && standings[0].points - standings[2].points <= 2;
           break;
         case "playoff_squeaky_bum":
-          isTriggered = completedPercent >= 70 && completedPercent < 100 && standings.length >= 6 && standings[3].points - standings[5].points <= 2;
+          isTriggered = completedPercent >= 70 && completedPercent < 100 && !playoffQualificationSettled && standings.length >= 6 && standings[3].points - standings[5].points <= 2;
           break;
         case "playoff_must_win":
-          isTriggered = completedPercent >= 70 && completedPercent < 100;
+          isTriggered = completedPercent >= 70 && completedPercent < 100 && !playoffQualificationSettled;
           break;
         case "playoff_nrr_calc":
-          isTriggered = completedPercent >= 70 && completedPercent < 100 && standings.length >= 5 && standings[3].points === standings[4].points;
+          isTriggered = completedPercent >= 70 && completedPercent < 100 && !playoffQualificationSettled && standings.length >= 5 && standings[3].points === standings[4].points;
           break;
         case "playoff_top4_battle":
-          isTriggered = completedPercent >= 70 && completedPercent < 100;
+          isTriggered = completedPercent >= 70 && completedPercent < 100 && !playoffQualificationSettled;
           break;
         case "elimination_threshold": {
           const totalMatchesPerTeam = fixtures.length > 0 
             ? fixtures.filter(f => f.teamA === userTeamId || f.teamB === userTeamId).length 
             : 14;
-          isTriggered = standings.some(s => s.points + (totalMatchesPerTeam - s.played) * 2 < (standings[3]?.points || 0));
+          isTriggered = !playoffQualificationSettled && standings.some(s => s.points + (totalMatchesPerTeam - s.played) * 2 < (standings[3]?.points || 0));
           break;
         }
         case "elimination_brink": {
           const totalMatchesPerTeam = fixtures.length > 0 
             ? fixtures.filter(f => f.teamA === userTeamId || f.teamB === userTeamId).length 
             : 14;
-          isTriggered = standings.some(s => s.points + (totalMatchesPerTeam - s.played) * 2 === (standings[3]?.points || 0) && s.played < totalMatchesPerTeam);
+          isTriggered = !playoffQualificationSettled && standings.some(s => s.points + (totalMatchesPerTeam - s.played) * 2 === (standings[3]?.points || 0) && s.played < totalMatchesPerTeam);
           break;
         }
         case "top2_q1_premium":
@@ -1559,8 +1712,23 @@ export default function NewsPage({
             && strugglingTeamLosses >= 6,
           );
           break;
-        default:
+      default:
           isTriggered = true;
+      }
+
+      // Completed league seasons should show dedicated post-season coverage,
+      // not stale form, milestone or standings stories.
+      if (completedPercent >= 100
+        && template.triggerType !== "post_season"
+        && template.triggerType !== "player_retirement"
+        && !matchArticleTriggers.has(template.triggerType)) {
+        isTriggered = false;
+      }
+      if (playoffHasStarted && (template.triggerType === "league_standing"
+        || playoffScenarioTrigger(template.triggerType)
+        || template.triggerType === "top2_q1_premium"
+        || template.triggerType === "top2_spot_battle")) {
+        isTriggered = false;
       }
       
       if (!isTriggered) return null;
@@ -1914,6 +2082,45 @@ export default function NewsPage({
       const secondInningsTeamName = teams[secondInningsTeamId || ""]?.name || "the chasing side";
       const firstInningsScore = String(firstInnings?.runs ?? 0);
       const secondInningsScore = String(secondInnings?.runs ?? 0);
+      const userPlayoffStageLabel = lastMatch?.stage
+        ? String(lastMatch.stage).toLowerCase().includes("qualifier1") ? "Qualifier 1"
+          : String(lastMatch.stage).toLowerCase().includes("qualifier2") ? "Qualifier 2"
+            : String(lastMatch.stage).toLowerCase().includes("eliminator") ? "Eliminator" : "Playoff"
+        : "Playoff";
+      const userWonPlayoff = lastMatch?.winner === userTeamId;
+      const userPlayoffMarginValue = userWonPlayoff
+        ? (lastMatch?.teamA === userTeamId ? (lastMatch?.scoreA?.wickets || 0) : (lastMatch?.scoreB?.wickets || 0)) < 5
+          ? Math.abs((lastMatch?.scoreA?.runs || 0) - (lastMatch?.scoreB?.runs || 0))
+          : 0
+        : Math.abs((lastMatch?.scoreA?.runs || 0) - (lastMatch?.scoreB?.runs || 0));
+      const userPlayoffIsBig = userPlayoffMarginValue >= 40
+        || (userWonPlayoff && (lastMatch?.teamA === userTeamId ? (lastMatch?.scoreB?.wickets || 0) : (lastMatch?.scoreA?.wickets || 0)) <= 3);
+      const userPlayoffResultLabel = `${userPlayoffIsBig ? "Big" : "Small"} ${userWonPlayoff ? "win" : "loss"}`;
+      const playoffOutcomeNarrative = userWonPlayoff
+        ? userPlayoffStageLabel === "Qualifier 1"
+          ? "The win sends them straight into the final."
+          : userPlayoffStageLabel === "Qualifier 2"
+            ? "The victory books their place in the final."
+            : "The result keeps their title campaign alive and sends them into Qualifier 2."
+        : userPlayoffStageLabel === "Qualifier 1"
+          ? "They miss the direct route to the final but still have a second chance in Qualifier 2."
+          : "The defeat ends their playoff campaign and their chance to reach the final.";
+      const userPlayoffHeadline = userWonPlayoff
+        ? userPlayoffStageLabel === "Qualifier 1"
+          ? `${userTeamName} secure a direct route to the final in Qualifier 1`
+          : userPlayoffStageLabel === "Qualifier 2"
+            ? `${userTeamName} win Qualifier 2 to reach the final`
+            : `${userTeamName} survive the Eliminator and keep their campaign alive`
+        : userPlayoffStageLabel === "Qualifier 1"
+          ? `${userTeamName} miss direct final route but live to fight another day`
+          : userPlayoffIsBig
+            ? `${userTeamName} are outclassed as their ${userPlayoffStageLabel} run ends`
+            : `${userTeamName} fall short in a tense ${userPlayoffStageLabel} finish`;
+      const userPlayoffLead = userWonPlayoff
+          ? `${userTeamName} delivered when the knockout pressure peaked, overcoming ${lastMatchOpponent?.name || "the opposition"} in the ${userPlayoffStageLabel} with a composed performance under pressure.`
+        : userPlayoffIsBig
+          ? `${userTeamName} endured a one-sided ${userPlayoffStageLabel}, with ${lastMatchOpponent?.name || "the opposition"} dictating the contest from the opening exchanges.`
+          : `${userTeamName} were beaten by ${lastMatchOpponent?.name || "the opposition"} in a closely contested ${userPlayoffStageLabel} where the decisive moments went against them.`;
 
       const tokens: Record<string, string> = {
         "{userTeamName}": userTeamName,
@@ -1924,6 +2131,11 @@ export default function NewsPage({
         "{userWickets}": lastMatch ? String(lastMatch.teamA === userTeamId ? lastMatch.scoreA?.wickets || 0 : lastMatch.scoreB?.wickets || 0) : "0",
         "{opponentRuns}": lastMatch ? String(lastMatch.teamA === userTeamId ? lastMatch.scoreB?.runs || 0 : lastMatch.scoreA?.runs || 0) : "0",
         "{opponentWickets}": lastMatch ? String(lastMatch.teamA === userTeamId ? lastMatch.scoreB?.wickets || 0 : lastMatch.scoreA?.wickets || 0) : "0",
+        "{userPlayoffStageLabel}": userPlayoffStageLabel,
+        "{userPlayoffResultLabel}": userPlayoffResultLabel,
+        "{playoffOutcomeNarrative}": playoffOutcomeNarrative,
+        "{userPlayoffHeadline}": userPlayoffHeadline,
+        "{userPlayoffLead}": userPlayoffLead,
         
         "{leaderName}": standings[0]?.teamName || "Leader",
         "{leaderShort}": standings[0]?.shortName || "LDR",
@@ -2178,8 +2390,11 @@ export default function NewsPage({
           streakPlayerTotals.set(entry.id, current);
         });
         const battingInnings = fixture.teamA === surgingTeamId ? fixture.simulation?.innings?.find((i: any) => i.battingTeamId === surgingTeamId) : fixture.simulation?.innings?.find((i: any) => i.battingTeamId === surgingTeamId);
-        battingInnings?.oversDetail?.forEach((over: any) => {
-          if (over.number < 6) { streakPowerplayRuns += over.runs || 0; streakPowerplayWickets += over.wickets || 0; }
+        // Use the first six overs by their position, rather than relying on
+        // whether a simulator version labels the opening over 0 or 1.
+        battingInnings?.oversDetail?.slice(0, 6).forEach((over: any) => {
+          streakPowerplayRuns += Number(over.runs) || 0;
+          streakPowerplayWickets += Number(over.wickets) || 0;
         });
         const bowlingInnings = fixture.simulation?.innings?.find((i: any) => i.bowlingTeamId === surgingTeamId);
         bowlingInnings?.oversDetail?.forEach((over: any) => {
@@ -2218,7 +2433,7 @@ export default function NewsPage({
       const strugglingSquad = strugglingTeam?.squad || [];
       const strugglingSquadPlayers = strugglingSquad
         .map(id => ({ player: players[id], stats: playerStats[id] }))
-        .filter(x => x.player && x.stats);
+        .filter(x => x.player && x.player.currentTeamId === strugglingTeamId && x.stats);
       const strugglingHotPlayer = strugglingSquadPlayers.sort((a, b) => (b.stats?.runs || 0) - (a.stats?.runs || 0))[0]?.player;
       
       const strugglingTeamCaptainName = resolveCaptainName(strugglingTeamId || undefined);
@@ -2226,6 +2441,7 @@ export default function NewsPage({
       const strugglingMiddleOrderPlayer = (strugglingTeam?.squad || [])
         .map((id) => players[id])
         .filter((player): player is Player => Boolean(player))
+        .filter((player) => player.currentTeamId === strugglingTeamId)
         .filter((player) => Boolean(player.hasBattedAt4 || player.hasBattedAt5 || player.hasBattedAt6 || player.hasBattedAt7 || player.isFinisher) && (playerStats[player.id]?.runs || 0) > 0)
         .sort((a, b) => (playerStats[b.id]?.runs || 0) - (playerStats[a.id]?.runs || 0))[0];
       const strugglingTopScorer = strugglingMiddleOrderPlayer;
@@ -2250,7 +2466,12 @@ export default function NewsPage({
       const strugglingLatestTopScorerName = latestStrugglingTopScorer?.name || strugglingHotPlayer?.name || "the top scorer";
       const strugglingLatestTopScorerRuns = String(latestStrugglingTopScorer?.runs || 0);
       const strugglingMatchMiddleOrderPlayer = [...latestStrugglingBatting]
-        .filter((entry: any) => entry.battingPosition >= 4 && entry.battingPosition <= 7 && (entry.runs || 0) > 0)
+        .filter((entry: any) => entry.battingPosition >= 4
+          && entry.battingPosition <= 7
+          && (entry.runs || 0) > 0
+          && Boolean(entry.id)
+          && (strugglingTeam?.squad || []).includes(entry.id)
+          && players[entry.id]?.currentTeamId === strugglingTeamId)
         .sort((a: any, b: any) => (b.runs || 0) - (a.runs || 0))[0];
       const strugglingMatchMiddleOrderName = strugglingMatchMiddleOrderPlayer?.name || strugglingMiddleOrderPlayer?.name || "the middle order";
       const strugglingPowerplaySamples = strugglingLossFixtures.map((fixture) => {
@@ -2975,7 +3196,15 @@ export default function NewsPage({
         "post_auction_user_team_summary"
       ].includes(template.triggerType);
 
-      const resolvedPublishingDate = isPostAuctionTrigger ? formattedPostAuctionDate : formattedCurrentDate;
+      const publishedDateKey = articlePublicationDate(template);
+      const expiryDateKey = template.requiresFinalResult || template.requiresFinalRunnerUp
+        ? addDays(publishedDateKey, 30)
+        : template.triggerType === "player_retirement"
+          ? getSeasonDates(currentSeason + 1).retentionDate
+          : addDays(publishedDateKey, articleDurationDays(template));
+      if (currentDate && publishedDateKey && currentDate < publishedDateKey) return null;
+      if (currentDate && publishedDateKey && currentDate > expiryDateKey) return null;
+      const resolvedPublishingDate = formatDate(publishedDateKey);
 
       // Never publish an article containing an unbound or unavailable stat.
       // The article will be regenerated when the required match/season data
@@ -2984,15 +3213,97 @@ export default function NewsPage({
         return null;
       }
 
-      return {
+      const article = {
         ...template,
         title,
         subheading,
         content,
-        timestamp: resolvedPublishingDate
+        timestamp: resolvedPublishingDate,
+        publishedAt: publishedDateKey,
+        expiresAt: expiryDateKey
       } as NewsArticle;
+      const articleEntityId = teamFormArticleTriggers.has(template.triggerType)
+        || template.triggerType === "league_standing"
+        || template.triggerType === "mid_season"
+        ? (surgingTeamId || strugglingTeamId || contenderTeam?.teamId || undefined)
+        : (template.triggerType === "player_milestone"
+          || template.triggerType === "player_century"
+          || template.triggerType === "player_fivefer"
+          || template.triggerType === "player_season_benchmark"
+          || template.triggerType === "player_rookie_spotlight"
+          || template.triggerType === "rookie_spotlight_newsletter")
+          ? targetPlayer?.id || topScorer?.player.id || undefined
+          : undefined;
+      if (articleEntityId) {
+        const isTeamEntity = teamFormArticleTriggers.has(template.triggerType)
+          || template.triggerType === "league_standing"
+          || template.triggerType === "mid_season";
+        article.associatedEntityIds = isTeamEntity ? { teamId: articleEntityId } : { playerId: articleEntityId };
+      }
+      try {
+        const cached = JSON.parse(window.localStorage.getItem(articleCacheKey) || "[]") as NewsArticle[];
+        const identity = `${article.id}:${article.publishedAt}:${articleEntityId || ""}`;
+        const existing = cached.find((item) => articleMatchesLayout(item)
+          && `${item.id}:${item.publishedAt}:${item.associatedEntityIds?.teamId || item.associatedEntityIds?.playerId || ""}` === identity);
+        if (existing) return existing;
+        if (template.triggerType === "player_retirement") {
+          const retirementArticle = cached
+            .filter((item) => item.id === article.id)
+            .sort((a, b) => String(b.publishedAt).localeCompare(String(a.publishedAt)))[0];
+          if (retirementArticle) return retirementArticle;
+        }
+        if (repeatingArticleTriggers.has(template.triggerType)) {
+          const recent = cached
+            .filter((item) => articleMatchesLayout(item)
+              && item.id === article.id
+              && item.publishedAt
+              && (item.associatedEntityIds?.teamId || item.associatedEntityIds?.playerId || "") === (articleEntityId || ""))
+            .sort((a, b) => String(b.publishedAt).localeCompare(String(a.publishedAt)))[0];
+          if (recent?.publishedAt && currentDate < addDays(recent.publishedAt, 7)) return recent;
+        }
+        const active = cached.filter((item) => (!item.expiresAt || !currentDate || currentDate <= item.expiresAt)
+          && !(completedPercent >= 100 && item.id === "art-tournament-league-scenarios")
+          && !(playoffQualificationSettled && playoffScenarioTrigger((item as any).triggerType))
+          && !(playoffHasStarted && (playoffScenarioTrigger((item as any).triggerType)
+            || (item as any).triggerType === "top2_q1_premium"
+            || (item as any).triggerType === "top2_spot_battle"))
+          && !(playoffHasStarted && (item as any).requiresPlayoffPreview)
+          && !(finalHasBeenPlayed && (item as any).requiresFinalPreview)
+          && !(completedPercent >= 100
+            && (item as any).triggerType !== "post_season"
+            && (item as any).triggerType !== "player_retirement"
+            && !matchArticleTriggers.has((item as any).triggerType)));
+        active.push(article);
+        window.localStorage.setItem(articleCacheKey, JSON.stringify(active));
+      } catch {
+        // Storage may be unavailable or full; live generation remains functional.
+      }
+      return article;
     }).filter((art): art is NewsArticle => art !== null);
-  }, [userTeamId, players, teams, playerStats, standings, retirements, retirementHistory, currentSeason, fixtures, topScorer, topWicketTaker, layout, currentDate]);
+    let cachedArticles: NewsArticle[] = [];
+    try {
+      cachedArticles = (JSON.parse(window.localStorage.getItem(articleCacheKey) || "[]") as NewsArticle[])
+        .filter((article) => articleMatchesLayout(article)
+          && (!article.expiresAt || !currentDate || currentDate <= article.expiresAt)
+          && !(completedPercent >= 100 && article.id === "art-tournament-league-scenarios")
+          && !(playoffQualificationSettled && playoffScenarioTrigger((article as any).triggerType))
+          && !(playoffHasStarted && (playoffScenarioTrigger((article as any).triggerType)
+            || (article as any).triggerType === "top2_q1_premium"
+            || (article as any).triggerType === "top2_spot_battle"))
+          && !(playoffHasStarted && (article as any).requiresPlayoffPreview)
+          && !(finalHasBeenPlayed && (article as any).requiresFinalPreview)
+          && !(completedPercent >= 100
+            && (article as any).triggerType !== "post_season"
+            && (article as any).triggerType !== "player_retirement"
+            && !matchArticleTriggers.has((article as any).triggerType)));
+      window.localStorage.setItem(articleCacheKey, JSON.stringify(cachedArticles));
+    } catch {
+      cachedArticles = [];
+    }
+    const articleByIdentity = new Map<string, NewsArticle>();
+    [...cachedArticles, ...freshArticles].forEach((article) => articleByIdentity.set(`${article.id}:${article.publishedAt}:${article.associatedEntityIds?.teamId || article.associatedEntityIds?.playerId || ""}`, article));
+    return Array.from(articleByIdentity.values());
+  }, [userTeamId, players, teams, playerStats, standings, retirements, retirementHistory, currentSeason, fixtures, topScorer, topWicketTaker, layout, currentDate, saveId]);
 
   // Filter articles based on selected tab
   const filteredArticles = useMemo(() => {
@@ -3001,7 +3312,10 @@ export default function NewsPage({
       : generatedArticles.filter((article) => article.category === activeTab);
     // Keep the final preview at the top of every platform's feed, not only
     // in the Cricinfo hero slot.
-    return [...articles].sort((a, b) => Number(Boolean(b.isBreaking)) - Number(Boolean(a.isBreaking)));
+    return [...articles].sort((a, b) => {
+      if (Boolean(a.isBreaking) !== Boolean(b.isBreaking)) return Number(Boolean(b.isBreaking)) - Number(Boolean(a.isBreaking));
+      return String(b.publishedAt || "").localeCompare(String(a.publishedAt || ""));
+    });
   }, [activeTab, generatedArticles]);
 
   const heroArticle = useMemo(() => {
@@ -3735,7 +4049,7 @@ export default function NewsPage({
                 <span className={`rounded px-2.5 py-0.5 font-space-mono text-[8px] font-bold uppercase tracking-wider text-white ${
                   layout === "cricinfo" ? "bg-[#03a9f4]" : layout === "cricbuzz" ? "bg-[#009270]" : "bg-[#e36b2c]"
                 }`}>
-                  {selectedArticle.tag || CATEGORY_LABELS[selectedArticle.category]}
+                  {selectedArticle.tag || CATEGORY_LABELS[selectedArticle.category as NewsArticle["category"]]}
                 </span>
                 <span className="font-space-mono text-[9px] text-text-secondary">{selectedArticle.timestamp}</span>
               </div>
