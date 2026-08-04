@@ -27,6 +27,8 @@ export interface ArticleTemplate {
   requiresOut?: boolean;
   requiresStrikeRate180?: boolean;
   requiresSuccessfulChase?: boolean;
+  /** Only publish when the player's team won the match (for winner-specific wording). */
+  requiresWinningTeam?: boolean;
   requiresOrangeCapTop3?: boolean;
   requiresDeathWickets3?: boolean;
   requiresCloseWin?: boolean;
@@ -702,6 +704,7 @@ export const newsTemplates: ArticleTemplate[] = [
     title: "Anatomy of a hundred: How {playerName} constructed a match-winning {playerRuns} off {playerBalls}",
     subheading: "Masterclass in Boundary Pacing",
     requiresOut: true,
+    requiresWinningTeam: true,
     content: "In a supreme display of calculated strokeplay at {venue}, {playerName} notched up a brilliant {playerRuns} off {playerBalls} balls to anchor {playerTeamShort} to a total of {playerTeamRuns}. Control was the hallmark of {playerName}s innings, with the scorecard recording {playerFours} fours and {playerSixes} sixes. That contribution lifted his season tally to {playerSeasonRuns} runs at an average of {playerSeasonAverage}."
   },
   {

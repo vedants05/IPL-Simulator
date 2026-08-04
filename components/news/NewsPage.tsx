@@ -806,7 +806,7 @@ export default function NewsPage({
       if (teamFormArticleTriggers.has(template.triggerType)) return 5;
       return 5;
     };
-    const articleCacheKey = `ipl-news-article-cache-v18-${saveId || "unsaved"}-${currentSeason}`;
+    const articleCacheKey = `ipl-news-article-cache-v19-${saveId || "unsaved"}-${currentSeason}`;
     const articleMatchesLayout = (article: NewsArticle) => !article.brand || article.brand === layout;
 
     const isPlayoffStageFixture = (fixture: any, stage?: ArticleTemplate["playoffSummaryStage"]) => {
@@ -913,6 +913,7 @@ export default function NewsPage({
 
           if (template.requiresOut && notOut) return null;
           if (template.requiresNotOut && !notOut) return null;
+          if (template.requiresWinningTeam && !wasWinningTeam) return null;
           if (template.requiresStrikeRate180 && sr < 180) return null;
           if (template.requiresSuccessfulChase && !isSuccessfulChase) return null;
           if (template.requiresOrangeCapTop3 && orangeCapRank > 3) return null;

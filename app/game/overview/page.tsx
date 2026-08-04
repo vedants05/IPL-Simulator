@@ -2365,10 +2365,17 @@ function OverviewPageContent() {
     const selectableSquad = getSelectableTeamSquad(teamId);
     const liveInjuries = useGameStore.getState().activeInjuries;
     const healthySquad = selectableSquad.filter((player) => !liveInjuries[player.id]);
+    const isFacingUserTeam = Boolean(
+      match
+      && teamId !== userTeamId
+      && (match.teamA === userTeamId || match.teamB === userTeamId),
+    );
     // AI teams avoid playing through minor injuries in routine league matches
     // when they can still name both complete plans. Knockouts and depleted
     // squads may justify accepting the worsening risk.
-    const squad = !match?.stage && healthySquad.length >= 16 ? healthySquad : selectableSquad;
+    const squad = isFacingUserTeam
+      ? selectableSquad
+      : (!match?.stage && healthySquad.length >= 16 ? healthySquad : selectableSquad);
     const leadership = isUserControlled ? teamLeadership : aiTeamLeadership[teamId];
     const selection = buildAutomaticLineupSelection(squad, {
       captainId: leadership?.captainId,
@@ -2389,24 +2396,30 @@ function OverviewPageContent() {
       recommended.bowlingFirst.captainId,
       recommended.bowlingFirst.viceCaptainId,
     ].filter((id): id is string => Boolean(id)));
-    const tunedBattingFirst = tuneAiPlanForPitch(
-      selection.battingFirstXI,
-      selection.battingFirstImpactSubs,
-      "battingFirst",
-      pitch,
-      protectedIds,
-    );
-    const tunedBowlingFirst = tuneAiPlanForPitch(
-      selection.bowlingFirstXI,
-      selection.bowlingFirstImpactSubs,
-      "bowlingFirst",
-      pitch,
-      protectedIds,
-    );
+    const tunedBattingFirst = isFacingUserTeam
+      ? { startingXI: selection.battingFirstXI, impactSubs: selection.battingFirstImpactSubs }
+      : tuneAiPlanForPitch(
+          selection.battingFirstXI,
+          selection.battingFirstImpactSubs,
+          "battingFirst",
+          pitch,
+          protectedIds,
+        );
+    const tunedBowlingFirst = isFacingUserTeam
+      ? { startingXI: selection.bowlingFirstXI, impactSubs: selection.bowlingFirstImpactSubs }
+      : tuneAiPlanForPitch(
+          selection.bowlingFirstXI,
+          selection.bowlingFirstImpactSubs,
+          "bowlingFirst",
+          pitch,
+          protectedIds,
+        );
     return {
       teamId,
       isUserControlled,
-      tactics: pitch
+      tactics: isFacingUserTeam
+        ? createTeamTactics("Balanced")
+        : pitch
         ? createIntelligentAiTactics(teams[teamId], pitch)
         : createTeamTactics(teams[teamId]?.aiPersonality === "Aggressive" ? "Ultra Aggressive" : "Balanced"),
       battingFirst: toMatchLineupPlan(
