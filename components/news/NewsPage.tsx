@@ -25,13 +25,15 @@ import {
   Zap,
   Star
 } from "lucide-react";
-import type { CareerRetirementRecord } from "@/lib/logic/careerLifecycle";
+import type { CareerRetirementRecord, HistoricalPlayerSnapshot } from "@/lib/logic/careerLifecycle";
 import type { Player, Team } from "@/lib/types";
 import { newsTemplates } from "@/lib/data/newsTemplates";
 import type { ArticleTemplate } from "@/lib/data/newsTemplates";
 import type { UnifiedMatchRecord } from "@/components/match/MatchScorecardModal";
 import { getSeasonDates, useGameStore } from "@/lib/store/gameStore";
 import { getLeagueSeasonStartDate } from "@/lib/logic/leagueSchedule";
+import { LEAGUE_HISTORY_TEAMS } from "@/lib/data/leagueHistory";
+import { addNewsDays, getNewsArticleExpiry, NEWS_REPEAT_COOLDOWN_DAYS } from "@/lib/logic/newsArticlePolicy";
 
 interface NewsFixture {
   id: string;
@@ -73,6 +75,7 @@ interface NewsPageProps {
   }>;
   retirements: CareerRetirementRecord[];
   retirementHistory: CareerRetirementRecord[];
+  retiredPlayerSnapshots?: Record<string, HistoricalPlayerSnapshot>;
   currentSeason: number;
   fixtures?: UnifiedMatchRecord[];
   currentDate?: string;
@@ -120,6 +123,7 @@ export default function NewsPage({
   standings, 
   retirements, 
   retirementHistory, 
+  retiredPlayerSnapshots = {},
   currentSeason,
   fixtures = [],
   currentDate = "",
@@ -140,37 +144,19 @@ export default function NewsPage({
     // A captaincy rating is not the same as the selected captain. Never
     // substitute a highly rated player from the squad and risk attributing a
     // quote to the wrong person.
-    return "the captain";
+    return "N/A";
   };
 
-  // Resolve final retirees list with fallback options so it's never empty, sorted by reputation descending
+  // The visible retirement cohort spans the completed season and the new
+  // season's retention/auction retirement intake. Never invent retirees from
+  // the active player pool.
   const finalRetirees = useMemo(() => {
-    let list: any[] = [];
-    const current = retirementHistory.filter((r) => r.season === currentSeason);
-    if (current.length > 0) {
-      list = current;
-    } else {
-      const previous = retirementHistory.filter((r) => r.season === currentSeason - 1);
-      if (previous.length > 0) {
-        list = previous;
-      } else if (retirements.length > 0) {
-        list = retirements;
-      } else if (retirementHistory.length > 0) {
-        list = retirementHistory;
-      } else {
-        // Fallback: create mock retirement records for players in the game who are age >= 35
-        list = Object.values(players)
-          .filter((p) => p.age >= 35)
-          .map((p) => ({
-            playerId: p.id,
-            name: p.name,
-            age: p.age,
-            role: p.role,
-            rating: Math.max(p.currentBatting, p.currentBowling),
-            season: currentSeason,
-          }));
-      }
-    }
+    const list = Array.from(new Map(
+      [
+        ...retirementHistory.filter((record) => record.season === currentSeason || record.season === currentSeason - 1),
+        ...retirements,
+      ].map((record) => [record.playerId, record]),
+    ).values());
 
     // Sort by reputation (descending), falling back to rating
     return [...list].sort((a, b) => {
@@ -339,74 +325,144 @@ export default function NewsPage({
       
     const lastMatch = userFixtures[0];
     
-    const seasonRetirements = retirementHistory.filter((r) => r.season === currentSeason);
-    const activeRetirements = retirements.filter((r) => r.season === currentSeason);
-    const finalRetirees = seasonRetirements.length > 0 ? seasonRetirements : activeRetirements;
+    // Retired players are removed from `players`; retain a lightweight record
+    // snapshot so their announcement can be generated immediately.
+    const retiredPlayerCandidates = finalRetirees.map((record) => {
+      const snapshot = retiredPlayerSnapshots[record.playerId];
+      return {
+        record,
+        player: players[record.playerId] || ({
+        id: record.playerId,
+        name: record.name,
+        age: record.age,
+        role: record.role,
+        nationality: record.nationality,
+        currentBatting: record.rating,
+        currentBowling: record.rating,
+        potentialBatting: record.rating,
+        potentialBowling: record.rating,
+        isOpener: snapshot?.isOpener ?? record.role === "Batsman",
+        hasBattedAt3: snapshot?.hasBattedAt3 ?? record.role === "Batsman",
+        hasBattedAt4: snapshot?.hasBattedAt4 ?? record.role === "All-Rounder",
+        hasBattedAt5: snapshot?.hasBattedAt5 ?? record.role === "All-Rounder",
+        hasBattedAt6: snapshot?.hasBattedAt6 ?? record.role === "All-Rounder",
+        hasBattedAt7: snapshot?.hasBattedAt7 ?? record.role === "All-Rounder",
+        isFinisher: snapshot?.isFinisher ?? record.role === "All-Rounder",
+        isWicketkeeper: snapshot?.isWicketkeeper ?? record.role === "WK-Batsman",
+        iplHistory: snapshot?.iplHistory || [],
+        iplStats: snapshot?.iplStats || { matches: 0, runs: 0, wickets: 0 },
+        careerStats: snapshot?.careerStats,
+        } as unknown as Player),
+      };
+    });
 
-    const findYoungRetiree = (roleCheck: (p: Player) => boolean) => {
-      return finalRetirees.map(r => {
-        const rId = r.playerId;
-        return players[rId];
-      }).filter((p): p is Player => p !== undefined).find(p => {
-        const seasons = p.iplHistory?.length || 0;
-        const matches = p.iplStats?.matches || 0;
-        const runs = p.iplStats?.runs || 0;
-        const wickets = p.iplStats?.wickets || 0;
-        return p.age < 30 && seasons <= 4 && matches <= 30 && runs < 750 && wickets < 25 && roleCheck(p);
-      });
+    const careerSeasonCount = (player: Player | null | undefined) => {
+      const history = player?.iplHistory || [];
+      const careerMatches = Math.max(0, player?.iplStats?.matches || 0);
+      if (careerMatches === 0) return 0;
+      // Initial database histories contain one row for every IPL year, using
+      // UNSOLD as a placeholder. Only a real franchise entry can represent a
+      // career season; once season stats exist, it must also contain a match.
+      const validSeasons = history
+        .filter((entry) => entry.teamId && entry.teamId !== "UNSOLD"
+          && (!entry.seasonStats || entry.seasonStats.matches > 0))
+        .map((entry) => Number(entry.season))
+        .filter((season) => Number.isInteger(season) && season >= 2008 && season <= currentSeason);
+      return Math.min(careerMatches, new Set(validSeasons).size);
     };
 
-    const findOkRetiree = (roleCheck: (p: Player) => boolean) => {
-      return finalRetirees.map(r => {
-        const rId = r.playerId;
-        return players[rId];
-      }).filter((p): p is Player => p !== undefined).find(p => {
+    const primaryCareerTeamId = (player: Player | null | undefined): string | undefined => {
+      const seasonsByTeam = new Map<string, Set<string>>();
+      (player?.iplHistory || []).forEach((entry) => {
+        if (!entry.teamId || entry.teamId === "UNSOLD") return;
+        if (entry.seasonStats && entry.seasonStats.matches <= 0) return;
+        const seasons = seasonsByTeam.get(entry.teamId) || new Set<string>();
+        seasons.add(String(entry.season));
+        seasonsByTeam.set(entry.teamId, seasons);
+      });
+      // History is stored newest-first, so insertion order also provides the
+      // required most-recent-team tie-breaker.
+      return Array.from(seasonsByTeam.entries())
+        .sort((left, right) => right[1].size - left[1].size)[0]?.[0];
+    };
+
+    const primaryCareerTeamShort = (player: Player | null | undefined): string => {
+      const teamId = primaryCareerTeamId(player);
+      return (teamId && (teams[teamId]?.shortName || LEAGUE_HISTORY_TEAMS[teamId]?.shortName || teamId)) || "IPL";
+    };
+
+    const retirementBand = (record: CareerRetirementRecord) => {
+      const candidate = retiredPlayerCandidates.find(({ record: item }) => item.playerId === record.playerId)?.player;
+      const seasons = careerSeasonCount(candidate);
+      const matches = candidate?.iplStats?.matches || 0;
+      const runs = candidate?.iplStats?.runs || 0;
+      const wickets = candidate?.iplStats?.wickets || 0;
+      if (record.age < 30) return "young";
+      if (record.age <= 33) return "ok";
+      if (record.age <= 35) return "good";
+      if (seasons >= 10 && matches >= 150 && (runs >= 4000 || wickets >= 150)) return "legend";
+      return "vet_normal";
+    };
+
+    const findRetiree = (band: string, roleCheck: (p: Player) => boolean) =>
+      retiredPlayerCandidates.find(({ player, record }) => retirementBand(record) === band && roleCheck(player))?.player;
+    const findYoungRetiree = (roleCheck: (p: Player) => boolean) => findRetiree("young", roleCheck);
+
+    /* const findOkRetireeLegacy = (roleCheck: (p: Player) => boolean) => {
+      return retiredPlayerCandidates.find(({ player, record }) => {
+        if (!roleCheck(player)) return false;
+        if (!players[record.playerId]) return player.age >= 30 && player.age <= 33;
+        const p = player;
         const seasons = p.iplHistory?.length || 0;
         const matches = p.iplStats?.matches || 0;
         const runs = p.iplStats?.runs || 0;
         const wickets = p.iplStats?.wickets || 0;
         return p.age >= 30 && p.age <= 33 && seasons >= 5 && seasons <= 7 && matches >= 40 && matches < 100 && runs >= 750 && runs < 2000 && wickets < 90 && roleCheck(p);
-      });
-    };
+      })?.player;
+    }; */
+    const findOkRetiree = (roleCheck: (p: Player) => boolean) => findRetiree("ok", roleCheck);
 
-    const findGoodRetiree = (roleCheck: (p: Player) => boolean) => {
-      return finalRetirees.map(r => {
-        const rId = r.playerId;
-        return players[rId];
-      }).filter((p): p is Player => p !== undefined).find(p => {
+    /* const findGoodRetireeLegacy = (roleCheck: (p: Player) => boolean) => {
+      return retiredPlayerCandidates.find(({ player, record }) => {
+        if (!roleCheck(player)) return false;
+        if (!players[record.playerId]) return player.age >= 34 && player.age <= 35;
+        const p = player;
         const seasons = p.iplHistory?.length || 0;
         const matches = p.iplStats?.matches || 0;
         const runs = p.iplStats?.runs || 0;
         const wickets = p.iplStats?.wickets || 0;
         return p.age >= 34 && p.age <= 35 && seasons >= 8 && seasons <= 10 && matches >= 100 && matches <= 149 && runs >= 2000 && runs < 4000 && roleCheck(p);
-      });
-    };
+      })?.player;
+    }; */
+    const findGoodRetiree = (roleCheck: (p: Player) => boolean) => findRetiree("good", roleCheck);
 
-    const findNormalVetRetiree = (roleCheck: (p: Player) => boolean) => {
-      return finalRetirees.map(r => {
-        const rId = r.playerId;
-        return players[rId];
-      }).filter((p): p is Player => p !== undefined).find(p => {
+    /* const findNormalVetRetireeLegacy = (roleCheck: (p: Player) => boolean) => {
+      return retiredPlayerCandidates.find(({ player, record }) => {
+        if (!roleCheck(player)) return false;
+        if (!players[record.playerId]) return player.age >= 35 && player.age < 40;
+        const p = player;
         const seasons = p.iplHistory?.length || 0;
         const matches = p.iplStats?.matches || 0;
         const runs = p.iplStats?.runs || 0;
         const wickets = p.iplStats?.wickets || 0;
         return p.age >= 35 && seasons >= 8 && matches >= 100 && matches < 150 && runs >= 2000 && runs < 4000 && wickets < 150 && roleCheck(p);
-      });
-    };
+      })?.player;
+    }; */
+    const findNormalVetRetiree = (roleCheck: (p: Player) => boolean) => findRetiree("vet_normal", roleCheck);
 
-    const findLegendRetiree = (roleCheck: (p: Player) => boolean) => {
-      return finalRetirees.map(r => {
-        const rId = r.playerId;
-        return players[rId];
-      }).filter((p): p is Player => p !== undefined).find(p => {
+    /* const findLegendRetireeLegacy = (roleCheck: (p: Player) => boolean) => {
+      return retiredPlayerCandidates.find(({ player, record }) => {
+        if (!roleCheck(player)) return false;
+        if (!players[record.playerId]) return player.age >= 40;
+        const p = player;
         const seasons = p.iplHistory?.length || 0;
         const matches = p.iplStats?.matches || 0;
         const runs = p.iplStats?.runs || 0;
         const wickets = p.iplStats?.wickets || 0;
         return p.age >= 35 && seasons >= 10 && matches >= 150 && (runs >= 4000 || wickets >= 150) && roleCheck(p);
-      });
-    };
+      })?.player;
+    }; */
+    const findLegendRetiree = (roleCheck: (p: Player) => boolean) => findRetiree("legend", roleCheck);
 
     // Pre-calculate if the last user match was a thrilling win
     let isLastMatchThrillingWin = false;
@@ -708,6 +764,12 @@ export default function NewsPage({
       "user_win", "user_loss", "user_thrilling_win", "user_heavy_defeat", "user_heartbreak_loss",
       "user_playoff_match", "player_century", "player_fivefer", "player_season_benchmark", "player_rookie_spotlight"
     ]);
+    // Retirement coverage is represented by the role-specific retire_* triggers
+    // as well as the legacy player_retirement trigger. Keep all of them alive
+    // through the season so a retirement announcement is not filtered out as
+    // stale post-season coverage.
+    const isRetirementArticleTrigger = (triggerType: unknown) =>
+      triggerType === "player_retirement" || String(triggerType || "").startsWith("retire_");
     const teamFormArticleTriggers = new Set<ArticleTemplate["triggerType"]>([
       "franchise_form_surge", "franchise_extended_surge", "franchise_freefall", "franchise_severe_freefall",
       "early_pace_setter", "early_slow_starter", "early_table_shakeup", "early_warning_signs", "early_points_table",
@@ -721,12 +783,21 @@ export default function NewsPage({
     const playoffScenarioTrigger = (triggerType: unknown) => triggerType === "league_standing"
       || String(triggerType || "").startsWith("playoff_")
       || String(triggerType || "").startsWith("elimination_");
-    const addDays = (dateKey: string, days: number) => {
-      const [year, month, day] = dateKey.split("-").map(Number);
-      const date = new Date(year, (month || 1) - 1, day || 1);
-      date.setDate(date.getDate() + days);
-      const pad = (value: number) => String(value).padStart(2, "0");
-      return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+    const addDays = addNewsDays;
+    const retirementReleaseCacheKey = `ipl-news-retirement-releases-v1-${saveId || "unsaved"}`;
+    const retirementRelease = (template: ArticleTemplate): { date: string; season: number } => {
+      const playerId = template.retirementTargetId;
+      if (!playerId) return { date: currentDate, season: currentSeason };
+      try {
+        const releases = JSON.parse(window.localStorage.getItem(retirementReleaseCacheKey) || "{}") as Record<string, { date: string; season: number }>;
+        if (releases[playerId]?.date) return releases[playerId];
+        const release = { date: currentDate, season: currentSeason };
+        releases[playerId] = release;
+        window.localStorage.setItem(retirementReleaseCacheKey, JSON.stringify(releases));
+        return release;
+      } catch {
+        return { date: currentDate, season: currentSeason };
+      }
     };
     const publicationOffset = (template: ArticleTemplate) => {
       const recurring = teamFormArticleTriggers.has(template.triggerType)
@@ -756,7 +827,7 @@ export default function NewsPage({
           .sort((a, b) => String(a.date).localeCompare(String(b.date)));
         return meaningfulDates[1]?.date || meaningfulDates[0]?.date || currentDate;
       }
-      if (template.triggerType === "player_retirement") return currentDate;
+      if (isRetirementArticleTrigger(template.triggerType)) return retirementRelease(template).date;
       if (template.triggerType === "post_auction_summary") return auctionDateKey || currentDate;
       if (template.triggerType.startsWith("post_auction_retained_")) return dates.retentionDate || currentDate;
       if (template.triggerType.startsWith("post_auction_")) {
@@ -806,7 +877,7 @@ export default function NewsPage({
       if (teamFormArticleTriggers.has(template.triggerType)) return 5;
       return 5;
     };
-    const articleCacheKey = `ipl-news-article-cache-v19-${saveId || "unsaved"}-${currentSeason}`;
+    const articleCacheKey = `ipl-news-article-cache-v34-${saveId || "unsaved"}-${currentSeason}`;
     const articleMatchesLayout = (article: NewsArticle) => !article.brand || article.brand === layout;
 
     const isPlayoffStageFixture = (fixture: any, stage?: ArticleTemplate["playoffSummaryStage"]) => {
@@ -844,7 +915,57 @@ export default function NewsPage({
       return true;
     });
 
-    const freshArticles = dedupedTemplates.map((template) => {
+    const retirementRoleMatches = (triggerType: ArticleTemplate["triggerType"], record: CareerRetirementRecord) => {
+      if (triggerType === "player_retirement") return true;
+      const candidate = retiredPlayerCandidates.find(({ record: item }) => item.playerId === record.playerId)?.player;
+      if (!candidate || (candidate.iplStats?.matches || 0) <= 10) return false;
+      const band = retirementBand(record);
+      const ageMatches = triggerType.startsWith("retire_young_")
+        ? band === "young"
+        : triggerType.startsWith("retire_ok_")
+          ? band === "ok"
+          : triggerType.startsWith("retire_good_")
+            ? band === "good"
+            : triggerType.startsWith("retire_vet_normal_")
+              ? band === "vet_normal"
+              : triggerType.startsWith("retire_legend_")
+                ? band === "legend"
+                : true;
+      if (!ageMatches) return false;
+      const player = retiredPlayerCandidates.find(({ record: item }) => item.playerId === record.playerId)?.player;
+      if (!player) return false;
+      const isKeeper = player.role === "WK-Batsman" || String(player.role).toLowerCase().includes("keeper") || Boolean(player.isWicketkeeper);
+      const isBowler = !isKeeper && (player.role === "Pace Bowler" || player.role === "Spin Bowler"
+        || (player.role === "All-Rounder" && player.currentBowling > player.currentBatting));
+      const isTopOrder = !isKeeper && !isBowler && Boolean(player.isOpener || player.hasBattedAt3);
+      const isMiddleOrder = !isKeeper && !isBowler && !isTopOrder;
+      const suffix = String(triggerType).split("_").pop();
+      if (suffix === "keeper") return isKeeper;
+      if (suffix === "bowler") return isBowler;
+      if (suffix === "toporder") return isTopOrder;
+      if (suffix === "middle") return isMiddleOrder;
+      return false;
+    };
+    // Publish exactly one retirement story per player. Later audited templates
+    // beat legacy duplicates, while low-appearance careers use dedicated copy.
+    const nonRetirementTemplates = dedupedTemplates.filter((template) => !isRetirementArticleTrigger(template.triggerType));
+    const retirementTemplates = dedupedTemplates.filter((template) => isRetirementArticleTrigger(template.triggerType));
+    const expandedRetirementTemplates = finalRetirees.flatMap((record) => {
+      const player = retiredPlayerCandidates.find(({ record: item }) => item.playerId === record.playerId)?.player;
+      const matches = player?.iplStats?.matches || 0;
+      const matchBand = matches === 0 ? "none" : matches <= 10 ? "cameo" : undefined;
+      const matching = retirementTemplates.filter((template) => {
+        if (matchBand) return template.retirementMatchBand === matchBand;
+        return !template.retirementMatchBand
+          && template.triggerType !== "player_retirement"
+          && retirementRoleMatches(template.triggerType, record);
+      });
+      const template = matching.at(-1);
+      return template ? [{ ...template, id: `${template.id}-${record.playerId}`, retirementTargetId: record.playerId }] : [];
+    });
+    const expandedTemplates = [...nonRetirementTemplates, ...expandedRetirementTemplates];
+
+    const freshArticles = expandedTemplates.map((template) => {
       const sim = lastMatch?.simulation;
       
       // Chase or defend gating
@@ -1065,7 +1186,7 @@ export default function NewsPage({
           return null;
         }
       } else if (template.triggerType === "retire_young_keeper") {
-        const check = (p: Player) => p.role === "WK-Batsman" || Boolean(p.isWicketkeeper);
+        const check = (p: Player) => p.role === "WK-Batsman" || String(p.role).toLowerCase().includes("keeper") || Boolean(p.isWicketkeeper);
         const p = findYoungRetiree(check);
         if (p) {
           targetPlayer = p;
@@ -1101,7 +1222,7 @@ export default function NewsPage({
           return null;
         }
       } else if (template.triggerType === "retire_ok_keeper") {
-        const check = (p: Player) => p.role === "WK-Batsman" || Boolean(p.isWicketkeeper);
+        const check = (p: Player) => p.role === "WK-Batsman" || String(p.role).toLowerCase().includes("keeper") || Boolean(p.isWicketkeeper);
         const p = findOkRetiree(check);
         if (p) {
           targetPlayer = p;
@@ -1137,7 +1258,7 @@ export default function NewsPage({
           return null;
         }
       } else if (template.triggerType === "retire_good_keeper") {
-        const check = (p: Player) => p.role === "WK-Batsman" || Boolean(p.isWicketkeeper);
+        const check = (p: Player) => p.role === "WK-Batsman" || String(p.role).toLowerCase().includes("keeper") || Boolean(p.isWicketkeeper);
         const p = findGoodRetiree(check);
         if (p) {
           targetPlayer = p;
@@ -1173,7 +1294,7 @@ export default function NewsPage({
           return null;
         }
       } else if (template.triggerType === "retire_vet_normal_keeper") {
-        const check = (p: Player) => p.role === "WK-Batsman" || Boolean(p.isWicketkeeper);
+        const check = (p: Player) => p.role === "WK-Batsman" || String(p.role).toLowerCase().includes("keeper") || Boolean(p.isWicketkeeper);
         const p = findNormalVetRetiree(check);
         if (p) {
           targetPlayer = p;
@@ -1209,7 +1330,7 @@ export default function NewsPage({
           return null;
         }
       } else if (template.triggerType === "retire_legend_keeper") {
-        const check = (p: Player) => p.role === "WK-Batsman" || Boolean(p.isWicketkeeper);
+        const check = (p: Player) => p.role === "WK-Batsman" || String(p.role).toLowerCase().includes("keeper") || Boolean(p.isWicketkeeper);
         const p = findLegendRetiree(check);
         if (p) {
           targetPlayer = p;
@@ -1344,6 +1465,15 @@ export default function NewsPage({
         }
       }
 
+      if (isRetirementArticleTrigger(template.triggerType) && template.retirementTargetId) {
+        const forcedRetiree = retiredPlayerCandidates.find(({ record }) => record.playerId === template.retirementTargetId)?.player;
+        if (forcedRetiree) {
+          targetPlayer = forcedRetiree;
+          targetPlayerStats = playerStats[forcedRetiree.id];
+          retirementPlayerDetected = true;
+        }
+      }
+
       // 1. Check if the trigger condition is met
       const isAuctionCompleted = teams[userTeamId] ? (teams[userTeamId].squad?.length || 0) > 10 : false;
       let isTriggered = false;
@@ -1471,7 +1601,7 @@ export default function NewsPage({
           isTriggered = findYoungRetiree((p) => Boolean(p.hasBattedAt4 || p.hasBattedAt5 || p.hasBattedAt6 || p.hasBattedAt7 || p.isFinisher)) !== undefined;
           break;
         case "retire_young_keeper":
-          isTriggered = findYoungRetiree((p) => p.role === "WK-Batsman" || Boolean(p.isWicketkeeper)) !== undefined;
+          isTriggered = findYoungRetiree((p) => p.role === "WK-Batsman" || String(p.role).toLowerCase().includes("keeper") || Boolean(p.isWicketkeeper)) !== undefined;
           break;
         case "retire_young_bowler":
           isTriggered = findYoungRetiree((p) => p.role === "Pace Bowler" || p.role === "Spin Bowler" || (p.role === "All-Rounder" && p.currentBowling > p.currentBatting)) !== undefined;
@@ -1483,7 +1613,7 @@ export default function NewsPage({
           isTriggered = findOkRetiree((p) => Boolean(p.hasBattedAt4 || p.hasBattedAt5 || p.hasBattedAt6 || p.hasBattedAt7 || p.isFinisher)) !== undefined;
           break;
         case "retire_ok_keeper":
-          isTriggered = findOkRetiree((p) => p.role === "WK-Batsman" || Boolean(p.isWicketkeeper)) !== undefined;
+          isTriggered = findOkRetiree((p) => p.role === "WK-Batsman" || String(p.role).toLowerCase().includes("keeper") || Boolean(p.isWicketkeeper)) !== undefined;
           break;
         case "retire_ok_bowler":
           isTriggered = findOkRetiree((p) => p.role === "Pace Bowler" || p.role === "Spin Bowler" || (p.role === "All-Rounder" && p.currentBowling > p.currentBatting)) !== undefined;
@@ -1495,7 +1625,7 @@ export default function NewsPage({
           isTriggered = findGoodRetiree((p) => Boolean(p.hasBattedAt4 || p.hasBattedAt5 || p.hasBattedAt6 || p.hasBattedAt7 || p.isFinisher)) !== undefined;
           break;
         case "retire_good_keeper":
-          isTriggered = findGoodRetiree((p) => p.role === "WK-Batsman" || Boolean(p.isWicketkeeper)) !== undefined;
+          isTriggered = findGoodRetiree((p) => p.role === "WK-Batsman" || String(p.role).toLowerCase().includes("keeper") || Boolean(p.isWicketkeeper)) !== undefined;
           break;
         case "retire_good_bowler":
           isTriggered = findGoodRetiree((p) => p.role === "Pace Bowler" || p.role === "Spin Bowler" || (p.role === "All-Rounder" && p.currentBowling > p.currentBatting)) !== undefined;
@@ -1507,7 +1637,7 @@ export default function NewsPage({
           isTriggered = findNormalVetRetiree((p) => Boolean(p.hasBattedAt4 || p.hasBattedAt5 || p.hasBattedAt6 || p.hasBattedAt7 || p.isFinisher)) !== undefined;
           break;
         case "retire_vet_normal_keeper":
-          isTriggered = findNormalVetRetiree((p) => p.role === "WK-Batsman" || Boolean(p.isWicketkeeper)) !== undefined;
+          isTriggered = findNormalVetRetiree((p) => p.role === "WK-Batsman" || String(p.role).toLowerCase().includes("keeper") || Boolean(p.isWicketkeeper)) !== undefined;
           break;
         case "retire_vet_normal_bowler":
           isTriggered = findNormalVetRetiree((p) => p.role === "Pace Bowler" || p.role === "Spin Bowler" || (p.role === "All-Rounder" && p.currentBowling > p.currentBatting)) !== undefined;
@@ -1519,7 +1649,7 @@ export default function NewsPage({
           isTriggered = findLegendRetiree((p) => Boolean(p.hasBattedAt4 || p.hasBattedAt5 || p.hasBattedAt6 || p.hasBattedAt7 || p.isFinisher)) !== undefined;
           break;
         case "retire_legend_keeper":
-          isTriggered = findLegendRetiree((p) => p.role === "WK-Batsman" || Boolean(p.isWicketkeeper)) !== undefined;
+          isTriggered = findLegendRetiree((p) => p.role === "WK-Batsman" || String(p.role).toLowerCase().includes("keeper") || Boolean(p.isWicketkeeper)) !== undefined;
           break;
         case "retire_legend_bowler":
           isTriggered = findLegendRetiree((p) => p.role === "Pace Bowler" || p.role === "Spin Bowler" || (p.role === "All-Rounder" && p.currentBowling > p.currentBatting)) !== undefined;
@@ -1721,7 +1851,7 @@ export default function NewsPage({
       // not stale form, milestone or standings stories.
       if (completedPercent >= 100
         && template.triggerType !== "post_season"
-        && template.triggerType !== "player_retirement"
+        && !isRetirementArticleTrigger(template.triggerType)
         && !matchArticleTriggers.has(template.triggerType)) {
         isTriggered = false;
       }
@@ -1805,7 +1935,7 @@ export default function NewsPage({
       const winnerInningsIndex = lastMatch?.winner === sim?.innings[0]?.battingTeamId ? 1 : 0;
       const winnerBowlingOvers = sim?.innings[winnerInningsIndex]?.oversDetail || [];
       const bestOver = [...winnerBowlingOvers].sort((a, b) => b.wickets - a.wickets || a.runs - b.runs)[0];
-      const keyBowlerOver = bestOver ? `${bestOver.number}th` : "16th";
+      const keyBowlerOver = bestOver ? `${bestOver.number}th` : "N/A";
 
       // Opponent batting collapse detection (e.g. 3 wickets in a phase)
       const oppInningsIndex = userInningsIndex === 0 ? 1 : 0;
@@ -2416,10 +2546,10 @@ export default function NewsPage({
       const streakPowerplayWicketRate = surgingStreakFixtures.length > 0 ? (streakPowerplayWickets / surgingStreakFixtures.length).toFixed(1) : "N/A";
       const streakDeathDotPercentage = streakDeathBalls > 0 ? ((streakDeathDots / streakDeathBalls) * 100).toFixed(1) : "N/A";
 
-      const surgingTeamOldRunRate = "-0.35";
-      const surgingTeamNewRunRate = "+0.45";
-
-      const keyPlayerStreakStats = "185 runs & 3 wickets";
+      // Do not invent tactical run-rate splits when ball-by-ball evidence is
+      // unavailable. Templates requiring these values remain unpublished.
+      const surgingTeamOldRunRate = "N/A";
+      const surgingTeamNewRunRate = "N/A";
 
       // Section 2: team_summaries: Franchise Freefall variables
       const strugglingTeam = strugglingTeamId ? teams[strugglingTeamId] : null;
@@ -2703,8 +2833,7 @@ export default function NewsPage({
       const bottomTeamObj = standings[standings.length - 1];
 
       // Topic 1
-      extraTokens["{topTeamBoundaryRate}"] = "18.2";
-      extraTokens["{topTeamDotBallPercentage}"] = "36.8";
+      extraTokens["{topTeamBoundaryRate}"] = "N/A";
       extraTokens["{secondTeamName}"] = secondTeamObj?.teamName || "Second Team";
       extraTokens["{secondTeamPoints}"] = String(secondTeamObj?.points || 0);
       extraTokens["{chasingTeamShort}"] = secondTeamObj?.shortName || "SEC";
@@ -2737,7 +2866,15 @@ export default function NewsPage({
       const earlyTeamRankIndex = earlyStrugglingTeamId ? rankedStandings.findIndex((standing) => standing.teamId === earlyStrugglingTeamId) : -1;
       extraTokens["{strugglingTeamPosition}"] = String(earlyTeamRankIndex >= 0 ? earlyTeamRankIndex + 1 : standings.length);
       extraTokens["{strugglingTeamPoints}"] = String(earlyStrugglingTeam?.points || 0);
-      extraTokens["{strugglingTeamPowerplayRunRate}"] = "6.1";
+      const earlyPowerplaySamples = earlyTeamPlayedFixtures.map((fixture) => {
+        const innings = fixture.simulation?.innings?.find((entry) => entry.battingTeamId === earlyStrugglingTeamId);
+        const overs = innings?.oversDetail?.slice(0, 6) || [];
+        return overs.length > 0 ? { runs: overs.reduce((sum, over) => sum + over.runs, 0), overs: overs.length } : null;
+      }).filter((sample): sample is { runs: number; overs: number } => Boolean(sample));
+      const earlyPowerplayOvers = earlyPowerplaySamples.reduce((sum, sample) => sum + sample.overs, 0);
+      extraTokens["{strugglingTeamPowerplayRunRate}"] = earlyPowerplayOvers > 0
+        ? (earlyPowerplaySamples.reduce((sum, sample) => sum + sample.runs, 0) / earlyPowerplayOvers).toFixed(1)
+        : "N/A";
       extraTokens["{strugglingTeamAvgOpenerStand}"] = averageOpeningStand;
       extraTokens["{earlyStrugglingTeamRemainingGames}"] = String(earlyTeamRemainingGames);
       extraTokens["{strugglingTeamLosses}"] = String(earlyStrugglingTeam?.lost || 0);
@@ -2771,6 +2908,15 @@ export default function NewsPage({
       const topTeamSixes = topTeamBoundaryTotals.sixes;
       extraTokens["{topTeamFours}"] = String(topTeamFours);
       extraTokens["{topTeamSixes}"] = String(topTeamSixes);
+      const topTeamDeliveries = playedFixtures.flatMap((fixture) => fixture.simulation?.innings || [])
+        .filter((innings) => innings.battingTeamId === topTeamObj?.teamId)
+        .flatMap((innings) => innings.oversDetail || [])
+        .flatMap((over) => over.deliveries || [])
+        .filter((delivery) => delivery.isLegal);
+      const topTeamDots = topTeamDeliveries.filter((delivery) => (delivery.totalRuns || 0) === 0).length;
+      extraTokens["{topTeamDotBallPercentage}"] = topTeamDeliveries.length > 0
+        ? ((topTeamDots / topTeamDeliveries.length) * 100).toFixed(1)
+        : "N/A";
 
       // Topic 2
       const middleTeam1 = fourthTeamObj;
@@ -2814,7 +2960,7 @@ export default function NewsPage({
       const contenderTeam = fifthTeamObj;
       extraTokens["{contenderTeamShort}"] = contenderTeam?.shortName || "CON";
       extraTokens["{contenderTeamName}"] = contenderTeam?.teamName || "Contender Team";
-      extraTokens["{contenderTeamMustWinGames}"] = "2";
+      extraTokens["{contenderTeamMustWinGames}"] = "N/A";
       extraTokens["{contenderTeamCaptainName}"] = (() => {
         return resolveCaptainName(contenderTeam?.teamId);
       })();
@@ -2853,7 +2999,7 @@ export default function NewsPage({
 
       // Topic 4
       extraTokens["{pointDiffValue}"] = String(Math.abs((topTeamObj?.points || 0) - (thirdTeamObj?.points || 0)));
-      extraTokens["{qualifier1ConversionRate}"] = "72";
+      extraTokens["{qualifier1ConversionRate}"] = "N/A";
       extraTokens["{rank1TeamShort}"] = topTeamObj?.shortName || "R1";
       extraTokens["{rank2TeamShort}"] = secondTeamObj?.shortName || "R2";
       extraTokens["{rank3TeamShort}"] = thirdTeamObj?.shortName || "R3";
@@ -2983,15 +3129,20 @@ export default function NewsPage({
 
       const playerExtraTokens: Record<string, string> = {
         "{playerName}": targetPlayer?.name || "Player Name",
-        "{playerCareerAverage}": String(targetPlayer?.iplStats?.battingAverage || 0),
-        "{playerCareerStrikeRate}": String(targetPlayer?.iplStats?.strikeRate || 0),
-        "{playerCareerSeasons}": String(targetPlayer?.iplHistory?.length || 0),
+        "{playerCareerAverage}": Number(targetPlayer?.iplStats?.battingAverage || 0).toFixed(1),
+        "{playerCareerStrikeRate}": Number(targetPlayer?.iplStats?.strikeRate || 0).toFixed(1),
+        // A corrupted/stale history array must not claim more seasons than a
+        // player could have physically completed by their retirement age.
+        "{playerCareerSeasons}": String(Math.min(
+          careerSeasonCount(targetPlayer),
+          Math.max(1, (targetPlayer?.age || 18) - 17),
+        )),
         "{playerCareerEconomy}": (() => {
           const stats = targetPlayer?.iplStats;
           if (!stats) return "N/A";
           const balls = stats.bowlingBalls || 0;
           const runs = stats.bowlingRunsConceded || 0;
-          return balls > 0 ? ((runs / balls) * 6).toFixed(2) : "N/A";
+          return balls > 0 ? ((runs / balls) * 6).toFixed(1) : "N/A";
         })(),
         "{playerCareerBowlingStrikeRate}": (() => {
           const stats = targetPlayer?.iplStats;
@@ -3005,7 +3156,13 @@ export default function NewsPage({
         "{playerRuns}": String(targetPlayerMatchStats?.runs || 0),
         "{matchPlayerRuns}": String(targetPlayerMatchStats?.runs || 0),
         "{playerBalls}": String(targetPlayerMatchStats?.balls || 0),
-        "{playerTeamShort}": targetPlayerStats?.teamId ? (teams[targetPlayerStats.teamId]?.shortName || "TEAM") : (targetPlayer ? (teams[targetPlayer.teamId]?.shortName || "TEAM") : "TEAM"),
+        "{playerTeamShort}": isRetirementArticleTrigger(template.triggerType)
+          ? primaryCareerTeamShort(targetPlayer)
+          : targetPlayerStats?.teamId
+            ? (teams[targetPlayerStats.teamId]?.shortName || "TEAM")
+            : targetPlayer
+              ? (teams[targetPlayer.teamId]?.shortName || "TEAM")
+              : "TEAM",
         "{playerTeamRuns}": String(lastMatch ? (targetPlayerMatchStats?.teamId === lastMatch.teamA ? lastMatch.scoreA?.runs || 0 : lastMatch.scoreB?.runs || 0) : 0),
         "{playerBoundaryPercentage}": seasonRuns > 0 ? (((targetSeasonBattingRows.reduce((sum, entry) => sum + (entry.fours || 0) * 4 + (entry.sixes || 0) * 6, 0) / seasonRuns) * 100).toFixed(1)) : "N/A",
         "{playerDotBallCount}": String(targetPhaseStats.dotBalls),
@@ -3016,7 +3173,7 @@ export default function NewsPage({
         "{partnerName}": lastMatchBatting.find(b => b.id !== targetPlayer?.id)?.name || "a batting partner",
         "{playerSeasonRuns}": String(targetPlayerStats?.runs || 0),
         "{playerSeasonAverage}": seasonBattingAverage,
-        "{playerTeamCollapseScore}": "42/3",
+        "{playerTeamCollapseScore}": "N/A",
         "{playerPowerplaySR}": targetPhaseStats.powerplayBalls > 0 ? ((targetPhaseStats.powerplayRuns / targetPhaseStats.powerplayBalls) * 100).toFixed(1) : "N/A",
         "{playerDeathSR}": targetPhaseStats.deathBalls > 0 ? ((targetPhaseStats.deathRuns / targetPhaseStats.deathBalls) * 100).toFixed(1) : "N/A",
         "{playerFinalOverRuns}": "N/A",
@@ -3027,7 +3184,7 @@ export default function NewsPage({
         "{playerFours}": String(targetPlayerMatchStats?.fours || 0),
         "{playerSixes}": String(targetPlayerMatchStats?.sixes || 0),
         "{matchTargetRuns}": String(lastMatch ? (targetPlayerMatchStats?.teamId === lastMatch.teamA ? (lastMatch.scoreB?.runs || 0) + 1 : (lastMatch.scoreA?.runs || 0) + 1) : 0),
-        "{matchLast3OversRequired}": "35",
+        "{matchLast3OversRequired}": "N/A",
         "{playerWickets}": String(targetPlayerMatchStats?.wickets || 0),
         "{playerRunsConceded}": String(targetPlayerMatchStats?.runsConceded || 0),
         "{playerPerformanceSummary}": playerPerformanceSummary,
@@ -3041,7 +3198,7 @@ export default function NewsPage({
         "{playerYorkerCount}": "N/A",
         "{matchOpponentRequiredRuns}": "N/A",
         "{playerTotalSeasonWickets}": String(targetPlayerStats?.wickets || 0),
-        "{matchOver}": "14",
+        "{matchOver}": "N/A",
         "{playerSeasonInnings}": String(targetPlayerStats?.innings || 0),
         "{playerSeasonStrikeRate}": seasonStrikeRate,
         "{playerRunContributionPercentage}": runContribution,
@@ -3069,10 +3226,12 @@ export default function NewsPage({
       Object.assign(tokens, extraTokens);
       
       if (finalRetirees.length > 0) {
-        const retiree = finalRetirees[0];
+        const retiree = isRetirementArticleTrigger(template.triggerType) && targetPlayer
+          ? targetPlayer
+          : finalRetirees[0];
         tokens["{retireeName}"] = retiree.name;
         tokens["{retireeAge}"] = String(retiree.age);
-        tokens["{retireeRating}"] = String(retiree.rating);
+        tokens["{retireeRating}"] = String("rating" in retiree ? retiree.rating : Math.max(retiree.currentBatting || 0, retiree.currentBowling || 0));
         tokens["{retireeRole}"] = retiree.role;
       }
       
@@ -3198,11 +3357,22 @@ export default function NewsPage({
       ].includes(template.triggerType);
 
       const publishedDateKey = articlePublicationDate(template);
-      const expiryDateKey = template.requiresFinalResult || template.requiresFinalRunnerUp
-        ? addDays(publishedDateKey, 30)
-        : template.triggerType === "player_retirement"
-          ? getSeasonDates(currentSeason + 1).retentionDate
-          : addDays(publishedDateKey, articleDurationDays(template));
+      const isLegendRetirement = String(template.triggerType).startsWith("retire_legend_");
+      const retirementReleaseSeason = isRetirementArticleTrigger(template.triggerType)
+        ? retirementRelease(template).season
+        : currentSeason;
+      const expiryDateKey = getNewsArticleExpiry({
+        publishedDate: publishedDateKey,
+        durationDays: articleDurationDays(template),
+        isFinalResult: Boolean(template.requiresFinalResult || template.requiresFinalRunnerUp),
+        isRetirement: isRetirementArticleTrigger(template.triggerType),
+        isLegendRetirement,
+        nextRetentionDate: getSeasonDates(retirementReleaseSeason + 1).retentionDate,
+        isPostAuction: isPostAuctionTrigger,
+        postAuctionCutoffDate: disappearLimitDateKey,
+        isFixtureAnnouncement: template.triggerType === "pre_season_fixtures_announced",
+        seasonStartDate: seasonStartDateKey,
+      });
       if (currentDate && publishedDateKey && currentDate < publishedDateKey) return null;
       if (currentDate && publishedDateKey && currentDate > expiryDateKey) return null;
       const resolvedPublishingDate = formatDate(publishedDateKey);
@@ -3210,7 +3380,11 @@ export default function NewsPage({
       // Never publish an article containing an unbound or unavailable stat.
       // The article will be regenerated when the required match/season data
       // exists instead of exposing N/A or raw template placeholders.
-      if ([title, subheading, content].some((value) => value.includes("N/A") || /\{[^}]+\}/.test(value))) {
+      const unresolvedEntityPattern = /\b(?:TEAM|STRG|SEC|RET|MID1|MID2|CON|RIV|ELIM|OPP|Q[1-4]|B[12]|T[1-3]|R[1-6])\b|Player Name|Young Star|Star Player|Star Batter|Star Bowler|Retaining Team|Struggling Team|Second Team|Contender Team|Eliminated Team|Winner Team|(?:Rank|Middle|Bottom) Team|Fourth Team|Fifth Team|Sixth Team|\bthe captain\b/i;
+      if ([title, subheading, content].some((value) => value.includes("N/A")
+        || /\{[^}]+\}/.test(value)
+        || /\b(?:NaN|Infinity|undefined|null)\b/i.test(value)
+        || unresolvedEntityPattern.test(value))) {
         return null;
       }
 
@@ -3223,7 +3397,9 @@ export default function NewsPage({
         publishedAt: publishedDateKey,
         expiresAt: expiryDateKey
       } as NewsArticle;
-      const articleEntityId = teamFormArticleTriggers.has(template.triggerType)
+      const articleEntityId = isRetirementArticleTrigger(template.triggerType)
+        ? targetPlayer?.id
+        : teamFormArticleTriggers.has(template.triggerType)
         || template.triggerType === "league_standing"
         || template.triggerType === "mid_season"
         ? (surgingTeamId || strugglingTeamId || contenderTeam?.teamId || undefined)
@@ -3247,12 +3423,6 @@ export default function NewsPage({
         const existing = cached.find((item) => articleMatchesLayout(item)
           && `${item.id}:${item.publishedAt}:${item.associatedEntityIds?.teamId || item.associatedEntityIds?.playerId || ""}` === identity);
         if (existing) return existing;
-        if (template.triggerType === "player_retirement") {
-          const retirementArticle = cached
-            .filter((item) => item.id === article.id)
-            .sort((a, b) => String(b.publishedAt).localeCompare(String(a.publishedAt)))[0];
-          if (retirementArticle) return retirementArticle;
-        }
         if (repeatingArticleTriggers.has(template.triggerType)) {
           const recent = cached
             .filter((item) => articleMatchesLayout(item)
@@ -3260,7 +3430,7 @@ export default function NewsPage({
               && item.publishedAt
               && (item.associatedEntityIds?.teamId || item.associatedEntityIds?.playerId || "") === (articleEntityId || ""))
             .sort((a, b) => String(b.publishedAt).localeCompare(String(a.publishedAt)))[0];
-          if (recent?.publishedAt && currentDate < addDays(recent.publishedAt, 7)) return recent;
+          if (recent?.publishedAt && currentDate < addDays(recent.publishedAt, NEWS_REPEAT_COOLDOWN_DAYS)) return recent;
         }
         const active = cached.filter((item) => (!item.expiresAt || !currentDate || currentDate <= item.expiresAt)
           && !(completedPercent >= 100 && item.id === "art-tournament-league-scenarios")
@@ -3272,7 +3442,7 @@ export default function NewsPage({
           && !(finalHasBeenPlayed && (item as any).requiresFinalPreview)
           && !(completedPercent >= 100
             && (item as any).triggerType !== "post_season"
-            && (item as any).triggerType !== "player_retirement"
+            && !isRetirementArticleTrigger((item as any).triggerType)
             && !matchArticleTriggers.has((item as any).triggerType)));
         active.push(article);
         window.localStorage.setItem(articleCacheKey, JSON.stringify(active));
@@ -3295,7 +3465,7 @@ export default function NewsPage({
           && !(finalHasBeenPlayed && (article as any).requiresFinalPreview)
           && !(completedPercent >= 100
             && (article as any).triggerType !== "post_season"
-            && (article as any).triggerType !== "player_retirement"
+            && !isRetirementArticleTrigger((article as any).triggerType)
             && !matchArticleTriggers.has((article as any).triggerType)));
       window.localStorage.setItem(articleCacheKey, JSON.stringify(cachedArticles));
     } catch {
@@ -3304,7 +3474,7 @@ export default function NewsPage({
     const articleByIdentity = new Map<string, NewsArticle>();
     [...cachedArticles, ...freshArticles].forEach((article) => articleByIdentity.set(`${article.id}:${article.publishedAt}:${article.associatedEntityIds?.teamId || article.associatedEntityIds?.playerId || ""}`, article));
     return Array.from(articleByIdentity.values());
-  }, [userTeamId, players, teams, playerStats, standings, retirements, retirementHistory, currentSeason, fixtures, topScorer, topWicketTaker, layout, currentDate, saveId]);
+  }, [userTeamId, players, teams, playerStats, standings, retirements, retirementHistory, retiredPlayerSnapshots, currentSeason, fixtures, topScorer, topWicketTaker, layout, currentDate, saveId]);
 
   // Filter articles based on selected tab
   const filteredArticles = useMemo(() => {

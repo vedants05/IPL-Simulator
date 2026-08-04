@@ -120,7 +120,6 @@ import {
 import {
   createHistoricalPlayerSnapshot,
   initializeCareerPlayers,
-  isHistoricallyImportantRetiree,
   normalizeCareerSeasonPerformance,
   prepareRetentionPlayerPool,
   processPostAuctionCareer,
@@ -338,22 +337,25 @@ function appendHistoricalRetirees(
   referencedPlayerIds: Set<string> = new Set(),
 ): Record<string, HistoricalPlayerSnapshot> {
   if (lifecycle.retirements.length === 0) return existing;
-  const majorRecordPlayerIds = getMajorRecordPlayerIds(
-    [...Object.values(lifecycle.players), ...lifecycle.retiredPlayers],
-    existing,
-  );
-  const protectedPlayerIds = new Set([
-    ...Array.from(referencedPlayerIds),
-    ...Array.from(majorRecordPlayerIds),
-  ]);
   const records = new Map(lifecycle.retirements.map((record) => [record.playerId, record]));
   const output = { ...existing };
   lifecycle.retiredPlayers.forEach((player) => {
     const record = records.get(player.id);
-    if (!record || !isHistoricallyImportantRetiree(player, protectedPlayerIds)) return;
+    // Every retiree needs a snapshot while retirement coverage is active.
+    // Filtering this to major players caused lower-appearance careers to lose
+    // their real IPL totals and be misreported as zero-match retirements.
+    if (!record) return;
     output[player.id] = createHistoricalPlayerSnapshot(player, record);
   });
   return output;
+}
+
+function getRetiredPlayerIds(state: Pick<Store, "careerRetirementHistory" | "lastCareerRetirements" | "retiredPlayerSnapshots">): Set<string> {
+  return new Set([
+    ...state.careerRetirementHistory.map((record) => record.playerId),
+    ...state.lastCareerRetirements.map((record) => record.playerId),
+    ...Object.keys(state.retiredPlayerSnapshots),
+  ]);
 }
 
 const normalizeRecordPlayerName = (name: string) => name
@@ -1054,12 +1056,18 @@ export const useGameStore = create<Store>()(
         const state = get();
         if (Object.keys(state.players).length === 0) return;
 
-        const refreshedPlayers = { ...state.players };
+        const retiredPlayerIds = getRetiredPlayerIds(state);
+        const refreshedPlayers = Object.fromEntries(
+          Object.entries(state.players).filter(([playerId]) => !retiredPlayerIds.has(playerId)),
+        );
         const careerSeason = String(state.auction?.season ?? state.currentSeason);
         const finalSalesByPlayer = new Map<string, NonNullable<typeof state.auction>["saleHistory"][number]>();
         (state.auction?.saleHistory ?? []).forEach((sale) => finalSalesByPlayer.set(sale.playerId, sale));
 
         fetchedPlayers.forEach((freshPlayer) => {
+          // Missing from the active map can mean retired, not newly added to
+          // the database. Retirement history is authoritative for this save.
+          if (retiredPlayerIds.has(freshPlayer.id)) return;
           const savedPlayer = state.players[freshPlayer.id];
           if (!savedPlayer) {
             refreshedPlayers[freshPlayer.id] = freshPlayer;
@@ -1132,9 +1140,32 @@ export const useGameStore = create<Store>()(
         ));
         set({
           players: refreshedMarketPlayers,
+          teams: Object.fromEntries(Object.entries(state.teams).map(([teamId, team]) => [teamId, {
+            ...team,
+            squad: team.squad.filter((id) => !retiredPlayerIds.has(id)),
+            retainedPlayers: team.retainedPlayers.filter((id) => !retiredPlayerIds.has(id)),
+            captainContinuityId: team.captainContinuityId && retiredPlayerIds.has(team.captainContinuityId)
+              ? null
+              : team.captainContinuityId,
+          }])),
           auction: state.auction
-            ? { ...state.auction, currentPlayer: refreshedCurrentPlayer }
+            ? {
+                ...state.auction,
+                allPlayerIds: state.auction.allPlayerIds.filter((id) => !retiredPlayerIds.has(id)),
+                soldPlayerIds: state.auction.soldPlayerIds.filter((id) => !retiredPlayerIds.has(id)),
+                unsoldPlayerIds: state.auction.unsoldPlayerIds.filter((id) => !retiredPlayerIds.has(id)),
+                sets: state.auction.sets.map((set) => ({
+                  ...set,
+                  playerIds: set.playerIds.filter((id) => !retiredPlayerIds.has(id)),
+                })),
+                currentPlayer: currentPlayerId && retiredPlayerIds.has(currentPlayerId) ? null : refreshedCurrentPlayer,
+                ...(currentPlayerId && retiredPlayerIds.has(currentPlayerId)
+                  ? { currentBid: 0, currentHighBidderTeamId: null, biddingHistory: [] }
+                  : {}),
+              }
             : null,
+          auctionTargets: removeResolvedAuctionTargets(state.auctionTargets, retiredPlayerIds),
+          auctionTargetPriorities: removeResolvedAuctionTargets(state.auctionTargetPriorities, retiredPlayerIds),
           skipSetSummary: refreshedSummary,
         });
       },
@@ -1253,12 +1284,16 @@ export const useGameStore = create<Store>()(
       confirmRetentions: () => {
         const currentState = get();
         const { teams, userTeamId } = currentState;
+        const retiredPlayerIds = getRetiredPlayerIds(currentState);
+        const activePlayers = Object.fromEntries(
+          Object.entries(currentState.players).filter(([playerId]) => !retiredPlayerIds.has(playerId)),
+        );
         const auctionMarketProfile = normalizeAuctionMarketProfile(
           currentState.auctionMarketProfile,
-          Object.values(currentState.players),
+          Object.values(activePlayers),
         );
         const marketPlayers = withAdaptiveBasePrices(applyAuctionMarketRatings(
-          currentState.players,
+          activePlayers,
           auctionMarketProfile,
         ));
         const players = Object.fromEntries(Object.entries(marketPlayers).map(([id, player]) => [
@@ -1274,7 +1309,7 @@ export const useGameStore = create<Store>()(
 
         // Build player pool: all non-retained players
         const allPlayerIds = Object.values(players)
-          .filter((p) => !p.isRetained && isPlayerAuctionEligible(p))
+          .filter((p) => !retiredPlayerIds.has(p.id) && !p.isRetained && isPlayerAuctionEligible(p))
           .map((p) => p.id);
 
         // AI teams: engine weighs each player's estimated worth against the
@@ -3668,6 +3703,11 @@ export const useGameStore = create<Store>()(
           p.players ? { ...p.players } : current.players,
           migratedCurrentSeason - 1,
         );
+        const persistedRetiredPlayerIds = new Set([
+          ...(p.careerRetirementHistory ?? p.lastCareerRetirements ?? []).map((record) => record.playerId),
+          ...Object.keys(p.retiredPlayerSnapshots ?? {}),
+        ]);
+        persistedRetiredPlayerIds.forEach((playerId) => delete migratedPlayers[playerId]);
         Object.entries(migratedPlayers).forEach(([id, player]) => {
           if (player.name.trim().toLocaleLowerCase("en-GB") === "ajinkya rahane") {
             delete migratedPlayers[id];
@@ -3693,8 +3733,27 @@ export const useGameStore = create<Store>()(
           };
         });
         const persistedAuctionSeason = String(migratedAuction?.season ?? migratedCurrentSeason);
+        const sanitizedAuction = migratedAuction
+          ? {
+              ...migratedAuction,
+              allPlayerIds: migratedAuction.allPlayerIds.filter((id) => !persistedRetiredPlayerIds.has(id)),
+              soldPlayerIds: migratedAuction.soldPlayerIds.filter((id) => !persistedRetiredPlayerIds.has(id)),
+              unsoldPlayerIds: migratedAuction.unsoldPlayerIds.filter((id) => !persistedRetiredPlayerIds.has(id)),
+              sets: migratedAuction.sets.map((set) => ({
+                ...set,
+                playerIds: set.playerIds.filter((id) => !persistedRetiredPlayerIds.has(id)),
+              })),
+              saleHistory: migratedAuction.saleHistory.filter((sale) => !persistedRetiredPlayerIds.has(sale.playerId)),
+              currentPlayer: migratedAuction.currentPlayer && persistedRetiredPlayerIds.has(migratedAuction.currentPlayer.id)
+                ? null
+                : migratedAuction.currentPlayer,
+              ...(migratedAuction.currentPlayer && persistedRetiredPlayerIds.has(migratedAuction.currentPlayer.id)
+                ? { currentBid: 0, currentHighBidderTeamId: null, biddingHistory: [] }
+                : {}),
+            }
+          : migratedAuction;
         const persistedFinalSales = new Map<string, NonNullable<typeof p.auction>["saleHistory"][number]>();
-        (migratedAuction?.saleHistory ?? []).forEach((sale) => persistedFinalSales.set(sale.playerId, sale));
+        (sanitizedAuction?.saleHistory ?? []).forEach((sale) => persistedFinalSales.set(sale.playerId, sale));
         persistedFinalSales.forEach((sale, playerId) => {
           const player = migratedPlayers[playerId];
           if (!player) return;
@@ -3723,11 +3782,11 @@ export const useGameStore = create<Store>()(
           ...p,
           currentSeason: migratedCurrentSeason,
           fixtureSeed: migratedFixtureSeed,
-          auction: migratedAuction ?? null,
+          auction: sanitizedAuction ?? null,
           teams: cleanedTeams,
           players: marketPlayers,
-          auctionTargets: p.auctionTargets ?? {},
-          auctionTargetPriorities: p.auctionTargetPriorities ?? {},
+          auctionTargets: removeResolvedAuctionTargets(p.auctionTargets ?? {}, persistedRetiredPlayerIds),
+          auctionTargetPriorities: removeResolvedAuctionTargets(p.auctionTargetPriorities ?? {}, persistedRetiredPlayerIds),
           clubFigureTierOverrides: p.clubFigureTierOverrides ?? {},
           simulatedLeagueHistory: p.simulatedLeagueHistory ?? [],
           lastRolledOverSeason: p.lastRolledOverSeason ?? null,

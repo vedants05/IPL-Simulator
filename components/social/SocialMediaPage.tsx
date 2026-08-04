@@ -6,6 +6,13 @@ import { type SeasonPhase, type SocialPostTopic } from "@/lib/data/socialMediaPo
 import { SOCIAL_OPINION_TEMPLATES, type SocialOpinionTrigger } from "@/lib/data/socialMediaOpinions";
 import { getTriggeredTeamSocialComments } from "@/lib/data/socialMediaTeamComments";
 import { SOCIAL_COMMENTS, matchesEligibility, type SocialPlatform } from "@/lib/data/socialComments";
+import {
+  formatPerformanceFooter,
+  isPlayerPerformanceComment,
+  passesPerformanceEvidence,
+  performanceScope,
+  performanceSentiment,
+} from "@/lib/logic/socialCommentPolicy";
 
 interface SocialPlayerStats {
   id: string; runs: number; balls: number; wickets: number; runsConceded: number; oversBowled: number; matches: number;
@@ -1094,7 +1101,16 @@ function buildFeed(props: SocialMediaPageProps, activePlatform: SocialPlatform):
       && ["balance", "youngsters", "role_misuse", "impact_sub"].includes(template.topic)
       && /\b(bat|batter|batting|innings|runs?|strike rate|sixes|hitting|knock|scor(?:e|ing)|wicket|bowling|bowler|economy|spell|boundar(?:y|ies)|clearing|ropes)\b/i.test(template.text)
     );
-    const stats = performanceTopic ? recentMatchStats[subject.id] : playerStats[subject.id];
+    const requiresPerformanceEvidence = isPlayerPerformanceComment(template.text, template.topic, phaseContext.phase);
+    const evidenceScope = performanceScope(template.topic);
+    const stats = performanceTopic || requiresPerformanceEvidence
+      ? (evidenceScope === "match" ? recentMatchStats[subject.id] : playerStats[subject.id])
+      : playerStats[subject.id];
+    if (requiresPerformanceEvidence) {
+      const isBatter = subject.currentBatting >= subject.currentBowling;
+      const sentiment = performanceSentiment(template.text, structuredTemplate?.tone ?? template.tone);
+      if (!passesPerformanceEvidence(stats, isBatter, sentiment, evidenceScope)) continue;
+    }
     if (performanceTopic && /\bthrowing away 30s|convert(?:ing)? 30s|thirties\b/i.test(template.text)) {
       const scores = seasonBattingScores[subject.id] ?? [];
       const thirties = scores.filter((score) => score >= 30 && score < 50).length;
@@ -1206,7 +1222,9 @@ function buildFeed(props: SocialMediaPageProps, activePlatform: SocialPlatform):
       return "";
     };
 
-    const bracket = getStatsBracket();
+    const bracket = requiresPerformanceEvidence && stats
+      ? formatPerformanceFooter(stats, evidenceScope)
+      : getStatsBracket();
 
     let comment = template.text
       .replaceAll("{a}", subject.name).replaceAll("{b}", alternative?.name ?? "another squad player")
@@ -1215,7 +1233,8 @@ function buildFeed(props: SocialMediaPageProps, activePlatform: SocialPlatform):
       .replaceAll("{price}", priceText).replaceAll("{venue}", team.homeGround)
       .replaceAll("{colours}", TEAM_COLOUR_NAMES[team.id] ?? "the club colours")
       .replaceAll("{pos}", position.positionName).replaceAll("{reason}", position.reason)
-      .replaceAll("{runs}", `${stats?.runs ?? 0}`).replaceAll("{sr}", stats?.balls ? `${Math.round(stats.runs / stats.balls * 100)}` : "")
+      .replaceAll("{runs}", `${stats?.runs ?? 0}`).replaceAll("{balls}", `${stats?.balls ?? 0}`)
+      .replaceAll("{sr}", stats?.balls ? `${Math.round(stats.runs / stats.balls * 100)}` : "")
       .replaceAll("{econ}", stats?.oversBowled ? economy(stats).toFixed(1) : "")
       .replaceAll("{runsConceded}", `${stats?.runsConceded ?? 0}`)
       .replaceAll("{wickets}", `${stats?.wickets ?? 0}`);
@@ -1227,6 +1246,8 @@ function buildFeed(props: SocialMediaPageProps, activePlatform: SocialPlatform):
     const referencedSeason = phaseContext.phase === "next_season" ? props.currentSeason + 1 : props.currentSeason;
     comment = comment.replaceAll("2026", String(referencedSeason)).replaceAll("2027", String(referencedSeason));
     if (/keeper|glovework|stumping/i.test(comment) && keeper) comment = comment.replaceAll(subject.name, keeper.name);
+    // A catalogue typo must never be visible as fabricated-looking output.
+    if (/\{[A-Za-z]+\}/.test(comment)) continue;
 
     output.push({
       id: `${template.id}_${seed}_${output.length}`,
@@ -1274,6 +1295,7 @@ export default function SocialMediaPage(props: SocialMediaPageProps) {
   const empty = <div className="border border-dashed border-white/15 p-10 text-center text-sm text-white/55">No reactions are available for this phase yet.</div>;
   const posts = visiblePosts.length ? visiblePosts.map((post, index) => {
     const fanAccount = fanAccountName(props.team.shortName, index + post.id.length);
+    const instagramPost = activePlatform === "instagram" ? <article key={post.id} className="overflow-hidden border-b border-white/10 bg-black"><div className="flex items-center gap-3 px-4 py-3"><div className="flex size-8 items-center justify-center rounded-full bg-gradient-to-tr from-[#f09433] via-[#dc2743] to-[#bc1888] text-xs font-bold text-white">{fanAccount[0]}</div><span className="font-semibold text-white">{fanAccount}</span><MoreHorizontal className="ml-auto text-white" size={18} /></div><div aria-label="Post image placeholder" className="flex min-h-64 flex-col items-center justify-center gap-3 bg-gradient-to-br from-[#241329] via-[#321328] to-[#19152d] px-8 py-10 text-center"><div className="flex size-14 items-center justify-center rounded-2xl border border-white/25 bg-white/10"><Image size={28} aria-hidden="true" /></div><p className="text-sm font-semibold text-white/85">Matchday image placeholder</p><p className="text-xs text-white/55">{props.team.shortName} supporter post</p></div><div className="px-4 py-3"><div className="flex items-center gap-4 text-white"><button type="button" aria-label="Like" onClick={() => togglePostState(setLikedPosts, post.id)} className={likedPosts[post.id] ? "text-red-500" : "hover:text-red-400"}><Heart size={24} fill={likedPosts[post.id] ? "currentColor" : "none"} /></button><button type="button" aria-label="Comment"><MessageCircle size={23} /></button><button type="button" aria-label="Share" onClick={() => togglePostState(setRepostedPosts, post.id)} className={repostedPosts[post.id] ? "text-sky-400" : "hover:text-sky-300"}><Send size={22} /></button><button type="button" aria-label="Save" onClick={() => togglePostState(setSavedPosts, post.id)} className={`ml-auto ${savedPosts[post.id] ? "text-amber-300" : "hover:text-amber-200"}`}><Bookmark size={20} fill={savedPosts[post.id] ? "currentColor" : "none"} /></button></div><p className="mt-2 text-xs text-white/65">{baseMetric(post.id, 3) + (likedPosts[post.id] ? 1 : 0)} likes</p><p className="mt-2 text-sm leading-5 text-white"><span className="mr-1 font-semibold">{fanAccount}</span>{post.comment} <span className="text-pink-300">#{post.tag}</span></p><p className="mt-1 text-xs text-white/60">View all comments · {displayGameDate(post.publishedAt)}</p></div></article> : null; if (instagramPost) return instagramPost;
     if (activePlatform === "reddit") return <article key={post.id} className="flex gap-3 border-b border-white/10 bg-[#1a1a1b] px-4 py-4"><div className="flex w-8 shrink-0 flex-col items-center text-[#818384]"><button type="button" aria-label="Upvote" onClick={() => setVotedPosts((current) => ({ ...current, [post.id]: current[post.id] === "up" ? undefined : "up" }))} className={votedPosts[post.id] === "up" ? "text-[#ff4500]" : "hover:text-[#ff4500]"}>▲</button><span className="font-space-mono text-xs">{12 + post.id.length % 88 + (votedPosts[post.id] ? 1 : 0)}</span><button type="button" aria-label="Downvote" onClick={() => setVotedPosts((current) => ({ ...current, [post.id]: current[post.id] === "down" ? undefined : "down" }))} className={votedPosts[post.id] === "down" ? "text-[#7193ff]" : "hover:text-[#7193ff]"}>▼</button></div><div className="min-w-0 flex-1"><div className="flex items-center gap-2 text-xs text-[#818384]"><span className="font-bold text-white">u/{fanAccount}</span><span>·</span><span>{displayGameDate(post.publishedAt)}</span></div><p className="mt-2 text-[15px] text-[#d7dadc]">{post.comment}</p><div className="mt-3 flex gap-5 text-xs font-bold text-[#818384]"><button type="button" onClick={() => togglePostState(setSavedPosts, post.id)} className={savedPosts[post.id] ? "text-white" : "hover:text-white"}>🔖 Save</button><button type="button" onClick={() => togglePostState(setRepostedPosts, post.id)} className={repostedPosts[post.id] ? "text-white" : "hover:text-white"}>↗ Share</button></div></div></article>;
     if (activePlatform === "instagram") return <article key={post.id} className="overflow-hidden border-b border-white/10 bg-[#000]"><div className="flex items-center gap-3 px-4 py-3"><div className="flex size-8 items-center justify-center rounded-full bg-gradient-to-tr from-[#f09433] via-[#dc2743] to-[#bc1888] text-xs font-bold text-white">{fanAccount[0]}</div><span className="font-semibold text-white">{fanAccount}</span><span className="ml-auto text-white">•••</span></div><div className="flex min-h-40 items-center bg-gradient-to-br from-[#241329] via-[#321328] to-[#19152d] px-8 py-10"><p className="text-lg font-semibold leading-7 text-white">{post.comment}</p></div><div className="px-4 py-3"><div className="flex items-center gap-4 text-2xl text-white"><button type="button" aria-label="Like" onClick={() => togglePostState(setLikedPosts, post.id)} className={likedPosts[post.id] ? "text-red-500" : "hover:text-red-400"}>♥</button><button type="button" aria-label="Share" onClick={() => togglePostState(setRepostedPosts, post.id)} className={repostedPosts[post.id] ? "text-sky-400" : "hover:text-sky-300"}>⌁</button><button type="button" aria-label="Save" onClick={() => togglePostState(setSavedPosts, post.id)} className={`ml-auto text-xl ${savedPosts[post.id] ? "text-amber-300" : "hover:text-amber-200"}`}><Bookmark size={20} fill={savedPosts[post.id] ? "currentColor" : "none"} /></button></div><p className="mt-1 text-xs text-white/65">{baseMetric(post.id, 3) + (likedPosts[post.id] ? 1 : 0)} likes</p><p className="mt-2 text-xs font-semibold text-white">{post.tag}</p><p className="mt-1 text-xs text-white/60">View all comments · {displayGameDate(post.publishedAt)}</p></div></article>;
     return <article key={post.id} className="border-b border-white/10 bg-black px-4 py-4"><div className="flex gap-3"><div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-white text-sm font-bold text-black">{fanAccount[0]}</div><div className="min-w-0 flex-1"><div className="flex items-center gap-2"><span className="font-bold text-white">{fanAccount}</span><span className="text-white/45">· {displayGameDate(post.publishedAt)}</span><span className="ml-auto text-white/50">•••</span></div><p className="mt-1 text-[15px] text-white/90">{post.comment} <span className="text-sky-400">#{post.tag}</span></p><div className="mt-3 flex justify-between text-xs text-white/45"><span>💬 Reply</span><button type="button" onClick={() => togglePostState(setRepostedPosts, post.id)} className={repostedPosts[post.id] ? "text-emerald-400" : "hover:text-white"}>↻ {repostedPosts[post.id] ? "Reposted" : "Repost"}</button><button type="button" onClick={() => togglePostState(setLikedPosts, post.id)} className={likedPosts[post.id] ? "text-pink-400" : "hover:text-pink-300"}>♡ {likedPosts[post.id] ? "Liked" : "Like"}</button><button type="button" onClick={() => togglePostState(setSavedPosts, post.id)} className={savedPosts[post.id] ? "text-amber-300" : "hover:text-white"}>🔖</button></div></div></div></article>;

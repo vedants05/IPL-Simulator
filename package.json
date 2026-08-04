@@ -13,7 +13,8 @@
     "calibrate:seasons": "tsx scripts/calibrate_seasons.ts",
     "calibrate:career": "tsx scripts/calibrate_career_lifecycle.ts",
     "test:club-figures": "tsx --test lib/data/clubFigures.test.ts",
-    "test:player-history": "tsx --test lib/logic/playerHistory.test.ts"
+    "test:player-history": "tsx --test lib/logic/playerHistory.test.ts",
+    "test:news": "tsx --test lib/data/newsTemplates.test.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.0",

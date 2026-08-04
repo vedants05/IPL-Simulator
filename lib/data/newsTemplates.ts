@@ -35,6 +35,10 @@ export interface ArticleTemplate {
   requiresPurpleCap1?: boolean;
   requiresRunsBenchmark500?: boolean;
   requiresWicketsBenchmark20?: boolean;
+  /** Internal per-retiree expansion key used by the news feed. */
+  retirementTargetId?: string;
+  /** Optional career-appearance band for specialist retirement coverage. */
+  retirementMatchBand?: "none" | "cameo";
 }
 
 export const newsTemplates: ArticleTemplate[] = [
@@ -489,7 +493,7 @@ export const newsTemplates: ArticleTemplate[] = [
     title: "Tactical misfires leave {userTeamName} exposed in {winMargin} loss to {opponentName}",
     subheading: "Outclassed & Exposed",
     chaseOrDefend: "defending",
-    content: "A comprehensive review will be required in the {userTeamName} dressing room after an unravelling at {venue} saw them slump to a {winMargin} defeat against {opponentName}. Choosing to {userChoiceOption}, {userTeamName} found themselves immediately under pressure, managing only {userPowerplayRuns}/{userPowerplayWickets} in the powerplay. The failure to build partnerships proved costly as they collapsed to {userRuns} all out, with {oppStarBowler} picking up {oppStarBowlerWickets} for {oppStarBowlerRuns}. In response, {opponentName} made light work of the task, coasting past the target in just {opponentOversFaced} overs. The result leaves {userTeamName} with a severely dented Net Run Rate of {userNrr}."
+    content: "A comprehensive review will be required in the {userTeamName} dressing room after an unravelling at {venue} saw them slump to a {winMargin} defeat against {opponentName}. Choosing to {userChoiceOption}, {userTeamName} found themselves immediately under pressure, managing only {userPowerplayRuns}/{userPowerplayWickets} in the powerplay. Their innings finished at {userRuns}/{userWickets}, with {oppStarBowler} taking {oppStarBowlerWickets} for {oppStarBowlerRuns}. {opponentName} completed the chase in {opponentOversFaced} overs. The result leaves {userTeamName} with a Net Run Rate of {userNrr}."
   },
   {
     id: "art-cricinfo-loss-v2",
@@ -862,7 +866,7 @@ export const newsTemplates: ArticleTemplate[] = [
     title: "ABSOLUTE CINEMA! {userTeamName} snatch victory from {opponentName} in final-over drama",
     subheading: "Heart-Stopper at the Death!",
     chaseOrDefend: "defending",
-    content: "Unbelievable scenes at {venue}! You couldn't write a script like this as {userTeamName} pulled off a jaw-dropping {winMargin} win over {opponentName}! With {opponentName} needing {lastOverRequiredRuns} off the final over and the crowd on their feet, {userDeathBowler} produced absolute magic under immense pressure. Every ball felt like a movie moment, but a brilliant boundary-line catch from {fielderName} on the penultimate ball sealed the fate of the match. The stadium erupted as {userTeamName} celebrated a miraculous escape!"
+    content: "A close finish at {venue} saw {userTeamName} complete a {winMargin} win over {opponentName}. With {opponentName} needing {lastOverRequiredRuns} from the final over, {userDeathBowler} closed out the match under pressure. The verified scorecard confirms a narrow result for {userTeamName}."
   },
   {
     id: "art-cricbuzz-thrill-v2",
@@ -910,7 +914,7 @@ export const newsTemplates: ArticleTemplate[] = [
     title: "Outplayed and outgunned: {userTeamName} blown away by rampant {opponentName}",
     subheading: "Back to the Drawing Board",
     chaseOrDefend: "chasing",
-    content: "It was men against boys at {venue} as {opponentName} handed {userTeamName} a brutal {winMargin} beating. Nothing went right for {userTeamName}their batting lineup crumpled under relentless pressure, failing to hit a single boundary between overs {dryOversRange}. Chasing {opponentRuns}, {userTeamName} never got going and folded tamely for {userRuns}. Captain {userCaptainName} didn't hold back in the post-match presentation, admitting the team was \"outplayed in all three departments.\" Heavy decisions lie ahead for squad selection."
+    content: "At {venue}, {opponentName} handed {userTeamName} a {winMargin} defeat. {userTeamName} failed to hit a boundary between overs {dryOversRange} and finished on {userRuns} while chasing {opponentRuns}. The verified scorecard points to a difficult batting performance and leaves selection questions before the next fixture."
   },
 
   // ==================== Cricbuzz (cricbuzz) Heartbreak Loss Articles ====================
@@ -989,7 +993,7 @@ export const newsTemplates: ArticleTemplate[] = [
     timestamp: "12 hours ago",
     title: "GROUP STAGE WRAP! The elite four advance as heavyweights crash out!",
     subheading: "Season Highs & Lows Wrap-Up",
-    content: "What an unbelievable 14-match marathon! The group stage has officially wrapped up, and the playoff line-up is locked in! {topTeamName} seal the top spot in style with {topTeamWins} wins, while {qualifier4Name} squeezed into 4th place after a dramatic final week. But the real shockwave is the total elimination of {strugglingGoliathName}, who finish {strugglingGoliathPosition}th after a disastrous campaign. From {orangeCapPlayerName}'s blazing century to {purpleCapPlayerName}'s unforgettable 5-wicket haul, this league stage delivered endless drama. Now, it's do-or-die knockout time!"
+    content: "The group stage has officially wrapped up and the playoff line-up is locked in. {topTeamName} finish first with {topTeamWins} wins, while {qualifier4Name} take 4th place. {strugglingGoliathName} finish {strugglingGoliathPosition}th. {orangeCapPlayerName} lead the run chart with {orangeCapRuns} runs and {purpleCapPlayerName} lead the wicket chart with {purpleCapWickets} wickets as the tournament moves into the knockouts."
   },
   {
     id: "art-cricbuzz-post-v2",
@@ -1142,7 +1146,7 @@ export const newsTemplates: ArticleTemplate[] = [
     timestamp: "3 hours ago",
     title: "RIP-ROARING FIVE-FER! {playerName} shreds {opponentShort} with {playerWickets}/{playerRuns}!",
     subheading: "Wicket-Taking Destruction",
-    content: "{playerName} put on an absolute bowling clinic today at {venue}! {playerName} put on an absolute bowling clinic today, ripping through {opponentShort} like a bowling ball through pins to finish with dream figures of {playerWickets} for {playerRuns}! The stumps were flying everywhere as {playerName} produced raw pace and unplayable movement. Every time the captain handed him the ball, a wicket fell! {opponentShort} had no answers and folded for just {opponentRuns}. Give this man the Match Ball right now!"
+    content: "{playerName} produced a five-wicket performance at {venue}, finishing with verified figures of {playerWickets} for {playerRuns}. The spell helped restrict {opponentShort} to {opponentRuns} and stands as the decisive bowling contribution recorded in the scorecard."
   },
   {
     id: "art-cricbuzz-fivefer-v2",
@@ -1205,7 +1209,7 @@ export const newsTemplates: ArticleTemplate[] = [
     timestamp: "6 hours ago",
     title: "A STAR IS BORN! Young prodigy {playerName} steals the show at {venue}!",
     subheading: "A Star Is Born",
-    content: "Remember the name! {playerAge}-year-old {playerName} announced himself on the big stage today with an astonishing Player of the Match performance for {playerTeamShort}! Showing zero big-stage fright, the youngster delivered {playerPerformanceSummary} against international opposition. The entire dugout gave him a standing ovation as he walked off the field. {playerTeamShort} have found an absolute diamond in the rough, and this is only the beginning of his journey!"
+    content: "{playerAge}-year-old {playerName} delivered a standout performance for {playerTeamShort}: {playerPerformanceSummary}. The scorecard provides the first meaningful evidence of the youngster's contribution at this level and earns him a place in the current rookie spotlight."
   },
 
   // ==================== Cricbuzz (cricbuzz) Veteran Twilight / Retirement ====================
@@ -1221,7 +1225,7 @@ export const newsTemplates: ArticleTemplate[] = [
     timestamp: "8 hours ago",
     title: "THANK YOU LEGEND! Standing ovation at {venue} as {playerName} bids farewell!",
     subheading: "Emotional Farewell Tribute",
-    content: "There wasn't a dry eye in the house! Legend of the game {playerName} walked off the field for the very last time today, bringing an end to an extraordinary career. Both teams formed a guard of honor as {playerName} acknowledged a thunderous standing ovation from the crowd at {venue}. With {playerCareerMatches} matches, {playerCareerRuns} runs, and {playerCareerTrophies} trophies to his name, {playerName} leaves behind a legacy that will inspire generations. Thank you for the endless memories, Champion!"
+    content: "There wasn't a dry eye in the house! Legend of the game {playerName} walked off the field for the very last time today, bringing an end to an extraordinary career. Both teams formed a guard of honor as {playerName} acknowledged a thunderous standing ovation from the crowd at {venue}. With {playerCareerMatches} matches and {playerCareerRuns} runs, {playerName} leaves behind a legacy that will inspire generations. Thank you for the endless memories, Champion!"
   },
 
   // ==================== IPL Daily (newsletter) Normal Win Articles ====================
@@ -1453,7 +1457,7 @@ export const newsTemplates: ArticleTemplate[] = [
     timestamp: "4 hours ago",
     title: "6 IN A ROW!  {surgingTeamName} ARE TOTALLY UNBEATABLE!",
     subheading: "Record Breakers",
-    content: "MAKE IT {teamConsecutiveWins} WINS IN A ROW! {surgingTeamName} are writing history right now after completing this {teamConsecutiveWins}-game run! {hotPlayerName} took home Player of the Match again with an unreal display! Is this the greatest winning streak of all time? Sound off in the comments!"
+    content: "MAKE IT {teamConsecutiveWins} WINS IN A ROW! {surgingTeamName} have completed a {teamConsecutiveWins}-game winning run. {hotPlayerName} leads the verified contribution across the streak with {hotPlayerStreakRuns} runs. Can the run continue?"
   },
   {
     id: "art-newsletter-extsurge-v2",
@@ -1623,7 +1627,7 @@ export const newsTemplates: ArticleTemplate[] = [
     timestamp: "8 hours ago",
     title: "LEGEND RETIRES!  Thank you for everything, {playerName}!",
     subheading: "Legend Farewell Post",
-    content: "END OF AN ERA! Legend {playerName} has officially played his final match! Career stats: {playerCareerMatches} Matches | {playerCareerRuns} Runs | {playerCareerWickets} Wickets | {playerCareerTrophies} Titles! Leave your favorite memory of {playerName} in the comments below!"
+    content: "END OF AN ERA! Legend {playerName} has officially played his final match! Career stats: {playerCareerMatches} Matches | {playerCareerRuns} Runs | {playerCareerWickets} Wickets! Leave your favorite memory of {playerName} in the comments below!"
   },
 
   // ==================== Generic / Shared Articles ====================
@@ -1634,11 +1638,11 @@ export const newsTemplates: ArticleTemplate[] = [
     author: "Ian Bishop",
     readTime: "6 min read",
     imageMockupPrompt: "Action photo of a veteran cricketer acknowledging the crowd with raised bat, golden sun ray highlight",
-    triggerType: "retire_legend_bowler",
+    triggerType: "player_retirement",
     timestamp: "8 hours ago",
-    title: "End of an Era: {retireeName} Prepares to Bow Out After Outstanding Career",
-    subheading: "The veteran {retireeRole} (Age {retireeAge}, Rating {retireeRating}) confirms retirement papers are signed.",
-    content: "One of the game's finest legends, {retireeName}, has officially confirmed that this season will be their last. Having represented franchises with distinction, the {retireeAge}-year-old decision marks the closure of an era. 'It's time for the next generation to step forward,' they said in a statement. Roster specialists note that their departure leaves a massive void, both in terms of dressing room leadership and tactical execution."
+    title: "{retireeName} Announces Retirement from the IPL",
+    subheading: "The {retireeRole}, aged {retireeAge}, brings their IPL career to a close.",
+    content: "{retireeName} has officially retired from the IPL. The career record shows {playerCareerMatches} matches across {playerCareerSeasons} seasons, with {playerCareerRuns} runs and {playerCareerWickets} wickets. The announcement confirms the end of their playing career and allows the league to preserve the final record exactly as it stood on retirement."
   },
   {
     id: "art-player-news-milestone",
@@ -1708,7 +1712,7 @@ export const newsTemplates: ArticleTemplate[] = [
     timestamp: "3 hours ago",
     title: "Structural lag: Why {strugglingTeamShort} are floundering in the early standings",
     subheading: "Early Season Deficits",
-    content: "Through the opening block of {seasonMatchesPlayed} league matches, pre-season contenders {strugglingTeamName} find themselves languishing in {strugglingTeamPosition}th position with just {strugglingTeamPoints} points. A granular look at their opening outings highlights a failure to adapt to field restrictions, scoring a league-worst {strugglingTeamPowerplayRunRate} runs per over during the powerplay. Additionally, their bowling unit has allowed opponents an average opening stand of {strugglingTeamAvgOpenerStand} runs. While {earlyStrugglingTeamRemainingGames} league games remain to rectify these tactical misalignments, dropping early points forces {strugglingTeamShort} into high-pressure scenarios earlier than anticipated."
+    content: "Through the opening block of {seasonMatchesPlayed} league matches, {strugglingTeamName} find themselves in {strugglingTeamPosition}th position with {strugglingTeamPoints} points. Their batting powerplay run rate is {strugglingTeamPowerplayRunRate}, while their bowling unit has allowed opponents an average opening stand of {strugglingTeamAvgOpenerStand} runs. With {earlyStrugglingTeamRemainingGames} league games remaining, the verified early numbers show where {strugglingTeamShort} need to improve."
   },
   {
     id: "art-early-table-shakeup",
@@ -1822,7 +1826,7 @@ export const newsTemplates: ArticleTemplate[] = [
     timestamp: "3 hours ago",
     title: "DO-OR-DIE! {contenderTeamShort} face final chance saloon in playoff sprint!",
     subheading: "Must-Win Scenarios",
-    content: "There is no safety net left! {contenderTeamName} have backed themselves into a corner, needing to win both of their final two group games AND rely on {rivalTeamShort} losing to squeeze into the playoffs! Captain {contenderTeamCaptainName} summed it up best: \"Every game is a final for us now.\" The pressure is sky-high, the stakes are enormous, and one single mistake will send them packing! Can they pull off a miraculous late run?"
+    content: "{contenderTeamName} remain outside the qualifying positions as the league phase approaches its conclusion. Their route into the top four depends on winning their remaining fixtures and on results involving {rivalTeamShort}. The current table confirms that their margin for error is now extremely small."
   },
   {
     id: "art-playoff-nrr-calc",
@@ -2083,6 +2087,42 @@ export const newsTemplates: ArticleTemplate[] = [
     content: "Halfway mark reached! {topTeamName} are crushing it at the top of the table with {topTeamPoints} points, powered by Orange Cap contender {orangeCapPlayerName} ({orangeCapRuns} runs) and Purple Cap leader {purpleCapPlayerName} ({purpleCapWickets} wickets)! Can anyone dethrone {topTeamShort} in the second half? Sound off in the comments!"
   },
 
+  // ==================== Low-appearance Retirement Templates ====================
+  ...(["cricinfo", "cricbuzz", "newsletter"] as const).flatMap((brand) => ([
+    {
+      id: `art-retire-no-games-${brand}`,
+      category: "player_news" as const,
+      tag: "Retirement",
+      author: brand === "cricinfo" ? "ESPNcricinfo Staff" : brand === "cricbuzz" ? "Cricbuzz Staff" : "IPL Daily Editor",
+      readTime: brand === "newsletter" ? "1 min read" : "2 min read",
+      imageMockupPrompt: "Respectful retirement announcement with a packed cricket kit bag",
+      triggerType: "player_retirement" as const,
+      retirementMatchBand: "none" as const,
+      brand,
+      timestamp: "10 hours ago",
+      title: brand === "newsletter"
+        ? "CAREER UPDATE: {playerName} retires without an IPL appearance"
+        : "{playerName} retires without making an IPL appearance",
+      subheading: "Retirement confirmed",
+      content: "{playerName} has retired at age {playerAge}. Although part of the wider IPL player pool, {playerName} did not make a league appearance, leaving an official record of 0 IPL matches. We wish {playerName} well for the next chapter."
+    },
+    {
+      id: `art-retire-cameo-${brand}`,
+      category: "player_news" as const,
+      tag: "Retirement",
+      author: brand === "cricinfo" ? "ESPNcricinfo Staff" : brand === "cricbuzz" ? "Cricbuzz Staff" : "IPL Daily Editor",
+      readTime: brand === "newsletter" ? "1 min read" : "2 min read",
+      imageMockupPrompt: "Cricketer acknowledging the crowd after a brief IPL career",
+      triggerType: "player_retirement" as const,
+      retirementMatchBand: "cameo" as const,
+      brand,
+      timestamp: "10 hours ago",
+      title: "{playerName} retires after a brief {playerCareerMatches}-match IPL career",
+      subheading: "A short IPL spell comes to an end",
+      content: "{playerName} has retired at age {playerAge} after {playerCareerMatches} IPL appearances. The final record is {playerCareerRuns} runs and {playerCareerWickets} wickets. The figures reflect a brief opportunity in the league without overstating the scale of the career."
+    },
+  ])),
+
   // ==================== Audited Early Retirement (Age < 30) Templates ====================
   // Role 1: Top-Order Batter
   {
@@ -2229,7 +2269,7 @@ export const newsTemplates: ArticleTemplate[] = [
     timestamp: "12 hours ago",
     title: "Workload toll: Specialist bowler {playerName} retires at age {playerAge}",
     subheading: "Bowler Retirement",
-    content: "Specialist bowler {playerName} has officially called time on his IPL career at {playerAge} years of age following an injury-plagued {playerCareerSeasons} seasons. Featuring in {playerCareerMatches} matches as a primary bowling option, {playerName} collected {playerCareerWickets} wickets at an economy rate of {playerCareerEconomy} and a strike rate of {playerCareerBowlingStrikeRate}. Physical strain and recurring injury cycles ultimately forced the young bowler to step away."
+    content: "Specialist bowler {playerName} has officially called time on his IPL career at {playerAge} years of age. Across {playerCareerSeasons} seasons and {playerCareerMatches} matches, {playerName} collected {playerCareerWickets} wickets at an economy rate of {playerCareerEconomy} and a strike rate of {playerCareerBowlingStrikeRate}. Those verified figures form the final record of the young bowler's IPL career."
   },
   {
     id: "art-retire-young-bowler-cricbuzz",
@@ -2243,7 +2283,7 @@ export const newsTemplates: ArticleTemplate[] = [
     timestamp: "10 hours ago",
     title: "BOWLER STEPS DOWN! Young bowler {playerName} retires at {playerAge}!",
     subheading: "Bowler Farewell",
-    content: "Tough news from the bowling camp! Young bowler {playerName} has called it a career at just {playerAge} years of age. Across {playerCareerSeasons} seasons with {playerTeamShort}, he picked up {playerCareerWickets} wickets in {playerCareerMatches} games. Injuries hit hard, but he always gave 100% on the field!"
+    content: "Young bowler {playerName} has called time on his IPL career at {playerAge}. Across {playerCareerSeasons} seasons, he took {playerCareerWickets} wickets in {playerCareerMatches} matches, with most seasons recorded for {playerTeamShort}."
   },
   {
     id: "art-retire-young-bowler-newsletter",
@@ -2257,7 +2297,7 @@ export const newsTemplates: ArticleTemplate[] = [
     timestamp: "8 hours ago",
     title: "BOWLING EXIT! {playerName} retires at just {playerAge} years old!",
     subheading: "Bowler Retirement",
-    content: "INJURY TOLL! Specialist bowler {playerName} ({playerAge} yrs) has announced his retirement from all cricket! Stats: {playerCareerWickets} Wickets in {playerCareerMatches} Games for {playerTeamShort}! Leave your best wishes below!"
+    content: "CAREER UPDATE! Specialist bowler {playerName} ({playerAge} yrs) has announced his IPL retirement. Final IPL stats: {playerCareerWickets} wickets in {playerCareerMatches} matches, with {playerTeamShort} as his most-represented franchise."
   },
 
   // ==================== Audited OK Veteran (Age 30-33) Templates ====================
@@ -2274,7 +2314,7 @@ export const newsTemplates: ArticleTemplate[] = [
     timestamp: "12 hours ago",
     title: "Top-order regular {playerName} calls time on {playerCareerSeasons}-season IPL career",
     subheading: "Top-Order Retirement",
-    content: "Top-order batter {playerName} has officially announced his retirement from IPL cricket at age {playerAge}. Across {playerCareerMatches} matches spanning {playerCareerSeasons} seasons, {playerName} compiled {playerCareerRuns} runs at an average of {playerCareerAverage} and a strike rate of {playerCareerStrikeRate}. Primarily deployed in powerplays, he registered multiple crucial half-centuries, acting as a dependable platform-setter for {playerTeamShort}. His retirement brings a close to a solid campaign as a trusted top-order rotation option."
+    content: "Top-order batter {playerName} has officially announced his retirement from IPL cricket at age {playerAge}. Across {playerCareerMatches} matches spanning {playerCareerSeasons} seasons, {playerName} compiled {playerCareerRuns} runs at an average of {playerCareerAverage} and a strike rate of {playerCareerStrikeRate}. His recorded top-order role and career figures close a spell most frequently associated with {playerTeamShort}."
   },
   {
     id: "art-retire-ok-toporder-cricbuzz",
@@ -2583,7 +2623,7 @@ export const newsTemplates: ArticleTemplate[] = [
     timestamp: "12 hours ago",
     title: "Strike-rate elite: Frontline bowler {playerName} retires with {playerCareerWickets} scalps",
     subheading: "Bowler Retirement",
-    content: "Frontline bowler {playerName} has retired from the IPL after a distinguished {playerCareerSeasons}-season career. Across {playerCareerMatches} matches as {playerTeamShort}'s primary bowling option, {playerName} picked up {playerCareerWickets} wickets at an economy rate of {playerCareerEconomy} and a strike rate of {playerCareerBowlingStrikeRate}. Renowned for breaking key partnerships in powerplays and executing tight death spells, he registered multiple match-winning spells. His departure marks the end of an era for {playerTeamShort}'s bowling attack."
+    content: "Frontline bowler {playerName} has retired from the IPL after a {playerCareerSeasons}-season career. Across {playerCareerMatches} matches, {playerName} took {playerCareerWickets} wickets at an economy rate of {playerCareerEconomy} and a strike rate of {playerCareerBowlingStrikeRate}. The verified record is most closely associated with {playerTeamShort}, the franchise represented across the most seasons."
   },
   {
     id: "art-retire-good-bowler-cricbuzz",
@@ -2760,7 +2800,7 @@ export const newsTemplates: ArticleTemplate[] = [
     timestamp: "12 hours ago",
     title: "Veteran bowler {playerName} steps down with {playerCareerWickets} IPL wickets",
     subheading: "Bowler Retirement",
-    content: "Specialist bowler {playerName} has officially retired from the IPL at age {playerAge}. Over {playerCareerSeasons} seasons and {playerCareerMatches} matches as {playerTeamShort}'s primary bowling option, {playerName} claimed {playerCareerWickets} wickets at an economy rate of {playerCareerEconomy} and a strike rate of {playerCareerBowlingStrikeRate}. Known for his tactical discipline in holding middle-overs pressure, he finishes his career with multiple match-winning spells to his name."
+    content: "Specialist bowler {playerName} has officially retired from the IPL at age {playerAge}. Over {playerCareerSeasons} seasons and {playerCareerMatches} matches, {playerName} claimed {playerCareerWickets} wickets at an economy rate of {playerCareerEconomy} and a strike rate of {playerCareerBowlingStrikeRate}. His longest franchise association was with {playerTeamShort}."
   },
   {
     id: "art-retire-vet-normal-bowler-cricbuzz",
@@ -2805,7 +2845,7 @@ export const newsTemplates: ArticleTemplate[] = [
     timestamp: "12 hours ago",
     title: "Hall of Fame: {playerName} retires as one of the greatest batters in IPL history",
     subheading: "Hall of Fame",
-    content: "A titan of modern cricket has stepped away. Top-order maestro {playerName} has officially retired from the IPL, closing a monumental {playerCareerSeasons}-season career that spanned {playerCareerMatches} matches and yielded {playerCareerRuns} runs at an average of {playerCareerAverage} and a strike rate of {playerCareerStrikeRate}. Crucial to {playerTeamShort}'s {playerCareerTrophies} title-winning campaigns, {playerName} dominated in the top order, winning multiple Player of the Match awards. Beyond the staggering volume of runs, his tactical mastery in high-pressure playoff matches sets the benchmark for future generations."
+    content: "A titan of modern cricket has stepped away. Top-order maestro {playerName} has officially retired from the IPL, closing a monumental {playerCareerSeasons}-season career that spanned {playerCareerMatches} matches and yielded {playerCareerRuns} runs at an average of {playerCareerAverage} and a strike rate of {playerCareerStrikeRate}. A central figure for {playerTeamShort}, {playerName} dominated in the top order. Beyond the staggering volume of runs, his tactical mastery in high-pressure matches sets the benchmark for future generations."
   },
   {
     id: "art-retire-legend-toporder-cricbuzz",
@@ -2819,7 +2859,7 @@ export const newsTemplates: ArticleTemplate[] = [
     timestamp: "10 hours ago",
     title: "END OF AN ERA! Legend {playerName} retires from IPL cricket!",
     subheading: "Legend Retires",
-    content: "The game will never be quite the same! Absolute icon of cricket {playerName} has officially retired, bringing down the curtain on a legendary 10+ year IPL career! With {playerCareerMatches} matches, {playerCareerRuns} runs, and {playerCareerTrophies} IPL trophies, {playerName} gave millions of fans moments they will cherish forever. Oppositions feared him, teammates revered him, and fans adored him. Thank you for the magic, King {playerName}!"
+    content: "The game will never be quite the same! Absolute icon of cricket {playerName} has officially retired, bringing down the curtain on a legendary 10+ year IPL career! Across {playerCareerMatches} matches and {playerCareerRuns} runs, {playerName} gave millions of fans moments they will cherish forever. Oppositions feared him, teammates revered him, and fans adored him. Thank you for the magic, {playerName}!"
   },
   {
     id: "art-retire-legend-toporder-newsletter",
@@ -2833,7 +2873,7 @@ export const newsTemplates: ArticleTemplate[] = [
     timestamp: "8 hours ago",
     title: "THE GOAT RETIRES! Thank you for everything, {playerName}!",
     subheading: "GOAT Retires",
-    content: "ICON. LEGEND. HALL OF FAMER! {playerName} has officially RETIRED from the IPL! LEGENDARY STATS: {playerCareerMatches} Matches | {playerCareerRuns} Runs | Average: {playerCareerAverage} | {playerCareerTrophies} IPL Titles! Drop a 👑 in the comments to salute the ultimate legend of the game!"
+    content: "ICON. LEGEND. HALL OF FAMER! {playerName} has officially RETIRED from the IPL! LEGENDARY STATS: {playerCareerMatches} Matches | {playerCareerRuns} Runs | Average: {playerCareerAverage}! Drop a 👑 in the comments to salute an enduring legend of the game!"
   },
 
   // Role 2: Middle-Order Batter
@@ -2849,7 +2889,7 @@ export const newsTemplates: ArticleTemplate[] = [
     timestamp: "12 hours ago",
     title: "The art of the finish: Legendary middle-order enforcer {playerName} retires",
     subheading: "Finishing Icon",
-    content: "One of the most destructive middle-order finishers in league history, {playerName}, has officially called time on his IPL career. Accumulating {playerCareerRuns} runs across {playerCareerMatches} matches over {playerCareerSeasons} seasons, {playerName} operated primarily in positions 4 through 7. He redefined late-overs batting, boasting an incredible career strike rate of {playerCareerStrikeRate} and clearing the ropes countless times. Instrumental in {playerTeamShort} securing {playerCareerTrophies} IPL championships, his composure in extreme run-chase situations remains unmatched in modern franchise cricket."
+    content: "One of the most destructive middle-order finishers in league history, {playerName}, has officially called time on his IPL career. Accumulating {playerCareerRuns} runs across {playerCareerMatches} matches over {playerCareerSeasons} seasons, {playerName} operated primarily in positions 4 through 7. He redefined late-overs batting, boasting a career strike rate of {playerCareerStrikeRate}. His composure in extreme run-chase situations made him a major figure for {playerTeamShort}."
   },
   {
     id: "art-retire-legend-middle-cricbuzz",
@@ -2863,7 +2903,7 @@ export const newsTemplates: ArticleTemplate[] = [
     timestamp: "10 hours ago",
     title: "LEGENDARY FINISHER CALLS IT A CAREER! {playerName} steps down after {playerCareerSeasons} epic seasons!",
     subheading: "Finisher Legend",
-    content: "An absolute giant of the game bids farewell! The ultimate clutch hero {playerName} has officially retired from the IPL. For over a decade, whenever {playerTeamShort} needed a miracle at the death, {playerName} delivered. With {playerCareerMatches} matches, {playerCareerRuns} runs, and {playerCareerTrophies} IPL trophies under his belt, he walks away as a true legend of T20 cricket. Thanks for all the impossible wins!"
+    content: "An absolute giant of the game bids farewell! Clutch hero {playerName} has officially retired from the IPL. Across {playerCareerMatches} matches and {playerCareerRuns} runs, he became a trusted figure for {playerTeamShort} in high-pressure finishes. Thanks for all the memories!"
   },
   {
     id: "art-retire-legend-middle-newsletter",
@@ -2877,7 +2917,7 @@ export const newsTemplates: ArticleTemplate[] = [
     timestamp: "8 hours ago",
     title: "LEGENDARY FINISHER RETIRES! Thank you, {playerName}!",
     subheading: "Clutch King Retires",
-    content: "UNMATCHED CLUTCH KING! {playerName} ({playerAge} yrs) has officially retired from IPL cricket! FINAL TALLY: {playerCareerMatches} Matches | {playerCareerRuns} Runs | Strike Rate: {playerCareerStrikeRate} | {playerCareerTrophies} Titles for {playerTeamShort}! Leave a 👑 in the comments for the GOAT of finishing!"
+    content: "CLUTCH ICON STEPS AWAY! {playerName} ({playerAge} yrs) has officially retired from IPL cricket! FINAL TALLY: {playerCareerMatches} Matches | {playerCareerRuns} Runs | Strike Rate: {playerCareerStrikeRate} for {playerTeamShort}! Leave a 👑 in the comments for a great finisher!"
   },
 
   // Role 3: Wicketkeeper-Batter
@@ -2893,7 +2933,7 @@ export const newsTemplates: ArticleTemplate[] = [
     timestamp: "12 hours ago",
     title: "Benchmark of excellence: Wicketkeeping icon {playerName} ends historic IPL career",
     subheading: "WK Icon Retires",
-    content: "Wicketkeeping titan {playerName} has officially retired from IPL competition after {playerCareerSeasons} landmark seasons. Featuring in {playerCareerMatches} matches, {playerName} sets the gold standard for keeper-batters, providing elite glovework behind the stumps alongside {playerCareerRuns} runs. His lightning-fast reactions, paired with {playerCareerTrophies} IPL championship victories for {playerTeamShort}, seal his status as an all-time great of the competition."
+    content: "Wicketkeeping titan {playerName} has officially retired from IPL competition after {playerCareerSeasons} landmark seasons. Featuring in {playerCareerMatches} matches, {playerName} combined glovework behind the stumps with {playerCareerRuns} runs. His longevity for {playerTeamShort} seals his status as one of the competition's notable keeper-batters."
   },
   {
     id: "art-retire-legend-keeper-cricbuzz",
@@ -2907,7 +2947,7 @@ export const newsTemplates: ArticleTemplate[] = [
     timestamp: "10 hours ago",
     title: "LEGEND OF THE GLOVES! Master keeper-batter {playerName} retires!",
     subheading: "Keeper Legend",
-    content: "End of a legendary era! The ultimate keeper-batter {playerName} has officially retired from the IPL after an extraordinary {playerCareerSeasons}-season career! With {playerCareerMatches} matches, {playerCareerRuns} runs, and {playerCareerTrophies} IPL trophies, {playerName} redefined the role of a wicketkeeper-finisher forever. The crowds will forever echo his name!"
+    content: "End of a legendary era! Keeper-batter {playerName} has officially retired from the IPL after an extraordinary {playerCareerSeasons}-season career! With {playerCareerMatches} matches and {playerCareerRuns} runs, {playerName} made a lasting mark on the wicketkeeper-batter role."
   },
   {
     id: "art-retire-legend-keeper-newsletter",
@@ -2921,7 +2961,7 @@ export const newsTemplates: ArticleTemplate[] = [
     timestamp: "8 hours ago",
     title: "GREATEST KEEPER RETIRES! Salute to {playerName}!",
     subheading: "Wicketkeeping GOAT",
-    content: "THE GLOVES GO ON THE WALL! Icon {playerName} ({playerAge} yrs) has officially RETIRED! STATS OF A LEGEND: {playerCareerMatches} Matches | Runs: {playerCareerRuns} | Strike Rate: {playerCareerStrikeRate} | {playerCareerTrophies} Titles! Leave a 👑 in the comments to salute the GOAT behind the stumps!"
+    content: "THE GLOVES GO ON THE WALL! Icon {playerName} ({playerAge} yrs) has officially RETIRED! CAREER STATS: {playerCareerMatches} Matches | Runs: {playerCareerRuns} | Strike Rate: {playerCareerStrikeRate}! Leave a 👑 in the comments to salute a great behind the stumps!"
   },
 
   // Role 4: Primary Bowler
@@ -2937,7 +2977,7 @@ export const newsTemplates: ArticleTemplate[] = [
     timestamp: "12 hours ago",
     title: "Hall of Fame: {playerName} retires as one of the greatest bowlers in IPL history",
     subheading: "Bowling Legend",
-    content: "A titan of bowling has stepped down. {playerName} has officially retired from IPL cricket, closing a historic {playerCareerSeasons}-season career with {playerCareerWickets} wickets in {playerCareerMatches} matches at an economy rate of {playerCareerEconomy}. Essential to {playerTeamShort}'s {playerCareerTrophies} title-winning campaigns, {playerName} dominated across powerplay and death phases, producing multiple five-wicket hauls and maintaining an unmatched dot-ball rate."
+    content: "A titan of bowling has stepped down. {playerName} has officially retired from IPL cricket, closing a historic {playerCareerSeasons}-season career with {playerCareerWickets} wickets in {playerCareerMatches} matches at an economy rate of {playerCareerEconomy}. A major figure in {playerTeamShort}'s attack, {playerName} delivered sustained control and breakthrough threat across his career."
   },
   {
     id: "art-retire-legend-bowler-cricbuzz",
@@ -2951,7 +2991,7 @@ export const newsTemplates: ArticleTemplate[] = [
     timestamp: "10 hours ago",
     title: "LEGENDARY BOWL-OUT! All-time great {playerName} hangs up his boots!",
     subheading: "Bowling Icon",
-    content: "What an unbelievable career! Bowling icon {playerName} has officially called time on his IPL journey after picking up an astonishing {playerCareerWickets} wickets in {playerCareerMatches} matches over {playerCareerSeasons} iconic seasons! Spearheading {playerTeamShort}'s attack to {playerCareerTrophies} IPL titles, he delivered endless match-winning spells under extreme pressure. A true titan of the game!"
+    content: "What a career! Bowling icon {playerName} has officially called time on his IPL journey after picking up {playerCareerWickets} wickets in {playerCareerMatches} matches over {playerCareerSeasons} seasons! Spearheading {playerTeamShort}'s attack, he delivered memorable spells under pressure. A true titan of the game!"
   },
   {
     id: "art-retire-legend-bowler-newsletter",
@@ -2965,7 +3005,7 @@ export const newsTemplates: ArticleTemplate[] = [
     timestamp: "8 hours ago",
     title: "BOWLING GOAT RETIRES! Thank you for everything, {playerName}!",
     subheading: "Bowling GOAT",
-    content: "ALL-TIME WICKET KING STEPS DOWN! Legend {playerName} ({playerAge} yrs) has officially retired! LEGENDARY STATS: {playerCareerMatches} Matches | {playerCareerWickets} Wickets | Economy: {playerCareerEconomy} | {playerCareerTrophies} Titles for {playerTeamShort}! Drop a 👑 in the comments for the absolute legend!"
+    content: "WICKET-TAKING ICON STEPS DOWN! Legend {playerName} ({playerAge} yrs) has officially retired! CAREER STATS: {playerCareerMatches} Matches | {playerCareerWickets} Wickets | Economy: {playerCareerEconomy} for {playerTeamShort}! Drop a 👑 in the comments for the legend!"
   },
   {
     id: "art-post-auction-cricinfo",

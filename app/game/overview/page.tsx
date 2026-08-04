@@ -5692,6 +5692,7 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}`;
                   standings={standings}
                   retirements={lastCareerRetirements}
                   retirementHistory={careerRetirementHistory}
+                  retiredPlayerSnapshots={retiredPlayerSnapshots}
                   currentSeason={currentSeason}
                   fixtures={fixtures}
                   currentDate={currentDate}

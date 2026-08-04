@@ -82,6 +82,14 @@ export interface HistoricalPlayerSnapshot {
   potentialBatting?: number;
   currentBowling?: number;
   potentialBowling?: number;
+  isOpener?: boolean;
+  hasBattedAt3?: boolean;
+  hasBattedAt4?: boolean;
+  hasBattedAt5?: boolean;
+  hasBattedAt6?: boolean;
+  hasBattedAt7?: boolean;
+  isFinisher?: boolean;
+  isWicketkeeper?: boolean;
   retirementAge: number;
   retirementSeason: number;
   finalRating: number;
@@ -1061,6 +1069,14 @@ export function createHistoricalPlayerSnapshot(
     potentialBatting: player.potentialBatting,
     currentBowling: player.currentBowling,
     potentialBowling: player.potentialBowling,
+    isOpener: player.isOpener,
+    hasBattedAt3: player.hasBattedAt3,
+    hasBattedAt4: player.hasBattedAt4,
+    hasBattedAt5: player.hasBattedAt5,
+    hasBattedAt6: player.hasBattedAt6,
+    hasBattedAt7: player.hasBattedAt7,
+    isFinisher: player.isFinisher,
+    isWicketkeeper: player.isWicketkeeper,
     retirementAge: record.age,
     retirementSeason: record.season,
     finalRating: record.rating,
