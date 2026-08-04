@@ -5680,6 +5680,13 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}`;
                   retirements={lastCareerRetirements}
                   retirementHistory={careerRetirementHistory}
                   currentSeason={currentSeason}
+                  fixtures={fixtures}
+                  currentDate={currentDate}
+                  onViewAllFixtures={() => {
+                    setActiveTab("season");
+                    _setActiveSubTab("fixtures");
+                    router.push("/game/overview?tab=season&subtab=fixtures", { scroll: false });
+                  }}
                 />
               )}
 
