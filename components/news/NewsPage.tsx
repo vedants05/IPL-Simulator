@@ -28,6 +28,7 @@ import {
 import type { CareerRetirementRecord } from "@/lib/logic/careerLifecycle";
 import type { Player, Team } from "@/lib/types";
 import { newsTemplates } from "@/lib/data/newsTemplates";
+import type { ArticleTemplate } from "@/lib/data/newsTemplates";
 import type { UnifiedMatchRecord } from "@/components/match/MatchScorecardModal";
 import { getSeasonDates } from "@/lib/store/gameStore";
 import { getLeagueSeasonStartDate } from "@/lib/logic/leagueSchedule";
@@ -128,6 +129,17 @@ export default function NewsPage({
   const [activeScorecard, setActiveScorecard] = useState<any | null>(null);
 
   const userTeam = teams[userTeamId];
+  const resolveCaptainName = (teamId: string | undefined) => {
+    if (!teamId) return "the captain";
+    const team = teams[teamId];
+    const continuityCaptain = team?.captainContinuityId ? players[team.captainContinuityId] : undefined;
+    if (continuityCaptain) return continuityCaptain.name;
+    const squadCaptain = (team?.squad || [])
+      .map((id) => players[id])
+      .filter((player): player is Player => Boolean(player))
+      .sort((a, b) => (b.captaincy || 0) - (a.captaincy || 0) || (b.reputation || 0) - (a.reputation || 0))[0];
+    return squadCaptain?.name || "the captain";
+  };
 
   // Resolve final retirees list with fallback options so it's never empty, sorted by reputation descending
   const finalRetirees = useMemo(() => {
@@ -257,6 +269,7 @@ export default function NewsPage({
       return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
     };
     const disappearLimitDateKey = getDaysBeforeDate(seasonStartDateKey, 7); // 7 days before season starts
+    const fixtureAnnouncementDateKey = getDaysBeforeDate(seasonStartDateKey, 21);
 
     const formatDate = (dateKey: string) => {
       if (!dateKey) return "April 3, " + currentSeason;
@@ -294,6 +307,23 @@ export default function NewsPage({
         (f.scorecard?.inningsB?.batting || []).some((b: any) => b.id === playerId)
       )).length;
     };
+
+    // The valuation audit must follow a player who has actually entered the XI;
+    // an unsampled marquee signing should not receive a performance verdict.
+    const valuationTopBuy = Object.values(players)
+      .filter((player) => getPlayerSalary(player) > 0 && !player.isRetained)
+      .sort((a, b) => getPlayerSalary(b) - getPlayerSalary(a))[0];
+    const valuationTopBuyAppearances = valuationTopBuy ? getPlayerMatches(valuationTopBuy.id) : 0;
+    const valuationTopBuyMeaningfulGames = valuationTopBuy
+      ? fixtures.filter((fixture) => {
+        if (!fixture.played) return false;
+        const battingEntry = [...(fixture.scorecard?.inningsA?.batting || []), ...(fixture.scorecard?.inningsB?.batting || [])]
+          .find((entry) => entry.id === valuationTopBuy.id);
+        const bowlingEntry = [...(fixture.scorecard?.inningsA?.bowling || []), ...(fixture.scorecard?.inningsB?.bowling || [])]
+          .find((entry) => entry.id === valuationTopBuy.id);
+        return Boolean((battingEntry?.balls || 0) > 0 || (bowlingEntry?.overs || 0) > 0 || (bowlingEntry?.wickets || 0) > 0);
+      }).length
+      : 0;
     
     // Calculate season completion metrics to control article frequency
     const playedFixtures = (fixtures || []).filter((f) => f.played);
@@ -390,10 +420,7 @@ export default function NewsPage({
         marginVal = 10 - (isWinnerA ? lastMatch.scoreA.wickets : lastMatch.scoreB.wickets); // wickets remaining
       }
       
-      const chasingInningsIndex = lastMatch.winner === sim?.innings[0]?.battingTeamId ? 1 : 0;
-      const chasingLegalBalls = sim?.innings[chasingInningsIndex]?.legalBalls || 0;
-      
-      isLastMatchThrillingWin = (wonByRuns && marginVal <= 15) || (!wonByRuns && marginVal <= 3) || (chasingLegalBalls >= 114);
+      isLastMatchThrillingWin = (wonByRuns && marginVal <= 15) || (!wonByRuns && marginVal <= 3);
     }
 
     // Pre-calculate if the last user match was a heavy defeat
@@ -427,7 +454,13 @@ export default function NewsPage({
       const chasingInningsIndex = lastMatch.winner === sim?.innings[0]?.battingTeamId ? 1 : 0;
       const chasingLegalBalls = sim?.innings[chasingInningsIndex]?.legalBalls || 0;
       
-      isLastMatchHeartbreakLoss = (wonByRuns && marginVal <= 15) || (!wonByRuns && marginVal <= 3) || (chasingLegalBalls >= 114);
+      // A heartbreak article is reserved for genuinely close finishes. A chase
+      // completed with seven or more wickets in hand is a heavy defeat, even if
+      // it happened late in the innings.
+      isLastMatchHeartbreakLoss = !isLastMatchHeavyDefeat && (
+        (wonByRuns && marginVal <= 15)
+        || (!wonByRuns && marginVal <= 3 && chasingLegalBalls >= 108)
+      );
     }
 
     // Calculate active winning streaks for all franchises
@@ -645,8 +678,8 @@ export default function NewsPage({
       
       const isBowler = p.role === "Pace Bowler" || p.role === "Spin Bowler";
       const statsStr = isBowler 
-        ? `taking ${wickets} wickets in ${matches} matches at an economy of ${(p.iplStats?.bowlingRunsConceded && p.iplStats?.bowlingBalls ? (p.iplStats.bowlingRunsConceded / (p.iplStats.bowlingBalls / 6)) : 8.0).toFixed(2)}`
-        : `scoring ${runs} runs in ${matches} matches at an average of ${(runs && matches ? (runs / matches) : 25.0).toFixed(1)}`;
+        ? `taking ${wickets} wickets in ${matches} matches at an economy of ${(p.iplStats?.bowlingRunsConceded && p.iplStats?.bowlingBalls ? (p.iplStats.bowlingRunsConceded / (p.iplStats.bowlingBalls / 6)) : 0).toFixed(2)}`
+        : `scoring ${runs} runs in ${matches} matches at an average of ${(runs && matches ? (runs / matches) : 0).toFixed(1)}`;
 
       const prefix = idx === 0 ? "" : "\n\n";
       cricinfoTop3Text += `${prefix}${idx + 1}. ${p.name} (${priceStr} to ${teamName})\nAs a premier ${p.role.toLowerCase()}, ${p.name} brings ${matches} matches of experience, ${statsStr}. ${fitText}`;
@@ -656,6 +689,19 @@ export default function NewsPage({
 
     // Filter templates to show generic articles or templates matching the current layout brand
     const filteredTemplates = newsTemplates.filter((t) => !t.brand || t.brand === layout);
+
+    const isPlayoffStageFixture = (fixture: any, stage?: ArticleTemplate["playoffSummaryStage"]) => {
+      const rawStage = String(fixture.stage || "").toLowerCase().replace(/[\s_-]/g, "");
+      const label = String(fixture.label || "").toLowerCase().replace(/[\s_-]/g, "");
+      const resolvedStage = rawStage.includes("qualifier1") || label.includes("qualifier1") || fixture.matchNumber === 71
+        ? "qualifier1"
+        : rawStage.includes("qualifier2") || label.includes("qualifier2") || fixture.matchNumber === 73
+          ? "qualifier2"
+          : rawStage.includes("eliminator") || label.includes("eliminator") || fixture.matchNumber === 72
+            ? "eliminator"
+            : undefined;
+      return Boolean(resolvedStage && (!stage || resolvedStage === stage));
+    };
 
     return filteredTemplates.map((template) => {
       const sim = lastMatch?.simulation;
@@ -709,10 +755,11 @@ export default function NewsPage({
       if (template.triggerType === "player_century") {
         const p = lastMatchBatting.find(b => (b.runs || 0) >= 100);
         if (p) {
+          if (!p.id) return null;
           const notOut = Boolean(p.notOut);
           const sr = p.balls ? (p.runs || 0) / p.balls * 100 : 0;
           
-          const inInningsA = lastMatch?.scorecard?.inningsA?.batting.some((b: any) => b.id === p.id);
+          const inInningsA = (lastMatch?.scorecard?.inningsA?.batting || []).some((b: any) => b.id === p.id);
           const playerInningsIndex = inInningsA ? 0 : 1;
           const isChaseInnings = playerInningsIndex === 1;
           const wasWinningTeam = lastMatch?.winner === (inInningsA ? lastMatch?.teamA : lastMatch?.teamB);
@@ -739,6 +786,7 @@ export default function NewsPage({
       } else if (template.triggerType === "player_fivefer") {
         const p = lastMatchBowling.find(b => (b.wickets || 0) >= 5);
         if (p) {
+          if (!p.id) return null;
           let deathWickets = 0;
           let deathRunsConceded = 0;
           const bowlerId = p.id;
@@ -785,11 +833,13 @@ export default function NewsPage({
       } else if (template.triggerType === "player_season_benchmark") {
         if (template.requiresRunsBenchmark500) {
           const p = lastMatchBatting.find(b => {
+            if (!b.id) return false;
             const currentRuns = playerStats[b.id]?.runs || 0;
             const prevRuns = currentRuns - (b.runs || 0);
             return currentRuns >= 500 && prevRuns < 500;
           });
           if (p) {
+            if (!p.id) return null;
             targetPlayer = players[p.id];
             targetPlayerStats = playerStats[p.id];
             targetPlayerMatchStats = p;
@@ -799,11 +849,13 @@ export default function NewsPage({
           }
         } else if (template.requiresWicketsBenchmark20) {
           const p = lastMatchBowling.find(b => {
+            if (!b.id) return false;
             const currentWkts = playerStats[b.id]?.wickets || 0;
             const prevWkts = currentWkts - (b.wickets || 0);
             return currentWkts >= 20 && prevWkts < 20;
           });
           if (p) {
+            if (!p.id) return null;
             targetPlayer = players[p.id];
             targetPlayerStats = playerStats[p.id];
             targetPlayerMatchStats = p;
@@ -819,7 +871,7 @@ export default function NewsPage({
           ? players[sim.playerOfTheMatchId] 
           : null;
 
-        const performanceRookie = lastMatchBatting.map(b => b.id).concat(lastMatchBowling.map(b => b.id)).map(id => players[id]).filter(p => p && p.age && p.age < 25).find(p => {
+        const performanceRookie = lastMatchBatting.map(b => b.id).concat(lastMatchBowling.map(b => b.id)).filter((id): id is string => Boolean(id)).map(id => players[id]).filter(p => p && p.age && p.age < 25).find(p => {
           const stats = playerStats[p.id];
           const matchRuns = lastMatchBatting.find(b => b.id === p.id)?.runs || 0;
           const matchWickets = lastMatchBowling.find(b => b.id === p.id)?.wickets || 0;
@@ -836,7 +888,7 @@ export default function NewsPage({
           return null;
         }
       } else if (template.triggerType === "player_retirement") {
-        const retiree = finalRetirees.find(r => r.season === currentSeason) || lastMatchBatting.map(b => players[b.id]).find(p => p && p.age && p.age >= 35 && completedPercent === 100);
+        const retiree = finalRetirees.find(r => r.season === currentSeason) || lastMatchBatting.filter((b): b is typeof b & { id: string } => Boolean(b.id)).map(b => players[b.id]).find(p => p && p.age && p.age >= 35 && completedPercent === 100);
         if (retiree) {
           const rId = "playerId" in retiree ? retiree.playerId : retiree.id;
           targetPlayer = players[rId] || retiree;
@@ -1073,7 +1125,7 @@ export default function NewsPage({
           return null;
         }
       } else if (template.triggerType === "auction_bargain_newsletter") {
-        const bargainPlayer = lastMatchBatting.map(b => b.id).concat(lastMatchBowling.map(b => b.id)).map(id => id ? players[id] : null).filter((p): p is NonNullable<typeof p> => p !== null && getPlayerSalary(p) <= 200).find(p => {
+        const bargainPlayer = lastMatchBatting.map(b => b.id).concat(lastMatchBowling.map(b => b.id)).map(id => id ? players[id] : null).filter((p): p is NonNullable<typeof p> => p != null && getPlayerSalary(p) <= 200).find(p => {
           const bat = lastMatchBatting.find(b => b.id === p.id);
           const bowl = lastMatchBowling.find(b => b.id === p.id);
           const runs = bat?.runs || 0;
@@ -1092,7 +1144,7 @@ export default function NewsPage({
           return null;
         }
       } else if (template.triggerType === "auction_bigmoney_good") {
-        const bmPlayer = lastMatchBatting.map(b => b.id).concat(lastMatchBowling.map(b => b.id)).map(id => id ? players[id] : null).filter((p): p is NonNullable<typeof p> => p !== null && getPlayerSalary(p) >= 1000).find(p => {
+        const bmPlayer = lastMatchBatting.map(b => b.id).concat(lastMatchBowling.map(b => b.id)).map(id => id ? players[id] : null).filter((p): p is NonNullable<typeof p> => p != null && getPlayerSalary(p) >= 1000).find(p => {
           const runs = lastMatchBatting.find(b => b.id === p.id)?.runs || 0;
           const wickets = lastMatchBowling.find(b => b.id === p.id)?.wickets || 0;
           return runs >= 40 || wickets >= 2;
@@ -1106,7 +1158,7 @@ export default function NewsPage({
           return null;
         }
       } else if (template.triggerType === "auction_bigmoney_poor") {
-        const bmPoorPlayer = Object.keys(playerStats).map(id => players[id]).filter((p): p is NonNullable<typeof p> => p !== null && getPlayerSalary(p) >= 1000).find(p => {
+        const bmPoorPlayer = Object.keys(playerStats).map(id => players[id]).filter((p): p is NonNullable<typeof p> => p != null && getPlayerSalary(p) >= 1000).find(p => {
           const stats = playerStats[p.id];
           const matches = getPlayerMatches(p.id);
           const runs = stats?.runs || 0;
@@ -1191,7 +1243,35 @@ export default function NewsPage({
           isTriggered = (completedPercent >= 35 && completedPercent <= 65) || completedPercent === 100;
           break;
         case "post_season":
-          isTriggered = completedPercent === 100;
+          if (template.requiresFinalResult || template.requiresFinalRunnerUp) {
+            const finalPlayed = fixtures.some((fixture) => {
+              const stage = String(fixture.stage || "").toLowerCase().replace(/[\s_-]/g, "");
+              const label = String(fixture.label || "").toLowerCase();
+              return (stage === "final" || label.includes("final") || fixture.matchNumber === 74) && fixture.played;
+            });
+            isTriggered = finalPlayed;
+          } else if (template.requiresFinalPreview) {
+            const finalFixture = fixtures.find((fixture) => {
+              const stage = String(fixture.stage || "").toLowerCase().replace(/[\s_-]/g, "");
+              const label = String(fixture.label || "").toLowerCase();
+              return (stage === "final" || label.includes("final") || fixture.matchNumber === 74) && !fixture.played;
+            });
+            const qualifier1Played = fixtures.some((fixture) => isPlayoffStageFixture(fixture, "qualifier1") && fixture.played);
+            const qualifier2Played = fixtures.some((fixture) => isPlayoffStageFixture(fixture, "qualifier2") && fixture.played);
+            isTriggered = Boolean(finalFixture && qualifier1Played && qualifier2Played);
+          } else if (template.requiresNonUserPlayoffSummary) {
+            isTriggered = fixtures.some((fixture) => isPlayoffStageFixture(fixture, template.playoffSummaryStage)
+              && fixture.played
+              && fixture.teamA !== userTeamId
+              && fixture.teamB !== userTeamId);
+          } else if (template.requiresPlayoffPreview) {
+            const leagueFixturesComplete = fixtures.some((fixture) => !fixture.stage && fixture.matchNumber <= 70)
+              && fixtures.filter((fixture) => !fixture.stage && fixture.matchNumber <= 70).every((fixture) => fixture.played);
+            const playoffsNotStarted = fixtures.some((fixture) => Boolean(fixture.stage) && !fixture.played);
+            isTriggered = leagueFixturesComplete && playoffsNotStarted;
+          } else {
+            isTriggered = completedPercent === 100;
+          }
           break;
         case "player_retirement":
           isTriggered = retirementPlayerDetected;
@@ -1209,10 +1289,26 @@ export default function NewsPage({
           isTriggered = rookiePlayerDetected;
           break;
         case "player_milestone":
-          isTriggered = Boolean((topScorer && topScorer.stats.runs > 150) || (topWicketTaker && topWicketTaker.stats.wickets > 6));
+          {
+            const allTeamsHaveSample = standings.length >= 8 && standings.every((standing) => standing.played >= 4);
+            const topBatterStrikeRate = topScorer && topScorer.stats.balls > 0
+              ? (topScorer.stats.runs / topScorer.stats.balls) * 100
+              : 0;
+            const topBatterHasForm = Boolean(
+              topScorer
+              && getPlayerMatches(topScorer.player.id) >= 4
+              && topScorer.stats.runs >= 200
+              && topBatterStrikeRate >= 130,
+            );
+            isTriggered = allTeamsHaveSample && topBatterHasForm;
+          }
           break;
         case "league_standing":
-          isTriggered = playedFixtures.length >= 3;
+          // Do not publish a league-wide playoff picture from the first handful
+          // of results. Every franchise must have a meaningful sample first.
+          isTriggered = standings.length >= 8
+            && standings.every((standing) => standing.played >= 2)
+            && playedFixtures.length >= standings.length * 2;
           break;
         case "retire_young_toporder":
           isTriggered = findYoungRetiree((p) => Boolean(p.isOpener || p.hasBattedAt3)) !== undefined;
@@ -1299,7 +1395,16 @@ export default function NewsPage({
             const ppOvers = batInn.oversDetail.slice(0, 6);
             return ppOvers.reduce((sum: number, ov: any) => sum + ov.wickets, 0);
           })();
-          isTriggered = Boolean(strugglingTeamId && strugglingTeamLosses >= 3 && strugglingTeamLosses < 6 && strugglingTeamPPWickets >= 2);
+          const strugglingTeamPlayed = strugglingTeamId
+            ? standings.find((standing) => standing.teamId === strugglingTeamId)?.played || 0
+            : 0;
+          isTriggered = Boolean(
+            strugglingTeamId
+            && strugglingTeamPlayed >= 3
+            && strugglingTeamLosses >= 3
+            && strugglingTeamLosses < 6
+            && strugglingTeamPPWickets >= 2,
+          );
           break;
         }
         case "mid_season_mvp": {
@@ -1322,24 +1427,44 @@ export default function NewsPage({
           break;
         }
         case "early_pace_setter":
-          isTriggered = playedFixtures.length >= 3 && completedPercent < 35 && standings.length > 0;
+          // A pace-setting story needs a real league sample, not six matches.
+          isTriggered = playedFixtures.length >= 15
+            && completedPercent < 50
+            && standings.length >= 8
+            && standings.every((standing) => standing.played >= 1);
           break;
         case "early_slow_starter":
-          isTriggered = playedFixtures.length >= 3 && completedPercent < 35 && standings.length >= 9;
+          isTriggered = playedFixtures.length >= 15
+            && completedPercent < 50
+            && standings.length >= 8
+            && standings.every((standing) => standing.played >= 2);
           break;
         case "early_table_shakeup":
-          isTriggered = playedFixtures.length >= 3 && completedPercent < 35;
+          isTriggered = playedFixtures.length >= 15
+            && completedPercent < 50
+            && standings.length >= 8
+            && standings.every((standing) => standing.played >= 2);
           break;
         case "early_warning_signs": {
           const hasStrugglingTeam = standings.length >= 9 && standings.slice(-2).some(s => s.lost >= 2);
-          isTriggered = playedFixtures.length >= 3 && completedPercent < 35 && hasStrugglingTeam;
+          isTriggered = playedFixtures.length >= 15
+            && completedPercent < 50
+            && standings.length >= 8
+            && standings.every((standing) => standing.played >= 2)
+            && hasStrugglingTeam;
           break;
         }
         case "early_points_table":
-          isTriggered = playedFixtures.length >= 3 && completedPercent < 35;
+          isTriggered = playedFixtures.length >= 15
+            && completedPercent < 50
+            && standings.length >= 8
+            && standings.every((standing) => standing.played >= 2);
           break;
         case "early_form_tracker":
-          isTriggered = playedFixtures.length >= 3 && completedPercent < 35;
+          isTriggered = playedFixtures.length >= 15
+            && completedPercent < 50
+            && standings.length >= 8
+            && standings.every((standing) => standing.played >= 2);
           break;
         case "playoff_nrr_maze":
           isTriggered = completedPercent >= 70 && completedPercent < 100 && standings.length >= 5 && standings[3].points === standings[4].points;
@@ -1380,7 +1505,10 @@ export default function NewsPage({
           isTriggered = completedPercent >= 80 && completedPercent < 100 && standings.length >= 2 && standings[0].points === standings[1].points;
           break;
         case "auction_review":
-          isTriggered = playedFixtures.length >= 3 && completedPercent < 35;
+          isTriggered = playedFixtures.length >= 3
+            && completedPercent < 35
+            && valuationTopBuyAppearances >= 2
+            && valuationTopBuyMeaningfulGames >= 2;
           break;
         case "post_auction_summary":
           isTriggered = playedFixtures.length === 0 && isAuctionCompleted && currentDate >= auctionDateKey && currentDate < disappearLimitDateKey;
@@ -1400,6 +1528,14 @@ export default function NewsPage({
         case "post_auction_user_team_summary":
           isTriggered = playedFixtures.length === 0 && isAuctionCompleted && (teams[userTeamId]?.squad?.length || 0) > 0 && currentDate >= auctionDateKey && currentDate < disappearLimitDateKey;
           break;
+        case "pre_season_fixtures_announced":
+          // The schedule story appears once fixtures are available, from the official
+          // announcement window (three weeks before the opener) until the season begins.
+          isTriggered = fixtures.length > 0
+            && playedFixtures.length === 0
+            && currentDate >= fixtureAnnouncementDateKey
+            && currentDate < seasonStartDateKey;
+          break;
         case "franchise_form_surge":
           isTriggered = Boolean(surgingTeamId && surgingTeamWins >= 3 && surgingTeamWins < 6);
           break;
@@ -1407,10 +1543,21 @@ export default function NewsPage({
           isTriggered = Boolean(surgingTeamId && surgingTeamWins >= 6);
           break;
         case "franchise_freefall":
-          isTriggered = Boolean(strugglingTeamId && strugglingTeamLosses >= 3 && strugglingTeamLosses < 6);
+          isTriggered = Boolean(
+            strugglingTeamId
+            && (standings.find((standing) => standing.teamId === strugglingTeamId)?.played || 0) >= 3
+            && playedFixtures.length >= 15
+            && strugglingTeamLosses >= 3
+            && strugglingTeamLosses < 6,
+          );
           break;
         case "franchise_severe_freefall":
-          isTriggered = Boolean(strugglingTeamId && strugglingTeamLosses >= 6);
+          isTriggered = Boolean(
+            strugglingTeamId
+            && (standings.find((standing) => standing.teamId === strugglingTeamId)?.played || 0) >= 6
+            && playedFixtures.length >= 15
+            && strugglingTeamLosses >= 6,
+          );
           break;
         default:
           isTriggered = true;
@@ -1432,16 +1579,17 @@ export default function NewsPage({
       const isUserTeamA = lastMatch?.teamA === userTeamId;
       const userBatting = isUserTeamA ? battingA : battingB;
       const oppBatting = isUserTeamA ? battingB : battingA;
+      const userBowling = isUserTeamA ? bowlingB : bowlingA;
       
       // Exact match top scorers/bowlers
       const allMatchBatting = [...battingA, ...battingB];
-      const matchTopScorer = allMatchBatting.length > 0
-        ? [...allMatchBatting].sort((a, b) => (b.runs || 0) - (a.runs || 0))[0]
+      const allMatchBowling = [...bowlingA, ...bowlingB];
+      const matchTopScorer = userBatting.length > 0
+        ? [...userBatting].sort((a, b) => (b.runs || 0) - (a.runs || 0))[0]
         : null;
         
-      const allMatchBowling = [...bowlingA, ...bowlingB];
-      const matchTopBowler = allMatchBowling.length > 0
-        ? [...allMatchBowling].sort((a, b) => (b.wickets || 0) - (a.wickets || 0) || (a.runsConceded || 0) - (b.runsConceded || 0))[0]
+      const matchTopBowler = userBowling.length > 0
+        ? [...userBowling].sort((a, b) => (b.wickets || 0) - (a.wickets || 0) || (a.runsConceded || 0) - (b.runsConceded || 0))[0]
         : null;
         
       // Boundaries count conceded by user team bowlers (opponent fours + sixes)
@@ -1463,7 +1611,7 @@ export default function NewsPage({
 
       // Calculate exact powerplay runs (overs 0-5) in the first innings
       const firstInningsOvers = sim?.innings[0]?.oversDetail || [];
-      const powerplayRuns = firstInningsOvers.slice(0, 6).reduce((sum: number, ov: any) => sum + ov.runs, 0) || 48;
+      const powerplayRuns = firstInningsOvers.slice(0, 6).reduce((sum: number, ov: any) => sum + ov.runs, 0);
 
       // Calculate struggling team's powerplay score in current match (if they played)
       let ppRunsVal = powerplayRuns;
@@ -1482,7 +1630,7 @@ export default function NewsPage({
 
       // Calculate exact last 3 overs runs for user team's batting innings
       const userOversDetail = sim?.innings[userInningsIndex]?.oversDetail || [];
-      const last3OversRuns = userOversDetail.slice(-3).reduce((sum: number, ov: any) => sum + ov.runs, 0) || 39;
+      const last3OversRuns = userOversDetail.slice(-3).reduce((sum: number, ov: any) => sum + ov.runs, 0);
 
       // Key Bowler Over (the over with the most wickets, or low economy)
       const winnerInningsIndex = lastMatch?.winner === sim?.innings[0]?.battingTeamId ? 1 : 0;
@@ -1527,12 +1675,25 @@ export default function NewsPage({
       const opponentKeyBatterRuns = String(oppTopScorer?.runs || 0);
       const opponentKeyBatterBalls = String(oppTopScorer?.balls || 0);
 
-      const chasingOvers = sim?.innings[oppInningsIndex]?.oversDetail || [];
+      // The second innings is always the chase. Using the opponent-relative
+      // index here caused close-loss stories to read the first innings as the
+      // final over, producing impossible required/scored combinations.
+      const chasingInnings = sim?.innings[1];
+      const chasingOvers = chasingInnings?.oversDetail || [];
       const lastOverDetail = chasingOvers.length > 0 ? chasingOvers[chasingOvers.length - 1] : null;
       const userDeathBowler = lastOverDetail?.bowlerName || matchTopBowler?.name || "Death Bowler";
+      const userDeathBowlerAction = "held their lengths under pressure";
       const lastOverConcededRuns = lastOverDetail ? lastOverDetail.runs : 6;
       const lastOverWickets = lastOverDetail ? lastOverDetail.wickets : 1;
-      const lastOverRequiredRuns = lastOverConcededRuns + (wonByRuns ? marginVal : 0);
+      const userMatchRuns = lastMatch ? (lastMatch.teamA === userTeamId ? lastMatch.scoreA?.runs || 0 : lastMatch.scoreB?.runs || 0) : 0;
+      const opponentMatchRuns = lastMatch ? (lastMatch.teamA === userTeamId ? lastMatch.scoreB?.runs || 0 : lastMatch.scoreA?.runs || 0) : 0;
+      const chaseTarget = sim?.innings[0] ? sim.innings[0].runs + 1 : opponentMatchRuns + 1;
+      const chaseRunsBeforeFinalOver = chasingInnings && lastOverDetail
+        ? Math.max(0, chasingInnings.runs - lastOverDetail.runs)
+        : 0;
+      const lastOverRequiredRuns = lastOverDetail
+        ? Math.max(0, chaseTarget - chaseRunsBeforeFinalOver)
+        : 0;
 
       const chasingLegalBalls = sim?.innings[oppInningsIndex]?.legalBalls || 0;
       const ballsRemaining = Math.max(0, 120 - chasingLegalBalls);
@@ -1541,7 +1702,11 @@ export default function NewsPage({
       const over19 = oppInningsOvers.find(o => o.number === 19);
       const penultimateOverRuns = over19 ? over19.runs : 14;
 
-      const last3OversRequiredRuns = oppInningsOvers.slice(-3).reduce((sum: number, ov: any) => sum + ov.runs, 0) || 30;
+      const last3ChaseOvers = chasingOvers.slice(-3);
+      const last3ChaseRuns = last3ChaseOvers.reduce((sum: number, ov: any) => sum + ov.runs, 0);
+      const last3OversRequiredRuns = chasingInnings
+        ? Math.max(0, chaseTarget - Math.max(0, chasingInnings.runs - last3ChaseRuns))
+        : 0;
 
       const matchUserFinisher = [...userBatting]
         .filter((b, idx) => idx >= 4 && b.notOut)
@@ -1562,10 +1727,13 @@ export default function NewsPage({
       const userChoiceOption = userBattedFirst ? "bat first" : "bowl first";
 
       const userOversDetailInnings = sim?.innings[userInningsIndex]?.oversDetail || [];
-      const userPowerplayRuns = userOversDetailInnings.slice(0, 6).reduce((sum: number, ov: any) => sum + ov.runs, 0) || 36;
+      const userPowerplayRuns = userOversDetailInnings.slice(0, 6).reduce((sum: number, ov: any) => sum + ov.runs, 0);
       const userPowerplayWickets = userOversDetailInnings.slice(0, 6).reduce((sum: number, ov: any) => sum + ov.wickets, 0) || 2;
 
-      const oppBowling = lastMatch?.teamA === userTeamId ? bowlingB : bowlingA;
+      // Legacy scorecards are keyed by fixture side (A/B), not simulation
+      // innings order. Select the bowling card for the side the user batted in;
+      // that card contains the opposition bowlers.
+      const oppBowling = lastMatch?.teamA === userTeamId ? bowlingA : bowlingB;
       const oppTopBowler = oppBowling.length > 0
         ? [...oppBowling].sort((a, b) => (b.wickets || 0) - (a.wickets || 0) || (a.runsConceded || 0) - (b.runsConceded || 0))[0]
         : null;
@@ -1574,10 +1742,11 @@ export default function NewsPage({
       const oppStarBowlerRuns = String(oppTopBowler?.runsConceded || 0);
 
       const opponentOversFaced = String(sim?.innings[oppInningsIndex]?.overs || 19.1);
+      const opponentFinalOverNumber = String(lastOverDetail?.number ?? Math.floor(Number(opponentOversFaced) || 19));
 
       const userMiddleOvers = userOversDetailInnings.slice(6, 15);
-      const userMiddleOversRuns = userMiddleOvers.reduce((sum: number, ov: any) => sum + ov.runs, 0) || 55;
-      const userMiddleOversWickets = userMiddleOvers.reduce((sum: number, ov: any) => sum + ov.wickets, 0) || 3;
+      const userMiddleOversRuns = userMiddleOvers.reduce((sum: number, ov: any) => sum + ov.runs, 0);
+      const userMiddleOversWickets = userMiddleOvers.reduce((sum: number, ov: any) => sum + ov.wickets, 0);
 
       const oppInningsObj = sim?.innings[oppInningsIndex];
       const userExtrasConceded = String(oppInningsObj?.extras?.total || 7);
@@ -1586,12 +1755,12 @@ export default function NewsPage({
       const userEarlyCollapseRuns = userFow.length >= 3 ? String(userFow[2].score) : "24";
 
       const oppOversDetail = sim?.innings[oppInningsIndex]?.oversDetail || [];
-      const oppPowerplayRuns = oppOversDetail.slice(0, 6).reduce((sum: number, ov: any) => sum + ov.runs, 0) || 45;
+      const oppPowerplayRuns = oppOversDetail.slice(0, 6).reduce((sum: number, ov: any) => sum + ov.runs, 0);
 
       const dryOversRange = "8-13";
       
       const captainId = teams[userTeamId]?.captainContinuityId;
-      const userCaptainName = captainId && players[captainId] ? players[captainId].name : "Captain";
+      const userCaptainName = resolveCaptainName(userTeamId);
 
       // Heartbreak specific scorecard extractions
       const oppMiddleOver = oppOversDetail.find(o => o.number === 15);
@@ -1600,7 +1769,7 @@ export default function NewsPage({
         : "105/3";
 
       const oppLastOverBoundaries = lastOverDetail?.deliveries?.filter((d: any) => d.runs === 4 || d.runs === 6).length || 1;
-      const oppLast3OversRuns = oppOversDetail.slice(-3).reduce((sum: number, ov: any) => sum + ov.runs, 0) || 30;
+      const oppLast3OversRuns = oppOversDetail.slice(-3).reduce((sum: number, ov: any) => sum + ov.runs, 0);
 
       const oppFinisher = [...oppBattingCard]
         .filter((b, idx) => idx >= 4 && b.notOut)
@@ -1620,6 +1789,131 @@ export default function NewsPage({
 
       const dotBallDeficit = "4";
       const userBatterName = matchUserFinisher?.name || matchTopScorer?.name || "Batter";
+      const finalPreviewFixture = fixtures.find((fixture) => {
+        const stage = String(fixture.stage || "").toLowerCase().replace(/[\s_-]/g, "");
+        const label = String(fixture.label || "").toLowerCase();
+        return (stage === "final" || label.includes("final") || fixture.matchNumber === 74) && !fixture.played;
+      });
+      const finalResultFixture = fixtures.find((fixture) => {
+        const stage = String(fixture.stage || "").toLowerCase().replace(/[\s_-]/g, "");
+        const label = String(fixture.label || "").toLowerCase();
+        return (stage === "final" || label.includes("final") || fixture.matchNumber === 74) && fixture.played;
+      });
+      const finalFixtureForPreview = finalPreviewFixture || finalResultFixture;
+      const finalistAName = finalFixtureForPreview ? (teams[finalFixtureForPreview.teamA]?.name || "Finalist A") : "Finalist A";
+      const finalistBName = finalFixtureForPreview ? (teams[finalFixtureForPreview.teamB]?.name || "Finalist B") : "Finalist B";
+      const finalVenue = finalFixtureForPreview?.simulation?.conditions?.stadiumName || "the final venue";
+      const finalWinnerId = finalResultFixture?.winner;
+      const finalLoserId = finalResultFixture && finalWinnerId
+        ? (finalResultFixture.teamA === finalWinnerId ? finalResultFixture.teamB : finalResultFixture.teamA)
+        : undefined;
+      const finalWinnerName = finalWinnerId ? (teams[finalWinnerId]?.name || "The champions") : "The champions";
+      const finalLoserName = finalLoserId ? (teams[finalLoserId]?.name || "The runners-up") : "The runners-up";
+      const finalWinnerScore = finalResultFixture && finalWinnerId
+        ? (finalResultFixture.teamA === finalWinnerId ? finalResultFixture.scoreA : finalResultFixture.scoreB)
+        : undefined;
+      const finalLoserScore = finalResultFixture && finalLoserId
+        ? (finalResultFixture.teamA === finalLoserId ? finalResultFixture.scoreA : finalResultFixture.scoreB)
+        : undefined;
+      const getFinalistPreviewStats = (teamId?: string) => {
+        const table = standings.find((standing) => standing.teamId === teamId);
+        const squadStats = Object.values(playerStats).filter((stat: any) => stat.teamId === teamId);
+        const leadingBatter: any = [...squadStats].sort((a: any, b: any) => (b.runs || 0) - (a.runs || 0))[0];
+        const leadingBowler: any = [...squadStats].sort((a: any, b: any) => (b.wickets || 0) - (a.wickets || 0))[0];
+        const totalRuns = squadStats.reduce((sum: number, stat: any) => sum + (stat.runs || 0), 0);
+        const totalBalls = squadStats.reduce((sum: number, stat: any) => sum + (stat.balls || 0), 0);
+        const totalFours = squadStats.reduce((sum: number, stat: any) => sum + (stat.fours || 0), 0);
+        const totalSixes = squadStats.reduce((sum: number, stat: any) => sum + (stat.sixes || 0), 0);
+        const totalBowlingRuns = squadStats.reduce((sum: number, stat: any) => sum + (stat.runsConceded || 0), 0);
+        const totalBowlingOvers = squadStats.reduce((sum: number, stat: any) => sum + (stat.oversBowled || 0), 0);
+        const teamName = teams[teamId || ""]?.shortName || "TEAM";
+        return {
+          record: `${table?.won || 0}-${table?.lost || 0}`,
+          points: String(table?.points || 0),
+          nrr: `${(table?.nrr || 0) >= 0 ? "+" : ""}${(table?.nrr || 0).toFixed(3)}`,
+          runs: String(leadingBatter?.runs || 0),
+          batter: leadingBatter?.playerName || leadingBatter?.name || players[leadingBatter?.playerId || ""]?.name || `${teamName}'s leading batter`,
+          wickets: String(leadingBowler?.wickets || 0),
+          bowler: leadingBowler?.playerName || leadingBowler?.name || players[leadingBowler?.playerId || ""]?.name || `${teamName}'s leading bowler`,
+          fours: String(totalFours),
+          sixes: String(totalSixes),
+          boundaries: String(totalFours + totalSixes),
+          strikeRate: totalBalls > 0 ? ((totalRuns / totalBalls) * 100).toFixed(1) : "0.0",
+          economy: totalBowlingOvers > 0 ? (totalBowlingRuns / totalBowlingOvers).toFixed(2) : "0.00"
+        };
+      };
+      const finalistAStats = getFinalistPreviewStats(finalPreviewFixture?.teamA);
+      const finalistBStats = getFinalistPreviewStats(finalPreviewFixture?.teamB);
+      const playoffSummaryFixture = [...fixtures]
+        .filter((fixture) => isPlayoffStageFixture(fixture, template.playoffSummaryStage) && fixture.played && fixture.teamA !== userTeamId && fixture.teamB !== userTeamId)
+        .sort((a, b) => (a.matchNumber || 0) - (b.matchNumber || 0))
+        .at(-1);
+      const playoffWinnerId = playoffSummaryFixture?.winner;
+      const playoffLoserId = playoffSummaryFixture && playoffWinnerId
+        ? (playoffSummaryFixture.teamA === playoffWinnerId ? playoffSummaryFixture.teamB : playoffSummaryFixture.teamA)
+        : undefined;
+      const playoffStageLabel = template.playoffSummaryStage === "qualifier1" ? "Qualifier 1"
+        : template.playoffSummaryStage === "qualifier2" ? "Qualifier 2" : "Eliminator";
+      const playoffWinnerScore = playoffSummaryFixture && playoffWinnerId
+        ? (playoffSummaryFixture.teamA === playoffWinnerId ? playoffSummaryFixture.scoreA : playoffSummaryFixture.scoreB)
+        : undefined;
+      const playoffLoserScore = playoffSummaryFixture && playoffLoserId
+        ? (playoffSummaryFixture.teamA === playoffLoserId ? playoffSummaryFixture.scoreA : playoffSummaryFixture.scoreB)
+        : undefined;
+      const playoffWinnerCard = playoffSummaryFixture && playoffWinnerId
+        ? (playoffSummaryFixture.teamA === playoffWinnerId ? playoffSummaryFixture.scorecard?.inningsA : playoffSummaryFixture.scorecard?.inningsB)
+        : undefined;
+      const playoffTopPerformer = playoffWinnerCard
+        ? [...(playoffWinnerCard.batting || []), ...(playoffWinnerCard.bowling || [])].sort((a: any, b: any) => (b.runs || b.wickets || 0) - (a.runs || a.wickets || 0))[0]
+        : undefined;
+      const playoffTopPerformerBatting = playoffWinnerCard?.batting?.find((entry: any) => entry.id === playoffTopPerformer?.id);
+      const playoffTopPerformerBowling = playoffWinnerCard?.bowling?.find((entry: any) => entry.id === playoffTopPerformer?.id);
+      const playoffTopPerformerContribution = (() => {
+        const name = playoffTopPerformer?.name || "The player of the match";
+        const runs = Number(playoffTopPerformerBatting?.runs || 0);
+        const balls = Number(playoffTopPerformerBatting?.balls || 0);
+        const wickets = Number(playoffTopPerformerBowling?.wickets || 0);
+        const conceded = Number(playoffTopPerformerBowling?.runsConceded || 0);
+        const overs = Number(playoffTopPerformerBowling?.overs || 0);
+        const variation = (playoffSummaryFixture?.matchNumber || 0) % 5;
+        const battingDescriptions = [
+          `${name} was named player of the match after driving the chase with ${runs} from ${balls} balls, giving ${teams[playoffWinnerId || ""]?.shortName || "the winners"} control when it mattered most.`,
+          `${name} earned the player-of-the-match award for a composed ${runs}-run innings from ${balls} balls that set the platform for victory.`,
+          `${name}'s ${runs} off ${balls} supplied the decisive batting weight, turning a tense playoff equation into a winning total.`,
+          `${name} was the standout with ${runs} runs from ${balls} deliveries, combining scoring pressure with the key contribution of the innings.`,
+          `${name} took charge of the winning innings, making ${runs} from ${balls} balls and ensuring the opposition never gained control.`
+        ];
+        const bowlingDescriptions = [
+          `${name} was named player of the match after ripping through the opposition with ${wickets} wicket${wickets === 1 ? "" : "s"} for ${conceded} runs in ${overs} over${overs === 1 ? "" : "s"}.`,
+          `${name}'s spell of ${wickets} for ${conceded} from ${overs} overs changed the shape of the knockout match and earned the player-of-the-match award.`,
+          `${name} supplied the decisive breakthroughs, taking ${wickets} wicket${wickets === 1 ? "" : "s"} while conceding ${conceded} runs in ${overs} overs.`,
+          `${name} kept the pressure relentless with ${wickets} wickets for ${conceded}, disrupting the opposition's best scoring phases.`,
+          `${name} led the defensive effort, returning ${wickets} for ${conceded} in ${overs} overs and closing down the opponent's route to victory.`
+        ];
+        const allRoundDescriptions = [
+          `${name} was named player of the match after contributing ${runs} from ${balls} balls and taking ${wickets} wicket${wickets === 1 ? "" : "s"} for ${conceded} runs, influencing both innings.`,
+          `${name} produced a genuine all-round match-winning display: ${runs} runs from ${balls} balls followed by ${wickets} wicket${wickets === 1 ? "" : "s"} for ${conceded}.`,
+          `${name} shaped the result in both disciplines, adding ${runs} off ${balls} and then striking ${wickets} time${wickets === 1 ? "" : "s"} for ${conceded} runs.`,
+          `${name}'s two-pronged contribution—${runs} runs and ${wickets} wicket${wickets === 1 ? "" : "s"}—made the difference in a tightly contested playoff.`,
+          `${name} delivered wherever the team needed it, scoring ${runs} from ${balls} balls and returning ${wickets} for ${conceded} with the ball.`
+        ];
+        if (runs > 0 && wickets > 0) return allRoundDescriptions[variation];
+        if (runs > 0) return battingDescriptions[variation];
+        if (wickets > 0) return bowlingDescriptions[variation];
+        const winnerName = playoffWinnerId ? (teams[playoffWinnerId]?.name || "their team's") : "their team's";
+        return `${name} was named player of the match for the decisive contribution that turned the knockout contest in ${winnerName} favour.`;
+      })();
+      const firstInnings = sim?.innings[0];
+      const secondInnings = sim?.innings[1];
+      const firstInningsTeamId = firstInnings?.battingTeamId || lastMatch?.teamA;
+      const secondInningsTeamId = secondInnings?.battingTeamId || (firstInningsTeamId === lastMatch?.teamA ? lastMatch?.teamB : lastMatch?.teamA);
+      const firstInningsBattingCard = firstInnings?.batting || [];
+      const firstInningsPowerplayScorer = [...firstInningsBattingCard]
+        .sort((a: any, b: any) => (b.runs || 0) - (a.runs || 0))[0]?.name || "the opening batters";
+      const firstInningsTeamName = teams[firstInningsTeamId || ""]?.name || "the first innings side";
+      const secondInningsTeamName = teams[secondInningsTeamId || ""]?.name || "the chasing side";
+      const firstInningsScore = String(firstInnings?.runs ?? 0);
+      const secondInningsScore = String(secondInnings?.runs ?? 0);
 
       const tokens: Record<string, string> = {
         "{userTeamName}": userTeamName,
@@ -1635,6 +1929,18 @@ export default function NewsPage({
         "{leaderShort}": standings[0]?.shortName || "LDR",
         "{leaderPoints}": standings[0] ? String(standings[0].points) : "0",
         "{leaderNrr}": standings[0] ? `${standings[0].nrr >= 0 ? "+" : ""}${standings[0].nrr.toFixed(3)}` : "0.000",
+        "{userNrr}": (() => {
+          const userStanding = standings.find((standing) => standing.teamId === userTeamId);
+          return userStanding ? `${userStanding.nrr >= 0 ? "+" : ""}${userStanding.nrr.toFixed(3)}` : "0.000";
+        })(),
+        "{nrrNarrative}": (() => {
+          const userStanding = standings.find((standing) => standing.teamId === userTeamId);
+          const nrr = userStanding?.nrr ?? 0;
+          const formatted = `${nrr >= 0 ? "+" : ""}${nrr.toFixed(3)}`;
+          return nrr < 0
+            ? `The win is an important recovery step, although ${userTeamName}'s NRR remains negative at ${formatted}; further results and winning margins are needed to repair the table position.`
+            : `${userTeamName} improve their NRR to ${formatted}, giving them a valuable cushion as the table develops.`;
+        })(),
         
         "{footerName}": standings[standings.length - 1]?.teamName || "Bottom Team",
         "{footerShort}": standings[standings.length - 1]?.shortName || "BTM",
@@ -1659,6 +1965,7 @@ export default function NewsPage({
         "{opponentKeyBatterRuns}": opponentKeyBatterRuns,
         "{opponentKeyBatterBalls}": opponentKeyBatterBalls,
         "{userDeathBowler}": userDeathBowler,
+        "{userDeathBowlerAction}": userDeathBowlerAction,
         "{lastOverConcededRuns}": String(lastOverConcededRuns),
         "{lastOverWickets}": String(lastOverWickets),
         "{lastOverRequiredRuns}": String(lastOverRequiredRuns),
@@ -1682,6 +1989,7 @@ export default function NewsPage({
         "{oppStarBowlerWickets}": oppStarBowlerWickets,
         "{oppStarBowlerRuns}": oppStarBowlerRuns,
         "{opponentOversFaced}": opponentOversFaced,
+        "{opponentFinalOverNumber}": opponentFinalOverNumber,
         "{userMiddleOversRuns}": String(userMiddleOversRuns),
         "{userMiddleOversWickets}": String(userMiddleOversWickets),
         "{userExtrasConceded}": userExtrasConceded,
@@ -1705,6 +2013,50 @@ export default function NewsPage({
         "{user.lastOverRuns}": String(userLastOverRuns),
         "{dotBallDeficit}": dotBallDeficit,
         "{userBatterName}": userBatterName,
+        "{playoffStageLabel}": playoffStageLabel || "Playoff match",
+        "{playoffWinnerName}": teams[playoffWinnerId || ""]?.name || "The winners",
+        "{playoffLoserName}": teams[playoffLoserId || ""]?.name || "The opposition",
+        "{playoffVenue}": playoffSummaryFixture?.simulation?.conditions?.stadiumName || "the playoff venue",
+        "{playoffWinnerScore}": playoffWinnerScore ? `${playoffWinnerScore.runs}/${playoffWinnerScore.wickets}` : "the winning score",
+        "{playoffLoserScore}": playoffLoserScore ? `${playoffLoserScore.runs}/${playoffLoserScore.wickets}` : "the losing score",
+        "{playoffTopPerformerName}": playoffTopPerformer?.name || "the match-winning unit",
+        "{playoffTopPerformerContribution}": playoffTopPerformerContribution,
+        "{finalistAName}": finalistAName,
+        "{finalistBName}": finalistBName,
+        "{finalVenue}": finalVenue,
+        "{finalWinnerName}": finalWinnerName,
+        "{finalLoserName}": finalLoserName,
+        "{finalWinnerScore}": finalWinnerScore ? `${finalWinnerScore.runs}/${finalWinnerScore.wickets}` : "the winning score",
+        "{finalLoserScore}": finalLoserScore ? `${finalLoserScore.runs}/${finalLoserScore.wickets}` : "the losing score",
+        "{finalistARecord}": finalistAStats.record,
+        "{finalistBRecord}": finalistBStats.record,
+        "{finalistAPoints}": finalistAStats.points,
+        "{finalistBPoints}": finalistBStats.points,
+        "{finalistANrr}": finalistAStats.nrr,
+        "{finalistBNrr}": finalistBStats.nrr,
+        "{finalistABatter}": finalistAStats.batter,
+        "{finalistBBatter}": finalistBStats.batter,
+        "{finalistARuns}": finalistAStats.runs,
+        "{finalistBRuns}": finalistBStats.runs,
+        "{finalistABowler}": finalistAStats.bowler,
+        "{finalistBBowler}": finalistBStats.bowler,
+        "{finalistAWickets}": finalistAStats.wickets,
+        "{finalistBWickets}": finalistBStats.wickets,
+        "{finalistAFours}": finalistAStats.fours,
+        "{finalistBFours}": finalistBStats.fours,
+        "{finalistASixes}": finalistAStats.sixes,
+        "{finalistBSixes}": finalistBStats.sixes,
+        "{finalistABoundaries}": finalistAStats.boundaries,
+        "{finalistBBoundaries}": finalistBStats.boundaries,
+        "{finalistAStrikeRate}": finalistAStats.strikeRate,
+        "{finalistBStrikeRate}": finalistBStats.strikeRate,
+        "{finalistAEconomy}": finalistAStats.economy,
+        "{finalistBEconomy}": finalistBStats.economy,
+        "{firstInningsTeamName}": firstInningsTeamName,
+        "{firstInningsPowerplayScorer}": firstInningsPowerplayScorer,
+        "{firstInningsScore}": firstInningsScore,
+        "{chasingTeamName}": secondInningsTeamName,
+        "{chasingTeamScore}": secondInningsScore,
       };
 
       // Section 2: team_summaries: Mid-Season Report Card variables
@@ -1715,6 +2067,12 @@ export default function NewsPage({
       const topTeamNrr = topStandingsEntry ? `${topStandingsEntry.nrr >= 0 ? "+" : ""}${topStandingsEntry.nrr.toFixed(3)}` : "0.000";
       const topTeamWins = String(topStandingsEntry?.won || 0);
       const topTeamMatchesPlayed = String(topStandingsEntry?.played || 0);
+      const topTeamLeadingBatter = (teams[topStandingsEntry?.teamId || ""]?.squad || [])
+        .map((id) => ({ player: players[id], stats: playerStats[id] }))
+        .filter((entry) => entry.player && entry.stats)
+        .sort((a, b) => (b.stats?.runs || 0) - (a.stats?.runs || 0))[0];
+      const topTeamLeadingBatterName = topTeamLeadingBatter?.player?.name || "their leading batter";
+      const topTeamLeadingBatterRuns = String(topTeamLeadingBatter?.stats?.runs || 0);
 
       const bottomStandingsEntry = standings[standings.length - 1];
       const bottomTeamName = bottomStandingsEntry?.teamName || "Laggards";
@@ -1736,12 +2094,17 @@ export default function NewsPage({
       const strugglingGoliathName = goliathStandingsEntry?.teamName || "Goliath";
       const strugglingGoliathShort = goliathStandingsEntry?.shortName || "GOL";
       const strugglingGoliathWins = String(goliathStandingsEntry?.won || 0);
-      const goliathCaptainId = teams[goliathStandingsEntry?.teamId || ""]?.captainContinuityId;
-      const strugglingGoliathCaptainName = goliathCaptainId && players[goliathCaptainId] ? players[goliathCaptainId].name : "Captain";
+      const strugglingGoliathCaptainName = resolveCaptainName(goliathStandingsEntry?.teamId);
 
       const p3 = standings[2]?.points || 0;
       const p7 = standings[6]?.points || 0;
       const middleTablePointsDifference = String(Math.abs(p3 - p7));
+      const playoffCutoffPoints = standings[3]?.points ?? 0;
+      const playoffContenders = standings.slice(4).filter((standing) => {
+        const scheduledGames = fixtures.filter((fixture) => fixture.teamA === standing.teamId || fixture.teamB === standing.teamId).length;
+        const maximumPoints = standing.points + Math.max(0, scheduledGames - standing.played) * 2;
+        return maximumPoints >= playoffCutoffPoints;
+      });
 
       const orangeCapPlayerName = topScorer?.player?.name || "Orange Cap Leader";
       const orangeCapRuns = String(topScorer?.stats?.runs || 0);
@@ -1749,13 +2112,20 @@ export default function NewsPage({
       const purpleCapWickets = String(topWicketTaker?.stats?.wickets || 0);
 
       const seasonRemainingMatches = String(totalFixturesCount - playedFixtures.length);
+      // Use one canonical points-table ordering for every article. This keeps
+      // displayed positions consistent between surge and freefall stories,
+      // including NRR tie-breaks.
+      const rankedStandings = [...standings].sort((a, b) =>
+        (b.points || 0) - (a.points || 0) || (Number(b.nrr) || 0) - (Number(a.nrr) || 0)
+      );
 
       // Section 2: team_summaries: Franchise Form Surge variables
       const surgingTeam = surgingTeamId ? teams[surgingTeamId] : null;
       const surgingTeamName = surgingTeam?.name || "Surging Team";
       const surgingTeamShort = surgingTeam?.shortName || "SRG";
       const teamConsecutiveWins = String(surgingTeamWins);
-      const surgingPos = surgingTeamId ? standings.findIndex(s => s.teamId === surgingTeamId) + 1 : 4;
+      const surgingRankIndex = surgingTeamId ? rankedStandings.findIndex(s => s.teamId === surgingTeamId) : -1;
+      const surgingPos = surgingRankIndex >= 0 ? surgingRankIndex + 1 : 4;
       const teamCurrentPosition = String(surgingPos);
 
       // Find top scorer and top bowler in the surging team's squad
@@ -1766,15 +2136,69 @@ export default function NewsPage({
 
       const hotPlayerVal = squadPlayers.sort((a, b) => (b.stats?.runs || 0) - (a.stats?.runs || 0))[0]?.player;
       const hotPlayerName = hotPlayerVal?.name || "Star Batter";
-      const hotPlayerStreakRuns = "165";
-      const hotPlayerStreakStrikeRate = "152.4";
+      let hotPlayerStreakRuns = "0";
+      let hotPlayerStreakStrikeRate = "N/A";
 
       const keyBowlerVal = squadPlayers.sort((a, b) => (b.stats?.wickets || 0) - (a.stats?.wickets || 0))[0]?.player;
       const keyBowlerName = keyBowlerVal?.name || "Star Bowler";
-      const bowlerStreakWickets = "7";
+      const keyBowlerAction = "controlling the attack";
+      const bowlerStreakWickets = keyBowlerVal ? String(keyBowlerVal ? (keyBowlerVal && playerStats[keyBowlerVal.id]?.wickets || 0) : 0) : "0";
 
-      const surgingCaptainId = surgingTeam?.captainContinuityId;
-      const surgingTeamCaptainName = surgingCaptainId && players[surgingCaptainId] ? players[surgingCaptainId].name : "Captain";
+      const surgingTeamCaptainName = resolveCaptainName(surgingTeamId || undefined);
+
+      // Build the standout's contribution from the exact fixtures in the
+      // active winning streak. Never invent a second skill (for example,
+      // wickets for a batter who took none).
+      const surgingStreakFixtures = surgingTeamId
+        ? playedFixturesChronological.filter((fixture) => fixture.teamA === surgingTeamId || fixture.teamB === surgingTeamId)
+            .filter((fixture) => fixture.winner === surgingTeamId)
+            .slice(-surgingTeamWins)
+        : [];
+      const streakPlayerTotals = new Map<string, { name: string; runs: number; balls: number; wickets: number }>();
+      let streakPowerplayRuns = 0;
+      let streakPowerplayWickets = 0;
+      let streakDeathDots = 0;
+      let streakDeathBalls = 0;
+      surgingStreakFixtures.forEach((fixture) => {
+        const batting = fixture.teamA === surgingTeamId
+          ? (fixture.scorecard?.inningsA?.batting || [])
+          : (fixture.scorecard?.inningsB?.batting || []);
+        const bowling = fixture.teamA === surgingTeamId
+          ? (fixture.scorecard?.inningsB?.bowling || [])
+          : (fixture.scorecard?.inningsA?.bowling || []);
+        batting.forEach((entry: any) => {
+          const current = streakPlayerTotals.get(entry.id) || { name: entry.name, runs: 0, balls: 0, wickets: 0 };
+          current.runs += Number(entry.runs) || 0;
+          current.balls += Number(entry.balls) || 0;
+          streakPlayerTotals.set(entry.id, current);
+        });
+        bowling.forEach((entry: any) => {
+          const current = streakPlayerTotals.get(entry.id) || { name: entry.name, runs: 0, balls: 0, wickets: 0 };
+          current.wickets += Number(entry.wickets) || 0;
+          streakPlayerTotals.set(entry.id, current);
+        });
+        const battingInnings = fixture.teamA === surgingTeamId ? fixture.simulation?.innings?.find((i: any) => i.battingTeamId === surgingTeamId) : fixture.simulation?.innings?.find((i: any) => i.battingTeamId === surgingTeamId);
+        battingInnings?.oversDetail?.forEach((over: any) => {
+          if (over.number < 6) { streakPowerplayRuns += over.runs || 0; streakPowerplayWickets += over.wickets || 0; }
+        });
+        const bowlingInnings = fixture.simulation?.innings?.find((i: any) => i.bowlingTeamId === surgingTeamId);
+        bowlingInnings?.oversDetail?.forEach((over: any) => {
+          if (over.number >= 16) over.deliveries?.forEach((delivery: any) => { streakDeathBalls += delivery.isLegal ? 1 : 0; streakDeathDots += delivery.isLegal && (delivery.totalRuns || 0) === 0 ? 1 : 0; });
+        });
+      });
+      const streakStandout = Array.from(streakPlayerTotals.values())
+        .sort((a, b) => b.runs - a.runs || b.wickets - a.wickets)[0];
+      const streakStandoutName = streakStandout?.name || hotPlayerName;
+      const streakStandoutParts = [
+        streakStandout && streakStandout.runs > 0 ? `${streakStandout.runs} runs` : "",
+        streakStandout && streakStandout.wickets > 0 ? `${streakStandout.wickets} wickets` : "",
+      ].filter(Boolean);
+      const streakStandoutStats = streakStandoutParts.join(" & ") || "no recorded contribution";
+      hotPlayerStreakRuns = String(streakStandout?.runs || 0);
+      hotPlayerStreakStrikeRate = streakStandout && streakStandout.balls > 0 ? ((streakStandout.runs / streakStandout.balls) * 100).toFixed(1) : "N/A";
+      const streakPowerplayRunRate = surgingStreakFixtures.length > 0 ? (streakPowerplayRuns / (surgingStreakFixtures.length * 6)).toFixed(1) : "N/A";
+      const streakPowerplayWicketRate = surgingStreakFixtures.length > 0 ? (streakPowerplayWickets / surgingStreakFixtures.length).toFixed(1) : "N/A";
+      const streakDeathDotPercentage = streakDeathBalls > 0 ? ((streakDeathDots / streakDeathBalls) * 100).toFixed(1) : "N/A";
 
       const surgingTeamOldRunRate = "-0.35";
       const surgingTeamNewRunRate = "+0.45";
@@ -1786,7 +2210,8 @@ export default function NewsPage({
       const strugglingTeamName = strugglingTeam?.name || "Struggling Team";
       const strugglingTeamShort = strugglingTeam?.shortName || "STRG";
       const teamConsecutiveLosses = String(strugglingTeamLosses);
-      const strugglingPos = strugglingTeamId ? standings.findIndex(s => s.teamId === strugglingTeamId) + 1 : 10;
+      const strugglingRankIndex = strugglingTeamId ? rankedStandings.findIndex(s => s.teamId === strugglingTeamId) : -1;
+      const strugglingPos = strugglingRankIndex >= 0 ? strugglingRankIndex + 1 : 10;
       const strugglingTeamCurrentPosition = String(strugglingPos);
 
       // Find top scorer in struggling squad
@@ -1796,8 +2221,120 @@ export default function NewsPage({
         .filter(x => x.player && x.stats);
       const strugglingHotPlayer = strugglingSquadPlayers.sort((a, b) => (b.stats?.runs || 0) - (a.stats?.runs || 0))[0]?.player;
       
-      const strugglingCaptainId = strugglingTeam?.captainContinuityId;
-      const strugglingTeamCaptainName = strugglingCaptainId && players[strugglingCaptainId] ? players[strugglingCaptainId].name : "Captain";
+      const strugglingTeamCaptainName = resolveCaptainName(strugglingTeamId || undefined);
+
+      const strugglingMiddleOrderPlayer = (strugglingTeam?.squad || [])
+        .map((id) => players[id])
+        .filter((player): player is Player => Boolean(player))
+        .filter((player) => Boolean(player.hasBattedAt4 || player.hasBattedAt5 || player.hasBattedAt6 || player.hasBattedAt7 || player.isFinisher) && (playerStats[player.id]?.runs || 0) > 0)
+        .sort((a, b) => (playerStats[b.id]?.runs || 0) - (playerStats[a.id]?.runs || 0))[0];
+      const strugglingTopScorer = strugglingMiddleOrderPlayer;
+      const strugglingLossFixtures: typeof fixtures = [];
+      if (strugglingTeamId) {
+        for (let index = playedFixturesChronological.length - 1; index >= 0; index -= 1) {
+          const fixture = playedFixturesChronological[index];
+          const loserId = fixture.winner === fixture.teamA ? fixture.teamB : fixture.teamA;
+          if (loserId !== strugglingTeamId) continue;
+          strugglingLossFixtures.unshift(fixture);
+          if (strugglingLossFixtures.length >= strugglingTeamLosses) break;
+        }
+      }
+      const latestStrugglingLoss = strugglingLossFixtures[strugglingLossFixtures.length - 1];
+      const latestStrugglingBatting = latestStrugglingLoss
+        ? (latestStrugglingLoss.teamA === strugglingTeamId
+          ? (latestStrugglingLoss.scorecard?.inningsA?.batting || [])
+          : (latestStrugglingLoss.scorecard?.inningsB?.batting || []))
+        : [];
+      const latestStrugglingTopScorer = [...latestStrugglingBatting]
+        .sort((a: any, b: any) => (b.runs || 0) - (a.runs || 0))[0];
+      const strugglingLatestTopScorerName = latestStrugglingTopScorer?.name || strugglingHotPlayer?.name || "the top scorer";
+      const strugglingLatestTopScorerRuns = String(latestStrugglingTopScorer?.runs || 0);
+      const strugglingMatchMiddleOrderPlayer = [...latestStrugglingBatting]
+        .filter((entry: any) => entry.battingPosition >= 4 && entry.battingPosition <= 7 && (entry.runs || 0) > 0)
+        .sort((a: any, b: any) => (b.runs || 0) - (a.runs || 0))[0];
+      const strugglingMatchMiddleOrderName = strugglingMatchMiddleOrderPlayer?.name || strugglingMiddleOrderPlayer?.name || "the middle order";
+      const strugglingPowerplaySamples = strugglingLossFixtures.map((fixture) => {
+        const simulationInnings = fixture.simulation?.innings.find((innings) => innings.battingTeamId === strugglingTeamId)
+          || fixture.simulation?.innings[fixture.teamA === strugglingTeamId ? 0 : 1];
+        const powerplayOvers = simulationInnings?.oversDetail.slice(0, 6) || [];
+        return {
+          runs: powerplayOvers.reduce((sum, over) => sum + over.runs, 0),
+          wickets: powerplayOvers.reduce((sum, over) => sum + over.wickets, 0),
+        };
+      }).filter((sample) => sample.runs > 0 || sample.wickets > 0);
+      const strugglingPowerplayRuns = strugglingPowerplaySamples.length > 0
+        ? (strugglingPowerplaySamples.reduce((sum, sample) => sum + sample.runs, 0) / strugglingPowerplaySamples.length / 6).toFixed(1)
+        : "N/A";
+      const strugglingPowerplayWickets = strugglingPowerplaySamples.length > 0
+        ? (strugglingPowerplaySamples.reduce((sum, sample) => sum + sample.wickets, 0) / strugglingPowerplaySamples.length).toFixed(1)
+        : "N/A";
+      const latestStrugglingPowerplayScore = (() => {
+        const innings = latestStrugglingLoss?.simulation?.innings.find((entry) => entry.battingTeamId === strugglingTeamId)
+          || latestStrugglingLoss?.simulation?.innings[latestStrugglingLoss?.teamA === strugglingTeamId ? 0 : 1];
+        if (!innings) return "N/A";
+        const overs = innings.oversDetail.slice(0, 6);
+        const runs = overs.reduce((sum, over) => sum + over.runs, 0);
+        const wickets = overs.reduce((sum, over) => sum + over.wickets, 0);
+        return `${runs}/${wickets}`;
+      })();
+      const strugglingCollapseSamples = strugglingLossFixtures.map((fixture) => {
+        const innings = fixture.simulation?.innings.find((entry) => entry.battingTeamId === strugglingTeamId)
+          || fixture.simulation?.innings[fixture.teamA === strugglingTeamId ? 0 : 1];
+        const middleWickets = (innings?.fallOfWickets || []).filter((fall) => fall.legalBall >= 36 && fall.legalBall <= 90);
+        if (middleWickets.length < 2) return null;
+        const window = middleWickets.slice(-3);
+        return { runs: Math.max(0, window[window.length - 1].score - window[0].score), wickets: window.length };
+      }).filter((sample): sample is { runs: number; wickets: number } => Boolean(sample));
+      const strugglingCollapseRuns = strugglingCollapseSamples.length > 0
+        ? (strugglingCollapseSamples.reduce((sum, sample) => sum + sample.runs, 0) / strugglingCollapseSamples.length).toFixed(0)
+        : "N/A";
+      const strugglingCollapseWickets = strugglingCollapseSamples.length > 0
+        ? (strugglingCollapseSamples.reduce((sum, sample) => sum + sample.wickets, 0) / strugglingCollapseSamples.length).toFixed(1)
+        : "N/A";
+
+      // Fixture announcement analysis: teamA is the scheduled home side in the
+      // generated schedule, so this gives the announcement article real opening,
+      // travel and long-stretch details instead of generic copy.
+      const userSeasonFixtures = [...(fixtures || [])]
+        .filter((fixture) => fixture.teamA === userTeamId || fixture.teamB === userTeamId)
+        .sort((a, b) => (a.matchNumber || 0) - (b.matchNumber || 0));
+      const fixtureLocation = (fixture: NewsFixture) => fixture.teamA === userTeamId ? "home" : "away";
+      const openingFixture = userSeasonFixtures[0];
+      const openingLocation = openingFixture ? fixtureLocation(openingFixture) : "home";
+      const openingOpponent = openingFixture
+        ? teams[openingFixture.teamA === userTeamId ? openingFixture.teamB : openingFixture.teamA]?.name || "the opening opponent"
+        : "the opening opponent";
+      const openingDate = openingFixture?.date ? formatDate(openingFixture.date) : "the opening matchday";
+      let longestHome = { length: 0, start: 0, end: 0 };
+      let longestAway = { length: 0, start: 0, end: 0 };
+      let runType: "home" | "away" | null = null;
+      let runStart = 0;
+      userSeasonFixtures.forEach((fixture, index) => {
+        const location = fixtureLocation(fixture);
+        if (location !== runType) {
+          if (runType) {
+            const run = { length: index - runStart, start: runStart + 1, end: index };
+            if (runType === "home" && run.length > longestHome.length) longestHome = run;
+            if (runType === "away" && run.length > longestAway.length) longestAway = run;
+          }
+          runType = location;
+          runStart = index;
+        }
+        if (index === userSeasonFixtures.length - 1 && runType) {
+          const run = { length: index - runStart + 1, start: runStart + 1, end: index + 1 };
+          if (runType === "home" && run.length > longestHome.length) longestHome = run;
+          if (runType === "away" && run.length > longestAway.length) longestAway = run;
+        }
+      });
+      const fixtureStretchText = (run: { length: number; start: number; end: number }, label: string) => (
+        run.length >= 2 ? `${run.length} consecutive ${label} fixtures (Matches ${run.start}-${run.end})` : `no extended ${label} run`
+      );
+      const fixtureOverviewBase = userSeasonFixtures.length > 0
+        ? `${userTeamShort} begin the season ${openingLocation} against ${openingOpponent} on ${openingDate}. The schedule contains ${userSeasonFixtures.length} league fixtures, including ${fixtureStretchText(longestHome, "home")} and ${fixtureStretchText(longestAway, "away")}.`
+        : "The fixture list is available, but the user team's opening opponent and venue sequence are still being finalised.";
+      const userFixturesOverviewCricinfo = `${fixtureOverviewBase} The opening phase will shape the campaign: ${openingLocation === "home" ? "home advantage gives them an early platform, but the travel burden arrives later" : "they begin on the road, testing their squad depth before home fixtures arrive"}. Analysts will watch how the long stretches affect rotation and tactical selection.`;
+      const userFixturesOverviewCricbuzz = `SCHEDULE CHECK: ${fixtureOverviewBase} Watch the ${longestAway.length >= 2 ? `${longestAway.length}-match away trip` : "away assignments"} and the ${longestHome.length >= 2 ? `${longestHome.length}-game home stretch` : "home run"} closely — those blocks could define the points haul.`;
+      const userFixturesOverviewNewsletter = `FIXTURE MAP\n\n• Starts: ${openingLocation.toUpperCase()} vs ${openingOpponent} (${openingDate})\n• Home stretch: ${fixtureStretchText(longestHome, "home")}\n• Away stretch: ${fixtureStretchText(longestAway, "away")}\n\nThe opening venue and longest travel block should guide squad rotation and early-season planning.`;
 
       const extraTokens: Record<string, string> = {
         "{seasonMatchesPlayed}": String(playedFixtures.length),
@@ -1807,6 +2344,9 @@ export default function NewsPage({
         "{cricinfoTop3Buys}": cricinfoTop3Text,
         "{cricbuzzTop3Buys}": cricbuzzTop3Text,
         "{newsletterTop3Buys}": newsletterTop3Text,
+        "{userFixturesOverviewCricinfo}": userFixturesOverviewCricinfo,
+        "{userFixturesOverviewCricbuzz}": userFixturesOverviewCricbuzz,
+        "{userFixturesOverviewNewsletter}": userFixturesOverviewNewsletter,
         "{userSquadOverviewCricinfo}": userSquadOverviewCricinfo,
         "{userSquadOverviewCricbuzz}": userSquadOverviewCricbuzz,
         "{userSquadOverviewNewsletter}": userSquadOverviewNewsletter,
@@ -1816,17 +2356,19 @@ export default function NewsPage({
         "{topTeamNrr}": topTeamNrr,
         "{topTeamWins}": topTeamWins,
         "{topTeamMatchesPlayed}": topTeamMatchesPlayed,
+        "{topTeamLeadingBatterName}": topTeamLeadingBatterName,
+        "{topTeamLeadingBatterRuns}": topTeamLeadingBatterRuns,
         "{bottomTeamName}": bottomTeamName,
         "{bottomTeamShort}": bottomTeamShort,
         "{bottomTeamPoints}": bottomTeamPoints,
         "{bottomTeamWins}": bottomTeamWins,
         "{bottomTeamMatchesPlayed}": bottomTeamMatchesPlayed,
         "{secondTeamShort}": secondTeamShort,
-        "{topTeamMiddleOversRunRate}": "8.7",
-        "{bottomTeamPowerplayConcededRuns}": "54.5",
-        "{topTeamBallsPerBoundary}": "5.2",
-        "{secondTeamDeathEconomy}": "8.4",
-        "{bottomTeamDotBallPercentage}": "42.3",
+        "{topTeamMiddleOversRunRate}": "N/A",
+        "{bottomTeamPowerplayConcededRuns}": "N/A",
+        "{topTeamBallsPerBoundary}": "N/A",
+        "{secondTeamDeathEconomy}": "N/A",
+        "{bottomTeamDotBallPercentage}": "N/A",
         "{surpriseTeamName}": surpriseTeamName,
         "{surpriseTeamShort}": surpriseTeamShort,
         "{surpriseTeamPoints}": surpriseTeamPoints,
@@ -1846,82 +2388,87 @@ export default function NewsPage({
         "{qualifier3Short}": standings[2]?.shortName || "Q3",
         "{qualifier4Short}": standings[3]?.shortName || "Q4",
         "{qualifier4Name}": standings[3]?.teamName || "Qualifier 4",
-        "{qualifiersPowerplayRunRate}": "8.9",
-        "{nonQualifiersPowerplayRunRate}": "7.4",
-        "{bottomTeamDeathEconomy}": "11.8",
+        "{qualifiersPowerplayRunRate}": "N/A",
+        "{nonQualifiersPowerplayRunRate}": "N/A",
+        "{bottomTeamDeathEconomy}": "N/A",
         "{bottomTeam1Short}": standings[standings.length - 2]?.shortName || "B1",
         "{bottomTeam1Name}": standings[standings.length - 2]?.teamName || "Bottom Team 1",
         "{bottomTeam1Position}": String(standings.length - 1),
-        "{bottomTeam1MiddleOrderAverage}": "19.4",
+        "{bottomTeam1MiddleOrderAverage}": "N/A",
         "{bottomTeam2Short}": standings[standings.length - 1]?.shortName || "B2",
         "{bottomTeam2Name}": standings[standings.length - 1]?.teamName || "Bottom Team 2",
-        "{bottomTeam2ExtrasCount}": "124",
-        "{leagueSpinWicketsPercentage}": "38.5",
-        "{strugglingGoliathPosition}": "8",
+        "{bottomTeam2ExtrasCount}": "N/A",
+        "{leagueSpinWicketsPercentage}": "N/A",
+        "{strugglingGoliathPosition}": "N/A",
         "{retainedTeamName}": indianOnlyRetainedTeam?.name || youngsterRetainedTeam?.name || strongestRetainedTeam?.name || "Retaining Team",
         "{retainedTeamShort}": indianOnlyRetainedTeam?.shortName || youngsterRetainedTeam?.shortName || strongestRetainedTeam?.shortName || "RET",
         "{retainedPlayerCount}": String(indianOnlyRetainedTeam?.retainedPlayers?.length || 0),
         "{youngsterName}": youngsterRetainedPlayer?.name || "Young Star",
-        "{youngsterAge}": String(youngsterRetainedPlayer?.age || 20),
-        "{youngsterPotential}": String(youngsterRetainedPlayer ? Math.max(youngsterRetainedPlayer.potentialBatting, youngsterRetainedPlayer.potentialBowling) : 85),
-        "{retainedCoreRating}": strongestRetainedRating > 0 ? strongestRetainedRating.toFixed(1) : "85.0",
+        "{youngsterAge}": youngsterRetainedPlayer ? String(youngsterRetainedPlayer.age) : "N/A",
+        "{youngsterPotential}": youngsterRetainedPlayer ? String(Math.max(youngsterRetainedPlayer.potentialBatting, youngsterRetainedPlayer.potentialBowling)) : "N/A",
+        "{retainedCoreRating}": strongestRetainedRating > 0 ? strongestRetainedRating.toFixed(1) : "N/A",
 
         "{surgingTeamName}": surgingTeamName,
         "{surgingTeamShort}": surgingTeamShort,
         "{teamConsecutiveWins}": teamConsecutiveWins,
         "{teamCurrentPosition}": teamCurrentPosition,
-        "{surgingTeamStreakPowerplayRuns}": "51.5",
-        "{surgingTeamStreakPowerplayWickets}": "1",
+        "{strugglingTeamCurrentPosition}": strugglingTeamCurrentPosition,
+        "{strugglingLatestTopScorerName}": strugglingLatestTopScorerName,
+        "{strugglingLatestTopScorerRuns}": strugglingLatestTopScorerRuns,
+        "{surgingTeamStreakPowerplayRuns}": streakPowerplayRunRate,
+        "{surgingTeamStreakPowerplayWickets}": streakPowerplayWicketRate,
         "{hotPlayerName}": hotPlayerName,
         "{hotPlayerStreakRuns}": hotPlayerStreakRuns,
         "{hotPlayerStreakStrikeRate}": hotPlayerStreakStrikeRate,
-        "{surgingTeamStreakDotBallPercentage}": "41.5",
-        "{keyPlayerName}": hotPlayerName,
-        "{keyPlayerBattingPosition}": "3rd",
+        "{surgingTeamStreakDotBallPercentage}": streakDeathDotPercentage,
+        "{keyPlayerName}": streakStandoutName,
+        "{keyPlayerBattingPosition}": "N/A",
         "{keyBowlerName}": keyBowlerName,
         "{surgingTeamOldRunRate}": surgingTeamOldRunRate,
         "{surgingTeamNewRunRate}": surgingTeamNewRunRate,
-        "{starPlayerName}": hotPlayerName,
+        "{starPlayerName}": strugglingMatchMiddleOrderName,
         "{starPlayerStreakRuns}": hotPlayerStreakRuns,
         "{bowlerStreakWickets}": bowlerStreakWickets,
-        "{surgingTeamCaptainName}": surgingTeamCaptainName,
+        "{surgingTeamCaptainName}": surgingTeamCaptainName === "Captain" ? "The captain" : surgingTeamCaptainName,
+        "{keyBowlerAction}": keyBowlerAction,
         "{heroPlayerName}": hotPlayerName,
-        "{keyPlayerStreakStats}": keyPlayerStreakStats,
+        "{keyPlayerStreakStats}": streakStandoutStats,
 
         "{teamPoints}": String(standings.find(s => s.teamId === surgingTeamId)?.points || 0),
-        "{surgingTeamStreakDeathEconomy}": "7.8",
-        "{surgingTeamStreakRunsPerOver}": "9.2",
-        "{starPlayerStreakAverage}": "68.5",
-        "{starPlayerStreakFiftyCount}": "4",
-        "{surgingTeamStreakSixesCount}": "48",
-        "{keyPlayerStreakWickets}": "8",
+        "{surgingTeamStreakDeathEconomy}": "N/A",
+        "{surgingTeamStreakRunsPerOver}": "N/A",
+        "{starPlayerStreakAverage}": "N/A",
+        "{starPlayerStreakFiftyCount}": "N/A",
+        "{surgingTeamStreakSixesCount}": "N/A",
+        "{keyPlayerStreakWickets}": streakStandout ? String(streakStandout.wickets) : "0",
         "{bowler.streakWickets}": bowlerStreakWickets,
         "{bowler.name}": keyBowlerName,
-        "{keyPlayer.streakWickets}": "8",
+        "{keyPlayer.streakWickets}": streakStandout ? String(streakStandout.wickets) : "0",
         "{keyPlayer.streakRuns}": hotPlayerStreakRuns,
         "{keyPlayer.name}": hotPlayerName,
 
         "{strugglingTeamName}": strugglingTeamName,
         "{strugglingTeamShort}": strugglingTeamShort,
         "{teamConsecutiveLosses}": teamConsecutiveLosses,
-        "{strugglingTeamStreakPowerplayWickets}": "2.1",
-        "{strugglingTeamStreakPowerplayRunRate}": "6.4",
-        "{starPlayer.name}": strugglingHotPlayer?.name || "Star Player",
-        "{starPlayer.streakRuns}": "135",
-        "{starPlayer.streakAverage}": "22.5",
-        "{strugglingTeamStreakCollapseRuns}": "28",
-        "{strugglingTeamStreakCollapseWickets}": "3",
-        "{coach.name}": "Head Coach",
-        "{coachName}": "Head Coach",
-        "{strugglingTeamStreakDeathEconomy}": "11.8",
-        "{strugglingTeamDotBallPercentage}": "44.5",
-        "{strugglingTeamRecentPowerplayRuns}": "38",
+        "{strugglingTeamStreakPowerplayWickets}": strugglingPowerplayWickets,
+        "{strugglingTeamStreakPowerplayRunRate}": strugglingPowerplayRuns,
+        "{starPlayer.name}": strugglingMatchMiddleOrderName,
+        "{starPlayer.streakRuns}": hotPlayerStreakRuns,
+        "{starPlayer.streakAverage}": "N/A",
+        "{strugglingTeamStreakCollapseRuns}": strugglingCollapseRuns,
+        "{strugglingTeamStreakCollapseWickets}": strugglingCollapseWickets,
+        "{coach.name}": "the coaching staff",
+        "{coachName}": "the coaching staff",
+        "{strugglingTeamStreakDeathEconomy}": "N/A",
+        "{strugglingTeamDotBallPercentage}": "N/A",
+        "{strugglingTeamRecentPowerplayRuns}": strugglingPowerplayRuns,
+        "{strugglingTeamRecentPowerplayScore}": latestStrugglingPowerplayScore,
         "{captain.name}": strugglingTeamCaptainName,
         "{strugglingTeamCaptainName}": strugglingTeamCaptainName,
-        "{strugglingTeamLast3OversConceded}": "42",
-        "{strugglingTeamTotalRuns}": "118",
+        "{strugglingTeamLast3OversConceded}": "N/A",
+        "{strugglingTeamTotalRuns}": latestStrugglingLoss ? String(latestStrugglingLoss.teamA === strugglingTeamId ? latestStrugglingLoss.scoreA?.runs || 0 : latestStrugglingLoss.scoreB?.runs || 0) : "0",
         "{topScorer.name}": strugglingHotPlayer?.name || "Star Player",
-        "{topScorer.runs}": String(strugglingHotPlayer ? (playerStats[strugglingHotPlayer.id]?.runs || 35) : 35),
+        "{topScorer.runs}": String(strugglingHotPlayer ? (playerStats[strugglingHotPlayer.id]?.runs || 0) : 0),
       };
 
       // Section 4: tournament_league additional tokens
@@ -1942,20 +2489,43 @@ export default function NewsPage({
       
       // Struggling team for early season (bottom 2 teams)
       const earlyStrugglingTeam = standings[standings.length - 1] || topTeamObj;
+      const earlyStrugglingTeamId = earlyStrugglingTeam?.teamId;
+      const earlyTeamLeagueFixtures = earlyStrugglingTeamId
+        ? (fixtures || []).filter((fixture) => (
+          (fixture.teamA === earlyStrugglingTeamId || fixture.teamB === earlyStrugglingTeamId)
+          && !["qualifier1", "eliminator", "qualifier2", "final"].includes(String(fixture.stage || "").toLowerCase())
+        ))
+        : [];
+      const earlyTeamPlayedFixtures = earlyTeamLeagueFixtures.filter((fixture) => fixture.played);
+      const earlyTeamRemainingGames = Math.max(0, earlyTeamLeagueFixtures.length - earlyTeamPlayedFixtures.length);
+      const openingStandValues = earlyTeamPlayedFixtures
+        .map((fixture) => {
+          // This metric describes what the struggling team's bowling unit
+          // allowed, so use the opponent's opening partnership—not its own.
+          const innings = fixture.simulation?.innings?.find((entry: any) => entry.battingTeamId !== earlyStrugglingTeamId);
+          const openingPartnership = innings?.partnerships?.[0];
+          return typeof openingPartnership?.runs === "number" ? openingPartnership.runs : null;
+        })
+        .filter((value): value is number => value !== null);
+      const averageOpeningStand = openingStandValues.length > 0
+        ? (openingStandValues.reduce((sum, value) => sum + value, 0) / openingStandValues.length).toFixed(1)
+        : "N/A";
       extraTokens["{strugglingTeamName}"] = earlyStrugglingTeam?.teamName || "Struggling Team";
       extraTokens["{strugglingTeamShort}"] = earlyStrugglingTeam?.shortName || "STRG";
-      extraTokens["{strugglingTeamPosition}"] = String(standings.indexOf(earlyStrugglingTeam) + 1);
+      const earlyTeamRankIndex = earlyStrugglingTeamId ? rankedStandings.findIndex((standing) => standing.teamId === earlyStrugglingTeamId) : -1;
+      extraTokens["{strugglingTeamPosition}"] = String(earlyTeamRankIndex >= 0 ? earlyTeamRankIndex + 1 : standings.length);
       extraTokens["{strugglingTeamPoints}"] = String(earlyStrugglingTeam?.points || 0);
       extraTokens["{strugglingTeamPowerplayRunRate}"] = "6.1";
-      extraTokens["{strugglingTeamAvgOpenerStand}"] = "12.8";
+      extraTokens["{strugglingTeamAvgOpenerStand}"] = averageOpeningStand;
+      extraTokens["{earlyStrugglingTeamRemainingGames}"] = String(earlyTeamRemainingGames);
       extraTokens["{strugglingTeamLosses}"] = String(earlyStrugglingTeam?.lost || 0);
       extraTokens["{strugglingTeamCaptainName}"] = (() => {
-        const capId = teams[earlyStrugglingTeam?.teamId || ""]?.captainContinuityId;
-        return capId && players[capId] ? players[capId].name : "Captain";
+        return resolveCaptainName(earlyStrugglingTeam?.teamId);
       })();
 
-      // Top team's home venue
-      extraTokens["{topTeamHomeVenue}"] = sim?.conditions?.stadiumName || "Eden Gardens";
+      // Use the leaders' configured home ground, not the last simulated match's
+      // stadium (which can belong to a completely different franchise).
+      extraTokens["{topTeamHomeVenue}"] = teams[topTeamObj?.teamId || ""]?.homeGround || "their home ground";
       
       // Top team's star batter and bowler
       const topTeamSquad = teams[topTeamObj?.teamId || ""]?.squad || [];
@@ -1964,6 +2534,21 @@ export default function NewsPage({
       const topTeamStarBowler = topTeamPlayers.sort((a, b) => (b.stats?.wickets || 0) - (a.stats?.wickets || 0))[0]?.player;
       extraTokens["{starBatterName}"] = topTeamStarBatter?.name || "Star Batter";
       extraTokens["{starBowlerName}"] = topTeamStarBowler?.name || "Star Bowler";
+      const topTeamBoundaryTotals = playedFixtures.reduce((totals, fixture) => {
+        if (fixture.teamA !== topTeamObj?.teamId && fixture.teamB !== topTeamObj?.teamId) return totals;
+        const battingCard = fixture.teamA === topTeamObj?.teamId
+          ? (fixture.scorecard?.inningsA?.batting || [])
+          : (fixture.scorecard?.inningsB?.batting || []);
+        battingCard.forEach((entry: any) => {
+          totals.fours += Number(entry.fours) || 0;
+          totals.sixes += Number(entry.sixes) || 0;
+        });
+        return totals;
+      }, { fours: 0, sixes: 0 });
+      const topTeamFours = topTeamBoundaryTotals.fours;
+      const topTeamSixes = topTeamBoundaryTotals.sixes;
+      extraTokens["{topTeamFours}"] = String(topTeamFours);
+      extraTokens["{topTeamSixes}"] = String(topTeamSixes);
 
       // Topic 2
       const middleTeam1 = fourthTeamObj;
@@ -1979,9 +2564,9 @@ export default function NewsPage({
 
       const nrrOpponent = standings.find(s => s.teamId !== middleTeam2?.teamId && s.teamId !== middleTeam1?.teamId) || topTeamObj;
       extraTokens["{nrrOpponentShort}"] = nrrOpponent?.shortName || "OPP";
-      extraTokens["{nrrChaseOvers}"] = "15.4";
-      extraTokens["{nrrDefendRuns}"] = "32";
-      extraTokens["{nrrSwingDifference}"] = "0.245";
+      extraTokens["{nrrChaseOvers}"] = "N/A";
+      extraTokens["{nrrDefendRuns}"] = "N/A";
+      extraTokens["{nrrSwingDifference}"] = "N/A";
 
       extraTokens["{topTeam1Short}"] = topTeamObj?.shortName || "T1";
       extraTokens["{topTeam2Short}"] = secondTeamObj?.shortName || "T2";
@@ -2009,8 +2594,7 @@ export default function NewsPage({
       extraTokens["{contenderTeamName}"] = contenderTeam?.teamName || "Contender Team";
       extraTokens["{contenderTeamMustWinGames}"] = "2";
       extraTokens["{contenderTeamCaptainName}"] = (() => {
-        const capId = teams[contenderTeam?.teamId || ""]?.captainContinuityId;
-        return capId && players[capId] ? players[capId].name : "Captain";
+        return resolveCaptainName(contenderTeam?.teamId);
       })();
       extraTokens["{rivalTeamShort}"] = fourthTeamObj?.shortName || "RIV";
       
@@ -2021,9 +2605,9 @@ export default function NewsPage({
       extraTokens["{teamAPoints}"] = String(fourthTeamObj?.points || 0);
 
       // Topic 3
-      const totalMatchesPerTeam = fixtures.length > 0 
-        ? fixtures.filter(f => f.teamA === userTeamId || f.teamB === userTeamId).length 
-        : 14;
+      const totalMatchesPerTeam = fixtures.length > 0
+        ? fixtures.filter(f => f.teamA === userTeamId || f.teamB === userTeamId).length
+        : 0;
 
       const eliminatedTeamObj = standings.find(s => s.points + (totalMatchesPerTeam - s.played) * 2 < (fourthTeamObj?.points || 0)) || bottomTeamObj;
       extraTokens["{eliminatedTeamShort}"] = eliminatedTeamObj?.shortName || "ELIM";
@@ -2031,16 +2615,19 @@ export default function NewsPage({
       extraTokens["{triggerMatchWinnerTeam}"] = secondTeamObj?.teamName || "Winner Team";
       extraTokens["{eliminatedTeamMaxPossiblePoints}"] = String((eliminatedTeamObj?.points || 0) + (totalMatchesPerTeam - (eliminatedTeamObj?.played || 0)) * 2);
       extraTokens["{eliminatedTeamRemainingGames}"] = String(totalMatchesPerTeam - (eliminatedTeamObj?.played || 0));
-      extraTokens["{eliminatedTeamDefendingConcededRuns}"] = "184.2";
+      extraTokens["{eliminatedTeamDefendingConcededRuns}"] = "N/A";
       extraTokens["{eliminatedTeamWins}"] = String(eliminatedTeamObj?.won || 0);
       extraTokens["{eliminatedTeamLosses}"] = String(eliminatedTeamObj?.lost || 0);
       extraTokens["{eliminatedTeamCaptainName}"] = (() => {
-        const capId = teams[eliminatedTeamObj?.teamId || ""]?.captainContinuityId;
-        return capId && players[capId] ? players[capId].name : "Captain";
+        return resolveCaptainName(eliminatedTeamObj?.teamId);
       })();
 
-      const onTheBrinkTeamObj = standings.find(s => s.points + (totalMatchesPerTeam - s.played) * 2 === (fourthTeamObj?.points || 0) && s.played < totalMatchesPerTeam) || bottomTeamObj;
+      const onTheBrinkTeamObj = standings.find(s => s.points + (totalMatchesPerTeam - s.played) * 2 === (fourthTeamObj?.points || 0) && s.played < totalMatchesPerTeam);
       extraTokens["{strugglingOpponentShort}"] = fourthTeamObj?.shortName || "OPP";
+      const brinkRemainingGames = Math.max(0, totalMatchesPerTeam - (onTheBrinkTeamObj?.played || 0));
+      extraTokens["{strugglingTeamRemainingGames}"] = String(brinkRemainingGames);
+      extraTokens["{strugglingTeamMaxPossiblePoints}"] = String((onTheBrinkTeamObj?.points || 0) + brinkRemainingGames * 2);
+      extraTokens["{strugglingTeamNrr}"] = onTheBrinkTeamObj ? `${onTheBrinkTeamObj.nrr >= 0 ? "+" : ""}${onTheBrinkTeamObj.nrr.toFixed(3)}` : "N/A";
 
       // Topic 4
       extraTokens["{pointDiffValue}"] = String(Math.abs((topTeamObj?.points || 0) - (thirdTeamObj?.points || 0)));
@@ -2066,6 +2653,112 @@ export default function NewsPage({
         .sort((a, b) => b.wickets - a.wickets);
       const purpleCapRank = targetPlayer ? allBowlersSorted.findIndex(x => x.id === targetPlayer.id) + 1 : 1;
 
+      // Build the bargain article's performance line from the selected player's
+      // own scorecard rows only. Never borrow the match's top bowler figures.
+      const targetBatterMatch = targetPlayer ? lastMatchBatting.find((b) => b.id === targetPlayer.id) : undefined;
+      const targetBowlerMatch = targetPlayer ? lastMatchBowling.find((b) => b.id === targetPlayer.id) : undefined;
+      const targetPerformanceParts: string[] = [];
+      if (targetBatterMatch && (targetBatterMatch.balls || 0) > 0) {
+        targetPerformanceParts.push(`${targetBatterMatch.runs || 0} runs off ${targetBatterMatch.balls || 0} balls`);
+      }
+      if (targetBowlerMatch && ((targetBowlerMatch.overs || 0) > 0 || (targetBowlerMatch.wickets || 0) > 0)) {
+        targetPerformanceParts.push(`${targetBowlerMatch.wickets || 0} wickets for ${targetBowlerMatch.runsConceded || 0} runs`);
+      }
+      const playerPerformanceSummary = targetPerformanceParts.length > 0
+        ? targetPerformanceParts.join(" and ")
+        : "did not record a batting or bowling appearance";
+      const escapedTargetBowlerName = targetPlayer?.name?.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const dismissedBatterForBenchmark = targetPlayer && escapedTargetBowlerName
+        ? [...(lastMatch?.scorecard?.inningsA?.batting || []), ...(lastMatch?.scorecard?.inningsB?.batting || [])]
+          .find((entry: any) => typeof entry.dismissal === "string" && new RegExp(`\\bb ${escapedTargetBowlerName}(?:$|[ ,])`, "i").test(entry.dismissal))
+        : undefined;
+      const seasonRuns = targetPlayerStats?.runs || 0;
+      const seasonBalls = targetPlayerStats?.balls || 0;
+      const seasonWickets = targetPlayerStats?.wickets || 0;
+      const seasonOvers = targetPlayerStats?.oversBowled || 0;
+      const targetSeasonBattingRows = targetPlayer
+        ? fixtures.filter((fixture) => fixture.played)
+          .flatMap((fixture) => [...(fixture.scorecard?.inningsA?.batting || []), ...(fixture.scorecard?.inningsB?.batting || [])])
+          .filter((entry) => entry.id === targetPlayer.id && ((entry.balls || 0) > 0 || (entry.runs || 0) > 0))
+        : [];
+      const targetSeasonBowlingRows = targetPlayer
+        ? fixtures.filter((fixture) => fixture.played)
+          .flatMap((fixture) => [...(fixture.scorecard?.inningsA?.bowling || []), ...(fixture.scorecard?.inningsB?.bowling || [])])
+          .filter((entry) => entry.id === targetPlayer.id && ((entry.overs || 0) > 0 || (entry.wickets || 0) > 0))
+        : [];
+      const benchmarkBowlingOvers = targetSeasonBowlingRows.reduce((sum, entry) => sum + (Number(entry.overs) || 0), 0);
+      const benchmarkBowlingRuns = targetSeasonBowlingRows.reduce((sum, entry) => sum + (Number(entry.runsConceded) || 0), 0);
+      const benchmarkBowlingWickets = targetSeasonBowlingRows.reduce((sum, entry) => sum + (Number(entry.wickets) || 0), 0);
+      const benchmarkEconomy = benchmarkBowlingOvers > 0 ? (benchmarkBowlingRuns / benchmarkBowlingOvers).toFixed(2) : "N/A";
+      const benchmarkStrikeRate = benchmarkBowlingWickets > 0 && benchmarkBowlingOvers > 0
+        ? ((benchmarkBowlingOvers * 6) / benchmarkBowlingWickets).toFixed(1)
+        : "N/A";
+      const targetSeasonFifties = targetSeasonBattingRows.filter((entry) => (entry.runs || 0) >= 50 && (entry.runs || 0) < 100).length;
+      const targetSeasonCenturies = targetSeasonBattingRows.filter((entry) => (entry.runs || 0) >= 100).length;
+      const targetPhaseStats = { powerplayRuns: 0, powerplayBalls: 0, deathRuns: 0, deathBalls: 0, dotBalls: 0, powerplayWickets: 0 };
+      fixtures.filter((fixture) => fixture.played).forEach((fixture) => {
+        fixture.simulation?.innings?.forEach((innings: any) => {
+          const battingRows = innings.batting || [];
+          const isBatting = battingRows.some((entry: any) => entry.id === targetPlayer?.id);
+          if (isBatting) {
+            innings.oversDetail?.forEach((over: any) => over.deliveries?.forEach((delivery: any) => {
+              if (delivery.strikerId !== targetPlayer?.id) return;
+              const phase = over.number < 6 ? "powerplay" : over.number >= 16 ? "death" : "middle";
+              if (phase === "powerplay") { targetPhaseStats.powerplayRuns += delivery.runsOffBat || 0; if (delivery.isLegal) targetPhaseStats.powerplayBalls += 1; }
+              if (phase === "death") { targetPhaseStats.deathRuns += delivery.runsOffBat || 0; if (delivery.isLegal) targetPhaseStats.deathBalls += 1; }
+              if ((delivery.runsOffBat || 0) === 0 && (delivery.totalRuns || 0) === 0) targetPhaseStats.dotBalls += 1;
+            }));
+          }
+          const bowlingRows = innings.bowling || [];
+          const isBowling = bowlingRows.some((entry: any) => entry.id === targetPlayer?.id);
+          if (isBowling) {
+            innings.oversDetail?.filter((over: any) => over.bowlerId === targetPlayer?.id && over.number < 6)
+              .forEach((over: any) => { targetPhaseStats.powerplayWickets += over.wickets || 0; });
+          }
+        });
+      });
+      const targetTeamSeasonRuns = targetPlayer?.teamId
+        ? fixtures.filter((fixture) => fixture.played).reduce((sum, fixture) => {
+          const score = fixture.teamA === targetPlayer.teamId ? fixture.scoreA?.runs : fixture.teamB === targetPlayer.teamId ? fixture.scoreB?.runs : 0;
+          return sum + (score || 0);
+        }, 0)
+        : 0;
+      const runContribution = targetTeamSeasonRuns > 0 ? ((seasonRuns / targetTeamSeasonRuns) * 100).toFixed(1) : "N/A";
+      const targetSeasonDismissals = targetSeasonBattingRows.filter((entry) => Boolean(entry.dismissal) && !entry.notOut).length;
+      const seasonBattingAverage = targetSeasonBattingRows.length > 0
+        ? (seasonRuns / Math.max(1, targetSeasonDismissals)).toFixed(1)
+        : "N/A";
+      const seasonStrikeRate = seasonBalls > 0 ? ((seasonRuns / seasonBalls) * 100).toFixed(1) : "N/A";
+      const seasonEconomy = seasonOvers > 0 ? ((targetPlayerStats?.runsConceded || 0) / seasonOvers).toFixed(2) : "N/A";
+      const playerMultiWicketGames = targetPlayer
+        ? fixtures.filter((fixture) => {
+          if (!fixture.played) return false;
+          const bowling = [...(fixture.scorecard?.inningsA?.bowling || []), ...(fixture.scorecard?.inningsB?.bowling || [])]
+            .find((entry) => entry.id === targetPlayer.id);
+          return (bowling?.wickets || 0) >= 2;
+        }).length
+        : 0;
+      const bowlerCountTo20 = Object.values(playerStats).filter((stats) => (stats.wickets || 0) >= 20).length;
+      const ordinal = (value: number) => {
+        const mod100 = value % 100;
+        if (mod100 >= 11 && mod100 <= 13) return `${value}th`;
+        return value % 10 === 1 ? `${value}st` : value % 10 === 2 ? `${value}nd` : value % 10 === 3 ? `${value}rd` : `${value}th`;
+      };
+      const seasonPerformanceParts: string[] = [];
+      const isBowlingRole = targetPlayer?.role === "Pace Bowler" || targetPlayer?.role === "Spin Bowler";
+      const isAllRounder = targetPlayer?.role === "All-Rounder";
+      const hasBattingContribution = seasonBalls > 0 || seasonRuns > 0;
+      const hasBowlingContribution = seasonOvers > 0 || seasonWickets > 0;
+      if (!isBowlingRole && hasBattingContribution) {
+        seasonPerformanceParts.push(`${seasonRuns} runs at an average of ${seasonBattingAverage} and strike rate ${seasonStrikeRate}`);
+      }
+      if ((isBowlingRole || isAllRounder) && hasBowlingContribution) {
+        seasonPerformanceParts.push(`${seasonWickets} wickets at an economy of ${seasonEconomy}`);
+      }
+      const playerSeasonPerformanceSummary = seasonPerformanceParts.length > 0
+        ? seasonPerformanceParts.join("; ")
+        : "no recorded batting or bowling contribution yet";
+
       const playerExtraTokens: Record<string, string> = {
         "{playerName}": targetPlayer?.name || "Player Name",
         "{playerCareerAverage}": String(targetPlayer?.iplStats?.battingAverage || 0),
@@ -2073,77 +2766,80 @@ export default function NewsPage({
         "{playerCareerSeasons}": String(targetPlayer?.iplHistory?.length || 0),
         "{playerCareerEconomy}": (() => {
           const stats = targetPlayer?.iplStats;
-          if (!stats) return "8.00";
+          if (!stats) return "N/A";
           const balls = stats.bowlingBalls || 0;
           const runs = stats.bowlingRunsConceded || 0;
-          return balls > 0 ? ((runs / balls) * 6).toFixed(2) : "8.00";
+          return balls > 0 ? ((runs / balls) * 6).toFixed(2) : "N/A";
         })(),
         "{playerCareerBowlingStrikeRate}": (() => {
           const stats = targetPlayer?.iplStats;
-          if (!stats) return "24.0";
+          if (!stats) return "N/A";
           const balls = stats.bowlingBalls || 0;
           const wickets = stats.wickets || 0;
-          return wickets > 0 ? (balls / wickets).toFixed(1) : "24.0";
+          return wickets > 0 ? (balls / wickets).toFixed(1) : "N/A";
         })(),
         "{playerAuctionPrice}": targetPlayer ? (getPlayerSalary(targetPlayer) / 100).toFixed(1) : "0.0",
-        "{playerSeasonBattingAverage}": targetPlayerStats ? (targetPlayerStats.runs / (targetPlayerStats.innings || 1)).toFixed(1) : "0.0",
-        "{playerRuns}": String(targetPlayerMatchStats?.runs || 100),
-        "{playerBalls}": String(targetPlayerMatchStats?.balls || 60),
-        "{playerTeamShort}": targetPlayer ? (teams[targetPlayer.teamId]?.shortName || "TEAM") : "TEAM",
-        "{playerTeamRuns}": String(lastMatch ? (targetPlayerMatchStats?.teamId === lastMatch.teamA ? lastMatch.scoreA?.runs || 150 : lastMatch.scoreB?.runs || 150) : 150),
-        "{playerBoundaryPercentage}": "65",
-        "{playerDotBallCount}": "12",
-        "{playerBallsToCentury}": "54",
+        "{playerSeasonBattingAverage}": seasonBattingAverage,
+        "{playerRuns}": String(targetPlayerMatchStats?.runs || 0),
+        "{matchPlayerRuns}": String(targetPlayerMatchStats?.runs || 0),
+        "{playerBalls}": String(targetPlayerMatchStats?.balls || 0),
+        "{playerTeamShort}": targetPlayerStats?.teamId ? (teams[targetPlayerStats.teamId]?.shortName || "TEAM") : (targetPlayer ? (teams[targetPlayer.teamId]?.shortName || "TEAM") : "TEAM"),
+        "{playerTeamRuns}": String(lastMatch ? (targetPlayerMatchStats?.teamId === lastMatch.teamA ? lastMatch.scoreA?.runs || 0 : lastMatch.scoreB?.runs || 0) : 0),
+        "{playerBoundaryPercentage}": seasonRuns > 0 ? (((targetSeasonBattingRows.reduce((sum, entry) => sum + (entry.fours || 0) * 4 + (entry.sixes || 0) * 6, 0) / seasonRuns) * 100).toFixed(1)) : "N/A",
+        "{playerDotBallCount}": String(targetPhaseStats.dotBalls),
+        "{playerBallsToCentury}": "N/A",
         "{milestoneBowlerName}": lastMatchBowling[0]?.name || "Bowler",
-        "{playerMidWicketRuns}": "38",
-        "{partnershipRuns}": "125",
-        "{partnerName}": lastMatchBatting.find(b => b.id !== targetPlayer?.id)?.name || "Partner",
-        "{playerSeasonRuns}": String(targetPlayerStats?.runs || 100),
-        "{playerSeasonAverage}": String(targetPlayerStats ? (targetPlayerStats.runs / (targetPlayerStats.innings || 1)).toFixed(1) : "45.2"),
+        "{playerMidWicketRuns}": "N/A",
+        "{partnershipRuns}": "N/A",
+        "{partnerName}": lastMatchBatting.find(b => b.id !== targetPlayer?.id)?.name || "a batting partner",
+        "{playerSeasonRuns}": String(targetPlayerStats?.runs || 0),
+        "{playerSeasonAverage}": seasonBattingAverage,
         "{playerTeamCollapseScore}": "42/3",
-        "{playerPowerplaySR}": "132.5",
-        "{playerDeathSR}": "192.4",
-        "{playerFinalOverRuns}": "22",
-        "{playerTeamWickets}": String(lastMatch ? (targetPlayerMatchStats?.teamId === lastMatch.teamA ? lastMatch.scoreA?.wickets || 4 : lastMatch.scoreB?.wickets || 4) : 4),
+        "{playerPowerplaySR}": targetPhaseStats.powerplayBalls > 0 ? ((targetPhaseStats.powerplayRuns / targetPhaseStats.powerplayBalls) * 100).toFixed(1) : "N/A",
+        "{playerDeathSR}": targetPhaseStats.deathBalls > 0 ? ((targetPhaseStats.deathRuns / targetPhaseStats.deathBalls) * 100).toFixed(1) : "N/A",
+        "{playerFinalOverRuns}": "N/A",
+        "{playerTeamWickets}": String(lastMatch ? (targetPlayerMatchStats?.teamId === lastMatch.teamA ? lastMatch.scoreA?.wickets || 0 : lastMatch.scoreB?.wickets || 0) : 0),
         "{playerOrangeCapRank}": String(orangeCapRank),
         "{playerPurpleCapRank}": String(purpleCapRank),
-        "{playerTotalSeasonRuns}": String(targetPlayerStats?.runs || 100),
-        "{playerFours}": String(targetPlayerMatchStats?.fours || 8),
-        "{playerSixes}": String(targetPlayerMatchStats?.sixes || 4),
-        "{matchTargetRuns}": String(lastMatch ? (targetPlayerMatchStats?.teamId === lastMatch.teamA ? (lastMatch.scoreB?.runs || 140) + 1 : (lastMatch.scoreA?.runs || 140) + 1) : 141),
+        "{playerTotalSeasonRuns}": String(targetPlayerStats?.runs || 0),
+        "{playerFours}": String(targetPlayerMatchStats?.fours || 0),
+        "{playerSixes}": String(targetPlayerMatchStats?.sixes || 0),
+        "{matchTargetRuns}": String(lastMatch ? (targetPlayerMatchStats?.teamId === lastMatch.teamA ? (lastMatch.scoreB?.runs || 0) + 1 : (lastMatch.scoreA?.runs || 0) + 1) : 0),
         "{matchLast3OversRequired}": "35",
-        "{playerWickets}": String(targetPlayerMatchStats?.wickets || 5),
-        "{playerRunsConceded}": String(targetPlayerMatchStats?.runsConceded || 24),
-        "{playerDegreesOfSeam}": "1.8",
-        "{playerPowerplayWickets}": "3",
-        "{playerDotBalls}": "14",
-        "{playerEconomyRate}": targetPlayerMatchStats ? (targetPlayerMatchStats.runsConceded / 4).toFixed(2) : "6.00",
-        "{playerDeathWickets}": "3",
-        "{playerDeathRunsConceded}": "12",
-        "{playerYorkerCount}": "8",
-        "{matchOpponentRequiredRuns}": "18 runs",
-        "{playerTotalSeasonWickets}": String(targetPlayerStats?.wickets || 20),
+        "{playerWickets}": String(targetPlayerMatchStats?.wickets || 0),
+        "{playerRunsConceded}": String(targetPlayerMatchStats?.runsConceded || 0),
+        "{playerPerformanceSummary}": playerPerformanceSummary,
+        "{playerSeasonPerformanceSummary}": playerSeasonPerformanceSummary,
+        "{playerDegreesOfSeam}": "N/A",
+        "{playerPowerplayWickets}": String(targetPhaseStats.powerplayWickets),
+        "{playerDotBalls}": String(targetPhaseStats.dotBalls),
+        "{playerEconomyRate}": targetPlayerMatchStats?.overs ? (targetPlayerMatchStats.runsConceded / targetPlayerMatchStats.overs).toFixed(2) : "N/A",
+        "{playerDeathWickets}": "N/A",
+        "{playerDeathRunsConceded}": "N/A",
+        "{playerYorkerCount}": "N/A",
+        "{matchOpponentRequiredRuns}": "N/A",
+        "{playerTotalSeasonWickets}": String(targetPlayerStats?.wickets || 0),
         "{matchOver}": "14",
-        "{playerSeasonInnings}": String(targetPlayerStats?.innings || 12),
-        "{playerSeasonStrikeRate}": String(targetPlayerStats ? (targetPlayerStats.runs / (targetPlayerStats.balls || 1) * 100).toFixed(1) : "135.2"),
-        "{playerRunContributionPercentage}": "28",
-        "{seasonBowlerCountTo20}": "2",
-        "{playerSeasonMatches}": String(targetPlayerStats?.matches || 12),
-        "{playerBowlingStrikeRate}": String(targetPlayerStats ? (targetPlayerStats.ballsBowled / (targetPlayerStats.wickets || 1)).toFixed(1) : "15.4"),
-        "{playerSeasonEconomy}": String(targetPlayerStats ? (targetPlayerStats.runsConceded / (targetPlayerStats.ballsBowled / 6 || 1)).toFixed(2) : "7.85"),
-        "{playerMultiWicketGames}": "4",
-        "{dismissedBatterName}": lastMatchBatting[0]?.name || "Batter",
-        "{playerSeasonFifties}": "3",
-        "{playerSeasonCenturies}": "1",
-        "{playerAge}": String(targetPlayer?.age || 21),
-        "{matchPlayerPerformance}": targetPlayerMatchStats?.runs ? `${targetPlayerMatchStats.runs} (${targetPlayerMatchStats.balls})` : `${targetPlayerMatchStats?.wickets}/${targetPlayerMatchStats?.runsConceded}`,
-        "{playerMatchMetric}": targetPlayerMatchStats?.runs ? `${(targetPlayerMatchStats.runs / (targetPlayerMatchStats.balls || 1) * 100).toFixed(1)} SR` : `${(targetPlayerMatchStats?.runsConceded / 4 || 6.00).toFixed(2)} Eco`,
-        "{playerCareerRuns}": String(targetPlayer && targetPlayer.age < 30 ? (targetPlayer.iplStats?.runs || 0) : ((targetPlayerStats?.runs || 0) + 1850)),
-        "{playerCareerWickets}": String(targetPlayer && targetPlayer.age < 30 ? (targetPlayer.iplStats?.wickets || 0) : ((targetPlayerStats?.wickets || 0) + 94)),
-        "{playerCareerMatches}": String(targetPlayer && targetPlayer.age < 30 ? (targetPlayer.iplStats?.matches || 0) : ((targetPlayerStats?.matches || 0) + 120)),
-        "{playerChampionshipYears}": "2022 & 2024",
-        "{playerCareerTrophies}": "2",
-        "{opponentRuns}": String(lastMatch ? (targetPlayerMatchStats?.teamId === lastMatch.teamA ? lastMatch.scoreB?.runs || 140 : lastMatch.scoreA?.runs || 140) : 140),
+        "{playerSeasonInnings}": String(targetPlayerStats?.innings || 0),
+        "{playerSeasonStrikeRate}": seasonStrikeRate,
+        "{playerRunContributionPercentage}": runContribution,
+        "{seasonBowlerCountTo20Ordinal}": ordinal(Math.max(1, bowlerCountTo20)),
+        "{playerSeasonMatches}": String(targetPlayerStats?.matches || 0),
+        "{playerBowlingStrikeRate}": benchmarkStrikeRate,
+        "{playerSeasonEconomy}": benchmarkEconomy,
+        "{playerMultiWicketGames}": String(playerMultiWicketGames),
+        "{dismissedBatterName}": dismissedBatterForBenchmark?.name || "the dismissed batter",
+        "{playerSeasonFifties}": String(targetSeasonFifties),
+        "{playerSeasonCenturies}": String(targetSeasonCenturies),
+        "{playerAge}": String(targetPlayer?.age || 0),
+        "{matchPlayerPerformance}": playerPerformanceSummary,
+        "{playerMatchMetric}": targetPlayerMatchStats?.runs ? `${(targetPlayerMatchStats.runs / Math.max(1, targetPlayerMatchStats.balls || 0) * 100).toFixed(1)} SR` : targetPlayerMatchStats?.overs ? `${(targetPlayerMatchStats.runsConceded / targetPlayerMatchStats.overs).toFixed(2)} Eco` : "N/A",
+        "{playerCareerRuns}": String(targetPlayer?.iplStats?.runs ?? targetPlayerStats?.runs ?? 0),
+        "{playerCareerWickets}": String(targetPlayer?.iplStats?.wickets ?? targetPlayerStats?.wickets ?? 0),
+        "{playerCareerMatches}": String(targetPlayer?.iplStats?.matches ?? targetPlayerStats?.matches ?? 0),
+        "{playerChampionshipYears}": "N/A",
+        "{playerCareerTrophies}": "N/A",
+        "{opponentRuns}": String(lastMatch ? (lastMatch.teamA === userTeamId ? lastMatch.scoreB?.runs || 0 : lastMatch.scoreA?.runs || 0) : 0),
       };
 
       Object.assign(extraTokens, playerExtraTokens);
@@ -2172,7 +2868,7 @@ export default function NewsPage({
       
       if (standings.length >= 4) {
         tokens["{topFour}"] = standings.slice(0, 4).map(s => s.shortName).join(", ");
-        tokens["{contenders}"] = standings.slice(4, 7).map(s => s.shortName).join(", ");
+        tokens["{contenders}"] = playoffContenders.slice(0, 3).map(s => s.shortName).join(", ") || "no mathematically live challenger";
       }
       
       const youngProspects = Object.values(players)
@@ -2191,15 +2887,39 @@ export default function NewsPage({
       if (expensivePlayers.length > 0) {
         const topBuy = expensivePlayers[0];
         const topBuySalary = getPlayerSalary(topBuy);
+        const topBuySeasonStats = playerStats[topBuy.id];
+        const topBuySeasonMatches = getPlayerMatches(topBuy.id);
+        const topBuyRuns = topBuySeasonStats?.runs || 0;
+        const topBuyBalls = topBuySeasonStats?.balls || 0;
+        const topBuyWickets = topBuySeasonStats?.wickets || 0;
+        const topBuyEconomy = topBuySeasonStats?.oversBowled
+          ? ((topBuySeasonStats.runsConceded || 0) / topBuySeasonStats.oversBowled).toFixed(2)
+          : "N/A";
+        const topBuyStrikeRate = topBuyBalls > 0 ? ((topBuyRuns / topBuyBalls) * 100).toFixed(1) : "N/A";
+        const topBuyTeamId = topBuy.iplHistory?.at(-1)?.teamId || topBuySeasonStats?.teamId;
+        const topBuyTeamStanding = standings.find((standing) => standing.teamId === topBuyTeamId);
+        const topBuyTeamName = teams[topBuyTeamId || ""]?.name || topBuyTeamId || "their franchise";
+        const topBuyTeamWins = topBuyTeamStanding?.won || 0;
         const formatPrice = (price: number) => price >= 100 ? `₹${(price / 100).toFixed(2)} Cr` : `₹${price} Lakhs`;
         
         tokens["{topBuyName}"] = topBuy.name;
         tokens["{topBuyPrice}"] = formatPrice(topBuySalary);
         tokens["{topBuyRating}"] = String(Math.max(topBuy.currentBatting, topBuy.currentBowling));
+        tokens["{topBuyTeamName}"] = topBuyTeamName;
+        tokens["{topBuySeasonMatches}"] = String(topBuySeasonMatches);
+        tokens["{topBuySeasonRuns}"] = String(topBuyRuns);
+        tokens["{topBuySeasonBalls}"] = String(topBuyBalls);
+        tokens["{topBuySeasonStrikeRate}"] = topBuyStrikeRate;
+        tokens["{topBuySeasonWickets}"] = String(topBuyWickets);
+        tokens["{topBuySeasonEconomy}"] = topBuyEconomy;
+        tokens["{topBuyTeamWins}"] = String(topBuyTeamWins);
+        tokens["{topBuyCostPerWin}"] = topBuyTeamWins > 0 ? formatPrice(topBuySalary / topBuyTeamWins) : "not yet measurable";
       }
 
       // Exact match player figures if they are referenced
-      if (matchTopScorer) {
+      // Matchday narratives use the latest scorecard leader, but the
+      // leaderboard/form article must retain the accumulated season total.
+      if (matchTopScorer && template.triggerType !== "player_milestone") {
         tokens["{topScorerName}"] = matchTopScorer.name;
         tokens["{topScorerRuns}"] = String(matchTopScorer.runs || 0);
         tokens["{topScorerBalls}"] = String(matchTopScorer.balls || 0);
@@ -2231,6 +2951,20 @@ export default function NewsPage({
         subheading = subheading.replaceAll(key, value);
         content = content.replaceAll(key, value);
       }
+
+      // Prevent stale/legacy auction copy from reintroducing invented combined
+      // figures after the verified performance summary has been generated.
+      if (template.triggerType === "auction_bigmoney_good" || template.triggerType === "auction_bargain_newsletter") {
+        content = content.replace(/Today's performance:.*?!/i, `Today's verified performance: ${playerPerformanceSummary}!`);
+        content = content.replace(/Today's match effort:.*?!/i, `Today's verified match contribution: ${playerPerformanceSummary}!`);
+      }
+
+      // Avoid inventing a result or date for the chasing team in the early-table
+      // article; standings alone do not prove that they won "yesterday".
+      if (template.triggerType === "early_table_shakeup") {
+        content = content.replace("after a statement win yesterday", "and remain within touching distance");
+        content = content.replace(/\b(\d+) wins\b/g, (_match, wins: string) => `${wins} ${wins === "1" ? "win" : "wins"}`);
+      }
       
       const isPostAuctionTrigger = [
         "post_auction_summary",
@@ -2242,6 +2976,13 @@ export default function NewsPage({
       ].includes(template.triggerType);
 
       const resolvedPublishingDate = isPostAuctionTrigger ? formattedPostAuctionDate : formattedCurrentDate;
+
+      // Never publish an article containing an unbound or unavailable stat.
+      // The article will be regenerated when the required match/season data
+      // exists instead of exposing N/A or raw template placeholders.
+      if ([title, subheading, content].some((value) => value.includes("N/A") || /\{[^}]+\}/.test(value))) {
+        return null;
+      }
 
       return {
         ...template,
@@ -2255,9 +2996,12 @@ export default function NewsPage({
 
   // Filter articles based on selected tab
   const filteredArticles = useMemo(() => {
-    return activeTab === "all" 
-      ? generatedArticles 
+    const articles = activeTab === "all"
+      ? generatedArticles
       : generatedArticles.filter((article) => article.category === activeTab);
+    // Keep the final preview at the top of every platform's feed, not only
+    // in the Cricinfo hero slot.
+    return [...articles].sort((a, b) => Number(Boolean(b.isBreaking)) - Number(Boolean(a.isBreaking)));
   }, [activeTab, generatedArticles]);
 
   const heroArticle = useMemo(() => {
@@ -2640,7 +3384,7 @@ export default function NewsPage({
                       </div>
                       {/* Article summary details */}
                       <div className="p-5 flex flex-col justify-between shrink-0 bg-white">
-                        <p className="font-sans text-[13px] text-slate-600 leading-relaxed font-medium mb-4">
+                        <p className="font-sans text-[13px] text-slate-600 leading-relaxed font-medium mb-4 line-clamp-3">
                           {heroArticle.content}
                         </p>
                         <div className="pt-3 border-t border-slate-100 flex items-center justify-between font-sans text-[10px] text-slate-500 font-semibold">

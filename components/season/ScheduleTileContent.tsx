@@ -331,7 +331,7 @@ function PlayoffFixturesContent({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="mb-2 flex shrink-0 items-end justify-between border-b border-[#16130f]/10 pb-2">
+      <div className="mb-2 flex shrink-0 flex-col items-center justify-center border-b border-[#16130f]/10 pb-2 text-center">
         <h4 className="font-anton text-[16px] uppercase">Playoff Fixtures</h4>
         <span className="font-space-mono text-[8px] font-bold uppercase text-text-secondary">4 matches</span>
       </div>
@@ -341,13 +341,13 @@ function PlayoffFixturesContent({
           return (
             <div
               key={fixture.id}
-              className={`grid min-h-0 grid-cols-[5.5rem_minmax(0,1fr)_auto] items-center gap-2 rounded border px-2 py-1.5 ${
+              className={`flex min-h-0 flex-col items-center justify-center gap-0.5 rounded border px-2 py-1.5 text-center ${
                 fixture.played
                   ? "border-border/60 bg-black/[0.025] dark:bg-white/[0.04]"
                   : "border-accent/35 bg-accent/[0.07]"
               }`}
             >
-              <div className="min-w-0">
+              <div className="min-w-0 max-w-full">
                 <div className="truncate font-barlow-condensed text-[11px] font-extrabold uppercase text-accent">
                   {stageLabel(fixture)}
                 </div>
@@ -358,10 +358,10 @@ function PlayoffFixturesContent({
                   </div>
                 )}
               </div>
-              <div className="truncate text-center font-space-mono text-[10px] font-bold uppercase text-text-primary">
+              <div className="w-full truncate text-center font-space-mono text-[10px] font-bold uppercase text-text-primary">
                 {teamLabel(fixture.teamA)} <span className="text-text-secondary">vs</span> {teamLabel(fixture.teamB)}
               </div>
-              <div className="min-w-[3.25rem] text-right font-space-mono text-[8px] font-bold uppercase">
+              <div className="font-space-mono text-[8px] font-bold uppercase">
                 {fixture.played && fixture.scoreA && fixture.scoreB
                   ? (
                       <span className="text-success">
@@ -375,6 +375,45 @@ function PlayoffFixturesContent({
             </div>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+function HomePlayoffFixturesContent({
+  fixtures,
+  teams,
+}: {
+  fixtures: Match[];
+  teams: Record<string, Team>;
+}) {
+  const playoffFixtures = fixtures
+    .filter((fixture) => Boolean(fixture.stage) || (fixture.matchNumber >= 71 && fixture.matchNumber <= 74))
+    .sort((left, right) => left.matchNumber - right.matchNumber)
+    .slice(0, 4);
+  const label = (fixture: Match) => fixture.stage === "qualifier1" || fixture.matchNumber === 71 ? "Q1"
+    : fixture.stage === "eliminator" || fixture.matchNumber === 72 ? "ELIM"
+      : fixture.stage === "qualifier2" || fixture.matchNumber === 73 ? "Q2" : "FINAL";
+  const teamLabel = (id: string) => id === PLAYOFF_TBD_TEAM_ID ? "TBD" : teams[id]?.shortName ?? id;
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="mb-2 flex shrink-0 items-center justify-between border-b border-[#16130f]/10 pb-2">
+        <h4 className="font-anton text-[16px] uppercase">PLAYOFF FIXTURES</h4>
+        <span className="font-space-mono text-[8px] font-bold uppercase text-text-secondary">4 matches</span>
+      </div>
+      <div className="grid min-h-0 flex-1 grid-rows-4 gap-1">
+        {playoffFixtures.map((fixture) => (
+          <div key={fixture.id} className="grid min-w-0 grid-cols-[2.5rem_minmax(0,1fr)_auto] items-center gap-1 rounded border border-border/50 bg-black/[0.025] px-2 py-1 dark:bg-white/[0.04]">
+            <span className="font-space-mono text-[9px] font-extrabold text-accent">{label(fixture)}</span>
+            <span className="truncate text-center font-space-mono text-[9px] font-bold uppercase text-text-primary">
+              {teamLabel(fixture.teamA)} <span className="text-text-secondary">v</span> {teamLabel(fixture.teamB)}
+            </span>
+            <span className="font-space-mono text-[8px] font-bold text-text-secondary">
+              {fixture.played && fixture.scoreA && fixture.scoreB ? `${fixture.scoreA.runs}/${fixture.scoreA.wickets} · ${fixture.scoreB.runs}/${fixture.scoreB.wickets}` : "TBD"}
+            </span>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -407,21 +446,17 @@ export function ScheduleTileContent({
   if (isLeagueComplete) {
     if (variant === "overview") {
       return (
-        <PlayoffDiagramContent
+        <PlayoffFixturesContent
           fixtures={fixtures}
           teams={teams}
-          championTeamId={finalFixture?.winner}
-          runnerUpTeamId={finalFixture?.winner
-            ? (finalFixture.teamA === finalFixture.winner ? finalFixture.teamB : finalFixture.teamA)
-            : undefined}
+          showDateTime
         />
       );
     }
     return (
-      <PlayoffFixturesContent
+      <HomePlayoffFixturesContent
         fixtures={fixtures}
         teams={teams}
-        showDateTime={variant !== "dashboard"}
       />
     );
   }

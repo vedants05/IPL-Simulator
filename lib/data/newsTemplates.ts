@@ -12,6 +12,12 @@ export interface ArticleTemplate {
   content: string;
   brand?: "cricinfo" | "cricbuzz" | "newsletter";
   isBreaking?: boolean;
+  requiresPlayoffPreview?: boolean;
+  requiresFinalPreview?: boolean;
+  requiresFinalResult?: boolean;
+  requiresFinalRunnerUp?: boolean;
+  requiresNonUserPlayoffSummary?: boolean;
+  playoffSummaryStage?: "qualifier1" | "qualifier2" | "eliminator";
   chaseOrDefend?: "chasing" | "defending";
   requiresLastBall?: boolean;
   requiresOutsideTopFour?: boolean;
@@ -30,6 +36,336 @@ export interface ArticleTemplate {
 export const newsTemplates: ArticleTemplate[] = [
   // ==================== ESPNcricinfo (cricinfo) Normal Win Articles ====================
   {
+    id: "art-playoff-preview-central",
+    category: "tournament_league",
+    tag: "Playoff Preview",
+    author: "Harsha Bhogle",
+    readTime: "4 min read",
+    imageMockupPrompt: "Playoff fixture board with four team badges and knockout arrows",
+    triggerType: "post_season",
+    requiresPlayoffPreview: true,
+    brand: "cricinfo",
+    timestamp: "1 hour ago",
+    title: "Playoff preview: {qualifier1Short}, {qualifier2Short}, {qualifier3Short}, and {qualifier4Short} set for knockout cricket",
+    subheading: "The league table is final",
+    content: "The league phase is complete and the playoff picture is confirmed. {qualifier1Short} face {qualifier2Short} in Qualifier 1, while {qualifier3Short} meet {qualifier4Short} in the Eliminator. The Qualifier 1 winner gets a direct route to the final, while the remaining sides must navigate the second qualifier. Every fixture now carries knockout consequences."
+  },
+  {
+    id: "art-playoff-preview-cricbuzz",
+    category: "tournament_league",
+    tag: "Playoff Preview",
+    author: "Harsha Bhogle",
+    readTime: "3 min read",
+    imageMockupPrompt: "Cricbuzz-style playoff countdown with four team badges",
+    triggerType: "post_season",
+    requiresPlayoffPreview: true,
+    brand: "cricbuzz",
+    timestamp: "1 hour ago",
+    title: "PLAYOFFS LOCKED! {qualifier1Short}, {qualifier2Short}, {qualifier3Short} and {qualifier4Short} ready for knockout drama",
+    subheading: "The final four are set",
+    content: "The league table is settled and the knockout bracket is ready. {qualifier1Short} take on {qualifier2Short} in Qualifier 1, while {qualifier3Short} face {qualifier4Short} in the Eliminator. One side gets a direct final route; the others must fight through the second qualifier. Let the playoff drama begin!"
+  },
+  {
+    id: "art-playoff-preview-newsletter",
+    category: "tournament_league",
+    tag: "Playoff Preview",
+    author: "Ian Bishop",
+    readTime: "2 min read",
+    imageMockupPrompt: "Bright playoff fixture cards with trophy and knockout arrows",
+    triggerType: "post_season",
+    requiresPlayoffPreview: true,
+    brand: "newsletter",
+    timestamp: "1 hour ago",
+    title: "THE PLAYOFFS ARE HERE! Meet your final four",
+    subheading: "Qualifier 1 is next",
+    content: "The league stage is officially over! {qualifier1Short} vs {qualifier2Short} is the Qualifier 1 showdown, while {qualifier3Short} vs {qualifier4Short} opens the Eliminator. The final four have earned their chance—now every ball carries trophy-sized pressure."
+  },
+  {
+    id: "art-playoff-match-summary-cricinfo",
+    category: "tournament_league",
+    tag: "Playoff Match Report",
+    author: "Sidharth Monga",
+    readTime: "4 min read",
+    imageMockupPrompt: "Playoff match action with knockout-stage scoreboard",
+    triggerType: "post_season",
+    requiresNonUserPlayoffSummary: true,
+    playoffSummaryStage: "qualifier1",
+    brand: "cricinfo",
+    timestamp: "1 hour ago",
+    title: "{playoffStageLabel}: {playoffWinnerName} hold their nerve against {playoffLoserName}",
+    subheading: "Knockout match report",
+    content: "{playoffStageLabel} delivered a high-pressure contest as {playoffWinnerName} defeated {playoffLoserName} at {playoffVenue}. The scorecard finished {playoffWinnerScore} to {playoffLoserScore}. {playoffTopPerformerContribution} The result reshapes the route to the final."
+  },
+  {
+    id: "art-playoff-match-summary-cricbuzz",
+    category: "tournament_league",
+    tag: "Playoff Match Report",
+    author: "Harsha Bhogle",
+    readTime: "3 min read",
+    imageMockupPrompt: "Cricbuzz-style playoff result card with celebrating team",
+    triggerType: "post_season",
+    requiresNonUserPlayoffSummary: true,
+    playoffSummaryStage: "qualifier1",
+    brand: "cricbuzz",
+    timestamp: "1 hour ago",
+    title: "KNOCKOUT DRAMA! {playoffWinnerName} win the {playoffStageLabel}",
+    subheading: "One step closer to the final",
+    content: "What a playoff contest! {playoffWinnerName} got past {playoffLoserName} at {playoffVenue}, winning {playoffWinnerScore} to {playoffLoserScore}. {playoffTopPerformerContribution} The knockout race takes another twist."
+  },
+  {
+    id: "art-playoff-match-summary-newsletter",
+    category: "tournament_league",
+    tag: "Playoff Match Report",
+    author: "Ian Bishop",
+    readTime: "2 min read",
+    imageMockupPrompt: "Bright playoff result graphic with winner and score",
+    triggerType: "post_season",
+    requiresNonUserPlayoffSummary: true,
+    playoffSummaryStage: "qualifier1",
+    brand: "newsletter",
+    timestamp: "1 hour ago",
+    title: "PLAYOFF RESULT: {playoffWinnerName} advance!",
+    subheading: "The knockout picture changes",
+    content: "{playoffWinnerName} beat {playoffLoserName} in the {playoffStageLabel} at {playoffVenue}. Final score: {playoffWinnerScore} to {playoffLoserScore}. {playoffTopPerformerContribution}"
+  },
+  {
+    id: "art-playoff-match-summary-q2-cricinfo",
+    category: "tournament_league",
+    tag: "Playoff Match Report",
+    author: "Sidharth Monga",
+    readTime: "4 min read",
+    imageMockupPrompt: "Qualifier 2 match action with knockout-stage scoreboard",
+    triggerType: "post_season",
+    requiresNonUserPlayoffSummary: true,
+    playoffSummaryStage: "qualifier2",
+    brand: "cricinfo",
+    timestamp: "1 hour ago",
+    title: "Qualifier 2: {playoffWinnerName} book their place in the final",
+    subheading: "A place in the final was on the line",
+    content: "In Qualifier 2, {playoffWinnerName} defeated {playoffLoserName} at {playoffVenue}. The scorecard finished {playoffWinnerScore} to {playoffLoserScore}. {playoffTopPerformerContribution}"
+  },
+  {
+    id: "art-playoff-match-summary-q2-cricbuzz",
+    category: "tournament_league",
+    tag: "Playoff Match Report",
+    author: "Harsha Bhogle",
+    readTime: "3 min read",
+    imageMockupPrompt: "Cricbuzz-style Qualifier 2 result card",
+    triggerType: "post_season",
+    requiresNonUserPlayoffSummary: true,
+    playoffSummaryStage: "qualifier2",
+    brand: "cricbuzz",
+    timestamp: "1 hour ago",
+    title: "FINAL TICKET! {playoffWinnerName} win Qualifier 2",
+    subheading: "One last step to the trophy",
+    content: "Qualifier 2 delivered knockout pressure as {playoffWinnerName} got past {playoffLoserName} at {playoffVenue}, winning {playoffWinnerScore} to {playoffLoserScore}. {playoffTopPerformerContribution}"
+  },
+  {
+    id: "art-playoff-match-summary-q2-newsletter",
+    category: "tournament_league",
+    tag: "Playoff Match Report",
+    author: "Ian Bishop",
+    readTime: "2 min read",
+    imageMockupPrompt: "Qualifier 2 playoff result graphic",
+    triggerType: "post_season",
+    requiresNonUserPlayoffSummary: true,
+    playoffSummaryStage: "qualifier2",
+    brand: "newsletter",
+    timestamp: "1 hour ago",
+    title: "QUALIFIER 2: {playoffWinnerName} are finalists",
+    subheading: "The final berth is decided",
+    content: "{playoffWinnerName} beat {playoffLoserName} in Qualifier 2 at {playoffVenue}. Final score: {playoffWinnerScore} to {playoffLoserScore}. {playoffTopPerformerContribution}"
+  },
+  {
+    id: "art-playoff-match-summary-eliminator-cricinfo",
+    category: "tournament_league",
+    tag: "Playoff Match Report",
+    author: "Sidharth Monga",
+    readTime: "4 min read",
+    imageMockupPrompt: "Eliminator match action with knockout-stage scoreboard",
+    triggerType: "post_season",
+    requiresNonUserPlayoffSummary: true,
+    playoffSummaryStage: "eliminator",
+    brand: "cricinfo",
+    timestamp: "1 hour ago",
+    title: "Eliminator: {playoffWinnerName} keep their campaign alive",
+    subheading: "A season-ending knockout clash",
+    content: "The Eliminator saw {playoffWinnerName} defeat {playoffLoserName} at {playoffVenue}. They won {playoffWinnerScore} to {playoffLoserScore}. {playoffTopPerformerContribution}"
+  },
+  {
+    id: "art-playoff-match-summary-eliminator-cricbuzz",
+    category: "tournament_league",
+    tag: "Playoff Match Report",
+    author: "Harsha Bhogle",
+    readTime: "3 min read",
+    imageMockupPrompt: "Cricbuzz-style Eliminator result card",
+    triggerType: "post_season",
+    requiresNonUserPlayoffSummary: true,
+    playoffSummaryStage: "eliminator",
+    brand: "cricbuzz",
+    timestamp: "1 hour ago",
+    title: "KNOCKOUT EXIT! {playoffWinnerName} eliminate {playoffLoserName}",
+    subheading: "One side's run ends here",
+    content: "{playoffWinnerName} won the Eliminator against {playoffLoserName} at {playoffVenue}, finishing {playoffWinnerScore} to {playoffLoserScore}. {playoffTopPerformerContribution}"
+  },
+  {
+    id: "art-playoff-match-summary-eliminator-newsletter",
+    category: "tournament_league",
+    tag: "Playoff Match Report",
+    author: "Ian Bishop",
+    readTime: "2 min read",
+    imageMockupPrompt: "Eliminator playoff result graphic",
+    triggerType: "post_season",
+    requiresNonUserPlayoffSummary: true,
+    playoffSummaryStage: "eliminator",
+    brand: "newsletter",
+    timestamp: "1 hour ago",
+    title: "ELIMINATOR RESULT: {playoffWinnerName} advance",
+    subheading: "The knockout bracket narrows",
+    content: "{playoffWinnerName} beat {playoffLoserName} in the Eliminator at {playoffVenue}. Final score: {playoffWinnerScore} to {playoffLoserScore}. {playoffTopPerformerContribution}"
+  },
+  {
+    id: "art-final-preview-cricinfo",
+    category: "tournament_league",
+    tag: "Final Preview",
+    author: "Sidharth Monga",
+    readTime: "4 min read",
+    imageMockupPrompt: "Cricket final preview with two finalist badges and trophy",
+    triggerType: "post_season",
+    requiresFinalPreview: true,
+    isBreaking: true,
+    brand: "cricinfo",
+    timestamp: "1 hour ago",
+    title: "Final preview: {finalistAName} and {finalistBName} meet for the title",
+    subheading: "One match remains in the season",
+    content: "The final is set at {finalVenue}, with {finalistAName} facing {finalistBName}. {finalistAName} arrive with a {finalistARecord} league record, {finalistAPoints} points and an NRR of {finalistANrr}; {finalistBName} bring a {finalistBRecord} record, {finalistBPoints} points and an NRR of {finalistBNrr}.\n\n{finalistAName}'s batting has produced a {finalistAStrikeRate} strike rate, including {finalistAFours} fours and {finalistASixes} sixes. {finalistABatter} leads the scoring with {finalistARuns} runs, while {finalistABowler} has taken {finalistAWickets} wickets. Their bowling unit has operated at an economy of {finalistAEconomy}, highlighting the control that has carried them to the final.\n\n{finalistBName} offer a contrasting statistical profile: a {finalistBStrikeRate} strike rate, {finalistBFours} fours and {finalistBSixes} sixes, with {finalistBBatter} leading the run chart on {finalistBRuns} runs. {finalistBBowler} has claimed {finalistBWickets} wickets and the attack's economy stands at {finalistBEconomy}. Both sides have navigated the playoffs to reach this winner-takes-all championship contest."
+  },
+  {
+    id: "art-final-preview-cricbuzz",
+    category: "tournament_league",
+    tag: "Final Preview",
+    author: "Harsha Bhogle",
+    readTime: "3 min read",
+    imageMockupPrompt: "Cricbuzz-style final countdown with finalist team cards",
+    triggerType: "post_season",
+    requiresFinalPreview: true,
+    isBreaking: true,
+    brand: "cricbuzz",
+    timestamp: "1 hour ago",
+    title: "THE FINAL IS SET! {finalistAName} vs {finalistBName}",
+    subheading: "Trophy night awaits",
+    content: "The season reaches its climax at {finalVenue}. {finalistAName} ({finalistARecord}, {finalistAPoints} points, NRR {finalistANrr}) meet {finalistBName} ({finalistBRecord}, {finalistBPoints} points, NRR {finalistBNrr}).\n\n{finalistAName} have scored at a {finalistAStrikeRate} strike rate and found the boundary {finalistABoundaries} times, including {finalistASixes} sixes. {finalistABatter} has powered the run supply with {finalistARuns}, while {finalistABowler} leads a bowling attack recording {finalistAWickets} wickets at an economy of {finalistAEconomy}.\n\n{finalistBName} have matched that preparation with a {finalistBStrikeRate} strike rate and {finalistBBoundaries} boundaries, although their split of {finalistBFours} fours and {finalistBSixes} sixes points to a different scoring method. {finalistBBatter} has made {finalistBRuns} runs and {finalistBBowler} has taken {finalistBWickets} wickets, with the attack carrying an economy of {finalistBEconomy}."
+  },
+  {
+    id: "art-final-preview-newsletter",
+    category: "tournament_league",
+    tag: "Final Preview",
+    author: "Ian Bishop",
+    readTime: "2 min read",
+    imageMockupPrompt: "Bright championship final preview graphic with trophy",
+    triggerType: "post_season",
+    requiresFinalPreview: true,
+    isBreaking: true,
+    brand: "newsletter",
+    timestamp: "1 hour ago",
+    title: "FINAL COUNTDOWN: {finalistAName} meet {finalistBName}",
+    subheading: "Who lifts the trophy?",
+    content: "The final showdown is confirmed at {finalVenue}. {finalistAName} take on {finalistBName} for the trophy. Their league records are {finalistARecord} and {finalistBRecord}, with NRRs of {finalistANrr} and {finalistBNrr}.\n\nThe numbers suggest two distinct routes to the final. {finalistAName} have delivered a {finalistAStrikeRate} strike rate, {finalistAFours} fours and {finalistASixes} sixes; {finalistABatter} leads them with {finalistARuns} runs. Their bowling attack, led by {finalistABowler}, has collected {finalistAWickets} wickets at an economy of {finalistAEconomy}.\n\n{finalistBName} counter with a {finalistBStrikeRate} strike rate, {finalistBFours} fours and {finalistBSixes} sixes. {finalistBBatter} has scored {finalistBRuns}, while {finalistBBowler} has taken {finalistBWickets} wickets for an attack economy of {finalistBEconomy}. The tactical battle between those strengths will decide the champion."
+  },
+  {
+    id: "art-final-result-cricinfo",
+    category: "tournament_league",
+    tag: "Final Result",
+    author: "Sidharth Monga",
+    readTime: "5 min read",
+    imageMockupPrompt: "Champions lifting the IPL trophy after the final",
+    triggerType: "post_season",
+    requiresFinalResult: true,
+    isBreaking: true,
+    brand: "cricinfo",
+    timestamp: "1 hour ago",
+    title: "{finalWinnerName} are champions after final triumph over {finalLoserName}",
+    subheading: "The season ends with a new champion",
+    content: "{finalWinnerName} have won the final against {finalLoserName} at {finalVenue}, completing the season with a {finalWinnerScore} to {finalLoserScore} victory. The result crowns {finalWinnerName} champions after a decisive performance on the biggest night of the tournament."
+  },
+  {
+    id: "art-final-result-cricbuzz",
+    category: "tournament_league",
+    tag: "Final Result",
+    author: "Harsha Bhogle",
+    readTime: "4 min read",
+    imageMockupPrompt: "Cricbuzz-style champions celebration and final scoreboard",
+    triggerType: "post_season",
+    requiresFinalResult: true,
+    isBreaking: true,
+    brand: "cricbuzz",
+    timestamp: "1 hour ago",
+    title: "CHAMPIONS! {finalWinnerName} lift the trophy",
+    subheading: "A final-night celebration",
+    content: "{finalWinnerName} are champions! They defeated {finalLoserName} at {finalVenue}, winning {finalWinnerScore} to {finalLoserScore} in the decisive final. The trophy now belongs to {finalWinnerName}."
+  },
+  {
+    id: "art-final-result-newsletter",
+    category: "tournament_league",
+    tag: "Final Result",
+    author: "Ian Bishop",
+    readTime: "3 min read",
+    imageMockupPrompt: "Bright championship winners graphic with trophy and final score",
+    triggerType: "post_season",
+    requiresFinalResult: true,
+    isBreaking: true,
+    brand: "newsletter",
+    timestamp: "1 hour ago",
+    title: "TROPHY LIFTED: {finalWinnerName} are champions",
+    subheading: "The final result is in",
+    content: "The championship belongs to {finalWinnerName}, who beat {finalLoserName} at {finalVenue}. The final score was {finalWinnerScore} to {finalLoserScore}, bringing the season to its conclusion."
+  },
+  {
+    id: "art-final-runnerup-cricinfo",
+    category: "tournament_league",
+    tag: "Final Analysis",
+    author: "Sidharth Monga",
+    readTime: "4 min read",
+    imageMockupPrompt: "Runners-up reflecting after a championship final",
+    triggerType: "post_season",
+    requiresFinalRunnerUp: true,
+    brand: "cricinfo",
+    timestamp: "1 hour ago",
+    title: "{finalLoserName}'s final journey ends just short of the title",
+    subheading: "A campaign that delivered a runners-up finish",
+    content: "{finalLoserName} finish the season as runners-up after losing the final to {finalWinnerName} at {finalVenue}. They posted {finalLoserScore} against {finalWinnerScore}; despite falling short on the final night, their run to the championship match was a season-defining achievement."
+  },
+  {
+    id: "art-final-runnerup-cricbuzz",
+    category: "tournament_league",
+    tag: "Final Analysis",
+    author: "Harsha Bhogle",
+    readTime: "3 min read",
+    imageMockupPrompt: "Cricbuzz-style runners-up final reaction",
+    triggerType: "post_season",
+    requiresFinalRunnerUp: true,
+    brand: "cricbuzz",
+    timestamp: "1 hour ago",
+    title: "HEARTBREAK FOR {finalLoserName} AS TITLE DREAM ENDS",
+    subheading: "A proud campaign finishes second",
+    content: "{finalLoserName} bow out as runners-up after {finalWinnerName} won the final at {finalVenue}. The scoreboard read {finalWinnerScore} to {finalLoserScore}, but reaching the last match confirms a campaign of real quality."
+  },
+  {
+    id: "art-final-runnerup-newsletter",
+    category: "tournament_league",
+    tag: "Final Analysis",
+    author: "Ian Bishop",
+    readTime: "2 min read",
+    imageMockupPrompt: "Runners-up team graphic beside championship trophy",
+    triggerType: "post_season",
+    requiresFinalRunnerUp: true,
+    brand: "newsletter",
+    timestamp: "1 hour ago",
+    title: "RUNNERS-UP: {finalLoserName} finish a memorable season",
+    subheading: "One match short of glory",
+    content: "{finalLoserName} finish second after losing the final to champions {finalWinnerName}. The final ended {finalWinnerScore} to {finalLoserScore} at {finalVenue}, closing a campaign that took them all the way to trophy night."
+  },
+  {
     id: "art-cricinfo-win-v1",
     category: "user_team",
     tag: "Tactics & Team Form",
@@ -41,7 +377,7 @@ export const newsTemplates: ArticleTemplate[] = [
     timestamp: "2 hours ago",
     title: "Clinical {userTeamName} dismantles {opponentName} in one-sided affair at {venue}",
     subheading: "Tactical Masterclass",
-    content: "It was a tactical masterclass from {userTeamName} as they outplayed {opponentName} in every department, securing a commanding {winMargin} victory. Building their innings around a stable base, {userTeamName} scored {userRuns}/{userWickets} before their bowling attack tightened the screws. The turning point came during the overs {keyPhaseOvers}, where {bowlerName} ripped through the opposition lineup, taking {bowlerWickets} for {bowlerRuns}. {opponentName} never looked like chasing down the target, eventually falling short at {opponentRuns}/{opponentWickets}. With this emphatic performance, {userTeamName} move their Net Run Rate up to {userNrr}, laying down a serious marker for the rest of the competition."
+    content: "It was a tactical masterclass from {userTeamName} as they outplayed {opponentName} in every department, securing a commanding {winMargin} victory. Building their innings around a stable base, {userTeamName} scored {userRuns}/{userWickets} before their bowling attack tightened the screws. The turning point came during the overs {keyPhaseOvers}, where {bowlerName} ripped through the opposition lineup, taking {bowlerWickets} for {bowlerRuns}. {opponentName} never looked like chasing down the target, eventually falling short at {opponentRuns}/{opponentWickets}. {nrrNarrative}"
   },
   {
     id: "art-cricinfo-win-v2",
@@ -151,7 +487,7 @@ export const newsTemplates: ArticleTemplate[] = [
     title: "Small errors compound as {userTeamName} fall short in tense finish",
     subheading: "Marginal Failures Under Pressure",
     chaseOrDefend: "defending",
-    content: "High tension at {venue} saw {userTeamName} come up just short in a {winMargin} loss to {opponentName}. Defending {userRuns}, {userTeamName} appeared in control when {bowlerName} reduced the opposition to {opponentRuns}/{opponentWickets}. However, conceding {userExtrasConceded} extras and bowling fewer dot balls than their season average proved fatal. {opponentKeyBatter} exploited the gaps, hitting boundaries in the final over to snatch victory with {ballsRemaining} balls to spare. It is a tough pill to swallow for {userTeamName}, whose execution under extreme pressure wavered at the critical moment."
+    content: "High tension at {venue} saw {userTeamName} suffer a {winMargin} loss to {opponentName}. After posting {userRuns}, {userTeamName} appeared in control, but {opponentName} chased the target to finish on {opponentRuns}/{opponentWickets}. Conceding {userExtrasConceded} extras and failing to build dot-ball pressure proved fatal. {opponentKeyBatter} exploited the gaps, finding boundaries in over {opponentFinalOverNumber} to seal victory with {ballsRemaining} balls to spare. It is a tough pill to swallow for {userTeamName}, whose execution under pressure wavered at the critical moment."
   },
 
   // ==================== ESPNcricinfo (cricinfo) Mid-Season Report Cards ====================
@@ -227,7 +563,7 @@ export const newsTemplates: ArticleTemplate[] = [
     timestamp: "4 hours ago",
     title: "Mechanics of a streak: How {surgingTeamName} built a {teamConsecutiveWins}-game winning run",
     subheading: "Unstoppable Momentum",
-    content: "Momentum in franchise cricket is rarely accidental. {surgingTeamName} have surged up the table following their {teamConsecutiveWins}rd consecutive victory, a streak defined by structural consistency. During this unbeaten run, their top order has averaged {surgingTeamStreakPowerplayRuns} runs in the powerplay while losing just {surgingTeamStreakPowerplayWickets} wickets per match. Key to this turnaround has been {hotPlayerName}, who has contributed {hotPlayerStreakRuns} runs at a strike rate of {hotPlayerStreakStrikeRate} across these last {teamConsecutiveWins} outings. With their bowling unit producing {surgingTeamStreakDotBallPercentage}% dot balls in the death overs, {surgingTeamShort} have established a repeatable formula for success as the tournament progresses."
+    content: "Momentum in franchise cricket is rarely accidental. {surgingTeamName} have surged up the table after completing a {teamConsecutiveWins}-game winning run, a streak defined by structural consistency. During this unbeaten run, their top order has averaged {surgingTeamStreakPowerplayRuns} runs in the powerplay while losing just {surgingTeamStreakPowerplayWickets} wickets per match. Key to this turnaround has been {hotPlayerName}, who has contributed {hotPlayerStreakRuns} runs at a strike rate of {hotPlayerStreakStrikeRate} across these last {teamConsecutiveWins} outings. With their bowling unit producing {surgingTeamStreakDotBallPercentage}% dot balls in the death overs, {surgingTeamShort} have established a repeatable formula for success as the tournament progresses."
   },
   {
     id: "art-cricinfo-surge-v2",
@@ -258,7 +594,7 @@ export const newsTemplates: ArticleTemplate[] = [
     timestamp: "4 hours ago",
     title: "Anomaly or Blueprint? Breaking down {surgingTeamName}s juggernaut {teamConsecutiveWins}-game winning streak",
     subheading: "Historical Dominance & Systemic Stability",
-    content: "Winning {teamConsecutiveWins} consecutive matches in a league defined by parity requires exceptional tactical discipline. {surgingTeamName} have mounted a historically dominant run, remaining undefeated across their last {teamConsecutiveWins} outings to consolidate the top spot with {teamPoints} points. The statistical bedrock of this run is unprecedented efficiency in high-pressure phases: they have conceded a league-low economy rate of {surgingTeamStreakDeathEconomy} in overs 16-20 while averaging {surgingTeamStreakRunsPerOver} runs per over with the bat. Key catalyst {starPlayerName} has amassed {starPlayerStreakRuns} runs during this 6+ game stretch at an average of {starPlayerStreakAverage}. With qualification all but secured, {surgingTeamShort} are setting a new standard for squad depth and tactical execution."
+    content: "Winning {teamConsecutiveWins} consecutive matches in a league defined by parity requires exceptional tactical discipline. {surgingTeamName} have mounted a historically dominant run, remaining undefeated across their last {teamConsecutiveWins} outings to consolidate the top spot with {teamPoints} points. The statistical bedrock of this run is unprecedented efficiency in high-pressure phases: they have conceded a league-low economy rate of {surgingTeamStreakDeathEconomy} in overs 16-20 while averaging {surgingTeamStreakRunsPerOver} runs per over with the bat. Key catalyst {starPlayerName} has amassed {starPlayerStreakRuns} runs during this {teamConsecutiveWins}-game stretch at an average of {starPlayerStreakAverage}. With qualification all but secured, {surgingTeamShort} are setting a new standard for squad depth and tactical execution."
   },
   {
     id: "art-cricinfo-extsurge-v2",
@@ -272,7 +608,7 @@ export const newsTemplates: ArticleTemplate[] = [
     timestamp: "4 hours ago",
     title: "Unbeatable formula: How {surgingTeamShort} turned {teamConsecutiveWins} games into a masterclass in game management",
     subheading: "Match-Flipping Capability",
-    content: "{surgingTeamName} extended their remarkable unbeaten run to {teamConsecutiveWins} matches, proving that their success is built on resolving crisis moments better than any opponent. Across this 6+ game streak, {surgingTeamShort} have won games from three distinct game states: defending below-par totals twice, chasing large scores three times, and controlling matches from the front. A standout factor has been {keyBowlerName}, whose {bowlerStreakWickets} wickets during this run have repeatedly broken crucial middle-order partnerships. Opponents have struggled to exploit any noticeable weakness, as {surgingTeamName}'s dot-ball percentage has dropped to a tournament-best {surgingTeamStreakDotBallPercentage}%."
+    content: "{surgingTeamName} extended their remarkable unbeaten run to {teamConsecutiveWins} matches, proving that their success is built on resolving crisis moments better than any opponent. Across this {teamConsecutiveWins}-game streak, {surgingTeamShort} have won games from three distinct game states: defending below-par totals twice, chasing large scores three times, and controlling matches from the front. A standout factor has been {keyBowlerName}, whose {bowlerStreakWickets} wickets during this run have repeatedly broken crucial middle-order partnerships. Opponents have struggled to exploit any noticeable weakness, as {surgingTeamName}'s dot-ball percentage has dropped to a tournament-best {surgingTeamStreakDotBallPercentage}%."
   },
 
   // ==================== ESPNcricinfo (cricinfo) Franchise Freefall ====================
@@ -286,9 +622,9 @@ export const newsTemplates: ArticleTemplate[] = [
     triggerType: "franchise_freefall",
     brand: "cricinfo",
     timestamp: "2 hours ago",
-    title: "Deconstruct: How structural flaws caused {strugglingTeamName}s {teamConsecutiveLosses}-game slump",
+    title: "Deconstruct: How structural flaws caused {strugglingTeamName}'s {teamConsecutiveLosses}-game slump",
     subheading: "Crisis Mode & Tactical Breakdown",
-    content: "A third consecutive defeat has plunged {strugglingTeamName} into a mid-season crisis, dragging them down to {teamCurrentPosition} in the standings. The primary cause of this {teamConsecutiveLosses}-game losing streak lies in their powerplay batting, where they have lost {strugglingTeamStreakPowerplayWickets} wickets per match while scoring at just {strugglingTeamStreakPowerplayRunRate} runs per over. The lack of top-order momentum has forced middle-order batters like {starPlayerName} into high-risk recovery roles, resulting in an average collapse of {strugglingTeamStreakCollapseRuns} runs for {strugglingTeamStreakCollapseWickets} wickets in the middle phase. Head coach {coachName} faces urgent questions regarding team balance ahead of their next fixture."
+    content: "A {teamConsecutiveLosses}-game losing streak has plunged {strugglingTeamName} into a mid-season crisis, dragging them down to {strugglingTeamCurrentPosition} in the standings. The primary cause of this run lies in their powerplay batting, where they have lost {strugglingTeamStreakPowerplayWickets} wickets per match while scoring at just {strugglingTeamStreakPowerplayRunRate} runs per over. The lack of top-order momentum has forced middle-order batters like {starPlayerName} into high-risk recovery roles, resulting in an average collapse of {strugglingTeamStreakCollapseRuns} runs for {strugglingTeamStreakCollapseWickets} wickets in the middle phase. The coaching staff faces urgent questions regarding team balance ahead of their next fixture."
   },
   {
     id: "art-cricinfo-freefall-v2",
@@ -301,8 +637,8 @@ export const newsTemplates: ArticleTemplate[] = [
     brand: "cricinfo",
     timestamp: "2 hours ago",
     title: "Bottoming out: The systemic failure behind {strugglingTeamShort}s {teamConsecutiveLosses}-game losing streak",
-    subheading: "Severe Freefall (6+ Loss Streak)",
-    content: "With {teamConsecutiveLosses} losses on the bounce, {strugglingTeamName} find their playoff hopes virtually extinguished. A statistical audit reveals severe regressions across all three departments over this 6+ game slump: their bowling unit has conceded a tournament-high economy rate of {strugglingTeamStreakDeathEconomy} in the final four overs, while their batters have registered {strugglingTeamDotBallPercentage}% dot balls—the highest in the league. Capable of accumulating only {teamPoints} points so far, {strugglingTeamShort} must now confront deep squad imbalance and selection miscalculations as their season unravels completely."
+    subheading: "Severe Freefall ({teamConsecutiveLosses}-Loss Streak)",
+    content: "With {teamConsecutiveLosses} losses on the bounce, {strugglingTeamName} find their playoff hopes virtually extinguished. A statistical audit reveals severe regressions across all three departments over this {teamConsecutiveLosses}-game slump: their bowling unit has conceded a tournament-high economy rate of {strugglingTeamStreakDeathEconomy} in the final four overs, while their batters have registered {strugglingTeamDotBallPercentage}% dot balls—the highest in the league. Capable of accumulating only {teamPoints} points so far, {strugglingTeamShort} must now confront deep squad imbalance and selection miscalculations as their season unravels completely."
   },
 
   // ==================== ESPNcricinfo (cricinfo) Batting Century ====================
@@ -319,7 +655,7 @@ export const newsTemplates: ArticleTemplate[] = [
     title: "Anatomy of a hundred: How {playerName} constructed a match-winning {playerRuns} off {playerBalls}",
     subheading: "Masterclass in Boundary Pacing",
     requiresOut: true,
-    content: "In a supreme display of calculated strokeplay at {venue}, {playerName} notched up a brilliant {playerRuns} off {playerBalls} balls to anchor {playerTeamShort} to a total of {playerTeamRuns}. Control was the hallmark of {playerName}s innings, operating at a boundary percentage of {playerBoundaryPercentage}% while allowing just {playerDotBallCount} dot balls across his knock. Reaching his landmark in {playerBallsToCentury} deliveries with a glorious boundary off {milestoneBowlerName}, {playerName} targeted the mid-wicket arc, collecting {playerMidWicketRuns} runs in that region alone. His partnership of {partnershipRuns} with {partnerName} effectively put the match out of reach, lifting his season tally to {playerSeasonRuns} runs at an average of {playerSeasonAverage}."
+    content: "In a supreme display of calculated strokeplay at {venue}, {playerName} notched up a brilliant {playerRuns} off {playerBalls} balls to anchor {playerTeamShort} to a total of {playerTeamRuns}. Control was the hallmark of {playerName}s innings, with the scorecard recording {playerFours} fours and {playerSixes} sixes. That contribution lifted his season tally to {playerSeasonRuns} runs at an average of {playerSeasonAverage}."
   },
   {
     id: "art-cricinfo-century-v2",
@@ -350,7 +686,7 @@ export const newsTemplates: ArticleTemplate[] = [
     timestamp: "3 hours ago",
     title: "Spell breakdown: How {playerName}s {playerWickets}/{playerRuns} dismantled {opponentShort}",
     subheading: "Wrecking-Ball Top-Order Spell",
-    content: "Pitching the ball in high-reward channels at {venue}, {playerName} produced a devastating spell of seam bowling, picking up {playerWickets} for {playerRuns} in his 4 overs to skittle {opponentShort} for {opponentRuns}. {playerName}s primary weapon was his seam movement, extracting {playerDegreesOfSeam} degrees of deviation off the deck. He took {playerPowerplayWickets} wickets inside the powerplay, destroying {opponentShort}s top order before returning in the 17th over to clean up the tail. With {playerDotBalls} dot balls in his 24-ball spell, {playerName} registered an economy rate of just {playerEconomyRate}, cementing one of the finest bowling performances in league history."
+    content: "Pitching the ball in high-reward channels at {venue}, {playerName} produced a devastating spell of bowling, picking up {playerWickets} for {playerRuns} to skittle {opponentShort} for {opponentRuns}. The scorecard shows {playerDotBalls} dot balls and an economy rate of {playerEconomyRate}, underlining the control of the spell."
   },
   {
     id: "art-cricinfo-fivefer-v2",
@@ -365,7 +701,7 @@ export const newsTemplates: ArticleTemplate[] = [
     title: "Precision under pressure: {playerName}s death-over 5-fer delivers win for {playerTeamShort}",
     subheading: "Death-Over Execution Clinic",
     requiresDeathWickets3: true,
-    content: "Specializing in wide yorkers and subtle slower-ball variations, {playerName} claimed an incredible 5-wicket haul ({playerWickets}/{playerRuns}) to trigger a catastrophic late collapse for {opponentShort}. With {opponentShort} cruising at {opponentScoreAt15} after 15 overs, {playerName} broke the game open in overs 17 and 19, taking {playerDeathWickets} wickets for just {playerDeathRunsConceded} runs in his final two overs. Hitting the blockhole on {playerYorkerCount} occasions, his tactical variation completely stifled the oppositions power hitters, restricting them to a below-par {opponentRuns}."
+    content: "{playerName} claimed an incredible 5-wicket haul ({playerWickets}/{playerRuns}) to trigger a catastrophic collapse for {opponentShort}. The scorecard records {playerWickets} wickets for {playerRuns} runs, helping restrict the opposition to {opponentRuns}. It was a decisive spell built on disciplined execution throughout the innings."
   },
 
   // ==================== ESPNcricinfo (cricinfo) Career Season Benchmark ====================
@@ -382,7 +718,7 @@ export const newsTemplates: ArticleTemplate[] = [
     title: "Consistency personified: {playerName} crosses 500 runs for the season",
     subheading: "500 Runs Batting Benchmark",
     requiresRunsBenchmark500: true,
-    content: "With a crisp drive down to long-on in the {matchOver}th over at {venue}, {playerName} officially crossed the 500-run threshold for the season, reaching {playerTotalSeasonRuns} runs across {playerSeasonInnings} innings. Operating at an average of {playerSeasonAverage} and a strike rate of {playerSeasonStrikeRate}%, {playerName} has been the bedrock of {playerTeamShort}s batting order. His ability to control the middle overs has been vital, contributing {playerRunContributionPercentage}% of his franchise's total runs this campaign. As the tournament enters its critical phase, {playerName}s run-scoring volume continues to underpin {playerTeamShort}s playoff ambitions."
+    content: "With a crisp drive down to long-on in the {matchOver}th over at {venue}, {playerName} officially crossed the 500-run threshold for the season, reaching {playerTotalSeasonRuns} runs across {playerSeasonInnings} innings. Operating at an average of {playerSeasonAverage} and a strike rate of {playerSeasonStrikeRate}, {playerName} has been the bedrock of {playerTeamShort}s batting order. His ability to control the middle overs has been vital, contributing {playerRunContributionPercentage}% of his franchise's total runs this campaign. As the tournament enters its critical phase, {playerName}s run-scoring volume continues to underpin {playerTeamShort}s playoff ambitions."
   },
   {
     id: "art-cricinfo-benchmark-v2",
@@ -397,7 +733,7 @@ export const newsTemplates: ArticleTemplate[] = [
     title: "Strike-rate elite: {playerName} breaches the 20-wicket mark",
     subheading: "20 Wickets Bowling Benchmark",
     requiresWicketsBenchmark20: true,
-    content: "{playerName}s dismissal of {dismissedBatterName} today marked his 20th wicket of the season, making him only the {seasonBowlerCountTo20}th bowler to reach the landmark this campaign. Across {playerSeasonMatches} matches, {playerName} has maintained an extraordinary strike rate of {playerBowlingStrikeRate} balls per wicket, alongside an economy rate of {playerSeasonEconomy}. Whether taking early wickets in the powerplay or bowling tough overs at the death, his tactical execution has yielded {playerMultiWicketGames} multi-wicket games this season. He remains a prime contender for the tournaments best bowler award."
+    content: "{playerName}'s dismissal of {dismissedBatterName} today marked his 20th wicket of the season, making him only the {seasonBowlerCountTo20Ordinal} bowler to reach the landmark this campaign. Across {playerSeasonMatches} matches, {playerName} has maintained an extraordinary strike rate of {playerBowlingStrikeRate} balls per wicket, alongside an economy rate of {playerSeasonEconomy}. Whether taking early wickets in the powerplay or bowling tough overs at the death, his tactical execution has yielded {playerMultiWicketGames} multi-wicket games this season. He remains a prime contender for the tournaments best bowler award."
   },
 
   // ==================== ESPNcricinfo (cricinfo) Rookie Spotlight ====================
@@ -413,7 +749,7 @@ export const newsTemplates: ArticleTemplate[] = [
     timestamp: "6 hours ago",
     title: "Emerging Talent: How {playerAge}-year-old {playerName} is solving {playerTeamShort}s balance issues",
     subheading: "Technical Breakdown of Young Talent",
-    content: "At just {playerAge} years of age, {playerName} delivered a mature performance at {venue}, posting {matchPlayerPerformance} to guide {playerTeamShort} to victory. Scouted as a raw prospect, {playerName} showed impressive technical composure, displaying a balanced stance and excellent wristwork against both spin and seam. Facing experienced international bowlers, he maintained an economy rate/strike rate of {playerMatchMetric}, showing poise well beyond his years. Across his first {playerSeasonMatches} appearances this season, {playerName} has accumulated {playerTotalSeasonRuns} runs / {playerTotalSeasonWickets} wickets, justifying the franchises decision to integrate young domestic talent into their core setup."
+    content: "At just {playerAge} years of age, {playerName} delivered a mature performance at {venue}, posting {playerPerformanceSummary} for {playerTeamShort}. Scouted as a raw prospect, {playerName} showed impressive technical composure, displaying a balanced stance and excellent wristwork against both spin and seam. Facing experienced international bowlers, he maintained an economy rate/strike rate of {playerMatchMetric}, showing poise well beyond his years. Across his first {playerSeasonMatches} appearances this season, {playerName} has accumulated {playerSeasonPerformanceSummary}, justifying the franchises decision to integrate young domestic talent into their core setup."
   },
 
   // ==================== ESPNcricinfo (cricinfo) Veteran Twilight / Retirement ====================
@@ -445,7 +781,7 @@ export const newsTemplates: ArticleTemplate[] = [
     timestamp: "2 hours ago",
     title: "Steamrolled! {userTeamName} blow away {opponentName} by {winMargin}",
     subheading: "Pure Carnage",
-    content: "Talk about a statement win! {userTeamName} put on an absolute show at {venue}, crushing {opponentName} without breaking a sweat. From the moment {starPlayerName} began teeing off in the powerplayscoring {powerplayRuns} runs in the first six oversthe energy was electric. {userTeamName} posted a mammoth {userRuns}, leaving {opponentName} with a mountain to climb. The chase was dead in the water early on when {bowlerName} produce a sizzling spell, taking two quick wickets in the over {keyBowlerOver}. {opponentName} collapsed to {opponentRuns} all out, leaving the home fans cheering every ball. A total rampage!"
+    content: "Talk about a statement win! {firstInningsTeamName} put on an absolute show at {venue}, posting {firstInningsScore} in the first innings. From the moment {firstInningsPowerplayScorer} began teeing off in the powerplay, scoring {powerplayRuns} runs in the first six overs, the energy was electric. That left {chasingTeamName} with a mountain to climb, but they chased it down in style. {chasingTeamName} completed the chase on {chasingTeamScore}, with {bowlerName} producing a sizzling spell earlier in the match and taking two quick wickets in the {keyBowlerOver} over. A total rampage!"
   },
   {
     id: "art-cricbuzz-win-v2",
@@ -459,7 +795,7 @@ export const newsTemplates: ArticleTemplate[] = [
     timestamp: "2 hours ago",
     title: "No contest at {venue} as unstoppable {userTeamName} run riot over {opponentName}",
     subheading: "Statement Victory",
-    content: "{userTeamName} were in no mood to play nice today, storming to a massive {winMargin} victory over a helpless {opponentName} side! Driven by sheer intent, {userTeamName} piled up {userRuns} runs, capped off by a blistering finish where they smashed {last3OversRuns} runs in the final 3 overs. When it was {opponentName}s turn to bat, the pitch suddenly looked like a minefield. {bowlerName} led the destruction with figures of {bowlerWickets}/{bowlerRuns}, keeping the opposition pinned down throughout. {opponentName} folded for just {opponentRuns}, completing a night of pure dominance for {userTeamName}."
+    content: "{firstInningsTeamName} were in no mood to play nice today, posting {firstInningsScore} in the first innings before turning the pressure onto {chasingTeamName}. The chase became a minefield as {bowlerName} led the destruction with figures of {bowlerWickets}/{bowlerRuns}, keeping the opposition pinned down throughout. {chasingTeamName} finished on {chasingTeamScore}, completing a night of pure dominance for the winning side."
   },
 
   // ==================== Cricbuzz (cricbuzz) Thrilling Win Articles ====================
@@ -586,7 +922,7 @@ export const newsTemplates: ArticleTemplate[] = [
     timestamp: "3 hours ago",
     title: "Midway madness! Whos flying high and whos facing the boot?",
     subheading: "Mid-Season Power Rankings",
-    content: "Weve reached the half-way point of the season, and the playoff scramble is getting absolute wild! {topTeamName} look virtually unstoppable at the top, racking up {topTeamWins} wins from {topTeamMatchesPlayed} games thanks to explosive form from {topScorerName} ({topScorerRuns} runs). Meanwhile, the middle table is locked in a massive traffic jam, with just {middleTablePointsDifference} points separating 3rd place from 7th place! One winning streak could launch a team into title contention, while two bad games could mean packing bags early. Strap in for a frantic second half!"
+    content: "Weve reached the half-way point of the season, and the playoff scramble is getting absolute wild! {topTeamName} look virtually unstoppable at the top, racking up {topTeamWins} wins from {topTeamMatchesPlayed} games thanks to explosive form from {topTeamLeadingBatterName} ({topTeamLeadingBatterRuns} runs). Meanwhile, the middle table is locked in a massive traffic jam, with just {middleTablePointsDifference} points separating 3rd place from 7th place! One winning streak could launch a team into title contention, while two bad games could mean packing bags early. Strap in for a frantic second half!"
   },
 
   // ==================== Cricbuzz (cricbuzz) Post-Season Autopsy ====================
@@ -646,7 +982,7 @@ export const newsTemplates: ArticleTemplate[] = [
     timestamp: "4 hours ago",
     title: "{surgingTeamShort} juggernaut rolls on! {teamConsecutiveWins} straight victories and counting!",
     subheading: "The Winning Streak Juggernaut",
-    content: "Talk about finding form at the perfect time! {surgingTeamName} extended their unbeaten run to {teamConsecutiveWins} games with a brilliant performance, soaring to {teamCurrentPosition} place on the points table. Everything they touch is turning to goldwhen the top order stumbles, the middle order steps up, and {keyBowlerName} is executing yorkers at will ({bowlerStreakWickets} wickets in {teamConsecutiveWins} games). Captain {surgingTeamCaptainName} said post-match that \"the team atmosphere is electric.\" They look virtually unstoppable!"
+    content: "Talk about finding form at the perfect time! {surgingTeamName} extended their unbeaten run to {teamConsecutiveWins} games with a brilliant performance, soaring to {teamCurrentPosition} place on the points table. Everything they touch is turning to gold—when the top order stumbles, the middle order steps up, and {keyBowlerName} is {keyBowlerAction} ({bowlerStreakWickets} wickets in {teamConsecutiveWins} games). {surgingTeamCaptainName} said post-match that \"the team atmosphere is electric.\" They look virtually unstoppable!"
   },
 
   // ==================== Cricbuzz (cricbuzz) Extended Surge ====================
@@ -662,7 +998,7 @@ export const newsTemplates: ArticleTemplate[] = [
     timestamp: "4 hours ago",
     title: "HISTORIC RAMPAGE! {surgingTeamName} make it SIX IN A ROW as opposition runs out of answers!",
     subheading: "Absolute Rampage",
-    content: "Is this team even human?! {surgingTeamName} just notched up their {teamConsecutiveWins}th consecutive victory, and at this point, they look completely invincible! From stunning run-chases to bowling massacres, {surgingTeamShort} are steamrolling every single team that stands in their way. {hotPlayerName} produced another sensation today, making it {starPlayerStreakFiftyCount} fifties in his last six outings. The dugout is flying high, the fans are witnessing history, and {surgingTeamName} have practically guaranteed themselves a spot at the very top of the playoff mountain. Who can possibly stop this juggernaut?"
+    content: "Is this team even human?! {surgingTeamName} just completed a {teamConsecutiveWins}-game winning run, and at this point, they look completely invincible! From stunning run-chases to bowling massacres, {surgingTeamShort} are steamrolling every single team that stands in their way. {hotPlayerName} produced another sensation today, making it {starPlayerStreakFiftyCount} fifties in the last {teamConsecutiveWins} outings. The dugout is flying high, the fans are witnessing history, and {surgingTeamName} have practically guaranteed themselves a spot at the very top of the playoff mountain. Who can possibly stop this juggernaut?"
   },
   {
     id: "art-cricbuzz-extsurge-v2",
@@ -676,7 +1012,7 @@ export const newsTemplates: ArticleTemplate[] = [
     timestamp: "4 hours ago",
     title: "SIX-AND-EASY! Unstoppable {surgingTeamShort} roll on with {teamConsecutiveWins} straight victories!",
     subheading: "The Perfect Streak",
-    content: "Six matches. Six victories. Total domination! {surgingTeamName} have officially put together one of the most ruthless winning streaks in tournament history by claiming their {teamConsecutiveWins}th straight win today! Everything Captain {surgingTeamCaptainName} turns to absolute goldbowlers are landing yorkers on command, and the batters are clearing the ropes for fun ({surgingTeamStreakSixesCount} total sixes in this streak!). They aren't just winning games; they are dismantling teams. Hold onto your seats, because this {surgingTeamShort} hype train has no brakes!"
+    content: "{teamConsecutiveWins} matches. {teamConsecutiveWins} victories. Total domination! {surgingTeamName} have officially put together one of the most ruthless winning streaks in tournament history by claiming their {teamConsecutiveWins}th straight win today! Everything {surgingTeamCaptainName} touches turns to absolute gold—bowlers are hitting their lengths on command, and the batters are clearing the ropes for fun ({surgingTeamStreakSixesCount} total sixes in this streak!). They aren't just winning games; they are dismantling teams. Hold onto your seats, because this {surgingTeamShort} hype train has no brakes!"
   },
 
   // ==================== Cricbuzz (cricbuzz) Franchise Freefall ====================
@@ -692,7 +1028,7 @@ export const newsTemplates: ArticleTemplate[] = [
     timestamp: "2 hours ago",
     title: "ALARM BELLS! {strugglingTeamName} slump to {teamConsecutiveLosses} losses in a row as pressure mounts!",
     subheading: "Alarm Bells Ringing",
-    content: "The wheels are falling off for {strugglingTeamName}! Another dismal outing today makes it {teamConsecutiveLosses} defeats on the trot, and the dressing room looks seriously rattled. Big-money stars are failing to deliver, with the top order crumbling for just {strugglingTeamRecentPowerplayRuns} in the first 6 overs. Captain {strugglingTeamCaptainName} admitted post-match that \"confidence is shot.\" If {strugglingTeamShort} don't turn things around immediately, their playoff dreams are going to vanish in a flash!"
+    content: "The wheels are falling off for {strugglingTeamName}! Another dismal outing today makes it {teamConsecutiveLosses} defeats on the trot, and the dressing room looks seriously rattled. Big-money stars are failing to deliver, with the top order reaching just {strugglingTeamRecentPowerplayScore} in the first 6 overs. Captain {strugglingTeamCaptainName} admitted post-match that \"confidence is shot.\" If {strugglingTeamShort} don't turn things around immediately, their playoff dreams are going to vanish in a flash!"
   },
   {
     id: "art-cricbuzz-freefall-v2",
@@ -705,8 +1041,8 @@ export const newsTemplates: ArticleTemplate[] = [
     brand: "cricbuzz",
     timestamp: "2 hours ago",
     title: "TOTAL DISASTER! {strugglingTeamShort} hit rock bottom with {teamConsecutiveLosses} straight defeats!",
-    subheading: "Severe Nightmare Run (6+ Loss Streak)",
-    content: "Make it SIX AND COUNTING! {strugglingTeamName} are enduring a nightmare of epic proportions after slumping to their {teamConsecutiveLosses}th consecutive loss today! Nothing is workingbowlers are getting hammered for {strugglingTeamLast3OversConceded} runs in the death, and the batting unit collapsed to {strugglingTeamTotalRuns} all out. Fans are venting their frustration on social media, and the team looks completely devoid of answers. Is there any way back from this complete freefall?"
+    subheading: "Severe Nightmare Run ({teamConsecutiveLosses}-Loss Streak)",
+    content: "MAKE IT {teamConsecutiveLosses} AND COUNTING! {strugglingTeamName} are enduring a nightmare of epic proportions after slumping to a {teamConsecutiveLosses}-game losing run! Nothing is working—bowlers are getting hammered for {strugglingTeamLast3OversConceded} runs in the death, and the batting unit collapsed to {strugglingTeamTotalRuns} all out. Fans are venting their frustration on social media, and the team looks completely devoid of answers. Is there any way back from this complete freefall?"
   },
 
   // ==================== Cricbuzz (cricbuzz) Batting Century ====================
@@ -786,7 +1122,7 @@ export const newsTemplates: ArticleTemplate[] = [
     title: "RUN MACHINE! Unstoppable {playerName} breaches 500 runs for the season!",
     subheading: "500-Run Season Run Machine",
     requiresRunsBenchmark500: true,
-    content: "What a season this man is having! {playerName} has officially crossed the 500-run mark for the tournament, continuing his dream form with another top-class knock of {matchPlayerRuns} today! Match after match, opponent after opponent, {playerName} has been absolute gold for {playerTeamShort}. He now has {playerSeasonFifties} fifties and {playerSeasonCenturies} centuries under his belt this year. If {playerTeamShort} go all the way to the trophy, this man's bat will be the reason why!"
+    content: "What a season this man is having! {playerName} has officially crossed the 500-run mark for the tournament, continuing his dream form with another top-class knock of {matchPlayerRuns} today! Match after match, opponent after opponent, {playerName} has been absolute gold for {playerTeamShort}. He now has {playerSeasonFifties} fifties and {playerSeasonCenturies} centuries under his belt this year. If {playerTeamShort} go all the way to the trophy, this bat will be central to their campaign!"
   },
   {
     id: "art-cricbuzz-benchmark-v2",
@@ -817,7 +1153,7 @@ export const newsTemplates: ArticleTemplate[] = [
     timestamp: "6 hours ago",
     title: "A STAR IS BORN! Young prodigy {playerName} steals the show at {venue}!",
     subheading: "A Star Is Born",
-    content: "Remember the name! {playerAge}-year-old {playerName} announced himself on the big stage today with an astonishing Player of the Match performance for {playerTeamShort}! Showing zero big-stage fright, the youngster took down international stars, smashing {matchPlayerRuns} off {matchPlayerBalls} / taking {matchPlayerWickets} for {matchPlayerRunsConceded}! The entire dugout gave him a standing ovation as he walked off the field. {playerTeamShort} have found an absolute diamond in the rough, and this is only the beginning of his journey!"
+    content: "Remember the name! {playerAge}-year-old {playerName} announced himself on the big stage today with an astonishing Player of the Match performance for {playerTeamShort}! Showing zero big-stage fright, the youngster delivered {playerPerformanceSummary} against international opposition. The entire dugout gave him a standing ovation as he walked off the field. {playerTeamShort} have found an absolute diamond in the rough, and this is only the beginning of his journey!"
   },
 
   // ==================== Cricbuzz (cricbuzz) Veteran Twilight / Retirement ====================
@@ -1035,7 +1371,7 @@ export const newsTemplates: ArticleTemplate[] = [
     timestamp: "4 hours ago",
     title: "UNSTOPPABLE!  {surgingTeamName} WIN {teamConsecutiveWins} IN A ROW!",
     subheading: "Streak Alert",
-    content: "{surgingTeamName} ARE ON A RAMPAGE! They just claimed their {teamConsecutiveWins}rd straight victory to jump up to #{teamCurrentPosition} on the points table! Star performer {heroPlayerName} led the way with an incredible performance today! Can ANY team break their winning streak? Let us know in the comments!"
+    content: "{surgingTeamName} ARE ON A RAMPAGE! They just completed a {teamConsecutiveWins}-game winning run and jumped up to #{teamCurrentPosition} on the points table! Star performer {heroPlayerName} led the way with an incredible performance today! Can ANY team break their winning streak? Let us know in the comments!"
   },
   {
     id: "art-newsletter-surge-v2",
@@ -1047,7 +1383,7 @@ export const newsTemplates: ArticleTemplate[] = [
     triggerType: "franchise_form_surge",
     brand: "newsletter",
     timestamp: "4 hours ago",
-    title: "WINNING STREAK ALERT! 3+ IN A ROW FOR {surgingTeamShort}!",
+    title: "WINNING STREAK ALERT! {teamConsecutiveWins} IN A ROW FOR {surgingTeamShort}!",
     subheading: "Hype Train",
     content: "Make that {teamConsecutiveWins} WINS IN A ROW for {surgingTeamName}! They are peak-performing right now and the fans are going wild! Standout player: {keyPlayerName} with {keyPlayerStreakStats} over this insane run! Are {surgingTeamShort} heading all the way to the final? Drop your emojis below!"
   },
@@ -1065,7 +1401,7 @@ export const newsTemplates: ArticleTemplate[] = [
     timestamp: "4 hours ago",
     title: "6 IN A ROW!  {surgingTeamName} ARE TOTALLY UNBEATABLE!",
     subheading: "Record Breakers",
-    content: "MAKE IT SIX WINS IN A ROW! {surgingTeamName} are writing history right now after grabbing their {teamConsecutiveWins}th straight win! {hotPlayerName} took home Player of the Match again with an unreal display! Is this the greatest winning streak of all time? Sound off in the comments!"
+    content: "MAKE IT {teamConsecutiveWins} WINS IN A ROW! {surgingTeamName} are writing history right now after completing this {teamConsecutiveWins}-game run! {hotPlayerName} took home Player of the Match again with an unreal display! Is this the greatest winning streak of all time? Sound off in the comments!"
   },
   {
     id: "art-newsletter-extsurge-v2",
@@ -1077,9 +1413,9 @@ export const newsTemplates: ArticleTemplate[] = [
     triggerType: "franchise_extended_surge",
     brand: "newsletter",
     timestamp: "4 hours ago",
-    title: "INSANE STREAK! 6+ WINS ON THE BOUNCE FOR {surgingTeamShort}!",
+    title: "INSANE STREAK! {teamConsecutiveWins} WINS ON THE BOUNCE FOR {surgingTeamShort}!",
     subheading: "Golden Run Alert",
-    content: "UNBELIEVABLE! {surgingTeamName} just won their {teamConsecutiveWins}th game in a row! They sit comfortably at #1 on the table and look 100% unstoppable! Key performer during this 6-game rampage: {keyPlayerName} with {starPlayerStreakRuns} runs & {keyPlayerStreakWickets} wickets! Drop a fire emoji if you think they are winning the trophy this year!"
+    content: "UNBELIEVABLE! {surgingTeamName} just completed a {teamConsecutiveWins}-game winning run! They sit comfortably at #1 on the table and look 100% unstoppable! Key performer during this {teamConsecutiveWins}-game rampage: {keyPlayerName} with {starPlayerStreakRuns} runs & {keyPlayerStreakWickets} wickets! Drop a fire emoji if you think they are winning the trophy this year!"
   },
 
   // ==================== IPL Daily (newsletter) Franchise Freefall ====================
@@ -1095,7 +1431,7 @@ export const newsTemplates: ArticleTemplate[] = [
     timestamp: "2 hours ago",
     title: "SLUMP ALERT!  {strugglingTeamName} lose {teamConsecutiveLosses} in a row!",
     subheading: "Slump Warning",
-    content: "Uh oh! Trouble in the dugout for {strugglingTeamName}! They just suffered their {teamConsecutiveLosses}rd straight defeat, sliding down to #{teamCurrentPosition} on the table! Top-scorer today was {hotPlayerName} with {hotPlayerStreakRuns}, but it wasn't enough! What changes should they make for the next game? Drop your suggestions below!"
+    content: "Uh oh! Trouble in the dugout for {strugglingTeamName}! They just completed a {teamConsecutiveLosses}-game losing run, sliding down to #{strugglingTeamCurrentPosition} on the table! Top-scorer today was {strugglingLatestTopScorerName} with {strugglingLatestTopScorerRuns} runs, but it wasn't enough! What changes should they make for the next game? Drop your suggestions below!"
   },
   {
     id: "art-newsletter-freefall-v2",
@@ -1107,8 +1443,8 @@ export const newsTemplates: ArticleTemplate[] = [
     triggerType: "franchise_severe_freefall",
     brand: "newsletter",
     timestamp: "2 hours ago",
-    title: "CRISIS MODE! 6+ LOSSES IN A ROW FOR {strugglingTeamShort}!",
-    subheading: "Crisis Point (6+ Loss Streak)",
+    title: "CRISIS MODE! {teamConsecutiveLosses} LOSSES IN A ROW FOR {strugglingTeamShort}!",
+    subheading: "Crisis Point ({teamConsecutiveLosses}-Loss Streak)",
     content: "NIGHTMARE SEASON! {strugglingTeamName} have now lost {teamConsecutiveLosses} GAMES IN A ROW! They are officially stuck at the bottom of the points table with just {teamPoints} points. Can they win a single game before the season ends? Sound off in the comments!"
   },
 
@@ -1263,7 +1599,7 @@ export const newsTemplates: ArticleTemplate[] = [
     timestamp: "8 hours ago",
     title: "In Focus: {topScorerName}'s Stellar Run of Form Dominates the Leaderboards",
     subheading: "With {topScorerRuns} runs under their belt, the star batsman has become the league's most feared wicket.",
-    content: "{topScorerName} has been in absolute red-hot form this season, racking up {topScorerRuns} runs in the tournament so far. Bowlers have struggled to find gaps in their defense, as they continue to dispatch deliveries at a strike rate of {topScorerSr}%. Experts analyze how their stance and batting triggers make them almost impossible to contain."
+    content: "{topScorerName} has been in absolute red-hot form this season, racking up {topScorerRuns} runs in the tournament so far. Bowlers have struggled to find gaps in their defense, as they continue to dispatch deliveries at a strike rate of {topScorerSr}. Experts analyze how their stance and batting triggers make them almost impossible to contain."
   },
   {
     id: "art-tournament-league-scenarios",
@@ -1276,7 +1612,7 @@ export const newsTemplates: ArticleTemplate[] = [
     timestamp: "12 hours ago",
     title: "Playoff Scenarios: {topFour} Hold the Cards as {contenders} Remain in Hot Pursuit",
     subheading: "Decoding the NRR mathematics and match-day results needed for a top-four qualification.",
-    content: "With the group stage entering its home stretch, {topFour} currently occupy the qualifying spots. However, the chasing pack led by {contenders} is well within striking distance. A single slip-up in the upcoming double-headers could drastically shuffle the standings. Teams are placing heavy emphasis on finishing games quickly to boost critical Net Run Rate ratios."
+    content: "With every franchise now having several games on the board, {topFour} currently occupy the qualifying spots. However, the chasing pack led by {contenders} is well within striking distance. There is still a long way to go, and a single slip-up in the next block of fixtures could drastically shuffle the standings. Teams are already placing heavy emphasis on finishing games quickly to build a valuable Net Run Rate buffer."
   },
   {
     id: "art-transfers-auctions-review",
@@ -1289,7 +1625,7 @@ export const newsTemplates: ArticleTemplate[] = [
     timestamp: "1 day ago",
     title: "The Valuation Audit: Is {topBuyName} Delivering on the Marquee {topBuyPrice} Price Tag?",
     subheading: "A deep dive into player performance vs. squad salary cap drain for the league's highest earners.",
-    content: "When the gavel fell, {topBuyName} was the headline signing at a massive {topBuyPrice}. Now, deep into the season, analysts are reviewing the numbers. With a current rating of {topBuyRating}, their impact on matches has been pivotal, but it raises key questions on squad balance. Did the heavy expenditure limit the franchise's ability to buy solid bench options? We breakdown the cost-per-win metrics."
+    content: "When the gavel fell, {topBuyName} was the headline signing at a massive {topBuyPrice} for {topBuyTeamName}. After {seasonMatchesPlayed} of {seasonTotalMatches} league matches, the performance record reads {topBuySeasonMatches} appearances, {topBuySeasonRuns} runs from {topBuySeasonBalls} balls (strike rate {topBuySeasonStrikeRate}), and {topBuySeasonWickets} wickets at an economy of {topBuySeasonEconomy}. That output gives the valuation debate a factual baseline: the current rating is {topBuyRating}, the franchise has {topBuyTeamWins} wins so far, and the salary currently works out at {topBuyCostPerWin} per team win. The remaining fixtures will show whether the marquee fee is buying match influence or simply consuming room that could have strengthened the bench."
   },
 
   // ==================== Tournament & League Standing Permutations ====================
@@ -1306,7 +1642,7 @@ export const newsTemplates: ArticleTemplate[] = [
     timestamp: "3 hours ago",
     title: "Early pace-setters: {topTeamShort} build early buffer through net run rate control",
     subheading: "Commanding the Table",
-    content: "With {seasonMatchesPlayed} games completed in the league phase, {topTeamName} have staked an early claim at the top of the table with {topTeamPoints} points and an elevated NRR of {topTeamNrr}. The catalyst for their fast start has been boundary efficiency; {topTeamShort} are striking {topTeamBoundaryRate} boundaries per 120 balls while maintaining a low dot-ball ratio of {topTeamDotBallPercentage}%. Meanwhile, {secondTeamName} trail closely behind with {secondTeamPoints} points, setting up an intriguing battle for early table control. While early-season standings can be deceptive before pitch wear becomes a factor, establishing a net run rate buffer inside the first third of the schedule historically reduces qualification pressure in the final week."
+    content: "With {seasonMatchesPlayed} games completed in the league phase, {topTeamName} have staked an early claim at the top of the table with {topTeamPoints} points and an elevated NRR of {topTeamNrr}. The catalyst for their fast start has been boundary efficiency; {topTeamShort} have struck {topTeamSixes} sixes and {topTeamFours} fours while maintaining a low dot-ball ratio of {topTeamDotBallPercentage}%. Meanwhile, {secondTeamName} trail closely behind with {secondTeamPoints} points, setting up an intriguing battle for early table control. While early-season standings can be deceptive before pitch wear becomes a factor, establishing a net run rate buffer inside the first third of the schedule historically reduces qualification pressure in the final week."
   },
   {
     id: "art-early-slow-starter",
@@ -1320,7 +1656,7 @@ export const newsTemplates: ArticleTemplate[] = [
     timestamp: "3 hours ago",
     title: "Structural lag: Why {strugglingTeamShort} are floundering in the early standings",
     subheading: "Early Season Deficits",
-    content: "Through the opening block of {seasonMatchesPlayed} league matches, pre-season contenders {strugglingTeamName} find themselves languishing in {strugglingTeamPosition}th position with just {strugglingTeamPoints} points. A granular look at their opening outings highlights a failure to adapt to field restrictions, scoring a league-worst {strugglingTeamPowerplayRunRate} runs per over during the powerplay. Additionally, their bowling unit has allowed opponents an average opening stand of {strugglingTeamAvgOpenerStand} runs. While {seasonRemainingMatches} games remain to rectify these tactical misalignments, dropping early points forces {strugglingTeamShort} into high-pressure scenarios earlier than anticipated."
+    content: "Through the opening block of {seasonMatchesPlayed} league matches, pre-season contenders {strugglingTeamName} find themselves languishing in {strugglingTeamPosition}th position with just {strugglingTeamPoints} points. A granular look at their opening outings highlights a failure to adapt to field restrictions, scoring a league-worst {strugglingTeamPowerplayRunRate} runs per over during the powerplay. Additionally, their bowling unit has allowed opponents an average opening stand of {strugglingTeamAvgOpenerStand} runs. While {earlyStrugglingTeamRemainingGames} league games remain to rectify these tactical misalignments, dropping early points forces {strugglingTeamShort} into high-pressure scenarios earlier than anticipated."
   },
   {
     id: "art-early-table-shakeup",
@@ -1392,7 +1728,7 @@ export const newsTemplates: ArticleTemplate[] = [
     timestamp: "4 hours ago",
     title: "The NRR maze: Quantifying the qualifying margins for {middleTeam1Short} and {middleTeam2Short}",
     subheading: "Calculators Out",
-    content: "As the league stage reaches 70% completion with {seasonRemainingMatches} group games left, the battle for the final playoff berths has boiled down to net run rate precision. Tied on {middleTeam1Points} points each, 4th-placed {middleTeam1Name} (NRR {middleTeam1Nrr}) and 5th-placed {middleTeam2Name} (NRR {middleTeam2Nrr}) are locked in a high-stakes mathematical race. For {middleTeam2Short} to surpass {middleTeam1Short}'s NRR in their upcoming fixture against {nrrOpponentShort}, they must either chase down a target of 160 within {nrrChaseOvers} overs or defend a similar total by at least {nrrDefendRuns} runs. With three other sides within a two-point radius, micro-managing overs and boundary concessions late in innings will prove as critical as outright wins."
+    content: "As the league stage reaches 70% completion with {seasonRemainingMatches} group games left, the battle for the final playoff berths has boiled down to net run rate precision. Tied on {middleTeam1Points} points each, 4th-placed {middleTeam1Name} (NRR {middleTeam1Nrr}) and 5th-placed {middleTeam2Name} (NRR {middleTeam2Nrr}) are locked in a high-stakes mathematical race. For {middleTeam2Short} to surpass {middleTeam1Short}'s NRR in their upcoming fixture against {nrrOpponentShort}, they must win decisively and improve their run-rate margin; the exact requirement depends on the target and overs in that match. With three other sides within a two-point radius, micro-managing overs and boundary concessions late in innings will prove as critical as outright wins."
   },
   {
     id: "art-playoff-permutations",
@@ -1406,7 +1742,7 @@ export const newsTemplates: ArticleTemplate[] = [
     timestamp: "4 hours ago",
     title: "Permutations matrix: How the top three can lock in Qualifier 1 advantage",
     subheading: "Top Three Race",
-    content: "With {seasonCompletionPercentage}% of group stage fixtures completed, the scramble for the coveted top-two qualification spots has escalated into a three-way standoff between {topTeam1Short} ({topTeam1Points} pts), {topTeam2Short} ({topTeam2Points} pts), and {topTeam3Short} ({topTeam3Points} pts). Obtaining a top-two finish grants a double chance at making the final via Qualifier 1. A victory for {topTeam1Name} in their next game guarantees them a top-two seed regardless of external results due to their superior head-to-head record and differential NRR of {topTeam1Nrr}. Conversely, if {topTeam3Name} win while {topTeam2Name} suffer a heavy defeat, a net run rate swing of {nrrSwingDifference} will invert the top-two order completely."
+    content: "With {seasonCompletionPercentage}% of group stage fixtures completed, the scramble for the coveted top-two qualification spots has escalated into a three-way standoff between {topTeam1Short} ({topTeam1Points} pts), {topTeam2Short} ({topTeam2Points} pts), and {topTeam3Short} ({topTeam3Points} pts). Obtaining a top-two finish grants a double chance at making the final via Qualifier 1. A victory for {topTeam1Name} in their next game strengthens their top-two position, while the exact impact of other results will depend on the resulting points and NRR calculations."
   },
   {
     id: "art-playoff-squeaky-bum",
@@ -1448,7 +1784,7 @@ export const newsTemplates: ArticleTemplate[] = [
     timestamp: "2 hours ago",
     title: "PLAYOFF MATH TIME! How can {teamAShort} make the TOP 4?",
     subheading: "Standings Permutations",
-    content: "THE CALCULATORS ARE OUT! {teamAName} and {teamBName} are TIED on {teamAPoints} points! To take the #4 spot, {teamAShort} MUST win their next game in under {nrrChaseOvers} overs! Can they pull off the high-speed chase? Drop your predictions below!"
+    content: "THE CALCULATORS ARE OUT! {teamAName} and {teamBName} are TIED on {teamAPoints} points! To take the #4 spot, {teamAShort} must win their next game and improve their NRR relative to {teamBShort}. Can they deliver under pressure? Drop your predictions below!"
   },
   {
     id: "art-playoff-top4-battle",
@@ -1608,7 +1944,7 @@ export const newsTemplates: ArticleTemplate[] = [
     timestamp: "2 hours ago",
     title: "BARGAIN STEAL! {playerAuctionPrice} Cr hero {playerName} steals the show at {venue}!",
     subheading: "Bargain Hero",
-    content: "Who needs big-money megastars when you have smart scouting?! Bought for a modest {playerAuctionPrice} Crore at the auction, {playerName} put on an absolute clinic today, single-handedly turning the match around for {playerTeamShort} with {playerRuns} runs / {playerWickets} wickets! He outshone every superstar on the pitch to pick up a deserved Player of the Match award. The management in the dugout must be grinning ear-to-ear after pulling off the ultimate auction heist!"
+    content: "Who needs big-money megastars when you have smart scouting?! Bought for a modest {playerAuctionPrice} Crore at the auction, {playerName} delivered a verified match contribution for {playerTeamShort}: {playerPerformanceSummary}. The management in the dugout must be grinning after pulling off the ultimate auction heist!"
   },
   {
     id: "art-bargain-steal-newsletter",
@@ -1622,7 +1958,7 @@ export const newsTemplates: ArticleTemplate[] = [
     timestamp: "1 hour ago",
     title: "BARGAIN OF THE SEASON! {playerAuctionPrice} Cr pick {playerName} shines!",
     subheading: "Smart Money",
-    content: "SMART MONEY! {playerTeamShort} bought {playerName} for just {playerAuctionPrice} Cr, and he's playing like a 15 Cr superstar! Today's match effort: {playerRuns} Runs off {playerBalls} balls / {playerWickets} Wickets for {playerRunsConceded} runs! Best budget pick in the league? Sound off below!"
+    content: "SMART MONEY! {playerTeamShort} bought {playerName} for just {playerAuctionPrice} Cr, and the bargain pick delivered a verified match contribution: {playerPerformanceSummary}. Best budget pick in the league? Sound off below!"
   },
   {
     id: "art-bigmoney-spotlight-newsletter",
@@ -1636,7 +1972,7 @@ export const newsTemplates: ArticleTemplate[] = [
     timestamp: "1 hour ago",
     title: "{playerAuctionPrice} CRORE MAN DELIVERS! {playerName} goes wild!",
     subheading: "Money Well Spent",
-    content: "MONEY WELL SPENT! {playerName} proves why {playerTeamShort} dropped a massive {playerAuctionPrice} CRORES for him at the auction! Today's performance: {playerRuns} Runs / {playerWickets} Wickets at {venue}! Is he going to be the player of the tournament? Drop a 🔥 in the comments!"
+    content: "MONEY WELL SPENT! {playerName} proves why {playerTeamShort} dropped a massive {playerAuctionPrice} CRORES for him at the auction! Today's verified performance: {playerPerformanceSummary} at {venue}. Is he going to be the player of the tournament? Drop a 🔥 in the comments!"
   },
   {
     id: "art-bigmoney-valuation-newsletter",
@@ -1650,7 +1986,7 @@ export const newsTemplates: ArticleTemplate[] = [
     timestamp: "1 hour ago",
     title: "BIG-MONEY CHECK! How is {playerAuctionPrice} Cr buy {playerName} performing?",
     subheading: "Auction Watch",
-    content: "AUCTION WATCH! {playerName} was {playerTeamShort}'s biggest auction signing at {playerAuctionPrice} Cr! Early season stats: {playerSeasonRuns} Runs & {playerSeasonWickets} Wickets across {playerSeasonMatches} games (Avg: {playerSeasonBattingAverage} / Econ: {playerSeasonEconomy}). Rating out of 10? Drop your score below!"
+    content: "AUCTION WATCH! {playerName} was {playerTeamShort}'s biggest auction signing at {playerAuctionPrice} Cr! Early-season record: {playerSeasonPerformanceSummary} across {playerSeasonMatches} games. Rating out of 10? Drop your score below!"
   },
   {
     id: "art-young-gun-newsletter",
@@ -2881,4 +3217,3 @@ export const newsTemplates: ArticleTemplate[] = [
     content: "{userFixturesOverviewNewsletter}"
   }
 ];
-
