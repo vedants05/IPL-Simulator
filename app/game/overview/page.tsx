@@ -5672,6 +5672,7 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}`;
 
               {activeSubTab === "news" && (
                 <NewsPage
+                  userTeamId={userTeamId}
                   players={players}
                   teams={teams}
                   playerStats={playerStats}
