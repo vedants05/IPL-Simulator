@@ -12,6 +12,7 @@ import {
   SkipSetResultItem,
   BidEntry,
   AuctionTargetPriority,
+  AuctionType,
 } from "@/lib/types";
 import { calculateBasePrice, fetchPlayersFromSupabase } from "@/lib/supabase/fetchPlayers";
 import { fetchTeamsFromSupabase } from "@/lib/supabase/fetchTeams";
@@ -102,6 +103,7 @@ import {
   getSquadComp,
   getQuirks,
   isPriorityAuctionSale,
+  youngProspectAuctionStrength,
 } from "@/lib/logic/auctionEngine";
 import {
   applyMatchToIplCareerStats,
@@ -118,6 +120,15 @@ import {
   type PlayerInjury,
 } from "@/lib/logic/injuries";
 import {
+  MAX_INJURY_REPLACEMENTS_PER_TEAM,
+  eligibleInjuryReplacementCandidates,
+  injuryQualifiesForReplacement,
+  replacementForInjury,
+  scoreInjuryReplacementCandidate,
+  teamReplacementCount,
+  type InjuryReplacementRecord,
+} from "@/lib/logic/injuryReplacements";
+import {
   createHistoricalPlayerSnapshot,
   initializeCareerPlayers,
   normalizeCareerSeasonPerformance,
@@ -128,6 +139,15 @@ import {
   type CareerRetirementRecord,
   type HistoricalPlayerSnapshot,
 } from "@/lib/logic/careerLifecycle";
+import {
+  MINI_AUCTION_PURSE_LAKHS,
+  calculateMiniAuctionKeptSalary,
+  enforceMiniAuctionRetentionLimits,
+  getMiniAuctionContractPrice,
+  selectAIMiniAuctionKeeps,
+  validateMiniAuctionRetentions,
+} from "@/lib/logic/miniAuctionRetention";
+import { getAuctionTypeForSeason } from "@/lib/logic/auctionCycle";
 import {
   applyAuctionMarketRatings,
   getAuctionBowlingRating,
@@ -211,6 +231,7 @@ interface GameStateAdditions {
   injuryHistory: PlayerInjury[];
   processedInjuryMatchIds: string[];
   processedInjuryDateKeys: string[];
+  injuryReplacementRecords: InjuryReplacementRecord[];
   auctionMarketProfile: AuctionMarketProfile | null;
   retiredPlayerSnapshots: Record<string, HistoricalPlayerSnapshot>;
   lastCareerPostseasonSeason: number | null;
@@ -261,7 +282,10 @@ interface GameActions {
   setClubFigureTierOverride: (figureId: string, tier: ClubFigureTier) => void;
   recordSimulatedLeagueSeason: (season: LeagueHistorySeason) => void;
   recordIplMatchStats: (updates: IplCareerMatchUpdate[]) => number;
-  beginNextSeasonRetention: (captainIdsByTeam?: Record<string, string | null | undefined>) => boolean;
+  beginNextSeasonRetention: (
+    captainIdsByTeam?: Record<string, string | null | undefined>,
+    auctionType?: AuctionType,
+  ) => boolean;
   archiveCareerSeason: (archive: {
     season: number;
     fixtures: unknown[];
@@ -311,6 +335,18 @@ interface GameActions {
     seasonFinalDate?: string;
   }) => InjuryProcessingResult;
   reconcileInjuries: (date: string) => PlayerInjury[];
+  signInjuryReplacement: (input: {
+    injuryId: string;
+    replacementPlayerId: string;
+    date: string;
+    seasonFinalDate?: string;
+    teamFinalLeagueDate?: string;
+  }) => boolean;
+  processAIInjuryReplacements: (input: {
+    date: string;
+    seasonFinalDate?: string;
+    teamFinalLeagueDates: Record<string, string | undefined>;
+  }) => InjuryReplacementRecord[];
   processCompletedAuctionCareer: () => CareerRetirementRecord[];
 }
 
@@ -447,6 +483,90 @@ function withoutRetiredInjuryHistory(
   retiredIds: Set<string>,
 ): PlayerInjury[] {
   return injuries.filter((injury) => !retiredIds.has(injury.playerId));
+}
+
+function applyInjuryReplacementSigning(input: {
+  injury: PlayerInjury;
+  replacementPlayerId: string;
+  date: string;
+  season: number;
+  seasonFinalDate?: string;
+  teamFinalLeagueDate?: string;
+  players: Record<string, Player>;
+  teams: Record<string, Team>;
+  activeInjuries: Record<string, PlayerInjury>;
+  records: InjuryReplacementRecord[];
+  unsoldPlayerIds: readonly string[];
+}): { players: Record<string, Player>; teams: Record<string, Team>; records: InjuryReplacementRecord[]; record: InjuryReplacementRecord } | null {
+  const team = input.teams[input.injury.teamId];
+  if (!team || replacementForInjury(input.records, input.injury.id)) return null;
+  if (!injuryQualifiesForReplacement(input.injury, {
+    date: input.date,
+    season: input.season,
+    seasonFinalDate: input.seasonFinalDate,
+    teamFinalLeagueDate: input.teamFinalLeagueDate,
+  })) return null;
+  if (teamReplacementCount(input.records, team.id, input.season) >= MAX_INJURY_REPLACEMENTS_PER_TEAM) return null;
+  const eligible = eligibleInjuryReplacementCandidates({
+    injury: input.injury,
+    players: input.players,
+    unsoldPlayerIds: input.unsoldPlayerIds,
+    records: input.records,
+    season: input.season,
+  });
+  const replacement = eligible.find((candidate) => candidate.id === input.replacementPlayerId);
+  if (!replacement) return null;
+  const availableSquad = team.squad.filter((playerId) => !input.activeInjuries[playerId]);
+  if (availableSquad.length >= (team.maxSquadSize ?? 25)) return null;
+  const activeOverseas = availableSquad.filter(
+    (playerId) => input.players[playerId]?.nationality === "Overseas",
+  ).length;
+  if (replacement.nationality === "Overseas" && activeOverseas >= (team.overseasPlayersMax ?? 8)) return null;
+
+  const record: InjuryReplacementRecord = {
+    id: `injury-replacement:${input.season}:${input.injury.id}:${replacement.id}`,
+    season: input.season,
+    teamId: team.id,
+    injuryId: input.injury.id,
+    injuredPlayerId: input.injury.playerId,
+    injuredPlayerName: input.injury.playerName,
+    replacementPlayerId: replacement.id,
+    replacementPlayerName: replacement.name,
+    signedOn: input.date,
+    salary: replacement.basePrice,
+  };
+  const updatedReplacement: Player = {
+    ...replacement,
+    currentTeamId: team.id,
+    isRetained: false,
+    retainedByTeamId: null,
+    iplHistory: upsertPlayerIplHistory(replacement.iplHistory, {
+      teamId: team.id,
+      season: String(input.season),
+      price: replacement.basePrice,
+      isInjuryReplacement: true,
+      replacedPlayerId: input.injury.playerId,
+      replacementInjuryId: input.injury.id,
+    }),
+  };
+  const nextSquad = Array.from(new Set([...team.squad, replacement.id]));
+  const nextPlayers = { ...input.players, [replacement.id]: updatedReplacement };
+  const nextActiveOverseas = nextSquad.filter(
+    (playerId) => !input.activeInjuries[playerId] && nextPlayers[playerId]?.nationality === "Overseas",
+  ).length;
+  return {
+    players: nextPlayers,
+    teams: {
+      ...input.teams,
+      [team.id]: {
+        ...team,
+        squad: nextSquad,
+        overseasPlayersCurrent: nextActiveOverseas,
+      },
+    },
+    records: [...input.records, record],
+    record,
+  };
 }
 
 function getAdditionalHomePitchIds(
@@ -606,6 +726,22 @@ function pickNextLot(sets: AuctionSet[]): { setIndex: number; playerIndex: numbe
 
 function allSetsComplete(sets: AuctionSet[]): boolean {
   return sets.every((s) => s.isCompleted);
+}
+
+function getAvailableAuctionPlayerIds(
+  players: Record<string, Player>,
+  teams: Record<string, Team>,
+  resolvedPlayerIds: Iterable<string> = [],
+): string[] {
+  const contractedPlayerIds = new Set(Object.values(teams).flatMap((team) => team.squad));
+  const resolved = new Set(resolvedPlayerIds);
+  return Object.values(players)
+    .filter((player) => (
+      !contractedPlayerIds.has(player.id)
+      && !resolved.has(player.id)
+      && isPlayerAuctionEligible(player)
+    ))
+    .map((player) => player.id);
 }
 
 function removeResolvedAuctionTargets<T>(
@@ -811,6 +947,7 @@ function getAIAcceleratedNominationsAndBackups(
     currentLotIndex: auction.currentLotIndex,
     totalLots: auction.allPlayerIds.length,
     isAcceleratedPhase: true,
+    auctionType: auction.type,
   };
 
   const scored = unsoldPlayerIds
@@ -844,6 +981,7 @@ function getAIAcceleratedNominationsAndBackups(
       let score = fit * rating;
       if (isKeeperPriority) score += 50;
       if (isBowlerPriority) score += 30;
+      score += youngProspectAuctionStrength(p) * (auction.type === "mini" ? 80 : 45);
       // Add extra weight based on how much the team values the player relative to base price
       score += (valuation / p.basePrice) * 10;
 
@@ -906,6 +1044,7 @@ export const useGameStore = create<Store>()(
       injuryHistory: [],
       processedInjuryMatchIds: [],
       processedInjuryDateKeys: [],
+      injuryReplacementRecords: [],
       auctionMarketProfile: null,
       retiredPlayerSnapshots: {},
       lastCareerPostseasonSeason: null,
@@ -925,6 +1064,12 @@ export const useGameStore = create<Store>()(
           fetchPlayersFromSupabase(),
           fetchTeamsFromSupabase(),
         ]);
+        if (fetchedPlayers.length === 0) {
+          throw new Error("The player roster did not load. No game state was created.");
+        }
+        if (fetchedTeams.length === 0 || !fetchedTeams.some((team) => team.id === userTeamId)) {
+          throw new Error("The selected IPL team did not load. No game state was created.");
+        }
         const validTeamIds = new Set(fetchedTeams.map((team) => team.id));
         const responseHasTeamAssignments = fetchedPlayers.some((player) => (
           Boolean(player.currentTeamId && validTeamIds.has(player.currentTeamId))
@@ -968,6 +1113,9 @@ export const useGameStore = create<Store>()(
             softSquadTarget: t.id === userTeamId ? 24 : pickSoftSquadTarget(),
           };
         });
+        if ((teamsMap[userTeamId]?.squad.length ?? 0) === 0) {
+          throw new Error(`No contracted players were loaded for ${userTeamId}. No game state was created.`);
+        }
 
         const newSaveId = uuidv4();
         const initializedPlayers = initializeCareerPlayers(playersMap, INITIAL_ACTIVE_SEASON - 1);
@@ -979,8 +1127,48 @@ export const useGameStore = create<Store>()(
           seed: newSaveId,
           baselineMarketProfile: auctionMarketProfile,
         });
-        playersMap = withAdaptiveBasePrices(preparedPool.players);
-        teamsMap = preparedPool.teams;
+        const openingAuctionType = getAuctionTypeForSeason(INITIAL_ACTIVE_SEASON);
+        const openingTeamByPlayer = new Map(
+          Object.values(preparedPool.teams).flatMap((team) => team.squad.map((playerId) => [playerId, team.id] as const)),
+        );
+        playersMap = withAdaptiveBasePrices(Object.fromEntries(Object.entries(preparedPool.players).map(([id, player]) => {
+          const teamId = openingTeamByPlayer.get(id) ?? null;
+          return [id, {
+            ...player,
+            currentTeamId: teamId,
+            isRetained: openingAuctionType === "mini" && teamId !== null,
+            retainedByTeamId: openingAuctionType === "mini" ? teamId : null,
+          }];
+        })));
+        teamsMap = Object.fromEntries(Object.entries(preparedPool.teams).map(([id, team]) => {
+          const retainedPlayers = openingAuctionType === "mini"
+            ? enforceMiniAuctionRetentionLimits(
+                team,
+                team.squad.filter((playerId) => Boolean(playersMap[playerId])),
+                playersMap,
+                INITIAL_ACTIVE_SEASON,
+              )
+            : [];
+          const spentAmount = openingAuctionType === "mini"
+            ? calculateMiniAuctionKeptSalary(retainedPlayers, id, playersMap, INITIAL_ACTIVE_SEASON)
+            : 0;
+          return [id, {
+            ...team,
+            retainedPlayers,
+            totalPurse: openingAuctionType === "mini" ? MINI_AUCTION_PURSE_LAKHS : TOTAL_PURSE_LAKHS,
+            spentAmount,
+            remainingPurse: Math.max(0, (openingAuctionType === "mini" ? MINI_AUCTION_PURSE_LAKHS : TOTAL_PURSE_LAKHS) - spentAmount),
+            rtmCardsTotal: openingAuctionType === "mini" ? 0 : MAX_TOTAL_RETENTIONS,
+          }];
+        }));
+        if (openingAuctionType === "mini") {
+          const retainedIds = new Set(Object.values(teamsMap).flatMap((team) => team.retainedPlayers));
+          playersMap = Object.fromEntries(Object.entries(playersMap).map(([id, player]) => [id, {
+            ...player,
+            isRetained: retainedIds.has(id),
+            retainedByTeamId: retainedIds.has(id) ? player.currentTeamId : null,
+          }]));
+        }
         set({
           saveId: newSaveId,
           saveCreatedAt: new Date().toISOString(),
@@ -1012,6 +1200,7 @@ export const useGameStore = create<Store>()(
           injuryHistory: [],
           processedInjuryMatchIds: [],
           processedInjuryDateKeys: [],
+          injuryReplacementRecords: [],
           auctionMarketProfile,
           retiredPlayerSnapshots: appendHistoricalRetirees(
             {},
@@ -1026,7 +1215,7 @@ export const useGameStore = create<Store>()(
           careerRetirementHistory: preparedPool.retirements,
           lastCareerGeneratedPlayerIds: preparedPool.generatedPlayers.map((player) => player.id),
           auction: {
-            type: "mega",
+            type: openingAuctionType,
             season: INITIAL_ACTIVE_SEASON,
             phase: "retention",
             allPlayerIds: [],
@@ -1053,6 +1242,9 @@ export const useGameStore = create<Store>()(
 
       refreshPlayersFromSupabase: async () => {
         const fetchedPlayers = await fetchPlayersFromSupabase(true);
+        if (fetchedPlayers.length === 0) {
+          throw new Error("The player contract roster could not be loaded.");
+        }
         const state = get();
         if (Object.keys(state.players).length === 0) return;
 
@@ -1075,6 +1267,12 @@ export const useGameStore = create<Store>()(
           }
 
           let iplHistory = mergePlayerIplHistory(freshPlayer.iplHistory, savedPlayer.iplHistory);
+          if (state.currentSeason === INITIAL_ACTIVE_SEASON) {
+            const canonicalOpeningContract = getPlayerSeasonHistory(freshPlayer.iplHistory, "2026");
+            if (canonicalOpeningContract) {
+              iplHistory = upsertPlayerIplHistory(iplHistory, canonicalOpeningContract);
+            }
+          }
           const finalSale = finalSalesByPlayer.get(savedPlayer.id);
           const existingCareerEntry = getPlayerSeasonHistory(iplHistory, careerSeason);
 
@@ -1119,7 +1317,6 @@ export const useGameStore = create<Store>()(
             iplHistory,
           };
         });
-
         const currentPlayerId = state.auction?.currentPlayer?.id;
         const refreshedCurrentPlayer = currentPlayerId
           ? refreshedPlayers[currentPlayerId] ?? state.auction?.currentPlayer ?? null
@@ -1171,14 +1368,38 @@ export const useGameStore = create<Store>()(
       },
 
       retainPlayer: (playerId) => {
-        const { teams, userTeamId, players } = get();
+        const { teams, userTeamId, players, auction, currentSeason } = get();
         const team = teams[userTeamId];
         if (!team) return;
-        if (team.retainedPlayers.length >= MAX_TOTAL_RETENTIONS) return;
         if (team.retainedPlayers.includes(playerId)) return;
 
         const player = players[playerId];
         if (!player) return;
+        if (auction?.type === "mini") {
+          if (player.setForRelease) return;
+          if (!team.squad.includes(playerId) || player.currentTeamId !== userTeamId) return;
+          const newRetained = [...team.retainedPlayers, playerId];
+          const validation = validateMiniAuctionRetentions({ team, keptIds: newRetained, players, season: currentSeason });
+          if (!validation.valid) return;
+          set((state) => ({
+            teams: {
+              ...state.teams,
+              [userTeamId]: {
+                ...team,
+                retainedPlayers: newRetained,
+                totalPurse: MINI_AUCTION_PURSE_LAKHS,
+                remainingPurse: validation.remainingPurse,
+                spentAmount: validation.totalSalary,
+              },
+            },
+            players: {
+              ...state.players,
+              [playerId]: { ...player, isRetained: true, retainedByTeamId: userTeamId },
+            },
+          }));
+          return;
+        }
+        if (team.retainedPlayers.length >= MAX_TOTAL_RETENTIONS) return;
         if (!isPlayerAuctionEligible(player)) return;
 
         const isPlayerCapped = player.isCapped || player.nationality === "Overseas";
@@ -1212,14 +1433,17 @@ export const useGameStore = create<Store>()(
       },
 
       releaseRetention: (playerId) => {
-        const { teams, userTeamId, players } = get();
+        const { teams, userTeamId, players, auction, currentSeason } = get();
         const team = teams[userTeamId];
         if (!team) return;
         if (!team.retainedPlayers.includes(playerId)) return;
 
         const player = players[playerId];
         const newRetained = team.retainedPlayers.filter((id) => id !== playerId);
-        const newTotalCost = calculateTotalRetentionCost(newRetained, players);
+        const newTotalCost = auction?.type === "mini"
+          ? calculateMiniAuctionKeptSalary(newRetained, userTeamId, players, currentSeason)
+          : calculateTotalRetentionCost(newRetained, players);
+        const totalPurse = auction?.type === "mini" ? MINI_AUCTION_PURSE_LAKHS : TOTAL_PURSE_LAKHS;
 
         set((state) => ({
           teams: {
@@ -1227,7 +1451,8 @@ export const useGameStore = create<Store>()(
             [userTeamId]: {
               ...team,
               retainedPlayers: newRetained,
-              remainingPurse: TOTAL_PURSE_LAKHS - newTotalCost,
+              totalPurse,
+              remainingPurse: Math.max(0, totalPurse - newTotalCost),
               spentAmount: newTotalCost,
             },
           },
@@ -1239,9 +1464,41 @@ export const useGameStore = create<Store>()(
       },
 
       autoRetainPlayers: () => {
-        const { teams, userTeamId, players } = get();
+        const { teams, userTeamId, players, auction, currentSeason } = get();
         const team = teams[userTeamId];
         if (!team) return;
+
+        if (auction?.type === "mini") {
+          const autoRetainedIds = selectAIMiniAuctionKeeps(team, players, currentSeason);
+          const validation = validateMiniAuctionRetentions({ team, keptIds: autoRetainedIds, players, season: currentSeason });
+          if (!validation.valid) return;
+          const retainedSet = new Set(autoRetainedIds);
+          const updatedPlayers = { ...players };
+          team.squad.forEach((playerId) => {
+            const player = updatedPlayers[playerId];
+            if (!player) return;
+            updatedPlayers[playerId] = {
+              ...player,
+              isRetained: retainedSet.has(playerId),
+              retainedByTeamId: retainedSet.has(playerId) ? userTeamId : null,
+            };
+          });
+          set({
+            teams: {
+              ...teams,
+              [userTeamId]: {
+                ...team,
+                retainedPlayers: autoRetainedIds,
+                totalPurse: MINI_AUCTION_PURSE_LAKHS,
+                remainingPurse: validation.remainingPurse,
+                spentAmount: validation.totalSalary,
+                rtmCardsTotal: 0,
+              },
+            },
+            players: updatedPlayers,
+          });
+          return;
+        }
 
         const resetTeams = { ...teams };
         const resetPlayers = { ...players };
@@ -1302,6 +1559,112 @@ export const useGameStore = create<Store>()(
             ? player
             : { ...player, isRetained: false, retainedByTeamId: null },
         ]));
+
+        if (currentState.auction?.type === "mini") {
+          const selections: Record<string, string[]> = {};
+          for (const team of Object.values(teams)) {
+            const keptIds = team.id === userTeamId
+              ? team.retainedPlayers
+              : selectAIMiniAuctionKeeps(team, players, currentState.currentSeason);
+            const validation = validateMiniAuctionRetentions({
+              team,
+              keptIds,
+              players,
+              season: currentState.currentSeason,
+            });
+            // Never enter an auction with an impossible or negative purse.
+            // The UI exposes the user-team validation; AI selection is also
+            // checked here so corrupted saves cannot bypass the invariant.
+            if (!validation.valid) return;
+            selections[team.id] = keptIds;
+          }
+
+          const keptByPlayer = new Map<string, string>();
+          Object.entries(selections).forEach(([teamId, playerIds]) => {
+            playerIds.forEach((playerId) => keptByPlayer.set(playerId, teamId));
+          });
+          const updatedPlayers = Object.fromEntries(Object.entries(players).map(([playerId, player]) => {
+            const retainedTeamId = keptByPlayer.get(playerId);
+            if (!retainedTeamId) {
+              const previousTeam = player.currentTeamId ? teams[player.currentTeamId] : undefined;
+              const releasedCaptain = previousTeam?.captainContinuityId === playerId;
+              return [playerId, {
+                ...player,
+                currentTeamId: null,
+                isRetained: false,
+                retainedByTeamId: null,
+                iplCaptaincyUninterestedThroughSeason: releasedCaptain
+                  ? currentState.currentSeason
+                  : player.iplCaptaincyUninterestedThroughSeason,
+              }];
+            }
+            const contractPrice = getMiniAuctionContractPrice(
+              player,
+              retainedTeamId,
+              currentState.currentSeason,
+            );
+            return [playerId, {
+              ...player,
+              currentTeamId: retainedTeamId,
+              isRetained: true,
+              retainedByTeamId: retainedTeamId,
+              iplHistory: upsertPlayerIplHistory(player.iplHistory, {
+                teamId: retainedTeamId,
+                season: String(currentState.currentSeason),
+                price: contractPrice,
+              }),
+            }];
+          })) as Record<string, Player>;
+
+          const updatedTeams = Object.fromEntries(Object.values(teams).map((team) => {
+            const keptIds = selections[team.id];
+            const totalSalary = calculateMiniAuctionKeptSalary(
+              keptIds,
+              team.id,
+              players,
+              currentState.currentSeason,
+            );
+            return [team.id, {
+              ...team,
+              totalPurse: MINI_AUCTION_PURSE_LAKHS,
+              retainedPlayers: keptIds,
+              squad: keptIds,
+              captainContinuityId: keptIds.includes(team.captainContinuityId ?? "")
+                ? team.captainContinuityId
+                : null,
+              viceCaptainContinuityId: keptIds.includes(team.viceCaptainContinuityId ?? "")
+                ? team.viceCaptainContinuityId
+                : null,
+              spentAmount: totalSalary,
+              remainingPurse: Math.max(0, MINI_AUCTION_PURSE_LAKHS - totalSalary),
+              overseasPlayersCurrent: keptIds.filter(
+                (playerId) => updatedPlayers[playerId]?.nationality === "Overseas",
+              ).length,
+              rtmCardsTotal: 0,
+              rtmCardsUsed: 0,
+            }];
+          })) as Record<string, Team>;
+          const allPlayerIds = getAvailableAuctionPlayerIds(updatedPlayers, updatedTeams);
+          const sets = buildAuctionSets(allPlayerIds.map((id) => updatedPlayers[id]).filter(Boolean));
+          const teamPurses = buildInitialTeamPurses(updatedTeams);
+          const dates = getSeasonDates(currentState.currentSeason);
+          set((state) => ({
+            teams: updatedTeams,
+            players: updatedPlayers,
+            auctionMarketProfile,
+            currentDate: dates.auctionDate,
+            isSetupComplete: true,
+            auction: state.auction ? {
+              ...state.auction,
+              phase: "live",
+              allPlayerIds,
+              sets,
+              teamPurses,
+              rtm: null,
+            } : null,
+          }));
+          return;
+        }
 
         // Fresh per-auction AI quirks (fuzzed roster targets, temperament,
         // budget envelopes) — sampled once per auction inside the engine
@@ -1469,10 +1832,30 @@ export const useGameStore = create<Store>()(
 
         let activeSets = auction.sets;
         if (!activeSets || activeSets.length === 0) {
-          const unretained = Object.values(players).filter((p) => !p.isRetained && isPlayerAuctionEligible(p));
-          activeSets = buildAuctionSets(unretained.length > 0 ? unretained : Object.values(players));
+          const resolvedPlayerIds = [...auction.soldPlayerIds, ...auction.unsoldPlayerIds];
+          const availablePlayerIds = getAvailableAuctionPlayerIds(players, teams, resolvedPlayerIds);
+          const availablePlayers = availablePlayerIds
+            .map((playerId) => players[playerId])
+            .filter(Boolean)
+            .map((player) => ({ ...player, isRetained: false, retainedByTeamId: null, currentTeamId: null }));
+          activeSets = buildAuctionSets(availablePlayers);
           set((state) => ({
-            auction: state.auction ? { ...state.auction, sets: activeSets, currentSetIndex: 0 } : null,
+            players: Object.fromEntries(Object.entries(state.players).map(([playerId, player]) => [
+              playerId,
+              availablePlayerIds.includes(playerId)
+                ? { ...player, isRetained: false, retainedByTeamId: null, currentTeamId: null }
+                : player,
+            ])),
+            auction: state.auction ? {
+              ...state.auction,
+              allPlayerIds: Array.from(new Set([
+                ...state.auction.soldPlayerIds,
+                ...state.auction.unsoldPlayerIds,
+                ...availablePlayerIds,
+              ])),
+              sets: activeSets,
+              currentSetIndex: 0,
+            } : null,
           }));
         }
 
@@ -1483,7 +1866,8 @@ export const useGameStore = create<Store>()(
 
         const currentSet = activeSets[next.setIndex];
         const playerId = currentSet.playerIds[next.playerIndex];
-        const player = players[playerId];
+        const player = get().players[playerId];
+        if (!player) return;
 
         set((state) => ({
           teams: updatedTeams,
@@ -1835,6 +2219,7 @@ export const useGameStore = create<Store>()(
             currentLotIndex: auction.currentLotIndex,
             totalLots: auction.allPlayerIds.length,
             isAcceleratedPhase: true,
+            auctionType: auction.type,
           };
           const valuation = getLotValuation(p.id, userTeam, p, players, ctx);
           
@@ -1947,6 +2332,7 @@ export const useGameStore = create<Store>()(
             currentLotIndex,
             totalLots,
             isAcceleratedPhase: auction.isAcceleratedPhase,
+            auctionType: auction.type,
           };
 
           let currentBid = isCurrentLiveLot ? auction.currentBid : player.basePrice;
@@ -2245,6 +2631,7 @@ export const useGameStore = create<Store>()(
             currentLotIndex,
             totalLots,
             isAcceleratedPhase: auction.isAcceleratedPhase,
+            auctionType: auction.type,
           };
 
           let currentBid = isCurrentLiveLot ? auction.currentBid : player.basePrice;
@@ -2436,6 +2823,7 @@ export const useGameStore = create<Store>()(
               totalLots,
               isAcceleratedPhase: true,
               acceleratedPass: currentPass,
+              auctionType: auction.type,
             };
 
             let currentBid = player.basePrice;
@@ -2590,6 +2978,7 @@ export const useGameStore = create<Store>()(
             currentLotIndex,
             totalLots,
             isAcceleratedPhase: auction.isAcceleratedPhase,
+            auctionType: auction.type,
           };
 
           let currentBid = isCurrentLiveLot ? auction.currentBid : player.basePrice;
@@ -3192,7 +3581,7 @@ export const useGameStore = create<Store>()(
         return applied;
       },
 
-      beginNextSeasonRetention: (captainIdsByTeam) => {
+      beginNextSeasonRetention: (captainIdsByTeam, requestedAuctionType) => {
         let advanced = false;
         set((state) => {
           if (
@@ -3202,6 +3591,7 @@ export const useGameStore = create<Store>()(
 
           const completedSeason = state.currentSeason;
           const nextSeason = completedSeason + 1;
+          const nextAuctionType = requestedAuctionType ?? getAuctionTypeForSeason(nextSeason);
           const dates = getSeasonDates(nextSeason);
           const fallbackPostseason = state.lastCareerPostseasonSeason === completedSeason
             ? { players: state.players, teams: state.teams, retirements: [], retiredPlayers: [] }
@@ -3232,12 +3622,15 @@ export const useGameStore = create<Store>()(
             processedInjuryMatchIds: state.processedInjuryMatchIds,
             processedInjuryDateKeys: state.processedInjuryDateKeys,
           }, dates.retentionDate).state;
+          const miniSquadIds = new Set(Object.values(preparedPool.teams).flatMap((team) => team.squad));
           const resetPlayers = withAdaptiveBasePrices(Object.fromEntries(Object.entries(preparedPool.players).map(([id, player]) => [
             id,
             {
               ...player,
-              isRetained: false,
-              retainedByTeamId: null,
+              isRetained: nextAuctionType === "mini" && miniSquadIds.has(id),
+              retainedByTeamId: nextAuctionType === "mini" && miniSquadIds.has(id)
+                ? player.currentTeamId
+                : null,
               iplCaptaincyUninterestedThroughSeason:
                 (player.iplCaptaincyUninterestedThroughSeason ?? -1) >= nextSeason
                   ? player.iplCaptaincyUninterestedThroughSeason
@@ -3250,16 +3643,33 @@ export const useGameStore = create<Store>()(
               ...team,
               // Preserve the completed squad so the retention screen can
               // choose from it. confirmRetentions releases everyone else.
-              retainedPlayers: [],
+              retainedPlayers: nextAuctionType === "mini"
+                ? team.squad.filter((playerId) => Boolean(resetPlayers[playerId]))
+                : [],
               captainContinuityId: captainIdsByTeam
                 ? (captainIdsByTeam[id] && resetPlayers[captainIdsByTeam[id]!] ? captainIdsByTeam[id] : null)
                 : (team.captainContinuityId && resetPlayers[team.captainContinuityId] ? team.captainContinuityId : null),
               viceCaptainContinuityId: team.viceCaptainContinuityId && resetPlayers[team.viceCaptainContinuityId]
                 ? team.viceCaptainContinuityId
                 : null,
-              remainingPurse: TOTAL_PURSE_LAKHS,
-              spentAmount: 0,
-              rtmCardsTotal: MAX_TOTAL_RETENTIONS,
+              totalPurse: nextAuctionType === "mini" ? MINI_AUCTION_PURSE_LAKHS : TOTAL_PURSE_LAKHS,
+              remainingPurse: nextAuctionType === "mini"
+                ? Math.max(0, MINI_AUCTION_PURSE_LAKHS - calculateMiniAuctionKeptSalary(
+                    team.squad.filter((playerId) => Boolean(resetPlayers[playerId])),
+                    team.id,
+                    resetPlayers,
+                    nextSeason,
+                  ))
+                : TOTAL_PURSE_LAKHS,
+              spentAmount: nextAuctionType === "mini"
+                ? calculateMiniAuctionKeptSalary(
+                    team.squad.filter((playerId) => Boolean(resetPlayers[playerId])),
+                    team.id,
+                    resetPlayers,
+                    nextSeason,
+                  )
+                : 0,
+              rtmCardsTotal: nextAuctionType === "mini" ? 0 : MAX_TOTAL_RETENTIONS,
               softSquadTarget: id === state.userTeamId ? 24 : pickSoftSquadTarget(),
             },
           ]));
@@ -3272,7 +3682,7 @@ export const useGameStore = create<Store>()(
             players: resetPlayers,
             teams: resetTeams,
             auction: {
-              type: "mega",
+              type: nextAuctionType,
               season: nextSeason,
               phase: "retention",
               allPlayerIds: [],
@@ -3505,6 +3915,99 @@ export const useGameStore = create<Store>()(
         return recovered;
       },
 
+      signInjuryReplacement: (input) => {
+        let signed = false;
+        set((state) => {
+          const injury = Object.values(state.activeInjuries).find((candidate) => candidate.id === input.injuryId);
+          if (!injury || injury.teamId !== state.userTeamId) return state;
+          const result = applyInjuryReplacementSigning({
+            injury,
+            replacementPlayerId: input.replacementPlayerId,
+            date: input.date,
+            season: state.currentSeason,
+            seasonFinalDate: input.seasonFinalDate,
+            teamFinalLeagueDate: input.teamFinalLeagueDate,
+            players: state.players,
+            teams: state.teams,
+            activeInjuries: state.activeInjuries,
+            records: state.injuryReplacementRecords,
+            unsoldPlayerIds: state.auction?.unsoldPlayerIds ?? [],
+          });
+          if (!result) return state;
+          signed = true;
+          return {
+            players: result.players,
+            teams: result.teams,
+            injuryReplacementRecords: result.records,
+          };
+        });
+        return signed;
+      },
+
+      processAIInjuryReplacements: (input) => {
+        const signedRecords: InjuryReplacementRecord[] = [];
+        set((state) => {
+          let players = state.players;
+          let teams = state.teams;
+          let records = state.injuryReplacementRecords;
+          const injuries = Object.values(state.activeInjuries)
+            .filter((injury) => injury.teamId !== state.userTeamId)
+            .sort((left, right) => left.startedOn.localeCompare(right.startedOn) || left.id.localeCompare(right.id));
+          injuries.forEach((injury) => {
+            const team = teams[injury.teamId];
+            const injuredPlayer = players[injury.playerId];
+            if (!team || !injuredPlayer || replacementForInjury(records, injury.id)) return;
+            const teamFinalLeagueDate = input.teamFinalLeagueDates[team.id];
+            if (!injuryQualifiesForReplacement(injury, {
+              date: input.date,
+              season: state.currentSeason,
+              seasonFinalDate: input.seasonFinalDate,
+              teamFinalLeagueDate,
+            })) return;
+            const candidates = eligibleInjuryReplacementCandidates({
+              injury,
+              players,
+              unsoldPlayerIds: state.auction?.unsoldPlayerIds ?? [],
+              records,
+              season: state.currentSeason,
+            }).filter((candidate) => {
+              const availableSquad = team.squad.filter((playerId) => !state.activeInjuries[playerId]);
+              if (availableSquad.length >= (team.maxSquadSize ?? 25)) return false;
+              if (candidate.nationality !== "Overseas") return true;
+              return availableSquad.filter((playerId) => players[playerId]?.nationality === "Overseas").length
+                < (team.overseasPlayersMax ?? 8);
+            });
+            const selected = candidates.sort((left, right) => (
+              scoreInjuryReplacementCandidate({ candidate: right, injuredPlayer, team, players, activeInjuries: state.activeInjuries })
+              - scoreInjuryReplacementCandidate({ candidate: left, injuredPlayer, team, players, activeInjuries: state.activeInjuries })
+              || left.id.localeCompare(right.id)
+            ))[0];
+            if (!selected) return;
+            const result = applyInjuryReplacementSigning({
+              injury,
+              replacementPlayerId: selected.id,
+              date: input.date,
+              season: state.currentSeason,
+              seasonFinalDate: input.seasonFinalDate,
+              teamFinalLeagueDate,
+              players,
+              teams,
+              activeInjuries: state.activeInjuries,
+              records,
+              unsoldPlayerIds: state.auction?.unsoldPlayerIds ?? [],
+            });
+            if (!result) return;
+            players = result.players;
+            teams = result.teams;
+            records = result.records;
+            signedRecords.push(result.record);
+          });
+          if (signedRecords.length === 0) return state;
+          return { players, teams, injuryReplacementRecords: records };
+        });
+        return signedRecords;
+      },
+
       processCompletedAuctionCareer: () => {
         let retirements: CareerRetirementRecord[] = [];
         set((state) => {
@@ -3618,6 +4121,7 @@ export const useGameStore = create<Store>()(
           injuryHistory: [],
           processedInjuryMatchIds: [],
           processedInjuryDateKeys: [],
+          injuryReplacementRecords: [],
           auctionMarketProfile: null,
           retiredPlayerSnapshots: {},
           lastCareerPostseasonSeason: null,
@@ -3777,14 +4281,51 @@ export const useGameStore = create<Store>()(
           migratedPlayers,
           auctionMarketProfile,
         ));
+        const expectedRetentionAuctionType = sanitizedAuction?.phase === "retention"
+          ? getAuctionTypeForSeason(sanitizedAuction.season)
+          : sanitizedAuction?.type;
+        const requiresRetentionCycleMigration = Boolean(
+          sanitizedAuction?.phase === "retention"
+          && expectedRetentionAuctionType
+          && sanitizedAuction.type !== expectedRetentionAuctionType,
+        );
+        let cyclePlayers = marketPlayers;
+        let cycleTeams = cleanedTeams;
+        if (requiresRetentionCycleMigration && expectedRetentionAuctionType === "mini" && sanitizedAuction) {
+          cyclePlayers = { ...marketPlayers };
+          cycleTeams = Object.fromEntries(Object.entries(cleanedTeams).map(([id, team]) => {
+            const retainedPlayers = team.squad.filter((playerId) => Boolean(cyclePlayers[playerId]));
+            retainedPlayers.forEach((playerId) => {
+              cyclePlayers[playerId] = {
+                ...cyclePlayers[playerId],
+                currentTeamId: id,
+                isRetained: true,
+                retainedByTeamId: id,
+              };
+            });
+            const spentAmount = calculateMiniAuctionKeptSalary(retainedPlayers, id, cyclePlayers, sanitizedAuction.season);
+            return [id, {
+              ...team,
+              retainedPlayers,
+              totalPurse: MINI_AUCTION_PURSE_LAKHS,
+              spentAmount,
+              remainingPurse: Math.max(0, MINI_AUCTION_PURSE_LAKHS - spentAmount),
+              rtmCardsTotal: 0,
+              rtmCardsUsed: 0,
+            }];
+          }));
+        }
+        const cycleAuction = sanitizedAuction && expectedRetentionAuctionType
+          ? { ...sanitizedAuction, type: expectedRetentionAuctionType }
+          : sanitizedAuction;
         return {
           ...current,
           ...p,
           currentSeason: migratedCurrentSeason,
           fixtureSeed: migratedFixtureSeed,
-          auction: sanitizedAuction ?? null,
-          teams: cleanedTeams,
-          players: marketPlayers,
+          auction: cycleAuction ?? null,
+          teams: cycleTeams,
+          players: cyclePlayers,
           auctionTargets: removeResolvedAuctionTargets(p.auctionTargets ?? {}, persistedRetiredPlayerIds),
           auctionTargetPriorities: removeResolvedAuctionTargets(p.auctionTargetPriorities ?? {}, persistedRetiredPlayerIds),
           clubFigureTierOverrides: p.clubFigureTierOverrides ?? {},
@@ -3799,6 +4340,7 @@ export const useGameStore = create<Store>()(
           injuryHistory: p.injuryHistory ?? [],
           processedInjuryMatchIds: p.processedInjuryMatchIds ?? [],
           processedInjuryDateKeys: p.processedInjuryDateKeys ?? [],
+          injuryReplacementRecords: p.injuryReplacementRecords ?? [],
           auctionMarketProfile,
           retiredPlayerSnapshots: p.retiredPlayerSnapshots ?? {},
           lastCareerPostseasonSeason: p.lastCareerPostseasonSeason ?? null,
@@ -3985,6 +4527,7 @@ function simulateRemainingBids(player: Player) {
     currentLotIndex: auction.currentLotIndex,
     totalLots,
     isAcceleratedPhase: auction.isAcceleratedPhase,
+    auctionType: auction.type,
   };
 
   let iterations = 0;
@@ -4367,6 +4910,7 @@ function scheduleAIBids(player: Player) {
       currentLotIndex: a.currentLotIndex,
       totalLots,
       isAcceleratedPhase: a.isAcceleratedPhase,
+      auctionType: a.type,
     };
 
     // Collect AI teams that both CAN and WANT to bid

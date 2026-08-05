@@ -57,6 +57,10 @@ export interface IPLHistoryEntry {
   season: string;
   price: number;
   isRtm?: boolean;
+  /** Signed from the season's unsold pool after a season-ending injury. */
+  isInjuryReplacement?: boolean;
+  replacedPlayerId?: string;
+  replacementInjuryId?: string;
   /** Compact season output retained for player profiles after fixtures roll over. */
   seasonStats?: {
     matches: number;
@@ -91,6 +95,8 @@ export interface PlayerCareerState {
   potentialBowlingBank: number;
   unrealizedPotentialBattingLoss: number;
   unrealizedPotentialBowlingLoss: number;
+  consecutivePoorBattingSeasons?: number;
+  consecutivePoorBowlingSeasons?: number;
   lastSeasonMatches: number;
   lastSeasonRuns: number;
   lastSeasonWickets: number;
@@ -131,6 +137,8 @@ export interface Player {
   captaincy?: number;
   isIplCaptaincyUnavailable?: boolean;
   iplCaptaincyUninterestedThroughSeason?: number;
+  /** Absolute mini-auction release override; defeats every retention protection. */
+  setForRelease?: boolean;
   battingAggression?: number;
   isWicketkeeper?: boolean;
   isPartTimeWk?: boolean;

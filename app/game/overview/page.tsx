@@ -70,6 +70,10 @@ import {
   type InjuryProcessingResult,
   type PlayerInjury,
 } from "@/lib/logic/injuries";
+import {
+  injuryQualifiesForReplacement,
+  replacementForInjury,
+} from "@/lib/logic/injuryReplacements";
 import { getTeamColorStyle } from "@/lib/theme/teamColors";
 import { cacheTeamProfileCareer } from "@/lib/logic/teamProfileCareerCache";
 import {
@@ -649,12 +653,15 @@ function OverviewPageContent() {
     completeOffseasonAutomatically,
     activeInjuries,
     injuryHistory,
+    injuryReplacementRecords,
     retiredPlayerSnapshots,
     lastCareerRetirements,
     careerRetirementHistory,
     processMatchInjuries,
     processBackgroundInjuries,
     reconcileInjuries,
+    signInjuryReplacement,
+    processAIInjuryReplacements,
   } = useGameStore();
   const matchArchiveCareerId = `${userTeamId}:${currentSeason}:${fixtureSeed}`;
   const userTeam = teams[userTeamId];
@@ -865,7 +872,7 @@ function OverviewPageContent() {
     if (!list) return;
 
     const updateVisibleCount = () => {
-      const nextCount = Math.max(1, Math.floor(list.clientHeight / HOME_NEXT_FIXTURE_ROW_HEIGHT));
+      const nextCount = Math.min(5, Math.max(1, Math.floor(list.clientHeight / HOME_NEXT_FIXTURE_ROW_HEIGHT)));
       setVisibleHomeFixtureCount((current) => current === nextCount ? current : nextCount);
     };
 
@@ -2174,7 +2181,7 @@ function OverviewPageContent() {
       groundScoringModifier: groundImpact.modifier,
       // Deliberately isolated so a future league/season rule can change it
       // without modifying delivery generation.
-      chasingScoringBonus: 0.02,
+      chasingScoringBonus: 0,
     };
   };
 
@@ -2533,6 +2540,22 @@ function OverviewPageContent() {
     fixturesRef.current.find((fixture) => fixture.stage === "final")?.date
   );
 
+  const getTeamFinalLeagueDate = (teamId: string) => fixturesRef.current
+    .filter((fixture) => !fixture.stage && (fixture.teamA === teamId || fixture.teamB === teamId))
+    .map((fixture) => fixture.date)
+    .filter((date): date is string => Boolean(date))
+    .sort()
+    .at(-1);
+
+  const processAIReplacementSignings = (date: string) => processAIInjuryReplacements({
+    date,
+    seasonFinalDate: getSeasonFinalDate(),
+    teamFinalLeagueDates: Object.fromEntries(Object.keys(teams).map((teamId) => [
+      teamId,
+      getTeamFinalLeagueDate(teamId),
+    ])),
+  });
+
   const publishUserInjuryUpdates = (result: InjuryProcessingResult, date: string) => {
     const updates = [
       ...result.created.map((injury) => ({ injury, kind: "created" as const })),
@@ -2554,6 +2577,13 @@ function OverviewPageContent() {
         sequence += 1;
         const isRecovery = kind === "recovered";
         const isWorsening = kind === "worsened";
+        const replacementEligible = !isRecovery && injuryQualifiesForReplacement(injury, {
+          date,
+          season: currentSeason,
+          seasonFinalDate: getSeasonFinalDate(),
+          teamFinalLeagueDate: getTeamFinalLeagueDate(userTeamId),
+        });
+        const replacementSigned = Boolean(replacementForInjury(injuryReplacementRecords, injury.id));
         const riskLabel = injury.worseningRisk
           ? `${injury.worseningRisk[0].toUpperCase()}${injury.worseningRisk.slice(1)} risk of worsening if selected.`
           : "The player is unavailable for selection.";
@@ -2563,7 +2593,9 @@ function OverviewPageContent() {
 
 ${injury.category === "minor" ? riskLabel : "This is a major condition and the player cannot be selected."}
 
-${getInjuryReturnLabel(injury, getSeasonFinalDate())}`;
+${getInjuryReturnLabel(injury, getSeasonFinalDate())}${replacementEligible
+  ? "\n\nThe player is eligible for a season injury replacement from the unsold auction pool."
+  : ""}`;
         return [{
           id: `${dedupeKey}:${sequence}`,
           templateId: `injury-${kind}`,
@@ -2586,9 +2618,9 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}`;
           priority: injury.category === "major" && !isRecovery ? "urgent" as const : "important" as const,
           date,
           unread: true,
-          requiresAction: false,
-          actionCompleted: false,
-          actions: [{ label: "Open Injury Hub", kind: "navigate" as const, tab: "squad" as const, subtab: "injuryhub" }],
+          requiresAction: replacementEligible,
+          actionCompleted: replacementEligible ? replacementSigned : false,
+          actions: [{ label: replacementEligible ? "Choose injury replacement" : "Open Injury Hub", kind: "navigate" as const, tab: "squad" as const, subtab: "injuryhub" }],
         }];
       });
       if (messages.length === 0) return currentInbox;
@@ -2616,6 +2648,7 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}`;
       teamIds: [match.teamA, match.teamB],
       participants: Array.from(participantsById.values()),
     });
+    processAIReplacementSignings(date);
     publishUserInjuryUpdates(result, date);
     return result;
   };
@@ -2641,6 +2674,7 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}`;
         && date <= finalDate
       ),
     });
+    processAIReplacementSignings(date);
     publishUserInjuryUpdates(result, date);
     return result;
   };
@@ -2650,6 +2684,7 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}`;
     if (recovered.length > 0) {
       publishUserInjuryUpdates({ created: [], worsened: [], recovered }, currentDate);
     }
+    processAIReplacementSignings(currentDate);
   // Recovery is date-driven; the store action and email dedupe make reloads safe.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentDate]);
@@ -3059,440 +3094,6 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}`;
       bowlingFirstImpactBattingPosition: null,
     });
     runFixtureSimulation(pendingMatchPreparation.matchId, selection);
-  };
-
-  const handleSimulateNextRound = () => {
-    if (!FIXTURE_SIMULATION_ENABLED) {
-      showToast("Fixture simulation is not currently enabled.");
-      return;
-    }
-    if (dayTickerRef.current?.isRunning()) {
-      showToast("Stop the calendar simulation before simulating a round manually.");
-      return;
-    }
-
-    const unplayed = fixtures.filter(f => !f.played).sort((a, b) => a.round - b.round);
-    if (unplayed.length === 0) {
-      showToast("All fixtures of the season are completed!");
-      return;
-    }
-
-    const roundToSim = unplayed[0].round;
-    const roundMatches = fixtures.filter(f => f.round === roundToSim);
-
-    const nextFixtures = [...fixtures];
-    const nextPlayerStats = Object.fromEntries(
-      Object.entries(playerStats).map(([playerId, stats]) => [playerId, { ...stats }]),
-    ) as Record<string, PlayerStats>;
-
-    roundMatches.forEach(match => {
-      const idx = nextFixtures.findIndex(f => f.id === match.id);
-      if (idx === -1 || nextFixtures[idx].played) return;
-
-      const { teamA, teamB } = match;
-
-      const squadA = getSimulationSquad(teamA, true);
-      const squadB = getSimulationSquad(teamB, false);
-
-      const strengthA = squadA.length > 0 
-        ? squadA.reduce((sum, p) => sum + getPlayerRating(p), 0) / squadA.length
-        : 75;
-      const strengthB = squadB.length > 0
-        ? squadB.reduce((sum, p) => sum + getPlayerRating(p), 0) / squadB.length
-        : 75;
-
-      const probA = Math.max(0.15, Math.min(0.85, 0.5 + (strengthA - strengthB) * 0.025));
-      const teamAWins = Math.random() < probA;
-      const winnerId = teamAWins ? teamA : teamB;
-
-      const groundScoringModifier = getGroundScoringModifier(teamA);
-      const baseA = Math.floor((130 + Math.random() * 60 + (strengthA - 75) * 2) * groundScoringModifier);
-      const baseB = Math.floor((130 + Math.random() * 60 + (strengthB - 75) * 2) * groundScoringModifier);
-
-      let runsA = 0;
-      let wicketsA = 0;
-      let runsB = 0;
-      let wicketsB = 0;
-
-      if (teamAWins) {
-        runsA = Math.max(100, Math.floor(baseA + 15));
-        wicketsA = Math.floor(Math.random() * 8);
-        wicketsB = Math.floor(5 + Math.random() * 6);
-        runsB = Math.max(90, runsA - 1 - Math.floor(Math.random() * 30));
-      } else {
-        runsB = Math.max(100, Math.floor(baseB + 15));
-        wicketsB = Math.floor(Math.random() * 8);
-        wicketsA = Math.floor(5 + Math.random() * 6);
-        runsA = Math.max(90, runsB - 1 - Math.floor(Math.random() * 30));
-      }
-
-      const battingA = squadA.map((p, pIdx) => {
-        const runFactor = pIdx < 3 ? 0.35 : pIdx < 6 ? 0.20 : 0.05;
-        const runs = Math.floor(runsA * runFactor * (0.6 + Math.random() * 0.8));
-        const balls = Math.floor(runs * (0.8 + Math.random() * 0.4));
-        return {
-          id: p.id,
-          name: p.name,
-          runs,
-          balls,
-          wickets: 0,
-          runsConceded: 0,
-          oversBowled: 0,
-        };
-      });
-      const sumBattingA = battingA.reduce((sum, b) => sum + b.runs, 0);
-      const diffA = runsA - sumBattingA;
-      if (diffA !== 0 && battingA.length > 0) {
-        battingA[0].runs = Math.max(0, battingA[0].runs + diffA);
-        battingA[0].balls = Math.max(battingA[0].runs, battingA[0].balls + diffA);
-      }
-
-      const bowlingB = squadB.slice(6, 11).map((p, pIdx) => {
-        const wickets = pIdx === 0 ? Math.min(wicketsA, Math.floor(Math.random() * 3)) : Math.min(wicketsA, Math.floor(Math.random() * 2));
-        const runsConceded = Math.floor((runsA / 5) * (0.7 + Math.random() * 0.6));
-        return {
-          id: p.id,
-          name: p.name,
-          runs: 0,
-          balls: 0,
-          wickets,
-          runsConceded,
-          oversBowled: 4,
-        };
-      });
-      const sumWicketsB = bowlingB.reduce((sum, b) => sum + b.wickets, 0);
-      const diffWicketsB = wicketsA - sumWicketsB;
-      if (diffWicketsB !== 0 && bowlingB.length > 0) {
-        bowlingB[0].wickets = Math.max(0, bowlingB[0].wickets + diffWicketsB);
-      }
-
-      const battingB = squadB.map((p, pIdx) => {
-        const runFactor = pIdx < 3 ? 0.35 : pIdx < 6 ? 0.20 : 0.05;
-        const runs = Math.floor(runsB * runFactor * (0.6 + Math.random() * 0.8));
-        const balls = Math.floor(runs * (0.8 + Math.random() * 0.4));
-        return {
-          id: p.id,
-          name: p.name,
-          runs,
-          balls,
-          wickets: 0,
-          runsConceded: 0,
-          oversBowled: 0,
-        };
-      });
-      const sumBattingB = battingB.reduce((sum, b) => sum + b.runs, 0);
-      const diffB = runsB - sumBattingB;
-      if (diffB !== 0 && battingB.length > 0) {
-        battingB[0].runs = Math.max(0, battingB[0].runs + diffB);
-        battingB[0].balls = Math.max(battingB[0].runs, battingB[0].balls + diffB);
-      }
-
-      const bowlingA = squadA.slice(6, 11).map((p, pIdx) => {
-        const wickets = pIdx === 0 ? Math.min(wicketsB, Math.floor(Math.random() * 3)) : Math.min(wicketsB, Math.floor(Math.random() * 2));
-        const runsConceded = Math.floor((runsB / 5) * (0.7 + Math.random() * 0.6));
-        return {
-          id: p.id,
-          name: p.name,
-          runs: 0,
-          balls: 0,
-          wickets,
-          runsConceded,
-          oversBowled: 4,
-        };
-      });
-      const sumWicketsA = bowlingA.reduce((sum, b) => sum + b.wickets, 0);
-      const diffWicketsA = wicketsB - sumWicketsA;
-      if (diffWicketsA !== 0 && bowlingA.length > 0) {
-        bowlingA[0].wickets = Math.max(0, bowlingA[0].wickets + diffWicketsA);
-      }
-
-      const updateStats = (playerList: any[], teamId: string, isBatting: boolean, countAppearance = false) => {
-        playerList.forEach(p => {
-          if (!nextPlayerStats[p.id]) {
-            nextPlayerStats[p.id] = {
-              id: p.id,
-              name: p.name,
-              teamId,
-              runs: 0,
-              balls: 0,
-              wickets: 0,
-              runsConceded: 0,
-              oversBowled: 0,
-              matches: 0,
-              highestScore: 0,
-              bestBowling: "0/0"
-            };
-          }
-          const ps = nextPlayerStats[p.id];
-          if (countAppearance) ps.matches++;
-          if (isBatting) {
-            ps.runs += p.runs;
-            ps.balls += p.balls;
-            ps.highestScore = Math.max(ps.highestScore, p.runs);
-          } else {
-            ps.wickets += p.wickets;
-            ps.runsConceded += p.runsConceded;
-            ps.oversBowled += p.oversBowled;
-            const currentBestWickets = parseInt(ps.bestBowling.split("/")[0]) || 0;
-            const currentBestRuns = parseInt(ps.bestBowling.split("/")[1]) || 999;
-            if (p.wickets > currentBestWickets || (p.wickets === currentBestWickets && p.runsConceded < currentBestRuns) || ps.bestBowling === "0/0") {
-              ps.bestBowling = `${p.wickets}/${p.runsConceded}`;
-            }
-          }
-        });
-      };
-
-      updateStats(battingA, teamA, true, true);
-      updateStats(bowlingB, teamB, false);
-      updateStats(battingB, teamB, true, true);
-      updateStats(bowlingA, teamA, false);
-
-      nextFixtures[idx] = {
-        ...match,
-        played: true,
-        scoreA: { runs: runsA, wickets: wicketsA, overs: 20 },
-        scoreB: { runs: runsB, wickets: wicketsB, overs: 20 },
-        winner: winnerId,
-        commentary: [
-          `Innings 1: ${teams[teamA]?.name} scored ${runsA}/${wicketsA} in 20 overs.`,
-          `Innings 2: ${teams[teamB]?.name} scored ${runsB}/${wicketsB} in 20 overs.`,
-          `Match Result: ${teams[winnerId]?.name} won the match.`
-        ],
-        scorecard: {
-          inningsA: {
-            batting: battingA.map(b => ({ ...b, id: b.id, name: b.name })),
-            bowling: bowlingA.map(b => ({ ...b, id: b.id, name: b.name })),
-            extras: 4
-          },
-          inningsB: {
-            batting: battingB.map(b => ({ ...b, id: b.id, name: b.name })),
-            bowling: bowlingB.map(b => ({ ...b, id: b.id, name: b.name })),
-            extras: 4
-          }
-        } as any
-      };
-    });
-
-    const nextStandings = calculateStandings(nextFixtures);
-    const resolvedFixtures = resolveKnockoutBracket(nextFixtures, nextStandings);
-
-    fixturesRef.current = resolvedFixtures;
-    playerStatsRef.current = nextPlayerStats;
-    setFixtures(resolvedFixtures);
-    setPlayerStats(nextPlayerStats);
-    setStandings(nextStandings);
-
-    saveCareerState({
-      fixtures: resolvedFixtures,
-      playerStats: nextPlayerStats,
-      standings: nextStandings
-    });
-
-    showToast(`Round ${roundToSim} simulation completed!`);
-  };
-
-  // Day-by-day career ticking simulation actions & helpers
-  const simulateMatchesForDate = (dateStr: string, currentFixtures: Match[], currentPlayerStats: Record<string, PlayerStats>) => {
-    if (!FIXTURE_SIMULATION_ENABLED) {
-      return { nextFixtures: currentFixtures, nextPlayerStats: currentPlayerStats, simulated: false };
-    }
-    const dayMatches = currentFixtures.filter(f => f.date === dateStr && !f.played);
-    if (dayMatches.length === 0) return { nextFixtures: currentFixtures, nextPlayerStats: currentPlayerStats, simulated: false };
-
-    const nextFixtures = [...currentFixtures];
-    const nextPlayerStats = Object.fromEntries(
-      Object.entries(currentPlayerStats).map(([playerId, stats]) => [playerId, { ...stats }]),
-    ) as Record<string, PlayerStats>;
-
-    dayMatches.forEach(match => {
-      const idx = nextFixtures.findIndex(f => f.id === match.id);
-      if (idx === -1 || nextFixtures[idx].played) return;
-
-      const { teamA, teamB } = match;
-
-      const squadA = getSimulationSquad(teamA, true);
-      const squadB = getSimulationSquad(teamB, false);
-
-      const strengthA = squadA.length > 0 
-        ? squadA.reduce((sum, p) => sum + getPlayerRating(p), 0) / squadA.length
-        : 75;
-      const strengthB = squadB.length > 0
-        ? squadB.reduce((sum, p) => sum + getPlayerRating(p), 0) / squadB.length
-        : 75;
-
-      const probA = Math.max(0.15, Math.min(0.85, 0.5 + (strengthA - strengthB) * 0.025));
-      const teamAWins = Math.random() < probA;
-      const winnerId = teamAWins ? teamA : teamB;
-
-      const groundScoringModifier = getGroundScoringModifier(teamA);
-      const baseA = Math.floor((130 + Math.random() * 60 + (strengthA - 75) * 2) * groundScoringModifier);
-      const baseB = Math.floor((130 + Math.random() * 60 + (strengthB - 75) * 2) * groundScoringModifier);
-
-      let runsA = 0;
-      let wicketsA = 0;
-      let runsB = 0;
-      let wicketsB = 0;
-
-      if (teamAWins) {
-        runsA = Math.max(100, Math.floor(baseA + 15));
-        wicketsA = Math.floor(Math.random() * 8);
-        wicketsB = Math.floor(5 + Math.random() * 6);
-        runsB = Math.max(90, runsA - 1 - Math.floor(Math.random() * 30));
-      } else {
-        runsB = Math.max(100, Math.floor(baseB + 15));
-        wicketsB = Math.floor(Math.random() * 8);
-        wicketsA = Math.floor(5 + Math.random() * 6);
-        runsA = Math.max(90, runsB - 1 - Math.floor(Math.random() * 30));
-      }
-
-      const battingA = squadA.map((p, pIdx) => {
-        const runFactor = pIdx < 3 ? 0.35 : pIdx < 6 ? 0.20 : 0.05;
-        const runs = Math.floor(runsA * runFactor * (0.6 + Math.random() * 0.8));
-        const balls = Math.floor(runs * (0.8 + Math.random() * 0.4));
-        return {
-          id: p.id,
-          name: p.name,
-          runs,
-          balls,
-          wickets: 0,
-          runsConceded: 0,
-          oversBowled: 0,
-        };
-      });
-      const sumBattingA = battingA.reduce((sum, b) => sum + b.runs, 0);
-      const diffA = runsA - sumBattingA;
-      if (diffA !== 0 && battingA.length > 0) {
-        battingA[0].runs = Math.max(0, battingA[0].runs + diffA);
-        battingA[0].balls = Math.max(battingA[0].runs, battingA[0].balls + diffA);
-      }
-
-      const bowlingB = squadB.slice(6, 11).map((p, pIdx) => {
-        const wickets = pIdx === 0 ? Math.min(wicketsA, Math.floor(Math.random() * 3)) : Math.min(wicketsA, Math.floor(Math.random() * 2));
-        const runsConceded = Math.floor((runsA / 5) * (0.7 + Math.random() * 0.6));
-        return {
-          id: p.id,
-          name: p.name,
-          runs: 0,
-          balls: 0,
-          wickets,
-          runsConceded,
-          oversBowled: 4,
-        };
-      });
-      const sumWicketsB = bowlingB.reduce((sum, b) => sum + b.wickets, 0);
-      const diffWicketsB = wicketsA - sumWicketsB;
-      if (diffWicketsB !== 0 && bowlingB.length > 0) {
-        bowlingB[0].wickets = Math.max(0, bowlingB[0].wickets + diffWicketsB);
-      }
-
-      const battingB = squadB.map((p, pIdx) => {
-        const runFactor = pIdx < 3 ? 0.35 : pIdx < 6 ? 0.20 : 0.05;
-        const runs = Math.floor(runsB * runFactor * (0.6 + Math.random() * 0.8));
-        const balls = Math.floor(runs * (0.8 + Math.random() * 0.4));
-        return {
-          id: p.id,
-          name: p.name,
-          runs,
-          balls,
-          wickets: 0,
-          runsConceded: 0,
-          oversBowled: 0,
-        };
-      });
-      const sumBattingB = battingB.reduce((sum, b) => sum + b.runs, 0);
-      const diffB = runsB - sumBattingB;
-      if (diffB !== 0 && battingB.length > 0) {
-        battingB[0].runs = Math.max(0, battingB[0].runs + diffB);
-        battingB[0].balls = Math.max(battingB[0].runs, battingB[0].balls + diffB);
-      }
-
-      const bowlingA = squadA.slice(6, 11).map((p, pIdx) => {
-        const wickets = pIdx === 0 ? Math.min(wicketsB, Math.floor(Math.random() * 3)) : Math.min(wicketsB, Math.floor(Math.random() * 2));
-        const runsConceded = Math.floor((runsB / 5) * (0.7 + Math.random() * 0.6));
-        return {
-          id: p.id,
-          name: p.name,
-          runs: 0,
-          balls: 0,
-          wickets,
-          runsConceded,
-          oversBowled: 4,
-        };
-      });
-      const sumWicketsA = bowlingA.reduce((sum, b) => sum + b.wickets, 0);
-      const diffWicketsA = wicketsB - sumWicketsA;
-      if (diffWicketsA !== 0 && bowlingA.length > 0) {
-        bowlingA[0].wickets = Math.max(0, bowlingA[0].wickets + diffWicketsA);
-      }
-
-      const updateStats = (playerList: any[], teamId: string, isBatting: boolean, countAppearance = false) => {
-        playerList.forEach(p => {
-          if (!nextPlayerStats[p.id]) {
-            nextPlayerStats[p.id] = {
-              id: p.id,
-              name: p.name,
-              teamId,
-              runs: 0,
-              balls: 0,
-              wickets: 0,
-              runsConceded: 0,
-              oversBowled: 0,
-              matches: 0,
-              highestScore: 0,
-              bestBowling: "0/0"
-            };
-          }
-          const ps = nextPlayerStats[p.id];
-          if (countAppearance) ps.matches++;
-          if (isBatting) {
-            ps.runs += p.runs;
-            ps.balls += p.balls;
-            ps.highestScore = Math.max(ps.highestScore, p.runs);
-          } else {
-            ps.wickets += p.wickets;
-            ps.runsConceded += p.runsConceded;
-            ps.oversBowled += p.oversBowled;
-            const currentBestWickets = parseInt(ps.bestBowling.split("/")[0]) || 0;
-            const currentBestRuns = parseInt(ps.bestBowling.split("/")[1]) || 999;
-            if (p.wickets > currentBestWickets || (p.wickets === currentBestWickets && p.runsConceded < currentBestRuns) || ps.bestBowling === "0/0") {
-              ps.bestBowling = `${p.wickets}/${p.runsConceded}`;
-            }
-          }
-        });
-      };
-
-      updateStats(battingA, teamA, true, true);
-      updateStats(bowlingB, teamB, false);
-      updateStats(battingB, teamB, true, true);
-      updateStats(bowlingA, teamA, false);
-
-      nextFixtures[idx] = {
-        ...match,
-        played: true,
-        scoreA: { runs: runsA, wickets: wicketsA, overs: 20 },
-        scoreB: { runs: runsB, wickets: wicketsB, overs: 20 },
-        winner: winnerId,
-        commentary: [
-          `Innings 1: ${teams[teamA]?.name} scored ${runsA}/${wicketsA} in 20 overs.`,
-          `Innings 2: ${teams[teamB]?.name} scored ${runsB}/${wicketsB} in 20 overs.`,
-          `Match Result: ${teams[winnerId]?.name} won the match.`
-        ],
-        scorecard: {
-          inningsA: {
-            batting: battingA.map(b => ({ ...b, id: b.id, name: b.name })),
-            bowling: bowlingA.map(b => ({ ...b, id: b.id, name: b.name })),
-            extras: 4
-          },
-          inningsB: {
-            batting: battingB.map(b => ({ ...b, id: b.id, name: b.name })),
-            bowling: bowlingB.map(b => ({ ...b, id: b.id, name: b.name })),
-            extras: 4
-          }
-        } as any
-      };
-    });
-
-    return { nextFixtures, nextPlayerStats, simulated: true };
   };
 
   const stopSimulating = useCallback(() => {
@@ -4557,12 +4158,12 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}`;
     scouting: {
       label: "Scouting",
       icon: Search,
-      subtabs: ["overview", "search", "planner", "injuries"]
+      subtabs: ["overview", "search", "planner"]
     },
     season: {
       label: "Season",
       icon: Trophy,
-      subtabs: ["overview", "fixtures", "standings", "stats"]
+      subtabs: ["overview", "fixtures", "standings", "stats", "injuries"]
     },
     history: {
       label: "History",
@@ -5012,6 +4613,34 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}`;
       setActiveTab(action.tab);
       router.push(`/game/overview?tab=${action.tab}&subtab=${action.subtab}`, { scroll: false });
     }
+  };
+
+  const handleInjuryReplacementSigning = (injuryId: string, replacementPlayerId: string) => {
+    const injury = Object.values(activeInjuries).find((candidate) => candidate.id === injuryId);
+    const replacement = players[replacementPlayerId];
+    if (!injury || !replacement) return false;
+    const signed = signInjuryReplacement({
+      injuryId,
+      replacementPlayerId,
+      date: currentDate,
+      seasonFinalDate: getSeasonFinalDate(),
+      teamFinalLeagueDate: getTeamFinalLeagueDate(userTeamId),
+    });
+    if (!signed) {
+      showToast("That player is no longer eligible for this injury replacement.");
+      return false;
+    }
+    setInbox((currentInbox) => {
+      const nextInbox = currentInbox.map((message) => (
+        message.threadId === `medical:${injury.playerId}`
+          ? { ...message, actionCompleted: true }
+          : message
+      ));
+      saveCareerState({ inbox: nextInbox });
+      return nextInbox;
+    });
+    showToast(`${replacement.name} signed as ${injury.playerName}'s injury replacement.`);
+    return true;
   };
 
   return (
@@ -5563,7 +5192,7 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}`;
                           Fixtures not yet announced
                         </div>
                       ) : (
-                      <div ref={homeNextFixturesListRef} className="min-h-0 flex-1 overflow-hidden">
+                      <div ref={homeNextFixturesListRef} className="grid min-h-0 flex-1 auto-rows-fr overflow-hidden">
                         {(() => {
                           const userFixtures = fixtures
                             .filter((fixture) => (
@@ -5589,11 +5218,17 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}`;
                             return (
                               <div
                                 key={`next-fixture-${fixture.id}`}
-                                className={`grid h-6 grid-cols-[2.75rem_minmax(0,1fr)_auto] items-center gap-2 border-b border-[#16130f]/10 px-1.5 text-text-primary ${isNextFixture ? "bg-accent/15 ring-1 ring-inset ring-accent/30" : ""}`}
+                                className={`grid min-h-0 grid-cols-[2.75rem_minmax(0,1fr)_auto] items-center gap-2 border-b border-[#16130f]/10 px-1.5 text-text-primary ${
+                                  isNextFixture
+                                    ? "bg-accent/15 ring-1 ring-inset ring-accent/30"
+                                    : index % 2 === 0
+                                      ? "bg-black/[0.055] dark:bg-white/[0.07]"
+                                      : "bg-black/[0.015] dark:bg-white/[0.025]"
+                                }`}
                               >
                                 <div className="flex flex-col items-center justify-center leading-none">
-                                  <span className="font-space-mono text-[14px] font-bold">{fixtureDate?.getDate() ?? "-"}</span>
-                                  <span className="mt-0.5 font-space-mono text-[7px] uppercase text-text-secondary">
+                                  <span className="font-space-mono text-[12px] font-bold">{fixtureDate?.getDate() ?? "-"}</span>
+                                  <span className="mt-0.5 font-space-mono text-[6px] uppercase text-text-secondary">
                                     {fixtureDate?.toLocaleDateString("en-GB", { month: "short" }) ?? ""}
                                   </span>
                                 </div>
@@ -6945,6 +6580,8 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}`;
                           const currentSalaryEntry = currentSeasonHistoryByPlayer.get(p.id);
                           const acquisitionLabel = p.isRetained
                             ? " (Retained)"
+                            : currentSalaryEntry?.isInjuryReplacement
+                              ? " (Injury replacement)"
                             : currentSalaryEntry?.isRtm
                               ? " (RTM)"
                               : "";
@@ -7043,6 +6680,12 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}`;
                   userTeamId={userTeamId}
                   activeInjuries={activeInjuries}
                   injuryHistory={injuryHistory}
+                  replacementRecords={injuryReplacementRecords}
+                  replacementPoolIds={auction?.unsoldPlayerIds ?? []}
+                  currentDate={currentDate}
+                  currentSeason={currentSeason}
+                  teamFinalLeagueDate={getTeamFinalLeagueDate(userTeamId)}
+                  onSignReplacement={handleInjuryReplacementSigning}
                   players={players}
                   teams={teams}
                   seasonFinalDate={fixtures.find((fixture) => fixture.stage === "final")?.date}
@@ -7292,17 +6935,6 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}`;
                 </div>
               )}
 
-              {activeSubTab === "injuries" && (
-                <InjuryHubPage
-                  mode="league"
-                  userTeamId={userTeamId}
-                  activeInjuries={activeInjuries}
-                  injuryHistory={injuryHistory}
-                  players={players}
-                  teams={teams}
-                  seasonFinalDate={fixtures.find((fixture) => fixture.stage === "final")?.date}
-                />
-              )}
             </>
           )}
 
@@ -7312,6 +6944,21 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}`;
               ================================================================== */}
           {activeTab === "season" && (
             <>
+              {activeSubTab === "injuries" && (
+                <InjuryHubPage
+                  mode="league"
+                  userTeamId={userTeamId}
+                  activeInjuries={activeInjuries}
+                  injuryHistory={injuryHistory}
+                  replacementRecords={injuryReplacementRecords}
+                  replacementPoolIds={auction?.unsoldPlayerIds ?? []}
+                  currentDate={currentDate}
+                  currentSeason={currentSeason}
+                  players={players}
+                  teams={teams}
+                  seasonFinalDate={fixtures.find((fixture) => fixture.stage === "final")?.date}
+                />
+              )}
               {/* Season Overview tab */}
               {activeSubTab === "overview" && (
                 <div className="grid grid-cols-3 gap-6 h-[calc(100vh-200px)] min-h-[500px] overflow-hidden">
@@ -8451,7 +8098,7 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}`;
                           <span className="font-space-mono text-text-secondary">{entry.season}</span>
                           <span className="truncate font-semibold text-text-primary">{teams[entry.teamId]?.name ?? entry.teamId}</span>
                           <span className="text-right font-space-mono text-text-primary">{entry.price > 0 ? formatPrice(entry.price) : "—"}</span>
-                          <span className="text-right font-space-mono text-[8px] font-bold uppercase text-text-secondary">{entry.isRtm ? "RTM" : "Signed"}</span>
+                          <span className="text-right font-space-mono text-[8px] font-bold uppercase text-text-secondary">{entry.isInjuryReplacement ? "Injury replacement" : entry.isRtm ? "RTM" : "Signed"}</span>
                         </div>
                       ))}
                     {detailedPlayerHistory.every(entry => !entry.teamId || entry.teamId === "UNSOLD") && (

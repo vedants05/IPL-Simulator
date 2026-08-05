@@ -1,5 +1,9 @@
 import { supabase } from "./client";
 import { Player, Nationality, Role, Potential, BowlingType } from "../types";
+import { calculateBasePrice } from "../logic/playerBasePrice";
+import { enforceBattingPositionEligibility } from "../logic/playerBattingPositions";
+
+export { calculateBasePrice } from "../logic/playerBasePrice";
 
 export const TEAM_MAP: Record<string, string> = {
   "Kolkata Knight Riders": "KKR",
@@ -29,48 +33,6 @@ export function toSlug(name: string): string {
     .replace(/[^a-z0-9-]/g, "")
     .replace(/-+/g, "-")
     .replace(/^-|-$/g, "");
-}
-
-export function calculateBasePrice(
-  isCapped: boolean,
-  nat: string,
-  rating: number,
-  reputation: number
-): number {
-  if (isCapped) {
-    // Capped Overseas (International) Rules
-    if (nat === "Overseas") {
-      if (reputation >= 7 && rating >= 81) {
-        return 200; // 2 Cr
-      }
-      return 100; // 1 Cr
-    }
-
-    // Capped Indian rules: current ability determines the starting band,
-    // while very high/low reputation can move it by at most one band.
-    const priceBands = [50, 75, 100, 150, 200];
-    let bandIndex = rating >= 83
-      ? 4
-      : rating >= 80
-        ? 3
-        : rating >= 77
-          ? 2
-          : rating >= 73
-            ? 1
-            : 0;
-
-    if (reputation >= 9) bandIndex = Math.min(priceBands.length - 1, bandIndex + 1);
-    if (reputation <= 4) bandIndex = Math.max(0, bandIndex - 1);
-    return priceBands[bandIndex];
-  } else {
-    // Uncapped Rules (Indian & Overseas)
-    // Global floor check (rating >= 77 must be at least 1 Cr)
-    if (rating >= 77) return 100;
-
-    if (rating >= 74 || reputation >= 5) return 50;
-    if (rating >= 71 || reputation >= 4) return 40;
-    return 30;
-  }
 }
 
 export function bowlStyle(bowlType: string | null): BowlingType | null {
@@ -127,6 +89,7 @@ export function mapRowsToPlayers(data: any[]): Player[] {
     // The source field is a positive desire flag. A false value means that the
     // player must not be offered IPL captaincy. Dhoni is explicitly unavailable.
     const isIplCaptaincyUnavailable = name === "MS Dhoni" || row.ipl_captain_desire === false;
+    const setForRelease = row.set_for_release === true;
     const battingAggression = parseInt(row.batting_aggression) || 50;
     
     const isPhillips = name === "Glenn Phillips";
@@ -152,8 +115,12 @@ export function mapRowsToPlayers(data: any[]): Player[] {
       "2026", "2025", "2024", "2023", "2022", "2021", "2020", "2019", "2018", "2017", "2016", "2015", "2014", "2013", "2012", "2011", "2010", "2009", "2008"
     ];
     for (const season of seasons) {
-      const teamVal = row[`team_${season}`];
-      const salaryVal = row[`salary_${season}`];
+      // The opening mini auction carries the canonical current contract. A
+      // player's historical 2026 franchise can differ after a real-world
+      // transfer (for example Kuldeep's history says DC while his current
+      // contract is LSG), so current team/salary must win for this one season.
+      const teamVal = season === "2026" && teamId ? teamId : row[`team_${season}`];
+      const salaryVal = season === "2026" && salary > 0 ? salary : row[`salary_${season}`];
       if (teamVal) {
         iplHistory.push({
           teamId: teamVal,
@@ -204,7 +171,7 @@ export function mapRowsToPlayers(data: any[]): Player[] {
       bestFigures: `${Math.min(6, Math.floor(2 + (curBowl / 100) * 4))}/${15 + Math.floor((100 - curBowl) / 10) * 2}`,
     };
 
-      return {
+      return enforceBattingPositionEligibility({
         id,
         name,
         age,
@@ -233,6 +200,7 @@ export function mapRowsToPlayers(data: any[]): Player[] {
         reputation,
         captaincy,
         isIplCaptaincyUnavailable,
+        setForRelease,
         battingAggression,
         isWicketkeeper,
         isPartTimeWk,
@@ -245,7 +213,7 @@ export function mapRowsToPlayers(data: any[]): Player[] {
         hasBattedAt5,
         hasBattedAt6,
         hasBattedAt7,
-      };
+      });
     });
 }
 let serverCachedPlayers: Player[] | null = null;
@@ -259,7 +227,11 @@ export async function fetchPlayersFromSupabase(forceRefresh = false): Promise<Pl
       }
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 1000);
+        // The player payload is large enough that a cold API route can easily
+        // take longer than one second. Aborting here used to create a valid-
+        // looking new save with zero players and therefore an empty opening
+        // retention screen.
+        const timeoutId = setTimeout(() => controller.abort(), 12_000);
         const res = await fetch("/api/players", { signal: controller.signal });
         clearTimeout(timeoutId);
         if (res.ok) {

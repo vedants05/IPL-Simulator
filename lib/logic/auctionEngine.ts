@@ -1,10 +1,11 @@
-import { Player, Team, SegmentFocus } from "@/lib/types";
+import { Player, Team, SegmentFocus, type AuctionType } from "@/lib/types";
 import { getNextBidAmount, canTeamBidOnPlayer, canTeamAffordBid, getCappedRetentionSlabsForCount } from "./auctionRules";
 import {
   getAuctionBattingRating,
   getAuctionBowlingRating,
   getAuctionPotentialRating,
   getAuctionRating,
+  getRawAuctionPotential,
   getRawAuctionRating,
   isPlayerAuctionEligible,
 } from "./auctionMarket";
@@ -33,6 +34,7 @@ export interface AuctionContext {
   isAcceleratedPhase?: boolean;
   acceleratedPass?: number;
   season?: string;
+  auctionType?: AuctionType;
 }
 
 // ---------------------------------------------------------------------------
@@ -165,6 +167,21 @@ function potentialOf(p: Player): number {
   return getAuctionPotentialRating(p);
 }
 
+/**
+ * Continuous prospect score used by auction decisions. Raw potential is used
+ * deliberately: a displayed 84 PA must mean the same thing in every market,
+ * regardless of the percentile-normalised auction ratings on the player.
+ */
+export function youngProspectAuctionStrength(p: Player): number {
+  const potential = Math.max(p.potentialBatting ?? 0, p.potentialBowling ?? 0);
+  const current = Math.max(p.currentBatting ?? 0, p.currentBowling ?? 0);
+  if (p.age > 27 || potential < 80 || current < 67) return 0;
+  const ceilingStrength = clamp((potential - 79) / 14, 0, 1);
+  const developmentRoom = clamp((potential - current) / 15, 0, 1);
+  const ageStrength = clamp((29 - p.age) / 9, 0.25, 1);
+  return clamp((ceilingStrength * 0.75 + developmentRoom * 0.25) * ageStrength, 0, 1);
+}
+
 function isYoungGun(p: Player): boolean {
   return p.age <= 25 && potentialOf(p) >= 85 && potentialOf(p) - ratingOf(p) >= 3;
 }
@@ -176,9 +193,9 @@ function isYoungGun(p: Player): boolean {
 // ---------------------------------------------------------------------------
 function getPotentialMult(p: Player): number {
   const cur = ratingOf(p);
-  const pot = potentialOf(p);
+  const pot = getRawAuctionPotential(p);
   const gap = Math.max(0, pot - cur);
-  if (p.age >= 28 || pot < 82) return 1.0;
+  if (p.age >= 28 || pot < 80) return 1.0;
 
   const ageFactor    = clamp(0.50 + ((28 - p.age) / 10) * 0.50, 0.50, 1.00);  // Less pronounced age difference
   const gapNorm      = Math.min(gap, 15) / 15;           // room to grow
@@ -200,7 +217,10 @@ function getPotentialMult(p: Player): number {
     const potentialScaling = cur < 72 ? 0.05 : (0.20 + 0.50 * penaltyFactor); // Heavily discount under 72
     mult = 1.0 + (mult - 1.0) * potentialScaling;
   }
-  return mult;
+  // The old low-current discount could almost erase the reason to buy a
+  // prospect. Keep it for risk, but guarantee a steadily increasing minimum
+  // premium from PA 80 upward.
+  return Math.max(mult, 1 + youngProspectAuctionStrength(p) * 0.40);
 }
 
 type RoleGroup = "BAT" | "WK" | "AR" | "PACE" | "SPIN";
@@ -748,6 +768,10 @@ function effectiveQuality(player: Player): number {
   
   // High potential superstars get elevated to elite brackets
   const pot = potentialOf(player);
+  const prospectStrength = youngProspectAuctionStrength(player);
+  if (prospectStrength > 0) {
+    q = Math.max(q, rating + prospectStrength * 6);
+  }
   if (pot >= 88 && player.age <= 25 && rating >= 72) {
     const penaltyFactor = clamp((rating - 76) / 7, 0, 1);
     const penalty = 6 - 5 * penaltyFactor; // 76 or below -> 6, 82 -> 1.71 (rounds to 2), 83 -> 1
@@ -1123,6 +1147,9 @@ export function computeTeamValuation(
 
   let planned = plan.maxBid[player.id];
   let fit = computePlayerFit(player, team, comp, quirks);
+  const prospectStrength = youngProspectAuctionStrength(player);
+  const isMiniAuction = ctx.auctionType === "mini";
+  fit += prospectStrength * (isMiniAuction ? 0.55 : 0.25);
   const averageTop = (
     candidates: Player[],
     rating: (candidate: Player) => number,
@@ -1211,7 +1238,9 @@ export function computeTeamValuation(
     }
   }
 
-  const highValue = ratingOf(player) >= 80 || (ratingOf(player) >= 77 && ratingOf(player) <= 78 && (player.reputation ?? 0) >= 8);
+  const highValue = ratingOf(player) >= 80
+    || prospectStrength >= 0.22
+    || (ratingOf(player) >= 77 && ratingOf(player) <= 78 && (player.reputation ?? 0) >= 8);
 
   // ── Interest gate ─────────────────────────────────────────────────────────
   // A team bids if the player is on its shortlist, OR it still needs bodies,
@@ -1274,6 +1303,7 @@ export function computeTeamValuation(
 
   // ── Market-anchored value for EVERY interested team ───────────────────────
   let base = intrinsicValue(player, team, comp, quirks, fit, avgPerSlot);
+  base *= 1 + prospectStrength * (isMiniAuction ? 0.30 : 0.16);
 
   if (planned !== undefined) {
     // Shortlist premium — pay a touch above market for pre-formed targets.
@@ -1360,6 +1390,8 @@ export function computeTeamValuation(
   else if (fit >= 0.72)        concentration = u(1.0, 1.6);
   else                         concentration = u(0.55, 1.00);
 
+  concentration *= 1 + prospectStrength * (isMiniAuction ? 0.35 : 0.18);
+
   // Keep role need and shortlist conviction important without allowing them to
   // invert the quality curve. A lower-rated emergency target receives less
   // purse concentration than an otherwise comparable higher-rated target.
@@ -1390,13 +1422,13 @@ export function computeTeamValuation(
   }
 
   // Depth Discount: if squad size >= 16, bid more conservatively on non-marquee targets to keep depth players cheap
-  if (!needsBodies && !marquee && planned === undefined) {
+  if (!needsBodies && !marquee && planned === undefined && prospectStrength < 0.22) {
     concentration *= u(0.70, 0.90); // 10% to 30% discount on bidding concentration
   }
 
   // Filler Discount: if player rating < 74 and they are not an emergency target, scale concentration down heavily to keep them cheap
   const isFiller = ratingOf(player) < 74;
-  if (isFiller && !isEmergency && planned === undefined) {
+  if (isFiller && !isEmergency && planned === undefined && prospectStrength < 0.22) {
     concentration *= u(0.40, 0.60);
   }
 
@@ -1531,7 +1563,10 @@ export function computeTeamValuation(
         : projectedDepthShortfall === 3
           ? 0.48
           : 0.32;
-  const isProtectedExceptionalPurchase = planned !== undefined || isEmergency || marquee;
+  const isProtectedExceptionalPurchase = planned !== undefined
+    || isEmergency
+    || marquee
+    || prospectStrength >= 0.22;
   if (value > 50 && !isProtectedExceptionalPurchase) {
     value *= squadSizeMultiplier;
   } else if (value > 100 && projectedDepthShortfall >= 2) {
@@ -1579,6 +1614,7 @@ export function computeTeamValuation(
     isLateAuction &&
     targetPlacesRemaining >= 3 &&
     rating < 77 &&
+    prospectStrength < 0.22 &&
     (player.basePrice ?? 30) <= 50 &&
     planned === undefined &&
     !isEmergency;

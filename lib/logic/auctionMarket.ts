@@ -89,7 +89,7 @@ export function isPlayerAuctionEligible(player: Player): boolean {
     && Math.max(player.currentBatting ?? 0, player.currentBowling ?? 0) < 80
     && !hasOpeningSeasonDhoniRetirementGrace(player)
   ) return false;
-  return getRawAuctionRating(player) >= 68;
+  return getRawAuctionRating(player) >= 67;
 }
 
 function emptyProfile(): AuctionMarketProfile {

@@ -1,4 +1,4 @@
-import type { SeasonPhase, SocialPostTopic } from "@/lib/data/socialMediaPosts";
+import type { SocialPostTopic } from "@/lib/data/socialMediaPosts";
 
 export interface SocialPerformanceStats {
   runs: number;
@@ -11,17 +11,78 @@ export interface SocialPerformanceStats {
   sixes?: number;
 }
 
-const PERFORMANCE_LANGUAGE = /\b(form|performance|performing|deliver(?:ing|ed)?|contribut(?:ion|ed)|knock|innings|runs?|wickets?|spell|economy|strike rate|scor(?:e|ing)|batting|bowling|batter|bowler|hitting|sixes?|boundar(?:y|ies)|flop|slump|underperform(?:ing)?|out of form|failure|failures|consistency|momentum)\b/i;
-const POSITIVE_LANGUAGE = /\b(great|excellent|elite|brilliant|outstanding|superb|strong|quality|masterclass|hero|star|praise|firing|carrying|value|bargain|impact|match[- ]winning|dominant|positive)\b/i;
-const NEGATIVE_LANGUAGE = /\b(poor|bad|struggl|flop|slump|underperform|failure|failures|drop|dropped|expensive|leaking|critical|concern|disappoint|not enough|weak|waste)\b/i;
+/**
+ * The catalogue gives every comment an explicit requirements array. Match
+ * posts always require scorecard evidence; other posts request it only when
+ * their own declared requirement concerns form or performance. This avoids
+ * treating a vague word in prose as a universal trigger rule.
+ */
+export function commentRequiresStatEvidence(requirements: string[], topic: SocialPostTopic): boolean {
+  if (["individual_match", "clutch"].includes(topic)) return true;
+  return requirements.some((requirement) => (
+    requirement === "performance met the relevant batting or bowling threshold"
+    || /^bought for price .* AND (played well|underperformed)/i.test(requirement)
+    || /^player scored \d+\+/i.test(requirement)
+    || /^player took a wicket and hit a boundary/i.test(requirement)
+    || requirement === "player won MVP or player is top performer"
+    || requirement === "player carried team into top 4 AND team qualified"
+  ));
+}
 
-export function isPlayerPerformanceComment(text: string, topic: SocialPostTopic, phase: SeasonPhase): boolean {
-  // Auction, retention and selection posts can mention a player's role or
-  // potential without claiming that they performed in a match.
-  if (["post_auction", "pre_season", "next_season"].includes(phase)) return false;
-  if (!text.includes("{a}")) return false;
-  if (!PERFORMANCE_LANGUAGE.test(text)) return false;
-  return topic !== "captaincy" && topic !== "venue";
+/**
+ * Ball-by-ball data now verifies decisive batters, winning runs and run-outs.
+ * Delivery claims without a complete event binding remain fail-closed rather
+ * than being inferred from a merely close scorecard.
+ */
+export function hasUnverifiableDeliveryClaim(text: string): boolean {
+  return /\b(needed \d+ off|hit it for a six|last-ball six|run-?out on the final|dream 20th over|final-over hero|defending (?:the )?total in the final over|super over)\b/i.test(text);
+}
+
+export function isFinalBallWinningClaim(text: string): boolean {
+  return /\b(winning (?:it|a .*match|runs) (?:on|off) the (?:final|last) (?:ball|delivery)|won (?:it|the match) (?:on|off) the (?:final|last) (?:ball|delivery))\b/i.test(text);
+}
+
+/**
+ * Literal figures in prose must be justified by that template's declared
+ * requirements. Dynamic placeholders are excluded because their values come
+ * directly from the scorecard. This prevents invented percentages, over
+ * numbers, rankings and statistical claims from leaking into the feed.
+ */
+export function hasUnsupportedNumericClaim(
+  text: string,
+  requirements: string[],
+  validatePerformance?: (stats: any) => boolean,
+): boolean {
+  const prose = text.replace(/\{[^}]+\}/g, "");
+  const numbers = Array.from(prose.matchAll(/\d+(?:\.\d+)?%?/g), (match) => match[0]);
+  if (!numbers.length) return false;
+  const joined = requirements.join(" ").toLowerCase();
+  const validatorSource = validatePerformance?.toString() ?? "";
+  const isWinRequirement = /team won|won match|qualified/.test(joined);
+  const firstTwoRecord = /first two matches/.test(joined);
+  const firstThreeRecord = /first three matches/.test(joined);
+  const oneOneRecord = /1 win 1 loss/.test(joined);
+  const lastOverRequirement = /last over/.test(joined);
+
+  return numbers.some((literal) => {
+    const value = literal.replace("%", "");
+    if (value === "2026" || value === "2027") return false;
+    if (joined.includes(value)) return false;
+    if (validatorSource.includes(value)) return false;
+    if (value === "2" && /2 points/i.test(prose) && isWinRequirement) return false;
+    if ((value === "0" || value === "2") && firstTwoRecord) return false;
+    if ((value === "0" || value === "3") && firstThreeRecord) return false;
+    if (value === "1" && oneOneRecord) return false;
+    if (value === "20" && lastOverRequirement) return false;
+    if (value === "4" && /top 4/i.test(prose) && /top 4/i.test(joined)) return false;
+    if (value === "2" && /top 2/i.test(prose) && /top 2/i.test(joined)) return false;
+    return true;
+  });
+}
+
+/** Claims for which the game currently stores no trustworthy evidence. */
+export function hasUnsupportedContextClaim(text: string): boolean {
+  return /\b(?:nrr|net\s+run\s+rate|win\s+probability|wpa|qualification\s+probability|average\s+(?:delivery\s+)?speeds?|\d+\s*kph|speed\s+gun|field\s+(?:placement|setting|guard|adjustment)s?|poor\s+fielding|fielding\s+cost|catch(?:ing)?\s+efficiency|fielding\s+(?:discipline|error|support)|saved\s+(?:at\s+least\s+)?\d+\s+runs|post-match\s+(?:speech|comments?|interview)|dressing-room\s+(?:speech|culture)|captain\s+hugs?|wide\s+yorker|yorker\s+mark|yorker\s+execution|slower\s+ball|short-pitched\s+delivery|leg-slip|carrom\s+ball|googly|training|practice|nets?|pre-season\s+camp|fitness\s+levels?|body\s+language|humidity|dew\s+factor|pitch\s+wear|turning\s+(?:track|pitch)|flat\s+deck|green\s+(?:track|pitch)|statistically\s+(?:the\s+)?(?:highest|lowest|best|worst)|ranks?\s+(?:among|in)|league\s+average)\b/i.test(text);
 }
 
 export function performanceScope(topic: SocialPostTopic): "match" | "season" {
@@ -71,18 +132,26 @@ export function passesPerformanceEvidence(
   return stats.wickets >= 2 || econ <= 8;
 }
 
-export function performanceSentiment(text: string, tone: string): "positive" | "negative" | "neutral" {
+export function performanceSentiment(tone: string): "positive" | "negative" | "neutral" {
   const lowerTone = tone.toLowerCase();
-  if (NEGATIVE_LANGUAGE.test(text) || ["critical", "banter", "cautious"].includes(lowerTone)) return "negative";
-  if (POSITIVE_LANGUAGE.test(text) || ["positive", "hype", "optimistic", "supportive", "celebratory"].includes(lowerTone)) return "positive";
+  if (["critical", "banter", "cautious"].includes(lowerTone)) return "negative";
+  if (["positive", "hype", "optimistic", "supportive", "celebratory"].includes(lowerTone)) return "positive";
   return "neutral";
 }
 
 export function formatPerformanceFooter(stats: SocialPerformanceStats, scope: "match" | "season"): string {
   const label = scope === "match" ? "Match stats" : "Season stats";
-  const batting = stats.balls > 0 ? `${stats.runs} (${stats.balls})` : "";
+  const strikeRate = stats.balls > 0 ? stats.runs / stats.balls * 100 : 0;
+  const economy = stats.oversBowled > 0 ? stats.runsConceded / stats.oversBowled : 0;
+  const batting = stats.balls > 0
+    ? scope === "match"
+      ? `${stats.runs} (${stats.balls}), ${strikeRate.toFixed(1)} SR`
+      : `${stats.runs} runs in ${stats.matches} matches, ${strikeRate.toFixed(1)} SR`
+    : "";
   const bowling = stats.oversBowled > 0
-    ? `${stats.wickets}/${stats.runsConceded} in ${stats.oversBowled.toFixed(1)} ov`
+    ? scope === "match"
+      ? `${stats.wickets}/${stats.runsConceded} in ${stats.oversBowled.toFixed(1)} ov, ${economy.toFixed(1)} Econ`
+      : `${stats.wickets} wkts, ${economy.toFixed(1)} Econ`
     : "";
   const detail = [batting, bowling].filter(Boolean).join(" · ");
   return detail ? `[${label}: ${detail}]` : "";

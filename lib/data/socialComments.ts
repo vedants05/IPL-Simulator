@@ -183,6 +183,11 @@ const losingCauseComments: SocialCommentTemplate[] = (Object.entries(losingCause
     tag: `losing_cause_${kind}`, eligibility: kind === "batting" ? "primary batters" : kind === "bowling" ? "primary bowlers" : "all-rounders",
     requirements: ["player appeared in the latest match", "team lost the latest match", "performance met the relevant batting or bowling threshold"],
     text, tone: "supportive", eligible: (player: Player) => kind === "batting" ? matchesEligibility(player, "primary batters") : kind === "bowling" ? matchesEligibility(player, "primary bowlers") : player.role === "All-Rounder",
+    validatePerformance: (stats: any) => kind === "batting"
+      ? stats.balls >= 15 && stats.runs >= 30
+      : kind === "bowling"
+        ? stats.oversBowled >= 2 && (stats.wickets >= 2 || (stats.wickets >= 1 && stats.runsConceded / Math.max(0.1, stats.oversBowled) <= 7.5))
+        : stats.runs >= 20 && stats.wickets >= 1,
   })))
 );
 
@@ -3450,7 +3455,7 @@ export const SOCIAL_COMMENTS: SocialCommentTemplate[] = [
     topic: "individual_match",
     tag: "batting_form",
     eligibility: "primary batters",
-    requirements: ["player played in early season match"],
+    requirements: ["player played in early season match", "performance met the relevant batting or bowling threshold"],
     text: "{a} anchoring the innings perfectly while everyone else tried to slog. Pure class.",
     tone: "positive",
     eligible: (p) => matchesEligibility(p, "primary batters"),
@@ -3671,11 +3676,11 @@ export const SOCIAL_COMMENTS: SocialCommentTemplate[] = [
     topic: "individual_match",
     tag: "batting_form",
     eligibility: "all-rounders",
-    requirements: ["player played in early season match"],
+    requirements: ["player played in early season match", "performance met the relevant batting or bowling threshold"],
     text: "{a} showing why all-round balance matters so much early in the tournament!",
     tone: "positive",
     eligible: (p) => matchesEligibility(p, "all-rounders"),
-    validatePerformance: (s) => s.runs >= 29 || s.wickets >= 1 || (s.oversBowled >= 2 && s.runsConceded / Math.max(0.1, s.oversBowled) <= 7.5)
+    validatePerformance: (s) => s.runs >= 20 && s.wickets >= 1
   },
   {
     id: "early_match_x_022",
@@ -3948,7 +3953,7 @@ export const SOCIAL_COMMENTS: SocialCommentTemplate[] = [
     text: "{a}'s ability to rotate strike against hard-length pace kept the scoreboard moving when boundaries dried up.",
     tone: "analytical",
     eligible: (p) => matchesEligibility(p, "primary batters"),
-    validatePerformance: (s) => s.fours + s.sixes >= 3 && s.runs >= 29
+    validatePerformance: (s) => s.runs >= 29
   },
   {
     id: "early_match_reddit_013",
@@ -3961,7 +3966,7 @@ export const SOCIAL_COMMENTS: SocialCommentTemplate[] = [
     text: "Excellent use of the short-pitched delivery from {a} as a setup ball rather than a primary boundary option.",
     tone: "analytical",
     eligible: (p) => matchesEligibility(p, "primary bowlers"),
-    validatePerformance: (s) => s.fours + s.sixes >= 3 && s.runs >= 29
+    validatePerformance: (s) => s.wickets >= 2 || (s.oversBowled >= 3 && s.wickets >= 1 && s.runsConceded / Math.max(0.1, s.oversBowled) <= 7.5)
   },
   {
     id: "early_match_reddit_014",
@@ -4611,7 +4616,7 @@ export const SOCIAL_COMMENTS: SocialCommentTemplate[] = [
     topic: "team_form",
     tag: "team_form",
     eligibility: "selected XI players",
-    requirements: ["team won recent match"],
+    requirements: ["team won recent match", "team lost the immediately previous match"],
     text: "Great bounce-back victory! {team} showing character early in the tournament.",
     tone: "positive",
     eligible: (p) => matchesEligibility(p, "selected XI players"),
@@ -4676,7 +4681,7 @@ export const SOCIAL_COMMENTS: SocialCommentTemplate[] = [
     topic: "team_form",
     tag: "team_form",
     eligibility: "selected XI players",
-    requirements: ["team won recent match"],
+    requirements: ["team won the latest away match and the match venue is recorded"],
     text: "Winning away from home early in the season is a massive confidence booster for {team}!",
     tone: "positive",
     eligible: (p) => matchesEligibility(p, "selected XI players"),
@@ -4702,7 +4707,7 @@ export const SOCIAL_COMMENTS: SocialCommentTemplate[] = [
     topic: "team_form",
     tag: "team_form",
     eligibility: "selected XI players",
-    requirements: ["team won recent match"],
+    requirements: ["team is top of the table"],
     text: "Top of the table early on! Let's keep this momentum rolling into next week!",
     tone: "hype",
     eligible: (p) => matchesEligibility(p, "selected XI players"),
@@ -4806,7 +4811,7 @@ export const SOCIAL_COMMENTS: SocialCommentTemplate[] = [
     topic: "team_form",
     tag: "team_form",
     eligibility: "selected XI players",
-    requirements: ["team won recent match"],
+    requirements: ["team won the latest away match and the match venue is recorded"],
     text: "Winning tough away games at venues like {venue} early in the campaign builds team resilience for demanding road stretches ahead.",
     tone: "thoughtful",
     eligible: (p) => matchesEligibility(p, "selected XI players"),
@@ -4836,7 +4841,7 @@ export const SOCIAL_COMMENTS: SocialCommentTemplate[] = [
     text: "Comprehensive all-round performance today. If {team} maintains this fielding discipline, playoff contention is well within reach.",
     tone: "positive",
     eligible: (p) => matchesEligibility(p, "selected XI players"),
-    validatePerformance: (s) => s.runs >= 29 || s.wickets >= 1 || (s.oversBowled >= 2 && s.runsConceded / Math.max(0.1, s.oversBowled) <= 7.5)
+    validatePerformance: (s) => true
   },
   {
     id: "early_form_insta_001",
@@ -4923,7 +4928,7 @@ export const SOCIAL_COMMENTS: SocialCommentTemplate[] = [
     topic: "team_form",
     tag: "team_form",
     eligibility: "selected XI players",
-    requirements: ["team won recent match"],
+    requirements: ["team is top of the table"],
     text: "TOP OF THE TABLE VIBES! 🔝🔥 {team} making a statement early on! 💙",
     tone: "hype",
     eligible: (p) => matchesEligibility(p, "selected XI players"),
@@ -6767,7 +6772,7 @@ export const SOCIAL_COMMENTS: SocialCommentTemplate[] = [
     text: "Setting wide-field guards to force single-run options allowed {a} to choke boundary opportunities in overs 19 and 20.",
     tone: "analytical",
     eligible: (p) => matchesEligibility(p, "primary bowlers"),
-    validatePerformance: (s) => s.fours + s.sixes >= 3 && s.runs >= 29
+    validatePerformance: (s) => s.oversBowled >= 2 && (s.wickets >= 1 || s.runsConceded / Math.max(0.1, s.oversBowled) <= 7.5)
   },
   {
     id: "early_clutch_reddit_008",
@@ -6949,11 +6954,11 @@ export const SOCIAL_COMMENTS: SocialCommentTemplate[] = [
     topic: "balance",
     tag: "balance",
     eligibility: "all-rounders",
-    requirements: ["player played in early season match"],
+    requirements: ["player scored 30+ runs and bowled all 4 overs in that match"],
     text: "Having {a} in the XI gives {team} such unbelievable balance. 4 overs of bowling and mid-order power!",
     tone: "positive",
     eligible: (p) => matchesEligibility(p, "all-rounders"),
-    validatePerformance: (s) => s.runs >= 29 || s.wickets >= 1 || (s.oversBowled >= 2 && s.runsConceded / Math.max(0.1, s.oversBowled) <= 7.5)
+    validatePerformance: (s) => s.runs >= 30 && s.oversBowled >= 4
   },
   {
     id: "early_bal_x_002",
@@ -7105,11 +7110,11 @@ export const SOCIAL_COMMENTS: SocialCommentTemplate[] = [
     topic: "balance",
     tag: "balance",
     eligibility: "all-rounders",
-    requirements: ["player played in early season match"],
+    requirements: ["player took a wicket and hit a boundary in the early season match"],
     text: "{a} taking wickets AND hitting boundaries in the same match! Ultimate balance player!",
     tone: "hype",
     eligible: (p) => matchesEligibility(p, "all-rounders"),
-    validatePerformance: (s) => s.fours + s.sixes >= 3 && s.runs >= 29
+    validatePerformance: (s) => s.wickets >= 1 && s.fours + s.sixes >= 1
   },
   {
     id: "early_bal_x_014",
@@ -7209,11 +7214,11 @@ export const SOCIAL_COMMENTS: SocialCommentTemplate[] = [
     topic: "balance",
     tag: "balance",
     eligibility: "all-rounders",
-    requirements: ["player played in early season match"],
+    requirements: ["player scored 25+ at a 130+ strike rate in the early season match"],
     text: "Batting depth extending to position 8 allows top-order anchors like {a} to elevate powerplay strike-rates with complete psychological safety.",
     tone: "positive",
     eligible: (p) => matchesEligibility(p, "all-rounders"),
-    validatePerformance: (s) => s.runs >= 29 || s.wickets >= 1 || (s.oversBowled >= 2 && s.runsConceded / Math.max(0.1, s.oversBowled) <= 7.5)
+    validatePerformance: (s) => s.runs >= 25 && s.balls > 0 && (s.runs / s.balls) * 100 >= 130
   },
   {
     id: "early_bal_reddit_007",
@@ -7555,7 +7560,7 @@ export const SOCIAL_COMMENTS: SocialCommentTemplate[] = [
     text: "Another half-century for {a}! Consistency in the middle phase of the tournament is everything.",
     tone: "positive",
     eligible: (p) => matchesEligibility(p, "primary batters"),
-    validatePerformance: (s) => s.runs >= 100
+    validatePerformance: (s) => s.runs >= 50
   },
   {
     id: "mid_match_x_003",
@@ -7672,7 +7677,7 @@ export const SOCIAL_COMMENTS: SocialCommentTemplate[] = [
     text: "{a} bowling with pinpoint accuracy in death overs! Opposition couldn't find a single boundary.",
     tone: "positive",
     eligible: (p) => matchesEligibility(p, "primary bowlers"),
-    validatePerformance: (s) => s.fours + s.sixes >= 3 && s.runs >= 29
+    validatePerformance: (s) => s.oversBowled >= 2 && (s.wickets >= 1 || s.runsConceded / Math.max(0.1, s.oversBowled) <= 7.0)
   },
   {
     id: "mid_match_x_012",
@@ -8296,7 +8301,7 @@ export const SOCIAL_COMMENTS: SocialCommentTemplate[] = [
     text: "Unlucky figures for {a} due to poor boundary fielding support; his underlying execution metrics were top-tier.",
     tone: "sympathetic",
     eligible: (p) => matchesEligibility(p, "primary bowlers"),
-    validatePerformance: (s) => s.fours + s.sixes === 0
+    validatePerformance: (s) => s.oversBowled >= 2 && (s.wickets >= 1 || s.runsConceded / Math.max(0.1, s.oversBowled) <= 7.5)
   },
   {
     id: "mid_match_reddit_030",
@@ -10894,7 +10899,7 @@ export const SOCIAL_COMMENTS: SocialCommentTemplate[] = [
     text: "Setting wide-field guards mid-season allowed {a} to choke boundary options during overs 19 and 20.",
     tone: "analytical",
     eligible: (p) => matchesEligibility(p, "primary bowlers"),
-    validatePerformance: (s) => s.fours + s.sixes >= 3 && s.runs >= 29
+    validatePerformance: (s) => s.oversBowled >= 2 && (s.wickets >= 1 || s.runsConceded / Math.max(0.1, s.oversBowled) <= 7.5)
   },
   {
     id: "mid_clutch_reddit_008",
@@ -11076,11 +11081,11 @@ export const SOCIAL_COMMENTS: SocialCommentTemplate[] = [
     topic: "balance",
     tag: "balance",
     eligibility: "all-rounders",
-    requirements: ["player played in mid season match"],
+    requirements: ["player scored 30+ runs and bowled all 4 overs in that match"],
     text: "Having {a} in the XI mid-season gives {team} unbelievable balance. 4 overs and mid-order power!",
     tone: "positive",
     eligible: (p) => matchesEligibility(p, "all-rounders"),
-    validatePerformance: (s) => s.runs >= 29 || s.wickets >= 1 || (s.oversBowled >= 2 && s.runsConceded / Math.max(0.1, s.oversBowled) <= 7.5)
+    validatePerformance: (s) => s.runs >= 30 && s.oversBowled >= 4
   },
   {
     id: "mid_bal_x_002",
@@ -11232,11 +11237,11 @@ export const SOCIAL_COMMENTS: SocialCommentTemplate[] = [
     topic: "balance",
     tag: "balance",
     eligibility: "all-rounders",
-    requirements: ["player played in mid season match"],
+    requirements: ["player took a wicket and hit a boundary in the mid season match"],
     text: "{a} taking wickets AND hitting boundaries mid-season! Ultimate balance player!",
     tone: "hype",
     eligible: (p) => matchesEligibility(p, "all-rounders"),
-    validatePerformance: (s) => s.fours + s.sixes >= 3 && s.runs >= 29
+    validatePerformance: (s) => s.wickets >= 1 && s.fours + s.sixes >= 1
   },
   {
     id: "mid_bal_x_014",
@@ -11336,11 +11341,11 @@ export const SOCIAL_COMMENTS: SocialCommentTemplate[] = [
     topic: "balance",
     tag: "balance",
     eligibility: "all-rounders",
-    requirements: ["player played in mid season match"],
+    requirements: ["player scored 25+ at a 130+ strike rate in the mid season match"],
     text: "Batting depth extending to position 8 mid-season allows top-order anchors like {a} to elevate powerplay risk-taking.",
     tone: "positive",
     eligible: (p) => matchesEligibility(p, "all-rounders"),
-    validatePerformance: (s) => s.runs >= 29 || s.wickets >= 1 || (s.oversBowled >= 2 && s.runsConceded / Math.max(0.1, s.oversBowled) <= 7.5)
+    validatePerformance: (s) => s.runs >= 25 && s.balls > 0 && (s.runs / s.balls) * 100 >= 130
   },
   {
     id: "mid_bal_reddit_007",
@@ -11874,7 +11879,7 @@ export const SOCIAL_COMMENTS: SocialCommentTemplate[] = [
     text: "Runs with the bat, wickets with the ball. {a} carried {team} into the top 4 all by himself!",
     tone: "hype",
     eligible: (p) => matchesEligibility(p, "all-rounders"),
-    validatePerformance: (s) => s.runs >= 29 || s.wickets >= 1 || (s.oversBowled >= 2 && s.runsConceded / Math.max(0.1, s.oversBowled) <= 7.5)
+    validatePerformance: (s) => s.runs >= 30 && s.wickets >= 1
   },
   {
     id: "late_match_x_018",
@@ -11900,7 +11905,7 @@ export const SOCIAL_COMMENTS: SocialCommentTemplate[] = [
     text: "{a} striking at 200+ under late-season pressure. What a big-game player!",
     tone: "hype",
     eligible: (p) => matchesEligibility(p, "primary batters"),
-    validatePerformance: (s) => s.runs >= 29
+    validatePerformance: (s) => s.balls >= 3 && s.runs / s.balls * 100 >= 200
   },
   {
     id: "late_match_x_020",
@@ -12026,11 +12031,11 @@ export const SOCIAL_COMMENTS: SocialCommentTemplate[] = [
     topic: "individual_match",
     tag: "carry_to_top4",
     eligibility: "all-rounders",
-    requirements: ["player carried team into top 4 AND team qualified"],
+    requirements: ["player carried team into top 4 AND team qualified", "team won recent match"],
     text: "{a} carrying the bat and taking the match-winning wicket to seal top 4. Scriptwriter cooked!",
     tone: "hype",
     eligible: (p) => matchesEligibility(p, "all-rounders"),
-    validatePerformance: (s) => s.runs >= 29 || s.wickets >= 1 || (s.oversBowled >= 2 && s.runsConceded / Math.max(0.1, s.oversBowled) <= 7.5)
+    validatePerformance: (s) => s.runs >= 30 && s.wickets >= 1
   },
   {
     id: "late_match_x_030",
@@ -12615,7 +12620,7 @@ export const SOCIAL_COMMENTS: SocialCommentTemplate[] = [
     text: "{a} missed his yorker mark on two critical balls in over 20, granting boundary leverage that cost us the game.",
     tone: "critical",
     eligible: (p) => matchesEligibility(p, "primary bowlers"),
-    validatePerformance: (s) => s.fours + s.sixes === 0
+    validatePerformance: (s) => s.oversBowled >= 2 && s.wickets <= 1 && s.runsConceded / Math.max(0.1, s.oversBowled) >= 10
   },
   {
     id: "late_match_reddit_035",
@@ -12875,7 +12880,7 @@ export const SOCIAL_COMMENTS: SocialCommentTemplate[] = [
     text: "BOUNDARY MACHINE!  {a} delivering big hits in a high-stakes fixture!",
     tone: "hype",
     eligible: (p) => matchesEligibility(p, "primary batters"),
-    validatePerformance: (s) => s.fours + s.sixes >= 3 && s.runs >= 29
+    validatePerformance: (s) => s.runs >= 29 && s.fours + s.sixes >= 3
   },
   {
     id: "late_match_insta_015",
@@ -15384,7 +15389,7 @@ export const SOCIAL_COMMENTS: SocialCommentTemplate[] = [
     text: "Setting wide-field guards under high stakes allowed {a} to choke boundary options during overs 19 and 20.",
     tone: "analytical",
     eligible: (p) => matchesEligibility(p, "primary bowlers"),
-    validatePerformance: (s) => s.fours + s.sixes >= 3 && s.runs >= 29
+    validatePerformance: (s) => s.oversBowled >= 2 && (s.wickets >= 1 || s.runsConceded / Math.max(0.1, s.oversBowled) <= 7.5)
   },
   {
     id: "late_clutch_reddit_008",
@@ -15562,11 +15567,11 @@ export const SOCIAL_COMMENTS: SocialCommentTemplate[] = [
     topic: "balance",
     tag: "balance",
     eligibility: "all-rounders",
-    requirements: ["player played in do or die match"],
+    requirements: ["player scored 30+ runs and bowled all 4 overs in that match"],
     text: "Having {a} in the XI in a must-win fixture gives {team} unbelievable balance. 4 overs and mid-order power!",
     tone: "positive",
     eligible: (p) => matchesEligibility(p, "all-rounders"),
-    validatePerformance: (s) => s.runs >= 29 || s.wickets >= 1 || (s.oversBowled >= 2 && s.runsConceded / Math.max(0.1, s.oversBowled) <= 7.5)
+    validatePerformance: (s) => s.runs >= 30 && s.oversBowled >= 4
   },
   {
     id: "late_bal_x_002",
@@ -15718,11 +15723,11 @@ export const SOCIAL_COMMENTS: SocialCommentTemplate[] = [
     topic: "balance",
     tag: "balance",
     eligibility: "all-rounders",
-    requirements: ["player played in do or die match"],
+    requirements: ["player took a wicket and hit a boundary in the do or die match"],
     text: "{a} taking wickets AND hitting boundaries in a do-or-die match! Ultimate balance player!",
     tone: "hype",
     eligible: (p) => matchesEligibility(p, "all-rounders"),
-    validatePerformance: (s) => s.fours + s.sixes >= 3 && s.runs >= 29
+    validatePerformance: (s) => s.wickets >= 1 && s.fours + s.sixes >= 1
   },
   {
     id: "late_bal_x_014",
@@ -15822,11 +15827,11 @@ export const SOCIAL_COMMENTS: SocialCommentTemplate[] = [
     topic: "balance",
     tag: "balance",
     eligibility: "all-rounders",
-    requirements: ["player played in do or die match"],
+    requirements: ["player scored 25+ at a 130+ strike rate in the do or die match"],
     text: "Batting depth extending to position 8 in virtual knockouts allows top-order anchors like {a} to elevate powerplay risk-taking.",
     tone: "positive",
     eligible: (p) => matchesEligibility(p, "all-rounders"),
-    validatePerformance: (s) => s.runs >= 29 || s.wickets >= 1 || (s.oversBowled >= 2 && s.runsConceded / Math.max(0.1, s.oversBowled) <= 7.5)
+    validatePerformance: (s) => s.runs >= 25 && s.balls > 0 && (s.runs / s.balls) * 100 >= 130
   },
   {
     id: "late_bal_reddit_007",
@@ -22198,7 +22203,7 @@ export const SOCIAL_COMMENTS: SocialCommentTemplate[] = [
     text: "{a} played the innings of his life in the Final! A 45-ball century to win us the trophy!",
     tone: "hype",
     eligible: (p) => matchesEligibility(p, "selected XI players"),
-    validatePerformance: (s) => s.runs >= 100
+    validatePerformance: (s) => s.runs >= 100 && s.balls <= 45
   },
   {
     id: "final_perf_x_002",
@@ -22222,9 +22227,9 @@ export const SOCIAL_COMMENTS: SocialCommentTemplate[] = [
     eligibility: "selected XI players",
     requirements: ["team is playing in final"],
     text: "Horrible time for {a} to get out for a duck. You can't throw your wicket away in the Final.",
-    tone: "hype",
+    tone: "critical",
     eligible: (p) => matchesEligibility(p, "selected XI players"),
-    validatePerformance: (s) => s.matches > 0
+    validatePerformance: (s) => s.balls > 0 && s.runs === 0
   },
   {
     id: "final_perf_x_004",
@@ -22247,10 +22252,10 @@ export const SOCIAL_COMMENTS: SocialCommentTemplate[] = [
     tag: "final_performances",
     eligibility: "selected XI players",
     requirements: ["team is playing in final", "team lost recent match"],
-    text: "{a} choked under final pressure. Leaking 20 runs in over 18 cost us the entire championship.",
-    tone: "hype",
+    text: "{a} struggled badly with the ball under final pressure and could not contain the scoring rate.",
+    tone: "critical",
     eligible: (p) => matchesEligibility(p, "selected XI players"),
-    validatePerformance: (s) => s.runs >= 29
+    validatePerformance: (s) => s.oversBowled >= 2 && s.wickets <= 1 && s.runsConceded / Math.max(0.1, s.oversBowled) >= 10
   },
   {
     id: "final_perf_x_006",
@@ -22286,10 +22291,10 @@ export const SOCIAL_COMMENTS: SocialCommentTemplate[] = [
     tag: "final_performances",
     eligibility: "selected XI players",
     requirements: ["team is playing in final"],
-    text: "Too many dot balls from {a} in the powerplay. Put unnecessary pressure on the rest of the order.",
-    tone: "hype",
+    text: "A low-impact innings from {a} put unnecessary pressure on the rest of the batting order.",
+    tone: "critical",
     eligible: (p) => matchesEligibility(p, "selected XI players"),
-    validatePerformance: (s) => s.matches > 0
+    validatePerformance: (s) => s.balls > 0 && (((s.runs <= 10) && s.fours + s.sixes === 0) || ((s.runs <= 5) && s.fours + s.sixes <= 1))
   },
   {
     id: "final_perf_x_009",
@@ -22328,7 +22333,7 @@ export const SOCIAL_COMMENTS: SocialCommentTemplate[] = [
     text: "{a} played the innings of his life in the Final! A 45-ball century to win us the trophy! [Final Match]",
     tone: "hype",
     eligible: (p) => matchesEligibility(p, "selected XI players"),
-    validatePerformance: (s) => s.runs >= 100
+    validatePerformance: (s) => s.runs >= 100 && s.balls <= 45
   },
   {
     id: "final_perf_x_012",
@@ -22352,9 +22357,9 @@ export const SOCIAL_COMMENTS: SocialCommentTemplate[] = [
     eligibility: "selected XI players",
     requirements: ["team is playing in final"],
     text: "Horrible time for {a} to get out for a duck. You can't throw your wicket away in the Final. [Final Match]",
-    tone: "hype",
+    tone: "critical",
     eligible: (p) => matchesEligibility(p, "selected XI players"),
-    validatePerformance: (s) => s.matches > 0
+    validatePerformance: (s) => s.balls > 0 && s.runs === 0
   },
   {
     id: "final_perf_x_014",
@@ -22377,10 +22382,10 @@ export const SOCIAL_COMMENTS: SocialCommentTemplate[] = [
     tag: "final_performances",
     eligibility: "selected XI players",
     requirements: ["team is playing in final", "team lost recent match"],
-    text: "{a} choked under final pressure. Leaking 20 runs in over 18 cost us the entire championship. [Final Match]",
-    tone: "hype",
+    text: "{a} struggled badly with the ball under final pressure and could not contain the scoring rate. [Final Match]",
+    tone: "critical",
     eligible: (p) => matchesEligibility(p, "selected XI players"),
-    validatePerformance: (s) => s.runs >= 29
+    validatePerformance: (s) => s.oversBowled >= 2 && s.wickets <= 1 && s.runsConceded / Math.max(0.1, s.oversBowled) >= 10
   },
   {
     id: "final_perf_reddit_001",
@@ -22406,7 +22411,7 @@ export const SOCIAL_COMMENTS: SocialCommentTemplate[] = [
     text: "Defensive bowling metrics in the Final: {a} holding an economy rate under 5.5 was the quiet match-winner.",
     tone: "analytical",
     eligible: (p) => matchesEligibility(p, "selected XI players"),
-    validatePerformance: (s) => s.oversBowled >= 2 && (s.runsConceded / Math.max(0.1, s.oversBowled)) <= 7.0
+    validatePerformance: (s) => s.oversBowled >= 2 && (s.runsConceded / Math.max(0.1, s.oversBowled)) <= 5.5
   },
   {
     id: "final_perf_reddit_003",
@@ -22416,10 +22421,10 @@ export const SOCIAL_COMMENTS: SocialCommentTemplate[] = [
     tag: "final_performances",
     eligibility: "selected XI players",
     requirements: ["team is playing in final"],
-    text: "High-pressure dismissal of {a} in over 4 exposed our fragile middle order to their new ball spell in the Final.",
-    tone: "analytical",
+    text: "A low-impact innings from {a} exposed the middle order too early in the Final.",
+    tone: "critical",
     eligible: (p) => matchesEligibility(p, "selected XI players"),
-    validatePerformance: (s) => s.wickets === 0 || (s.oversBowled >= 2 && (s.runsConceded / Math.max(0.1, s.oversBowled)) >= 9.5)
+    validatePerformance: (s) => s.balls > 0 && (((s.runs <= 10) && s.fours + s.sixes === 0) || ((s.runs <= 5) && s.fours + s.sixes <= 1))
   },
   {
     id: "final_perf_reddit_004",
@@ -22442,10 +22447,10 @@ export const SOCIAL_COMMENTS: SocialCommentTemplate[] = [
     tag: "final_performances",
     eligibility: "selected XI players",
     requirements: ["team is playing in final"],
-    text: "Leaking 22 runs in over 18 of the Final by {a} neutralized our previous win probability advantage.",
-    tone: "analytical",
+    text: "{a}'s expensive spell in the Final surrendered too much scoring pressure at a crucial stage.",
+    tone: "critical",
     eligible: (p) => matchesEligibility(p, "selected XI players"),
-    validatePerformance: (s) => s.runs >= 29
+    validatePerformance: (s) => s.oversBowled >= 2 && s.wickets <= 1 && s.runsConceded / Math.max(0.1, s.oversBowled) >= 10
   },
   {
     id: "final_perf_reddit_006",
@@ -22482,9 +22487,9 @@ export const SOCIAL_COMMENTS: SocialCommentTemplate[] = [
     eligibility: "selected XI players",
     requirements: ["team is playing in final"],
     text: "A strike rate of just 95 in the Final from {a} forced our middle order into high-risk boundary hitting.",
-    tone: "analytical",
+    tone: "critical",
     eligible: (p) => matchesEligibility(p, "selected XI players"),
-    validatePerformance: (s) => s.fours + s.sixes >= 3 && s.runs >= 29
+    validatePerformance: (s) => s.balls >= 10 && s.runs / s.balls * 100 <= 95
   },
   {
     id: "final_perf_reddit_009",
@@ -22536,7 +22541,7 @@ export const SOCIAL_COMMENTS: SocialCommentTemplate[] = [
     text: "Defensive bowling metrics in the Final: {a} holding an economy rate under 5.5 was the quiet match-winner. [Final Match]",
     tone: "analytical",
     eligible: (p) => matchesEligibility(p, "selected XI players"),
-    validatePerformance: (s) => s.oversBowled >= 2 && (s.runsConceded / Math.max(0.1, s.oversBowled)) <= 7.0
+    validatePerformance: (s) => s.oversBowled >= 2 && (s.runsConceded / Math.max(0.1, s.oversBowled)) <= 5.5
   },
   {
     id: "final_perf_reddit_013",
@@ -22546,10 +22551,10 @@ export const SOCIAL_COMMENTS: SocialCommentTemplate[] = [
     tag: "final_performances",
     eligibility: "selected XI players",
     requirements: ["team is playing in final"],
-    text: "High-pressure dismissal of {a} in over 4 exposed our fragile middle order to their new ball spell in the Final. [Final Match]",
-    tone: "analytical",
+    text: "A low-impact innings from {a} exposed the middle order too early in the Final. [Final Match]",
+    tone: "critical",
     eligible: (p) => matchesEligibility(p, "selected XI players"),
-    validatePerformance: (s) => s.wickets === 0 || (s.oversBowled >= 2 && (s.runsConceded / Math.max(0.1, s.oversBowled)) >= 9.5)
+    validatePerformance: (s) => s.balls > 0 && (((s.runs <= 10) && s.fours + s.sixes === 0) || ((s.runs <= 5) && s.fours + s.sixes <= 1))
   },
   {
     id: "final_perf_reddit_014",
@@ -22572,10 +22577,10 @@ export const SOCIAL_COMMENTS: SocialCommentTemplate[] = [
     tag: "final_performances",
     eligibility: "selected XI players",
     requirements: ["team is playing in final"],
-    text: "Leaking 22 runs in over 18 of the Final by {a} neutralized our previous win probability advantage. [Final Match]",
-    tone: "analytical",
+    text: "{a}'s expensive spell in the Final surrendered too much scoring pressure at a crucial stage. [Final Match]",
+    tone: "critical",
     eligible: (p) => matchesEligibility(p, "selected XI players"),
-    validatePerformance: (s) => s.runs >= 29
+    validatePerformance: (s) => s.oversBowled >= 2 && s.wickets <= 1 && s.runsConceded / Math.max(0.1, s.oversBowled) >= 10
   },
   {
     id: "final_perf_instagram_001",

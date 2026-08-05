@@ -10,8 +10,15 @@ import {
   getPlayerRetentionCost,
   calculateTotalRetentionCost,
 } from "@/lib/logic/auctionRules";
+import MiniRetentionPhase from "./mini-retention";
 
 export default function RetentionPhase() {
+  const auctionType = useGameStore((state) => state.auction?.type);
+  if (auctionType === "mini") return <MiniRetentionPhase />;
+  return <MegaRetentionPhase />;
+}
+
+function MegaRetentionPhase() {
   const [isDark, setIsDark] = useState(false);
 
   useEffect(() => {

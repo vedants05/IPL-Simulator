@@ -5,6 +5,7 @@ import { X } from "lucide-react";
 import { useGameStore } from "@/lib/store/gameStore";
 import { formatPrice } from "@/lib/logic/auctionRules";
 import { formatStatValue } from "@/lib/logic/statFormatting";
+import { formatTopSevenBattingPositions } from "@/lib/logic/playerBattingPositions";
 import {
   getPlayerSeasonHistory,
   mergePlayerIplHistory,
@@ -39,6 +40,13 @@ function retiredSnapshotPlayer(snapshot: HistoricalPlayerSnapshot): Player {
     currentBowling: snapshot.currentBowling ?? snapshot.finalRating,
     potentialBowling: snapshot.potentialBowling ?? snapshot.currentBowling ?? snapshot.finalRating,
     isWicketkeeper: snapshot.role === "WK-Batsman",
+    isOpener: snapshot.isOpener,
+    hasBattedAt3: snapshot.hasBattedAt3,
+    hasBattedAt4: snapshot.hasBattedAt4,
+    hasBattedAt5: snapshot.hasBattedAt5,
+    hasBattedAt6: snapshot.hasBattedAt6,
+    hasBattedAt7: snapshot.hasBattedAt7,
+    isFinisher: snapshot.isFinisher,
   };
 }
 
@@ -333,6 +341,7 @@ export function PlayerProfileModal({
                 {[
                   ["Nationality", nationalityLabel],
                   ["Batting", detailedPlayer.battingStyle],
+                  ["Bats at", formatTopSevenBattingPositions(detailedPlayer)],
                   ["Bowling", (() => {
                     if (!detailedPlayer.bowlingStyle) return "DNB";
                     if (!detailedPlayer.bowlingHand) return detailedPlayer.bowlingStyle;
@@ -343,8 +352,8 @@ export function PlayerProfileModal({
                   ["Status", detailedPlayer.isCapped ? "Capped" : "Uncapped"],
                 ].map(([label, value]) => (
                   <div key={label} className="flex items-center justify-between gap-3 border-b border-border/60 pb-2">
-                    <span className="uppercase text-text-secondary">{label}</span>
-                    <span className="text-right font-bold text-text-primary">{value}</span>
+                    <span className="shrink-0 whitespace-nowrap uppercase text-text-secondary">{label}</span>
+                    <span className="whitespace-nowrap text-right font-bold text-text-primary">{value}</span>
                   </div>
                 ))}
               </div>
@@ -518,7 +527,7 @@ export function PlayerProfileModal({
                       </span>
                       <span className="text-right font-space-mono text-text-primary">{entry.price > 0 ? formatPrice(entry.price) : "—"}</span>
                       <span className="text-right font-space-mono text-[8px] font-bold uppercase text-text-secondary">
-                        {entry.isRtm ? "RTM" : "Signed"}
+                        {entry.isInjuryReplacement ? "Injury replacement" : entry.isRtm ? "RTM" : "Signed"}
                       </span>
                     </div>
                   ))}

@@ -15,7 +15,7 @@ import { appendRainAffectedResultLabel, hasRainReducedOvers } from "@/lib/logic/
 import type { Player, Team } from "@/lib/types";
 
 export const MATCH_SIMULATION_VERSION = 1;
-export const DEFAULT_CHASING_SCORING_BONUS = 0.02;
+export const DEFAULT_CHASING_SCORING_BONUS = 0;
 export const HOME_ADVANTAGE_STRENGTH_BONUS = 0.5;
 export const POWERPLAY_BOUNDARY_MULTIPLIER = 1.06;
 export const CORE_BATTER_ROTATION_MULTIPLIER = 1.08;
@@ -341,6 +341,7 @@ interface InningsContext {
   firstInningsWickets?: number;
   skillEdge: number;
   performanceTilt: number;
+  matchScoringEnvironment: number;
   formAdjustments: Record<string, number>;
   priorBattingBalls?: Readonly<Record<string, number>>;
   allowCollapseImpact: boolean;
@@ -371,6 +372,12 @@ function hashSeed(value: string): number {
     hash = Math.imul(hash, 16777619);
   }
   return hash >>> 0;
+}
+
+function seededGaussian(value: string): number {
+  const left = Math.max(0.0001, hashSeed(`${value}:left`) / 4294967296);
+  const right = hashSeed(`${value}:right`) / 4294967296;
+  return Math.sqrt(-2 * Math.log(left)) * Math.cos(2 * Math.PI * right);
 }
 
 class SimulationRandom {
@@ -1116,37 +1123,31 @@ export function deathExtrasPressure(
 
 export function milestonePressureScoringFactor(
   runs: number,
-  battingAggression: number,
+  _battingAggression: number,
   pressureLevel: number,
 ): number {
-  if (battingAggression >= 60 || pressureLevel > 0.2) return 1;
+  if (pressureLevel > 0.2) return 1;
   if (runs >= 90 && runs < 100) return 0.98;
   if (runs >= 45 && runs < 50) return 0.96;
   return 1;
 }
 
 export interface BattingAggressionScoringProfile {
-  fourMultiplier: number;
-  sixMultiplier: number;
-  wicketProbabilityAdjustment: number;
+  sixWeightShift: number;
 }
 
 /**
- * Converts batting aggression into a distinct scoring style. Ratings around
- * 65 are neutral, while 90+ hitters receive a deliberately steeper six-hitting
- * increase. The small wicket adjustment prevents aggression becoming a free
- * all-round batting upgrade.
+ * Converts batting aggression into a scoring-style shift. The shift is linear
+ * with no elite threshold. sampleBatRuns moves equal expected-run weight from
+ * fours into twos/sixes (or the reverse), so aggression changes how
+ * runs are made without changing their expected volume or dismissal chance.
  */
 export function battingAggressionScoringProfile(
   battingAggression: number,
 ): BattingAggressionScoringProfile {
   const aggression = clamp(battingAggression, 1, 99);
-  const aggressionDelta = aggression - 65;
-  const eliteSixHitting = Math.max(0, aggression - 90);
   return {
-    fourMultiplier: clamp(1 + aggressionDelta * 0.006, 0.78, 1.22),
-    sixMultiplier: clamp(1 + aggressionDelta * 0.009 + eliteSixHitting * 0.045, 0.65, 1.65),
-    wicketProbabilityAdjustment: clamp(aggressionDelta * 0.00013, -0.0025, 0.0045),
+    sixWeightShift: (aggression - 65) * 0.00055,
   };
 }
 
@@ -1298,13 +1299,31 @@ function sampleBatRuns(
   const threeRunFactor = 1 + runningPressure * 3;
   const twoRunMultiplier = 1 + runningPressure * 0.12;
 
+  const dotWeight = 0.34 * dotFactor;
+  const singleWeight = 0.37 * rotationMultiplier * singleOpportunityMultiplier;
+  let twoWeight = 0.09 * rotationMultiplier * twoRunMultiplier * clamp(1.05 - conditions.outfieldSpeedRating * 0.02, 0.82, 1.05);
+  let fourWeight = 0.14 * boundaryFactor * clamp(conditions.outfieldSpeedRating / 7.5, 0.72, 1.25);
+  let sixWeight = 0.052 * boundaryFactor ** 1.35 * clamp(69 / averageBoundary, 0.8, 1.3);
+  const desiredShift = aggressionProfile.sixWeightShift;
+  if (desiredShift > 0) {
+    const shift = Math.min(desiredShift, fourWeight * 0.4);
+    sixWeight += shift;
+    twoWeight += shift;
+    fourWeight -= shift * 2;
+  } else if (desiredShift < 0) {
+    const shift = Math.min(-desiredShift, sixWeight * 0.8, twoWeight * 0.8);
+    sixWeight -= shift;
+    twoWeight -= shift;
+    fourWeight += shift * 2;
+  }
+
   return rng.weighted([
-    { value: 0, weight: 0.34 * dotFactor },
-    { value: 1, weight: 0.37 * rotationMultiplier * singleOpportunityMultiplier },
-    { value: 2, weight: 0.09 * rotationMultiplier * twoRunMultiplier * clamp(1.05 - conditions.outfieldSpeedRating * 0.02, 0.82, 1.05) },
+    { value: 0, weight: dotWeight },
+    { value: 1, weight: singleWeight },
+    { value: 2, weight: twoWeight },
     { value: 3, weight: 0.0035 * threeRunFactor },
-    { value: 4, weight: 0.14 * boundaryFactor * aggressionProfile.fourMultiplier * clamp(conditions.outfieldSpeedRating / 7.5, 0.72, 1.25) },
-    { value: 6, weight: 0.052 * boundaryFactor ** 1.35 * aggressionProfile.sixMultiplier * clamp(69 / averageBoundary, 0.8, 1.3) },
+    { value: 4, weight: fourWeight },
+    { value: 6, weight: sixWeight },
   ]);
 }
 
@@ -1353,33 +1372,63 @@ export function getEffectiveBowlingRating(
   return rating;
 }
 
+export function getSeasonalPlayerForm(playerId: string, seed?: string): number {
+  if (!seed) return 0;
+  // Match seeds are `${season}:${save-specific fixture seed}:${fixture}`.
+  // Keeping the first two components makes form stable within one season and
+  // different across separate careers.
+  const seasonAndSaveKey = seed.split(":").slice(0, 2).join(":");
+  const hashStr = `${seasonAndSaveKey}:${playerId}:season_form_v3`;
+  let hash = 0;
+  for (let index = 0; index < hashStr.length; index += 1) {
+    hash = (hash << 5) - hash + hashStr.charCodeAt(index);
+    hash |= 0;
+  }
+  const u1 = Math.max(0.0001, (Math.abs(hash) % 10000) / 10000);
+  const u2 = Math.max(0.0001, (Math.abs(hash >> 3) % 10000) / 10000);
+  const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+  return clamp(z * 3, -7.5, 7.5);
+}
+
+export function capSeasonalFormAverages(
+  playerIds: readonly string[],
+  playerGroups: readonly (readonly string[])[],
+  seed?: string,
+): Map<string, number> {
+  const adjustedSeasonalForm = new Map(
+    playerIds.map((playerId) => [playerId, getSeasonalPlayerForm(playerId, seed)]),
+  );
+  playerGroups.forEach((group) => {
+    const ids = Array.from(new Set(group)).filter((playerId) => adjustedSeasonalForm.has(playerId));
+    if (ids.length === 0) return;
+    const average = ids.reduce(
+      (sum, playerId) => sum + (adjustedSeasonalForm.get(playerId) ?? 0),
+      0,
+    ) / ids.length;
+    const correction = clamp(average, -1.5, 1.5) - average;
+    ids.forEach((playerId) => adjustedSeasonalForm.set(
+      playerId,
+      (adjustedSeasonalForm.get(playerId) ?? 0) + correction,
+    ));
+  });
+  return adjustedSeasonalForm;
+}
+
 function createPlayerLuck(
   playerIds: readonly string[],
+  playerGroups: readonly (readonly string[])[],
   players: Record<string, Player>,
   formAdjustments: Record<string, number>,
   rng: SimulationRandom,
   seed?: string,
 ): Map<string, number> {
-  const seasonKey = seed ? seed.split(":")[0] : "";
+  const adjustedSeasonalForm = capSeasonalFormAverages(playerIds, playerGroups, seed);
   return new Map(playerIds.map((playerId) => {
     const player = players[playerId];
     if (!player) return [playerId, 0];
     const ageConsistency = player.age >= 25 && player.age <= 33 ? 0.85 : 1.15;
     
-    // Seasonal form offset (deterministic per season key + player ID)
-    let seasonalForm = 0;
-    if (seasonKey) {
-      const hashStr = `${seasonKey}:${playerId}:season_form_v2`;
-      let hash = 0;
-      for (let i = 0; i < hashStr.length; i++) {
-        hash = (hash << 5) - hash + hashStr.charCodeAt(i);
-        hash |= 0;
-      }
-      const u1 = Math.max(0.0001, (Math.abs(hash) % 10000) / 10000);
-      const u2 = Math.max(0.0001, (Math.abs(hash >> 3) % 10000) / 10000);
-      const z = Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2);
-      seasonalForm = Math.max(-7.5, Math.min(7.5, z * 3.0));
-    }
+    const seasonalForm = adjustedSeasonalForm.get(playerId) ?? 0;
 
     const standardDeviation = clamp(3.4 * ageConsistency, 1.8, 4.5);
     const matchLuck = rng.gaussian() * standardDeviation;
@@ -1765,6 +1814,27 @@ export function isNightMatch(time?: string): boolean {
   return t.includes("19") || t.includes("20") || t.includes("7:") || t.includes("8:") || t.includes("pm");
 }
 
+export function nightDewScoringBonus(
+  seed: string | undefined,
+  stadiumId: string,
+  time?: string,
+): number {
+  if (!isNightMatch(time)) return 0;
+  const normalizedStadium = stadiumId.toLowerCase();
+  const highDewVenue = ["wankhede", "chinnaswamy", "rajiv-gandhi", "hyderabad"]
+    .some((token) => normalizedStadium.includes(token));
+  const lowDewVenue = ["chepauk", "chidambaram", "ekana", "lucknow", "sawai", "jaipur", "mullanpur", "yadavindra"]
+    .some((token) => normalizedStadium.includes(token));
+  const activationChance = highDewVenue ? 0.55 : lowDewVenue ? 0.25 : 0.4;
+  const minimumBonus = highDewVenue ? 0.015 : 0.01;
+  const maximumBonus = highDewVenue ? 0.035 : lowDewVenue ? 0.022 : 0.03;
+  const fixtureKey = `${seed ?? "match"}:${stadiumId}:dew-v1`;
+  const activationRoll = hashSeed(`${fixtureKey}:active`) / 4294967296;
+  if (activationRoll >= activationChance) return 0;
+  const severityRoll = hashSeed(`${fixtureKey}:severity`) / 4294967296;
+  return minimumBonus + (maximumBonus - minimumBonus) * severityRoll;
+}
+
 export function isAfternoonMatch(time?: string): boolean {
   if (!time) return false;
   const t = time.toLowerCase();
@@ -1938,8 +2008,10 @@ function simulateInnings(context: InningsContext): MatchInnings {
   } = context;
   const maxOvers = context.maxOvers ?? 20;
   const { powerplayEnd, deathStart } = inningsPhaseThresholds(maxOvers);
-  const isNight = isNightMatch(context.time);
   const isAfternoon = isAfternoonMatch(context.time);
+  const dewScoringBonus = context.inningsNumber === 2
+    ? nightDewScoringBonus(context.seed, conditions.stadiumId, context.time)
+    : 0;
   const allParticipantIds = Array.from(new Set([
     ...batting.battingOrder,
     ...bowling.finalXI,
@@ -1947,6 +2019,7 @@ function simulateInnings(context: InningsContext): MatchInnings {
   ]));
   const playerLuck = createPlayerLuck(
     allParticipantIds,
+    [[...batting.battingOrder, ...batting.plan.impactSubs], bowling.finalXI],
     players,
     context.formAdjustments,
     rng,
@@ -2047,14 +2120,14 @@ function simulateInnings(context: InningsContext): MatchInnings {
   );
   let bowlingMomentumDeliveries = 0;
 
-  let inningsEnvironment = clamp(
-    1 + rng.gaussian() * 0.045,
-    0.88,
-    1.14,
-  );
+  const legacyInningsEnvironmentDraw = rng.gaussian();
   const tailRoll = rng.next();
-  if (tailRoll < 0.012) inningsEnvironment *= 0.76;
-  if (tailRoll > 0.98 && expectedCentre >= 195) inningsEnvironment *= 1.28;
+  void tailRoll;
+  const inningsEnvironment = context.matchScoringEnvironment * clamp(
+    1 + legacyInningsEnvironmentDraw * 0.02,
+    0.94,
+    1.06,
+  );
 
   while (
     legalBalls < maxOvers * 6
@@ -2114,8 +2187,11 @@ function simulateInnings(context: InningsContext): MatchInnings {
       const displayLegalBall = legalBallsThisOver + 1;
       const displayBall = `${overNumber - 1}.${displayLegalBall}`;
 
-      const isDewActive = context.inningsNumber === 2 && isNight && overNumber >= Math.ceil(maxOvers / 2);
-      const dewBowlerPenalty = isDewActive ? (bowler.role === "Spin Bowler" ? -2.5 : -1.2) : 0;
+      const isDewActive = dewScoringBonus > 0 && overNumber >= Math.ceil(maxOvers / 2);
+      const dewIntensity = dewScoringBonus / 0.025;
+      const dewBowlerPenalty = isDewActive
+        ? (bowler.role === "Spin Bowler" ? -2.5 : -1.2) * dewIntensity
+        : 0;
       const heatBowlerPenalty = isAfternoon && spellOverNumber >= 2 ? -1.5 : 0;
       const heatBatterPenalty = isAfternoon && strikerEntry.balls >= 35 ? -1.5 : 0;
 
@@ -2281,7 +2357,7 @@ function simulateInnings(context: InningsContext): MatchInnings {
 
         if (context.inningsNumber === 2 && target && runs < target) {
           const remainingRuns = Math.max(0, target - runs);
-          const remainingBalls = Math.max(1, 120 - legalBalls);
+          const remainingBalls = Math.max(1, maxOvers * 6 - legalBalls);
           requiredRunRate = (remainingRuns / (remainingBalls / 6));
 
           if (requiredRunRate >= 13.0) {
@@ -2290,6 +2366,12 @@ function simulateInnings(context: InningsContext): MatchInnings {
           } else if (requiredRunRate >= 10.0) {
             rrrRunModifier += 0.09;
             rrrWicketModifier += 0.009;
+          } else if (requiredRunRate <= 6.0) {
+            rrrRunModifier -= 0.07;
+          } else if (requiredRunRate <= 7.5) {
+            rrrRunModifier -= 0.045;
+          } else if (requiredRunRate <= 8.5) {
+            rrrRunModifier -= 0.02;
           }
         }
 
@@ -2390,11 +2472,13 @@ function simulateInnings(context: InningsContext): MatchInnings {
         const dotBallPressure = dotBallPressureAdjustment(consecutiveDotBalls);
         const aggressionProfile = battingAggressionScoringProfile(striker.battingAggression ?? 65);
         const runningPressure = groundRunningPressure(conditions);
-        const dewScoringMultiplier = isDewActive ? 1.06 : 1.0;
+        const dewScoringMultiplier = isDewActive ? 1 + dewScoringBonus : 1.0;
         const runEnvironment = clamp(
           clamp(expectedCentre / 159, 0.84, 1.16)
           * inningsEnvironment
-          * (1 + skillDelta * 0.0075)
+          // Ratings remain decisive, but an uncapped linear multiplier made a
+          // strong XI compound the same advantage into unrealistic season NRR.
+          * (1 + Math.sign(skillDelta) * Math.pow(Math.abs(skillDelta), 0.9) * 0.006)
           * (1 + context.skillEdge)
           * (1 + context.performanceTilt)
           * individualScoreScoringFactor
@@ -2481,7 +2565,7 @@ function simulateInnings(context: InningsContext): MatchInnings {
         const battingAllRounderRelief = isBattingAllRounder(bowler) ? 0.012 : 0;
         const wicketProbability = clamp(
           0.038
-          + dampedRatingDiff * 0.00135
+          + dampedRatingDiff * 0.00115
           + Math.max(0, intent) * 0.035
           + tacticalBowling.wicket
           + (fieldingRating - 75) * 0.00045
@@ -2503,7 +2587,6 @@ function simulateInnings(context: InningsContext): MatchInnings {
           - battingAllRounderRelief
           + individualScoreWicketPressure
           + centuryConversionAdjustment.wicketIncrease
-          + aggressionProfile.wicketProbabilityAdjustment
           - Math.min(0, intent) * -0.014,
           0.018,
           0.16,
@@ -3050,35 +3133,26 @@ export function simulateInstantMatch(input: MatchSimulationInput): MatchSimulati
     bowlingFirstPlans,
     "bowlingFirst",
   );
-  const battingFirstStrength = teamPlayingStrength(
-    battingFirstState.plan,
-    input.players,
-    "battingFirst",
-  ) + (
-    input.conditions.homeTeamId === battingFirstTeam.id
-      ? HOME_ADVANTAGE_STRENGTH_BONUS
-      : 0
+  // Individual ratings already affect every delivery. Applying aggregate XI
+  // strength as well counted the same quality gap twice, exaggerating strong
+  // teams' margins and season NRR. Keep only the modest home-ground edge.
+  const strengthEdge = input.conditions.homeTeamId === battingFirstTeam.id
+    ? HOME_ADVANTAGE_STRENGTH_BONUS * 0.002
+    : input.conditions.homeTeamId === bowlingFirstTeam.id
+      ? HOME_ADVANTAGE_STRENGTH_BONUS * -0.002
+      : 0;
+  // Player luck, form, conditions and delivery outcomes already create match
+  // variance. A mirrored team-wide swing boosts one innings while suppressing
+  // the other, so even a small value disproportionately widens margins and NRR.
+  // Consume the legacy draw so existing deterministic fixture seeds keep the
+  // same downstream delivery sequence while the obsolete effect stays disabled.
+  rng.gaussian();
+  const performanceEdge = 0;
+  const matchScoringEnvironment = clamp(
+    1 + seededGaussian(`${input.seed}:shared-scoring-environment-v3`) * 0.02,
+    0.94,
+    1.06,
   );
-  const bowlingFirstStrength = teamPlayingStrength(
-    bowlingFirstState.plan,
-    input.players,
-    "bowlingFirst",
-  ) + (
-    input.conditions.homeTeamId === bowlingFirstTeam.id
-      ? HOME_ADVANTAGE_STRENGTH_BONUS
-      : 0
-  );
-  const probabilityBattingFirstWins = estimateTeamWinProbability(
-    battingFirstStrength,
-    bowlingFirstStrength,
-  );
-  const performanceFavoursBattingFirst = rng.next() < probabilityBattingFirstWins;
-  const rawDifference = battingFirstStrength - bowlingFirstStrength;
-  const strengthEdge = clamp(rawDifference * 0.002, -0.025, 0.025);
-  // Match-level performance variance is strong enough to produce a genuine
-  // upset when the pre-match probability roll favours the underdog. Ratings
-  // still shape every delivery, but are not counted twice into a 98-99% result.
-  const performanceEdge = performanceFavoursBattingFirst ? 0.12 : -0.12;
 
   const derivedForm = input.recentScorecards && input.recentScorecards.length > 0
     ? derivePlayerFormAdjustments(input.recentScorecards)
@@ -3100,6 +3174,7 @@ export function simulateInstantMatch(input: MatchSimulationInput): MatchSimulati
     rng,
     skillEdge: strengthEdge,
     performanceTilt: performanceEdge,
+    matchScoringEnvironment,
     formAdjustments: activeFormAdjustments,
     allowCollapseImpact: true,
     seed: input.seed,
@@ -3145,6 +3220,7 @@ export function simulateInstantMatch(input: MatchSimulationInput): MatchSimulati
     firstInningsWickets: firstInnings.wickets,
     skillEdge: -strengthEdge,
     performanceTilt: -performanceEdge,
+    matchScoringEnvironment,
     formAdjustments: activeFormAdjustments,
     priorBattingBalls: Object.fromEntries(
       firstInnings.batting.map((entry) => [entry.id, entry.balls]),
