@@ -27,7 +27,8 @@ import {
   buildAutomaticLineupSelection,
   playerToLineupCandidate,
 } from "@/lib/logic/automaticLineupBuilder";
-import { type PlayerInjury, getInjuryReturnLabel } from "@/lib/logic/injuries";
+import { type PlayerInjury } from "@/lib/logic/injuries";
+import { InjuryStatusMarker } from "./InjuryStatusMarker";
 import type { Player, Team } from "@/lib/types";
 
 interface TacticsLineupBuilderProps {
@@ -107,38 +108,6 @@ const OverseasMarker = () => (
     OS
   </span>
 );
-
-const InjuryMarker = ({ injury }: { injury?: PlayerInjury }) => {
-  if (!injury) return null;
-  const isMajor = injury.category === "major";
-  const colorClass = isMajor 
-    ? "bg-red-600 text-white hover:bg-red-700" 
-    : "bg-amber-500 text-black hover:bg-amber-600";
-  
-  return (
-    <span className="relative group inline-block cursor-help shrink-0">
-      <span className={`rounded px-1 py-[1px] font-space-mono text-[7px] font-bold uppercase leading-none tracking-tight ${colorClass}`}>
-        INJ
-      </span>
-      <span className={`pointer-events-none absolute bottom-full left-1/2 z-[999] mb-2 w-56 -translate-x-1/2 scale-95 rounded-lg border p-2.5 shadow-xl opacity-0 transition-all duration-150 group-hover:pointer-events-auto group-hover:opacity-100 group-hover:scale-100 ${isMajor ? "bg-red-950/95 border-red-500 text-red-100" : "bg-amber-950/95 border-amber-500 text-amber-100"}`}>
-        <span className="block font-bold text-xs uppercase mb-1 tracking-wide">{injury.conditionName}</span>
-        <span className="block text-[10px] opacity-90 leading-tight">
-          Severity: <strong className="capitalize">{injury.category}</strong>
-        </span>
-        <span className="block text-[10px] opacity-90 leading-tight mt-0.5">
-          {getInjuryReturnLabel(injury)}
-        </span>
-        {isMajor ? (
-          <span className="block text-[10px] text-red-400 font-bold mt-1.5 uppercase tracking-wide">Unavailable for Selection</span>
-        ) : (
-          <span className="block text-[10px] opacity-90 leading-tight mt-0.5">
-            Worsening Risk: <strong className="capitalize">{injury.worseningRisk}</strong>
-          </span>
-        )}
-      </span>
-    </span>
-  );
-};
 
 export default function TacticsLineupBuilder({
   team,
@@ -378,7 +347,7 @@ export default function TacticsLineupBuilder({
                 >
                   <GripVertical size={16} className="text-text-secondary/55" />
                   <button type="button" onClick={() => onOpenPlayer(player.id)} className="min-w-0 text-left">
-                    <span className="flex min-h-4 items-center gap-1.5 leading-none"><span className="truncate text-[14px] font-bold leading-none text-text-primary hover:underline">{player.name}</span>{player.nationality === "Overseas" && <OverseasMarker />}<InjuryMarker injury={injury} />{keeper && <span className={`inline-flex items-center px-1.5 py-0.5 font-space-mono text-[10px] font-bold leading-none ${keeper === "PT WK" ? "bg-amber-500/15 text-amber-700 dark:text-amber-300" : "bg-success/15 text-success"}`}>{keeper}</span>}</span>
+                    <span className="flex min-h-4 items-center gap-1.5 leading-none"><span className="truncate text-[14px] font-bold leading-none text-text-primary hover:underline">{player.name}</span>{player.nationality === "Overseas" && <OverseasMarker />}<InjuryStatusMarker injury={injury} />{keeper && <span className={`inline-flex items-center px-1.5 py-0.5 font-space-mono text-[10px] font-bold leading-none ${keeper === "PT WK" ? "bg-amber-500/15 text-amber-700 dark:text-amber-300" : "bg-success/15 text-success"}`}>{keeper}</span>}</span>
                     <span className="mt-0.5 block font-space-mono text-[12px] font-bold uppercase text-text-secondary">{roleLabel(player.role)}</span>
                   </button>
                   <span className="text-center font-space-mono text-[13px] font-bold text-text-primary" title="Batting rating">{player.currentBatting}</span>
@@ -460,7 +429,7 @@ export default function TacticsLineupBuilder({
                     {index + 1}
                   </span>
                   <button type="button" onClick={() => onOpenPlayer(player.id)} className="flex h-full min-h-0 min-w-0 flex-col justify-center self-center overflow-visible text-left">
-                    <span className="flex min-h-4 items-center gap-1.5 leading-none"><span className="truncate text-[14px] font-bold leading-none text-text-primary hover:underline">{player.name}</span>{player.nationality === "Overseas" && <OverseasMarker />}<InjuryMarker injury={injury} />{keeper && <span className={`inline-flex items-center px-1.5 py-0.5 font-space-mono text-[10px] font-bold leading-none ${keeper === "PT WK" ? "bg-amber-500/15 text-amber-700 dark:text-amber-300" : "bg-success/15 text-success"}`}>{keeper}</span>}</span>
+                    <span className="flex min-h-4 items-center gap-1.5 leading-none"><span className="truncate text-[14px] font-bold leading-none text-text-primary hover:underline">{player.name}</span>{player.nationality === "Overseas" && <OverseasMarker />}<InjuryStatusMarker injury={injury} />{keeper && <span className={`inline-flex items-center px-1.5 py-0.5 font-space-mono text-[10px] font-bold leading-none ${keeper === "PT WK" ? "bg-amber-500/15 text-amber-700 dark:text-amber-300" : "bg-success/15 text-success"}`}>{keeper}</span>}</span>
                     <span className="mt-1 block truncate font-space-mono text-[10px] font-bold uppercase leading-none text-text-secondary [@media(max-height:650px)]:hidden">{roleLabel(player.role)}{player.isOpener ? " · Opener" : ""} · BAT {player.currentBatting} · BOWL {player.currentBowling}</span>
                   </button>
                 </div>
@@ -533,7 +502,7 @@ export default function TacticsLineupBuilder({
                     <GripVertical size={14} className="shrink-0 text-text-secondary/55 [@media(max-height:650px)]:hidden" />
                     <span className={`flex h-[min(1.5rem,calc(100%_-_0.125rem))] aspect-square shrink-0 items-center justify-center rounded-full font-anton text-[12px] leading-none [@media(max-height:650px)]:text-[10px] ${isPlayerIneligibleOS ? "bg-red-500 text-white" : "bg-accent text-[#16130f]"}`}>{index + 1}</span>
                     <button type="button" onClick={() => onOpenPlayer(player.id)} className="flex h-full min-h-0 min-w-0 flex-1 flex-col justify-center overflow-visible text-left"><span className="flex items-center gap-1 text-[13px] font-bold leading-none text-text-primary"><span className="truncate hover:underline">{player.name}</span>{player.nationality === "Overseas" && <OverseasMarker />}</span><span className="mt-0.5 font-space-mono text-[9px] font-bold uppercase leading-none text-text-primary/75 [@media(max-height:800px)]:hidden">{roleLabel(player.role)}{keeper ? ` · ${keeper}` : ""}</span></button>
-                    <InjuryMarker injury={injury} />
+                    <InjuryStatusMarker injury={injury} />
                     {isPlayerIneligibleOS && (
                       <span className="shrink-0 rounded border border-red-500/30 bg-red-500/15 px-1.5 py-0.5 font-space-mono text-[7px] font-bold text-red-600 dark:text-red-400" title="Starting XI already has 4 Overseas players; this player cannot be subbed in">
                         Ineligible (4 OS)

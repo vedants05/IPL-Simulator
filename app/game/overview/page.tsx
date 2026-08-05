@@ -64,6 +64,7 @@ import { appendRainAffectedResultLabel, isRainAffectedMatch } from "@/lib/logic/
 import type { IplCareerMatchUpdate } from "@/lib/logic/iplCareerStats";
 import { formatStatValue } from "@/lib/logic/statFormatting";
 import {
+  createPlayerInjury,
   getInjuryReturnLabel,
   getPlayerMinorInjury,
   isPlayerMajorInjured,
@@ -71,6 +72,7 @@ import {
   type PlayerInjury,
 } from "@/lib/logic/injuries";
 import {
+  getInjuredPlayerSalary,
   injuryQualifiesForReplacement,
   replacementForInjury,
 } from "@/lib/logic/injuryReplacements";
@@ -89,6 +91,7 @@ const MinorRecords = dynamic(() => import("@/components/history/MinorRecords"), 
 const CaptaincyPage = dynamic(() => import("@/components/squad/CaptaincyPage"), { ssr: false });
 const SquadAnalysisPage = dynamic(() => import("@/components/squad/SquadAnalysisPage"), { ssr: false });
 const InjuryHubPage = dynamic(() => import("@/components/squad/InjuryHubPage"), { ssr: false });
+import { InjuryStatusMarker } from "@/components/squad/InjuryStatusMarker";
 import TacticsLineupBuilder from "@/components/squad/TacticsLineupBuilder";
 const TeamTacticsPage = dynamic(() => import("@/components/squad/TeamTacticsPage"), { ssr: false });
 const PitchCuratorPage = dynamic(() => import("@/components/club/PitchCuratorPage"), { ssr: false });
@@ -402,6 +405,9 @@ const getCompactPlayerRole = (role: Player["role"]) => ({
 const normalizeLeagueHistoryPlayerName = (name: string) => name.toLocaleLowerCase("en-GB").replace(/[^a-z0-9]/g, "");
 const HOME_NEXT_FIXTURE_ROW_HEIGHT = 24;
 const CALENDAR_SELECTED_COLOR = "#2563eb";
+// Temporary QA hook requested for testing the injury-replacement workflow.
+// Remove after the selector has been verified.
+const FORCE_USER_REPLACEMENT_TEST_INJURY = true;
 
 function ClubProfileSummaryTile({
   team,
@@ -2653,6 +2659,55 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}${replacementEligible
     return result;
   };
 
+  const forceUserReplacementTestInjury = (date: string): PlayerInjury[] => {
+    if (!FORCE_USER_REPLACEMENT_TEST_INJURY) return [];
+    const state = useGameStore.getState();
+    const forcedDate = addDaysToDateKey(getSeasonDates(state.currentSeason).auctionDate, 1);
+    if (date !== forcedDate || state.auction?.phase !== "completed") return [];
+
+    const alreadyCreated = [
+      ...Object.values(state.activeInjuries),
+      ...state.injuryHistory,
+    ].some((injury) => (
+      injury.teamId === state.userTeamId
+      && injury.season === state.currentSeason
+      && injury.startedOn === forcedDate
+      && injury.conditionId === "acl-rupture"
+    ));
+    if (alreadyCreated) return [];
+
+    const userTeam = state.teams[state.userTeamId];
+    if (!userTeam) return [];
+    const selectedPlayer = userTeam.squad
+      .map((playerId) => state.players[playerId])
+      .filter((player): player is Player => Boolean(player && !state.activeInjuries[player.id]))
+      .sort((left, right) => (
+        getInjuredPlayerSalary(right, userTeam.id, state.currentSeason)
+        - getInjuredPlayerSalary(left, userTeam.id, state.currentSeason)
+        || getPlayerRating(right) - getPlayerRating(left)
+        || left.name.localeCompare(right.name)
+      ))[0];
+    if (!selectedPlayer) return [];
+
+    const injury = createPlayerInjury({
+      player: selectedPlayer,
+      teamId: userTeam.id,
+      season: state.currentSeason,
+      date,
+      source: "background",
+      seed: `${state.fixtureSeed}:forced-user-replacement-test:${state.currentSeason}`,
+      category: "major",
+      conditionId: "acl-rupture",
+    });
+    useGameStore.setState({
+      activeInjuries: {
+        ...useGameStore.getState().activeInjuries,
+        [selectedPlayer.id]: injury,
+      },
+    });
+    return [injury];
+  };
+
   const processCalendarInjuries = (date: string) => {
     const finalDate = getSeasonFinalDate();
     const firstFixtureDate = fixturesRef.current
@@ -2660,7 +2715,7 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}${replacementEligible
       .filter((fixtureDate): fixtureDate is string => Boolean(fixtureDate))
       .sort()[0];
     const liveAuction = useGameStore.getState().auction;
-    const result = processBackgroundInjuries({
+    const backgroundResult = processBackgroundInjuries({
       date,
       season: currentSeason,
       seed: fixtureSeed,
@@ -2674,6 +2729,10 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}${replacementEligible
         && date <= finalDate
       ),
     });
+    const forcedCreated = forceUserReplacementTestInjury(date);
+    const result: InjuryProcessingResult = forcedCreated.length > 0
+      ? { ...backgroundResult, created: [...backgroundResult.created, ...forcedCreated] }
+      : backgroundResult;
     processAIReplacementSignings(date);
     publishUserInjuryUpdates(result, date);
     return result;
@@ -3959,6 +4018,13 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}${replacementEligible
   const rosterSortIndicator = (key: RosterSortKey) =>
     rosterSort.key === key ? (rosterSort.direction === "asc" ? "↑" : "↓") : "↕";
 
+  const renderRosterPlayerName = (player: Player) => (
+    <span className="flex min-w-0 items-center gap-2">
+      <span className="truncate">{player.name}</span>
+      <InjuryStatusMarker injury={activeInjuries[player.id]} />
+    </span>
+  );
+
   const rosterColumns: Array<{
     key: RosterSortKey; label: string; align?: "left" | "center" | "right";
     render: (player: Player) => React.ReactNode;
@@ -3966,7 +4032,7 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}${replacementEligible
     const season = (player: Player) => playerStats[player.id];
     const number = (value: number | undefined, digits = 0) => value === undefined || !Number.isFinite(value) ? "—" : value.toFixed(digits);
     if (rosterView === "general") return [
-      { key: "name", label: "Name", render: (player) => player.name },
+      { key: "name", label: "Name", render: renderRosterPlayerName },
       { key: "age", label: "Age", align: "center", render: (player) => player.age },
       { key: "role", label: "Role", render: (player) => player.role },
       { key: "nationality", label: "Nationality", render: (player) => player.nationality },
@@ -3977,7 +4043,7 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}${replacementEligible
       } },
     ];
     if (rosterView === "bowling") return [
-      { key: "name", label: "Name", render: (player) => player.name },
+      { key: "name", label: "Name", render: renderRosterPlayerName },
       { key: "bowlingCA", label: "Bowl CA", align: "center", render: (player) => player.currentBowling },
       { key: "bowlingPA", label: "Bowl PA", align: "center", render: (player) => player.potentialBowling },
       { key: "seasonMatches", label: "Mat", align: "center", render: (player) => season(player)?.matches ?? 0 },
@@ -3987,7 +4053,7 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}${replacementEligible
       { key: "seasonBestBowling", label: "Best", align: "center", render: (player) => season(player)?.bestBowling ?? "—" },
     ];
     if (rosterView === "batting") return [
-      { key: "name", label: "Name", render: (player) => player.name },
+      { key: "name", label: "Name", render: renderRosterPlayerName },
       { key: "battingCA", label: "Bat CA", align: "center", render: (player) => player.currentBatting },
       { key: "battingPA", label: "Bat PA", align: "center", render: (player) => player.potentialBatting },
       { key: "seasonMatches", label: "Mat", align: "center", render: (player) => season(player)?.matches ?? 0 },
@@ -3997,7 +4063,7 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}${replacementEligible
       { key: "seasonHighScore", label: "HS", align: "center", render: (player) => season(player)?.highestScore ?? "—" },
     ];
     return [
-      { key: "name", label: "Name", render: (player) => player.name },
+      { key: "name", label: "Name", render: renderRosterPlayerName },
       { key: "iplMatches", label: "Matches", align: "center", render: (player) => player.iplStats?.matches ?? 0 },
       { key: "iplRuns", label: "Runs", align: "center", render: (player) => player.iplStats?.runs ?? 0 },
       { key: "iplBattingAverage", label: "Bat Avg", align: "center", render: (player) => number(player.iplStats?.battingAverage, 1) },
@@ -6295,8 +6361,9 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}${replacementEligible
                                         <span className={`font-space-mono text-[7px] font-extrabold tabular-nums ${player ? plan.textClass : "text-text-secondary/45"}`}>
                                           {String(index + 1).padStart(2, "0")}
                                         </span>
-                                        <span className={`truncate text-[9px] leading-none ${player ? "font-semibold text-text-primary" : "font-medium italic text-text-secondary/45"}`}>
-                                          {player ? player.name : "Empty slot"}
+                                        <span className={`flex min-w-0 items-center gap-1 text-[9px] leading-none ${player ? "font-semibold text-text-primary" : "font-medium italic text-text-secondary/45"}`}>
+                                          <span className="truncate">{player ? player.name : "Empty slot"}</span>
+                                          {player && <InjuryStatusMarker injury={activeInjuries[player.id]} />}
                                         </span>
                                         {player && (
                                           <span className="flex shrink-0 items-center gap-1">
