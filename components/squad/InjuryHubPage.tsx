@@ -137,8 +137,9 @@ export default function InjuryHubPage({
     currentSeason,
   ) >= MAX_INJURY_REPLACEMENTS_PER_TEAM;
 
-  const replacementName = (injuryId: string) => {
-    const record = replacementForInjury(replacementRecords, injuryId);
+  const replacementName = (injury: PlayerInjury) => {
+    const record = replacementForInjury(replacementRecords, injury.id)
+      ?? replacementRecords.find((candidate) => candidate.season === injury.season && candidate.injuredPlayerId === injury.playerId);
     return record ? players[record.replacementPlayerId]?.name ?? record.replacementPlayerName ?? record.replacementPlayerId : "—";
   };
 
@@ -294,7 +295,7 @@ export default function InjuryHubPage({
                           <span className={`inline-flex border px-2 py-1 font-space-mono text-[8px] font-bold uppercase ${categoryClass(injury.category)}`}>{injury.category}</span>
                         </td>
                         <td className="px-3 py-3 font-space-mono text-[9px] font-bold uppercase text-text-secondary">{riskLabel(injury)}</td>
-                        <td className="px-3 py-3 text-xs font-semibold leading-4 text-text-primary"><span className="line-clamp-2">{replacementName(injury.id)}</span></td>
+                        <td className="px-3 py-3 text-xs font-semibold leading-4 text-text-primary"><span className="line-clamp-2">{replacementName(injury)}</span></td>
                         <td className="px-3 py-3 font-space-mono text-[12px] leading-4 text-text-primary"><span className="line-clamp-2">{getInjuryReturnLabel(injury, seasonFinalDate)}</span></td>
                         <td className="px-3 py-3 text-right font-space-mono text-[8px] font-bold uppercase">
                           <span className={injury.category === "major" ? "text-danger" : "text-amber-700 dark:text-amber-300"}>
@@ -341,7 +342,7 @@ export default function InjuryHubPage({
                       <td className="px-3 py-3 font-medium leading-4 text-text-primary"><span className="line-clamp-2">{injury.conditionName}</span></td>
                       <td className="px-3 py-3"><span className={`inline-flex border px-2 py-1 font-space-mono text-[8px] font-bold uppercase ${categoryClass(injury.category)}`}>{injury.category}</span></td>
                       <td className="px-3 py-3 font-space-mono text-[12px] text-text-secondary">{displayDate(injury.startedOn)}</td>
-                      <td className="px-3 py-3 text-xs font-semibold leading-4 text-text-primary"><span className="line-clamp-2">{replacementName(injury.id)}</span></td>
+                      <td className="px-3 py-3 text-xs font-semibold leading-4 text-text-primary"><span className="line-clamp-2">{replacementName(injury)}</span></td>
                       <td className="px-3 py-3 font-space-mono text-[12px] text-text-secondary">{displayDate(injury.endedOn)}</td>
                       <td className="px-3 py-3 text-right font-space-mono text-[8px] font-bold uppercase">
                         <span className={injury.resolution === "worsened" ? "text-danger" : "text-success"}>

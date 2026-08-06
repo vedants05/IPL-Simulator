@@ -57,6 +57,9 @@ export interface IPLHistoryEntry {
   season: string;
   price: number;
   isRtm?: boolean;
+  tradedFromTeamId?: string;
+  tradedToTeamId?: string;
+  tradeId?: string;
   /** Signed from the season's unsold pool after a season-ending injury. */
   isInjuryReplacement?: boolean;
   replacedPlayerId?: string;
@@ -254,6 +257,33 @@ export interface AuctionState {
   soldFlash: { playerId: string; teamId: string; amount: number } | null;
   unsoldFlash: { playerId: string } | null;
   saleHistory: Array<{ playerId: string; teamId: string; price: number; lot: number; bids: BidEntry[] }>;
+}
+
+export type TradeWillingness = "available" | "open" | "reluctant" | "highly-reluctant";
+
+export interface TradeRecord {
+  id: string;
+  season: number;
+  date: string;
+  fromTeamId: string;
+  toTeamId: string;
+  outgoingPlayerIds: string[];
+  incomingPlayerIds: string[];
+  salaries: Record<string, number>;
+  explanation?: string;
+}
+
+export interface TradeOffer {
+  id: string;
+  season: number;
+  date: string;
+  proposerTeamId: string;
+  recipientTeamId: string;
+  offeredPlayerIds: string[];
+  requestedPlayerIds: string[];
+  status: "pending" | "accepted" | "rejected" | "countered" | "expired";
+  explanation?: string;
+  counterOfferIds?: string[];
 }
 
 export interface SkipSetResultItem {

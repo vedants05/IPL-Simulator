@@ -53,3 +53,7 @@ simulation_*_report.json
 *.test.ts
 /scripts/
 
+# Local scratch work and design handoff exports are not part of the game build
+/scratch/
+/design_handoff_auction_room/
+

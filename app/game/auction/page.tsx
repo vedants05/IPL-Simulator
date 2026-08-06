@@ -17,6 +17,7 @@ import SkipSetSummaryModal from "@/components/auction/SkipSetSummaryModal";
 import { Lock, Target, X } from "lucide-react";
 import { formatPrice } from "@/lib/logic/auctionRules";
 import { wasPlayerAcquiredViaRtm } from "@/lib/logic/playerHistory";
+import { getAuctionEndSquadIds } from "@/lib/logic/auctionSquadSnapshot";
 import type { Player } from "@/lib/types";
 import {
   getSeasonAccessStorageKey,
@@ -1600,6 +1601,8 @@ function TeamSquadCard({
 }) {
   const [isDark, setIsDark] = useState(false);
   const auction = useGameStore((state) => state.auction);
+  const tradeRecords = useGameStore((state) => state.tradeRecords);
+  const injuryReplacementRecords = useGameStore((state) => state.injuryReplacementRecords);
 
   useEffect(() => {
     setIsDark(document.documentElement.classList.contains("dark"));
@@ -1610,7 +1613,18 @@ function TeamSquadCard({
     return () => observer.disconnect();
   }, []);
 
-  const squad = Array.from(new Set(team.squad)).map((id) => players[id]).filter(Boolean);
+  const auctionSquadIds = auction?.phase === "completed"
+    ? getAuctionEndSquadIds({
+        team,
+        auctionSeason: auction.season,
+        tradeRecords,
+        replacementRecords: injuryReplacementRecords,
+      })
+    : team.squad;
+  const squad = Array.from(new Set(auctionSquadIds)).map((id) => players[id]).filter(Boolean);
+  const auctionPurse = auction?.teamPurses[team.id];
+  const displayedRemainingPurse = auctionPurse?.remaining ?? team.remainingPurse;
+  const displayedSpentAmount = team.totalPurse - displayedRemainingPurse;
   const overseas = squad.filter((p) => p.nationality === "Overseas").length;
   const lineup = selectPotentialLineup(squad);
 
@@ -1667,8 +1681,8 @@ function TeamSquadCard({
         {/* Stat strip */}
         <div className="flex items-stretch text-center shrink-0" style={{ borderBottom: "1px solid rgba(22,19,15,.15)" }}>
           {[
-            { l: "SPENT", v: `₹${(team.spentAmount / 100).toFixed(1)}Cr` },
-            { l: "LEFT", v: `₹${(team.remainingPurse / 100).toFixed(1)}Cr` },
+            { l: "SPENT", v: `₹${(displayedSpentAmount / 100).toFixed(1)}Cr` },
+            { l: "LEFT", v: `₹${(displayedRemainingPurse / 100).toFixed(1)}Cr` },
             { l: "OVERSEAS", v: `${overseas}/8` },
           ].map((s, i) => (
             <div key={s.l} className="flex-1 py-2" style={i < 2 ? { borderRight: "1px solid rgba(22,19,15,.12)" } : {}}>
@@ -1821,7 +1835,7 @@ function TeamSquadCard({
 }
 
 function AuctionComplete() {
-  const { auction, teams, players, userTeamId, currentSeason } = useGameStore();
+  const { auction, teams, players, userTeamId, currentSeason, tradeRecords, injuryReplacementRecords } = useGameStore();
   const [summaryTab] = useState<"buys" | "unsold">("buys");
   // Keep this unresolved during the first client render. Defaulting to false
   // briefly exposed the CTA before the persisted season state was loaded.
@@ -1852,10 +1866,11 @@ function AuctionComplete() {
   const userTeam = teams[userTeamId];
 
   // User team first, then the rest by spend (biggest spenders lead)
+  const auctionSpend = (teamId: string) => teams[teamId].totalPurse - (auction?.teamPurses[teamId]?.remaining ?? teams[teamId].remainingPurse);
   const ordered = Object.values(teams).sort((a, b) => {
     if (a.id === userTeamId) return -1;
     if (b.id === userTeamId) return 1;
-    return b.spentAmount - a.spentAmount;
+    return auctionSpend(b.id) - auctionSpend(a.id);
   });
 
   // saleHistory is the authoritative record of auction purchases. Keep only
@@ -1889,23 +1904,19 @@ function AuctionComplete() {
 
   const topBuys = soldPlayersList.slice(0, 5);
   const auctionPlayerIds = new Set(auction?.allPlayerIds ?? []);
+  const unsoldSnapshotIds = new Set(auction?.unsoldPlayerIds ?? []);
   const rankedUnsoldPlayers: Player[] = Object.values(players)
-    .filter((player): player is Player =>
-      !!player &&
-      !player.currentTeamId &&
-      !player.isRetained &&
-      (auctionPlayerIds.size === 0 || auctionPlayerIds.has(player.id))
-    )
+    .filter((player): player is Player => !!player && (unsoldSnapshotIds.size > 0 ? unsoldSnapshotIds.has(player.id) : (!player.currentTeamId && !player.isRetained && (auctionPlayerIds.size === 0 || auctionPlayerIds.has(player.id)))))
     .sort((a, b) => playerRating(b) - playerRating(a) || (b.basePrice - a.basePrice));
   const majorUnsoldIndians = rankedUnsoldPlayers.filter((player) => player.nationality === "Indian").slice(0, 5);
   const majorUnsoldOverseas = rankedUnsoldPlayers.filter((player) => player.nationality === "Overseas").slice(0, 5);
   const majorUnsoldPlayers = rankedUnsoldPlayers.slice(0, 5);
-  const totalSpentAll = Object.values(teams).reduce((acc, t) => acc + t.spentAmount, 0);
+  const totalSpentAll = Object.values(teams).reduce((acc, team) => acc + auctionSpend(team.id), 0);
   const totalSold = soldPlayersList.length;
   const avgPrice = totalSold > 0 ? (totalSpentAll / totalSold).toFixed(1) : "0.0";
 
   // User squad details
-  const userSquad = userTeam?.squad.map((id) => players[id]).filter(Boolean) || [];
+  const userSquad = userTeam ? getAuctionEndSquadIds({ team: userTeam, auctionSeason: auction?.season, tradeRecords, replacementRecords: injuryReplacementRecords }).map((id) => players[id]).filter(Boolean) : [];
   const userAvgRating = userSquad.length > 0
     ? (userSquad.reduce((acc, p) => acc + playerRating(p), 0) / userSquad.length).toFixed(1)
     : "0.0";
@@ -1968,7 +1979,7 @@ function AuctionComplete() {
                     Spent
                   </div>
                   <div className="font-barlow-condensed font-bold text-[22px] text-text-primary">
-                    ₹{((userTeam?.spentAmount ?? 0) / 100).toFixed(2)} Cr
+                    ₹{(userTeam ? auctionSpend(userTeam.id) / 100 : 0).toFixed(2)} Cr
                   </div>
                 </div>
                 <div>
@@ -1976,7 +1987,7 @@ function AuctionComplete() {
                     Purse Left
                   </div>
                   <div className="font-barlow-condensed font-bold text-[22px] text-accent">
-                    ₹{((userTeam?.remainingPurse ?? 0) / 100).toFixed(2)} Cr
+                    ₹{(userTeam ? (auction?.teamPurses[userTeam.id]?.remaining ?? userTeam.remainingPurse) / 100 : 0).toFixed(2)} Cr
                   </div>
                 </div>
                 <div>

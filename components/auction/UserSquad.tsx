@@ -4,6 +4,7 @@ import { useGameStore, getActiveSeasonYear } from "@/lib/store/gameStore";
 import { wasPlayerAcquiredViaRtm } from "@/lib/logic/playerHistory";
 import { Player } from "@/lib/types";
 import PlayerCard from "./PlayerCard";
+import { getAuctionEndSquadIds } from "@/lib/logic/auctionSquadSnapshot";
 
 const ROLE_GROUPS = [
   { label: "WK", role: "WK-Batsman" },
@@ -18,7 +19,7 @@ function crore(lakhs: number) {
 }
 
 export default function UserSquad() {
-  const { teams, players, userTeamId, auction } = useGameStore();
+  const { teams, players, userTeamId, auction, tradeRecords, injuryReplacementRecords } = useGameStore();
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
   const popoutRef = useRef<HTMLDivElement>(null);
   const userTeam = teams[userTeamId];
@@ -44,7 +45,7 @@ export default function UserSquad() {
 
   if (!userTeam) return null;
 
-  const squadPlayers = userTeam.squad.map((id) => players[id]).filter(Boolean);
+  const squadPlayers = (auction?.phase === "completed" ? getAuctionEndSquadIds({ team: userTeam, auctionSeason: auction.season, tradeRecords, replacementRecords: injuryReplacementRecords }) : userTeam.squad).map((id) => players[id]).filter(Boolean);
   const purseInfo = auction?.teamPurses[userTeamId];
   const remaining = purseInfo?.remaining ?? userTeam.remainingPurse;
   const rtmLeft = userTeam.rtmCardsTotal - userTeam.rtmCardsUsed;

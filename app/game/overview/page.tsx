@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useLayoutEffect, useMemo, useRef, Suspense, useCallback, type CSSProperties } from "react";
+import { useState, useEffect, useLayoutEffect, useMemo, useRef, Suspense, Fragment, useCallback, type CSSProperties } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -56,6 +56,7 @@ import {
   SEASON_ACCESS_ENABLED,
 } from "@/lib/config/featureFlags";
 import { getClubSeasonHistory, LAST_HISTORICAL_CLUB_SEASON } from "@/lib/data/clubHistory";
+import { getAuctionTypeForSeason } from "@/lib/logic/auctionCycle";
 import { getClubFigures, type ClubFigureTier } from "@/lib/data/clubFigures";
 import { HISTORICAL_LEAGUE_HISTORY, LEAGUE_HISTORY_TEAMS } from "@/lib/data/leagueHistory";
 import { OTHER_LEAGUE_RECORDS } from "@/lib/data/leagueRecords";
@@ -92,6 +93,7 @@ const CaptaincyPage = dynamic(() => import("@/components/squad/CaptaincyPage"), 
 const SquadAnalysisPage = dynamic(() => import("@/components/squad/SquadAnalysisPage"), { ssr: false });
 const InjuryHubPage = dynamic(() => import("@/components/squad/InjuryHubPage"), { ssr: false });
 import { InjuryStatusMarker } from "@/components/squad/InjuryStatusMarker";
+const TradeHubPage = dynamic(() => import("@/components/scouting/TradeHubPage"), { ssr: false });
 import TacticsLineupBuilder from "@/components/squad/TacticsLineupBuilder";
 const TeamTacticsPage = dynamic(() => import("@/components/squad/TeamTacticsPage"), { ssr: false });
 const PitchCuratorPage = dynamic(() => import("@/components/club/PitchCuratorPage"), { ssr: false });
@@ -407,7 +409,6 @@ const HOME_NEXT_FIXTURE_ROW_HEIGHT = 24;
 const CALENDAR_SELECTED_COLOR = "#2563eb";
 // Temporary QA hook requested for testing the injury-replacement workflow.
 // Remove after the selector has been verified.
-const FORCE_USER_REPLACEMENT_TEST_INJURY = true;
 
 function ClubProfileSummaryTile({
   team,
@@ -660,6 +661,7 @@ function OverviewPageContent() {
     activeInjuries,
     injuryHistory,
     injuryReplacementRecords,
+    tradeRecords,
     retiredPlayerSnapshots,
     lastCareerRetirements,
     careerRetirementHistory,
@@ -668,6 +670,8 @@ function OverviewPageContent() {
     reconcileInjuries,
     signInjuryReplacement,
     processAIInjuryReplacements,
+    executeTrade,
+    processAITrades,
   } = useGameStore();
   const matchArchiveCareerId = `${userTeamId}:${currentSeason}:${fixtureSeed}`;
   const userTeam = teams[userTeamId];
@@ -907,7 +911,15 @@ function OverviewPageContent() {
         scheduleAnnouncement.setDate(scheduleAnnouncement.getDate() - 21);
         const scheduleAnnouncementDate = `${scheduleAnnouncement.getFullYear()}-${String(scheduleAnnouncement.getMonth() + 1).padStart(2, "0")}-${String(scheduleAnnouncement.getDate()).padStart(2, "0")}`;
 
-        return getDaySimulationIntervalMs(simulationDate, auctionDate, scheduleAnnouncementDate);
+        const baseInterval = getDaySimulationIntervalMs(simulationDate, auctionDate, scheduleAnnouncementDate);
+        const finalDate = fixturesRef.current
+          .find((fixture) => fixture.stage === "final")?.date;
+        const retentionDate = getSeasonDates(season + 1).retentionDate;
+        // The post-final/offseason stretch has no user fixtures to wait for,
+        // so day-by-day simulation runs 1.5x faster until retention day.
+        return finalDate && simulationDate > finalDate && simulationDate < retentionDate
+          ? Math.max(1, Math.round(baseInterval / 1.5))
+          : baseInterval;
       },
       onTick: () => advanceOneDayRef.current(),
       onError: (error) => {
@@ -2119,7 +2131,11 @@ function OverviewPageContent() {
 
     const configuredPlayers = configuredIds
       .map((id) => players[id])
-      .filter((player): player is Player => Boolean(player) && player.currentTeamId === teamId);
+      .filter((player): player is Player => Boolean(
+        player
+        && player.currentTeamId === teamId
+        && !isPlayerMajorInjured(liveInjuries, player.id)
+      ));
     const configuredIdSet = new Set(configuredPlayers.map((player) => player.id));
     const fallbackPlayers = availablePlayers.filter((player) => !configuredIdSet.has(player.id));
     return [...configuredPlayers, ...fallbackPlayers].slice(0, 11);
@@ -2328,7 +2344,8 @@ function OverviewPageContent() {
         bowlingFirstImpactSubs,
       };
       const currentSquad = getTeamSquad(teamId);
-      const selectableSquad = currentSquad.filter((player) => !isPlayerMajorInjured(activeInjuries, player.id));
+      const liveInjuries = useGameStore.getState().activeInjuries;
+      const selectableSquad = currentSquad.filter((player) => !isPlayerMajorInjured(liveInjuries, player.id));
       const currentSquadIds = new Set(currentSquad.map((player) => player.id));
       const savedIds = [
         ...requestedSelection.battingFirstXI,
@@ -2342,6 +2359,7 @@ function OverviewPageContent() {
         && requestedSelection.battingFirstImpactSubs.length === 5
         && requestedSelection.bowlingFirstImpactSubs.length === 5
         && savedIds.every((playerId) => currentSquadIds.has(playerId))
+        && savedIds.every((playerId) => !isPlayerMajorInjured(liveInjuries, playerId))
       );
       const selection = requestedPlanIsCurrent
         ? requestedSelection
@@ -2357,18 +2375,18 @@ function OverviewPageContent() {
         battingFirst: toMatchLineupPlan(
           selection.battingFirstXI,
           selection.battingFirstImpactSubs,
-          userSelection ? null : battingFirstImpactPlayerId,
-          userSelection ? null : battingFirstOutgoingPlayerId,
-          userSelection ? null : battingFirstImpactBattingPosition,
+          requestedPlanIsCurrent && !userSelection ? battingFirstImpactPlayerId : null,
+          requestedPlanIsCurrent && !userSelection ? battingFirstOutgoingPlayerId : null,
+          requestedPlanIsCurrent && !userSelection ? battingFirstImpactBattingPosition : null,
           teamLeadership.captainId,
           teamLeadership.viceCaptainId,
         ),
         bowlingFirst: toMatchLineupPlan(
           selection.bowlingFirstXI,
           selection.bowlingFirstImpactSubs,
-          userSelection ? null : bowlingFirstImpactPlayerId,
-          userSelection ? null : bowlingFirstOutgoingPlayerId,
-          userSelection ? null : bowlingFirstImpactBattingPosition,
+          requestedPlanIsCurrent && !userSelection ? bowlingFirstImpactPlayerId : null,
+          requestedPlanIsCurrent && !userSelection ? bowlingFirstOutgoingPlayerId : null,
+          requestedPlanIsCurrent && !userSelection ? bowlingFirstImpactBattingPosition : null,
           teamLeadership.captainId,
           teamLeadership.viceCaptainId,
         ),
@@ -2546,6 +2564,15 @@ function OverviewPageContent() {
     fixturesRef.current.find((fixture) => fixture.stage === "final")?.date
   );
 
+  useEffect(() => {
+    if (!isCareerLoaded || standings.length === 0) return;
+    processAITrades({
+      date: currentDate,
+      finalDate: getSeasonFinalDate(),
+      standingsTeamIds: standings.map((standing) => standing.teamId),
+    });
+  }, [currentDate, currentSeason, isCareerLoaded, processAITrades, standings]);
+
   const getTeamFinalLeagueDate = (teamId: string) => fixturesRef.current
     .filter((fixture) => !fixture.stage && (fixture.teamA === teamId || fixture.teamB === teamId))
     .map((fixture) => fixture.date)
@@ -2659,55 +2686,6 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}${replacementEligible
     return result;
   };
 
-  const forceUserReplacementTestInjury = (date: string): PlayerInjury[] => {
-    if (!FORCE_USER_REPLACEMENT_TEST_INJURY) return [];
-    const state = useGameStore.getState();
-    const forcedDate = addDaysToDateKey(getSeasonDates(state.currentSeason).auctionDate, 1);
-    if (date !== forcedDate || state.auction?.phase !== "completed") return [];
-
-    const alreadyCreated = [
-      ...Object.values(state.activeInjuries),
-      ...state.injuryHistory,
-    ].some((injury) => (
-      injury.teamId === state.userTeamId
-      && injury.season === state.currentSeason
-      && injury.startedOn === forcedDate
-      && injury.conditionId === "acl-rupture"
-    ));
-    if (alreadyCreated) return [];
-
-    const userTeam = state.teams[state.userTeamId];
-    if (!userTeam) return [];
-    const selectedPlayer = userTeam.squad
-      .map((playerId) => state.players[playerId])
-      .filter((player): player is Player => Boolean(player && !state.activeInjuries[player.id]))
-      .sort((left, right) => (
-        getInjuredPlayerSalary(right, userTeam.id, state.currentSeason)
-        - getInjuredPlayerSalary(left, userTeam.id, state.currentSeason)
-        || getPlayerRating(right) - getPlayerRating(left)
-        || left.name.localeCompare(right.name)
-      ))[0];
-    if (!selectedPlayer) return [];
-
-    const injury = createPlayerInjury({
-      player: selectedPlayer,
-      teamId: userTeam.id,
-      season: state.currentSeason,
-      date,
-      source: "background",
-      seed: `${state.fixtureSeed}:forced-user-replacement-test:${state.currentSeason}`,
-      category: "major",
-      conditionId: "acl-rupture",
-    });
-    useGameStore.setState({
-      activeInjuries: {
-        ...useGameStore.getState().activeInjuries,
-        [selectedPlayer.id]: injury,
-      },
-    });
-    return [injury];
-  };
-
   const processCalendarInjuries = (date: string) => {
     const finalDate = getSeasonFinalDate();
     const firstFixtureDate = fixturesRef.current
@@ -2729,10 +2707,7 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}${replacementEligible
         && date <= finalDate
       ),
     });
-    const forcedCreated = forceUserReplacementTestInjury(date);
-    const result: InjuryProcessingResult = forcedCreated.length > 0
-      ? { ...backgroundResult, created: [...backgroundResult.created, ...forcedCreated] }
-      : backgroundResult;
+    const result: InjuryProcessingResult = backgroundResult;
     processAIReplacementSignings(date);
     publishUserInjuryUpdates(result, date);
     return result;
@@ -2849,6 +2824,22 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}${replacementEligible
     if (!conditions || !teamA || !teamB) {
       throw new Error("The match stadium, pitch or team data is incomplete.");
     }
+    const liveInjuries = useGameStore.getState().activeInjuries;
+    const containsMajorInjury = (plans: MatchTeamPlans) => [
+      ...plans.battingFirst.startingXI,
+      ...plans.battingFirst.impactSubs,
+      ...plans.bowlingFirst.startingXI,
+      ...plans.bowlingFirst.impactSubs,
+    ].some((playerId) => isPlayerMajorInjured(liveInjuries, playerId));
+    let teamAPlans = buildTeamMatchPlans(match.teamA, userSelection, conditions, match, assistantManageUser);
+    let teamBPlans = buildTeamMatchPlans(match.teamB, userSelection, conditions, match, assistantManageUser);
+    // Final shared safety boundary: no simulation route, including bulk/end of
+    // season automation, may pass a major-injured player to the match engine.
+    if (containsMajorInjury(teamAPlans)) teamAPlans = buildTeamMatchPlans(match.teamA, undefined, conditions, match, true);
+    if (containsMajorInjury(teamBPlans)) teamBPlans = buildTeamMatchPlans(match.teamB, undefined, conditions, match, true);
+    if (containsMajorInjury(teamAPlans) || containsMajorInjury(teamBPlans)) {
+      throw new Error("A major-injured player remained in a generated match squad.");
+    }
     const simulation = simulateInstantMatch({
       fixtureId: match.id,
       matchNumber: match.matchNumber,
@@ -2858,8 +2849,8 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}${replacementEligible
       teamA,
       teamB,
       players,
-      teamAPlans: buildTeamMatchPlans(match.teamA, userSelection, conditions, match, assistantManageUser),
-      teamBPlans: buildTeamMatchPlans(match.teamB, userSelection, conditions, match, assistantManageUser),
+      teamAPlans,
+      teamBPlans,
       conditions,
       formAdjustments: getRecentFormAdjustments(match),
     });
@@ -4224,7 +4215,7 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}${replacementEligible
     scouting: {
       label: "Scouting",
       icon: Search,
-      subtabs: ["overview", "search", "planner"]
+      subtabs: ["overview", "search", "planner", "trades"]
     },
     season: {
       label: "Season",
@@ -4250,6 +4241,7 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}${replacementEligible
     if (subtab === "search") return "Player Search";
     if (subtab === "reports") return "Scout Reports";
     if (subtab === "planner") return "Auction Planner";
+    if (subtab === "trades") return "Trade Hub";
     if (subtab === "injuries") return "Injuries";
     if (subtab === "fixtures") return "Fixtures & Results";
     if (subtab === "standings") return "Points Table";
@@ -6767,6 +6759,20 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}${replacementEligible
               ================================================================== */}
           {activeTab === "scouting" && (
             <>
+              {activeSubTab === "trades" && (
+                <TradeHubPage
+                  currentDate={currentDate}
+                  currentSeason={currentSeason}
+                  finalDate={getSeasonFinalDate()}
+                  auctionType={getAuctionTypeForSeason(currentSeason + 1)}
+                  userTeamId={userTeamId}
+                  players={players}
+                  teams={teams}
+                  tradeRecords={tradeRecords}
+                  injuredPlayerIds={Object.keys(activeInjuries)}
+                  onExecuteTrade={executeTrade}
+                />
+              )}
               {/* Scouting Overview tab */}
               {activeSubTab === "overview" && (
                 <div className="grid grid-cols-2 gap-6 h-[calc(100vh-200px)] min-h-[500px] overflow-hidden">
@@ -8160,14 +8166,20 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}${replacementEligible
                     {[...detailedPlayerHistory]
                       .filter(entry => entry.teamId && entry.teamId !== "UNSOLD")
                       .sort((a, b) => Number(b.season) - Number(a.season))
-                      .map(entry => (
-                        <div key={`${entry.season}-${entry.teamId}`} className="grid min-h-9 grid-cols-[4rem_minmax(0,1fr)_5rem_4rem] items-center gap-3 border-b border-border/60 text-[10px]">
+                      .map(entry => {
+                        const trade = tradeRecords.find(record => record.season === Number(entry.season) && [...record.outgoingPlayerIds, ...record.incomingPlayerIds].includes(detailedPlayer.id));
+                        const movedFromId = trade?.outgoingPlayerIds.includes(detailedPlayer.id) ? trade.fromTeamId : trade?.toTeamId;
+                        const movedToId = trade?.outgoingPlayerIds.includes(detailedPlayer.id) ? trade.toTeamId : trade?.fromTeamId;
+                        const exchangeIds = trade?.outgoingPlayerIds.includes(detailedPlayer.id) ? trade.incomingPlayerIds : trade?.outgoingPlayerIds;
+                        return <Fragment key={`${entry.season}-${entry.teamId}`}>
+                        {trade && <div className="my-2 border-y border-accent/40 bg-accent/10 px-3 py-2 font-space-mono text-[8px] font-bold uppercase text-text-primary">{detailedPlayer.name} was traded from {teams[movedFromId ?? ""]?.shortName ?? movedFromId} to {teams[movedToId ?? ""]?.shortName ?? movedToId} in exchange for {(exchangeIds ?? []).map(id => players[id]?.name ?? id).join(" + ")}</div>}
+                        <div className="grid min-h-9 grid-cols-[4rem_minmax(0,1fr)_5rem_4rem] items-center gap-3 border-b border-border/60 text-[10px]">
                           <span className="font-space-mono text-text-secondary">{entry.season}</span>
                           <span className="truncate font-semibold text-text-primary">{teams[entry.teamId]?.name ?? entry.teamId}</span>
                           <span className="text-right font-space-mono text-text-primary">{entry.price > 0 ? formatPrice(entry.price) : "—"}</span>
                           <span className="text-right font-space-mono text-[8px] font-bold uppercase text-text-secondary">{entry.isInjuryReplacement ? "Injury replacement" : entry.isRtm ? "RTM" : "Signed"}</span>
-                        </div>
-                      ))}
+                        </div></Fragment>;
+                      })}
                     {detailedPlayerHistory.every(entry => !entry.teamId || entry.teamId === "UNSOLD") && (
                       <p className="py-5 text-center text-xs text-text-secondary">No team history recorded.</p>
                     )}

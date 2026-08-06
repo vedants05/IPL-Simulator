@@ -107,6 +107,7 @@ export function PlayerProfileModal({
   const currentSeason = useGameStore((state) => state.currentSeason);
   const auction = useGameStore((state) => state.auction);
   const retiredPlayerSnapshots = useGameStore((state) => state.retiredPlayerSnapshots);
+  const tradeRecords = useGameStore((state) => state.tradeRecords);
 
   const activePlayer = playerId ? players[playerId] ?? null : null;
   const retiredSnapshot = playerId && !activePlayer
@@ -511,9 +512,15 @@ export function PlayerProfileModal({
                 {[...detailedPlayerHistory]
                   .filter((entry) => entry.teamId && entry.teamId !== "UNSOLD")
                   .sort((a, b) => Number(b.season) - Number(a.season))
-                  .map((entry) => (
+                  .map((entry) => {
+                    const trade = tradeRecords.find((record) => record.season === Number(entry.season) && [...record.outgoingPlayerIds, ...record.incomingPlayerIds].includes(detailedPlayer.id));
+                    const movedFromId = trade?.outgoingPlayerIds.includes(detailedPlayer.id) ? trade.fromTeamId : trade?.toTeamId;
+                    const movedToId = trade?.outgoingPlayerIds.includes(detailedPlayer.id) ? trade.toTeamId : trade?.fromTeamId;
+                    const exchangeIds = trade?.outgoingPlayerIds.includes(detailedPlayer.id) ? trade.incomingPlayerIds : trade?.outgoingPlayerIds;
+                    return (
+                    <React.Fragment key={`${entry.season}-${entry.teamId}`}>
+                    {trade && <div className="my-2 border-y border-accent/40 bg-accent/10 px-3 py-2 font-space-mono text-[8px] font-bold uppercase text-text-primary">{detailedPlayer.name} was traded from {teams[movedFromId ?? ""]?.shortName ?? movedFromId} to {teams[movedToId ?? ""]?.shortName ?? movedToId} in exchange for {(exchangeIds ?? []).map((id) => players[id]?.name ?? id).join(" + ")}</div>}
                     <div
-                      key={`${entry.season}-${entry.teamId}`}
                       className="grid min-h-9 grid-cols-[4rem_minmax(0,1fr)_5rem_4rem] items-center gap-3 border-b border-border/60 text-[10px]"
                     >
                       <span className="font-space-mono text-text-secondary">{entry.season}</span>
@@ -530,7 +537,9 @@ export function PlayerProfileModal({
                         {entry.isInjuryReplacement ? "Injury replacement" : entry.isRtm ? "RTM" : "Signed"}
                       </span>
                     </div>
-                  ))}
+                    </React.Fragment>
+                    );
+                  })}
                 {detailedPlayerHistory.every((entry) => !entry.teamId || entry.teamId === "UNSOLD") && (
                   <p className="py-5 text-center text-xs text-text-secondary">No team history recorded.</p>
                 )}

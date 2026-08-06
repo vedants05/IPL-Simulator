@@ -5,6 +5,7 @@ import { useGameStore, getActiveSeasonYear } from "@/lib/store/gameStore";
 import { wasPlayerAcquiredViaRtm } from "@/lib/logic/playerHistory";
 import { Player } from "@/lib/types";
 import PlayerCard from "./PlayerCard";
+import { getAuctionEndSquadIds } from "@/lib/logic/auctionSquadSnapshot";
 
 function crore(lakhs: number) {
   return (lakhs / 100).toFixed(1);
@@ -19,7 +20,7 @@ const ROLE_SHORT: Record<string, string> = {
 };
 
 export default function TeamPurseList() {
-  const { teams, players, userTeamId, auction } = useGameStore();
+  const { teams, players, userTeamId, auction, tradeRecords, injuryReplacementRecords } = useGameStore();
   const [expanded, setExpanded] = useState<string | null>(null);
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
@@ -78,7 +79,8 @@ export default function TeamPurseList() {
           const rtmLeft = team.rtmCardsTotal - team.rtmCardsUsed;
           const isUser = team.id === userTeamId;
           const isOpen = expanded === team.id;
-          const squadPlayers = team.squad.map((id) => players[id]).filter(Boolean);
+          const displaySquadIds = auction?.phase === "completed" ? getAuctionEndSquadIds({ team, auctionSeason: auction.season, tradeRecords, replacementRecords: injuryReplacementRecords }) : team.squad;
+          const squadPlayers = displaySquadIds.map((id) => players[id]).filter(Boolean);
 
           return (
             <div key={team.id}>

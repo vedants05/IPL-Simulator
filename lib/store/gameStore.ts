@@ -13,6 +13,8 @@ import {
   BidEntry,
   AuctionTargetPriority,
   AuctionType,
+  TradeOffer,
+  TradeRecord,
 } from "@/lib/types";
 import { calculateBasePrice, fetchPlayersFromSupabase } from "@/lib/supabase/fetchPlayers";
 import { fetchTeamsFromSupabase } from "@/lib/supabase/fetchTeams";
@@ -129,6 +131,17 @@ import {
   type InjuryReplacementRecord,
 } from "@/lib/logic/injuryReplacements";
 import {
+  calculateTeamTradeValue,
+  calculateTradePackageValue,
+  getTeamTradeWillingness,
+  isTradeBalanced,
+  isTradeWindowOpen,
+  getTradeSalaryBand,
+  isLegalTradeSalary,
+  MINI_TRADE_OVERDRAFT_LAKHS,
+  tradeRecordForOffer,
+} from "@/lib/logic/tradeEngine";
+import {
   createHistoricalPlayerSnapshot,
   initializeCareerPlayers,
   normalizeCareerSeasonPerformance,
@@ -232,6 +245,9 @@ interface GameStateAdditions {
   processedInjuryMatchIds: string[];
   processedInjuryDateKeys: string[];
   injuryReplacementRecords: InjuryReplacementRecord[];
+  tradeRecords: TradeRecord[];
+  tradeOffers: TradeOffer[];
+  processedAITradeDateKeys: string[];
   auctionMarketProfile: AuctionMarketProfile | null;
   retiredPlayerSnapshots: Record<string, HistoricalPlayerSnapshot>;
   lastCareerPostseasonSeason: number | null;
@@ -348,6 +364,19 @@ interface GameActions {
     teamFinalLeagueDates: Record<string, string | undefined>;
   }) => InjuryReplacementRecord[];
   processCompletedAuctionCareer: () => CareerRetirementRecord[];
+  executeTrade: (input: {
+    proposerTeamId: string;
+    recipientTeamId: string;
+    offeredPlayerIds: string[];
+    requestedPlayerIds: string[];
+    salaries: Record<string, number>;
+    date: string;
+    finalDate?: string;
+    auctionType?: AuctionType;
+    explanation?: string;
+    validateOnly?: boolean;
+  }) => boolean;
+  processAITrades: (input: { date: string; finalDate?: string; standingsTeamIds: string[] }) => TradeRecord[];
 }
 
 // ---------------------------------------------------------------------------
@@ -1045,6 +1074,9 @@ export const useGameStore = create<Store>()(
       processedInjuryMatchIds: [],
       processedInjuryDateKeys: [],
       injuryReplacementRecords: [],
+      tradeRecords: [],
+      tradeOffers: [],
+      processedAITradeDateKeys: [],
       auctionMarketProfile: null,
       retiredPlayerSnapshots: {},
       lastCareerPostseasonSeason: null,
@@ -1201,6 +1233,9 @@ export const useGameStore = create<Store>()(
           processedInjuryMatchIds: [],
           processedInjuryDateKeys: [],
           injuryReplacementRecords: [],
+          tradeRecords: [],
+          tradeOffers: [],
+          processedAITradeDateKeys: [],
           auctionMarketProfile,
           retiredPlayerSnapshots: appendHistoricalRetirees(
             {},
@@ -3720,6 +3755,12 @@ export const useGameStore = create<Store>()(
             injuryHistory: [],
             processedInjuryMatchIds: [],
             processedInjuryDateKeys: [],
+            // Trade history is league history, not temporary auction state.
+            // Carry it through retention day so the completed-trades ledger
+            // and player-profile trade markers remain available in later years.
+            tradeRecords: state.tradeRecords,
+            tradeOffers: state.tradeOffers,
+            processedAITradeDateKeys: state.processedAITradeDateKeys,
             auctionMarketProfile: marketProfile,
             retiredPlayerSnapshots: appendHistoricalRetirees(
               appendHistoricalRetirees(
@@ -4008,6 +4049,307 @@ export const useGameStore = create<Store>()(
         return signedRecords;
       },
 
+      executeTrade: (input) => {
+        let completed = false;
+        set((state) => {
+          const auctionType = input.auctionType ?? getAuctionTypeForSeason(state.currentSeason + 1);
+          if (
+            !isTradeWindowOpen(input.date, input.finalDate, state.currentSeason)
+            || input.proposerTeamId === input.recipientTeamId
+            || input.offeredPlayerIds.length < 1
+            || input.offeredPlayerIds.length > 3
+            || input.requestedPlayerIds.length < 1
+            || input.requestedPlayerIds.length > 3
+          ) return state;
+          const proposer = state.teams[input.proposerTeamId];
+          const recipient = state.teams[input.recipientTeamId];
+          if (!proposer || !recipient) return state;
+          const allIds = [...input.offeredPlayerIds, ...input.requestedPlayerIds];
+          if (new Set(allIds).size !== allIds.length) return state;
+          if (allIds.some((id) => !state.players[id])) return state;
+          if (state.tradeRecords.some((record) => (
+            record.season === state.currentSeason
+            && [...record.outgoingPlayerIds, ...record.incomingPlayerIds].some((id) => allIds.includes(id))
+          ))) return state;
+          if (!input.offeredPlayerIds.every((id) => proposer.squad.includes(id))
+            || !input.requestedPlayerIds.every((id) => recipient.squad.includes(id))) return state;
+
+          const offeredPlayers = input.offeredPlayerIds.map((id) => state.players[id]);
+          const requestedPlayers = input.requestedPlayerIds.map((id) => state.players[id]);
+          const projectedSquad = (team: Team, removeIds: string[], addIds: string[]) => [
+            ...team.squad.filter((id) => !removeIds.includes(id)),
+            ...addIds,
+          ];
+          const proposerSquad = projectedSquad(proposer, input.offeredPlayerIds, input.requestedPlayerIds);
+          const recipientSquad = projectedSquad(recipient, input.requestedPlayerIds, input.offeredPlayerIds);
+          const overseasCount = (ids: string[]) => ids.filter((id) => state.players[id]?.nationality !== "Indian").length;
+          const tradeOverseasLimit = (team: Team) => Math.max(
+            team.overseasPlayersMax ?? 8,
+            overseasCount(team.squad),
+          );
+          if (overseasCount(proposerSquad) > tradeOverseasLimit(proposer) || overseasCount(recipientSquad) > tradeOverseasLimit(recipient)) return state;
+
+          const value = (team: Team, player: Player) => calculateTeamTradeValue({
+            player,
+            team,
+            players: state.players,
+            season: state.currentSeason,
+            auctionType,
+            currentInjured: Boolean(state.activeInjuries[player.id]),
+          });
+          const willingness = (team: Team, player: Player) => getTeamTradeWillingness({
+            player,
+            team,
+            players: state.players,
+            season: state.currentSeason,
+            currentInjured: Boolean(state.activeInjuries[player.id]),
+          });
+          const recipientOutgoingValue = calculateTradePackageValue(requestedPlayers.map((player) => value(recipient, player)));
+          const recipientIncomingValue = calculateTradePackageValue(offeredPlayers.map((player) => value(recipient, player)));
+          const recipientWillingness = requestedPlayers.reduce((best, player) => {
+            const current = willingness(recipient, player);
+            const ranks = { available: 0, open: 1, reluctant: 2, "highly-reluctant": 3 };
+            return ranks[current] > ranks[best] ? current : best;
+          }, "available" as ReturnType<typeof getTeamTradeWillingness>);
+          // The user controls the proposer and may knowingly accept an uneven
+          // return. Only the opposing AI club's valuation can reject the deal.
+          if (!isTradeBalanced({ offeredValue: recipientIncomingValue, requestedValue: recipientOutgoingValue, requestedWillingness: recipientWillingness })) return state;
+
+          const currentSalary = (player: Player) => getPlayerSeasonHistory(player.iplHistory, String(state.currentSeason))?.price ?? player.basePrice;
+          const salaryFor = (player: Player) => Math.max(1, Math.round(input.salaries[player.id] ?? currentSalary(player)));
+          if (auctionType === "mini" && requestedPlayers.some((player) => (
+            salaryFor(player) < getTradeSalaryBand(player, state.currentSeason).minimum
+            || salaryFor(player) > getTradeSalaryBand(player, state.currentSeason).maximum
+            || !isLegalTradeSalary(salaryFor(player))
+          ))) return state;
+          const proposedProposerPurse = proposer.remainingPurse
+            + offeredPlayers.reduce((sum, player) => sum + currentSalary(player), 0)
+            - requestedPlayers.reduce((sum, player) => sum + salaryFor(player), 0);
+          const proposedRecipientPurse = recipient.remainingPurse
+            + requestedPlayers.reduce((sum, player) => sum + currentSalary(player), 0)
+            - offeredPlayers.reduce((sum, player) => sum + salaryFor(player), 0);
+          if (auctionType === "mini" && (proposedProposerPurse < -MINI_TRADE_OVERDRAFT_LAKHS || proposedRecipientPurse < -MINI_TRADE_OVERDRAFT_LAKHS)) return state;
+
+          const tradeId = `trade-${state.currentSeason}-${state.tradeRecords.length + 1}-${input.date}`;
+          const nextPlayers = { ...state.players };
+          const transfer = (player: Player, fromTeamId: string, toTeamId: string) => {
+            const salary = salaryFor(player);
+            nextPlayers[player.id] = {
+              ...player,
+              currentTeamId: toTeamId,
+              basePrice: salary,
+              isRetained: auctionType === "mega",
+              retainedByTeamId: auctionType === "mega" ? toTeamId : null,
+              // A post-final trade must never rewrite the completed season's
+              // team, salary or statistics. The transaction is recorded in
+              // tradeRecords and the next season creates its own roster row.
+              iplHistory: player.iplHistory,
+            };
+          };
+          offeredPlayers.forEach((player) => transfer(player, proposer.id, recipient.id));
+          requestedPlayers.forEach((player) => transfer(player, recipient.id, proposer.id));
+          const swapTeam = (team: Team, outgoing: string[], incoming: string[], newPurse: number): Team => ({
+            ...team,
+            squad: projectedSquad(team, outgoing, incoming),
+            retainedPlayers: auctionType === "mega"
+              ? projectedSquad(team, outgoing, incoming)
+              : team.retainedPlayers.filter((id) => !outgoing.includes(id)),
+            remainingPurse: newPurse,
+            spentAmount: Math.max(0, team.totalPurse - newPurse),
+            overseasPlayersCurrent: overseasCount(projectedSquad(team, outgoing, incoming)),
+            captainContinuityId: outgoing.includes(team.captainContinuityId ?? "") ? null : team.captainContinuityId,
+            viceCaptainContinuityId: outgoing.includes(team.viceCaptainContinuityId ?? "") ? null : team.viceCaptainContinuityId,
+          });
+          const offer: TradeOffer = {
+            id: tradeId,
+            season: state.currentSeason,
+            date: input.date,
+            proposerTeamId: proposer.id,
+            recipientTeamId: recipient.id,
+            offeredPlayerIds: [...input.offeredPlayerIds],
+            requestedPlayerIds: [...input.requestedPlayerIds],
+            status: "accepted",
+            explanation: input.explanation,
+          };
+          const record = tradeRecordForOffer({ offer, date: input.date, salaries: Object.fromEntries(allIds.map((id) => [id, salaryFor(state.players[id])])), explanation: input.explanation });
+          if (input.validateOnly) {
+            completed = true;
+            return state;
+          }
+          completed = true;
+          return {
+            players: nextPlayers,
+            teams: {
+              ...state.teams,
+              [proposer.id]: swapTeam(proposer, input.offeredPlayerIds, input.requestedPlayerIds, proposedProposerPurse),
+              [recipient.id]: swapTeam(recipient, input.requestedPlayerIds, input.offeredPlayerIds, proposedRecipientPurse),
+            },
+            tradeRecords: [...state.tradeRecords, record],
+            tradeOffers: [...state.tradeOffers, offer],
+          };
+        });
+        return completed;
+      },
+
+      processAITrades: ({ date, finalDate, standingsTeamIds }) => {
+        const snapshot = get();
+        if (!isTradeWindowOpen(date, finalDate, snapshot.currentSeason) || snapshot.processedAITradeDateKeys.includes(date)) return [];
+        // Calendar simulation advances between fixtures rather than visiting
+        // every calendar day. Do not require a handful of exact day numbers,
+        // otherwise most saves never invoke the AI trade pass at all.
+        set((state) => ({ processedAITradeDateKeys: [...state.processedAITradeDateKeys, date] }));
+        const state = get();
+        const auctionType = getAuctionTypeForSeason(state.currentSeason + 1);
+        const family = (player: Player) => player.role === "Pace Bowler" ? "pace" : player.role === "Spin Bowler" ? "spin" : player.role === "WK-Batsman" ? "keeper" : player.role === "All-Rounder" ? "allrounder" : "bat";
+        const strength = (player: Player) => Math.max(player.currentBatting ?? 0, player.currentBowling ?? 0);
+        const tradeCount = (teamId: string) => state.tradeRecords.filter((record) => record.season === state.currentSeason && (record.fromTeamId === teamId || record.toTeamId === teamId)).length;
+        const rankOf = (teamId: string) => { const index = standingsTeamIds.indexOf(teamId); return index >= 0 ? index + 1 : 5; };
+          const desiredRoleDepth: Record<string, number> = {
+            bat: 5,
+            pace: 3,
+            spin: 2,
+            keeper: 1,
+            allrounder: 2,
+          };
+          const severeWeakness = (team: Team) => {
+            const squad = team.squad.map((id) => state.players[id]).filter((p): p is Player => Boolean(p));
+            const topAverage = squad.map(strength).sort((a, b) => b - a).slice(0, 11).reduce((sum, value) => sum + value, 0) / Math.max(1, Math.min(11, squad.length));
+            return topAverage < 76 || Object.entries(desiredRoleDepth).some(([role, target]) => (
+              squad.filter((player) => family(player) === role).length < target
+            ));
+          };
+        const capFor = (team: Team) => { const rank = rankOf(team.id); if (rank <= 3) return 1; if (rank >= 9) return severeWeakness(team) ? 4 : 3; if (rank >= 7) return severeWeakness(team) ? 3 : 2; return severeWeakness(team) ? 2 : 1; };
+        const hash = (value: string) => Array.from(value).reduce((total, char) => ((total * 31) + char.charCodeAt(0)) >>> 0, 2166136261);
+        const teams = Object.values(state.teams).filter((team) => team.id !== state.userTeamId && tradeCount(team.id) < capFor(team));
+        const ordered = teams.sort((a, b) => rankOf(b.id) - rankOf(a.id));
+        for (const seeker of ordered) {
+          if (rankOf(seeker.id) <= 3 && hash(`${date}:${seeker.id}`) % 100 >= 8) continue;
+          const seekerPlayers = seeker.squad.map((id) => state.players[id]).filter((p): p is Player => Boolean(p));
+          const roleCounts = new Map<string, number>();
+          ["bat", "pace", "spin", "keeper", "allrounder"].forEach((role) => roleCounts.set(role, 0));
+          seekerPlayers.forEach((p) => roleCounts.set(family(p), (roleCounts.get(family(p)) ?? 0) + 1));
+          const roleStrength = (role: string) => seekerPlayers
+            .filter((player) => family(player) === role)
+            .map(strength)
+            .sort((a, b) => b - a)[0] ?? 0;
+          // Compare each role with the depth it actually needs. Previously the
+          // raw smallest group nearly always selected wicketkeeper, even when
+          // the club already had a perfectly adequate first-choice keeper.
+          const need = Array.from(roleCounts.keys()).sort((left, right) => {
+            const leftDeficit = Math.max(0, (desiredRoleDepth[left] ?? 1) - (roleCounts.get(left) ?? 0));
+            const rightDeficit = Math.max(0, (desiredRoleDepth[right] ?? 1) - (roleCounts.get(right) ?? 0));
+            return rightDeficit - leftDeficit || roleStrength(left) - roleStrength(right);
+          })[0] ?? "pace";
+          const surplusRole = Array.from(roleCounts.keys()).sort((left, right) => {
+            const leftSurplus = (roleCounts.get(left) ?? 0) - (desiredRoleDepth[left] ?? 1);
+            const rightSurplus = (roleCounts.get(right) ?? 0) - (desiredRoleDepth[right] ?? 1);
+            return rightSurplus - leftSurplus || roleStrength(right) - roleStrength(left);
+          })[0];
+          const likelyStartingIds = new Set(seekerPlayers.slice().sort((a, b) => strength(b) - strength(a)).slice(0, 11).map((p) => p.id));
+          const outgoing = seekerPlayers
+            .filter((p) => family(p) === surplusRole && p.id !== seeker.captainContinuityId && p.id !== seeker.viceCaptainContinuityId && strength(p) <= 84)
+            .sort((a, b) => Number(likelyStartingIds.has(a.id)) - Number(likelyStartingIds.has(b.id)) || strength(a) - strength(b));
+          for (const partner of ordered) {
+            if (partner.id === seeker.id || tradeCount(partner.id) >= capFor(partner)) continue;
+            const targets = partner.squad.map((id) => state.players[id]).filter((p): p is Player => Boolean(p) && family(p) === need && p.id !== partner.captainContinuityId && p.id !== partner.viceCaptainContinuityId).sort((a, b) => strength(b) - strength(a));
+            for (const offered of outgoing) for (const requested of targets) {
+              const offeredRating = strength(offered);
+              const requestedRating = strength(requested);
+              // Solving a role shortage does not justify dumping a genuine
+              // starter for a player who is not good enough to enter the XI.
+              if (likelyStartingIds.has(offered.id) && requestedRating < offeredRating - 2) continue;
+              if (offeredRating >= 80 && requestedRating < 78) continue;
+              if (offeredRating - requestedRating > 4) continue;
+              const seekerIncoming = calculateTeamTradeValue({ player: requested, team: seeker, players: state.players, season: state.currentSeason, auctionType, currentInjured: Boolean(state.activeInjuries[requested.id]) });
+              const seekerOutgoing = calculateTeamTradeValue({ player: offered, team: seeker, players: state.players, season: state.currentSeason, auctionType, currentInjured: Boolean(state.activeInjuries[offered.id]) });
+              const partnerIncoming = calculateTeamTradeValue({ player: offered, team: partner, players: state.players, season: state.currentSeason, auctionType, currentInjured: Boolean(state.activeInjuries[offered.id]) });
+              const partnerOutgoing = calculateTeamTradeValue({ player: requested, team: partner, players: state.players, season: state.currentSeason, auctionType, currentInjured: Boolean(state.activeInjuries[requested.id]) });
+              // The initiating club is actively solving a squad weakness, so
+              // it may accept a small raw-value loss when the incoming role is
+              // materially more useful. The selling club still applies its
+              // full willingness premium to protect stars and core players.
+              if (seekerIncoming < seekerOutgoing * 0.94) continue;
+              if (!isTradeBalanced({ offeredValue: partnerIncoming, requestedValue: partnerOutgoing, requestedWillingness: getTeamTradeWillingness({ player: requested, team: partner, players: state.players, season: state.currentSeason, currentInjured: Boolean(state.activeInjuries[requested.id]) }) })) continue;
+              const before = get().tradeRecords.length;
+              const completed = get().executeTrade({ proposerTeamId: seeker.id, recipientTeamId: partner.id, offeredPlayerIds: [offered.id], requestedPlayerIds: [requested.id], salaries: { [requested.id]: getTradeSalaryBand(requested, state.currentSeason).demand }, date, finalDate, auctionType, explanation: `AI trade: ${seeker.shortName} addressed ${need} depth` });
+              if (completed) return get().tradeRecords.slice(before);
+            }
+          }
+        }
+
+        // A one-for-one-only market almost never clears: the receiving club
+        // correctly asks for a premium, while role-for-role players are often
+        // close in value. For a genuine weakness, let a club offer two
+        // expendable players for one better-fitting player. This remains a
+        // low-frequency fallback and is passed through executeTrade, which
+        // enforces the same overseas, purse and AI valuation checks as a
+        // user-created deal.
+        for (const seeker of ordered) {
+          if (rankOf(seeker.id) <= 3 || tradeCount(seeker.id) >= capFor(seeker)) continue;
+          const seekerPlayers = seeker.squad
+            .map((id) => state.players[id])
+            .filter((player): player is Player => Boolean(player));
+          const roleCounts = new Map<string, number>(["bat", "pace", "spin", "keeper", "allrounder"].map((role) => [role, 0]));
+          seekerPlayers.forEach((player) => roleCounts.set(family(player), (roleCounts.get(family(player)) ?? 0) + 1));
+          const need = Array.from(roleCounts.keys()).sort((left, right) => {
+            const leftDeficit = Math.max(0, (desiredRoleDepth[left] ?? 1) - (roleCounts.get(left) ?? 0));
+            const rightDeficit = Math.max(0, (desiredRoleDepth[right] ?? 1) - (roleCounts.get(right) ?? 0));
+            return rightDeficit - leftDeficit;
+          })[0] ?? "pace";
+          const likelyStartingIds = new Set(seekerPlayers.slice().sort((a, b) => strength(b) - strength(a)).slice(0, 11).map((player) => player.id));
+          const outgoingPool = seekerPlayers
+            .filter((player) => !likelyStartingIds.has(player.id)
+              && player.id !== seeker.captainContinuityId
+              && player.id !== seeker.viceCaptainContinuityId
+              && strength(player) <= 81)
+            .sort((left, right) => strength(left) - strength(right))
+            .slice(0, 8);
+          if (outgoingPool.length < 2) continue;
+
+          for (const partner of ordered) {
+            if (partner.id === seeker.id || tradeCount(partner.id) >= capFor(partner)) continue;
+            const targets = partner.squad
+              .map((id) => state.players[id])
+              .filter((player): player is Player => Boolean(player)
+                && family(player) === need
+                && player.id !== partner.captainContinuityId
+                && player.id !== partner.viceCaptainContinuityId
+                && strength(player) <= 84)
+              .sort((left, right) => strength(right) - strength(left))
+              .slice(0, 8);
+            for (const requested of targets) {
+              const requestedForSeeker = calculateTeamTradeValue({ player: requested, team: seeker, players: state.players, season: state.currentSeason, auctionType, currentInjured: Boolean(state.activeInjuries[requested.id]) });
+              const requestedForPartner = calculateTeamTradeValue({ player: requested, team: partner, players: state.players, season: state.currentSeason, auctionType, currentInjured: Boolean(state.activeInjuries[requested.id]) });
+              for (let first = 0; first < outgoingPool.length; first += 1) for (let second = first + 1; second < outgoingPool.length; second += 1) {
+                const offered = [outgoingPool[first], outgoingPool[second]];
+                const offeredForSeeker = calculateTradePackageValue(offered.map((player) => calculateTeamTradeValue({ player, team: seeker, players: state.players, season: state.currentSeason, auctionType, currentInjured: Boolean(state.activeInjuries[player.id]) })));
+                const offeredForPartner = calculateTradePackageValue(offered.map((player) => calculateTeamTradeValue({ player, team: partner, players: state.players, season: state.currentSeason, auctionType, currentInjured: Boolean(state.activeInjuries[player.id]) })));
+                if (requestedForSeeker < offeredForSeeker * 0.82) continue;
+                if (!isTradeBalanced({
+                  offeredValue: offeredForPartner,
+                  requestedValue: requestedForPartner,
+                  requestedWillingness: getTeamTradeWillingness({ player: requested, team: partner, players: state.players, season: state.currentSeason, currentInjured: Boolean(state.activeInjuries[requested.id]) }),
+                })) continue;
+                const before = get().tradeRecords.length;
+                const completed = get().executeTrade({
+                  proposerTeamId: seeker.id,
+                  recipientTeamId: partner.id,
+                  offeredPlayerIds: offered.map((player) => player.id),
+                  requestedPlayerIds: [requested.id],
+                  salaries: { [requested.id]: getTradeSalaryBand(requested, state.currentSeason).demand },
+                  date,
+                  finalDate,
+                  auctionType,
+                  explanation: `AI trade: ${seeker.shortName} used depth to address ${need}`,
+                });
+                if (completed) return get().tradeRecords.slice(before);
+              }
+            }
+          }
+        }
+        return [];
+      },
+
       processCompletedAuctionCareer: () => {
         let retirements: CareerRetirementRecord[] = [];
         set((state) => {
@@ -4062,6 +4404,15 @@ export const useGameStore = create<Store>()(
         if (initial.auction?.phase !== "retention") return false;
         initial.autoRetainPlayers();
         get().confirmRetentions();
+        // Retention validation can reject a stale/corrupted selection without
+        // changing the auction phase. Retry once from the freshly updated
+        // store state, then stop safely instead of entering an auction with
+        // no committed retention lists.
+        if (get().auction?.phase === "retention") {
+          get().autoRetainPlayers();
+          get().confirmRetentions();
+        }
+        if (get().auction?.phase === "retention") return false;
         get().startAuction();
         for (let pass = 0; pass < 6; pass += 1) {
           const state = get();
@@ -4122,6 +4473,9 @@ export const useGameStore = create<Store>()(
           processedInjuryMatchIds: [],
           processedInjuryDateKeys: [],
           injuryReplacementRecords: [],
+          tradeRecords: [],
+          tradeOffers: [],
+          processedAITradeDateKeys: [],
           auctionMarketProfile: null,
           retiredPlayerSnapshots: {},
           lastCareerPostseasonSeason: null,
@@ -4172,6 +4526,9 @@ export const useGameStore = create<Store>()(
         injuryHistory: state.injuryHistory,
         processedInjuryMatchIds: state.processedInjuryMatchIds,
         processedInjuryDateKeys: state.processedInjuryDateKeys,
+        tradeRecords: state.tradeRecords,
+        tradeOffers: state.tradeOffers,
+        processedAITradeDateKeys: state.processedAITradeDateKeys,
         auctionMarketProfile: state.auctionMarketProfile,
         retiredPlayerSnapshots: state.retiredPlayerSnapshots,
         lastCareerPostseasonSeason: state.lastCareerPostseasonSeason,
@@ -4341,6 +4698,9 @@ export const useGameStore = create<Store>()(
           processedInjuryMatchIds: p.processedInjuryMatchIds ?? [],
           processedInjuryDateKeys: p.processedInjuryDateKeys ?? [],
           injuryReplacementRecords: p.injuryReplacementRecords ?? [],
+          tradeRecords: p.tradeRecords ?? [],
+          tradeOffers: p.tradeOffers ?? [],
+          processedAITradeDateKeys: p.processedAITradeDateKeys ?? [],
           auctionMarketProfile,
           retiredPlayerSnapshots: p.retiredPlayerSnapshots ?? {},
           lastCareerPostseasonSeason: p.lastCareerPostseasonSeason ?? null,
