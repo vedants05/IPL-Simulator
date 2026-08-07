@@ -192,6 +192,7 @@ export interface Team {
   shortName: string;
   primaryColor: string;
   secondaryColor: string;
+  textColor?: string;
   homeGround: string;
   city: string;
   totalPurse: number;

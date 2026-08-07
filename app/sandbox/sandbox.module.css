@@ -21,9 +21,10 @@
 .shell button:focus-visible, .shell a:focus-visible, .shell select:focus-visible { outline: 2px solid var(--lime); outline-offset: 2px; }
 
 .topbar {
-  display: grid;
-  grid-template-columns: 240px minmax(560px, 1fr) 240px;
+  display: flex;
   align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
   border-bottom: 1px solid var(--line);
   background: rgba(9,12,14,.94);
   box-shadow: 0 12px 35px rgba(0,0,0,.24);

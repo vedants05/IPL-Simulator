@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Anton, Barlow, Barlow_Condensed, Space_Mono } from "next/font/google";
+import { Anton, Barlow, Barlow_Condensed, Space_Mono, Bricolage_Grotesque } from "next/font/google";
 import ViewportScaler from "@/components/shared/ViewportScaler";
 import "./globals.css";
 
@@ -27,6 +27,12 @@ const spaceMono = Space_Mono({
   variable: "--font-space-mono",
   display: "swap",
 });
+const bricolage = Bricolage_Grotesque({
+  weight: ["400", "600", "700", "800"],
+  subsets: ["latin"],
+  variable: "--font-bricolage",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "IPL Manager 2027",
@@ -37,7 +43,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html
       lang="en"
-      className={`${anton.variable} ${barlow.variable} ${barlowCondensed.variable} ${spaceMono.variable}`}
+      className={`${anton.variable} ${barlow.variable} ${barlowCondensed.variable} ${spaceMono.variable} ${bricolage.variable}`}
     >
       <head>
         <script

@@ -81,6 +81,7 @@ export interface MatchWeatherScenario {
   revisedTarget?: number;
   firstInningsResourcePercentage?: number;
   secondInningsResourcePercentage?: number;
+  temperatureCelsius?: number;
 }
 
 export interface MatchSimulationInput {
@@ -1944,18 +1945,54 @@ export function venueRainProbability(stadiumId: string, date?: string): number {
   return Math.min(0.2, profile.may * 1.25);
 }
 
+export function calculateMatchTemperature(
+  seed: string,
+  stadiumId: string,
+  date?: string,
+  time?: string,
+  rainDelayMinutes: number = 0,
+): number {
+  const roll = stableWeatherRoll(`${seed}|temperature`, stadiumId, date ?? "");
+  const isNight = isNightMatch(time);
+  const month = date ? Number(date.slice(5, 7)) : 4;
+
+  let baseTemp = 33;
+  if (stadiumId.includes("dharamshala") || stadiumId.includes("yadavindra")) {
+    baseTemp = 23;
+  } else if (stadiumId.includes("modi") || stadiumId.includes("mansingh") || stadiumId.includes("arun-jaitley") || stadiumId.includes("ekana")) {
+    baseTemp = month === 5 ? 39 : 35;
+  } else if (stadiumId.includes("wankhede") || stadiumId.includes("chidambaram") || stadiumId.includes("eden") || stadiumId.includes("chinnaswamy")) {
+    baseTemp = month === 5 ? 33 : 31;
+  }
+
+  // Night time adjustment (-4°C)
+  if (isNight) baseTemp -= 4;
+
+  // Rain & Cloud cover cooling effect: downpours cool the temperature down by 4°C to 10°C
+  if (rainDelayMinutes > 0) {
+    const coolingDrop = Math.min(10, 4 + Math.floor(rainDelayMinutes / 15));
+    baseTemp -= coolingDrop;
+  }
+
+  const tempVariance = Math.round((roll - 0.5) * 4);
+  return Math.max(18, Math.min(44, baseTemp + tempVariance));
+}
+
 export function createWeatherScenario(
   seed: string,
   stadiumId: string,
   date?: string,
+  time?: string,
 ): MatchWeatherScenario {
   if (!date) {
-    return { kind: "clear", rainDelayMinutes: 0, firstInningsOvers: 20, secondInningsOvers: 20, summary: "Clear conditions allowed a full 20-over match." };
+    const temperatureCelsius = calculateMatchTemperature(seed, stadiumId, date, time, 0);
+    return { kind: "clear", rainDelayMinutes: 0, firstInningsOvers: 20, secondInningsOvers: 20, summary: "Clear conditions allowed a full 20-over match.", temperatureCelsius };
   }
   const roll = stableWeatherRoll(seed, stadiumId, date);
   const rainChance = venueRainProbability(stadiumId, date);
   if (roll >= rainChance) {
-    return { kind: "clear", rainDelayMinutes: 0, firstInningsOvers: 20, secondInningsOvers: 20, summary: "Clear conditions allowed a full 20-over match." };
+    const temperatureCelsius = calculateMatchTemperature(seed, stadiumId, date, time, 0);
+    return { kind: "clear", rainDelayMinutes: 0, firstInningsOvers: 20, secondInningsOvers: 20, summary: "Clear conditions allowed a full 20-over match.", temperatureCelsius };
   }
   const pattern = stableWeatherRoll(`${seed}|pattern`, stadiumId, date);
   const severity = stableWeatherRoll(`${seed}|severity`, stadiumId, date);
@@ -1988,12 +2025,15 @@ export function createWeatherScenario(
     summary = `Repeated showers reduced the first innings to ${firstInningsOvers} overs and the chase to ${secondInningsOvers} overs.`;
   }
 
+  const temperatureCelsius = calculateMatchTemperature(seed, stadiumId, date, time, rainDelayMinutes);
+
   return {
     kind,
     rainDelayMinutes,
     firstInningsOvers,
     secondInningsOvers,
     summary,
+    temperatureCelsius,
   };
 }
 
@@ -3092,7 +3132,7 @@ function resultText(
 export function simulateInstantMatch(input: MatchSimulationInput): MatchSimulationRecord {
   const rng = new SimulationRandom(`${input.seed}|engine-${MATCH_SIMULATION_VERSION}`);
   const weatherScenario = input.weatherScenario
-    ?? createWeatherScenario(input.seed, input.conditions.stadiumId, input.date);
+    ?? createWeatherScenario(input.seed, input.conditions.stadiumId, input.date, input.time);
   const rainAffected = hasRainReducedOvers(weatherScenario);
   const tossWinner = rng.next() < 0.5 ? input.teamA : input.teamB;
   const tossWinnerPlans = tossWinner.id === input.teamA.id

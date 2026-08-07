@@ -32,7 +32,7 @@ const TEAM_COLORS: Record<string, string> = {
   PBKS: "#c8102e",
   RR:  "#e91e8c",
   SRH: "#f26522",
-  LSG: "#a4c639",
+  LSG: "#e21f26",
   GT:  "#1c4f9c",
 };
 
