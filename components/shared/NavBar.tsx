@@ -77,6 +77,7 @@ export default function NavBar() {
   const [continuedToSeason, setContinuedToSeason] = useState<boolean | null>(null);
   const isAuctionPage = pathname.startsWith("/game/auction");
   const seasonPagesUnlocked = SEASON_ACCESS_ENABLED && continuedToSeason === true;
+  const showSeasonNavigation = seasonPagesUnlocked && (!isAuctionPage || auction?.phase === "completed");
   const teamProfilePrefetchKey = Object.keys(teams).sort().join("|");
 
   useEffect(() => {
@@ -264,7 +265,7 @@ export default function NavBar() {
       )}
 
       <div className="flex items-center gap-0">
-        {(seasonPagesUnlocked
+        {(showSeasonNavigation
           ? NAV_ITEMS
           : [{ label: "Auction", href: "/game/auction" }]
         ).map((item) => {
@@ -320,7 +321,7 @@ export default function NavBar() {
                   type="button"
                   disabled={Boolean(careerFastForwardTargetDate)}
                   onClick={() => window.dispatchEvent(new CustomEvent("ipl-career-fast-forward", { detail: { kind } }))}
-                  className="h-7 rounded border border-border bg-surface px-2 text-[8px] font-bold uppercase tracking-wide text-text-secondary transition-colors hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
+                  className="h-7 shrink-0 whitespace-nowrap rounded border border-border bg-surface px-2 text-[8px] font-bold uppercase tracking-wide text-text-secondary transition-colors hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   {label}
                 </button>
@@ -335,7 +336,7 @@ export default function NavBar() {
             <div className="relative flex items-center">
               <button
                 onClick={handleSkipPress}
-                className="px-3 rounded font-space-mono font-bold text-[10px] tracking-wider uppercase transition-all duration-150 flex items-center justify-center gap-1.5 h-[28px] cursor-pointer hover:bg-[#1d55c4] hover:text-white hover:scale-105 active:scale-95"
+                className="shrink-0 whitespace-nowrap px-3 rounded font-space-mono font-bold text-[10px] tracking-wider uppercase transition-all duration-150 flex items-center justify-center gap-1.5 h-[28px] cursor-pointer hover:bg-[#1d55c4] hover:text-white hover:scale-105 active:scale-95"
                 style={{
                   border: "1.5px solid var(--ink)",
                   backgroundColor: "var(--team-bid-bg, #111622)",
@@ -409,7 +410,7 @@ export default function NavBar() {
               <div className="relative flex items-center">
                 <button
                   onClick={handleSkipAccelPress}
-                  className="px-3 rounded font-space-mono font-bold text-[10px] tracking-wider uppercase transition-all duration-150 flex items-center justify-center gap-1.5 h-[28px] cursor-pointer hover:bg-[#1d55c4] hover:text-white hover:scale-105 active:scale-95"
+                  className="shrink-0 whitespace-nowrap px-3 rounded font-space-mono font-bold text-[10px] tracking-wider uppercase transition-all duration-150 flex items-center justify-center gap-1.5 h-[28px] cursor-pointer hover:bg-[#1d55c4] hover:text-white hover:scale-105 active:scale-95"
                   style={{
                     border: "1.5px solid var(--ink)",
                     backgroundColor: "var(--team-bid-bg, #111622)",
@@ -479,7 +480,7 @@ export default function NavBar() {
             <div className="relative flex items-center">
               <button
                 onClick={handleSkipAllPress}
-                className="px-3 rounded font-space-mono font-bold text-[10px] tracking-wider uppercase transition-all duration-150 flex items-center justify-center gap-1.5 h-[28px] cursor-pointer hover:bg-danger hover:text-white hover:scale-105 active:scale-95"
+                className="shrink-0 whitespace-nowrap px-3 rounded font-space-mono font-bold text-[10px] tracking-wider uppercase transition-all duration-150 flex items-center justify-center gap-1.5 h-[28px] cursor-pointer hover:bg-danger hover:text-white hover:scale-105 active:scale-95"
                 style={{
                   border: "1.5px solid var(--ink)",
                   backgroundColor: "var(--team-bid-bg, #111622)",
@@ -555,20 +556,20 @@ export default function NavBar() {
               <button
                 disabled={speed === 1}
                 onClick={decreaseSpeed}
-                className="px-2 text-white hover:bg-white/15 disabled:opacity-30 disabled:hover:bg-transparent transition-all h-full flex items-center justify-center font-bold text-[10px] cursor-pointer"
+                className="w-7 shrink-0 px-0 text-white hover:bg-white/15 disabled:opacity-30 disabled:hover:bg-transparent transition-all h-full flex items-center justify-center font-bold text-[10px] cursor-pointer"
                 title="Decrease Speed"
               >
                 &lt;&lt;
               </button>
               <span
-                className="font-space-mono font-bold text-[10px] min-w-[28px] text-center text-white flex items-center justify-center h-full border-x border-white/15 px-1.5 select-none"
+                className="font-space-mono font-bold text-[10px] min-w-[28px] shrink-0 whitespace-nowrap text-center text-white flex items-center justify-center h-full border-x border-white/15 px-1.5 select-none"
               >
                 {speed}x
               </span>
               <button
                 disabled={speed === 8}
                 onClick={increaseSpeed}
-                className="px-2 text-white hover:bg-white/15 disabled:opacity-30 disabled:hover:bg-transparent transition-all h-full flex items-center justify-center font-bold text-[10px] cursor-pointer"
+                className="w-7 shrink-0 px-0 text-white hover:bg-white/15 disabled:opacity-30 disabled:hover:bg-transparent transition-all h-full flex items-center justify-center font-bold text-[10px] cursor-pointer"
                 title="Increase Speed"
               >
                 &gt;&gt;
@@ -577,7 +578,7 @@ export default function NavBar() {
 
             <button
               onClick={togglePaused}
-              className={`px-3.5 rounded font-space-mono font-bold text-[10px] tracking-wider uppercase transition-all duration-150 flex items-center justify-center gap-1.5 h-[28px] cursor-pointer ${
+              className={`shrink-0 whitespace-nowrap px-3.5 rounded font-space-mono font-bold text-[10px] tracking-wider uppercase transition-all duration-150 flex items-center justify-center gap-1.5 h-[28px] cursor-pointer ${
                 isPaused
                   ? "bg-danger text-white hover:bg-red-600 hover:scale-105 active:scale-95 animate-pulse"
                   : "hover:bg-[#1d55c4] hover:text-white hover:scale-105 active:scale-95"

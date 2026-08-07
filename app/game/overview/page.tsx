@@ -2300,7 +2300,7 @@ function OverviewPageContent() {
     const targetOptions = favouredStyle === "Spinner" ? 2 : 3;
     let nextXI = [...startingXI];
     let nextSubs = [...impactSubs];
-    const squad = getTeamSquad(players[nextXI[0]]?.currentTeamId ?? "");
+    const squad = getSelectableTeamSquad(players[nextXI[0]]?.currentTeamId ?? "");
     const candidates = squad.map(playerToLineupCandidate);
     const isStyle = (player: Player | undefined) => Boolean(
       player
@@ -3487,10 +3487,23 @@ This record has been officially verified and added to the IPL Minor Records arch
     const isCatchingUpCurrentDate = nextDateString <= currentDateString;
     if (isCatchingUpCurrentDate) {
       processCalendarInjuries(nextDateString);
+      processAITrades({
+        date: nextDateString,
+        finalDate: getSeasonFinalDate(),
+        standingsTeamIds: standings.map((standing) => standing.teamId),
+      });
     } else {
       let injuryDate = addDaysToDateKey(currentDateString, 1);
       while (injuryDate <= nextDateString) {
         processCalendarInjuries(injuryDate);
+        // Fast-forward must run the same daily trade pass as manual calendar
+        // progression; jumping directly to Retention Day previously skipped
+        // every eligible post-final trade date.
+        processAITrades({
+          date: injuryDate,
+          finalDate: getSeasonFinalDate(),
+          standingsTeamIds: standings.map((standing) => standing.teamId),
+        });
         injuryDate = addDaysToDateKey(injuryDate, 1);
       }
     }
@@ -3518,7 +3531,7 @@ This record has been officially verified and added to the IPL Minor Records arch
           && nextDateString <= skipTargetDate
         ) {
           try {
-            const simulatedMatch = buildSimulatedMatch(userFixture);
+            const simulatedMatch = buildSimulatedMatch(userFixture, undefined, true);
             commitSimulatedMatch(
               simulatedMatch,
               nextFixtures,
@@ -3539,6 +3552,9 @@ This record has been officially verified and added to the IPL Minor Records arch
       return;
     }
 
+    // A requested calendar target wins over a coincident season boundary. This
+    // lets "Skip to retention" land on Retention Day without opening the
+    // retention screen as part of the skip itself.
     if (!isCatchingUpCurrentDate && skipTargetDate && nextDateString >= skipTargetDate) {
       useGameStore.setState({ currentDate: skipTargetDate });
       stopSimulating();
@@ -3547,7 +3563,12 @@ This record has been officially verified and added to the IPL Minor Records arch
     }
 
     // Milestones pause on the milestone date before another timer is queued.
-    if (!isCatchingUpCurrentDate && nextDateString === retentionDateString) {
+    if (
+      !isCatchingUpCurrentDate
+      && retentionDateString
+      && retentionDateString > currentDateString
+      && nextDateString >= retentionDateString
+    ) {
       rolloverToNextSeason();
       return;
     }
@@ -3572,13 +3593,15 @@ This record has been officially verified and added to the IPL Minor Records arch
   const startSimulating = useCallback(() => {
     const simulationDate = useGameStore.getState().currentDate;
     const followingDate = addDaysToDateKey(simulationDate, 1);
+    const requestedTarget = skipTargetDateRef.current;
 
     // Retention is a navigation boundary, not a normal ticking day. Handling
     // it directly avoids leaving a career stranded on the preceding date when
     // the ticker has stopped or been recreated after a reload.
     if (
       retentionDateString
-      && (simulationDate === retentionDateString || followingDate === retentionDateString)
+      && (simulationDate >= retentionDateString || followingDate >= retentionDateString)
+      && (!requestedTarget || requestedTarget > retentionDateString)
     ) {
       rolloverToNextSeason();
       return;
@@ -3602,7 +3625,7 @@ This record has been officially verified and added to the IPL Minor Records arch
         // the old rollover bug. These games were part of an automatic skip and
         // must not require the user to play months-old fixtures manually.
         try {
-          const simulatedMatch = buildSimulatedMatch(unresolvedUserFixture);
+          const simulatedMatch = buildSimulatedMatch(unresolvedUserFixture, undefined, true);
           commitSimulatedMatch(simulatedMatch, nextFixtures, playerStatsRef.current);
           if (dayTickerRef.current?.start()) setIsSimulatingDays(true);
         } catch (error) {
@@ -3661,11 +3684,17 @@ This record has been officially verified and added to the IPL Minor Records arch
         return;
       }
       if (kind === "retention") {
-        const target = retentionDateString || getSeasonDates(currentSeason + 1).retentionDate;
-        if (target && target > useGameStore.getState().currentDate) {
-          startFastForward(target);
+        const liveDate = useGameStore.getState().currentDate;
+        // Derive this from the active season instead of the hydrated deadline,
+        // which can briefly still describe the season that has just finished.
+        const retentionTarget = getSeasonDates(currentSeason + 1).retentionDate;
+        if (retentionTarget <= liveDate) {
+          // The saved deadline is stale: finish the overdue rollover now,
+          // rather than refusing the request or jumping across a season
+          // without running retention, trades, injuries, and offseason work.
+          rolloverToNextSeason();
         } else {
-          showToast("Already at or past Retention Day.");
+          startFastForward(retentionTarget);
         }
         return;
       }
@@ -3678,7 +3707,7 @@ This record has been officially verified and added to the IPL Minor Records arch
     };
     window.addEventListener("ipl-career-fast-forward", handler);
     return () => window.removeEventListener("ipl-career-fast-forward", handler);
-  }, [currentSeason, retentionDateString, setCareerFastForwardTarget, showToast, skipToCalendarDate]);
+  }, [currentSeason, retentionDateString, rolloverToNextSeason, setCareerFastForwardTarget, showToast, skipToCalendarDate]);
 
   // Restore an in-progress multi-season job only after initCareer has created
   // the new season's fixtures. This prevents an empty fixture list from making
@@ -5355,6 +5384,9 @@ This record has been officially verified and added to the IPL Minor Records arch
                                     const isUserGame = (match.teamA === userTeamId || match.teamB === userTeamId) && !isTbdA && !isTbdB;
                                     const opponentId = match.teamA === userTeamId ? match.teamB : match.teamA;
                                     const opponent = teams[opponentId];
+                                    const teamALabel = !match.teamA || match.teamA === PLAYOFF_TBD_TEAM_ID ? "TBD" : teams[match.teamA]?.shortName ?? match.teamA;
+                                    const teamBLabel = !match.teamB || match.teamB === PLAYOFF_TBD_TEAM_ID ? "TBD" : teams[match.teamB]?.shortName ?? match.teamB;
+                                    const fixtureTextClass = `${teamALabel.length + teamBLabel.length > 6 ? "text-[6px]" : "text-[8px]"} whitespace-nowrap`;
 
                                     if (isTbdA && isTbdB && display.isPlayoffTbd) {
                                       return (
@@ -5371,11 +5403,11 @@ This record has been officially verified and added to the IPL Minor Records arch
                                     return isUserGame ? (
                                       <div
                                         key={`mini-fixture-${match.id}`}
-                                        className="flex min-h-0 items-center justify-center overflow-hidden rounded-[2px] px-0.5 py-1 text-center font-space-mono text-[8px] font-bold uppercase leading-none tracking-[-0.03em]"
+                                        className={`flex min-h-0 items-center justify-center overflow-hidden rounded-[2px] px-0.5 py-1 text-center font-space-mono font-bold uppercase leading-none tracking-[-0.03em] ${fixtureTextClass}`}
                                         style={{ backgroundColor: userTeam.primaryColor, color: userTeam.secondaryColor }}
                                       >
                                         <span
-                                          className="truncate rounded-[2px] border border-white/20 px-1 py-0.5 shadow-sm"
+                                          className="whitespace-nowrap rounded-[2px] border border-white/20 px-1 py-0.5 shadow-sm"
                                           style={opponent ? { backgroundColor: opponent.primaryColor, color: opponent.secondaryColor } : undefined}
                                         >
                                           vs {opponent?.shortName ?? opponentId}
@@ -5384,13 +5416,13 @@ This record has been officially verified and added to the IPL Minor Records arch
                                     ) : (
                                       <div
                                         key={`mini-fixture-${match.id}`}
-                                        className="flex min-h-0 items-center justify-center gap-1 overflow-hidden rounded-[2px] border border-border/70 bg-surface px-1 py-1 font-space-mono text-[8px] font-bold uppercase leading-none tracking-[-0.03em] text-text-primary shadow-sm"
+                                        className={`flex min-h-0 items-center justify-center gap-1 overflow-hidden rounded-[2px] border border-border/70 bg-surface px-1 py-1 font-space-mono font-bold uppercase leading-none tracking-[-0.03em] text-text-primary shadow-sm ${fixtureTextClass}`}
                                         title={`${!match.teamA || match.teamA === PLAYOFF_TBD_TEAM_ID ? "TBD" : teams[match.teamA]?.name ?? match.teamA} vs ${!match.teamB || match.teamB === PLAYOFF_TBD_TEAM_ID ? "TBD" : teams[match.teamB]?.name ?? match.teamB}`}
                                       >
                                         <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: teams[match.teamA]?.primaryColor ?? "#777777" }} />
-                                        <span className="truncate">{!match.teamA || match.teamA === PLAYOFF_TBD_TEAM_ID ? "TBD" : teams[match.teamA]?.shortName ?? match.teamA}</span>
+                                        <span className="whitespace-nowrap">{teamALabel}</span>
                                         <span className="shrink-0 text-text-secondary">v</span>
-                                        <span className="truncate">{!match.teamB || match.teamB === PLAYOFF_TBD_TEAM_ID ? "TBD" : teams[match.teamB]?.shortName ?? match.teamB}</span>
+                                        <span className="whitespace-nowrap">{teamBLabel}</span>
                                         <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: teams[match.teamB]?.primaryColor ?? "#777777" }} />
                                       </div>
                                     );
@@ -6374,17 +6406,19 @@ This record has been officially verified and added to the IPL Minor Records arch
                               {player.role === "All-Rounder" ? (
                                 <>
                                   <span
-                                    className="squad-overview-allrounder-rating text-center font-space-mono font-bold leading-tight text-text-primary"
+                                    className="squad-overview-allrounder-rating flex flex-col items-center text-center font-space-mono font-bold leading-tight text-text-primary"
                                     title={`Batting ${player.currentBatting}, Bowling ${player.currentBowling}`}
                                   >
-                                    Bat {player.currentBatting}/Bowl {player.currentBowling}
+                                    <span className="whitespace-nowrap">Bat {player.currentBatting}</span>
+                                    <span className="whitespace-nowrap">Bowl {player.currentBowling}</span>
                                   </span>
                                   <span aria-hidden="true" />
                                   <span
-                                    className="squad-overview-allrounder-rating text-center font-space-mono font-bold leading-tight text-text-primary"
+                                    className="squad-overview-allrounder-rating flex flex-col items-center text-center font-space-mono font-bold leading-tight text-text-primary"
                                     title={`Batting ${player.potentialBatting}, Bowling ${player.potentialBowling}`}
                                   >
-                                    Bat {player.potentialBatting}/Bowl {player.potentialBowling}
+                                    <span className="whitespace-nowrap">Bat {player.potentialBatting}</span>
+                                    <span className="whitespace-nowrap">Bowl {player.potentialBowling}</span>
                                   </span>
                                 </>
                               ) : player.role === "Pace Bowler" || player.role === "Spin Bowler" ? (
@@ -7003,12 +7037,18 @@ This record has been officially verified and added to the IPL Minor Records arch
                           <span className="text-center font-space-mono text-text-secondary">{player.age}</span>
                           <span className="truncate text-center font-space-mono font-bold text-text-secondary">{teams[player.currentTeamId ?? ""]?.shortName ?? "—"}</span>
                           <span className="truncate font-space-mono uppercase text-text-secondary">{player.role}</span>
-                          <span className="grid grid-cols-[7rem_2rem_7rem] items-center justify-center">
+                          <div className="grid grid-cols-[7rem_2rem_7rem] items-center justify-center">
                             {player.role === "All-Rounder" ? (
                               <>
-                                <span className="text-center font-space-mono font-bold text-text-primary">Bat {player.currentBatting}/Bowl {player.currentBowling}</span>
+                                <div className="flex flex-col items-center text-center font-space-mono font-bold leading-tight text-text-primary">
+                                  <span className="whitespace-nowrap">Bat {player.currentBatting}</span>
+                                  <span className="whitespace-nowrap">Bowl {player.currentBowling}</span>
+                                </div>
                                 <span aria-hidden="true" />
-                                <span className="text-center font-space-mono font-bold text-text-primary">Bat {player.potentialBatting}/Bowl {player.potentialBowling}</span>
+                                <div className="flex flex-col items-center text-center font-space-mono font-bold leading-tight text-text-primary">
+                                  <span className="whitespace-nowrap">Bat {player.potentialBatting}</span>
+                                  <span className="whitespace-nowrap">Bowl {player.potentialBowling}</span>
+                                </div>
                               </>
                             ) : player.role === "Pace Bowler" || player.role === "Spin Bowler" ? (
                               <>
@@ -7023,7 +7063,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                                 <span className="text-center font-space-mono font-bold text-text-primary">{player.potentialBatting}</span>
                               </>
                             )}
-                          </span>
+                          </div>
                         </div>
                       ))}
                       {bestScoutingPlayers.length > visibleScoutingOverviewCount && (

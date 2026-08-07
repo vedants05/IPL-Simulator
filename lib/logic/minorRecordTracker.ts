@@ -75,8 +75,12 @@ export function trackMinorRecordsOnMatchComplete(
     const idx = updatedRecords.findIndex(r => r.id === id);
     if (idx !== -1) {
       const oldRecord = updatedRecords[idx];
-      const oldVal = parseFloat(oldRecord.value.replace(/[^\d.]/g, ""));
-      const newVal = parseFloat(newValue.replace(/[^\d.]/g, ""));
+      const isTeamScore = id.startsWith("highest-score-") || id.startsWith("lowest-score-");
+      const recordValue = (value: string) => isTeamScore
+        ? parseFloat(value.split("/")[0].replace(/[^\d.]/g, ""))
+        : parseFloat(value.replace(/[^\d.]/g, ""));
+      const oldVal = recordValue(oldRecord.value);
+      const newVal = recordValue(newValue);
       
       const isLowestScore = id.startsWith("lowest-score-");
       const isLowestDefended = id.startsWith("lowest-defended-");

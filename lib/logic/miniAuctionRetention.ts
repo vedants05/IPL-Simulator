@@ -63,7 +63,16 @@ export function getMiniAuctionContractPrice(player: Player, teamId: string, seas
   const previousContract = [...(player.iplHistory ?? [])]
     .filter((entry) => entry.teamId === teamId && entry.price > 0 && Number(entry.season) < season)
     .sort((left, right) => Number(right.season) - Number(left.season))[0];
-  return Math.round(previousContract?.price ?? 0);
+  if (previousContract?.price) return Math.round(previousContract.price);
+
+  // Offseason trades intentionally do not rewrite the completed season's
+  // history. Carry the player's existing contract salary into mini-retention
+  // when the player is now contracted to the receiving team.
+  if (player.currentTeamId === teamId && (player.basePrice ?? 0) > 0) {
+    return Math.round(player.basePrice);
+  }
+
+  return 0;
 }
 
 export function calculateMiniAuctionKeptSalary(keptIds: string[], teamId: string, players: Record<string, Player>, season: number): number {
@@ -286,6 +295,9 @@ export function evaluateMiniAuctionRetention(player: Player, team: Team, players
     if ((previousSeason?.wickets ?? 0) > 10) mandatoryReasons.push("more than 10 wickets last season");
     if (player.id === team.captainContinuityId) mandatoryReasons.push("end-of-season captain");
     if ((player.reputation ?? 5) >= 9) mandatoryReasons.push("reputation 9+ franchise star");
+    if (player.lastTradedSeason === season - 1 && player.lastTradedToTeamId === team.id) {
+      mandatoryReasons.push("traded in for the upcoming season");
+    }
   }
 
   const squad = team.squad.map((id) => players[id]).filter((candidate): candidate is Player => Boolean(candidate));

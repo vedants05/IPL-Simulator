@@ -125,6 +125,9 @@ export interface Player {
   isRetained: boolean;
   retainedByTeamId: string | null;
   currentTeamId: string | null;
+  /** Most recent completed-season trade, used to protect an incoming player at the immediately following mini auction. */
+  lastTradedSeason?: number;
+  lastTradedToTeamId?: string;
   potential: Potential;
   currentBatting: number;
   potentialBatting: number;

@@ -288,7 +288,7 @@ export function ChampionTileContent({
         </div>
         <div className="font-anton text-[20px] uppercase leading-none text-text-primary tracking-wide">{champion?.name ?? "Champions"}</div>
         {finalFixture.simulation?.resultText && (
-          <div className="font-space-mono text-[8.5px] font-bold text-accent">
+          <div className="font-space-mono text-[8.5px] font-bold tracking-[-0.03em] text-accent">
             {appendRainAffectedResultLabel(finalFixture.simulation.resultText, isRainAffected(finalFixture))}
           </div>
         )}

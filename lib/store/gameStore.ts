@@ -3755,11 +3755,11 @@ export const useGameStore = create<Store>()(
             injuryHistory: [],
             processedInjuryMatchIds: [],
             processedInjuryDateKeys: [],
-            // Trade history is league history, not temporary auction state.
-            // Carry it through retention day so the completed-trades ledger
-            // and player-profile trade markers remain available in later years.
-            tradeRecords: state.tradeRecords,
-            tradeOffers: state.tradeOffers,
+            // Trade records are scoped to the active season's trade window.
+            // Start the new retention phase with a clean ledger so prior-season
+            // completed trades do not appear in the current season's history.
+            tradeRecords: [],
+            tradeOffers: [],
             processedAITradeDateKeys: state.processedAITradeDateKeys,
             auctionMarketProfile: marketProfile,
             retiredPlayerSnapshots: appendHistoricalRetirees(
@@ -4137,6 +4137,8 @@ export const useGameStore = create<Store>()(
             nextPlayers[player.id] = {
               ...player,
               currentTeamId: toTeamId,
+              lastTradedSeason: state.currentSeason,
+              lastTradedToTeamId: toTeamId,
               basePrice: salary,
               isRetained: auctionType === "mega",
               retainedByTeamId: auctionType === "mega" ? toTeamId : null,
