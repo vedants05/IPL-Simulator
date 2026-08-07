@@ -89,6 +89,8 @@ import {
 const LeagueHallOfFame = dynamic(() => import("@/components/history/LeagueHallOfFame"), { ssr: false });
 const LeagueRecords = dynamic(() => import("@/components/history/LeagueRecords"), { ssr: false });
 const MinorRecords = dynamic(() => import("@/components/history/MinorRecords"), { ssr: false });
+import { MINOR_RECORDS, type MinorRecord } from "@/lib/data/minorRecords";
+import { trackMinorRecordsOnMatchComplete } from "@/lib/logic/minorRecordTracker";
 const CaptaincyPage = dynamic(() => import("@/components/squad/CaptaincyPage"), { ssr: false });
 const SquadAnalysisPage = dynamic(() => import("@/components/squad/SquadAnalysisPage"), { ssr: false });
 const InjuryHubPage = dynamic(() => import("@/components/squad/InjuryHubPage"), { ssr: false });
@@ -103,7 +105,7 @@ const NewsPage = dynamic(() => import("@/components/news/NewsPage"), { ssr: fals
 import { PlayerProfileModal } from "@/components/player/PlayerProfileModal";
 import { PlayoffDiagramContent, ScheduleTileContent } from "@/components/season/ScheduleTileContent";
 import TournamentStatsDashboard from "@/components/season/TournamentStatsDashboard";
-import { getCuratorPitch, getDefaultCuratorPitch, getHomeStadium } from "@/lib/data/pitchCurator";
+import { getCuratorPitch, getDefaultCuratorPitch, getHomeStadium, HOME_STADIUMS } from "@/lib/data/pitchCurator";
 import {
   calculateGroundScoringImpact,
   calculateOutfieldScoringImpact,
@@ -774,6 +776,7 @@ function OverviewPageContent() {
   const [fixtures, setFixtures] = useState<Match[]>([]);
   const [standings, setStandings] = useState<LeagueStandings[]>([]);
   const [playerStats, setPlayerStats] = useState<Record<string, PlayerStats>>({});
+  const [minorRecords, setMinorRecords] = useState<MinorRecord[]>(MINOR_RECORDS);
   const [inbox, setInbox] = useState<CareerEmail[]>([]);
   const [isCareerLoaded, setIsCareerLoaded] = useState(false);
   const [selectedMsgId, setSelectedMsgId] = useState<string | null>(null);
@@ -1287,6 +1290,8 @@ function OverviewPageContent() {
           playerStatsRef.current = parsed.playerStats;
           setPlayerStats(parsed.playerStats);
         }
+        const loadedRecords = Array.isArray(parsed.minorRecords) && parsed.minorRecords.length > 0 ? parsed.minorRecords : MINOR_RECORDS;
+        setMinorRecords(loadedRecords);
         // Historical views use compact league/knockout summaries; full
         // scorecards and delivery archives are only needed for the active
         // season. Remove older IndexedDB match archives after rollover.
@@ -1703,6 +1708,7 @@ function OverviewPageContent() {
     setStandings(initialStandings);
     setInbox(initialInbox);
     setPlayerStats({});
+    setMinorRecords(MINOR_RECORDS);
     setRetentionDeadline(nextRetentionDeadline);
     setBattingFirstXI(initialBattingFirstXI);
     setBowlingFirstXI(initialBowlingFirstXI);
@@ -1717,6 +1723,7 @@ function OverviewPageContent() {
       standings: initialStandings,
       inbox: initialInbox,
       playerStats: {},
+      minorRecords: MINOR_RECORDS,
       retentionDeadline: nextRetentionDeadline,
       battingFirstXI: initialBattingFirstXI,
       bowlingFirstXI: initialBowlingFirstXI,
@@ -2172,9 +2179,41 @@ function OverviewPageContent() {
   };
 
   const getMatchConditions = (match: Match): MatchGroundConditions | null => {
-    const stadium = getHomeStadium(match.teamA);
+    const previousSeason = simulatedLeagueHistory.find((season) => season.season === currentSeason - 1)
+      ?? HISTORICAL_LEAGUE_HISTORY.find((season) => season.season === currentSeason - 1);
+    const hash = (value: string) => Array.from(value).reduce(
+      (result, character) => (Math.imul(result, 31) + character.charCodeAt(0)) | 0,
+      17,
+    ) >>> 0;
+    const stage = match.stage;
+    let stadiumTeamId = match.teamA;
+    let pitchId: string | undefined;
+
+    if (stage === "final") {
+      stadiumTeamId = previousSeason?.championTeamId ?? match.teamA;
+    } else if (stage === "qualifier2") {
+      stadiumTeamId = previousSeason?.runnerUpTeamId ?? match.teamA;
+    } else if (stage === "qualifier1" || stage === "eliminator") {
+      const excludedTeams = new Set([match.teamA, match.teamB]);
+      const eligible = HOME_STADIUMS.filter((candidate) => !excludedTeams.has(candidate.teamId));
+      const qualifier1Match = fixturesRef.current.find((fixture) => fixture.stage === "qualifier1");
+      const qualifier1ExcludedTeams = new Set([qualifier1Match?.teamA, qualifier1Match?.teamB]);
+      const qualifier1Pool = HOME_STADIUMS.filter((candidate) => !qualifier1ExcludedTeams.has(candidate.teamId));
+      const qualifier1 = [...qualifier1Pool].sort((a, b) => hash(`${currentSeason}:qualifier1:${a.id}`) - hash(`${currentSeason}:qualifier1:${b.id}`))[0];
+      const qualifier1Teams = new Set([qualifier1?.teamId]);
+      const eliminatorPool = stage === "eliminator"
+        ? HOME_STADIUMS.filter((candidate) => !excludedTeams.has(candidate.teamId) && !qualifier1Teams.has(candidate.teamId))
+        : [];
+      const selected = stage === "qualifier1"
+        ? qualifier1
+        : [...eliminatorPool].sort((a, b) => hash(`${currentSeason}:eliminator:${a.id}`) - hash(`${currentSeason}:eliminator:${b.id}`))[0];
+      stadiumTeamId = selected?.teamId ?? match.teamA;
+      pitchId = selected?.pitches[hash(`${currentSeason}:${match.id}:pitch`) % selected.pitches.length]?.id;
+    }
+
+    const stadium = getHomeStadium(stadiumTeamId);
     if (!stadium) return null;
-    const selectedPitchId = homePitchSelections[stadium.teamId] ?? stadium.defaultPitchId;
+    const selectedPitchId = pitchId ?? stadium.defaultPitchId;
     const pitch = getCuratorPitch(selectedPitchId)
       ?? (customPitchesByTeam[stadium.teamId] ?? []).find((candidate) => candidate.id === selectedPitchId)
       ?? getDefaultCuratorPitch(stadium.teamId);
@@ -2913,6 +2952,46 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}${replacementEligible
     const careerUpdate = toIplCareerMatchUpdate(simulatedMatch, currentSeason);
     if (careerUpdate) recordIplMatchStats([careerUpdate]);
     processCompletedMatchInjuries(simulatedMatch);
+
+    const recordCheck = trackMinorRecordsOnMatchComplete(simulatedMatch, minorRecords, teams, currentSeason);
+    let nextMinorRecords = minorRecords;
+    let nextInbox = inbox;
+    if (recordCheck.brokenRecordNotices.length > 0) {
+      nextMinorRecords = recordCheck.updatedRecords;
+      setMinorRecords(nextMinorRecords);
+      
+      const newEmails = recordCheck.brokenRecordNotices.map((notice, idx) => {
+        const recordTitle = notice.split('"')[1] ?? "IPL Record";
+        const emailId = `record_broken_${recordTitle.replace(/\s+/g, "_")}_${Date.now()}_${idx}`;
+        return {
+          id: emailId,
+          templateId: "record_broken",
+          dedupeKey: emailId,
+          threadId: "records_announcement",
+          daySequence: 99 + idx,
+          sender: "IPL Stat Operations",
+          subject: `🚨 RECORD BROKEN: ${recordTitle}`,
+          preview: `The all-time record for "${recordTitle}" has been broken!`,
+          body: `A historic moment in the IPL!
+
+The all-time record for "${recordTitle}" has been broken.
+
+${notice}
+
+This record has been officially verified and added to the IPL Minor Records archive.`,
+          category: "league" as const,
+          priority: "normal" as const,
+          date: currentDate,
+          unread: true,
+          requiresAction: false,
+          actionCompleted: false,
+          actions: [],
+        };
+      });
+      nextInbox = [...newEmails, ...inbox];
+      setInbox(nextInbox);
+    }
+
     const nextStandings = calculateStandings(nextFixtures);
     nextFixtures = resolveKnockoutBracket(nextFixtures, nextStandings);
     fixturesRef.current = nextFixtures;
@@ -2924,6 +3003,8 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}${replacementEligible
       fixtures: nextFixtures,
       playerStats: nextPlayerStats,
       standings: nextStandings,
+      minorRecords: nextMinorRecords,
+      inbox: nextInbox,
     });
     return { nextFixtures, nextPlayerStats, nextStandings };
   };
@@ -3078,6 +3159,8 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}${replacementEligible
       && match.teamB !== userTeamId
     ));
     const careerUpdates: IplCareerMatchUpdate[] = [];
+    let nextMinorRecords = minorRecords;
+    const allNotices: string[] = [];
 
     matches.forEach((match) => {
       const simulatedMatch = buildSimulatedMatch(match);
@@ -3096,10 +3179,51 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}${replacementEligible
       const careerUpdate = toIplCareerMatchUpdate(simulatedMatch, currentSeason);
       if (careerUpdate) careerUpdates.push(careerUpdate);
       processCompletedMatchInjuries(simulatedMatch);
+
+      const recordCheck = trackMinorRecordsOnMatchComplete(simulatedMatch, nextMinorRecords, teams, currentSeason);
+      if (recordCheck.brokenRecordNotices.length > 0) {
+        nextMinorRecords = recordCheck.updatedRecords;
+        allNotices.push(...recordCheck.brokenRecordNotices);
+      }
     });
 
     if (matches.length > 0) {
       recordIplMatchStats(careerUpdates);
+      let nextInbox = inbox;
+      if (allNotices.length > 0) {
+        setMinorRecords(nextMinorRecords);
+        const newEmails = allNotices.map((notice, idx) => {
+          const recordTitle = notice.split('"')[1] ?? "IPL Record";
+          const emailId = `record_broken_${recordTitle.replace(/\s+/g, "_")}_${Date.now()}_${idx}`;
+          return {
+            id: emailId,
+            templateId: "record_broken",
+            dedupeKey: emailId,
+            threadId: "records_announcement",
+            daySequence: 99 + idx,
+            sender: "IPL Stat Operations",
+            subject: `🚨 RECORD BROKEN: ${recordTitle}`,
+            preview: `The all-time record for "${recordTitle}" has been broken!`,
+            body: `A historic moment in the IPL!
+
+The all-time record for "${recordTitle}" has been broken.
+
+${notice}
+
+This record has been officially verified and added to the IPL Minor Records archive.`,
+            category: "league" as const,
+            priority: "normal" as const,
+            date: currentDate,
+            unread: true,
+            requiresAction: false,
+            actionCompleted: false,
+            actions: [],
+          };
+        });
+        nextInbox = [...newEmails, ...inbox];
+        setInbox(nextInbox);
+      }
+
       const nextStandings = calculateStandings(nextFixtures);
       nextFixtures = resolveKnockoutBracket(nextFixtures, nextStandings);
       fixturesRef.current = nextFixtures;
@@ -3111,6 +3235,8 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}${replacementEligible
         fixtures: nextFixtures,
         playerStats: nextPlayerStats,
         standings: nextStandings,
+        minorRecords: nextMinorRecords,
+        inbox: nextInbox,
       });
     }
     return { nextFixtures, nextPlayerStats, simulatedCount: matches.length };
@@ -4515,6 +4641,110 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}${replacementEligible
     return playerByName;
   }, [players]);
 
+  const inboxThreads = Array.from(inbox.reduce((threads, message) => {
+    const thread = threads.get(message.threadId) ?? [];
+    thread.push(message);
+    threads.set(message.threadId, thread);
+    return threads;
+  }, new Map<string, CareerEmail[]>())).map(([threadId, messages]) => {
+    const newestMessages = [...messages].sort((left, right) => (
+      right.date.localeCompare(left.date)
+      || right.daySequence - left.daySequence
+      || right.id.localeCompare(left.id)
+    ));
+    return {
+      threadId,
+      messages: orderCareerEmailThread(messages),
+      latest: newestMessages[0],
+      unreadCount: messages.filter((message) => message.unread).length,
+    };
+  }).sort((left, right) => (
+    right.latest.date.localeCompare(left.latest.date)
+    || right.latest.daySequence - left.latest.daySequence
+    || right.latest.id.localeCompare(left.latest.id)
+  ));
+  const selectedMessage = selectedMsgId ? inbox.find((message) => message.id === selectedMsgId) ?? null : null;
+  const selectedThread = selectedMessage
+    ? inboxThreads.find((thread) => thread.threadId === selectedMessage.threadId) ?? null
+    : null;
+
+  const markThreadRead = (threadId: string, selectedId: string) => {
+    setSelectedMsgId(selectedId);
+    const nextInbox = inbox.map((message) => (
+      message.threadId === threadId && message.unread ? { ...message, unread: false } : message
+    ));
+    if (nextInbox.some((message, index) => message !== inbox[index])) {
+      setInbox(nextInbox);
+      saveCareerState({ inbox: nextInbox });
+    }
+  };
+
+  const markAllInboxRead = () => {
+    if (!inbox.some((message) => message.unread)) return;
+    const nextInbox = inbox.map((message) => (
+      message.unread ? { ...message, unread: false } : message
+    ));
+    setInbox(nextInbox);
+    saveCareerState({ inbox: nextInbox });
+  };
+
+  useEffect(() => {
+    if (activeSubTab !== "inbox" || inboxThreads.length === 0) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+      
+      const activeEl = document.activeElement;
+      if (activeEl && (
+        activeEl.tagName === "INPUT" || 
+        activeEl.tagName === "TEXTAREA" || 
+        activeEl.getAttribute("contenteditable") === "true"
+      )) {
+        return;
+      }
+
+      e.preventDefault();
+
+      const currentIndex = selectedThread 
+        ? inboxThreads.findIndex((t) => t.threadId === selectedThread.threadId) 
+        : -1;
+
+      let nextIndex = 0;
+      if (e.key === "ArrowDown") {
+        if (currentIndex === -1) {
+          nextIndex = 0;
+        } else {
+          nextIndex = Math.min(currentIndex + 1, inboxThreads.length - 1);
+        }
+      } else if (e.key === "ArrowUp") {
+        if (currentIndex === -1) {
+          nextIndex = 0;
+        } else {
+          nextIndex = Math.max(currentIndex - 1, 0);
+        }
+      }
+
+      const targetThread = inboxThreads[nextIndex];
+      if (targetThread) {
+        markThreadRead(targetThread.threadId, targetThread.latest.id);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [activeSubTab, inboxThreads, selectedThread]);
+
+  useEffect(() => {
+    if (activeSubTab !== "inbox" || !selectedThread) return;
+    const element = document.getElementById(`email-thread-${selectedThread.threadId}`);
+    if (element) {
+      element.scrollIntoView({
+        behavior: "smooth",
+        block: "nearest"
+      });
+    }
+  }, [selectedThread?.threadId, activeSubTab]);
+
   // Guard clause for uninitialized games
   if (!userTeam) {
     return (
@@ -4604,52 +4834,6 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}${replacementEligible
     : -1;
   const nextOpponentStanding = nextOpponentStandingIndex >= 0 ? standings[nextOpponentStandingIndex] : null;
   const nextFixtureVenue = nextUserFixture ? teams[nextUserFixture.teamA]?.homeGround : null;
-  const inboxThreads = Array.from(inbox.reduce((threads, message) => {
-    const thread = threads.get(message.threadId) ?? [];
-    thread.push(message);
-    threads.set(message.threadId, thread);
-    return threads;
-  }, new Map<string, CareerEmail[]>())).map(([threadId, messages]) => {
-    const newestMessages = [...messages].sort((left, right) => (
-      right.date.localeCompare(left.date)
-      || right.daySequence - left.daySequence
-      || right.id.localeCompare(left.id)
-    ));
-    return {
-      threadId,
-      messages: orderCareerEmailThread(messages),
-      latest: newestMessages[0],
-      unreadCount: messages.filter((message) => message.unread).length,
-    };
-  }).sort((left, right) => (
-    right.latest.date.localeCompare(left.latest.date)
-    || right.latest.daySequence - left.latest.daySequence
-    || right.latest.id.localeCompare(left.latest.id)
-  ));
-  const selectedMessage = selectedMsgId ? inbox.find((message) => message.id === selectedMsgId) ?? null : null;
-  const selectedThread = selectedMessage
-    ? inboxThreads.find((thread) => thread.threadId === selectedMessage.threadId) ?? null
-    : null;
-
-  const markThreadRead = (threadId: string, selectedId: string) => {
-    setSelectedMsgId(selectedId);
-    const nextInbox = inbox.map((message) => (
-      message.threadId === threadId && message.unread ? { ...message, unread: false } : message
-    ));
-    if (nextInbox.some((message, index) => message !== inbox[index])) {
-      setInbox(nextInbox);
-      saveCareerState({ inbox: nextInbox });
-    }
-  };
-
-  const markAllInboxRead = () => {
-    if (!inbox.some((message) => message.unread)) return;
-    const nextInbox = inbox.map((message) => (
-      message.unread ? { ...message, unread: false } : message
-    ));
-    setInbox(nextInbox);
-    saveCareerState({ inbox: nextInbox });
-  };
 
   const handleEmailAction = (action: CareerEmailAction) => {
     if (action.kind === "player" && action.entityId && players[action.entityId]) {
@@ -4948,7 +5132,12 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}${replacementEligible
                       ) : inboxThreads.slice(0, 5).map((thread) => (
                         <div
                           key={thread.threadId}
-                          className={`rounded-lg border px-3 py-2.5 text-xs transition-colors ${
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            markThreadRead(thread.threadId, thread.latest.id);
+                            setActiveSubTab("inbox");
+                          }}
+                          className={`rounded-lg border px-3 py-2.5 text-xs transition-colors cursor-pointer hover:border-accent/50 hover:bg-accent/[0.02] ${
                             thread.unreadCount > 0
                               ? "border-accent/35 bg-accent/[0.055]"
                               : "border-transparent bg-bg/35 group-hover:border-border/70"
@@ -5440,6 +5629,7 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}${replacementEligible
                           return (
                             <button
                               key={thread.threadId}
+                              id={`email-thread-${thread.threadId}`}
                               onClick={() => markThreadRead(thread.threadId, thread.latest.id)}
                               className={`group relative flex w-full gap-3 rounded-lg border p-3 text-left transition-all duration-150 ${
                                 isSelected
@@ -7115,7 +7305,10 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}${replacementEligible
                                         </span>
                                       </div>
                                       <div className="truncate font-space-mono text-[11px] font-medium uppercase text-text-secondary">
-                                        {teamA?.homeGround ?? "Stadium TBD"}
+                                        {fixture.simulation?.conditions?.stadiumName
+                                          ?? (fixture.stage ? getMatchConditions(fixture)?.stadiumName : undefined)
+                                          ?? teamA?.homeGround
+                                          ?? "Stadium TBD"}
                                       </div>
                                     </div>
                                   );
@@ -7383,7 +7576,12 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}${replacementEligible
                                           </div>
 
                                           <div className="mt-3 flex items-center justify-between gap-3 border-t border-[#16130f]/10 pt-2">
-                                            <span className="truncate font-space-mono text-[8px] uppercase text-text-secondary">{teamA?.homeGround ?? "Venue TBD"}</span>
+                                            <span className="truncate font-space-mono text-[8px] uppercase text-text-secondary">
+                                              {match.simulation?.conditions?.stadiumName
+                                                ?? (match.stage ? getMatchConditions(match)?.stadiumName : undefined)
+                                                ?? teamA?.homeGround
+                                                ?? "Venue TBD"}
+                                            </span>
                                             {canSimulateUserMatch ? (
                                               <button
                                                 type="button"
@@ -8019,7 +8217,7 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}${replacementEligible
                 </div>
               )}
               {activeSubTab === "minorrecords" && (
-                <MinorRecords />
+                <MinorRecords minorRecords={minorRecords} />
               )}
             </>
           )}
@@ -8709,9 +8907,10 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}${replacementEligible
               {activeMatchResultView === "summary" && (
                 <div className="space-y-4">
                   {activeScorecard.simulation && (
-                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
                       {[
                         ["Toss", `${teams[activeScorecard.simulation.tossWinnerId]?.shortName ?? activeScorecard.simulation.tossWinnerId} chose to ${activeScorecard.simulation.tossDecision}`],
+                        ["Stadium", activeScorecard.simulation.conditions.stadiumName],
                         ["Pitch", activeScorecard.simulation.conditions.pitchName],
                         ["Ground", `${activeScorecard.simulation.conditions.boundaries.straightMetres}m straight · ${activeScorecard.simulation.conditions.boundaries.wideMetres}m wide`],
                         ["Player of match", activeScorecard.simulation.playerOfTheMatchName],

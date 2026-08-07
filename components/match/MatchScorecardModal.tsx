@@ -437,10 +437,10 @@ export default function MatchScorecardModal({
                     <MapPin size={16} /> Stadium & Pitch
                   </div>
                   <div className="mt-2 font-barlow text-sm text-text-primary">
-                    {sim?.conditions?.stadiumName ?? teamA?.homeGround ?? "IPL Stadium"}
+                    Stadium: {sim?.conditions?.stadiumName ?? teamA?.homeGround ?? "IPL Stadium"}
                   </div>
                   <div className="mt-1 font-space-mono text-xs text-text-secondary">
-                    Pitch Type: {sim?.conditions?.pitchType ?? "Standard Flat"}
+                    Pitch: {sim?.conditions?.pitchName ?? sim?.conditions?.pitchType ?? "Standard Flat"}
                   </div>
                 </div>
 

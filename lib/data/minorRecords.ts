@@ -23,6 +23,18 @@ export const MINOR_RECORDS: MinorRecord[] = [
   { id: "highest-score-pos-9", category: "batting_position", title: "Highest IPL score batting at #9", value: "49*", holder: "Harbhajan Singh", season: "2010", notes: "MI vs Deccan Chargers", source: "IPL records", verified: true },
   { id: "highest-score-pos-10", category: "batting_position", title: "Highest IPL score batting at #10", value: "28*", holder: "Dhawal Kulkarni", season: "2014", notes: "RR vs CSK", source: "IPL records", verified: true },
   { id: "highest-score-pos-11", category: "batting_position", title: "Highest IPL score batting at #11", value: "23*", holder: "Munaf Patel", season: "2009", notes: "RR vs DC", source: "IPL records", verified: true },
+
+  { id: "season-most-runs-pos-1", category: "batting_position", title: "Most runs in a season batting at #1", value: "973", holder: "Virat Kohli", season: "2016", notes: "RCB", source: "IPL records", verified: true },
+  { id: "season-most-runs-pos-2", category: "batting_position", title: "Most runs in a season batting at #2", value: "890", holder: "Shubman Gill", season: "2023", notes: "GT", source: "IPL records", verified: true },
+  { id: "season-most-runs-pos-3", category: "batting_position", title: "Most runs in a season batting at #3", value: "735", holder: "Kane Williamson", season: "2018", notes: "SRH", source: "IPL records", verified: true },
+  { id: "season-most-runs-pos-4", category: "batting_position", title: "Most runs in a season batting at #4", value: "684", holder: "Rishabh Pant", season: "2018", notes: "DD", source: "IPL records", verified: true },
+  { id: "season-most-runs-pos-5", category: "batting_position", title: "Most runs in a season batting at #5", value: "624", holder: "Heinrich Klaasen", season: "2026", notes: "SRH", source: "IPL records", verified: true },
+  { id: "season-most-runs-pos-6", category: "batting_position", title: "Most runs in a season batting at #6", value: "510", holder: "Andre Russell", season: "2019", notes: "KKR", source: "IPL records", verified: true },
+  { id: "season-most-runs-pos-7", category: "batting_position", title: "Most runs in a season batting at #7", value: "455", holder: "MS Dhoni", season: "2018", notes: "CSK", source: "IPL records", verified: true },
+  { id: "season-most-runs-pos-8", category: "batting_position", title: "Most runs in a season batting at #8", value: "227", holder: "Ravindra Jadeja", season: "2021", notes: "CSK", source: "IPL records", verified: true },
+  { id: "season-most-runs-pos-9", category: "batting_position", title: "Most runs in a season batting at #9", value: "151", holder: "Harbhajan Singh", season: "2012", notes: "MI", source: "IPL records", verified: true },
+  { id: "season-most-runs-pos-10", category: "batting_position", title: "Most runs in a season batting at #10", value: "42", holder: "Umesh Yadav", season: "2017", notes: "KKR", source: "IPL records", verified: true },
+  { id: "season-most-runs-pos-11", category: "batting_position", title: "Most runs in a season batting at #11", value: "22", holder: "Sandeep Sharma", season: "2014", notes: "PBKS", source: "IPL records", verified: true },
   
   // --- PARTNERSHIPS (11) ---
   { id: "highest-partnership-pos-1", category: "partnership_position", title: "Highest IPL partnership involving batting position #1", value: "210*", holder: "Quinton de Kock & KL Rahul", season: "2022", notes: "LSG vs KKR (1st wicket)", source: "IPL records", verified: true },
@@ -54,11 +66,12 @@ export const MINOR_RECORDS: MinorRecord[] = [
   { id: "lowest-score-rr", category: "team", title: "RR lowest ever score", value: "58", holder: "RR", season: "2009", notes: "vs RCB", source: "IPL records", verified: true },
   { id: "lowest-score-dc", category: "team", title: "DC lowest ever score", value: "66", holder: "DC", season: "2017", notes: "vs MI", source: "IPL records", verified: true },
   { id: "lowest-score-kkr", category: "team", title: "KKR lowest ever score", value: "67", holder: "KKR", season: "2008", notes: "vs MI", source: "IPL records", verified: true },
-  { id: "lowest-score-pbks", category: "team", title: "PBKS lowest ever score", value: "73", holder: "PBKS", season: "2017", notes: "vs RPS", source: "IPL records", verified: true },
   { id: "lowest-score-csk", category: "team", title: "CSK lowest ever score", value: "79", holder: "CSK", season: "2013", notes: "vs MI", source: "IPL records", verified: true },
+  { id: "lowest-score-pbks", category: "team", title: "PBKS lowest ever score", value: "73", holder: "PBKS", season: "2017", notes: "vs RPS", source: "IPL records", verified: true },
+  { id: "lowest-score-lsg", category: "team", title: "LSG lowest ever score", value: "82", holder: "LSG", season: "2022", notes: "vs GT", source: "IPL records", verified: true },
+  { id: "lowest-score-srh", category: "team", title: "SRH lowest ever score", value: "96", holder: "SRH", season: "2019", notes: "vs MI", source: "IPL records", verified: true },
   { id: "lowest-score-mi", category: "team", title: "MI lowest ever score", value: "87", holder: "MI", season: "2018", notes: "vs SRH", source: "IPL records", verified: true },
   { id: "lowest-score-gt", category: "team", title: "GT lowest ever score", value: "89", holder: "GT", season: "2024", notes: "vs DC", source: "IPL records", verified: true },
-  { id: "lowest-score-srh", category: "team", title: "SRH lowest ever score", value: "96", holder: "SRH", season: "2019", notes: "vs MI", source: "IPL records", verified: true },
 
   { id: "most-consecutive-wins", category: "team", title: "Most consecutive wins in a season", value: "10 wins", holder: "KKR", season: "2014", source: "IPL records", verified: true },
   { id: "largest-victory-runs", category: "team", title: "Largest margin of victory by runs", value: "146 runs", holder: "MI", season: "2017", notes: "vs DC", source: "IPL records", verified: true },

@@ -528,7 +528,7 @@ export function ScheduleTileContent({
                           </span>
                         </div>
                         <div className="truncate font-space-mono text-[11px] font-medium uppercase text-text-secondary">
-                          {teamA?.homeGround ?? "Stadium TBD"}
+                          {fixture.simulation?.conditions?.stadiumName ?? teamA?.homeGround ?? "Stadium TBD"}
                         </div>
                       </div>
                     );

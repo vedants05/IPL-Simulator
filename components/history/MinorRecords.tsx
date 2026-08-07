@@ -1,6 +1,6 @@
 "use client";
 import { useMemo, useState } from "react";
-import { MINOR_RECORDS } from "@/lib/data/minorRecords";
+import { MINOR_RECORDS, type MinorRecord } from "@/lib/data/minorRecords";
 import { LEAGUE_HISTORY_TEAMS } from "@/lib/data/leagueHistory";
 
 const labels: Record<string, string> = {
@@ -9,128 +9,142 @@ const labels: Record<string, string> = {
   fielding: "Fielding", team: "Team records",
 };
 
-export default function MinorRecords() {
+interface MinorRecordsProps {
+  minorRecords?: MinorRecord[];
+}
+
+export default function MinorRecords({ minorRecords = MINOR_RECORDS }: MinorRecordsProps) {
   const [category, setCategory] = useState("all");
   const [verifiedOnly, setVerifiedOnly] = useState(false);
 
   // Group and sort team highest scores
   const highestScores = useMemo(() => {
-    return MINOR_RECORDS.filter(r => r.category === "team" && r.id.startsWith("highest-score-"))
+    return minorRecords.filter(r => r.category === "team" && r.id.startsWith("highest-score-"))
       .sort((a, b) => {
         const valA = parseInt(a.value.split('/')[0]);
         const valB = parseInt(b.value.split('/')[0]);
         return valB - valA;
       });
-  }, []);
+  }, [minorRecords]);
 
   // Group and sort team lowest scores
   const lowestScores = useMemo(() => {
-    return MINOR_RECORDS.filter(r => r.category === "team" && r.id.startsWith("lowest-score-"))
+    return minorRecords.filter(r => r.category === "team" && r.id.startsWith("lowest-score-") && r.id !== "lowest-score-defended")
       .sort((a, b) => {
         const valA = parseInt(a.value.split('/')[0]);
         const valB = parseInt(b.value.split('/')[0]);
         return valA - valB;
       });
-  }, []);
+  }, [minorRecords]);
 
   // Group and sort batting position highest scores
   const battingPosScores = useMemo(() => {
-    return MINOR_RECORDS.filter(r => r.id.startsWith("highest-score-pos-"))
+    return minorRecords.filter(r => r.id.startsWith("highest-score-pos-"))
       .sort((a, b) => {
         const posA = parseInt(a.id.split('-').pop() ?? "0");
         const posB = parseInt(b.id.split('-').pop() ?? "0");
         return posA - posB;
       });
-  }, []);
+  }, [minorRecords]);
+
+  // Group and sort batting position highest season runs
+  const seasonBattingPosRuns = useMemo(() => {
+    return minorRecords.filter(r => r.id.startsWith("season-most-runs-pos-"))
+      .sort((a, b) => {
+        const posA = parseInt(a.id.split('-').pop() ?? "0");
+        const posB = parseInt(b.id.split('-').pop() ?? "0");
+        return posA - posB;
+      });
+  }, [minorRecords]);
 
   // Group and sort partnerships by position
   const partnershipPosScores = useMemo(() => {
-    return MINOR_RECORDS.filter(r => r.id.startsWith("highest-partnership-pos-"))
+    return minorRecords.filter(r => r.id.startsWith("highest-partnership-pos-"))
       .sort((a, b) => {
         const posA = parseInt(a.id.split('-').pop() ?? "0");
         const posB = parseInt(b.id.split('-').pop() ?? "0");
         return posA - posB;
       });
-  }, []);
+  }, [minorRecords]);
 
 
 
   // Group and sort lowest defended totals by team
   const lowestDefendedTotals = useMemo(() => {
-    return MINOR_RECORDS.filter(r => r.id.startsWith("lowest-defended-totals-"))
+    return minorRecords.filter(r => r.id.startsWith("lowest-defended-totals-"))
       .sort((a, b) => {
         const valA = parseInt(a.value.split('/')[0]);
         const valB = parseInt(b.value.split('/')[0]);
         return valA - valB;
       });
-  }, []);
+  }, [minorRecords]);
 
   // Group and sort highest successful run chases by team
   const highestRunsChased = useMemo(() => {
-    return MINOR_RECORDS.filter(r => r.id.startsWith("highest-runs-chased-"))
+    return minorRecords.filter(r => r.id.startsWith("highest-runs-chased-"))
       .sort((a, b) => {
         const valA = parseInt(a.value.split('/')[0]);
         const valB = parseInt(b.value.split('/')[0]);
         return valB - valA;
       });
-  }, []);
+  }, [minorRecords]);
 
 
 
   // Group and sort runs by age (21-44)
   const runsByAge = useMemo(() => {
-    return MINOR_RECORDS.filter(r => r.id.startsWith("runs-by-age-"))
+    return minorRecords.filter(r => r.id.startsWith("runs-by-age-"))
       .sort((a, b) => {
         const ageA = parseInt(a.id.split('-').pop() ?? "0");
         const ageB = parseInt(b.id.split('-').pop() ?? "0");
         return ageA - ageB;
       });
-  }, []);
+  }, [minorRecords]);
 
   // Group and sort wickets by age (21-44)
   const wicketsByAge = useMemo(() => {
-    return MINOR_RECORDS.filter(r => r.id.startsWith("wickets-by-age-"))
+    return minorRecords.filter(r => r.id.startsWith("wickets-by-age-"))
       .sort((a, b) => {
         const ageA = parseInt(a.id.split('-').pop() ?? "0");
         const ageB = parseInt(b.id.split('-').pop() ?? "0");
         return ageA - ageB;
       });
-  }, []);
+  }, [minorRecords]);
 
   // Group fastest to wickets in season (ends with -wickets)
   const fastestWickets = useMemo(() => {
-    return MINOR_RECORDS.filter(r => r.id.startsWith("fastest-") && r.id.endsWith("-wickets"))
+    return minorRecords.filter(r => r.id.startsWith("fastest-") && r.id.endsWith("-wickets"))
       .sort((a, b) => {
         const wktA = parseInt(a.id.split('-')[1]);
         const wktB = parseInt(b.id.split('-')[1]);
         return wktA - wktB;
       });
-  }, []);
+  }, [minorRecords]);
 
   // Group fastest to season runs by balls (ends with -balls, excludes sixes)
   const fastestSeasonRunsBalls = useMemo(() => {
-    return MINOR_RECORDS.filter(r => r.id.startsWith("fastest-") && r.id.endsWith("-balls") && !r.id.includes("sixes"))
+    return minorRecords.filter(r => r.id.startsWith("fastest-") && r.id.endsWith("-balls") && !r.id.includes("sixes"))
       .sort((a, b) => {
         const runsA = parseInt(a.id.split('-')[1]);
         const runsB = parseInt(b.id.split('-')[1]);
         return runsA - runsB;
       });
-  }, []);
+  }, [minorRecords]);
 
   // Group fastest to season runs by innings (ends with -innings)
   const fastestSeasonRunsInnings = useMemo(() => {
-    return MINOR_RECORDS.filter(r => r.id.startsWith("fastest-") && r.id.endsWith("-innings"))
+    return minorRecords.filter(r => r.id.startsWith("fastest-") && r.id.endsWith("-innings"))
       .sort((a, b) => {
         const runsA = parseInt(a.id.split('-')[1]);
         const runsB = parseInt(b.id.split('-')[1]);
         return runsA - runsB;
       });
-  }, []);
+  }, [minorRecords]);
 
 
 
   // Check if a record belongs to any of our grouped tables
-  const isGroupedRecord = (record: typeof MINOR_RECORDS[number]) => {
+  const isGroupedRecord = (record: MinorRecord) => {
     const id = record.id;
     return (record.category === "team" && (id.startsWith("highest-score-") || id.startsWith("lowest-score-"))) ||
            id.startsWith("highest-score-pos-") ||
@@ -156,11 +170,11 @@ export default function MinorRecords() {
            ));
   };
 
-  const records = useMemo(() => MINOR_RECORDS.filter((record) => (
+  const records = useMemo(() => minorRecords.filter((record) => (
     (category === "all" || record.category === category) && 
     (!verifiedOnly || record.verified) &&
     !isGroupedRecord(record)
-  )), [category, verifiedOnly]);
+  )), [category, verifiedOnly, minorRecords]);
 
   const teamGameRecords = useMemo(() => {
     return records.filter(r => 
@@ -378,6 +392,38 @@ export default function MinorRecords() {
         </div>
       )}
 
+      {/* --- HIGHEST SCORING BATTING SEASONS BY POSITION TABLE --- */}
+      {(category === "all" || category === "batting_position") && (
+        <div className="mb-8 rounded-lg border border-border bg-bg p-4 overflow-hidden">
+          <div className="mb-3 border-b border-border/40 pb-2">
+            <h3 className="font-anton text-sm uppercase tracking-wider text-text-primary">Highest Scoring Batting Season by Position</h3>
+            <p className="font-space-mono text-[9px] text-text-secondary">IPL single-season run record holders for positions #1 through #11</p>
+          </div>
+          <div className="space-y-1 font-space-mono text-[11px] overflow-hidden">
+            <div className="grid grid-cols-[35px_1fr_65px_50px_140px] text-[9px] font-bold text-text-secondary uppercase border-b border-border pb-1 mb-1 whitespace-nowrap">
+              <span>Pos</span>
+              <span>Batsman</span>
+              <span className="text-right">Runs</span>
+              <span className="text-right">Season</span>
+              <span className="text-right text-ellipsis overflow-hidden">Franchise</span>
+            </div>
+            {seasonBattingPosRuns.map((record) => {
+              const pos = record.id.split('-').pop();
+              const posLabel = pos === "1" || pos === "2" ? "Opener" : `#${pos}`;
+              return (
+                <div key={record.id} className="grid grid-cols-[35px_1fr_65px_50px_140px] items-center py-1 px-1 rounded hover:bg-surface/5 whitespace-nowrap overflow-hidden text-ellipsis">
+                  <span className="font-anton text-[10px] text-accent">{posLabel}</span>
+                  <span className="truncate font-bold text-text-primary">{record.holder}</span>
+                  <span className="text-right font-bold text-accent">{record.value}</span>
+                  <span className="text-right text-text-secondary text-[10px] truncate">{record.season}</span>
+                  <span className="text-right text-text-secondary text-[10px] truncate">{record.notes}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* --- PARTNERSHIPS BY POSITION COMPARISON TABLE --- */}
       {(category === "all" || category === "partnership_position") && (
         <div className="mb-8 rounded-lg border border-border bg-bg p-4 overflow-hidden">
@@ -415,23 +461,21 @@ export default function MinorRecords() {
             <p className="font-space-mono text-[9px] text-text-secondary">Record run totals scored by players at each age from U21 to 44</p>
           </div>
           <div className="space-y-1 font-space-mono text-[11px] overflow-hidden">
-            <div className="grid grid-cols-[40px_1.5fr_80px_60px_120px] text-[9px] font-bold text-text-secondary uppercase border-b border-border pb-1 mb-1 whitespace-nowrap">
+            <div className="grid grid-cols-[50px_1.5fr_80px_60px] text-[9px] font-bold text-text-secondary uppercase border-b border-border pb-1 mb-1 whitespace-nowrap">
               <span>Age</span>
               <span>Batsman</span>
               <span className="text-right">Runs</span>
               <span className="text-right">Season</span>
-              <span className="text-right">All-Time Peak</span>
             </div>
             {runsByAge.map((record) => {
               const ageToken = record.id.split('-').pop();
               const ageLabel = ageToken === "20" ? "U21" : `${ageToken} y/o`;
               return (
-                <div key={record.id} className="grid grid-cols-[40px_1.5fr_80px_60px_120px] items-center py-1 px-1 rounded hover:bg-surface/5 whitespace-nowrap overflow-hidden text-ellipsis">
+                <div key={record.id} className="grid grid-cols-[50px_1.5fr_80px_60px] items-center py-1 px-1 rounded hover:bg-surface/5 whitespace-nowrap overflow-hidden text-ellipsis">
                   <span className="font-anton text-[11px] text-accent">{ageLabel}</span>
                   <span className="truncate font-bold text-text-primary">{record.holder}</span>
                   <span className="text-right font-bold text-accent">{record.value}</span>
                   <span className="text-right text-text-secondary text-[10px]">{record.season}</span>
-                  <span className="text-right text-text-secondary text-[10px] truncate">{record.holder}</span>
                 </div>
               );
             })}
@@ -447,23 +491,21 @@ export default function MinorRecords() {
             <p className="font-space-mono text-[9px] text-text-secondary">Record wicket totals taken by bowlers at each age from U21 to 44</p>
           </div>
           <div className="space-y-1 font-space-mono text-[11px] overflow-hidden">
-            <div className="grid grid-cols-[40px_1.5fr_80px_60px_120px] text-[9px] font-bold text-text-secondary uppercase border-b border-border pb-1 mb-1 whitespace-nowrap">
+            <div className="grid grid-cols-[50px_1.5fr_80px_60px] text-[9px] font-bold text-text-secondary uppercase border-b border-border pb-1 mb-1 whitespace-nowrap">
               <span>Age</span>
               <span>Bowler</span>
               <span className="text-right">Wickets</span>
               <span className="text-right">Season</span>
-              <span className="text-right">All-Time Peak</span>
             </div>
             {wicketsByAge.map((record) => {
               const ageToken = record.id.split('-').pop();
               const ageLabel = ageToken === "20" ? "U21" : `${ageToken} y/o`;
               return (
-                <div key={record.id} className="grid grid-cols-[40px_1.5fr_80px_60px_120px] items-center py-1 px-1 rounded hover:bg-surface/5 whitespace-nowrap overflow-hidden text-ellipsis">
+                <div key={record.id} className="grid grid-cols-[50px_1.5fr_80px_60px] items-center py-1 px-1 rounded hover:bg-surface/5 whitespace-nowrap overflow-hidden text-ellipsis">
                   <span className="font-anton text-[11px] text-accent">{ageLabel}</span>
                   <span className="truncate font-bold text-text-primary">{record.holder}</span>
                   <span className="text-right font-bold text-accent">{record.value}</span>
                   <span className="text-right text-text-secondary text-[10px]">{record.season}</span>
-                  <span className="text-right text-text-secondary text-[10px] truncate">{record.holder}</span>
                 </div>
               );
             })}
