@@ -2362,6 +2362,76 @@ function OverviewPageContent() {
     return { startingXI: nextXI, impactSubs: nextSubs };
   };
 
+  const repairUserSelectionForMajorInjuries = (
+    selection: {
+      battingFirstXI: string[];
+      bowlingFirstXI: string[];
+      battingFirstImpactSubs: string[];
+      bowlingFirstImpactSubs: string[];
+    },
+    teamId: string,
+  ) => {
+    const liveInjuries = useGameStore.getState().activeInjuries;
+    const squad = getTeamSquad(teamId);
+    const available = squad.filter((player) => !isPlayerMajorInjured(liveInjuries, player.id));
+    const candidates = available.map(playerToLineupCandidate);
+    const replacePlan = (startingXI: string[], impactSubs: string[], plan: LineupPlan) => {
+      const nextXI = [...startingXI];
+      const nextSubs = [...impactSubs];
+      const selected = new Set(nextXI);
+      const injuredIds = new Set(
+        [...nextXI, ...nextSubs].filter((id) => isPlayerMajorInjured(liveInjuries, id)),
+      );
+      const replacementFor = (playerId: string, excluded: Set<string>) => {
+        const injured = players[playerId];
+        return available
+          .filter((candidate) => !excluded.has(candidate.id) && !injuredIds.has(candidate.id))
+          .sort((left, right) => (
+            Number(left.role === injured?.role) - Number(right.role === injured?.role)
+            || getPlayerRating(right) - getPlayerRating(left)
+          ))[0];
+      };
+
+      for (let index = 0; index < nextXI.length; index += 1) {
+        const playerId = nextXI[index];
+        if (!isPlayerMajorInjured(liveInjuries, playerId)) continue;
+        selected.delete(playerId);
+        const replacement = replacementFor(playerId, selected);
+        if (!replacement) return null;
+        nextXI[index] = replacement.id;
+        selected.add(replacement.id);
+      }
+
+      const used = new Set(nextXI);
+      for (let index = 0; index < nextSubs.length; index += 1) {
+        const playerId = nextSubs[index];
+        if (!isPlayerMajorInjured(liveInjuries, playerId)) {
+          used.add(playerId);
+          continue;
+        }
+        const replacement = replacementFor(playerId, used);
+        if (!replacement) return null;
+        nextSubs[index] = replacement.id;
+        used.add(replacement.id);
+      }
+
+      return validateLineup(nextXI, candidates, plan).isValid
+        ? { startingXI: nextXI, impactSubs: nextSubs }
+        : null;
+    };
+
+    const batting = replacePlan(selection.battingFirstXI, selection.battingFirstImpactSubs, "battingFirst");
+    const bowling = replacePlan(selection.bowlingFirstXI, selection.bowlingFirstImpactSubs, "bowlingFirst");
+    return batting && bowling
+      ? {
+          battingFirstXI: batting.startingXI,
+          bowlingFirstXI: bowling.startingXI,
+          battingFirstImpactSubs: batting.impactSubs,
+          bowlingFirstImpactSubs: bowling.impactSubs,
+        }
+      : null;
+  };
+
   const buildTeamMatchPlans = (
     teamId: string,
     userSelection?: {
@@ -2398,7 +2468,6 @@ function OverviewPageContent() {
         && requestedSelection.battingFirstImpactSubs.length === 5
         && requestedSelection.bowlingFirstImpactSubs.length === 5
         && savedIds.every((playerId) => currentSquadIds.has(playerId))
-        && savedIds.every((playerId) => !isPlayerMajorInjured(liveInjuries, playerId))
       );
       const selection = requestedPlanIsCurrent
         ? requestedSelection
@@ -2407,13 +2476,23 @@ function OverviewPageContent() {
             viceCaptainId: teamLeadership.viceCaptainId,
             useProvisionalCaptain: !teamLeadership.captainId,
           });
+      const repairedSelection = requestedPlanIsCurrent
+        ? repairUserSelectionForMajorInjuries(selection, teamId)
+        : null;
+      const playableSelection = repairedSelection ?? (requestedPlanIsCurrent
+        ? buildAutomaticLineupSelection(selectableSquad, {
+            captainId: teamLeadership.captainId,
+            viceCaptainId: teamLeadership.viceCaptainId,
+            useProvisionalCaptain: !teamLeadership.captainId,
+          })
+        : selection);
       return {
         teamId,
         isUserControlled: true,
         tactics: teamTactics,
         battingFirst: toMatchLineupPlan(
-          selection.battingFirstXI,
-          selection.battingFirstImpactSubs,
+          playableSelection.battingFirstXI,
+          playableSelection.battingFirstImpactSubs,
           requestedPlanIsCurrent && !userSelection ? battingFirstImpactPlayerId : null,
           requestedPlanIsCurrent && !userSelection ? battingFirstOutgoingPlayerId : null,
           requestedPlanIsCurrent && !userSelection ? battingFirstImpactBattingPosition : null,
@@ -2421,8 +2500,8 @@ function OverviewPageContent() {
           teamLeadership.viceCaptainId,
         ),
         bowlingFirst: toMatchLineupPlan(
-          selection.bowlingFirstXI,
-          selection.bowlingFirstImpactSubs,
+          playableSelection.bowlingFirstXI,
+          playableSelection.bowlingFirstImpactSubs,
           requestedPlanIsCurrent && !userSelection ? bowlingFirstImpactPlayerId : null,
           requestedPlanIsCurrent && !userSelection ? bowlingFirstOutgoingPlayerId : null,
           requestedPlanIsCurrent && !userSelection ? bowlingFirstImpactBattingPosition : null,
@@ -2558,10 +2637,19 @@ function OverviewPageContent() {
         performances.set(playerId, values.slice(-5));
       });
     });
-    return Object.fromEntries(Array.from(performances, ([playerId, values]) => [
+    const base = Object.fromEntries(Array.from(performances, ([playerId, values]) => [
       playerId,
       Math.max(-3, Math.min(3, values.reduce((sum, value) => sum + value, 0) / values.length)),
     ]));
+    const isPlayoff = Boolean(match.stage);
+    const isQualifierTwo = match.stage === "qualifier2";
+    const topTwo = new Set(standings.slice(0, 2).map((standing) => standing.teamId));
+    return Object.fromEntries(Object.entries(base).map(([playerId, value]) => {
+      const player = players[playerId];
+      const playoffForm = isPlayoff ? value * 1.75 : value;
+      const qualifierTwoAdvantage = isQualifierTwo && player && topTwo.has(player.currentTeamId ?? "") ? 1.5 : 0;
+      return [playerId, playoffForm + qualifierTwoAdvantage];
+    }));
   };
 
   const simulationToLegacyScorecard = (
@@ -2874,8 +2962,16 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}${replacementEligible
     let teamBPlans = buildTeamMatchPlans(match.teamB, userSelection, conditions, match, assistantManageUser);
     // Final shared safety boundary: no simulation route, including bulk/end of
     // season automation, may pass a major-injured player to the match engine.
-    if (containsMajorInjury(teamAPlans)) teamAPlans = buildTeamMatchPlans(match.teamA, undefined, conditions, match, true);
-    if (containsMajorInjury(teamBPlans)) teamBPlans = buildTeamMatchPlans(match.teamB, undefined, conditions, match, true);
+    if (containsMajorInjury(teamAPlans)) {
+      teamAPlans = match.teamA === userTeamId && !assistantManageUser
+        ? buildTeamMatchPlans(match.teamA, userSelection, conditions, match, false)
+        : buildTeamMatchPlans(match.teamA, undefined, conditions, match, true);
+    }
+    if (containsMajorInjury(teamBPlans)) {
+      teamBPlans = match.teamB === userTeamId && !assistantManageUser
+        ? buildTeamMatchPlans(match.teamB, userSelection, conditions, match, false)
+        : buildTeamMatchPlans(match.teamB, undefined, conditions, match, true);
+    }
     if (containsMajorInjury(teamAPlans) || containsMajorInjury(teamBPlans)) {
       throw new Error("A major-injured player remained in a generated match squad.");
     }
@@ -2892,6 +2988,8 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}${replacementEligible
       teamBPlans,
       conditions,
       formAdjustments: getRecentFormAdjustments(match),
+      stage: match.stage,
+      isKnockout: Boolean(match.stage),
     });
     if (match.stage && !simulation.winnerId) {
       const superOverHash = Array.from(`${fixtureSeed}:${match.id}`).reduce(
@@ -4924,7 +5022,7 @@ This record has been officially verified and added to the IPL Minor Records arch
       )}
 
       {/* Fast-forward runs behind a stable progress screen rather than flashing calendar days. */}
-      {careerFastForwardTargetDate && (
+      {false && careerFastForwardTargetDate && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-[#0b1018]/95 px-6 text-white backdrop-blur-sm" role="status" aria-live="polite">
           <div className="w-full max-w-lg border-2 border-white/15 bg-[#111925] p-8 shadow-2xl">
             <p className="font-space-mono text-[9px] font-bold uppercase tracking-[0.24em] text-accent">Career simulation in progress</p>
@@ -4952,7 +5050,7 @@ This record has been officially verified and added to the IPL Minor Records arch
       )}
 
       {/* Ticking Calendar Overlay */}
-      {!careerFastForwardTargetDate && (isSimulatingDays || isCalendarClosing) && (
+      {(careerFastForwardTargetDate || isSimulatingDays || isCalendarClosing) && (
         <div
           className={`${isSimulatingDays ? "ticking-calendar-drop" : "ticking-calendar-pull-up"} fixed inset-x-0 top-0 z-[120] flex items-center gap-3 border-b-2 border-border bg-surface px-3 py-3 shadow-2xl sm:px-5`}
           role="region"

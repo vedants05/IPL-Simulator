@@ -2199,8 +2199,6 @@ function simulateInnings(context: InningsContext): MatchInnings {
       const momentumBowlerBoost = bowlingMomentumDeliveries > 0 ? 2.0 : 0;
       if (bowlingMomentumDeliveries > 0) bowlingMomentumDeliveries -= 1;
 
-      const bowlerClutch = isKnockoutMatch && (bowler.reputation ?? 5) >= 9 ? 1.8 : 0;
-      const bowlerNerves = isKnockoutMatch && (bowler.age <= 23 || (bowler.reputation ?? 5) <= 5) ? -1.2 : 0;
 
       const bowlingRating = (
         getEffectiveBowlingRating(bowler, rng, context.seed)
@@ -2212,16 +2210,12 @@ function simulateInnings(context: InningsContext): MatchInnings {
           overNumber,
           bowler.role === "All-Rounder",
         )
-        + bowlerClutch
-        + bowlerNerves
         + momentumBowlerBoost
         + dewBowlerPenalty
         + heatBowlerPenalty
       );
       const battingPosition = batting.battingOrder.indexOf(striker.id) + 1;
       const setBonus = clamp((strikerEntry.balls - 8) * 0.12, 0, 3.5);
-      const strikerClutch = isKnockoutMatch && (striker.reputation ?? 5) >= 9 ? 1.8 : 0;
-      const strikerNerves = isKnockoutMatch && (striker.age <= 23 || (striker.reputation ?? 5) <= 5) ? -1.2 : 0;
 
       const battingRating = (
         getEffectiveBattingRating(striker, rng, context.seed)
@@ -2229,8 +2223,6 @@ function simulateInnings(context: InningsContext): MatchInnings {
         + battingPitchAdjustment(striker, conditions.pitch)
         + setBonus
         - playerPositionPenalty(striker, battingPosition)
-        + strikerClutch
-        + strikerNerves
         + heatBatterPenalty
       );
       const intent = battingIntent(
@@ -2535,12 +2527,6 @@ function simulateInnings(context: InningsContext): MatchInnings {
         const captaincyPressureDampener = isKnockoutMatch
           ? 1 - clamp((battingCaptaincy - 65) * 0.005, 0, 0.16)
           : 1;
-        const knockoutNervesWicketModifier = isKnockoutMatch
-          ? (
-              (striker.age <= 23 ? 0.002 : 0)
-              + ((striker.reputation ?? 5) <= 5 ? 0.0015 : 0)
-            ) * captaincyPressureDampener
-          : 0;
         const partnershipSecurity = partnershipWicketReduction(
           legalBalls - partnershipStartBalls,
           runs - partnershipStartRuns,
@@ -2577,7 +2563,6 @@ function simulateInnings(context: InningsContext): MatchInnings {
           + tailenderWicketModifier
           + pressureWicketModifier * captaincyPressureDampener
           + momentumWicketModifier
-          + knockoutNervesWicketModifier
           + dotBallPressure.wicketIncrease
           + runningPressure * 0.001
           - Math.max(0, 165 - expectedCentre) * 0.00025
