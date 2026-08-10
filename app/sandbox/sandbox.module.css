@@ -54,6 +54,8 @@
 .headerActions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
 .headerActions button, .headerActions a { display: flex; align-items: center; gap: 7px; height: 34px; padding: 0 11px; border: 1px solid var(--line); border-radius: 8px; color: #c3cbc7; background: #12171a; font-size: 11px; font-weight: 700; }
 .headerActions button:hover, .headerActions a:hover { border-color: rgba(200,243,107,.4); color: white; }
+.headerActions button:disabled { cursor: not-allowed; opacity: .42; }
+.headerActions button:disabled:hover { border-color: var(--line); color: #c3cbc7; }
 
 .workspace { min-height: 0; display: grid; grid-template-columns: 310px minmax(470px, 1fr) 340px; }
 .leftRail, .rightRail { min-height: 0; display: flex; flex-direction: column; gap: 8px; padding: 8px; overflow-y: auto; max-height: 100%; background: rgba(8,11,13,.66); }
@@ -245,28 +247,28 @@
 }
 
 .runnerStriker1 {
-  animation: runBetweenWickets1Striker 1.2s cubic-bezier(0.4, 0, 0.2, 1) forwards !important;
+  animation: runBetweenWickets1Striker var(--running-duration, 3.05s) cubic-bezier(0.4, 0, 0.2, 1) forwards !important;
 }
 .runnerNonStriker1 {
-  animation: runBetweenWickets1NonStriker 1.2s cubic-bezier(0.4, 0, 0.2, 1) forwards !important;
+  animation: runBetweenWickets1NonStriker var(--running-duration, 3.05s) cubic-bezier(0.4, 0, 0.2, 1) forwards !important;
 }
 .runnerStriker2 {
-  animation: runBetweenWickets2Striker 1.8s cubic-bezier(0.4, 0, 0.2, 1) forwards !important;
+  animation: runBetweenWickets2Striker var(--running-duration, 6.2s) cubic-bezier(0.4, 0, 0.2, 1) forwards !important;
 }
 .runnerNonStriker2 {
-  animation: runBetweenWickets2NonStriker 1.8s cubic-bezier(0.4, 0, 0.2, 1) forwards !important;
+  animation: runBetweenWickets2NonStriker var(--running-duration, 6.2s) cubic-bezier(0.4, 0, 0.2, 1) forwards !important;
 }
 .runnerStriker3 {
-  animation: runBetweenWickets3Striker 2.4s cubic-bezier(0.4, 0, 0.2, 1) forwards !important;
+  animation: runBetweenWickets3Striker var(--running-duration, 9.4s) cubic-bezier(0.4, 0, 0.2, 1) forwards !important;
 }
 .runnerNonStriker3 {
-  animation: runBetweenWickets3NonStriker 2.4s cubic-bezier(0.4, 0, 0.2, 1) forwards !important;
+  animation: runBetweenWickets3NonStriker var(--running-duration, 9.4s) cubic-bezier(0.4, 0, 0.2, 1) forwards !important;
 }
 
 /* Fielder Gathering Ball Animation & Indicator */
 .gatheringFielder {
   z-index: 25 !important;
-  transition: left 1.2s cubic-bezier(0.25, 1, 0.5, 1), top 1.2s cubic-bezier(0.25, 1, 0.5, 1) !important;
+  transition: left var(--fielding-duration, 700ms) cubic-bezier(0.22, 1, 0.36, 1), top var(--fielding-duration, 700ms) cubic-bezier(0.22, 1, 0.36, 1) !important;
 }
 
 .gatheringFielder > span {
@@ -274,17 +276,22 @@
   box-shadow: 0 0 0 3px rgba(250, 204, 21, 0.5), 0 0 14px #facc15 !important;
 }
 
-.ballGatherBadge {
-  position: absolute;
-  top: -16px;
-  background: #facc15;
-  color: #000;
-  font-size: 7.5px;
-  font-weight: 900;
-  padding: 1px 4px;
-  border-radius: 3px;
-  white-space: nowrap;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
+/* The bowler/keeper takes a few quick steps to the wicket for the return throw. */
+.receivingFielder {
+  z-index: 26 !important;
+  transition:
+    left var(--receiver-duration, 500ms) cubic-bezier(0.25, 0.8, 0.25, 1),
+    top var(--receiver-duration, 500ms) cubic-bezier(0.25, 0.8, 0.25, 1) !important;
+}
+
+.receivingFielder > span {
+  border-color: #facc15 !important;
+  box-shadow: 0 0 0 3px rgba(250, 204, 21, 0.32), 0 0 12px rgba(250, 204, 21, 0.9) !important;
+  animation: receiverQuickSteps 180ms ease-in-out 3;
+}
+
+@keyframes receiverQuickSteps {
+  50% { transform: translateY(-2px) scale(1.06); }
 }
 
 .shotBall {
@@ -298,7 +305,46 @@
   transform: translate(-50%, -50%);
   z-index: 24;
   pointer-events: none;
-  transition: left 0.95s cubic-bezier(0.25, 1, 0.5, 1), top 0.95s cubic-bezier(0.25, 1, 0.5, 1);
+  transition-property: left, top, opacity, transform;
+  transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: left, top, opacity, transform;
+}
+
+.careerSixBall {
+  animation: careerSixFlight var(--six-flight-duration, 2.6s) cubic-bezier(.25,.55,.28,1) both;
+}
+
+@keyframes careerSixFlight {
+  0% { transform: translate(-50%, -50%) scale(1); filter: brightness(1); opacity: 1; }
+  35% { transform: translate(-50%, -105%) scale(2.35); filter: brightness(1.65); opacity: 1; }
+  68% { transform: translate(-50%, -150%) scale(2.8); filter: brightness(1.8); opacity: 1; }
+  86% { transform: translate(-50%, -185%) scale(1.65); filter: brightness(1.3); opacity: .95; }
+  100% { transform: translate(-50%, -210%) scale(.65); filter: brightness(1); opacity: 0; }
+}
+
+.boundaryFlash {
+  position: absolute;
+  z-index: 28;
+  left: 50%;
+  top: 24%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  text-align: center;
+  text-shadow: 0 4px 18px rgba(0,0,0,.8);
+  animation: boundaryResultFlash .72s cubic-bezier(.16,1,.3,1) both;
+}
+.boundaryFlash strong { font-family: var(--font-anton), sans-serif; font-size: clamp(34px, 5vw, 72px); line-height: .9; letter-spacing: .06em; }
+.boundaryFlash span { margin-top: 6px; padding: 3px 8px; border: 1px solid currentColor; border-radius: 3px; background: rgba(4,5,8,.72); font: 800 8px var(--font-space-mono), monospace; letter-spacing: .16em; }
+.fourFlash { color: #facc15; }
+.sixFlash { color: #c8f36b; filter: drop-shadow(0 0 18px rgba(200,243,107,.65)); }
+
+@keyframes boundaryResultFlash {
+  0% { opacity: 0; transform: translate(-50%, -36%) scale(.45); }
+  55% { opacity: 1; transform: translate(-50%, -50%) scale(1.08); }
+  100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
 }
 
 /* Carried Ball in Bowler Hand during Runup */
@@ -315,11 +361,11 @@
 }
 
 .pacerRunup .carriedBall {
-  animation: carriedFade 0.05s ease-out 0.42s forwards;
+  animation: carriedFade 0.04s ease-out var(--runup-duration, .68s) forwards;
 }
 
 .spinnerRunup .carriedBall {
-  animation: carriedFade 0.05s ease-out 0.26s forwards;
+  animation: carriedFade 0.04s ease-out var(--runup-duration, .45s) forwards;
 }
 
 @keyframes carriedFade {
@@ -331,22 +377,22 @@
 
 /* 0. Pacer Long Runup Motion (0ms - 420ms, starts at top: 25%) */
 .pacerRunup {
-  animation: pacerLongRunup 0.42s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+  animation: pacerLongRunup var(--runup-duration, .68s) cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
 }
 
 @keyframes pacerLongRunup {
   0% {
-    left: 46.8%;
+    left: var(--pacer-start-x, 46.8%);
     top: 25%;
     transform: translate(-50%, -50%) scale(0.88);
   }
   60% {
-    left: 47.8%;
+    left: var(--pacer-mid-x, 47.8%);
     top: 36%;
     transform: translate(-50%, -50%) scale(1.05);
   }
   100% {
-    left: 48.4%;
+    left: var(--bowler-x, 48.4%);
     top: 40.1%;
     transform: translate(-50%, -50%) scale(1);
   }
@@ -354,17 +400,17 @@
 
 /* 0. Spinner Short Walkup Motion (0ms - 260ms, starts at top: 34%) */
 .spinnerRunup {
-  animation: spinnerShortRunup 0.26s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+  animation: spinnerShortRunup var(--runup-duration, .45s) cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
 }
 
 @keyframes spinnerShortRunup {
   0% {
-    left: 47.6%;
+    left: var(--spinner-start-x, 47.6%);
     top: 34%;
     transform: translate(-50%, -50%) scale(0.94);
   }
   100% {
-    left: 48.4%;
+    left: var(--bowler-x, 48.4%);
     top: 40.1%;
     transform: translate(-50%, -50%) scale(1);
   }
@@ -591,6 +637,8 @@
 .feed { max-height: 312px; height: 312px; overflow-y: auto; padding-right: 3px; }
 .feed article { display: grid; grid-template-columns: 29px 1fr; gap: 8px; padding: 9px 5px; border-top: 1px solid var(--line); }
 .feed article time { color: #76817c; font-family: var(--font-space-mono), monospace; font-size: 8px; }.feed article strong { font-size: 10px; }.feed article p { margin: 2px 0 0; color: #84908a; font-size: 9px; line-height: 1.32; }
+.feed article.careerFeedRow { grid-template-columns: 46px minmax(0, 1fr); align-items: center; gap: 10px; }
+.careerFeedText { min-width: 0; max-width: 100%; overflow-wrap: anywhere; word-break: normal; }
 .feed .latest { margin-bottom: 2px; border: 1px solid rgba(200,243,107,.18); border-radius: 6px; background: rgba(200,243,107,.04); }.feedWicket strong { color: #ff6b62; }.emptyFeed { padding: 24px 8px; color: var(--muted); font-size: 10px; text-align: center; }
 
 .controlDeck { display: flex; align-items: center; gap: 9px; padding: 0 18px; border-top: 1px solid var(--line); background: #0b0f11; box-shadow: 0 -15px 35px rgba(0,0,0,.25); }
@@ -604,10 +652,23 @@
 
 .modalBackdrop { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; background: rgba(3,5,6,.74); backdrop-filter: blur(7px); }
 .setupModal { width: 390px; padding: 22px; border: 1px solid rgba(255,255,255,.14); border-radius: 14px; background: #141a1d; box-shadow: 0 30px 90px #000; }
+.scorecardModal { width: min(680px, calc(100vw - 32px)); max-height: min(720px, calc(100vh - 32px)); overflow-y: auto; padding: 22px; border: 1px solid rgba(255,255,255,.14); border-radius: 14px; background: #141a1d; box-shadow: 0 30px 90px #000; }
+.scorecardSummary { display: flex; flex-wrap: wrap; gap: 8px; margin: -10px 0 18px; }.scorecardSummary span { padding: 5px 8px; border-radius: 5px; color: #cbd4cf; background: #0d1113; font-family: var(--font-space-mono), monospace; font-size: 9px; }
+.scorecardModal h3 { margin: 18px 0 7px; color: var(--lime); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; }
+.scorecardTable { overflow: hidden; border: 1px solid var(--line); border-radius: 8px; }.scorecardTable > div { display: grid; grid-template-columns: minmax(0, 1fr) 42px 42px 42px 42px; gap: 6px; align-items: center; min-height: 31px; padding: 0 10px; border-top: 1px solid var(--line); color: #d9e1dc; font-size: 10px; }.scorecardTable > div:first-child { border-top: 0; }.scorecardTable > div span:not(:first-child) { text-align: right; font-family: var(--font-space-mono), monospace; }.scorecardTable .scorecardActive { color: var(--lime); background: rgba(200,243,107,.06); }.scorecardTable .scorecardExtras { grid-template-columns: minmax(0, 1fr) 42px minmax(130px, .8fr); color: #aeb8b2; }.scorecardTable .scorecardDetail { grid-column: 3; font-size: 9px; text-align: right; }.scorecardEmpty { margin: 0; padding: 14px; color: var(--muted); font-size: 10px; text-align: center; }
 .modalHeader { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 22px; }.modalHeader small { color: var(--lime); font-size: 9px; font-weight: 800; letter-spacing: .12em; }.modalHeader h2 { margin: 2px 0 0; font-family: var(--font-barlow-condensed); font-size: 25px; }.modalHeader button { display: grid; width: 31px; height: 31px; place-items: center; border: 1px solid var(--line); border-radius: 6px; color: #9ba49f; background: #0d1113; }
 .setupModal > label { display: block; margin: 12px 0 5px; color: var(--muted); font-size: 9px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }.setupModal select { height: 42px; padding: 0 11px; font-size: 12px; }
 .lineupPreview { display: flex; align-items: center; gap: 10px; margin: 18px 0; padding: 11px; border-radius: 7px; color: var(--lime); background: rgba(200,243,107,.07); }.lineupPreview strong, .lineupPreview span { display: block; }.lineupPreview strong { color: #e7ece9; font-size: 11px; }.lineupPreview span { margin-top: 2px; color: #8e9993; font-size: 9px; }
 .confirmButton { width: 100%; height: 42px; border: 0; border-radius: 7px; color: #11160d; background: var(--lime); font-size: 11px; font-weight: 900; }
+.confirmButton:disabled { cursor: not-allowed; opacity: .38; }
+.impactModal { width: min(520px, calc(100vw - 32px)); }
+.impactNotice { display: flex; align-items: center; gap: 10px; margin: -8px 0 16px; padding: 11px; border: 1px solid rgba(200,243,107,.18); border-radius: 8px; color: var(--lime); background: rgba(200,243,107,.06); }
+.impactNotice strong, .impactNotice span { display: block; }.impactNotice strong { color: #e7ece9; font-size: 11px; }.impactNotice span { margin-top: 2px; color: #8e9993; font-size: 9px; }
+.impactChoices { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 14px 0; }
+.impactChoices label { display: block; margin-bottom: 5px; color: var(--muted); font-size: 9px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.impactChoices select { width: 100%; height: 42px; min-width: 0; padding: 0 10px; font-size: 10px; }
+.impactSummary { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 4px 0 14px; }
+.impactSummary span { padding: 8px 10px; border-radius: 7px; color: #d8dfdb; background: #0d1113; font-size: 10px; }.impactSummary b { margin-right: 5px; color: var(--lime); font-size: 8px; letter-spacing: .08em; }
 
 @media (max-width: 1120px) {
   .topbar { grid-template-columns: 170px 1fr 150px; }.brand { padding: 0 14px; }.brand strong { font-size: 11px; }.scoreStrip { gap: 14px; }.matchMeta { display: none; }.headerActions { padding: 0 12px; }.headerActions span { display: none; }

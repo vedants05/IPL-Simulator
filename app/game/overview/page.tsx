@@ -120,6 +120,7 @@ import {
   type MatchGroundConditions,
   type MatchInnings,
   type MatchLineupPlan,
+  type MatchSimulationInput,
   type MatchSimulationRecord,
   type MatchTeamPlans,
 } from "@/lib/logic/matchSimulation";
@@ -131,6 +132,7 @@ import {
   saveMatchSimulations,
 } from "@/lib/logic/matchSimulationStorage";
 import BallByBallSummary from "@/components/match/BallByBallSummary";
+import PlayableMatchEngine, { type PlayableMatchSession } from "@/components/match/PlayableMatchEngine";
 import {
   EMPTY_TEAM_LEADERSHIP,
   getCaptainChangeGamesRemaining,
@@ -177,6 +179,7 @@ import {
   Info,
   DollarSign,
   Play,
+  SkipForward,
   Mail,
   MailOpen,
   ArrowUpRight,
@@ -798,6 +801,7 @@ function OverviewPageContent() {
   const [activeMatchResultView, setActiveMatchResultView] = useState<MatchResultView>("scorecard");
   const [activeScorecardInningsTeam, setActiveScorecardInningsTeam] = useState<"teamA" | "teamB">("teamA");
   const [pendingMatchPreparation, setPendingMatchPreparation] = useState<PendingMatchPreparation | null>(null);
+  const [activePlayedMatch, setActivePlayedMatch] = useState<PlayableMatchSession | null>(null);
   const [shortlist, setShortlist] = useState<string[]>([]);
   const [visibleHomeFixtureCount, setVisibleHomeFixtureCount] = useState(5);
 
@@ -1298,6 +1302,15 @@ function OverviewPageContent() {
         void deleteMatchSimulationsBeforeSeason(userTeamId, currentSeason)
           .catch((error) => console.error("Unable to clean old match archives:", error));
         setInbox(normalizeCareerEmails(parsed.inbox));
+        if (
+          parsed.activePlayedMatch?.version === 1
+          && typeof parsed.activePlayedMatch.fixtureId === "string"
+          && Number.isFinite(parsed.activePlayedMatch.revealedDeliveries)
+        ) {
+          setActivePlayedMatch(parsed.activePlayedMatch);
+        } else {
+          setActivePlayedMatch(null);
+        }
         const legacyXI = Array.isArray(parsed.startingXI) ? parsed.startingXI : [];
         const loadedBattingXI = Array.isArray(parsed.battingFirstXI) ? parsed.battingFirstXI : legacyXI;
         const loadedBowlingXI = Array.isArray(parsed.bowlingFirstXI) ? parsed.bowlingFirstXI : legacyXI;
@@ -2930,6 +2943,62 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}${replacementEligible
     });
   };
 
+  const buildPlayableMatchInput = (
+    match: Match,
+    userSelection?: {
+      battingFirstXI: string[];
+      bowlingFirstXI: string[];
+      battingFirstImpactSubs: string[];
+      bowlingFirstImpactSubs: string[];
+    },
+  ): MatchSimulationInput => {
+    if (!FIXTURE_SIMULATION_ENABLED) throw new Error("Fixture simulation is not currently enabled.");
+    const conditions = getMatchConditions(match);
+    const teamA = teams[match.teamA];
+    const teamB = teams[match.teamB];
+    if (!conditions || !teamA || !teamB) {
+      throw new Error("The match stadium, pitch or team data is incomplete.");
+    }
+    const liveInjuries = useGameStore.getState().activeInjuries;
+    const containsMajorInjury = (plans: MatchTeamPlans) => [
+      ...plans.battingFirst.startingXI,
+      ...plans.battingFirst.impactSubs,
+      ...plans.bowlingFirst.startingXI,
+      ...plans.bowlingFirst.impactSubs,
+    ].some((playerId) => isPlayerMajorInjured(liveInjuries, playerId));
+    let teamAPlans = buildTeamMatchPlans(match.teamA, userSelection, conditions, match, false);
+    let teamBPlans = buildTeamMatchPlans(match.teamB, userSelection, conditions, match, false);
+    if (containsMajorInjury(teamAPlans)) {
+      teamAPlans = match.teamA === userTeamId
+        ? buildTeamMatchPlans(match.teamA, userSelection, conditions, match, false)
+        : buildTeamMatchPlans(match.teamA, undefined, conditions, match, true);
+    }
+    if (containsMajorInjury(teamBPlans)) {
+      teamBPlans = match.teamB === userTeamId
+        ? buildTeamMatchPlans(match.teamB, userSelection, conditions, match, false)
+        : buildTeamMatchPlans(match.teamB, undefined, conditions, match, true);
+    }
+    if (containsMajorInjury(teamAPlans) || containsMajorInjury(teamBPlans)) {
+      throw new Error("A major-injured player remained in a generated match squad.");
+    }
+    return {
+      fixtureId: match.id,
+      matchNumber: match.matchNumber,
+      date: match.date,
+      time: match.time,
+      seed: `${currentSeason}:${fixtureSeed}:${match.id}`,
+      teamA,
+      teamB,
+      players,
+      teamAPlans,
+      teamBPlans,
+      conditions,
+      formAdjustments: getRecentFormAdjustments(match),
+      stage: match.stage,
+      isKnockout: Boolean(match.stage),
+    };
+  };
+
   const buildSimulatedMatch = (
     match: Match,
     userSelection?: {
@@ -3243,6 +3312,70 @@ This record has been officially verified and added to the IPL Minor Records arch
       return;
     }
     runFixtureSimulation(match.id);
+  };
+
+  const startPlayableMatch = (match: Match) => {
+    if (match.played || (match.teamA !== userTeamId && match.teamB !== userTeamId)) return;
+    const errors = getUserLineupErrors();
+    if (errors.length > 0) {
+      showToast(errors[0]);
+      return;
+    }
+    try {
+      // Validate every dependency before creating a resumable career entry.
+      buildPlayableMatchInput(match);
+      const session: PlayableMatchSession = {
+        version: 1,
+        fixtureId: match.id,
+        revealedDeliveries: 0,
+        decisions: {
+          deliveryControls: {},
+          bowlerByOver: {},
+          batterByWicket: {},
+          impactByTeam: {},
+        },
+      };
+      setActivePlayedMatch(session);
+      saveCareerState({ activePlayedMatch: session });
+    } catch (error) {
+      console.error("Unable to start playable match:", error);
+      showToast(error instanceof Error ? error.message : "Unable to start this match.");
+    }
+  };
+
+  const savePlayableMatchSession = (session: PlayableMatchSession) => {
+    setActivePlayedMatch(session);
+    // Every callback follows a completed delivery or an explicit match
+    // decision, making reload resume at a stable delivery boundary.
+    saveCareerState({ activePlayedMatch: session });
+  };
+
+  const completePlayableMatch = (simulation: MatchSimulationRecord) => {
+    const match = fixturesRef.current.find((fixture) => fixture.id === simulation.fixtureId);
+    if (!match || match.played) {
+      setActivePlayedMatch(null);
+      saveCareerState({ activePlayedMatch: null });
+      return;
+    }
+    const teamAInnings = simulation.innings.find((innings) => innings.battingTeamId === match.teamA)!;
+    const teamBInnings = simulation.innings.find((innings) => innings.battingTeamId === match.teamB)!;
+    const completedMatch: Match = {
+      ...match,
+      played: true,
+      winner: simulation.winnerId,
+      scoreA: { runs: teamAInnings.runs, wickets: teamAInnings.wickets, overs: teamAInnings.overs },
+      scoreB: { runs: teamBInnings.runs, wickets: teamBInnings.wickets, overs: teamBInnings.overs },
+      commentary: simulation.summary,
+      scorecard: simulationToLegacyScorecard(simulation, match.teamA, match.teamB),
+      simulation,
+    };
+    setActivePlayedMatch(null);
+    commitSimulatedMatch(completedMatch);
+    saveCareerState({ activePlayedMatch: null });
+    setActiveMatchResultView("scorecard");
+    setActiveCommentary(null);
+    setActiveScorecard(completedMatch);
+    showToast(simulation.resultText);
   };
 
   const simulateAiFixturesOnDate = (date: string) => {
@@ -3645,7 +3778,7 @@ This record has been officially verified and added to the IPL Minor Records arch
           return;
         }
         stopSimulating();
-        showToast("Paused at matchday. Use Simulate fixture to play the match.");
+        showToast("Paused at matchday. Choose Play fixture or Simulate fixture.");
       }
       return;
     }
@@ -3733,7 +3866,7 @@ This record has been officially verified and added to the IPL Minor Records arch
         }
       } else if (unresolvedUserFixture) {
         continueButtonRef.current?.focus();
-        showToast("Use Simulate fixture before continuing the calendar.");
+        showToast("Choose Play fixture or Simulate fixture before continuing the calendar.");
       } else {
         if (dayTickerRef.current?.start()) {
           setIsSimulatingDays(true);
@@ -5012,6 +5145,18 @@ This record has been officially verified and added to the IPL Minor Records arch
     return true;
   };
 
+  const activePlayedFixture = activePlayedMatch
+    ? fixtures.find((fixture) => fixture.id === activePlayedMatch.fixtureId && !fixture.played)
+    : undefined;
+  let activePlayedInput: MatchSimulationInput | null = null;
+  if (activePlayedFixture) {
+    try {
+      activePlayedInput = buildPlayableMatchInput(activePlayedFixture);
+    } catch (error) {
+      console.error("Unable to restore playable match:", error);
+    }
+  }
+
   return (
     <div className={`overview-page h-[calc(100vh-3rem)] flex overflow-hidden bg-bg relative ${activeTab === "history" ? "compact-history" : ""}`}>
       {/* Global Toast Alert */}
@@ -5019,6 +5164,15 @@ This record has been officially verified and added to the IPL Minor Records arch
         <div className="fixed bottom-6 right-6 z-[100] bg-[var(--ink)] text-bg border border-border/20 px-4 py-3 rounded shadow-lg text-xs font-space-mono font-semibold uppercase tracking-wider animate-in fade-in slide-in-from-bottom-3 duration-200">
           {toastMessage}
         </div>
+      )}
+      {activePlayedMatch && activePlayedInput && (
+        <PlayableMatchEngine
+          input={activePlayedInput}
+          userTeamId={userTeamId}
+          session={activePlayedMatch}
+          onSessionChange={savePlayableMatchSession}
+          onComplete={completePlayableMatch}
+        />
       )}
 
       {/* Fast-forward runs behind a stable progress screen rather than flashing calendar days. */}
@@ -5190,32 +5344,40 @@ This record has been officially verified and added to the IPL Minor Records arch
 
           <div className="flex shrink-0 items-center gap-2">
             {!isSimulatingDays && (
-              <>
+              isTickerAtImpasse && pendingUserMatchdayFixture ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => startPlayableMatch(pendingUserMatchdayFixture)}
+                    disabled={!FIXTURE_SIMULATION_ENABLED}
+                    className="flex items-center gap-1.5 rounded border border-accent bg-surface px-3.5 py-1.5 font-space-mono text-[9px] font-bold uppercase tracking-wider text-accent shadow-sm transition-all hover:bg-accent/10 active:scale-95 disabled:opacity-45"
+                  >
+                    <Play className="size-3 fill-current" aria-hidden="true" />
+                    Play fixture
+                  </button>
+                  <button
+                    ref={continueButtonRef}
+                    type="button"
+                    onClick={() => prepareUserFixtureSimulation(pendingUserMatchdayFixture)}
+                    disabled={!FIXTURE_SIMULATION_ENABLED}
+                    className="flex items-center gap-1.5 rounded bg-accent px-3.5 py-1.5 font-space-mono text-[9px] font-bold uppercase tracking-wider text-white shadow-sm transition-all hover:bg-accent/85 active:scale-95 disabled:opacity-45"
+                  >
+                    <SkipForward className="size-3" aria-hidden="true" />
+                    Simulate fixture
+                  </button>
+                </>
+              ) : (
                 <button
                   ref={continueButtonRef}
                   type="button"
-                  onClick={() => {
-                    if (pendingUserMatchdayFixture) {
-                      prepareUserFixtureSimulation(pendingUserMatchdayFixture);
-                      return;
-                    }
-                    startSimulating();
-                  }}
-                  disabled={Boolean(pendingUserMatchdayFixture) && !FIXTURE_SIMULATION_ENABLED}
-                  aria-label={isTickerAtImpasse
-                    ? `Simulate ${pendingUserMatchdayFixture?.label ?? `fixture ${pendingUserMatchdayFixture?.matchNumber}`}`
-                    : "Continue day-by-day simulation"}
-                  title={isTickerAtImpasse ? "Simulate this fixture, review the scorecard, then continue the season" : undefined}
-                  className={`flex items-center gap-1.5 rounded px-3.5 py-1.5 font-space-mono text-[9px] font-bold uppercase tracking-wider text-white shadow-sm transition-all active:scale-95 disabled:cursor-not-allowed disabled:bg-text-secondary disabled:opacity-45 disabled:active:scale-100 ${
-                    isTickerAtImpasse
-                      ? "bg-accent hover:bg-accent/85"
-                      : "bg-success hover:bg-success/80"
-                  }`}
+                  onClick={startSimulating}
+                  aria-label="Continue day-by-day simulation"
+                  className="flex items-center gap-1.5 rounded bg-success px-3.5 py-1.5 font-space-mono text-[9px] font-bold uppercase tracking-wider text-white shadow-sm transition-all hover:bg-success/80 active:scale-95"
                 >
                   <Play className="size-3 fill-current" aria-hidden="true" />
-                  {isTickerAtImpasse ? "Simulate fixture" : "Continue"}
+                  Continue
                 </button>
-              </>
+              )
             )}
           </div>
         </header>
@@ -7721,16 +7883,28 @@ This record has been officially verified and added to the IPL Minor Records arch
                                                 ?? "Venue TBD"}
                                             </span>
                                             {canSimulateUserMatch ? (
-                                              <button
-                                                type="button"
-                                                onClick={(event) => {
-                                                  event.stopPropagation();
-                                                  prepareUserFixtureSimulation(match);
-                                                }}
-                                                className="shrink-0 rounded border border-accent bg-accent px-3 py-1.5 font-space-mono text-[8px] font-bold uppercase text-white transition-colors hover:bg-accent/85"
-                                              >
-                                                Simulate match
-                                              </button>
+                                              <div className="flex shrink-0 gap-2">
+                                                <button
+                                                  type="button"
+                                                  onClick={(event) => {
+                                                    event.stopPropagation();
+                                                    startPlayableMatch(match);
+                                                  }}
+                                                  className="rounded border border-[#16130f]/30 bg-surface px-3 py-1.5 font-space-mono text-[8px] font-bold uppercase text-text-primary transition-colors hover:border-accent hover:text-accent"
+                                                >
+                                                  Play match
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  onClick={(event) => {
+                                                    event.stopPropagation();
+                                                    prepareUserFixtureSimulation(match);
+                                                  }}
+                                                  className="rounded border border-accent bg-accent px-3 py-1.5 font-space-mono text-[8px] font-bold uppercase text-white transition-colors hover:bg-accent/85"
+                                                >
+                                                  Simulate match
+                                                </button>
+                                              </div>
                                             ) : (
                                               <span className={`shrink-0 text-right font-space-mono text-[8px] font-bold uppercase ${match.played ? "text-success" : "text-text-secondary"}`}>
                                                 {match.played

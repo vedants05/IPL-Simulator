@@ -57,3 +57,11 @@ simulation_*_report.json
 /scratch/
 /design_handoff_auction_room/
 
+# Local agent/codebase-map output
+/.agents/
+/.codex/
+/graphify-out/
+
+# Root-level visual references are not application assets
+/Screenshot*.png
+

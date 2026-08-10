@@ -103,6 +103,74 @@ export interface MatchSimulationInput {
   weatherScenario?: MatchWeatherScenario;
 }
 
+export type PlayableBattingApproach =
+  | "survive"
+  | "anchor"
+  | "balanced"
+  | "attack"
+  | "six-hitting";
+
+export type PlayableFieldPlan = "protect" | "balanced" | "hunt-wickets";
+
+export type PlayableBowlingPlan =
+  | "good-length"
+  | "yorker-attack"
+  | "bouncer-pace"
+  | "spin-choke";
+
+export interface PlayableDeliveryControl {
+  battingApproach?: PlayableBattingApproach;
+  fieldPlan?: PlayableFieldPlan;
+  bowlingPlan?: PlayableBowlingPlan;
+}
+
+/** Decisions are keyed by stable innings/delivery identifiers so a played
+ * match can be deterministically rebuilt after every saved delivery. */
+export interface PlayableMatchDecisions {
+  tossDecision?: TossDecision;
+  deliveryControls: Record<string, PlayableDeliveryControl>;
+  bowlerByOver: Record<string, string>;
+  batterByWicket: Record<string, string>;
+  impactByTeam?: Record<string, PlayableImpactChoice>;
+}
+
+export interface PlayableImpactChoice {
+  use: boolean;
+  incomingPlayerId?: string;
+  outgoingPlayerId?: string;
+  battingPosition?: number;
+}
+
+export interface PlayableInningsProgress {
+  inningsNumber: 1 | 2;
+  battingTeamId: string;
+  bowlingTeamId: string;
+  runs: number;
+  wickets: number;
+  legalBalls: number;
+  overs: number;
+  target?: number;
+  deliveries: MatchDelivery[];
+  complete: boolean;
+}
+
+export interface PlayableMatchProgress {
+  tossWinnerId: string;
+  tossDecision?: TossDecision;
+  awaitingTossDecision: boolean;
+  battingFirstTeamId?: string;
+  bowlingFirstTeamId?: string;
+  revealedDeliveries: number;
+  totalDeliveries: number;
+  inningsDeliveryEnds: [number, number];
+  innings: PlayableInningsProgress[];
+  nextDelivery?: MatchDelivery;
+  awaitingImpactDecision?: boolean;
+  impactRecommendation?: MatchImpactDecision;
+  complete: boolean;
+  simulation?: MatchSimulationRecord;
+}
+
 export interface DeliveryExtras {
   wides: number;
   noBalls: number;
@@ -351,6 +419,7 @@ interface InningsContext {
   isKnockout?: boolean;
   time?: string;
   maxOvers?: number;
+  playableDecisions?: PlayableMatchDecisions;
 }
 
 const clamp = (value: number, minimum: number, maximum: number) => (
@@ -1152,6 +1221,30 @@ export function battingAggressionScoringProfile(
   };
 }
 
+/**
+ * Makes the playable "six-hitting" instruction change the kind of boundary a
+ * batter looks for, not simply add free expected runs. A matching amount of
+ * four and dot-ball weight is exchanged for six weight, preserving both the
+ * total outcome weight and its expected run value.
+ */
+export function playableBattingApproachScoringWeights(
+  approach: PlayableBattingApproach | undefined,
+  dotWeight: number,
+  fourWeight: number,
+  sixWeight: number,
+): { dotWeight: number; fourWeight: number; sixWeight: number } {
+  if (approach !== "six-hitting") {
+    return { dotWeight, fourWeight, sixWeight };
+  }
+
+  const sixShift = Math.min(fourWeight * 0.28, 0.026);
+  return {
+    dotWeight: dotWeight + sixShift * 0.5,
+    fourWeight: fourWeight - sixShift * 1.5,
+    sixWeight: sixWeight + sixShift,
+  };
+}
+
 export function lowerRatedCenturyConversionAdjustment(
   battingRating: number,
   runs: number,
@@ -1278,6 +1371,7 @@ function sampleBatRuns(
   rotationMultiplier: number = 1,
   singleOpportunityMultiplier: number = 1,
   battingAggression: number = 65,
+  playableBattingApproach?: PlayableBattingApproach,
 ): number {
   const aggressionProfile = battingAggressionScoringProfile(battingAggression);
   let boundaryFactor = clamp(
@@ -1300,7 +1394,7 @@ function sampleBatRuns(
   const threeRunFactor = 1 + runningPressure * 3;
   const twoRunMultiplier = 1 + runningPressure * 0.12;
 
-  const dotWeight = 0.34 * dotFactor;
+  let dotWeight = 0.34 * dotFactor;
   const singleWeight = 0.37 * rotationMultiplier * singleOpportunityMultiplier;
   let twoWeight = 0.09 * rotationMultiplier * twoRunMultiplier * clamp(1.05 - conditions.outfieldSpeedRating * 0.02, 0.82, 1.05);
   let fourWeight = 0.14 * boundaryFactor * clamp(conditions.outfieldSpeedRating / 7.5, 0.72, 1.25);
@@ -1317,6 +1411,13 @@ function sampleBatRuns(
     twoWeight -= shift;
     fourWeight += shift * 2;
   }
+
+  ({ dotWeight, fourWeight, sixWeight } = playableBattingApproachScoringWeights(
+    playableBattingApproach,
+    dotWeight,
+    fourWeight,
+    sixWeight,
+  ));
 
   return rng.weighted([
     { value: 0, weight: dotWeight },
@@ -1809,6 +1910,60 @@ function activateBowlFirstImpact(
   };
 }
 
+function applyPlayableImpactChoice(
+  teamState: ActiveTeamState,
+  choice: PlayableImpactChoice,
+  players: Record<string, Player>,
+  battingInSecondInnings: boolean,
+): boolean {
+  if (!choice.use) {
+    teamState.impactDecision = {
+      teamId: teamState.team.id,
+      used: false,
+      reason: "not-used",
+      explanation: `${teamState.team.name} chose not to use an Impact Player.`,
+    };
+    return true;
+  }
+  const incoming = choice.incomingPlayerId ? players[choice.incomingPlayerId] : undefined;
+  const outgoing = choice.outgoingPlayerId ? players[choice.outgoingPlayerId] : undefined;
+  if (
+    !incoming
+    || !outgoing
+    || !teamState.plan.impactSubs.includes(incoming.id)
+    || !teamState.finalXI.includes(outgoing.id)
+    || !isLegalImpactSwap(teamState, incoming, outgoing, players)
+  ) return false;
+
+  const outgoingPosition = teamState.battingOrder.indexOf(outgoing.id);
+  if (battingInSecondInnings && outgoingPosition >= 0) {
+    teamState.battingOrder.splice(outgoingPosition, 1);
+    const insertionIndex = clamp(
+      Math.round(choice.battingPosition ?? outgoingPosition + 1) - 1,
+      0,
+      teamState.battingOrder.length,
+    );
+    teamState.battingOrder.splice(insertionIndex, 0, incoming.id);
+  }
+  teamState.finalXI = teamState.finalXI.filter((playerId) => playerId !== outgoing.id);
+  teamState.finalXI.push(incoming.id);
+  teamState.impactUsed = true;
+  teamState.impactDecision = {
+    teamId: teamState.team.id,
+    used: true,
+    incomingPlayerId: incoming.id,
+    incomingPlayerName: incoming.name,
+    outgoingPlayerId: outgoing.id,
+    outgoingPlayerName: outgoing.name,
+    battingPosition: battingInSecondInnings
+      ? teamState.battingOrder.indexOf(incoming.id) + 1
+      : undefined,
+    reason: battingInSecondInnings ? "planned-batting" : "planned-bowling",
+    explanation: `${incoming.name} replaced ${outgoing.name} as the user-selected Impact Player.`,
+  };
+  return true;
+}
+
 export function isNightMatch(time?: string): boolean {
   if (!time) return true;
   const t = time.toLowerCase();
@@ -2177,7 +2332,7 @@ function simulateInnings(context: InningsContext): MatchInnings {
     && (!target || runs < target)
   ) {
     const overNumber = Math.floor(legalBalls / 6) + 1;
-    const bowler = chooseBowler(
+    const smartBowler = chooseBowler(
       overNumber,
       maxOvers,
       bowling.finalXI,
@@ -2190,6 +2345,24 @@ function simulateInnings(context: InningsContext): MatchInnings {
       bowlerUnavailableUntilOver,
       rng,
     );
+    const requestedBowlerId = context.playableDecisions?.bowlerByOver[
+      `${context.inningsNumber}-${overNumber}`
+    ];
+    const requestedBowler: Player | undefined = requestedBowlerId
+      ? players[requestedBowlerId]
+      : undefined;
+    const maxBowlerOvers = Math.ceil(maxOvers / 5);
+    const requestedBowlerIsLegal: boolean = Boolean(
+      requestedBowler
+      && bowling.finalXI.includes(requestedBowler.id)
+      && isBowlingOption(requestedBowler)
+      && requestedBowler.id !== previousBowlerId
+      && (bowlingEntries.get(requestedBowler.id)?.balls ?? 0) < maxBowlerOvers * 6
+      && (bowlerUnavailableUntilOver.get(requestedBowler.id) ?? 0) <= overNumber
+    );
+    // The smart selection is still calculated first. This preserves the RNG
+    // stream and makes an override a tactical choice rather than a luck reroll.
+    const bowler: Player = requestedBowlerIsLegal ? requestedBowler! : smartBowler;
     const spellOverNumber = nextBowlerSpellOver(
       overNumber,
       lastOverByBowler.get(bowler.id),
@@ -2265,6 +2438,18 @@ function simulateInnings(context: InningsContext): MatchInnings {
         - playerPositionPenalty(striker, battingPosition)
         + heatBatterPenalty
       );
+      const deliveryControl = context.playableDecisions?.deliveryControls[
+        `${context.inningsNumber}-${deliverySequence}`
+      ];
+      const battingApproachAdjustment = deliveryControl?.battingApproach === "survive"
+        ? -0.18
+        : deliveryControl?.battingApproach === "anchor"
+          ? -0.08
+          : deliveryControl?.battingApproach === "attack"
+            ? 0.10
+            : deliveryControl?.battingApproach === "six-hitting"
+              ? 0.20
+              : 0;
       const intent = battingIntent(
         context.tactics,
         overNumber,
@@ -2272,8 +2457,9 @@ function simulateInnings(context: InningsContext): MatchInnings {
         runs,
         target,
         maxOvers,
-      ) + bowlerRespectIntentAdjustment(battingRating, bowlingRating);
-      const tacticalBowling = bowlingTacticalAdjustment(
+      ) + bowlerRespectIntentAdjustment(battingRating, bowlingRating)
+        + battingApproachAdjustment;
+      const baseTacticalBowling = bowlingTacticalAdjustment(
         context.bowlingTactics,
         overNumber,
         bowler,
@@ -2287,6 +2473,34 @@ function simulateInnings(context: InningsContext): MatchInnings {
         ),
         maxOvers,
       );
+      const fieldScoringAdjustment = deliveryControl?.fieldPlan === "protect"
+        ? -0.025
+        : deliveryControl?.fieldPlan === "hunt-wickets"
+          ? 0.022
+          : 0;
+      const fieldWicketAdjustment = deliveryControl?.fieldPlan === "protect"
+        ? -0.005
+        : deliveryControl?.fieldPlan === "hunt-wickets"
+          ? 0.006
+          : 0;
+      const bowlingPlanScoringAdjustment = deliveryControl?.bowlingPlan === "yorker-attack"
+        ? -0.010
+        : deliveryControl?.bowlingPlan === "bouncer-pace"
+          ? 0.018
+          : deliveryControl?.bowlingPlan === "spin-choke"
+            ? -0.016
+            : 0;
+      const bowlingPlanWicketAdjustment = deliveryControl?.bowlingPlan === "yorker-attack"
+        ? 0.004
+        : deliveryControl?.bowlingPlan === "bouncer-pace"
+          ? 0.006
+          : deliveryControl?.bowlingPlan === "spin-choke"
+            ? 0.002
+            : 0;
+      const tacticalBowling = {
+        scoring: baseTacticalBowling.scoring + fieldScoringAdjustment + bowlingPlanScoringAdjustment,
+        wicket: baseTacticalBowling.wicket + fieldWicketAdjustment + bowlingPlanWicketAdjustment,
+      };
       const closeDeathChase = Boolean(
         target
         && overNumber >= deathStart
@@ -2754,6 +2968,7 @@ function simulateInnings(context: InningsContext): MatchInnings {
                 nonStrikerIsEstablished,
               ),
               striker.battingAggression ?? 65,
+              deliveryControl?.battingApproach,
             );
             strikerEntry.runs += runsOffBat;
             if (runsOffBat === 4) strikerEntry.fours += 1;
@@ -2878,6 +3093,16 @@ function simulateInnings(context: InningsContext): MatchInnings {
           if (impact) {
             ensureBattingEntry(impact.incomingId);
           }
+        }
+        const requestedBatterId = context.playableDecisions?.batterByWicket[
+          `${context.inningsNumber}-${wickets}`
+        ];
+        const requestedBatterIndex = requestedBatterId
+          ? batting.battingOrder.indexOf(requestedBatterId, nextBatterIndex)
+          : -1;
+        if (requestedBatterIndex >= nextBatterIndex) {
+          const [requestedBatter] = batting.battingOrder.splice(requestedBatterIndex, 1);
+          batting.battingOrder.splice(nextBatterIndex, 0, requestedBatter);
         }
         const nextBatterId = batting.battingOrder[nextBatterIndex];
         nextBatterIndex += 1;
@@ -3129,7 +3354,11 @@ function resultText(
   return `${teams[winnerId]?.name ?? winnerId} won by ${wicketsRemaining} wicket${wicketsRemaining === 1 ? "" : "s"}`;
 }
 
-export function simulateInstantMatch(input: MatchSimulationInput): MatchSimulationRecord {
+function simulateMatchToCompletion(
+  input: MatchSimulationInput,
+  playableDecisions?: PlayableMatchDecisions,
+  userTeamId?: string,
+): MatchSimulationRecord {
   const rng = new SimulationRandom(`${input.seed}|engine-${MATCH_SIMULATION_VERSION}`);
   const weatherScenario = input.weatherScenario
     ?? createWeatherScenario(input.seed, input.conditions.stadiumId, input.date, input.time);
@@ -3138,7 +3367,9 @@ export function simulateInstantMatch(input: MatchSimulationInput): MatchSimulati
   const tossWinnerPlans = tossWinner.id === input.teamA.id
     ? input.teamAPlans
     : input.teamBPlans;
-  const tossDecision = chooseTossDecision(tossWinnerPlans.tactics, input.conditions);
+  const tossDecision = tossWinner.id === userTeamId && playableDecisions?.tossDecision
+    ? playableDecisions.tossDecision
+    : chooseTossDecision(tossWinnerPlans.tactics, input.conditions);
   const otherTeam = tossWinner.id === input.teamA.id ? input.teamB : input.teamA;
   const battingFirstTeam = tossDecision === "bat" ? tossWinner : otherTeam;
   const bowlingFirstTeam = battingFirstTeam.id === input.teamA.id ? input.teamB : input.teamA;
@@ -3201,12 +3432,13 @@ export function simulateInstantMatch(input: MatchSimulationInput): MatchSimulati
     performanceTilt: performanceEdge,
     matchScoringEnvironment,
     formAdjustments: activeFormAdjustments,
-    allowCollapseImpact: true,
+    allowCollapseImpact: battingFirstTeam.id !== userTeamId,
     seed: input.seed,
     stage: input.stage,
     isKnockout: input.isKnockout,
     time: input.time,
     maxOvers: weatherScenario.firstInningsOvers,
+    playableDecisions,
   });
 
   const originalTarget = firstInnings.runs + 1;
@@ -3221,16 +3453,28 @@ export function simulateInstantMatch(input: MatchSimulationInput): MatchSimulati
     )
     : originalTarget;
 
-  activateBowlFirstImpact(
-    bowlingFirstState,
-    firstInnings.runs + 1,
-    input.conditions,
-    input.players,
-  );
-  activateStandardBatFirstImpact(
-    battingFirstState,
-    input.players,
-  );
+  const bowlingFirstImpactChoice = playableDecisions?.impactByTeam?.[bowlingFirstTeam.id];
+  const battingFirstImpactChoice = playableDecisions?.impactByTeam?.[battingFirstTeam.id];
+  const appliedBowlingFirstChoice = bowlingFirstImpactChoice
+    ? applyPlayableImpactChoice(bowlingFirstState, bowlingFirstImpactChoice, input.players, true)
+    : false;
+  const appliedBattingFirstChoice = battingFirstImpactChoice
+    ? applyPlayableImpactChoice(battingFirstState, battingFirstImpactChoice, input.players, false)
+    : false;
+  if (!appliedBowlingFirstChoice) {
+    activateBowlFirstImpact(
+      bowlingFirstState,
+      firstInnings.runs + 1,
+      input.conditions,
+      input.players,
+    );
+  }
+  if (!appliedBattingFirstChoice) {
+    activateStandardBatFirstImpact(
+      battingFirstState,
+      input.players,
+    );
+  }
 
   const secondInnings = simulateInnings({
     inningsNumber: 2,
@@ -3256,6 +3500,7 @@ export function simulateInstantMatch(input: MatchSimulationInput): MatchSimulati
     isKnockout: input.isKnockout,
     time: input.time,
     maxOvers: weatherScenario.secondInningsOvers,
+    playableDecisions,
   });
 
   const chasingImpact = bowlingFirstState.impactDecision;
@@ -3412,6 +3657,149 @@ export function simulateInstantMatch(input: MatchSimulationInput): MatchSimulati
     innings: [firstInnings, secondInnings],
     summary,
   };
+}
+
+export function simulateInstantMatch(input: MatchSimulationInput): MatchSimulationRecord {
+  return simulateMatchToCompletion(input);
+}
+
+function flattenMatchDeliveries(simulation: MatchSimulationRecord): MatchDelivery[] {
+  return simulation.innings.flatMap((innings) => (
+    innings.oversDetail.flatMap((over) => over.deliveries)
+  ));
+}
+
+function playableInningsProgress(
+  innings: MatchInnings,
+  visibleDeliveries: MatchDelivery[],
+  complete: boolean,
+): PlayableInningsProgress {
+  const lastDelivery = visibleDeliveries.at(-1);
+  return {
+    inningsNumber: innings.inningsNumber,
+    battingTeamId: innings.battingTeamId,
+    bowlingTeamId: innings.bowlingTeamId,
+    runs: lastDelivery?.scoreAfter ?? 0,
+    wickets: lastDelivery?.wicketsAfter ?? 0,
+    legalBalls: lastDelivery?.legalBallNumber ?? 0,
+    overs: oversFromBalls(lastDelivery?.legalBallNumber ?? 0),
+    target: innings.target,
+    deliveries: visibleDeliveries,
+    complete,
+  };
+}
+
+/**
+ * Runs a deterministic playable match and reveals only completed deliveries.
+ * Re-running from the fixture seed makes the session safe to persist after
+ * every ball while retaining the exact native scorecard on completion.
+ */
+export function simulatePlayableMatch(
+  input: MatchSimulationInput,
+  userTeamId: string,
+  decisions: PlayableMatchDecisions,
+  requestedRevealedDeliveries: number,
+): PlayableMatchProgress {
+  const tossRng = new SimulationRandom(`${input.seed}|engine-${MATCH_SIMULATION_VERSION}`);
+  const tossWinner = tossRng.next() < 0.5 ? input.teamA : input.teamB;
+  if (tossWinner.id === userTeamId && !decisions.tossDecision) {
+    return {
+      tossWinnerId: tossWinner.id,
+      awaitingTossDecision: true,
+      revealedDeliveries: 0,
+      totalDeliveries: 0,
+      inningsDeliveryEnds: [0, 0],
+      innings: [],
+      complete: false,
+    };
+  }
+
+  const simulation = simulateMatchToCompletion(input, decisions, userTeamId);
+  const firstDeliveries = simulation.innings[0].oversDetail.flatMap((over) => over.deliveries);
+  const secondDeliveries = simulation.innings[1].oversDetail.flatMap((over) => over.deliveries);
+  const allDeliveries = flattenMatchDeliveries(simulation);
+  const awaitingImpactDecision = (
+    requestedRevealedDeliveries >= firstDeliveries.length
+    && !decisions.impactByTeam?.[userTeamId]
+  );
+  const revealedDeliveries = clamp(
+    Math.floor(awaitingImpactDecision ? firstDeliveries.length : requestedRevealedDeliveries),
+    0,
+    allDeliveries.length,
+  );
+  const visibleFirstCount = Math.min(firstDeliveries.length, revealedDeliveries);
+  const visibleSecondCount = Math.max(
+    0,
+    Math.min(secondDeliveries.length, revealedDeliveries - firstDeliveries.length),
+  );
+  const firstVisible = firstDeliveries.slice(0, visibleFirstCount);
+  const secondVisible = secondDeliveries.slice(0, visibleSecondCount);
+  const complete = !awaitingImpactDecision && revealedDeliveries >= allDeliveries.length;
+  const innings: PlayableInningsProgress[] = [
+    playableInningsProgress(
+      simulation.innings[0],
+      firstVisible,
+      visibleFirstCount >= firstDeliveries.length,
+    ),
+  ];
+  if (visibleSecondCount > 0 || revealedDeliveries >= firstDeliveries.length) {
+    innings.push(playableInningsProgress(
+      simulation.innings[1],
+      secondVisible,
+      visibleSecondCount >= secondDeliveries.length,
+    ));
+  }
+
+  return {
+    tossWinnerId: simulation.tossWinnerId,
+    tossDecision: simulation.tossDecision,
+    awaitingTossDecision: false,
+    battingFirstTeamId: simulation.battingFirstTeamId,
+    bowlingFirstTeamId: simulation.bowlingFirstTeamId,
+    revealedDeliveries,
+    totalDeliveries: allDeliveries.length,
+    inningsDeliveryEnds: [firstDeliveries.length, allDeliveries.length],
+    innings,
+    nextDelivery: awaitingImpactDecision ? undefined : allDeliveries[revealedDeliveries],
+    awaitingImpactDecision,
+    impactRecommendation: awaitingImpactDecision
+      ? simulation.impactDecisions.find((decision) => decision.teamId === userTeamId)
+      : undefined,
+    complete,
+    simulation: complete ? simulation : undefined,
+  };
+}
+
+export type PlayableSkipKind = "ball" | "over" | "five-overs" | "innings";
+
+export function getPlayableSkipTarget(
+  input: MatchSimulationInput,
+  userTeamId: string,
+  decisions: PlayableMatchDecisions,
+  revealedDeliveries: number,
+  kind: PlayableSkipKind,
+): number {
+  const simulation = simulateMatchToCompletion(input, decisions, userTeamId);
+  const first = simulation.innings[0].oversDetail.flatMap((over) => over.deliveries);
+  const second = simulation.innings[1].oversDetail.flatMap((over) => over.deliveries);
+  const all = [...first, ...second];
+  const current = clamp(Math.floor(revealedDeliveries), 0, all.length);
+  if (kind === "ball") return Math.min(all.length, current + 1);
+  if (kind === "innings") return current < first.length ? first.length : all.length;
+
+  const inningsStart = current < first.length ? 0 : first.length;
+  const inningsDeliveries = current < first.length ? first : second;
+  const localCurrent = current - inningsStart;
+  const currentLegalBalls = localCurrent > 0
+    ? inningsDeliveries[Math.min(localCurrent, inningsDeliveries.length) - 1]?.legalBallNumber ?? 0
+    : 0;
+  const targetLegalBalls = kind === "five-overs"
+    ? currentLegalBalls + 30
+    : Math.floor(currentLegalBalls / 6) * 6 + 6;
+  const targetIndex = inningsDeliveries.findIndex((delivery, index) => (
+    index >= localCurrent && delivery.legalBallNumber >= targetLegalBalls
+  ));
+  return inningsStart + (targetIndex < 0 ? inningsDeliveries.length : targetIndex + 1);
 }
 
 export function createIntelligentAiTactics(
