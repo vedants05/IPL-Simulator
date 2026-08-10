@@ -110,7 +110,27 @@ export type PlayableBattingApproach =
   | "attack"
   | "six-hitting";
 
+export type PlayableShotZone =
+  | "all-ground"
+  | "offside"
+  | "straight"
+  | "legside";
+
 export type PlayableFieldPlan = "protect" | "balanced" | "hunt-wickets";
+
+export interface PlayableFieldPosition {
+  id: number;
+  label: string;
+  x: number;
+  y: number;
+}
+
+export type DeliveryShotType = "ground" | "lofted" | "skier" | "edge";
+
+export interface DeliveryShotTarget {
+  x: number;
+  y: number;
+}
 
 export type PlayableBowlingPlan =
   | "good-length"
@@ -120,8 +140,12 @@ export type PlayableBowlingPlan =
 
 export interface PlayableDeliveryControl {
   battingApproach?: PlayableBattingApproach;
+  /** Broad scoring area requested by the striker. It biases rather than forces direction. */
+  shotZone?: PlayableShotZone;
   fieldPlan?: PlayableFieldPlan;
   bowlingPlan?: PlayableBowlingPlan;
+  /** The exact nine outfield positions used for this delivery. */
+  fieldPositions?: PlayableFieldPosition[];
 }
 
 /** Decisions are keyed by stable innings/delivery identifiers so a played
@@ -131,6 +155,8 @@ export interface PlayableMatchDecisions {
   deliveryControls: Record<string, PlayableDeliveryControl>;
   bowlerByOver: Record<string, string>;
   batterByWicket: Record<string, string>;
+  /** Records that the post-wicket prompt was confirmed, including Automatic. */
+  resolvedBatterWickets?: Record<string, boolean>;
   impactByTeam?: Record<string, PlayableImpactChoice>;
 }
 
@@ -139,6 +165,9 @@ export interface PlayableImpactChoice {
   incomingPlayerId?: string;
   outgoingPlayerId?: string;
   battingPosition?: number;
+  /** Apply at the next stable delivery boundary, preserving revealed play. */
+  activationInningsNumber?: 1 | 2;
+  activationDeliverySequence?: number;
 }
 
 export interface PlayableInningsProgress {
@@ -165,6 +194,11 @@ export interface PlayableMatchProgress {
   inningsDeliveryEnds: [number, number];
   innings: PlayableInningsProgress[];
   nextDelivery?: MatchDelivery;
+  nextOverBowler?: {
+    overNumber: number;
+    bowlerId: string;
+    bowlerName: string;
+  };
   awaitingImpactDecision?: boolean;
   impactRecommendation?: MatchImpactDecision;
   complete: boolean;
@@ -220,6 +254,9 @@ export interface MatchDelivery {
   isFreeHit?: boolean;
   wicket?: DeliveryWicket;
   fieldingEvent?: DeliveryFieldingEvent;
+  shotType?: DeliveryShotType;
+  shotTarget?: DeliveryShotTarget;
+  shotZone?: PlayableShotZone;
   resultCode: string;
   commentary: string;
   scoreAfter: number;
@@ -379,6 +416,7 @@ export interface MatchSimulationRecord {
   };
   lineups: Record<string, MatchLineupSnapshot>;
   impactDecisions: MatchImpactDecision[];
+  impactRecommendations?: MatchImpactDecision[];
   innings: [MatchInnings, MatchInnings];
   summary: string[];
 }
@@ -442,6 +480,376 @@ function hashSeed(value: string): number {
     hash = Math.imul(hash, 16777619);
   }
   return hash >>> 0;
+}
+
+interface PlayableFieldInfluence {
+  shotType: DeliveryShotType;
+  shotTarget: DeliveryShotTarget;
+  shotZone: PlayableShotZone;
+  catchFielderIndex: number;
+  catchDistance: number;
+  ringFielderIndex: number;
+  ringDistance: number;
+  boundaryOpportunityMultiplier: number;
+  rotationMultiplier: number;
+  wicketAdjustment: number;
+  caughtWeightMultiplier: number;
+  runOutWeightMultiplier: number;
+}
+
+const THIRTY_YARD_RADIUS_X = 33;
+const THIRTY_YARD_RADIUS_Y = 31;
+const PLAYABLE_SHOT_DIRECTIONS: readonly DeliveryShotTarget[] = [
+  { x: 12, y: 55 },
+  { x: 22, y: 25 },
+  { x: 38, y: 14 },
+  { x: 50, y: 10 },
+  { x: 62, y: 14 },
+  { x: 78, y: 25 },
+  { x: 88, y: 55 },
+  { x: 70, y: 80 },
+  { x: 30, y: 80 },
+] as const;
+const PLAYABLE_EDGE_TARGETS: readonly DeliveryShotTarget[] = [
+  { x: 56, y: 68 },
+  { x: 60, y: 67 },
+  { x: 65, y: 63 },
+  { x: 45, y: 68 },
+] as const;
+const PLAYABLE_SHOT_ZONE_DIRECTIONS: Record<PlayableShotZone, readonly DeliveryShotTarget[]> = {
+  "all-ground": PLAYABLE_SHOT_DIRECTIONS,
+  offside: [
+    PLAYABLE_SHOT_DIRECTIONS[4],
+    PLAYABLE_SHOT_DIRECTIONS[5],
+    PLAYABLE_SHOT_DIRECTIONS[6],
+    PLAYABLE_SHOT_DIRECTIONS[7],
+  ],
+  straight: [
+    PLAYABLE_SHOT_DIRECTIONS[2],
+    PLAYABLE_SHOT_DIRECTIONS[3],
+    PLAYABLE_SHOT_DIRECTIONS[4],
+  ],
+  legside: [
+    PLAYABLE_SHOT_DIRECTIONS[0],
+    PLAYABLE_SHOT_DIRECTIONS[1],
+    PLAYABLE_SHOT_DIRECTIONS[2],
+    PLAYABLE_SHOT_DIRECTIONS[8],
+  ],
+};
+
+function deterministicUnit(seed: string): number {
+  return hashSeed(seed) / 4294967296;
+}
+
+function isPlayableDeepPosition(position: PlayableFieldPosition): boolean {
+  return Math.hypot(
+    (position.x - 50) / THIRTY_YARD_RADIUS_X,
+    (position.y - 50) / THIRTY_YARD_RADIUS_Y,
+  ) > 1;
+}
+
+function nearestPlayableFielder(
+  positions: readonly PlayableFieldPosition[],
+  target: DeliveryShotTarget,
+  predicate: (position: PlayableFieldPosition) => boolean = () => true,
+): { index: number; distance: number } {
+  return positions.reduce((nearest, position, index) => {
+    if (!predicate(position)) return nearest;
+    const distance = Math.hypot(position.x - target.x, position.y - target.y);
+    return distance < nearest.distance ? { index, distance } : nearest;
+  }, { index: -1, distance: Number.POSITIVE_INFINITY });
+}
+
+function projectPlayableShotTarget(
+  direction: DeliveryShotTarget,
+  radius: number,
+): DeliveryShotTarget {
+  const dx = direction.x - 50;
+  const dy = direction.y - 50;
+  const magnitude = Math.max(1, Math.hypot(dx, dy));
+  return {
+    x: 50 + dx / magnitude * radius,
+    y: 50 + dy / magnitude * radius,
+  };
+}
+
+function playableShotZoneSkill(player: Player, zone: PlayableShotZone): number {
+  if (zone === "all-ground") return player.currentBatting;
+  if (zone === "offside") {
+    return clamp(
+      player.currentBatting + (player.isOpener ? 3 : 0) + (player.isCoreBatter ? 2 : 0),
+      35,
+      99,
+    );
+  }
+  if (zone === "straight") {
+    return clamp(
+      player.currentBatting + (player.isCoreBatter ? 3 : 0) + (player.currentBatting >= 82 ? 2 : 0),
+      35,
+      99,
+    );
+  }
+  return clamp(
+    player.currentBatting
+      + ((player.battingAggression ?? 65) - 65) * 0.12
+      + (player.isFinisher ? 4 : 0),
+    35,
+    99,
+  );
+}
+
+function playableDirectionOpenness(
+  positions: readonly PlayableFieldPosition[],
+  direction: DeliveryShotTarget,
+): number {
+  if (positions.length === 0) return 12;
+  const ringDistance = nearestPlayableFielder(
+    positions,
+    projectPlayableShotTarget(direction, 29),
+    (position) => !isPlayableDeepPosition(position),
+  ).distance;
+  const deepDistance = nearestPlayableFielder(
+    positions,
+    projectPlayableShotTarget(direction, 44),
+    isPlayableDeepPosition,
+  ).distance;
+  const safeRingDistance = Number.isFinite(ringDistance) ? ringDistance : 24;
+  const safeDeepDistance = Number.isFinite(deepDistance) ? deepDistance : 28;
+  return clamp(safeRingDistance, 0, 24) * 0.42 + clamp(safeDeepDistance, 0, 28) * 0.58;
+}
+
+function automaticPlayableShotZone(
+  positions: readonly PlayableFieldPosition[],
+  player: Player,
+  deliverySeed: string,
+  intent: number,
+): PlayableShotZone {
+  const zones: PlayableShotZone[] = ["offside", "straight", "legside"];
+  const ranked = zones.map((zone) => {
+    const directions = PLAYABLE_SHOT_ZONE_DIRECTIONS[zone];
+    const bestGap = Math.max(...directions.map((direction) => playableDirectionOpenness(positions, direction)));
+    const profile = playableShotZoneSkill(player, zone) - player.currentBatting;
+    const intentFit = zone === "legside"
+      ? Math.max(0, intent) * 2.2
+      : zone === "straight"
+        ? Math.max(0, intent) * 1.1
+        : 0;
+    const variation = deterministicUnit(`${deliverySeed}:ai-zone:${zone}`) * 4.5;
+    return { zone, score: bestGap + profile * 0.65 + intentFit + variation };
+  }).sort((left, right) => right.score - left.score);
+  const commitsToTarget = deterministicUnit(`${deliverySeed}:ai-zone-commit`) < clamp(
+    0.58 + Math.max(0, intent) * 0.3,
+    0.55,
+    0.82,
+  );
+  return commitsToTarget ? ranked[0]?.zone ?? "all-ground" : "all-ground";
+}
+
+function playableBowlingPlanZoneModifier(
+  plan: PlayableBowlingPlan | undefined,
+  zone: PlayableShotZone,
+): number {
+  if (zone === "all-ground") return 0;
+  if (plan === "yorker-attack") return zone === "straight" ? 0.025 : zone === "legside" ? -0.04 : -0.02;
+  if (plan === "bouncer-pace") return zone === "offside" ? 0.01 : zone === "legside" ? -0.035 : -0.05;
+  if (plan === "spin-choke") return zone === "offside" ? 0 : zone === "straight" ? -0.015 : -0.035;
+  return 0;
+}
+
+/**
+ * Converts the saved field map into delivery-level tactical effects. All rolls
+ * are derived from the stable delivery id, so saving/resuming after a ball
+ * produces the same shot and outcome.
+ */
+function playableFieldInfluence(
+  positions: readonly PlayableFieldPosition[] | undefined,
+  deliverySeed: string,
+  intent: number,
+  striker: Player,
+  bowlingRating: number,
+  approach: PlayableBattingApproach | undefined,
+  requestedShotZone: PlayableShotZone | undefined,
+  bowlingPlan: PlayableBowlingPlan | undefined,
+): PlayableFieldInfluence | undefined {
+  const validPositions = (positions ?? []).filter((position) => (
+    Number.isFinite(position.x)
+    && Number.isFinite(position.y)
+    && position.x >= 0
+    && position.x <= 100
+    && position.y >= 0
+    && position.y <= 100
+  )).slice(0, 9);
+  if (validPositions.length === 0 && !requestedShotZone) return undefined;
+
+  const shotZone = requestedShotZone ?? automaticPlayableShotZone(
+    validPositions,
+    striker,
+    deliverySeed,
+    intent,
+  );
+  const zoneSkill = playableShotZoneSkill(striker, shotZone);
+  const zoneDirections = PLAYABLE_SHOT_ZONE_DIRECTIONS[shotZone];
+  const directionCompliance = shotZone === "all-ground"
+    ? 1
+    : clamp(
+      0.72
+        + (zoneSkill - 72) * 0.004
+        + (striker.currentBatting - bowlingRating) * 0.002
+        + (bowlingPlan === "bouncer-pace" ? -0.08 : bowlingPlan === "yorker-attack" ? -0.055 : bowlingPlan === "spin-choke" ? -0.035 : 0),
+      0.55,
+      0.9,
+    );
+  const followsInstruction = shotZone === "all-ground"
+    || deterministicUnit(`${deliverySeed}:zone-compliance`) < directionCompliance;
+  const zoneDirectionKeys = new Set(zoneDirections.map((direction) => `${direction.x}:${direction.y}`));
+  const missedDirections = PLAYABLE_SHOT_DIRECTIONS.filter((direction) => (
+    !zoneDirectionKeys.has(`${direction.x}:${direction.y}`)
+  ));
+  const intendedDirectionPool = followsInstruction
+    ? zoneDirections
+    : missedDirections.length > 0
+      ? missedDirections
+      : PLAYABLE_SHOT_DIRECTIONS;
+  const gapReading = clamp((striker.currentBatting - 48) / 50, 0.18, 0.94);
+  const intendedDirection = intendedDirectionPool.map((direction, index) => ({
+    direction,
+    score: playableDirectionOpenness(validPositions, direction) * gapReading
+      + deterministicUnit(`${deliverySeed}:direction-option:${index}`) * (15 - gapReading * 9),
+  })).sort((left, right) => right.score - left.score)[0]?.direction ?? PLAYABLE_SHOT_DIRECTIONS[0];
+  const planZoneModifier = playableBowlingPlanZoneModifier(bowlingPlan, shotZone);
+  const zoneExecutionMultiplier = shotZone === "all-ground"
+    ? 1
+    : clamp(
+      1
+        + (zoneSkill - striker.currentBatting) * 0.006
+        + (striker.currentBatting - bowlingRating) * 0.0015
+        + planZoneModifier
+        + (followsInstruction ? 0 : -0.12),
+      0.82,
+      1.08,
+    );
+
+  const aggression = clamp(
+    ((striker.battingAggression ?? 65) - 55) / 45
+      + Math.max(0, intent) * 1.2
+      + (approach === "six-hitting" ? 0.38 : approach === "attack" ? 0.18 : 0),
+    0,
+    1.5,
+  );
+  const shotRoll = deterministicUnit(`${deliverySeed}:elevation`);
+  const executionMistime = Math.max(0, 1 - zoneExecutionMultiplier);
+  const edgeChance = clamp(
+    0.055 - Math.max(0, intent) * 0.025 + executionMistime * 0.11,
+    0.025,
+    0.085,
+  );
+  const skierChance = clamp(
+    0.035 + aggression * 0.075 + executionMistime * 0.09,
+    0.035,
+    0.17,
+  );
+  const loftedChance = clamp(0.13 + aggression * 0.17, 0.13, 0.38);
+  const shotType: DeliveryShotType = shotRoll < edgeChance
+    ? "edge"
+    : shotRoll < edgeChance + skierChance
+      ? "skier"
+      : shotRoll < edgeChance + skierChance + loftedChance
+        ? "lofted"
+        : "ground";
+
+  const direction = shotType === "edge"
+    ? PLAYABLE_EDGE_TARGETS[
+      Math.floor(deterministicUnit(`${deliverySeed}:edge-direction`) * PLAYABLE_EDGE_TARGETS.length)
+    ] ?? PLAYABLE_EDGE_TARGETS[0]
+    : intendedDirection;
+  const jitterX = (deterministicUnit(`${deliverySeed}:jitter-x`) - 0.5) * 6;
+  const jitterY = (deterministicUnit(`${deliverySeed}:jitter-y`) - 0.5) * 6;
+  const rawDirection = {
+    x: clamp(direction.x + jitterX, 4, 96),
+    y: clamp(direction.y + jitterY, 4, 94),
+  };
+  const catchTarget = shotType === "edge"
+    ? rawDirection
+    : projectPlayableShotTarget(rawDirection, shotType === "skier" ? 31 : shotType === "lofted" ? 39 : 25);
+  const boundaryTarget = projectPlayableShotTarget(rawDirection, 44);
+  const ringTarget = projectPlayableShotTarget(rawDirection, 29);
+  const catchFielder = nearestPlayableFielder(validPositions, catchTarget);
+  const ringFielder = nearestPlayableFielder(
+    validPositions,
+    ringTarget,
+    (position) => !isPlayableDeepPosition(position),
+  );
+  const deepFielder = nearestPlayableFielder(
+    validPositions,
+    boundaryTarget,
+    isPlayableDeepPosition,
+  );
+
+  const fieldBoundaryMultiplier = Number.isFinite(deepFielder.distance)
+    ? clamp(0.72 + Math.max(0, deepFielder.distance - 6) * 0.021, 0.72, 1.22)
+    : 1.22;
+  const fieldRotationMultiplier = Number.isFinite(ringFielder.distance)
+    ? clamp(0.72 + Math.max(0, ringFielder.distance - 4) * 0.025, 0.72, 1.18)
+    : 1.18;
+  const boundaryOpportunityMultiplier = clamp(
+    fieldBoundaryMultiplier * zoneExecutionMultiplier,
+    0.66,
+    1.28,
+  );
+  const rotationMultiplier = clamp(
+    fieldRotationMultiplier * (1 + (zoneExecutionMultiplier - 1) * 0.55),
+    0.68,
+    1.22,
+  );
+  const fieldWicketAdjustment = shotType === "skier"
+    ? catchFielder.distance <= 7
+      ? 0.026
+      : catchFielder.distance <= 14
+        ? 0.016
+        : catchFielder.distance <= 22
+          ? 0.006
+          : -0.007
+    : shotType === "edge"
+      ? catchFielder.distance <= 7
+        ? 0.014
+        : catchFielder.distance <= 14
+          ? 0.006
+          : -0.004
+      : shotType === "lofted" && catchFielder.distance <= 9
+        ? 0.005
+        : 0;
+  const wicketAdjustment = clamp(
+    fieldWicketAdjustment
+      + executionMistime * 0.055
+      + (!followsInstruction ? 0.004 : 0),
+    -0.008,
+    0.035,
+  );
+  const caughtWeightMultiplier = shotType === "skier"
+    ? (catchFielder.distance <= 14 ? 3.2 : 1.7)
+    : shotType === "edge"
+      ? (catchFielder.distance <= 14 ? 3.8 : 1.8)
+      : shotType === "lofted"
+        ? 1.45
+        : 0.72;
+  const runOutWeightMultiplier = Number.isFinite(ringFielder.distance)
+    ? clamp(2.25 - ringFielder.distance * 0.075, 0.5, 2.1)
+    : 0.5;
+
+  return {
+    shotType,
+    shotTarget: rawDirection,
+    shotZone,
+    catchFielderIndex: catchFielder.index,
+    catchDistance: catchFielder.distance,
+    ringFielderIndex: ringFielder.index,
+    ringDistance: ringFielder.distance,
+    boundaryOpportunityMultiplier,
+    rotationMultiplier,
+    wicketAdjustment,
+    caughtWeightMultiplier,
+    runOutWeightMultiplier,
+  };
 }
 
 function seededGaussian(value: string): number {
@@ -538,6 +946,23 @@ const isBowlingOption = (player: Player | undefined) => Boolean(
     || player.role === "All-Rounder"
   )
 );
+
+/** The exact pool used by both smart selection and playable-match overrides. */
+export function getPlayableBowlingOptions(teamPlayers: readonly Player[]): Player[] {
+  const candidates = teamPlayers.filter((player) => isBowlingOption(player));
+  const fallback = teamPlayers
+    .filter((player) => player.currentBowling >= 45 && player.role !== "WK-Batsman")
+    .sort((left, right) => right.currentBowling - left.currentBowling);
+
+  // Five bowlers are needed to cover 20 overs legally. If a lineup exposes
+  // fewer recognised options, supplement it with the best part-time choices.
+  return candidates.length >= 5
+    ? candidates
+    : [
+        ...candidates,
+        ...fallback.filter((player) => !candidates.some((candidate) => candidate.id === player.id)),
+      ].slice(0, Math.min(5, fallback.length));
+}
 
 const isBattingAllRounder = (player: Player | undefined) => Boolean(
   player
@@ -825,6 +1250,27 @@ function bowlingTacticalAdjustment(
   return { wicket, scoring };
 }
 
+function automaticPlayableBowlingPlan(
+  tactics: TeamTactics,
+  overNumber: number,
+  bowler: Player,
+  maxOvers = 20,
+): PlayableBowlingPlan {
+  const { powerplayEnd, deathStart } = inningsPhaseThresholds(maxOvers);
+  if (overNumber >= deathStart) {
+    if (tactics.bowling.death === "yorkers" && isPacer(bowler)) return "yorker-attack";
+    if (tactics.bowling.death === "wicket-hunt") {
+      return isSpinner(bowler) ? "spin-choke" : "bouncer-pace";
+    }
+    return isPacer(bowler) ? "yorker-attack" : "spin-choke";
+  }
+  if (overNumber > powerplayEnd) {
+    if (tactics.bowling.middle === "spin-choke" && isSpinner(bowler)) return "spin-choke";
+    if (tactics.bowling.middle === "pace" && isPacer(bowler)) return "bouncer-pace";
+  }
+  return "good-length";
+}
+
 function canCompleteBowlingRotation(
   remainingOvers: number,
   previousBowlerId: string,
@@ -891,22 +1337,10 @@ function chooseBowler(
 ): Player {
   const { powerplayEnd, deathStart } = inningsPhaseThresholds(inningsOvers);
   const maxBowlerOvers = Math.ceil(inningsOvers / 5);
-  const candidates = fieldingIds
+  const teamPlayers = fieldingIds
     .map((playerId) => players[playerId])
-    .filter((player): player is Player => Boolean(player) && isBowlingOption(player));
-  const fallback = fieldingIds
-    .map((playerId) => players[playerId])
-    .filter((player): player is Player => Boolean(player) && player.currentBowling >= 45 && player.role !== "WK-Batsman")
-    .sort((left, right) => right.currentBowling - left.currentBowling);
-  // Five bowlers are needed to cover 20 overs legally. If a lineup exposes
-  // fewer recognised options, supplement it with the best available part-time
-  // choices instead of creating an impossible four-bowler rotation.
-  const pool = candidates.length >= 5
-    ? candidates
-    : [
-        ...candidates,
-        ...fallback.filter((player) => !candidates.some((candidate) => candidate.id === player.id)),
-      ].slice(0, Math.min(5, fallback.length));
+    .filter((player): player is Player => Boolean(player));
+  const pool = getPlayableBowlingOptions(teamPlayers);
   const withCapacity = pool.filter((player) => (
     (ballsByBowler.get(player.id) ?? 0) < maxBowlerOvers * 6
     && player.id !== previousBowlerId
@@ -1005,7 +1439,7 @@ function chooseBowler(
   });
 
   return scored.sort((left, right) => right.score - left.score)[0]?.player
-    ?? fallback[0];
+    ?? pool[0];
 }
 
 function emptyExtras(): DeliveryExtras {
@@ -1282,6 +1716,7 @@ function isPartTimeKeeper(player: Player | undefined): boolean {
 function dismissalCompletionProbability(
   wicket: DeliveryWicket,
   players: Record<string, Player>,
+  fieldInfluence?: PlayableFieldInfluence,
 ): number {
   const fielder = wicket.fielderId ? players[wicket.fielderId] : undefined;
   if (wicket.kind === "caught") {
@@ -1289,9 +1724,14 @@ function dismissalCompletionProbability(
       ? (isKeeper(fielder) ? inferredKeeperRating(fielder) : inferredFieldingRating(fielder))
       : 65;
     return clamp(
-      0.76 + (rating - 60) * 0.0055 - (isPartTimeKeeper(fielder) ? 0.045 : 0),
+      0.76
+        + (rating - 60) * 0.0055
+        - (isPartTimeKeeper(fielder) ? 0.045 : 0)
+        + (fieldInfluence
+          ? clamp((14 - fieldInfluence.catchDistance) * 0.006, -0.08, 0.055)
+          : 0),
       0.72,
-      0.94,
+      0.96,
     );
   }
   if (wicket.kind === "stumped") {
@@ -1305,7 +1745,15 @@ function dismissalCompletionProbability(
   }
   if (wicket.kind === "run-out") {
     const rating = fielder ? inferredFieldingRating(fielder) : 65;
-    return clamp(0.70 + (rating - 60) * 0.005, 0.68, 0.9);
+    return clamp(
+      0.70
+        + (rating - 60) * 0.005
+        + (fieldInfluence
+          ? clamp((13 - fieldInfluence.ringDistance) * 0.005, -0.06, 0.045)
+          : 0),
+      0.64,
+      0.93,
+    );
   }
   return 1;
 }
@@ -1318,23 +1766,30 @@ function chooseDismissal(
   players: Record<string, Player>,
   runningPressure: number,
   rng: SimulationRandom,
+  fieldInfluence?: PlayableFieldInfluence,
+  positionedFielders: readonly Player[] = [],
 ): DeliveryWicket {
   const kind = rng.weighted<DismissalKind>([
-    { value: "caught", weight: 52 },
+    { value: "caught", weight: 52 * (fieldInfluence?.caughtWeightMultiplier ?? 1) },
     { value: "bowled", weight: isPacer(bowler) ? 18 : 13 },
     { value: "lbw", weight: isPacer(bowler) ? 14 : 16 },
-    { value: "run-out", weight: 7 * (1 + runningPressure * 0.2) },
+    { value: "run-out", weight: 7 * (1 + runningPressure * 0.2) * (fieldInfluence?.runOutWeightMultiplier ?? 1) },
     { value: "stumped", weight: isSpinner(bowler) ? 7 : 0.8 },
     { value: "hit-wicket", weight: 0.025 },
   ]);
+  const positionedFielder = kind === "caught"
+    ? positionedFielders[fieldInfluence?.catchFielderIndex ?? -1]
+    : kind === "run-out"
+      ? positionedFielders[fieldInfluence?.ringFielderIndex ?? -1]
+      : undefined;
   const fielder = kind === "caught"
-    ? selectFielder(fieldingIds, players, rng)
+    ? positionedFielder ?? selectFielder(fieldingIds, players, rng)
     : kind === "stumped"
       // Preserve the established seeded random stream without allowing this
       // draw to re-select the keeper during the innings.
       ? (wicketkeeper ? (rng.next(), wicketkeeper) : undefined)
       : kind === "run-out"
-        ? selectFielder(fieldingIds, players, rng)
+        ? positionedFielder ?? selectFielder(fieldingIds, players, rng)
         : undefined;
   return {
     playerId: striker.id,
@@ -1914,7 +2369,8 @@ function applyPlayableImpactChoice(
   teamState: ActiveTeamState,
   choice: PlayableImpactChoice,
   players: Record<string, Player>,
-  battingInSecondInnings: boolean,
+  teamWillBat: boolean,
+  nextBatterIndex?: number,
 ): boolean {
   if (!choice.use) {
     teamState.impactDecision = {
@@ -1936,14 +2392,28 @@ function applyPlayableImpactChoice(
   ) return false;
 
   const outgoingPosition = teamState.battingOrder.indexOf(outgoing.id);
-  if (battingInSecondInnings && outgoingPosition >= 0) {
-    teamState.battingOrder.splice(outgoingPosition, 1);
-    const insertionIndex = clamp(
-      Math.round(choice.battingPosition ?? outgoingPosition + 1) - 1,
-      0,
-      teamState.battingOrder.length,
-    );
-    teamState.battingOrder.splice(insertionIndex, 0, incoming.id);
+  let insertionIndex: number | undefined;
+  if (teamWillBat) {
+    if (typeof nextBatterIndex === "number") {
+      // During an innings, preserve all historical batting positions. Replace
+      // an unused player in place, or queue the Impact Player as next in when
+      // the outgoing player has already appeared on the scorecard.
+      if (outgoingPosition >= nextBatterIndex) {
+        teamState.battingOrder.splice(outgoingPosition, 1, incoming.id);
+        insertionIndex = outgoingPosition;
+      } else {
+        insertionIndex = clamp(nextBatterIndex, 0, teamState.battingOrder.length);
+        teamState.battingOrder.splice(insertionIndex, 0, incoming.id);
+      }
+    } else if (outgoingPosition >= 0) {
+      teamState.battingOrder.splice(outgoingPosition, 1);
+      insertionIndex = clamp(
+        Math.round(choice.battingPosition ?? outgoingPosition + 1) - 1,
+        0,
+        teamState.battingOrder.length,
+      );
+      teamState.battingOrder.splice(insertionIndex, 0, incoming.id);
+    }
   }
   teamState.finalXI = teamState.finalXI.filter((playerId) => playerId !== outgoing.id);
   teamState.finalXI.push(incoming.id);
@@ -1955,10 +2425,10 @@ function applyPlayableImpactChoice(
     incomingPlayerName: incoming.name,
     outgoingPlayerId: outgoing.id,
     outgoingPlayerName: outgoing.name,
-    battingPosition: battingInSecondInnings
-      ? teamState.battingOrder.indexOf(incoming.id) + 1
+    battingPosition: teamWillBat
+      ? (insertionIndex ?? teamState.battingOrder.indexOf(incoming.id)) + 1
       : undefined,
-    reason: battingInSecondInnings ? "planned-batting" : "planned-bowling",
+    reason: teamWillBat ? "planned-batting" : "planned-bowling",
     explanation: `${incoming.name} replaced ${outgoing.name} as the user-selected Impact Player.`,
   };
   return true;
@@ -2279,6 +2749,35 @@ function simulateInnings(context: InningsContext): MatchInnings {
   let partnershipBatterIds = [strikerId, nonStrikerId];
   let partnershipStartBatterRuns = new Map(partnershipBatterIds.map((playerId) => [playerId, ensureBattingEntry(playerId).runs]));
   let partnershipStartBatterBalls = new Map(partnershipBatterIds.map((playerId) => [playerId, ensureBattingEntry(playerId).balls]));
+  const handledScheduledImpactTeams = new Set<string>();
+  const applyScheduledPlayableImpact = () => {
+    ([
+      { teamState: batting, teamIsBatting: true },
+      { teamState: bowling, teamIsBatting: false },
+    ] as const).forEach(({ teamState, teamIsBatting }) => {
+      if (handledScheduledImpactTeams.has(teamState.team.id) || teamState.impactUsed) return;
+      const choice = context.playableDecisions?.impactByTeam?.[teamState.team.id];
+      if (
+        !choice
+        || choice.activationInningsNumber !== context.inningsNumber
+        || deliverySequence < (choice.activationDeliverySequence ?? 0)
+      ) return;
+      const applied = applyPlayableImpactChoice(
+        teamState,
+        choice,
+        players,
+        teamIsBatting,
+        teamIsBatting ? nextBatterIndex : undefined,
+      );
+      if (!applied) return;
+      handledScheduledImpactTeams.add(teamState.team.id);
+      if (teamIsBatting && choice.use && choice.incomingPlayerId) {
+        ensureBattingEntry(choice.incomingPlayerId);
+      }
+    });
+  };
+  // A choice made before the first ball must affect the opening delivery.
+  applyScheduledPlayableImpact();
   const extras: InningsExtras = {
     wides: 0,
     noBalls: 0,
@@ -2331,6 +2830,7 @@ function simulateInnings(context: InningsContext): MatchInnings {
     && nonStrikerId
     && (!target || runs < target)
   ) {
+    applyScheduledPlayableImpact();
     const overNumber = Math.floor(legalBalls / 6) + 1;
     const smartBowler = chooseBowler(
       overNumber,
@@ -2351,17 +2851,22 @@ function simulateInnings(context: InningsContext): MatchInnings {
     const requestedBowler: Player | undefined = requestedBowlerId
       ? players[requestedBowlerId]
       : undefined;
+    const playableBowlingOptionIds = new Set(getPlayableBowlingOptions(
+      bowling.finalXI
+        .map((playerId) => players[playerId])
+        .filter((player): player is Player => Boolean(player)),
+    ).map((player) => player.id));
     const maxBowlerOvers = Math.ceil(maxOvers / 5);
     const requestedBowlerIsLegal: boolean = Boolean(
       requestedBowler
       && bowling.finalXI.includes(requestedBowler.id)
-      && isBowlingOption(requestedBowler)
+      && playableBowlingOptionIds.has(requestedBowler.id)
       && requestedBowler.id !== previousBowlerId
       && (bowlingEntries.get(requestedBowler.id)?.balls ?? 0) < maxBowlerOvers * 6
-      && (bowlerUnavailableUntilOver.get(requestedBowler.id) ?? 0) <= overNumber
     );
-    // The smart selection is still calculated first. This preserves the RNG
-    // stream and makes an override a tactical choice rather than a luck reroll.
+    // The smart selection is still calculated first to preserve the RNG stream.
+    // A legal manual override bypasses AI workload/cooldown preferences; only
+    // cricket rules and the available bowling pool can reject it.
     const bowler: Player = requestedBowlerIsLegal ? requestedBowler! : smartBowler;
     const spellOverNumber = nextBowlerSpellOver(
       overNumber,
@@ -2387,6 +2892,7 @@ function simulateInnings(context: InningsContext): MatchInnings {
       && nonStrikerId
       && (!target || runs < target)
     ) {
+      applyScheduledPlayableImpact();
       deliverySequence += 1;
       deliveryInOver += 1;
       const striker = players[strikerId];
@@ -2438,9 +2944,14 @@ function simulateInnings(context: InningsContext): MatchInnings {
         - playerPositionPenalty(striker, battingPosition)
         + heatBatterPenalty
       );
-      const deliveryControl = context.playableDecisions?.deliveryControls[
-        `${context.inningsNumber}-${deliverySequence}`
-      ];
+      const deliveryId = `${context.inningsNumber}-${deliverySequence}`;
+      const deliveryControl = context.playableDecisions?.deliveryControls[deliveryId];
+      const fieldInfluenceBowlingPlan = deliveryControl?.bowlingPlan ?? automaticPlayableBowlingPlan(
+        context.bowlingTactics,
+        overNumber,
+        bowler,
+        maxOvers,
+      );
       const battingApproachAdjustment = deliveryControl?.battingApproach === "survive"
         ? -0.18
         : deliveryControl?.battingApproach === "anchor"
@@ -2459,6 +2970,20 @@ function simulateInnings(context: InningsContext): MatchInnings {
         maxOvers,
       ) + bowlerRespectIntentAdjustment(battingRating, bowlingRating)
         + battingApproachAdjustment;
+      const positionedFielders = bowling.finalXI
+        .filter((playerId) => playerId !== bowler.id && playerId !== wicketkeeper?.id)
+        .map((playerId) => players[playerId])
+        .filter((player): player is Player => Boolean(player));
+      const fieldInfluence = playableFieldInfluence(
+        deliveryControl?.fieldPositions,
+        `${context.seed}:${deliveryId}`,
+        intent,
+        striker,
+        bowlingRating,
+        deliveryControl?.battingApproach,
+        deliveryControl?.shotZone,
+        fieldInfluenceBowlingPlan,
+      );
       const baseTacticalBowling = bowlingTacticalAdjustment(
         context.bowlingTactics,
         overNumber,
@@ -2826,6 +3351,7 @@ function simulateInnings(context: InningsContext): MatchInnings {
           - battingAllRounderRelief
           + individualScoreWicketPressure
           + centuryConversionAdjustment.wicketIncrease
+          + (fieldInfluence?.wicketAdjustment ?? 0)
           - Math.min(0, intent) * -0.014,
           0.018,
           0.16,
@@ -2842,7 +3368,8 @@ function simulateInnings(context: InningsContext): MatchInnings {
         if (!isNoBall && wicketOutcomeRoll < effectiveWicketProbability) {
           const wicketChance: DeliveryWicket = isFreeHit
             ? (() => {
-                const fielder = selectFielder(bowling.finalXI, players, rng);
+                const fielder = positionedFielders[fieldInfluence?.ringFielderIndex ?? -1]
+                  ?? selectFielder(bowling.finalXI, players, rng);
                 return {
                   playerId: striker.id,
                   playerName: striker.name,
@@ -2860,12 +3387,14 @@ function simulateInnings(context: InningsContext): MatchInnings {
                 players,
                 runningPressure,
                 rng,
+                fieldInfluence,
+                positionedFielders,
               );
           // Reuse the wicket-chance roll after normalising it within its range.
           // This keeps fielding resolution independent without perturbing the
           // established scoring random stream with an extra roll on every chance.
           const completionRoll = wicketOutcomeRoll / effectiveWicketProbability;
-          if (completionRoll < dismissalCompletionProbability(wicketChance, players)) {
+          if (completionRoll < dismissalCompletionProbability(wicketChance, players, fieldInfluence)) {
             wicket = wicketChance;
             wickets += 1;
             strikerEntry.notOut = false;
@@ -2958,8 +3487,10 @@ function simulateInnings(context: InningsContext): MatchInnings {
               conditions,
               isPureBowler,
               (isPowerplay ? POWERPLAY_BOUNDARY_MULTIPLIER : 1)
-                * (striker.isFinisher ? FINISHER_BOUNDARY_MULTIPLIER : 1),
-              striker.isCoreBatter ? CORE_BATTER_ROTATION_MULTIPLIER : 1,
+                * (striker.isFinisher ? FINISHER_BOUNDARY_MULTIPLIER : 1)
+                * (fieldInfluence?.boundaryOpportunityMultiplier ?? 1),
+              (striker.isCoreBatter ? CORE_BATTER_ROTATION_MULTIPLIER : 1)
+                * (fieldInfluence?.rotationMultiplier ?? 1),
               strikeFarmSingleMultiplier(
                 displayLegalBall,
                 strikerIsEstablished,
@@ -3049,11 +3580,16 @@ function simulateInnings(context: InningsContext): MatchInnings {
                 ? ` wicketkeeping error by ${fieldingEvent.fielderName ?? "the keeper"}`
                 : "";
       const freeHitLabel = isFreeHit ? "FREE HIT, " : "";
+      const shotDescription = fieldInfluence?.shotType === "skier"
+        ? "SKIED, "
+        : fieldInfluence?.shotType === "edge"
+          ? "EDGED, "
+          : "";
       const commentary = wicket
-        ? `${displayBall} ${bowler.name} to ${striker.name}: ${freeHitLabel}OUT, ${strikerEntry.dismissal}.`
-        : `${displayBall} ${bowler.name} to ${striker.name}: ${freeHitLabel}${resultCode === "0" ? "no run" : `${resultCode}, ${totalRuns} run${totalRuns === 1 ? "" : "s"}`}${fieldingComment}.`;
+        ? `${displayBall} ${bowler.name} to ${striker.name}: ${freeHitLabel}${shotDescription}OUT, ${strikerEntry.dismissal}.`
+        : `${displayBall} ${bowler.name} to ${striker.name}: ${freeHitLabel}${shotDescription}${resultCode === "0" ? "no run" : `${resultCode}, ${totalRuns} run${totalRuns === 1 ? "" : "s"}`}${fieldingComment}.`;
       const delivery: MatchDelivery = {
-        id: `${context.inningsNumber}-${deliverySequence}`,
+        id: deliveryId,
         inningsNumber: context.inningsNumber,
         overNumber,
         deliveryInOver,
@@ -3072,6 +3608,9 @@ function simulateInnings(context: InningsContext): MatchInnings {
         isFreeHit,
         wicket,
         fieldingEvent,
+        shotType: fieldInfluence?.shotType,
+        shotTarget: fieldInfluence?.shotTarget,
+        shotZone: fieldInfluence?.shotZone,
         resultCode,
         commentary,
         scoreAfter: runs,
@@ -3455,13 +3994,41 @@ function simulateMatchToCompletion(
 
   const bowlingFirstImpactChoice = playableDecisions?.impactByTeam?.[bowlingFirstTeam.id];
   const battingFirstImpactChoice = playableDecisions?.impactByTeam?.[battingFirstTeam.id];
-  const appliedBowlingFirstChoice = bowlingFirstImpactChoice
+  const bowlingFirstChoiceIsScheduled = typeof bowlingFirstImpactChoice?.activationInningsNumber === "number";
+  const battingFirstChoiceIsScheduled = typeof battingFirstImpactChoice?.activationInningsNumber === "number";
+  const appliedBowlingFirstChoice = bowlingFirstImpactChoice && !bowlingFirstChoiceIsScheduled
     ? applyPlayableImpactChoice(bowlingFirstState, bowlingFirstImpactChoice, input.players, true)
     : false;
-  const appliedBattingFirstChoice = battingFirstImpactChoice
+  const appliedBattingFirstChoice = battingFirstImpactChoice && !battingFirstChoiceIsScheduled
     ? applyPlayableImpactChoice(battingFirstState, battingFirstImpactChoice, input.players, false)
     : false;
-  if (!appliedBowlingFirstChoice) {
+  const bowlingFirstRecommendationState: ActiveTeamState = {
+    ...bowlingFirstState,
+    finalXI: [...bowlingFirstState.finalXI],
+    battingOrder: [...bowlingFirstState.battingOrder],
+    impactDecision: { ...bowlingFirstState.impactDecision },
+  };
+  const battingFirstRecommendationState: ActiveTeamState = {
+    ...battingFirstState,
+    finalXI: [...battingFirstState.finalXI],
+    battingOrder: [...battingFirstState.battingOrder],
+    impactDecision: { ...battingFirstState.impactDecision },
+  };
+  if (!bowlingFirstRecommendationState.impactUsed) {
+    activateBowlFirstImpact(
+      bowlingFirstRecommendationState,
+      firstInnings.runs + 1,
+      input.conditions,
+      input.players,
+    );
+  }
+  if (!battingFirstRecommendationState.impactUsed) {
+    activateStandardBatFirstImpact(
+      battingFirstRecommendationState,
+      input.players,
+    );
+  }
+  if (!bowlingFirstState.impactUsed && !appliedBowlingFirstChoice && bowlingFirstTeam.id !== userTeamId) {
     activateBowlFirstImpact(
       bowlingFirstState,
       firstInnings.runs + 1,
@@ -3469,7 +4036,7 @@ function simulateMatchToCompletion(
       input.players,
     );
   }
-  if (!appliedBattingFirstChoice) {
+  if (!battingFirstState.impactUsed && !appliedBattingFirstChoice && battingFirstTeam.id !== userTeamId) {
     activateStandardBatFirstImpact(
       battingFirstState,
       input.players,
@@ -3654,6 +4221,10 @@ function simulateMatchToCompletion(
       battingFirstState.impactDecision,
       bowlingFirstState.impactDecision,
     ],
+    impactRecommendations: [
+      battingFirstRecommendationState.impactDecision,
+      bowlingFirstRecommendationState.impactDecision,
+    ],
     innings: [firstInnings, secondInnings],
     summary,
   };
@@ -3718,12 +4289,8 @@ export function simulatePlayableMatch(
   const firstDeliveries = simulation.innings[0].oversDetail.flatMap((over) => over.deliveries);
   const secondDeliveries = simulation.innings[1].oversDetail.flatMap((over) => over.deliveries);
   const allDeliveries = flattenMatchDeliveries(simulation);
-  const awaitingImpactDecision = (
-    requestedRevealedDeliveries >= firstDeliveries.length
-    && !decisions.impactByTeam?.[userTeamId]
-  );
   const revealedDeliveries = clamp(
-    Math.floor(awaitingImpactDecision ? firstDeliveries.length : requestedRevealedDeliveries),
+    Math.floor(requestedRevealedDeliveries),
     0,
     allDeliveries.length,
   );
@@ -3734,7 +4301,17 @@ export function simulatePlayableMatch(
   );
   const firstVisible = firstDeliveries.slice(0, visibleFirstCount);
   const secondVisible = secondDeliveries.slice(0, visibleSecondCount);
-  const complete = !awaitingImpactDecision && revealedDeliveries >= allDeliveries.length;
+  const complete = revealedDeliveries >= allDeliveries.length;
+  const nextDelivery = allDeliveries[revealedDeliveries];
+  const nextOverNumber = nextDelivery
+    ? nextDelivery.overNumber + (nextDelivery.deliveryInOver === 1 ? 0 : 1)
+    : undefined;
+  const nextOverFirstDelivery = nextDelivery && nextOverNumber !== undefined
+    ? allDeliveries.slice(revealedDeliveries).find((delivery) => (
+      delivery.inningsNumber === nextDelivery.inningsNumber
+      && delivery.overNumber === nextOverNumber
+    ))
+    : undefined;
   const innings: PlayableInningsProgress[] = [
     playableInningsProgress(
       simulation.innings[0],
@@ -3760,10 +4337,17 @@ export function simulatePlayableMatch(
     totalDeliveries: allDeliveries.length,
     inningsDeliveryEnds: [firstDeliveries.length, allDeliveries.length],
     innings,
-    nextDelivery: awaitingImpactDecision ? undefined : allDeliveries[revealedDeliveries],
-    awaitingImpactDecision,
-    impactRecommendation: awaitingImpactDecision
-      ? simulation.impactDecisions.find((decision) => decision.teamId === userTeamId)
+    nextDelivery,
+    nextOverBowler: nextOverFirstDelivery
+      ? {
+        overNumber: nextOverFirstDelivery.overNumber,
+        bowlerId: nextOverFirstDelivery.bowlerId,
+        bowlerName: nextOverFirstDelivery.bowlerName,
+      }
+      : undefined,
+    awaitingImpactDecision: false,
+    impactRecommendation: !decisions.impactByTeam?.[userTeamId]
+      ? simulation.impactRecommendations?.find((decision) => decision.teamId === userTeamId)
       : undefined,
     complete,
     simulation: complete ? simulation : undefined,

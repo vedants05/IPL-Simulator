@@ -26,6 +26,7 @@ import { getPlayerSeasonHistory } from "@/lib/logic/playerHistory";
 import { cacheTeamProfileCareer, getCachedTeamProfileCareer } from "@/lib/logic/teamProfileCareerCache";
 import { useGameStore } from "@/lib/store/gameStore";
 import type { Player, Team } from "@/lib/types";
+import TeamProfileLoading from "@/components/team/TeamProfileLoading";
 
 const PlayerProfileModal = dynamic(
   () => import("@/components/player/PlayerProfileModal").then((module) => module.PlayerProfileModal),
@@ -489,7 +490,7 @@ function LineupColumn({
   );
 }
 
-export default function TeamProfilePage() {
+function MountedTeamProfilePage() {
   const params = useParams<{ teamId: string }>();
   const teams = useGameStore((state) => state.teams);
   const players = useGameStore((state) => state.players);
@@ -498,7 +499,6 @@ export default function TeamProfilePage() {
   const currentDate = useGameStore((state) => state.currentDate);
   const auction = useGameStore((state) => state.auction);
   const simulatedLeagueHistory = useGameStore((state) => state.simulatedLeagueHistory);
-  const [hasMounted, setHasMounted] = useState(false);
   const [hasLoadedCareer, setHasLoadedCareer] = useState(() => Boolean(
     getCachedTeamProfileCareer<TeamProfileCareer>(userTeamId),
   ));
@@ -526,10 +526,6 @@ export default function TeamProfilePage() {
   const homeStadium = getHomeStadium(teamId);
 
   useEffect(() => {
-    setHasMounted(true);
-  }, []);
-
-  useEffect(() => {
     const syncTabWithHistory = () => setActiveTab(teamProfileTabFromUrl());
     syncTabWithHistory();
     window.addEventListener("popstate", syncTabWithHistory);
@@ -550,7 +546,7 @@ export default function TeamProfilePage() {
   }, [activeTab, aiLineupLogic]);
 
   useEffect(() => {
-    if (!hasMounted || activeTab !== "overview" || !team) return;
+    if (activeTab !== "overview" || !team) return;
 
     const list = nextFixturesListRef.current;
     if (!list) return;
@@ -564,10 +560,10 @@ export default function TeamProfilePage() {
     const observer = new ResizeObserver(updateVisibleCount);
     observer.observe(list);
     return () => observer.disconnect();
-  }, [activeTab, hasMounted, team]);
+  }, [activeTab, team]);
 
   useEffect(() => {
-    if (!hasMounted || !userTeamId) return;
+    if (!userTeamId) return;
 
     try {
       setCareer(readTeamProfileCareer(userTeamId));
@@ -576,7 +572,7 @@ export default function TeamProfilePage() {
       setCareer(EMPTY_CAREER);
     }
     setHasLoadedCareer(true);
-  }, [hasMounted, userTeamId]);
+  }, [userTeamId]);
 
   useEffect(() => {
     if (!hasLoadedCareer || !userTeamId) return;
@@ -1114,15 +1110,7 @@ export default function TeamProfilePage() {
       .map((season) => season.season),
   )).sort((left, right) => right - left);
 
-  if (!hasMounted) {
-    return (
-      <div className="flex h-[calc(100vh-3rem)] items-center justify-center bg-bg">
-        <span className="font-space-mono text-[10px] font-bold uppercase tracking-widest text-text-secondary">Loading team profile…</span>
-      </div>
-    );
-  }
-
-  if (!hasMounted || Object.keys(teams).length === 0) {
+  if (Object.keys(teams).length === 0) {
     return (
       <div className="flex h-[calc(100vh-3rem)] items-center justify-center bg-bg font-space-mono text-[10px] font-bold uppercase text-text-secondary">
         Loading team profile...
@@ -1630,4 +1618,14 @@ export default function TeamProfilePage() {
       />
     </div>
   );
+}
+
+export default function TeamProfilePage() {
+  const [hasMounted, setHasMounted] = useState(false);
+
+  useEffect(() => {
+    setHasMounted(true);
+  }, []);
+
+  return hasMounted ? <MountedTeamProfilePage /> : <TeamProfileLoading />;
 }

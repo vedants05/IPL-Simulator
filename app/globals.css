@@ -4,6 +4,7 @@
 
 :root {
   --app-scale: 1;
+  --app-inverse-scale: 1;
   --app-viewport-width: 1280px;
   --app-viewport-height: 720px;
 

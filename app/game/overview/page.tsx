@@ -89,7 +89,7 @@ import {
 const LeagueHallOfFame = dynamic(() => import("@/components/history/LeagueHallOfFame"), { ssr: false });
 const LeagueRecords = dynamic(() => import("@/components/history/LeagueRecords"), { ssr: false });
 const MinorRecords = dynamic(() => import("@/components/history/MinorRecords"), { ssr: false });
-import { MINOR_RECORDS, type MinorRecord } from "@/lib/data/minorRecords";
+import { applyMinorRecordBaselineUpdates, MINOR_RECORDS, type MinorRecord } from "@/lib/data/minorRecords";
 import { trackMinorRecordsOnMatchComplete } from "@/lib/logic/minorRecordTracker";
 const CaptaincyPage = dynamic(() => import("@/components/squad/CaptaincyPage"), { ssr: false });
 const SquadAnalysisPage = dynamic(() => import("@/components/squad/SquadAnalysisPage"), { ssr: false });
@@ -412,8 +412,6 @@ const getCompactPlayerRole = (role: Player["role"]) => ({
 const normalizeLeagueHistoryPlayerName = (name: string) => name.toLocaleLowerCase("en-GB").replace(/[^a-z0-9]/g, "");
 const HOME_NEXT_FIXTURE_ROW_HEIGHT = 24;
 const CALENDAR_SELECTED_COLOR = "#2563eb";
-// Temporary QA hook requested for testing the injury-replacement workflow.
-// Remove after the selector has been verified.
 
 function ClubProfileSummaryTile({
   team,
@@ -1294,7 +1292,11 @@ function OverviewPageContent() {
           playerStatsRef.current = parsed.playerStats;
           setPlayerStats(parsed.playerStats);
         }
-        const loadedRecords = Array.isArray(parsed.minorRecords) && parsed.minorRecords.length > 0 ? parsed.minorRecords : MINOR_RECORDS;
+        const loadedRecords = applyMinorRecordBaselineUpdates(
+          Array.isArray(parsed.minorRecords) && parsed.minorRecords.length > 0
+            ? parsed.minorRecords
+            : MINOR_RECORDS,
+        );
         setMinorRecords(loadedRecords);
         // Historical views use compact league/knockout summaries; full
         // scorecards and delivery archives are only needed for the active
@@ -3702,8 +3704,62 @@ This record has been officially verified and added to the IPL Minor Records arch
 
   const advanceOneDay = () => {
     const currentDateString = useGameStore.getState().currentDate;
-    const unplayedMatches = fixturesRef.current.filter((match) => !match.played);
     const skipTargetDate = skipTargetDateRef.current;
+
+    // Close fixtures only when the calendar is already on their date. A user
+    // fixture has priority: no same-day AI result is generated until the user
+    // has played or simulated their own match.
+    const closingFixtureDate = fixturesRef.current
+      .filter((match) => !match.played && Boolean(match.date && match.date <= currentDateString))
+      .map((match) => match.date as string)
+      .sort()[0];
+    if (closingFixtureDate) {
+      if (!FIXTURE_SIMULATION_ENABLED) {
+        stopSimulating();
+        useGameStore.getState().setCareerFastForwardTarget(null);
+        sessionStorage.removeItem(CAREER_FAST_FORWARD_RECOVERY_KEY);
+        showToast("Paused before the fixtures begin. Fixture simulation is not currently enabled.");
+        return;
+      }
+
+      const userFixture = fixturesRef.current.find((match) => (
+        !match.played
+        && match.date === closingFixtureDate
+        && (match.teamA === userTeamId || match.teamB === userTeamId)
+      ));
+      if (userFixture) {
+        if (
+          autoSimUserFixturesRef.current
+          && skipTargetDate
+          && closingFixtureDate <= skipTargetDate
+        ) {
+          try {
+            const simulatedMatch = buildSimulatedMatch(userFixture, undefined, true);
+            commitSimulatedMatch(
+              simulatedMatch,
+              fixturesRef.current,
+              playerStatsRef.current,
+            );
+          } catch (error) {
+            console.error("Unable to auto-simulate calendar fixture:", error);
+            stopSimulating();
+            useGameStore.getState().setCareerFastForwardTarget(null);
+            sessionStorage.removeItem(CAREER_FAST_FORWARD_RECOVERY_KEY);
+            showToast(error instanceof Error ? error.message : "Unable to auto-simulate your fixture.");
+          }
+          return;
+        }
+        stopSimulating();
+        showToast("Paused at matchday. Choose Play fixture or Simulate fixture.");
+        return;
+      }
+
+      // All user action for this date is complete, so the remaining league
+      // fixtures can now be resolved as the day closes.
+      simulateAiFixturesOnDate(closingFixtureDate);
+    }
+
+    const unplayedMatches = fixturesRef.current.filter((match) => !match.played);
     const {
       nextDate: nextDateString,
       blockedByFixture: fixtureBlocksProgress,
@@ -3740,46 +3796,10 @@ This record has been officially verified and added to the IPL Minor Records arch
     }
 
     if (fixtureBlocksProgress) {
-      if (!FIXTURE_SIMULATION_ENABLED) {
-        useGameStore.setState({ currentDate: nextDateString });
-        stopSimulating();
-        useGameStore.getState().setCareerFastForwardTarget(null);
-        sessionStorage.removeItem(CAREER_FAST_FORWARD_RECOVERY_KEY);
-        showToast("Paused before the fixtures begin. Fixture simulation is not currently enabled.");
-        return;
-      }
-      const { nextFixtures } = simulateAiFixturesOnDate(nextDateString);
-      useGameStore.setState({ currentDate: nextDateString });
-      const userFixture = nextFixtures.find((match) => (
-        !match.played
-        && match.date === nextDateString
-        && (match.teamA === userTeamId || match.teamB === userTeamId)
-      ));
-      if (userFixture) {
-        if (
-          autoSimUserFixturesRef.current
-          && skipTargetDate
-          && nextDateString <= skipTargetDate
-        ) {
-          try {
-            const simulatedMatch = buildSimulatedMatch(userFixture, undefined, true);
-            commitSimulatedMatch(
-              simulatedMatch,
-              nextFixtures,
-              playerStatsRef.current,
-            );
-          } catch (error) {
-            console.error("Unable to auto-simulate calendar fixture:", error);
-            stopSimulating();
-            useGameStore.getState().setCareerFastForwardTarget(null);
-            sessionStorage.removeItem(CAREER_FAST_FORWARD_RECOVERY_KEY);
-            showToast(error instanceof Error ? error.message : "Unable to auto-simulate your fixture.");
-          }
-          return;
-        }
-        stopSimulating();
-        showToast("Paused at matchday. Choose Play fixture or Simulate fixture.");
-      }
+      // Defensive guard for malformed/overdue saves. Normal current-day
+      // fixtures were closed above, and future fixtures never block arrival.
+      stopSimulating();
+      showToast("A fixture is still awaiting completion on the current date.");
       return;
     }
 
@@ -3812,8 +3832,17 @@ This record has been officially verified and added to the IPL Minor Records arch
     }
 
     if (!isCatchingUpCurrentDate) {
-      // Commit the date only after that day's match results are safely persisted.
+      // Enter the next date before any of its fixtures are resolved.
       useGameStore.setState({ currentDate: nextDateString });
+      const arrivingUserFixture = fixturesRef.current.find((match) => (
+        !match.played
+        && match.date === nextDateString
+        && (match.teamA === userTeamId || match.teamB === userTeamId)
+      ));
+      if (arrivingUserFixture && !autoSimUserFixturesRef.current) {
+        stopSimulating();
+        showToast("Paused at matchday. Choose Play fixture or Simulate fixture.");
+      }
     }
   };
 
@@ -3845,8 +3874,7 @@ This record has been officially verified and added to the IPL Minor Records arch
         .sort()[0];
       if (!earliestOverdueDate) return;
 
-      const { nextFixtures } = simulateAiFixturesOnDate(earliestOverdueDate);
-      const unresolvedUserFixture = nextFixtures.find((match) => (
+      const unresolvedUserFixture = fixturesRef.current.find((match) => (
         !match.played
         && match.date === earliestOverdueDate
         && (match.teamA === userTeamId || match.teamB === userTeamId)
@@ -3857,7 +3885,7 @@ This record has been officially verified and added to the IPL Minor Records arch
         // must not require the user to play months-old fixtures manually.
         try {
           const simulatedMatch = buildSimulatedMatch(unresolvedUserFixture, undefined, true);
-          commitSimulatedMatch(simulatedMatch, nextFixtures, playerStatsRef.current);
+          commitSimulatedMatch(simulatedMatch, fixturesRef.current, playerStatsRef.current);
           if (dayTickerRef.current?.start()) setIsSimulatingDays(true);
         } catch (error) {
           cancelCareerFastForward(
@@ -3868,6 +3896,7 @@ This record has been officially verified and added to the IPL Minor Records arch
         continueButtonRef.current?.focus();
         showToast("Choose Play fixture or Simulate fixture before continuing the calendar.");
       } else {
+        simulateAiFixturesOnDate(earliestOverdueDate);
         if (dayTickerRef.current?.start()) {
           setIsSimulatingDays(true);
         }

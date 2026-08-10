@@ -45,6 +45,7 @@ export default function ViewportScaler({ children }: { children: React.ReactNode
       animationFrame = window.requestAnimationFrame(() => {
         const next = measureViewport();
         document.documentElement.style.setProperty("--app-scale", String(next.scale));
+        document.documentElement.style.setProperty("--app-inverse-scale", String(1 / next.scale));
         document.documentElement.style.setProperty("--app-viewport-width", `${next.width}px`);
         document.documentElement.style.setProperty("--app-viewport-height", `${next.height}px`);
         setMetrics(next);

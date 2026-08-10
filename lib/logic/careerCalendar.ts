@@ -78,9 +78,9 @@ export function isCareerCalendarAtImpasse(
 }
 
 /**
- * Advances by one day unless an unresolved fixture has reached matchday.
- * Until match simulation is available, the ticker must stop at every fixture,
- * including games that do not involve the user's club.
+ * Advances into a future matchday without resolving it. A fixture only blocks
+ * progression once the calendar is already on (or past) its date, so entering
+ * matchday represents the start of that day rather than its conclusion.
  */
 export function getCareerCalendarStep(
   currentDate: string,
@@ -90,15 +90,16 @@ export function getCareerCalendarStep(
     .filter((fixture) => !fixture.played && fixture.date)
     .map((fixture) => fixture.date as string)
     .sort()[0];
-  const nextDate = earliestUnplayedFixtureDate && earliestUnplayedFixtureDate <= currentDate
-    ? earliestUnplayedFixtureDate
+  const blockedByFixture = Boolean(
+    earliestUnplayedFixtureDate && earliestUnplayedFixtureDate <= currentDate,
+  );
+  const nextDate = blockedByFixture
+    ? earliestUnplayedFixtureDate as string
     : addDaysToDateKey(currentDate, 1);
 
   return {
     nextDate,
-    blockedByFixture: Boolean(
-      earliestUnplayedFixtureDate && earliestUnplayedFixtureDate <= nextDate,
-    ),
+    blockedByFixture,
   };
 }
 
@@ -127,10 +128,9 @@ export function getCareerFastForwardStep(
   ].filter((date): date is string => Boolean(date && date > currentDate));
   const nextDate = candidates.sort()[0] ?? normalStep.nextDate;
 
-  return {
-    nextDate,
-    blockedByFixture: nextDate === earliestFutureFixtureDate,
-  };
+  // Landing on a future fixture date opens that matchday. It does not close
+  // or simulate the date in the same calendar step.
+  return { nextDate, blockedByFixture: false };
 }
 
 export function findCalendarMonthIndex(

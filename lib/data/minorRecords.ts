@@ -59,7 +59,7 @@ export const MINOR_RECORDS: MinorRecord[] = [
   { id: "highest-score-mi", category: "team", title: "MI highest ever score", value: "247/9", holder: "MI", season: "2024", notes: "vs SRH", source: "IPL records", verified: true },
   { id: "highest-score-csk", category: "team", title: "CSK highest ever score", value: "246/5", holder: "CSK", season: "2010", notes: "vs RR", source: "IPL records", verified: true },
   { id: "highest-score-gt", category: "team", title: "GT highest ever score", value: "233/3", holder: "GT", season: "2023", notes: "vs MI", source: "IPL records", verified: true },
-  { id: "highest-score-rr", category: "team", title: "RR highest ever score", value: "226/6", holder: "RR", season: "2020", notes: "vs KXIP", source: "IPL records", verified: true },
+  { id: "highest-score-rr", category: "team", title: "RR highest ever score", value: "243/8", holder: "RR", season: "2026", source: "IPL records", verified: true },
 
   // --- TEAM LOWEST SCORES (ACTIVE TEAMS ONLY) ---
   { id: "lowest-score-rcb", category: "team", title: "RCB lowest ever score", value: "49", holder: "RCB", season: "2017", notes: "vs KKR", source: "IPL records", verified: true },
@@ -250,3 +250,19 @@ export const MINOR_RECORDS: MinorRecord[] = [
   { id: "wickets-by-age-43", category: "milestone", title: "Most wickets in a single season at age 43", value: "13 wickets", holder: "Shane Warne", season: "2011", notes: "RR", source: "IPL records", verified: true },
   { id: "wickets-by-age-44", category: "milestone", title: "Most wickets in a single season at age 44", value: "9 wickets", holder: "Brad Hogg", season: "2015", notes: "KKR", source: "IPL records", verified: true },
 ];
+
+export function applyMinorRecordBaselineUpdates(records: readonly MinorRecord[]): MinorRecord[] {
+  const rrHighestScore = MINOR_RECORDS.find((record) => record.id === "highest-score-rr");
+  if (!rrHighestScore) return [...records];
+
+  const savedRecord = records.find((record) => record.id === rrHighestScore.id);
+  if (!savedRecord) return [...records, { ...rrHighestScore }];
+
+  const savedRuns = Number.parseInt(savedRecord.value.split("/")[0], 10);
+  const baselineRuns = Number.parseInt(rrHighestScore.value.split("/")[0], 10);
+  if (Number.isFinite(savedRuns) && savedRuns > baselineRuns) return [...records];
+
+  return records.map((record) => (
+    record.id === rrHighestScore.id ? { ...rrHighestScore } : record
+  ));
+}
