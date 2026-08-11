@@ -496,6 +496,7 @@ export default function PlayableMatchEngine({ input, userTeamId, session, onSess
   const maxOutside = isPowerplay ? 2 : 5;
   const outsideCount = fieldPositions.filter(isOutsideThirtyYardCircle).length;
   const legBehind = fieldPositions.filter(isLegSideBehindSquare).length;
+  const fieldIsIllegal = activeRole === "bowling" && (outsideCount > maxOutside || legBehind > 2);
   const renderedLhb = striker?.battingStyle === "Left-hand";
   const target = currentInnings?.target;
   const maxBalls = (progress.simulation?.conditions.weather.secondInningsOvers ?? 20) * 6;
@@ -572,7 +573,7 @@ export default function PlayableMatchEngine({ input, userTeamId, session, onSess
     setActiveShot(null);
   };
   const skip = (kind: PlayableSkipKind) => {
-    if (activeShot || awaitingBatterSelection || awaitingToss || progress.awaitingImpactDecision || progress.complete) return;
+    if (activeShot || awaitingBatterSelection || awaitingToss || progress.awaitingImpactDecision || progress.complete || fieldIsIllegal) return;
     const decisions = cloneDecisions(sessionRef.current.decisions);
     let revealedDeliveries = sessionRef.current.revealedDeliveries;
     const startingInningsNumber = progress.nextDelivery?.inningsNumber ?? currentInnings?.inningsNumber;
@@ -617,7 +618,7 @@ export default function PlayableMatchEngine({ input, userTeamId, session, onSess
     timeouts.current.push(id);
   };
   const playNextDelivery = () => {
-    if (activeShot || awaitingBatterSelection || awaitingToss || progress.awaitingImpactDecision || progress.complete) return;
+    if (activeShot || awaitingBatterSelection || awaitingToss || progress.awaitingImpactDecision || progress.complete || fieldIsIllegal) return;
     const decisions = decisionsWithControl();
     const controlled = simulatePlayableMatch(
       input,
@@ -1024,10 +1025,13 @@ export default function PlayableMatchEngine({ input, userTeamId, session, onSess
 
   useEffect(() => () => timeouts.current.forEach(window.clearTimeout), []);
   useEffect(() => {
-    if (!isPlaying || activeShot || awaitingBatterSelection || progress.complete || awaitingToss || progress.awaitingImpactDecision) return;
+    if (!isPlaying || activeShot || awaitingBatterSelection || progress.complete || awaitingToss || progress.awaitingImpactDecision || fieldIsIllegal) return;
     const id = window.setTimeout(playNextDelivery, 180 / speed);
     return () => window.clearTimeout(id);
   });
+  useEffect(() => {
+    if (fieldIsIllegal) setIsPlaying(false);
+  }, [fieldIsIllegal]);
   useEffect(() => {
     if (!awaitingBatterSelection) return;
     setIsPlaying(false);
@@ -1173,18 +1177,18 @@ export default function PlayableMatchEngine({ input, userTeamId, session, onSess
         </div>
         <div className="flex items-center gap-3">
           <div className="flex h-[34px] items-center overflow-hidden rounded border border-white/20 bg-[#111622] font-space-mono text-[8px] font-bold uppercase">
-            <button onClick={() => skip("ball")} disabled={Boolean(activeShot) || awaitingBatterSelection || awaitingToss} className="h-full border-r border-white/15 px-2.5 hover:bg-white/10 disabled:opacity-30">Skip ball</button>
-            <button onClick={() => skip("over")} disabled={Boolean(activeShot) || awaitingBatterSelection || awaitingToss} className="h-full border-r border-white/15 px-2.5 hover:bg-white/10 disabled:opacity-30">Skip over</button>
-            <button onClick={() => skip("five-overs")} disabled={Boolean(activeShot) || awaitingBatterSelection || awaitingToss} className="h-full border-r border-white/15 px-2.5 hover:bg-white/10 disabled:opacity-30">Skip 5 overs</button>
-            <button onClick={() => skip("innings")} disabled={Boolean(activeShot) || awaitingBatterSelection || awaitingToss} className="h-full px-2.5 hover:bg-white/10 disabled:opacity-30">Finish innings</button>
+            <button onClick={() => skip("ball")} disabled={Boolean(activeShot) || awaitingBatterSelection || awaitingToss || fieldIsIllegal} className="h-full border-r border-white/15 px-2.5 hover:bg-white/10 disabled:opacity-30">Skip ball</button>
+            <button onClick={() => skip("over")} disabled={Boolean(activeShot) || awaitingBatterSelection || awaitingToss || fieldIsIllegal} className="h-full border-r border-white/15 px-2.5 hover:bg-white/10 disabled:opacity-30">Skip over</button>
+            <button onClick={() => skip("five-overs")} disabled={Boolean(activeShot) || awaitingBatterSelection || awaitingToss || fieldIsIllegal} className="h-full border-r border-white/15 px-2.5 hover:bg-white/10 disabled:opacity-30">Skip 5 overs</button>
+            <button onClick={() => skip("innings")} disabled={Boolean(activeShot) || awaitingBatterSelection || awaitingToss || fieldIsIllegal} className="h-full px-2.5 hover:bg-white/10 disabled:opacity-30">Finish innings</button>
           </div>
           <div className="flex h-[34px] items-center overflow-hidden rounded border border-white/20 bg-[#111622]">
             <button disabled={speed === 1} onClick={() => setSpeed(SPEEDS[Math.max(0, SPEEDS.indexOf(speed) - 1)])} className="h-full w-8 text-[10px] font-bold disabled:opacity-30">&lt;&lt;</button>
             <span className="flex h-full min-w-[38px] items-center justify-center border-x border-white/15 font-space-mono text-[11px] font-bold">{speed}x</span>
             <button disabled={speed === 8} onClick={() => setSpeed(SPEEDS[Math.min(SPEEDS.length - 1, SPEEDS.indexOf(speed) + 1)])} className="h-full w-8 text-[10px] font-bold disabled:opacity-30">&gt;&gt;</button>
           </div>
-          <button onClick={playNextDelivery} disabled={Boolean(activeShot) || isPlaying || awaitingBatterSelection || awaitingToss} className="flex h-[34px] w-[34px] items-center justify-center rounded border border-white/20 bg-[#111622] disabled:opacity-30" title="Next ball"><SkipForward size={14}/></button>
-          <button onClick={() => setIsPlaying((value) => !value)} disabled={awaitingBatterSelection || awaitingToss} className={`flex h-[34px] shrink-0 items-center justify-center gap-2 overflow-hidden whitespace-nowrap rounded border border-white/20 px-4 font-space-mono text-[11px] font-bold leading-none uppercase disabled:opacity-30 ${isPlaying ? "bg-[#ed4c47]" : "bg-[#111622]"}`}>{isPlaying ? <><Pause className="shrink-0" size={13}/>Pause</> : <><Play className="shrink-0" size={13}/>Play match</>}</button>
+          <button onClick={playNextDelivery} disabled={Boolean(activeShot) || isPlaying || awaitingBatterSelection || awaitingToss || fieldIsIllegal} className="flex h-[34px] w-[34px] items-center justify-center rounded border border-white/20 bg-[#111622] disabled:opacity-30" title={fieldIsIllegal ? "Set a legal field before the next ball" : "Next ball"}><SkipForward size={14}/></button>
+          <button onClick={() => setIsPlaying((value) => !value)} disabled={awaitingBatterSelection || awaitingToss || fieldIsIllegal} className={`flex h-[34px] shrink-0 items-center justify-center gap-2 overflow-hidden whitespace-nowrap rounded border border-white/20 px-4 font-space-mono text-[11px] font-bold leading-none uppercase disabled:opacity-30 ${isPlaying ? "bg-[#ed4c47]" : "bg-[#111622]"}`}>{isPlaying ? <><Pause className="shrink-0" size={13}/>Pause</> : <><Play className="shrink-0" size={13}/>Play match</>}</button>
         </div>
       </header>
 
@@ -1219,7 +1223,7 @@ export default function PlayableMatchEngine({ input, userTeamId, session, onSess
 
         <section className={styles.centreStage}>
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2 px-1"><div className="flex items-center gap-1.5"><span className="mr-1 text-[10px] font-bold uppercase tracking-wider text-white/50">{activeRole==="bowling"?"Field Presets:":"Opponent Field:"}</span>{activeRole==="bowling"?Object.keys(FIELD_PRESETS).map((name)=><button key={name} onClick={()=>applyPreset(name)} className={`rounded px-2.5 py-1 text-[10px] font-bold ${activePreset===name?"bg-amber-400 text-black":"bg-white/10"}`}>{name}</button>):<span className="rounded border border-amber-400/20 bg-amber-400/10 px-2.5 py-1 text-[10px] font-bold text-amber-300">{bowlingTeam.name} Field Alignment (Read Only)</span>}<button onClick={()=>setShowZoneOverlay((value)=>!value)} className="rounded bg-white/10 px-2 py-1 text-[10px] font-bold">Zone Map: {showZoneOverlay?"ON":"OFF"}</button></div><div className="flex gap-2"><span className={styles.fieldingRuleBadge}>{isPowerplay?"⚡ Powerplay":"🛡️ Overs 7-20"}<span className={outsideCount>maxOutside?"text-red-400":"text-emerald-400"}>{outsideCount}/{maxOutside} Deep</span></span><span className={styles.fieldingRuleBadge}>Leg Behind Sq: <span className={legBehind>2?"text-red-400":"text-emerald-400"}>{legBehind}/2</span></span></div></div>
-          {(outsideCount>maxOutside||legBehind>2)&&activeRole==="bowling"&&<div className={styles.fieldingWarningBanner}>⚠️ ILLEGAL FIELD — adjust the highlighted field restriction before the next delivery.</div>}
+          {fieldIsIllegal&&<div className={styles.fieldingWarningBanner}>⚠️ ILLEGAL FIELD — play is stopped until the highlighted field restriction is corrected.</div>}
           <div className={styles.stadium}><div className={styles.crowd}/><div ref={stadiumRef} className={styles.field}><div className={styles.mownStripes}/><div className={styles.innerCircle}/>{showZoneOverlay&&<div className={styles.zoneOverlay}>{FIELD_ZONE_ANCHORS.map((zone)=><div key={zone.label} className={`${styles.zoneBox} ${occupiedFieldZones.has(zone.label)?styles.activeZoneBox:""}`} style={{left:`${renderedLhb?100-zone.x:zone.x}%`,top:`${zone.y}%`}}>{zone.label}</div>)}</div>}<div className={styles.pitch}><i className={styles.creaseTop}/><i className={styles.creaseBottom}/><span className={styles.stumpsTop}/><span className={`${styles.stumpsBottom} ${hitWicketAnimation?styles.hitWicketStumps:""} ${missedRunOutAtStumps?styles.safeStumps:""} ${successfulRunOutAtStumps?styles.runOutStumps:""}`}/></div>
             {activeShot&&<div className={`${styles.shotBall} ${activeShot.phase==="shot"&&activeShot.delivery.runsOffBat===6?styles.careerSixBall:activeShot.phase==="shot"&&activeShot.delivery.shotType==="skier"?styles.skierBall:activeShot.phase==="shot"&&activeShot.delivery.shotType==="lofted"?styles.loftedBall:activeShot.phase==="shot"&&activeShot.delivery.shotType==="edge"?styles.edgeBall:""} ${activeShot.phase==="edge-contact"?styles.edgeContactBall:""} ${activeShot.phase==="lbw"?styles.padImpactBall:""} ${activeShot.phase==="catch-spill"?styles.droppedBall:""} ${activeShot.phase==="misfield-bobble"?styles.misfieldBall:""} ${activeShot.phase==="missed-run-out-miss"?styles.missedRunOutBall:""} ${activeShot.phase==="wide-missed"?styles.missedWideBall:""} ${activeShot.phase==="run-out-wicket"?styles.runOutImpactBall:""} ${activeShot.phase==="catch-held"?styles.caughtBall:""} ${activeShot.phase==="keeper-error-spill"||activeShot.phase==="keeper-error-boundary"?styles.keeperErrorBall:""}`} style={{left:`${activeShot.ballX}%`,top:`${activeShot.ballY}%`,opacity:activeShot.phase==="runup"?0:1,transitionDuration:`${(activeShot.phase==="delivery"?activeShot.deliveryDuration:activeShot.phase==="keeper"||activeShot.phase==="wide"||activeShot.phase==="no-ball"||activeShot.phase==="missed-stumping-keeper"||activeShot.phase==="keeper-error-take"?300:activeShot.phase==="edge-contact"?160:activeShot.phase==="hit-wicket"?260:activeShot.phase==="pad"?200:activeShot.phase==="lbw"||activeShot.phase==="stumping"||activeShot.phase==="missed-stumping-attempt"?150:activeShot.phase==="catch-spill"?600:activeShot.phase==="misfield-bobble"?620:activeShot.phase==="missed-run-out-throw"||activeShot.phase==="run-out-throw"?activeShot.throwDuration:activeShot.phase==="missed-run-out-miss"?300:["shot","bye","leg-bye","missed-stumping-spill","wide-running","wide-boundary","keeper-error-spill","keeper-error-boundary"].includes(activeShot.phase)?activeShot.shotDuration:activeShot.phase==="throw"?activeShot.throwDuration:100)/speed}ms`,"--six-flight-duration":`${activeShot.shotDuration/speed}ms`,"--skier-flight-duration":`${activeShot.shotDuration/speed}ms`,"--lofted-flight-duration":`${activeShot.shotDuration/speed}ms`,"--drop-pop-duration":`${600/speed}ms`,"--misfield-bobble-duration":`${620/speed}ms`,"--missed-run-out-duration":`${300/speed}ms`} as CSSProperties}/>}
             <div className={`${styles.fielder} ${styles.activeFielder} ${activeShot?.phase==="runup"?styles.pacerRunup:""}`} style={{left:`${activeShot?.bowlerX??48.5}%`,top:"40.1%","--runup-duration":`${(activeShot?.releaseDelay??680)/speed}ms`,"--bowler-x":`${activeShot?.bowlerX??48.5}%`} as CSSProperties}><span>B</span><small>{surname(bowler?.name)}</small></div>
