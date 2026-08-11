@@ -74,6 +74,7 @@ import {
   type PlayerInjury,
 } from "@/lib/logic/injuries";
 import {
+  getInjuryReplacementPoolIds,
   getInjuredPlayerSalary,
   injuryQualifiesForReplacement,
   replacementForInjury,
@@ -455,7 +456,6 @@ const getCompactPlayerRole = (role: Player["role"]) => ({
   "Spin Bowler": "SPIN",
 }[role]);
 const normalizeLeagueHistoryPlayerName = (name: string) => name.toLocaleLowerCase("en-GB").replace(/[^a-z0-9]/g, "");
-const HOME_NEXT_FIXTURE_ROW_HEIGHT = 24;
 const CALENDAR_SELECTED_COLOR = "#2563eb";
 
 function ClubProfileSummaryTile({
@@ -723,6 +723,10 @@ function OverviewPageContent() {
   } = useGameStore();
   const matchArchiveCareerId = `${userTeamId}:${currentSeason}:${fixtureSeed}`;
   const userTeam = teams[userTeamId];
+  const injuryReplacementPoolIds = useMemo(
+    () => getInjuryReplacementPoolIds(players, auction),
+    [auction, players],
+  );
   const userHomeStadium = getHomeStadium(userTeamId);
   const userDefaultPitch = getDefaultCuratorPitch(userTeamId);
   const userCustomPitches = userHomeStadium
@@ -846,7 +850,6 @@ function OverviewPageContent() {
   const [pendingMatchPreparation, setPendingMatchPreparation] = useState<PendingMatchPreparation | null>(null);
   const [activePlayedMatch, setActivePlayedMatch] = useState<PlayableMatchSession | null>(null);
   const [shortlist, setShortlist] = useState<string[]>([]);
-  const [visibleHomeFixtureCount, setVisibleHomeFixtureCount] = useState(5);
 
   // Club profiles are reached from this page, so keep their read-only career
   // projection in memory. This avoids synchronously reading and parsing the
@@ -924,23 +927,7 @@ function OverviewPageContent() {
   const autoSimUserFixturesRef = useRef(false);
   const continueButtonRef = useRef<HTMLButtonElement | null>(null);
   const calendarStopButtonRef = useRef<HTMLButtonElement | null>(null);
-  const homeNextFixturesListRef = useRef<HTMLDivElement | null>(null);
   const wasSimulatingDaysRef = useRef(false);
-
-  useLayoutEffect(() => {
-    const list = homeNextFixturesListRef.current;
-    if (!list) return;
-
-    const updateVisibleCount = () => {
-      const nextCount = Math.min(5, Math.max(1, Math.floor(list.clientHeight / HOME_NEXT_FIXTURE_ROW_HEIGHT)));
-      setVisibleHomeFixtureCount((current) => current === nextCount ? current : nextCount);
-    };
-
-    updateVisibleCount();
-    const observer = new ResizeObserver(updateVisibleCount);
-    observer.observe(list);
-    return () => observer.disconnect();
-  }, [activeSubTab, activeTab, fixtures.length]);
 
   if (dayTickerRef.current === null) {
     dayTickerRef.current = createDayTicker({
@@ -1116,6 +1103,26 @@ function OverviewPageContent() {
     : "";
 
   const isFixturesAnnounced = currentDate >= formattedAnnouncementDate;
+
+  const mostRecentPlayedFixtureId = useMemo(() => {
+    const playedFixtures = fixtures
+      .filter((match) => match.played)
+      .sort((left, right) => (
+        (left.date ?? "").localeCompare(right.date ?? "")
+        || (left.time ?? "").localeCompare(right.time ?? "")
+        || left.round - right.round
+        || left.matchNumber - right.matchNumber
+      ));
+    return playedFixtures[playedFixtures.length - 1]?.id ?? null;
+  }, [fixtures]);
+
+  const scrollToMostRecentFixture = useCallback(() => {
+    if (!mostRecentPlayedFixtureId) return;
+    document.getElementById(`fixture-card-${mostRecentPlayedFixtureId}`)?.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    });
+  }, [mostRecentPlayedFixtureId]);
 
   const fixturesByDate = useMemo(() => {
     const groupedFixtures = new Map<string, Match[]>();
@@ -2902,14 +2909,17 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}${replacementEligible
   };
 
   useEffect(() => {
+    if (!isCareerLoaded || fixturesRef.current.length < TOTAL_FIXTURE_COUNT || auction?.phase !== "completed") return;
     const recovered = reconcileInjuries(currentDate);
     if (recovered.length > 0) {
       publishUserInjuryUpdates({ created: [], worsened: [], recovered }, currentDate);
     }
     processAIReplacementSignings(currentDate);
-  // Recovery is date-driven; the store action and email dedupe make reloads safe.
+  // Retry after the separately persisted fixture calendar finishes loading as
+  // well as on date changes. Without that retry, a reloaded April save checks
+  // against an empty calendar and silently rejects every replacement.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentDate]);
+  }, [auction?.phase, currentDate, fixtures.length, isCareerLoaded]);
 
   // Compact career saves deliberately omit the duplicate legacy scorecard,
   // keeping the canonical innings inside `simulation`. Every route that can
@@ -5824,31 +5834,27 @@ This record has been officially verified and added to the IPL Minor Records arch
                       onClick={() => isFixturesAnnounced && router.push("/game/overview?tab=season&subtab=fixtures")}
                       className={`flex min-h-0 flex-col overflow-hidden rounded-lg border-2 border-border bg-surface p-5 transition-colors ${isFixturesAnnounced ? "cursor-pointer hover:border-accent" : "cursor-default"}`}
                     >
-                      {fixtures.filter((fixture) => !fixture.stage && fixture.matchNumber <= LEAGUE_FIXTURE_COUNT).length > 0
-                        && fixtures.filter((fixture) => !fixture.stage && fixture.matchNumber <= LEAGUE_FIXTURE_COUNT).every((fixture) => fixture.played) ? (
-                        <ScheduleTileContent
-                          fixtures={fixtures}
-                          teams={teams}
-                          userTeamId={userTeamId}
-                          isFixturesAnnounced={isFixturesAnnounced}
-                          variant="dashboard"
-                        />
-                      ) : (
                       <>
-                      <h3 className="shrink-0 font-anton text-[14px] uppercase text-text-primary border-b border-[#16130f]/10 pb-2 mb-3">NEXT FIXTURES</h3>
+                      <h3 className="shrink-0 font-anton text-[14px] uppercase text-text-primary border-b border-[#16130f]/10 pb-2 mb-3">RECENT &amp; NEXT FIXTURES</h3>
                       {!isFixturesAnnounced ? (
                         <div className="flex min-h-0 flex-1 items-center justify-center text-center font-space-mono text-xs uppercase text-text-secondary">
                           Fixtures not yet announced
                         </div>
                       ) : (
-                      <div ref={homeNextFixturesListRef} className="grid min-h-0 flex-1 auto-rows-fr overflow-hidden">
+                      <div className="grid min-h-0 flex-1 grid-rows-5 overflow-hidden">
                         {(() => {
                           const userFixtures = fixtures
                             .filter((fixture) => (
-                              !fixture.played
+                              !fixture.stage
+                              && fixture.matchNumber <= LEAGUE_FIXTURE_COUNT
                               && (fixture.teamA === userTeamId || fixture.teamB === userTeamId)
                             ))
-                            .sort((a, b) => (a.date ?? "").localeCompare(b.date ?? "") || a.round - b.round);
+                            .sort((a, b) => (
+                              (a.date ?? "").localeCompare(b.date ?? "")
+                              || (a.time ?? "").localeCompare(b.time ?? "")
+                              || a.round - b.round
+                              || a.matchNumber - b.matchNumber
+                            ));
 
                           if (userFixtures.length === 0) {
                             return (
@@ -5858,11 +5864,36 @@ This record has been officially verified and added to the IPL Minor Records arch
                             );
                           }
 
-                          return userFixtures.slice(0, visibleHomeFixtureCount).map((fixture, index) => {
+                          const firstUnplayedIndex = userFixtures.findIndex((fixture) => !fixture.played);
+                          const remainingFixtures = firstUnplayedIndex < 0
+                            ? 0
+                            : userFixtures.length - firstUnplayedIndex;
+                          const startIndex = firstUnplayedIndex <= 0
+                            ? 0
+                            : remainingFixtures <= 5
+                              ? Math.max(0, userFixtures.length - 5)
+                              : Math.max(0, firstUnplayedIndex - 1);
+                          const nextFixtureId = firstUnplayedIndex >= 0
+                            ? userFixtures[firstUnplayedIndex]?.id
+                            : undefined;
+
+                          return userFixtures.slice(startIndex, startIndex + 5).map((fixture, index) => {
                             const opponentId = fixture.teamA === userTeamId ? fixture.teamB : fixture.teamA;
                             const opponent = teams[opponentId];
                             const fixtureDate = fixture.date ? dateKeyToLocalDate(fixture.date) : null;
-                            const isNextFixture = index === 0;
+                            const isNextFixture = fixture.id === nextFixtureId;
+                            const userScore = fixture.teamA === userTeamId ? fixture.scoreA : fixture.scoreB;
+                            const opponentScore = fixture.teamA === userTeamId ? fixture.scoreB : fixture.scoreA;
+                            const outcome = fixture.played
+                              ? fixture.winner === userTeamId
+                                ? "W"
+                                : fixture.winner
+                                  ? "L"
+                                  : "T"
+                              : null;
+                            const scoreline = userScore && opponentScore
+                              ? `${userScore.runs}/${userScore.wickets}-${opponentScore.runs}/${opponentScore.wickets}`
+                              : "Result";
 
                             return (
                               <div
@@ -5882,38 +5913,29 @@ This record has been officially verified and added to the IPL Minor Records arch
                                   </span>
                                 </div>
                                 <span className="truncate text-[10px] font-medium">vs {opponent?.shortName ?? opponentId}</span>
-                                <span className="font-space-mono text-[8px] font-bold uppercase text-text-secondary">
-                                  {fixture.teamA === userTeamId ? "Home" : "Away"}
-                                </span>
+                                {fixture.played && outcome ? (
+                                  <div className="whitespace-nowrap text-right font-space-mono text-[8px] font-bold leading-none text-text-secondary">
+                                    <span>{scoreline}</span>
+                                    <span className={`ml-1 font-black ${
+                                      outcome === "W"
+                                        ? "text-success"
+                                        : outcome === "L"
+                                          ? "text-danger"
+                                          : "text-text-secondary"
+                                    }`}>{outcome}</span>
+                                  </div>
+                                ) : (
+                                  <span className="font-space-mono text-[8px] font-bold uppercase text-text-secondary">
+                                    {fixture.teamA === userTeamId ? "Home" : "Away"}
+                                  </span>
+                                )}
                               </div>
                             );
                           });
                         })()}
                       </div>
                       )}
-                      <div className="hidden">
-                        {(() => {
-                          const userFixtures = fixtures
-                            .filter(f => f.teamA === userTeamId || f.teamB === userTeamId)
-                            .sort((a, b) => (a.date ?? "").localeCompare(b.date ?? "") || a.round - b.round);
-                          const firstUnplayed = userFixtures.findIndex(f => !f.played);
-                          const remaining = firstUnplayed < 0 ? 0 : userFixtures.length - firstUnplayed;
-                          const start = remaining <= 5 ? Math.max(0, userFixtures.length - 5) : Math.max(0, firstUnplayed - 1);
-                          return userFixtures.slice(start, start + 5).map(match => {
-                            const opponentId = match.teamA === userTeamId ? match.teamB : match.teamA;
-                            const opponent = teams[opponentId];
-                            const isNext = !match.played && match.id === userFixtures[firstUnplayed]?.id;
-                            const displayDate = match.date ? dateKeyToLocalDate(match.date) : null;
-                            const result = match.played
-                              ? `${match.winner === userTeamId ? "W" : "L"} · ${match.teamA === userTeamId ? `${match.scoreA?.runs}/${match.scoreA?.wickets}` : `${match.scoreB?.runs}/${match.scoreB?.wickets}`}`
-                              : "-";
-                            const fixtureDate = match.date ? dateKeyToLocalDate(match.date) : null;
-                            return <div key={match.id} className={`grid grid-cols-[1fr_auto] items-center gap-2 border-b border-[#16130f]/10 py-1 text-[10px] ${isNext ? "font-bold text-accent" : "text-text-primary"}`}><span className="truncate">{match.date} · vs {opponent?.shortName ?? opponentId}</span><span className="font-space-mono">{result}</span></div>;
-                          });
-                        })()}
-                      </div>
                       </>
-                      )}
                     </div>
 
                     <div onClick={() => router.push("/game/overview?tab=season&subtab=standings")} className="flex min-h-0 cursor-pointer flex-col overflow-hidden rounded-lg border-2 border-border bg-surface p-5 pb-6 transition-colors hover:border-accent">
@@ -7334,7 +7356,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                   activeInjuries={activeInjuries}
                   injuryHistory={injuryHistory}
                   replacementRecords={injuryReplacementRecords}
-                  replacementPoolIds={auction?.unsoldPlayerIds ?? []}
+                  replacementPoolIds={injuryReplacementPoolIds}
                   currentDate={currentDate}
                   currentSeason={currentSeason}
                   teamFinalLeagueDate={getTeamFinalLeagueDate(userTeamId)}
@@ -7624,7 +7646,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                   activeInjuries={activeInjuries}
                   injuryHistory={injuryHistory}
                   replacementRecords={injuryReplacementRecords}
-                  replacementPoolIds={auction?.unsoldPlayerIds ?? []}
+                  replacementPoolIds={injuryReplacementPoolIds}
                   currentDate={currentDate}
                   currentSeason={currentSeason}
                   players={players}
@@ -7858,18 +7880,29 @@ This record has been officially verified and added to the IPL Minor Records arch
                       <h3 className="mt-1 font-anton text-[24px] uppercase leading-none text-text-primary">Fixtures &amp; Results</h3>
                     </div>
                     {isFixturesAnnounced && (
-                      <div className="relative grid grid-cols-4 divide-x divide-[#16130f]/15 border border-border bg-surface/80">
-                        {[
-                          ["Played", fixtures.filter((match) => match.played).length],
-                          ["Upcoming", fixtures.filter((match) => !match.played).length],
-                          ["Your club", fixtures.filter((match) => match.teamA === userTeamId || match.teamB === userTeamId).length],
-                          ["Rain affected", fixtures.filter((match) => match.played && isRainAffectedMatch(match)).length],
-                        ].map(([label, value]) => (
-                          <div key={label} className="min-w-24 px-4 py-2 text-center">
-                            <div className="font-anton text-xl leading-none text-text-primary">{value}</div>
-                            <div className="mt-1 font-space-mono text-[7px] font-bold uppercase tracking-wider text-text-secondary">{label}</div>
-                          </div>
-                        ))}
+                      <div className="relative flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={scrollToMostRecentFixture}
+                          disabled={!mostRecentPlayedFixtureId}
+                          className="flex shrink-0 items-center gap-2 border border-border bg-surface/80 px-3 py-2 font-space-mono text-[8px] font-bold uppercase tracking-wider text-text-primary transition-colors hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-border disabled:hover:text-text-primary"
+                        >
+                          <HistoryIcon size={13} />
+                          Most recent fixture
+                        </button>
+                        <div className="grid grid-cols-4 divide-x divide-[#16130f]/15 border border-border bg-surface/80">
+                          {[
+                            ["Played", fixtures.filter((match) => match.played).length],
+                            ["Upcoming", fixtures.filter((match) => !match.played).length],
+                            ["Your club", fixtures.filter((match) => match.teamA === userTeamId || match.teamB === userTeamId).length],
+                            ["Rain affected", fixtures.filter((match) => match.played && isRainAffectedMatch(match)).length],
+                          ].map(([label, value]) => (
+                            <div key={label} className="min-w-24 px-4 py-2 text-center">
+                              <div className="font-anton text-xl leading-none text-text-primary">{value}</div>
+                              <div className="mt-1 font-space-mono text-[7px] font-bold uppercase tracking-wider text-text-secondary">{label}</div>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -7939,6 +7972,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                                       return (
                                         <article
                                           key={match.id}
+                                          id={`fixture-card-${match.id}`}
                                           onClick={() => {
                                             if (!match.played) return;
                                             setActiveMatchResultView("scorecard");
@@ -8015,7 +8049,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                                                   Simulate match
                                                 </button>
                                               </div>
-                                            ) : (
+                                            ) : match.played || !FIXTURE_SIMULATION_ENABLED || isUserMatch ? (
                                               <span className={`shrink-0 text-right font-space-mono text-[8px] font-bold uppercase ${match.played ? "text-success" : "text-text-secondary"}`}>
                                                 {match.played
                                                   ? appendRainAffectedResultLabel(
@@ -8024,11 +8058,9 @@ This record has been officially verified and added to the IPL Minor Records arch
                                                   )
                                                   : !FIXTURE_SIMULATION_ENABLED
                                                     ? "Simulation locked"
-                                                  : isUserMatch
-                                                    ? (match.date ?? "") > currentDate ? "Your fixture" : "Awaiting match"
-                                                    : "Auto simulation"}
+                                                    : (match.date ?? "") > currentDate ? "Your fixture" : "Awaiting match"}
                                               </span>
-                                            )}
+                                            ) : null}
                                           </div>
                                         </article>
                                       );

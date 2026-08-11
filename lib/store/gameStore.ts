@@ -124,7 +124,9 @@ import {
 import {
   MAX_INJURY_REPLACEMENTS_PER_TEAM,
   eligibleInjuryReplacementCandidates,
+  getInjuryReplacementPoolIds,
   injuryQualifiesForReplacement,
+  recoverInjuryReplacementRecords,
   replacementForInjury,
   scoreInjuryReplacementCandidate,
   teamReplacementCount,
@@ -3987,7 +3989,7 @@ export const useGameStore = create<Store>()(
             teams: state.teams,
             activeInjuries: state.activeInjuries,
             records: state.injuryReplacementRecords,
-            unsoldPlayerIds: state.auction?.unsoldPlayerIds ?? [],
+            unsoldPlayerIds: getInjuryReplacementPoolIds(state.players, state.auction),
           });
           if (!result) return state;
           signed = true;
@@ -4020,10 +4022,11 @@ export const useGameStore = create<Store>()(
               seasonFinalDate: input.seasonFinalDate,
               teamFinalLeagueDate,
             })) return;
+            const replacementPoolIds = getInjuryReplacementPoolIds(players, state.auction);
             const candidates = eligibleInjuryReplacementCandidates({
               injury,
               players,
-              unsoldPlayerIds: state.auction?.unsoldPlayerIds ?? [],
+              unsoldPlayerIds: replacementPoolIds,
               records,
               season: state.currentSeason,
             }).filter((candidate) => {
@@ -4050,7 +4053,7 @@ export const useGameStore = create<Store>()(
               teams,
               activeInjuries: state.activeInjuries,
               records,
-              unsoldPlayerIds: state.auction?.unsoldPlayerIds ?? [],
+              unsoldPlayerIds: replacementPoolIds,
             });
             if (!result) return;
             players = result.players;
@@ -4547,6 +4550,7 @@ export const useGameStore = create<Store>()(
         injuryHistory: state.injuryHistory,
         processedInjuryMatchIds: state.processedInjuryMatchIds,
         processedInjuryDateKeys: state.processedInjuryDateKeys,
+        injuryReplacementRecords: state.injuryReplacementRecords,
         tradeRecords: state.tradeRecords,
         tradeOffers: state.tradeOffers,
         processedAITradeDateKeys: state.processedAITradeDateKeys,
@@ -4696,6 +4700,14 @@ export const useGameStore = create<Store>()(
         const cycleAuction = sanitizedAuction && expectedRetentionAuctionType
           ? { ...sanitizedAuction, type: expectedRetentionAuctionType }
           : sanitizedAuction;
+        const injuryReplacementRecords = recoverInjuryReplacementRecords({
+          players: cyclePlayers,
+          injuries: [
+            ...Object.values(p.activeInjuries ?? {}),
+            ...(p.injuryHistory ?? []),
+          ],
+          records: p.injuryReplacementRecords ?? [],
+        });
         return {
           ...current,
           ...p,
@@ -4718,7 +4730,7 @@ export const useGameStore = create<Store>()(
           injuryHistory: p.injuryHistory ?? [],
           processedInjuryMatchIds: p.processedInjuryMatchIds ?? [],
           processedInjuryDateKeys: p.processedInjuryDateKeys ?? [],
-          injuryReplacementRecords: p.injuryReplacementRecords ?? [],
+          injuryReplacementRecords,
           tradeRecords: p.tradeRecords ?? [],
           tradeOffers: p.tradeOffers ?? [],
           processedAITradeDateKeys: p.processedAITradeDateKeys ?? [],

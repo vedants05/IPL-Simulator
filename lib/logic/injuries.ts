@@ -68,11 +68,15 @@ export const DEFAULT_INJURY_SYSTEM_MODIFIERS: InjurySystemModifiers = {
 // never whether an injury occurs.
 export const POST_MATCH_INJURY_CHANCE = 0.0095;
 export const DAILY_BACKGROUND_INJURY_CHANCE = 0.0001;
+export const POST_MATCH_MAJOR_INJURY_SHARE = 0.10;
+export const BACKGROUND_MAJOR_INJURY_SHARE = 0.08;
+export const PRESEASON_SEASON_ENDING_INJURY_MIN = 1;
+export const PRESEASON_SEASON_ENDING_INJURY_MAX = 2;
 
 export const WORSENING_CHANCES: Record<InjuryWorseningRisk, number> = {
-  mild: 0.05,
-  moderate: 0.12,
-  severe: 0.22,
+  mild: 0.02,
+  moderate: 0.06,
+  severe: 0.12,
 };
 
 export const INJURY_CATALOGUE: InjuryDefinition[] = [
@@ -342,9 +346,10 @@ export function processMatchInjuries(
 
     const occurrenceRoll = injuryRandom(`${input.seed}:${input.matchId}:${player.id}:occurrence`);
     if (occurrenceRoll >= POST_MATCH_INJURY_CHANCE * modifiers.occurrenceChanceMultiplier) return;
-    const category: InjuryCategory = injuryRandom(`${input.seed}:${input.matchId}:${player.id}:category`) < 0.78
-      ? "minor"
-      : "major";
+    const category: InjuryCategory = injuryRandom(`${input.seed}:${input.matchId}:${player.id}:category`)
+      < POST_MATCH_MAJOR_INJURY_SHARE
+      ? "major"
+      : "minor";
     const injury = createPlayerInjury({
       player,
       teamId,
@@ -404,7 +409,9 @@ export function processBackgroundInjuries(
     && input.firstFixtureDate
     && !processedKeys.includes(legacyPreseasonBatchKey)
   ) {
-    const targetCount = 1 + Math.floor(injuryRandom(`${input.seed}:${input.season}:preseason-major-count`) * 3);
+    const targetRange = PRESEASON_SEASON_ENDING_INJURY_MAX - PRESEASON_SEASON_ENDING_INJURY_MIN + 1;
+    const targetCount = PRESEASON_SEASON_ENDING_INJURY_MIN
+      + Math.floor(injuryRandom(`${input.seed}:${input.season}:preseason-major-count`) * targetRange);
     const windowStart = addInjuryDays(input.preseasonStartDate, 1);
     const preferredWindowEnd = addInjuryDays(input.firstFixtureDate, -3);
     const windowEnd = preferredWindowEnd >= windowStart ? preferredWindowEnd : input.firstFixtureDate;
@@ -468,13 +475,14 @@ export function processBackgroundInjuries(
       const occurs = injuryRandom(`${input.seed}:${dateKey}:${player.id}:background`)
         < DAILY_BACKGROUND_INJURY_CHANCE * modifiers.occurrenceChanceMultiplier;
       if (!occurs) return;
-      // The dedicated preseason batch supplies exactly 1-3 major cases.
+      // The dedicated preseason batch supplies exactly 1-2 major cases.
       // Other background conditions before the first fixture remain minor.
       const category: InjuryCategory = input.preseason
         ? "minor"
-        : injuryRandom(`${input.seed}:${dateKey}:${player.id}:background-category`) < 0.8
-          ? "minor"
-          : "major";
+        : injuryRandom(`${input.seed}:${dateKey}:${player.id}:background-category`)
+            < BACKGROUND_MAJOR_INJURY_SHARE
+          ? "major"
+          : "minor";
       const injury = createPlayerInjury({
         player,
         teamId,

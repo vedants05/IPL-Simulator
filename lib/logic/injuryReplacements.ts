@@ -25,6 +25,34 @@ export interface InjuryReplacementWindow {
   teamFinalLeagueDate?: string;
 }
 
+export interface InjuryReplacementAuctionPool {
+  allPlayerIds?: readonly string[];
+  soldPlayerIds?: readonly string[];
+  unsoldPlayerIds?: readonly string[];
+}
+
+/**
+ * Rebuild the complete post-auction replacement pool from permanent auction
+ * records. `unsoldPlayerIds` doubles as the accelerated-auction working queue,
+ * so non-nominated players can disappear from that array even though they
+ * remain officially unsold. Including all registered players and subtracting
+ * completed sales also repairs existing saves affected by that behaviour.
+ */
+export function getInjuryReplacementPoolIds(
+  players: Record<string, Player>,
+  auction?: InjuryReplacementAuctionPool | null,
+): string[] {
+  if (!auction) return [];
+  const soldPlayerIds = new Set(auction.soldPlayerIds ?? []);
+  return Array.from(new Set([
+    ...(auction.allPlayerIds ?? []),
+    ...(auction.unsoldPlayerIds ?? []),
+  ])).filter((playerId) => (
+    !soldPlayerIds.has(playerId)
+    && players[playerId]?.currentTeamId === null
+  ));
+}
+
 export function injuryQualifiesForReplacement(
   injury: PlayerInjury,
   window: InjuryReplacementWindow,
@@ -59,6 +87,49 @@ export function replacementForInjury(
   injuryId: string,
 ): InjuryReplacementRecord | undefined {
   return records.find((record) => record.injuryId === injuryId);
+}
+
+/**
+ * Older saves persisted the signed player's IPL history and updated squad but
+ * accidentally omitted the corresponding replacement record. Rebuild those
+ * records from the permanent history marker so the signing remains visible and
+ * the same injury cannot trigger a second replacement after reloading.
+ */
+export function recoverInjuryReplacementRecords(input: {
+  players: Record<string, Player>;
+  injuries: readonly PlayerInjury[];
+  records?: readonly InjuryReplacementRecord[];
+}): InjuryReplacementRecord[] {
+  const records = [...(input.records ?? [])];
+  const recordedInjuryIds = new Set(records.map((record) => record.injuryId));
+  const injuriesById = new Map(input.injuries.map((injury) => [injury.id, injury]));
+
+  Object.values(input.players).forEach((replacement) => {
+    replacement.iplHistory.forEach((history) => {
+      if (!history.isInjuryReplacement || !history.replacementInjuryId) return;
+      if (recordedInjuryIds.has(history.replacementInjuryId)) return;
+      const injury = injuriesById.get(history.replacementInjuryId);
+      if (!injury) return;
+      const season = Number(history.season);
+      if (!Number.isFinite(season)) return;
+
+      records.push({
+        id: `injury-replacement:${season}:${injury.id}:${replacement.id}`,
+        season,
+        teamId: history.teamId || injury.teamId,
+        injuryId: injury.id,
+        injuredPlayerId: injury.playerId,
+        injuredPlayerName: injury.playerName,
+        replacementPlayerId: replacement.id,
+        replacementPlayerName: replacement.name,
+        signedOn: injury.startedOn,
+        salary: history.price,
+      });
+      recordedInjuryIds.add(injury.id);
+    });
+  });
+
+  return records;
 }
 
 export function eligibleInjuryReplacementCandidates(input: {
