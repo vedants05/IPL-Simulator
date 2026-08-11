@@ -81,12 +81,16 @@ export interface PlayerCareerRatingHistoryEntry {
   bowling: number;
   potentialBatting: number;
   potentialBowling: number;
+  captaincy?: number;
+  reputation?: number;
 }
 
 export interface PlayerCareerState {
   origin: "database" | "generated";
   generatedSeason?: number;
   unsoldAuctionStreak: number;
+  belowAuctionStandardSeasons: number;
+  lastRetirementEvaluationSeason?: number;
   consecutiveLowUsageSeasons: number;
   lastDevelopmentSeason?: number;
   lastAgedSeason?: number;
@@ -96,13 +100,21 @@ export interface PlayerCareerState {
   bowlingDevelopmentBank: number;
   potentialBattingBank: number;
   potentialBowlingBank: number;
+  captaincyDevelopmentBank: number;
+  reputationDevelopmentBank: number;
   unrealizedPotentialBattingLoss: number;
   unrealizedPotentialBowlingLoss: number;
   consecutivePoorBattingSeasons?: number;
   consecutivePoorBowlingSeasons?: number;
+  consecutivePoorReputationSeasons: number;
+  eliteReputationSeasons: number;
+  majorReputationAchievements: number;
   lastSeasonMatches: number;
   lastSeasonRuns: number;
   lastSeasonWickets: number;
+  lastSeasonMatchesCaptained: number;
+  lastSeasonMatchesViceCaptained: number;
+  lastSeasonReputationPoints: number;
   ratingHistory: PlayerCareerRatingHistoryEntry[];
 }
 
@@ -122,6 +134,10 @@ export interface Player {
   iplHistory: IPLHistoryEntry[];
   basePrice: number;
   isCapped: boolean;
+  /** First season in which this player became internationally capped in the career save. */
+  internationalDebutSeason?: number;
+  /** Nation represented when the player first became capped. */
+  internationalDebutCountry?: string;
   isRetained: boolean;
   retainedByTeamId: string | null;
   currentTeamId: string | null;

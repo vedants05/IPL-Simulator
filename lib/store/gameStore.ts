@@ -150,6 +150,7 @@ import {
   processPostSeasonCareer,
   type CareerLifecycleResult,
   type CareerRetirementRecord,
+  type CareerReputationAchievements,
   type HistoricalPlayerSnapshot,
 } from "@/lib/logic/careerLifecycle";
 import {
@@ -308,6 +309,7 @@ interface GameActions {
     standings: unknown[];
     playerStats: Record<string, unknown>;
     leagueRecords?: OtherLeagueRecord[];
+    reputationAchievements?: CareerReputationAchievements;
   }) => void;
   setCareerFastForwardTarget: (targetDate: string | null) => void;
   completeOffseasonAutomatically: () => boolean;
@@ -1158,6 +1160,10 @@ export const useGameStore = create<Store>()(
           season: INITIAL_ACTIVE_SEASON,
           seed: newSaveId,
           baselineMarketProfile: auctionMarketProfile,
+          initialSeason: INITIAL_ACTIVE_SEASON,
+          previousEmergingWinnerNames: HISTORICAL_LEAGUE_HISTORY
+            .filter((record) => record.season < INITIAL_ACTIVE_SEASON && record.emergingPlayer)
+            .map((record) => record.emergingPlayer!.name),
         });
         const openingAuctionType = getAuctionTypeForSeason(INITIAL_ACTIVE_SEASON);
         const openingTeamByPlayer = new Map(
@@ -3648,6 +3654,13 @@ export const useGameStore = create<Store>()(
             season: nextSeason,
             seed: state.saveId || state.fixtureSeed,
             baselineMarketProfile: marketProfile,
+            initialSeason: INITIAL_ACTIVE_SEASON,
+            previousEmergingWinnerNames: [
+              ...HISTORICAL_LEAGUE_HISTORY,
+              ...state.simulatedLeagueHistory,
+            ]
+              .filter((record) => record.season < nextSeason && record.emergingPlayer)
+              .map((record) => record.emergingPlayer!.name),
           });
           const careerRetirements = [...fallbackPostseason.retirements, ...preparedPool.retirements];
           const retiredIds = new Set(careerRetirements.map((record) => record.playerId));
@@ -3788,7 +3801,8 @@ export const useGameStore = create<Store>()(
 
       archiveCareerSeason: (archive) => {
         set((state) => {
-          const compactArchive = { ...archive, playerStats: {} };
+          const { reputationAchievements, ...archiveForHistory } = archive;
+          const compactArchive = { ...archiveForHistory, playerStats: {} };
           const careerSeasonArchives = [
             compactArchive,
             ...state.careerSeasonArchives.filter((record) => record.season !== archive.season),
@@ -3869,6 +3883,7 @@ export const useGameStore = create<Store>()(
             completedSeason: archive.season,
             seed: state.saveId || state.fixtureSeed,
             injuredPlayerIds,
+            reputationAchievements,
           });
           const retiredIds = new Set(lifecycle.retirements.map((record) => record.playerId));
           const developedPlayersWithSeasonStats = Object.fromEntries(Object.entries(lifecycle.players).map(([id, player]) => [
@@ -4366,6 +4381,10 @@ export const useGameStore = create<Store>()(
             teams: state.teams,
             auctionedPlayerIds: auction.allPlayerIds,
             season: auction.season,
+            auctionType: auction.type,
+            priorRetirementsThisSeason: state.careerRetirementHistory.filter(
+              (record) => record.season === auction.season,
+            ).length,
           });
           retirements = lifecycle.retirements;
           const retiredIds = new Set(retirements.map((record) => record.playerId));

@@ -31,6 +31,8 @@ function retiredSnapshotPlayer(snapshot: HistoricalPlayerSnapshot): Player {
     iplHistory: snapshot.iplHistory,
     basePrice: 0,
     isCapped: snapshot.isCapped ?? true,
+    internationalDebutSeason: snapshot.internationalDebutSeason,
+    internationalDebutCountry: snapshot.internationalDebutCountry,
     isRetained: false,
     retainedByTeamId: null,
     currentTeamId: null,
@@ -47,6 +49,8 @@ function retiredSnapshotPlayer(snapshot: HistoricalPlayerSnapshot): Player {
     hasBattedAt6: snapshot.hasBattedAt6,
     hasBattedAt7: snapshot.hasBattedAt7,
     isFinisher: snapshot.isFinisher,
+    reputation: snapshot.reputation,
+    captaincy: snapshot.captaincy,
   };
 }
 

@@ -227,6 +227,62 @@ export function normalizeAwardWinnerName(name: string): string {
   return name.toLocaleLowerCase("en-GB").replace(/[^a-z0-9]/g, "");
 }
 
+export interface EmergingPlayerEligibility {
+  eligible: boolean;
+  ageAtSeasonStart: number;
+  iplMatchesAtSeasonStart: number;
+}
+
+function emergingPlayerEligibilityAgainstSet({
+  player,
+  season,
+  initialSeason,
+  seasonMatches,
+  previousWinners,
+}: {
+  player: Player;
+  season: number;
+  initialSeason: number;
+  seasonMatches: number;
+  previousWinners: ReadonlySet<string>;
+}): EmergingPlayerEligibility {
+  const ageAtSeasonStart = player.careerState?.lastAgedSeason === season
+    ? player.age
+    : player.age + Math.max(0, season - initialSeason);
+  const iplMatchesAtSeasonStart = Math.max(
+    0,
+    (player.iplStats?.matches ?? 0) - Math.max(0, seasonMatches),
+  );
+  const eligible = !player.isCapped
+    && ageAtSeasonStart <= 25
+    && iplMatchesAtSeasonStart < 25
+    && !previousWinners.has(normalizeAwardWinnerName(player.name));
+  return { eligible, ageAtSeasonStart, iplMatchesAtSeasonStart };
+}
+
+/** Shared eligibility rule used by both award ranking and future intake planning. */
+export function getEmergingPlayerEligibility({
+  player,
+  season,
+  initialSeason,
+  seasonMatches = 0,
+  previousWinnerNames,
+}: {
+  player: Player;
+  season: number;
+  initialSeason: number;
+  seasonMatches?: number;
+  previousWinnerNames: Iterable<string>;
+}): EmergingPlayerEligibility {
+  return emergingPlayerEligibilityAgainstSet({
+    player,
+    season,
+    initialSeason,
+    seasonMatches,
+    previousWinners: new Set(Array.from(previousWinnerNames, normalizeAwardWinnerName)),
+  });
+}
+
 export function rankEmergingPlayerCandidates({
   stats,
   players,
@@ -247,19 +303,14 @@ export function rankEmergingPlayerCandidates({
   return stats.flatMap((seasonStats) => {
     const player = players[seasonStats.id];
     if (!player || seasonStats.matches <= 0) return [];
-    const ageAtSeasonStart = player.careerState?.lastAgedSeason === season
-      ? player.age
-      : player.age + Math.max(0, season - initialSeason);
-    const iplMatchesAtSeasonStart = Math.max(
-      0,
-      (player.iplStats?.matches ?? 0) - seasonStats.matches,
-    );
-    if (
-      player.isCapped
-      || ageAtSeasonStart > 25
-      || iplMatchesAtSeasonStart >= 25
-      || previousWinners.has(normalizeAwardWinnerName(player.name))
-    ) return [];
+    const { eligible, ageAtSeasonStart, iplMatchesAtSeasonStart } = emergingPlayerEligibilityAgainstSet({
+      player,
+      season,
+      initialSeason,
+      seasonMatches: seasonStats.matches,
+      previousWinners,
+    });
+    if (!eligible) return [];
 
     const strikeRate = seasonStats.balls > 0
       ? seasonStats.runs * 100 / seasonStats.balls

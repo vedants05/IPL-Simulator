@@ -63,6 +63,7 @@ import { OTHER_LEAGUE_RECORDS } from "@/lib/data/leagueRecords";
 import { computeDynamicLeagueRecords } from "@/lib/logic/leagueRecordTracker";
 import { appendRainAffectedResultLabel, isRainAffectedMatch } from "@/lib/logic/matchWeather";
 import type { IplCareerMatchUpdate } from "@/lib/logic/iplCareerStats";
+import type { CareerReputationAchievements } from "@/lib/logic/careerLifecycle";
 import { formatStatValue } from "@/lib/logic/statFormatting";
 import {
   createPlayerInjury,
@@ -210,6 +211,8 @@ interface PlayerStats {
   battingPerformanceBonus?: number;
   bowlingPerformanceBonus?: number;
   mvpPoints?: number;
+  matchesCaptained?: number;
+  matchesViceCaptained?: number;
 }
 
 interface LeagueStandings {
@@ -305,6 +308,48 @@ function calculateSeasonAwardLeaders(
       initialSeason: INITIAL_ACTIVE_SEASON,
       previousWinnerNames: previousEmergingWinners,
     })[0] ?? null,
+  };
+}
+
+function buildCareerReputationAchievements(
+  fixtures: Match[],
+  stats: Record<string, PlayerStats>,
+  awards: ReturnType<typeof calculateSeasonAwardLeaders>,
+): CareerReputationAchievements {
+  const final = fixtures.find((fixture) => fixture.stage === "final" && fixture.played && fixture.winner);
+  const winningLineup = final?.winner ? final.simulation?.lineups[final.winner] : undefined;
+  const finalPlayerIds = new Set<string>();
+  if (final?.simulation) {
+    Object.values(final.simulation.lineups).forEach((lineup) => {
+      [...lineup.startingXI, ...lineup.finalXI].forEach((playerId) => finalPlayerIds.add(playerId));
+    });
+  }
+  const playerOfMatchCounts: Record<string, number> = {};
+  const playoffPlayerOfMatchCounts: Record<string, number> = {};
+  fixtures.forEach((fixture) => {
+    const playerId = fixture.played ? fixture.simulation?.playerOfTheMatchId : undefined;
+    if (!playerId) return;
+    playerOfMatchCounts[playerId] = (playerOfMatchCounts[playerId] ?? 0) + 1;
+    if (fixture.stage) {
+      playoffPlayerOfMatchCounts[playerId] = (playoffPlayerOfMatchCounts[playerId] ?? 0) + 1;
+    }
+  });
+  const seasonStats = Object.values(stats);
+  const orangeCap = [...seasonStats]
+    .filter((entry) => entry.runs > 0)
+    .sort((left, right) => right.runs - left.runs || left.name.localeCompare(right.name))[0];
+  const purpleCap = [...seasonStats]
+    .filter((entry) => entry.wickets > 0)
+    .sort((left, right) => right.wickets - left.wickets || left.name.localeCompare(right.name))[0];
+  return {
+    seasonMvpPlayerId: awards.mvp?.id ?? null,
+    emergingPlayerId: awards.emerging?.id ?? null,
+    orangeCapPlayerId: orangeCap?.id ?? null,
+    purpleCapPlayerId: purpleCap?.id ?? null,
+    championCaptainId: winningLineup?.captainId ?? null,
+    championFinalPlayerIds: Array.from(finalPlayerIds),
+    playerOfMatchCounts,
+    playoffPlayerOfMatchCounts,
   };
 }
 
@@ -1639,6 +1684,7 @@ function OverviewPageContent() {
       fixtures: fixturesForCareerHistory(fixtures),
       standings,
       playerStats,
+      reputationAchievements: buildCareerReputationAchievements(fixtures, playerStats, seasonAwards),
       leagueRecords: computeDynamicLeagueRecords(
         fixtures as any[],
         players,
@@ -3543,6 +3589,34 @@ This record has been officially verified and added to the IPL Minor Records arch
     if (Object.keys(statsRecord).length === 0) {
       (fixturesRef.current ?? []).forEach((match) => {
         if (match.played && match.simulation?.innings) {
+          Object.values(match.simulation.lineups).forEach((lineup) => {
+            const participants = new Set([...lineup.startingXI, ...lineup.finalXI]);
+            participants.forEach((playerId) => {
+              const player = players[playerId];
+              if (!statsRecord[playerId]) {
+                statsRecord[playerId] = {
+                  id: playerId,
+                  name: player?.name ?? playerId,
+                  teamId: lineup.teamId,
+                  runs: 0,
+                  balls: 0,
+                  wickets: 0,
+                  runsConceded: 0,
+                  oversBowled: 0,
+                  matches: 0,
+                  highestScore: 0,
+                  bestBowling: "0/0",
+                };
+              }
+              statsRecord[playerId].matches += 1;
+            });
+            if (lineup.captainId && participants.has(lineup.captainId)) {
+              statsRecord[lineup.captainId].matchesCaptained = (statsRecord[lineup.captainId].matchesCaptained ?? 0) + 1;
+            }
+            if (lineup.viceCaptainId && lineup.viceCaptainId !== lineup.captainId && participants.has(lineup.viceCaptainId)) {
+              statsRecord[lineup.viceCaptainId].matchesViceCaptained = (statsRecord[lineup.viceCaptainId].matchesViceCaptained ?? 0) + 1;
+            }
+          });
           match.simulation.innings.forEach((inn) => {
             (inn.batting ?? []).forEach((b) => {
               const pId = (b as any).playerId || b.name;
@@ -3655,6 +3729,7 @@ This record has been officially verified and added to the IPL Minor Records arch
       fixtures: fixturesForCareerHistory(fixturesRef.current),
       standings,
       playerStats: statsRecord,
+      reputationAchievements: buildCareerReputationAchievements(fixturesRef.current, statsRecord, seasonAwards),
       leagueRecords: computeDynamicLeagueRecords(
         fixturesRef.current as any[],
         players,
@@ -4279,6 +4354,12 @@ This record has been officially verified and added to the IPL Minor Records arch
           }
           newStats[playerId].matches++;
         });
+        if (lineup.captainId && participants.has(lineup.captainId)) {
+          newStats[lineup.captainId].matchesCaptained = (newStats[lineup.captainId].matchesCaptained ?? 0) + 1;
+        }
+        if (lineup.viceCaptainId && lineup.viceCaptainId !== lineup.captainId && participants.has(lineup.viceCaptainId)) {
+          newStats[lineup.viceCaptainId].matchesViceCaptained = (newStats[lineup.viceCaptainId].matchesViceCaptained ?? 0) + 1;
+        }
       });
 
       const exactMvpEvents = extractMvpEventStats(simulation);
