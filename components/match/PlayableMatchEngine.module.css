@@ -299,6 +299,29 @@
 .batterMarker span { font-size: 8px; line-height: 1; filter: drop-shadow(0 1.5px 2px #000); }
 .batterMarker b { margin-top: 1px; padding: 1px 3px; border-radius: 2px; color: white; background: rgba(5,12,8,.85); font-size: 6.5px; letter-spacing: .04em; white-space: nowrap; }
 
+.hitWicketBatter {
+  animation: batterIntoStumps 420ms cubic-bezier(.2,.75,.25,1) both;
+}
+
+.hitWicketStumps {
+  transform-origin: 50% 100%;
+  animation: hitWicketStumpsShake 420ms ease-out both;
+}
+
+@keyframes batterIntoStumps {
+  0% { transform: translate(-50%, -50%) rotate(0); }
+  58% { transform: translate(calc(-50% + var(--hit-wicket-shift, 5px)), calc(-50% + 5px)) rotate(7deg); }
+  100% { transform: translate(calc(-50% + var(--hit-wicket-shift, 5px)), calc(-50% + 4px)) rotate(4deg); }
+}
+
+@keyframes hitWicketStumpsShake {
+  0%, 22% { transform: rotate(0deg); filter: brightness(1); }
+  42% { transform: rotate(13deg) translateX(1px); filter: brightness(1.8); }
+  62% { transform: rotate(-9deg) translateX(-1px); }
+  82% { transform: rotate(6deg); }
+  100% { transform: rotate(3deg); filter: brightness(1.25); }
+}
+
 /* Running Between Wickets Keyframe Animations */
 @keyframes runBetweenWickets1Striker {
   0% { top: 59%; }
@@ -350,6 +373,26 @@
   animation: runBetweenWickets3NonStriker var(--running-duration, 9.4s) cubic-bezier(0.4, 0, 0.2, 1) forwards !important;
 }
 
+.runOutStriker {
+  animation: abortedRunStriker var(--running-duration, 3.2s) cubic-bezier(.4,0,.2,1) forwards !important;
+}
+
+.runOutNonStriker {
+  animation: abortedRunNonStriker var(--running-duration, 3.2s) cubic-bezier(.4,0,.2,1) forwards !important;
+}
+
+@keyframes abortedRunStriker {
+  0% { top: 59%; }
+  52% { top: 48%; }
+  100% { top: 56.4%; }
+}
+
+@keyframes abortedRunNonStriker {
+  0% { top: 40.5%; }
+  52% { top: 51.5%; }
+  100% { top: 41.2%; }
+}
+
 /* Fielder Gathering Ball Animation & Indicator */
 .gatheringFielder {
   z-index: 25 !important;
@@ -375,6 +418,88 @@
   animation: receiverQuickSteps 180ms ease-in-out 3;
 }
 
+.stumpingFielder > span {
+  animation: keeperStumpingSwipe 380ms cubic-bezier(.2,.8,.2,1) both !important;
+}
+
+.misfieldAttemptFielder > span {
+  animation: misfieldAttempt 360ms cubic-bezier(.3,.8,.3,1) both !important;
+}
+
+.missedRunOutFielder > span {
+  animation: missedRunOutSwipe 420ms cubic-bezier(.2,.8,.2,1) both !important;
+}
+
+.runOutFielder > span {
+  animation: runOutBreakWicket 360ms cubic-bezier(.2,.8,.2,1) both !important;
+}
+
+.catchingFielder > span {
+  animation: secureCatch 420ms cubic-bezier(.2,.8,.2,1) both !important;
+}
+
+@keyframes secureCatch {
+  0% { transform: translateY(0) scale(1); }
+  38% { transform: translateY(-5px) scale(1.18); }
+  70% { transform: translateY(-2px) scale(1.12); }
+  100% { transform: translateY(0) scale(1.08); }
+}
+
+@keyframes runOutBreakWicket {
+  0% { transform: translateX(0) scale(1); }
+  45% { transform: translateX(-4px) scale(1.14); }
+  100% { transform: translateX(3px) scale(1.08); }
+}
+
+@keyframes missedRunOutSwipe {
+  0% { transform: translateX(0) scale(1); }
+  45% { transform: translateX(-5px) scale(1.12); }
+  100% { transform: translateX(4px) scale(1.05); }
+}
+
+@keyframes misfieldAttempt {
+  0% { transform: translateY(0) rotate(0); }
+  45% { transform: translateY(4px) rotate(-12deg) scale(1.08); }
+  100% { transform: translateY(1px) rotate(9deg); }
+}
+
+@keyframes keeperStumpingSwipe {
+  0% { transform: translateX(0) scale(1); }
+  42% { transform: translateX(5px) scale(1.08); }
+  100% { transform: translateX(-5px) scale(1.08); }
+}
+
+.wideKeeper > span {
+  animation: keeperWideTake 260ms cubic-bezier(.2,.8,.2,1) both !important;
+}
+
+.missedWideKeeper > span {
+  animation: keeperMissedWide 420ms cubic-bezier(.2,.8,.2,1) both !important;
+}
+
+.keepingErrorKeeper > span {
+  animation: keepingErrorFumble 460ms cubic-bezier(.2,.8,.2,1) both !important;
+}
+
+@keyframes keepingErrorFumble {
+  0% { transform: translateX(0) translateY(0) scale(1); }
+  42% { transform: translateX(4px) translateY(-2px) scale(1.16); }
+  72% { transform: translateX(-3px) translateY(3px) scale(1.08); }
+  100% { transform: translateX(2px) translateY(2px) scale(1.04); }
+}
+
+@keyframes keeperMissedWide {
+  0% { transform: translateX(0) scale(1); }
+  48% { transform: translateX(6px) translateY(2px) scale(1.14); }
+  100% { transform: translateX(3px) translateY(3px) scale(1.04); }
+}
+
+@keyframes keeperWideTake {
+  0% { transform: scale(1); }
+  55% { transform: scale(1.2); box-shadow: 0 0 0 5px rgba(250, 204, 21, .35), 0 0 16px #facc15; }
+  100% { transform: scale(1.08); }
+}
+
 @keyframes receiverQuickSteps {
   50% { transform: translateY(-2px) scale(1.06); }
 }
@@ -395,12 +520,104 @@
   will-change: left, top, opacity, transform;
 }
 
+.padImpactBall {
+  animation: padImpactPulse 260ms ease-out both;
+}
+
+.droppedBall {
+  animation: droppedBallPop var(--drop-pop-duration, 600ms) cubic-bezier(.2,.75,.3,1) both;
+}
+
+.misfieldBall {
+  animation: misfieldBobble var(--misfield-bobble-duration, 620ms) ease-out both;
+}
+
+.missedRunOutBall {
+  animation: missedRunOutDeflection var(--missed-run-out-duration, 300ms) ease-out both;
+}
+
+.runOutImpactBall {
+  animation: runOutImpact 300ms ease-out both;
+}
+
+.caughtBall {
+  animation: caughtBallSecured 320ms ease-out both;
+}
+
+@keyframes caughtBallSecured {
+  0% { transform: translate(-50%, -50%) scale(1.15); opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(.45); opacity: .35; }
+}
+
+@keyframes runOutImpact {
+  0% { transform: translate(-50%, -50%) scale(1.35); filter: brightness(1.8); }
+  100% { transform: translate(-50%, -50%) scale(.9); filter: brightness(1); }
+}
+
+.missedWideBall {
+  animation: missedWideDeflection 360ms ease-out both;
+}
+
+.keeperErrorBall {
+  animation: keeperErrorDeflection var(--lofted-flight-duration, 900ms) ease-out both;
+}
+
+@keyframes keeperErrorDeflection {
+  0% { transform: translate(-50%, -50%) scale(1.18); filter: brightness(1.5); }
+  24% { transform: translate(-50%, -95%) scale(1.28); }
+  50% { transform: translate(-50%, -50%) scale(1); }
+  100% { transform: translate(-50%, -50%) scale(1); filter: brightness(1); }
+}
+
+@keyframes missedWideDeflection {
+  0% { transform: translate(-50%, -50%) scale(1.15); }
+  45% { transform: translate(-50%, -85%) scale(1.25); }
+  100% { transform: translate(-50%, -50%) scale(1); }
+}
+
+@keyframes missedRunOutDeflection {
+  0% { transform: translate(-50%, -50%) scale(1.2); filter: brightness(1.5); }
+  100% { transform: translate(-50%, -50%) scale(1); filter: brightness(1); }
+}
+
+@keyframes misfieldBobble {
+  0% { transform: translate(-50%, -50%) scale(1); }
+  24% { transform: translate(-50%, -105%) scale(1.2); }
+  48% { transform: translate(-50%, -50%) scale(.95); }
+  68% { transform: translate(-50%, -82%) scale(1.1); }
+  100% { transform: translate(-50%, -50%) scale(1); }
+}
+
+@keyframes droppedBallPop {
+  0% { transform: translate(-50%, -50%) scale(1.05); filter: brightness(1.35); }
+  38% { transform: translate(-50%, -145%) scale(1.35); filter: brightness(1.6); }
+  100% { transform: translate(-50%, -50%) scale(1); filter: brightness(1); }
+}
+
+@keyframes padImpactPulse {
+  0% { box-shadow: 0 0 10px rgba(239, 68, 68, .9), 0 3px 6px rgba(0, 0, 0, .7); }
+  45% { box-shadow: 0 0 0 5px rgba(250, 204, 21, .35), 0 0 16px rgba(250, 204, 21, .9); }
+  100% { box-shadow: 0 0 8px rgba(239, 68, 68, .75), 0 3px 6px rgba(0, 0, 0, .7); }
+}
+
 .careerSixBall {
   animation: careerSixFlight var(--six-flight-duration, 2.6s) cubic-bezier(.25,.55,.28,1) both;
 }
 
 .skierBall {
   animation: skierFlight var(--skier-flight-duration, 1.8s) cubic-bezier(.2,.55,.3,1) both;
+}
+
+.loftedBall {
+  animation: loftedFlight var(--lofted-flight-duration, 1.5s) cubic-bezier(.2,.58,.3,1) both;
+}
+
+.edgeContactBall {
+  animation: edgeContact 180ms ease-out both;
+}
+
+.edgeBall {
+  animation: edgeTravel var(--lofted-flight-duration, 900ms) cubic-bezier(.16,.72,.25,1) both;
 }
 
 @keyframes careerSixFlight {
@@ -415,6 +632,24 @@
   0% { transform: translate(-50%, -50%) scale(1); filter: brightness(1); }
   45% { transform: translate(-50%, -145%) scale(2.05); filter: brightness(1.55); }
   72% { transform: translate(-50%, -175%) scale(1.7); filter: brightness(1.35); }
+  100% { transform: translate(-50%, -50%) scale(1); filter: brightness(1); }
+}
+
+@keyframes loftedFlight {
+  0% { transform: translate(-50%, -50%) scale(1); filter: brightness(1); }
+  48% { transform: translate(-50%, -112%) scale(1.55); filter: brightness(1.35); }
+  100% { transform: translate(-50%, -50%) scale(1); filter: brightness(1); }
+}
+
+@keyframes edgeContact {
+  0% { transform: translate(-50%, -50%) scale(1); }
+  55% { transform: translate(-75%, -70%) scale(1.32); filter: brightness(1.7); }
+  100% { transform: translate(-50%, -50%) scale(1.08); filter: brightness(1.2); }
+}
+
+@keyframes edgeTravel {
+  0% { transform: translate(-50%, -50%) scale(1.12); filter: brightness(1.45); }
+  35% { transform: translate(-60%, -72%) scale(1.18); }
   100% { transform: translate(-50%, -50%) scale(1); filter: brightness(1); }
 }
 
@@ -436,6 +671,199 @@
 .boundaryFlash span { margin-top: 6px; padding: 3px 8px; border: 1px solid currentColor; border-radius: 3px; background: rgba(4,5,8,.72); font: 800 8px var(--font-space-mono), monospace; letter-spacing: .16em; }
 .fourFlash { color: #facc15; }
 .sixFlash { color: #c8f36b; filter: drop-shadow(0 0 18px rgba(200,243,107,.65)); }
+
+.noBallFlash {
+  position: absolute;
+  z-index: 29;
+  left: 50%;
+  top: 12%;
+  transform: translate(-50%, -50%);
+  padding: 5px 10px;
+  border: 1px solid #facc15;
+  border-radius: 4px;
+  color: #11160d;
+  background: #facc15;
+  box-shadow: 0 0 18px rgba(250, 204, 21, .42);
+  font: 900 10px var(--font-space-mono), monospace;
+  letter-spacing: .14em;
+  pointer-events: none;
+  animation: noBallCall .3s cubic-bezier(.16,1,.3,1) both;
+}
+
+.wideFlash {
+  position: absolute;
+  z-index: 29;
+  left: 50%;
+  top: 12%;
+  transform: translate(-50%, -50%);
+  padding: 5px 10px;
+  border: 1px solid #bae6fd;
+  border-radius: 4px;
+  color: #082f49;
+  background: #7dd3fc;
+  box-shadow: 0 0 18px rgba(56, 189, 248, .45);
+  font: 900 10px var(--font-space-mono), monospace;
+  letter-spacing: .14em;
+  pointer-events: none;
+  animation: wideCall .3s cubic-bezier(.16,1,.3,1) both;
+}
+
+.wideBoundaryFlash {
+  color: #7dd3fc;
+  filter: drop-shadow(0 0 18px rgba(56, 189, 248, .6));
+}
+
+.extraBoundaryFlash {
+  color: #e0f2fe;
+  filter: drop-shadow(0 0 18px rgba(125, 211, 252, .58));
+}
+
+@keyframes wideCall {
+  from { opacity: 0; transform: translate(-50%, -35%) scale(.7); }
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
+.droppedCatchFlash {
+  position: absolute;
+  z-index: 29;
+  left: 50%;
+  top: 20%;
+  transform: translate(-50%, -50%);
+  padding: 6px 12px;
+  border: 1px solid #fecaca;
+  border-radius: 4px;
+  color: #fff;
+  background: #dc2626;
+  box-shadow: 0 0 20px rgba(220, 38, 38, .55);
+  font: 900 11px var(--font-space-mono), monospace;
+  letter-spacing: .16em;
+  pointer-events: none;
+  animation: droppedCatchCall .3s cubic-bezier(.16,1,.3,1) both;
+}
+
+.misfieldFlash {
+  position: absolute;
+  z-index: 29;
+  left: 50%;
+  top: 20%;
+  transform: translate(-50%, -50%);
+  padding: 6px 12px;
+  border: 1px solid #fde68a;
+  border-radius: 4px;
+  color: #1c1505;
+  background: #f59e0b;
+  box-shadow: 0 0 20px rgba(245, 158, 11, .5);
+  font: 900 11px var(--font-space-mono), monospace;
+  letter-spacing: .16em;
+  pointer-events: none;
+  animation: misfieldCall .3s cubic-bezier(.16,1,.3,1) both;
+}
+
+.missedRunOutFlash {
+  position: absolute;
+  z-index: 29;
+  left: 50%;
+  top: 20%;
+  transform: translate(-50%, -50%);
+  padding: 6px 12px;
+  border: 1px solid #bfdbfe;
+  border-radius: 4px;
+  color: #eff6ff;
+  background: #1d4ed8;
+  box-shadow: 0 0 20px rgba(37, 99, 235, .55);
+  font: 900 11px var(--font-space-mono), monospace;
+  letter-spacing: .14em;
+  pointer-events: none;
+  animation: missedRunOutCall .3s cubic-bezier(.16,1,.3,1) both;
+}
+
+.safeStumps {
+  animation: safeStumpsPulse 360ms ease-out both;
+}
+
+.runOutStumps {
+  transform-origin: 50% 100%;
+  animation: runOutStumpsBreak 440ms ease-out both;
+}
+
+@keyframes runOutStumpsBreak {
+  0% { transform: rotate(0); filter: brightness(1); }
+  35% { transform: rotate(11deg) translateX(1px); filter: brightness(2); }
+  65% { transform: rotate(-8deg) translateX(-1px); }
+  100% { transform: rotate(5deg); filter: brightness(1.3); }
+}
+
+.runOutFlash {
+  position: absolute;
+  z-index: 30;
+  left: 50%;
+  top: 20%;
+  transform: translate(-50%, -50%);
+  padding: 7px 14px;
+  border: 1px solid #fecaca;
+  border-radius: 4px;
+  color: #fff;
+  background: #dc2626;
+  box-shadow: 0 0 22px rgba(220, 38, 38, .62);
+  font: 900 12px var(--font-space-mono), monospace;
+  letter-spacing: .16em;
+  pointer-events: none;
+  animation: runOutCall .3s cubic-bezier(.16,1,.3,1) both;
+}
+
+.caughtFlash {
+  position: absolute;
+  z-index: 30;
+  left: 50%;
+  top: 20%;
+  transform: translate(-50%, -50%);
+  padding: 7px 14px;
+  border: 1px solid #fef3c7;
+  border-radius: 4px;
+  color: #1c1505;
+  background: #facc15;
+  box-shadow: 0 0 22px rgba(250, 204, 21, .58);
+  font: 900 12px var(--font-space-mono), monospace;
+  letter-spacing: .16em;
+  pointer-events: none;
+  animation: caughtCall .3s cubic-bezier(.16,1,.3,1) both;
+}
+
+@keyframes caughtCall {
+  from { opacity: 0; transform: translate(-50%, -35%) scale(.7); }
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
+@keyframes runOutCall {
+  from { opacity: 0; transform: translate(-50%, -35%) scale(.7); }
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
+@keyframes missedRunOutCall {
+  from { opacity: 0; transform: translate(-50%, -35%) scale(.7); }
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
+@keyframes safeStumpsPulse {
+  0% { filter: drop-shadow(0 0 0 rgba(96, 165, 250, 0)); }
+  50% { filter: drop-shadow(0 0 6px rgba(96, 165, 250, .95)); }
+  100% { filter: drop-shadow(0 0 2px rgba(96, 165, 250, .35)); }
+}
+
+@keyframes misfieldCall {
+  from { opacity: 0; transform: translate(-50%, -35%) scale(.7); }
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
+@keyframes droppedCatchCall {
+  from { opacity: 0; transform: translate(-50%, -35%) scale(.7); }
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
+@keyframes noBallCall {
+  from { opacity: 0; transform: translate(-50%, -35%) scale(.7); }
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
 
 @keyframes boundaryResultFlash {
   0% { opacity: 0; transform: translate(-50%, -36%) scale(.45); }
@@ -695,6 +1123,15 @@
   pointer-events: none;
 }
 
+.runOutBurst {
+  animation: burstExplosion .5s ease-out both;
+}
+
+.catchBurst {
+  z-index: 27;
+  animation: burstExplosion .5s ease-out both;
+}
+
 @keyframes burstExplosion {
   0% {
     transform: scale(0.3);
@@ -757,6 +1194,8 @@
 .lineupPreview { display: flex; align-items: center; gap: 10px; margin: 18px 0; padding: 11px; border-radius: 7px; color: var(--lime); background: rgba(200,243,107,.07); }.lineupPreview strong, .lineupPreview span { display: block; }.lineupPreview strong { color: #e7ece9; font-size: 11px; }.lineupPreview span { margin-top: 2px; color: #8e9993; font-size: 9px; }
 .confirmButton { width: 100%; height: 42px; border: 0; border-radius: 7px; color: #11160d; background: var(--lime); font-size: 11px; font-weight: 900; }
 .confirmButton:disabled { cursor: not-allowed; opacity: .38; }
+.tossResult { margin: -8px 0 16px; padding: 11px 12px; border: 1px solid rgba(200,243,107,.2); border-radius: 8px; color: #bdc7c1; background: rgba(200,243,107,.06); font-size: 12px; }
+.tossResult strong { color: var(--lime); text-transform: capitalize; }
 .impactModal { width: min(520px, calc(100vw - 32px)); }
 .impactNotice { display: flex; align-items: center; gap: 10px; margin: -8px 0 16px; padding: 11px; border: 1px solid rgba(200,243,107,.18); border-radius: 8px; color: var(--lime); background: rgba(200,243,107,.06); }
 .impactNotice strong, .impactNotice span { display: block; }.impactNotice strong { color: #e7ece9; font-size: 11px; }.impactNotice span { margin-top: 2px; color: #8e9993; font-size: 9px; }

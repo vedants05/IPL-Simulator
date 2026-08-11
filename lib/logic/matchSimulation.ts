@@ -22,6 +22,7 @@ export const CORE_BATTER_ROTATION_MULTIPLIER = 1.08;
 export const FINISHER_BOUNDARY_MULTIPLIER = 1.1;
 
 export type TossDecision = "bat" | "bowl";
+export type TossCall = "heads" | "tails";
 export type DismissalKind =
   | "caught"
   | "bowled"
@@ -151,7 +152,10 @@ export interface PlayableDeliveryControl {
 /** Decisions are keyed by stable innings/delivery identifiers so a played
  * match can be deterministically rebuilt after every saved delivery. */
 export interface PlayableMatchDecisions {
+  tossCall?: TossCall;
   tossDecision?: TossDecision;
+  /** Pauses a lost toss until the user has seen the result and AI decision. */
+  tossResultAcknowledged?: boolean;
   deliveryControls: Record<string, PlayableDeliveryControl>;
   bowlerByOver: Record<string, string>;
   batterByWicket: Record<string, string>;
@@ -184,9 +188,13 @@ export interface PlayableInningsProgress {
 }
 
 export interface PlayableMatchProgress {
-  tossWinnerId: string;
+  tossWinnerId?: string;
+  tossCall?: TossCall;
+  tossResult?: TossCall;
   tossDecision?: TossDecision;
+  awaitingTossCall: boolean;
   awaitingTossDecision: boolean;
+  awaitingTossAcknowledgement: boolean;
   battingFirstTeamId?: string;
   bowlingFirstTeamId?: string;
   revealedDeliveries: number;
@@ -3902,7 +3910,17 @@ function simulateMatchToCompletion(
   const weatherScenario = input.weatherScenario
     ?? createWeatherScenario(input.seed, input.conditions.stadiumId, input.date, input.time);
   const rainAffected = hasRainReducedOvers(weatherScenario);
-  const tossWinner = rng.next() < 0.5 ? input.teamA : input.teamB;
+  const tossRoll = rng.next();
+  const tossResult: TossCall = tossRoll < 0.5 ? "heads" : "tails";
+  const userTeam = userTeamId === input.teamA.id
+    ? input.teamA
+    : userTeamId === input.teamB.id
+      ? input.teamB
+      : undefined;
+  const userOpponent = userTeam?.id === input.teamA.id ? input.teamB : input.teamA;
+  const tossWinner = playableDecisions?.tossCall && userTeam
+    ? playableDecisions.tossCall === tossResult ? userTeam : userOpponent
+    : tossRoll < 0.5 ? input.teamA : input.teamB;
   const tossWinnerPlans = tossWinner.id === input.teamA.id
     ? input.teamAPlans
     : input.teamBPlans;
@@ -4272,17 +4290,50 @@ export function simulatePlayableMatch(
   requestedRevealedDeliveries: number,
 ): PlayableMatchProgress {
   const tossRng = new SimulationRandom(`${input.seed}|engine-${MATCH_SIMULATION_VERSION}`);
-  const tossWinner = tossRng.next() < 0.5 ? input.teamA : input.teamB;
-  if (tossWinner.id === userTeamId && !decisions.tossDecision) {
+  const tossRoll = tossRng.next();
+  const tossResult: TossCall = tossRoll < 0.5 ? "heads" : "tails";
+  const userTeam = userTeamId === input.teamA.id ? input.teamA : input.teamB;
+  const opponent = userTeam.id === input.teamA.id ? input.teamB : input.teamA;
+  const legacyStartedMatch = requestedRevealedDeliveries > 0 || Boolean(decisions.tossDecision);
+
+  if (!decisions.tossCall && !legacyStartedMatch) {
     return {
-      tossWinnerId: tossWinner.id,
-      awaitingTossDecision: true,
+      awaitingTossCall: true,
+      awaitingTossDecision: false,
+      awaitingTossAcknowledgement: false,
       revealedDeliveries: 0,
       totalDeliveries: 0,
       inningsDeliveryEnds: [0, 0],
       innings: [],
       complete: false,
     };
+  }
+
+  if (decisions.tossCall) {
+    const tossWinner = decisions.tossCall === tossResult ? userTeam : opponent;
+    const tossWinnerPlans = tossWinner.id === input.teamA.id ? input.teamAPlans : input.teamBPlans;
+    const resolvedTossDecision = tossWinner.id === userTeamId
+      ? decisions.tossDecision
+      : chooseTossDecision(tossWinnerPlans.tactics, input.conditions);
+    const awaitingTossDecision = tossWinner.id === userTeamId && !resolvedTossDecision;
+    const awaitingTossAcknowledgement = tossWinner.id !== userTeamId && !decisions.tossResultAcknowledged;
+
+    if (awaitingTossDecision || awaitingTossAcknowledgement) {
+      return {
+        tossWinnerId: tossWinner.id,
+        tossCall: decisions.tossCall,
+        tossResult,
+        tossDecision: resolvedTossDecision,
+        awaitingTossCall: false,
+        awaitingTossDecision,
+        awaitingTossAcknowledgement,
+        revealedDeliveries: 0,
+        totalDeliveries: 0,
+        inningsDeliveryEnds: [0, 0],
+        innings: [],
+        complete: false,
+      };
+    }
   }
 
   const simulation = simulateMatchToCompletion(input, decisions, userTeamId);
@@ -4329,8 +4380,12 @@ export function simulatePlayableMatch(
 
   return {
     tossWinnerId: simulation.tossWinnerId,
+    tossCall: decisions.tossCall,
+    tossResult: decisions.tossCall ? tossResult : undefined,
     tossDecision: simulation.tossDecision,
+    awaitingTossCall: false,
     awaitingTossDecision: false,
+    awaitingTossAcknowledgement: false,
     battingFirstTeamId: simulation.battingFirstTeamId,
     bowlingFirstTeamId: simulation.bowlingFirstTeamId,
     revealedDeliveries,
