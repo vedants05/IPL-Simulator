@@ -98,6 +98,7 @@ const SquadAnalysisPage = dynamic(() => import("@/components/squad/SquadAnalysis
 const InjuryHubPage = dynamic(() => import("@/components/squad/InjuryHubPage"), { ssr: false });
 import { InjuryStatusMarker } from "@/components/squad/InjuryStatusMarker";
 const TradeHubPage = dynamic(() => import("@/components/scouting/TradeHubPage"), { ssr: false });
+const ScoutingAssignmentsPage = dynamic(() => import("@/components/scouting/ScoutingAssignmentsPage"), { ssr: false });
 import TacticsLineupBuilder from "@/components/squad/TacticsLineupBuilder";
 const TeamTacticsPage = dynamic(() => import("@/components/squad/TeamTacticsPage"), { ssr: false });
 const PitchCuratorPage = dynamic(() => import("@/components/club/PitchCuratorPage"), { ssr: false });
@@ -720,6 +721,7 @@ function OverviewPageContent() {
     processAIInjuryReplacements,
     executeTrade,
     processAITrades,
+    reconcileScoutingAssignments,
   } = useGameStore();
   const matchArchiveCareerId = `${userTeamId}:${currentSeason}:${fixtureSeed}`;
   const userTeam = teams[userTeamId];
@@ -759,7 +761,8 @@ function OverviewPageContent() {
   useEffect(() => {
     reconcilePitchProjects();
     reconcileOutfieldProjects();
-  }, [currentDate, reconcileOutfieldProjects, reconcilePitchProjects]);
+    reconcileScoutingAssignments(currentDate);
+  }, [currentDate, reconcileOutfieldProjects, reconcilePitchProjects, reconcileScoutingAssignments]);
 
   // Dynamically generate months based on currentSeason
   const CALENDAR_MONTHS = useMemo(() => {
@@ -4721,7 +4724,7 @@ This record has been officially verified and added to the IPL Minor Records arch
     scouting: {
       label: "Scouting",
       icon: Search,
-      subtabs: ["overview", "search", "planner", "trades"]
+      subtabs: ["overview", "assignments", "search", "planner", "trades"]
     },
     season: {
       label: "Season",
@@ -4745,6 +4748,7 @@ This record has been officially verified and added to the IPL Minor Records arch
     if (subtab === "tactics") return "Team Tactics";
     if (subtab === "injuryhub") return "Injury Hub";
     if (subtab === "search") return "Player Search";
+    if (subtab === "assignments") return "Scouting Assignments";
     if (subtab === "reports") return "Scout Reports";
     if (subtab === "planner") return "Auction Planner";
     if (subtab === "trades") return "Trade Hub";
@@ -4774,6 +4778,7 @@ This record has been officially verified and added to the IPL Minor Records arch
   const filteredSearchList = useMemo(() => {
     return Object.values(players)
       .filter((p): p is Player => !!p && p.currentTeamId !== userTeamId)
+      .filter((p) => (p.careerState?.generatedSeason ?? currentSeason) <= currentSeason)
       .filter(p => {
         if (searchQuery) {
           return p.name.toLowerCase().includes(searchQuery.toLowerCase());
@@ -4793,16 +4798,16 @@ This record has been officially verified and added to the IPL Minor Records arch
       .filter(p => getPlayerRating(p) >= minRating)
       .sort((a,b) => getPlayerRating(b) - getPlayerRating(a))
       .slice(0, 15); // Show top 15 results
-  }, [players, searchQuery, filterNationality, filterRole, minRating, userTeamId]);
+  }, [players, searchQuery, filterNationality, filterRole, minRating, userTeamId, currentSeason]);
 
   const bestScoutingPlayers = useMemo(() => Object.values(players)
-    .filter((player): player is Player => !!player)
+    .filter((player): player is Player => !!player && (player.careerState?.generatedSeason ?? currentSeason) <= currentSeason)
     .sort((a, b) => {
       const abilityDifference = getPlayerRating(b) - getPlayerRating(a);
       if (abilityDifference !== 0) return abilityDifference;
       const potentialDifference = Math.max(b.potentialBatting, b.potentialBowling) - Math.max(a.potentialBatting, a.potentialBowling);
       return potentialDifference || a.name.localeCompare(b.name);
-    }), [players]);
+    }), [players, currentSeason]);
 
   useEffect(() => {
     const list = scoutingOverviewListRef.current;
@@ -5868,11 +5873,13 @@ This record has been officially verified and added to the IPL Minor Records arch
                           const remainingFixtures = firstUnplayedIndex < 0
                             ? 0
                             : userFixtures.length - firstUnplayedIndex;
-                          const startIndex = firstUnplayedIndex <= 0
-                            ? 0
-                            : remainingFixtures <= 5
-                              ? Math.max(0, userFixtures.length - 5)
-                              : Math.max(0, firstUnplayedIndex - 1);
+                          const startIndex = firstUnplayedIndex < 0
+                            ? Math.max(0, userFixtures.length - 5)
+                            : firstUnplayedIndex === 0
+                              ? 0
+                              : remainingFixtures <= 5
+                                ? Math.max(0, userFixtures.length - 5)
+                                : Math.max(0, firstUnplayedIndex - 1);
                           const nextFixtureId = firstUnplayedIndex >= 0
                             ? userFixtures[firstUnplayedIndex]?.id
                             : undefined;
@@ -7389,6 +7396,12 @@ This record has been officially verified and added to the IPL Minor Records arch
                   onExecuteTrade={executeTrade}
                 />
               )}
+              {activeSubTab === "assignments" && (
+                <ScoutingAssignmentsPage
+                  shortlist={shortlist}
+                  onToggleShortlist={toggleShortlist}
+                />
+              )}
               {/* Scouting Overview tab */}
               {activeSubTab === "overview" && (
                 <div className="grid grid-cols-2 gap-6 h-[calc(100vh-200px)] min-h-[500px] overflow-hidden">
@@ -7466,8 +7479,17 @@ This record has been officially verified and added to the IPL Minor Records arch
                     </div>
                   </div>
 
-                  {/* Auction planner */}
-                  <div onClick={() => setActiveSubTab("planner")} className="flex min-h-0 cursor-pointer flex-col justify-between overflow-hidden rounded-lg border-2 border-border bg-surface p-5 transition-colors hover:border-accent">
+                  <div className="grid min-h-0 grid-rows-2 gap-6">
+                    <div onClick={() => setActiveSubTab("assignments")} className="flex min-h-0 cursor-pointer flex-col justify-between overflow-hidden rounded-lg border-2 border-border bg-surface p-5 transition-colors hover:border-accent">
+                      <div>
+                        <h4 className="mb-4 border-b border-[#16130f]/10 pb-2 font-anton text-[14px] uppercase">SCOUTING ASSIGNMENTS</h4>
+                        <p className="max-w-md text-xs leading-relaxed text-text-secondary">Scout India state by state or search international cricket markets. Build networks and identify players for the next auction.</p>
+                      </div>
+                      <div className="mt-4 flex items-center justify-between font-space-mono text-[9px] font-bold uppercase text-accent"><span>Open interactive maps</span><span>→</span></div>
+                    </div>
+
+                    {/* Auction planner */}
+                    <div onClick={() => setActiveSubTab("planner")} className="flex min-h-0 cursor-pointer flex-col justify-between overflow-hidden rounded-lg border-2 border-border bg-surface p-5 transition-colors hover:border-accent">
                     <div>
                       <h4 className="font-anton text-[14px] uppercase border-b border-[#16130f]/10 pb-2 mb-4">AUCTION PLANNER</h4>
                       <div className="space-y-2 text-xs font-space-mono text-text-secondary">
@@ -7476,6 +7498,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                       </div>
                     </div>
                   </div>
+                </div>
                 </div>
               )}
 

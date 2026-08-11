@@ -2211,6 +2211,10 @@ function createGeneratedPlayer(input: {
   forceYoung?: boolean;
   targetCurrentRange?: readonly [number, number];
   minimumPotential?: number;
+  forcedNationality?: Player["nationality"];
+  forcedCountry?: string;
+  forcedName?: string;
+  preferredRole?: AuctionRoleGroup;
 }): Player {
   const random = seededRandom(`${input.seed}:${input.season}:regen:${input.index}`);
   const currentIndianShare = Object.values(input.players).filter((player) => player.nationality === "Indian").length
@@ -2255,7 +2259,7 @@ function createGeneratedPlayer(input: {
   if (input.minimumPotential !== undefined) {
     ratings.potential = Math.max(ratings.current, ratings.potential, input.minimumPotential);
   }
-  const roleGroup = chooseRole(input.players, random);
+  const roleGroup = input.preferredRole ?? chooseRole(input.players, random);
   const role = roleForGeneratedPlayer(roleGroup);
   let skills = generatedSkills(
     roleGroup,
@@ -2285,7 +2289,8 @@ function createGeneratedPlayer(input: {
     currentAbility: generatedAbility,
     potential: Math.max(skills.potentialBatting, skills.potentialBowling),
   });
-  const nationality: Player["nationality"] = random() < indianProbability ? "Indian" : "Overseas";
+  const nationality: Player["nationality"] = input.forcedNationality
+    ?? (random() < indianProbability ? "Indian" : "Overseas");
   const indianSquadPlayer = nationality === "Indian"
     && !exceptionalTeenProdigy
     && !ultraPotential
@@ -2337,13 +2342,16 @@ function createGeneratedPlayer(input: {
     random,
     seededRandom(`${input.seed}:${input.season}:regen:${input.index}:defensive-profile`),
   );
-  const country = nationality === "Indian" ? "India" : chooseOverseasCountry(input.players, generatedAbility, random);
+  const country = input.forcedCountry
+    ?? (nationality === "Indian" ? "India" : chooseOverseasCountry(input.players, generatedAbility, random));
   const isCapped = generatedAbility >= 86 || (mature && (ratings.current >= 82 || nationality === "Overseas"));
   const serial = String(input.index + 1).padStart(3, "0");
   const id = `regen-${input.season}-${serial}-${hashSeed(`${input.seed}:${serial}`).toString(36)}`;
   // Use a separate seed so changing the name list never changes player
   // ratings, role, country selection, or any other simulation outcome.
-  const name = `${generateRegenName(country, seededRandom(`${input.seed}:${input.season}:regen:${input.index}:name`))} (R)`;
+  const generatedName = input.forcedName
+    ?? generateRegenName(country, seededRandom(`${input.seed}:${input.season}:regen:${input.index}:name`));
+  const name = `${generatedName} (R)`;
   const player: Player = {
     id,
     name,
@@ -2388,6 +2396,41 @@ function createGeneratedPlayer(input: {
     lastAgedSeason: input.season,
   };
   return enforceBattingPositionEligibility(player);
+}
+
+/**
+ * Materialise one member of a future auction intake for a completed scouting
+ * assignment. The normal retention-pool preparation recognises the generated
+ * season and subtracts this player from the intake it would otherwise create,
+ * so scouting reveals talent without creating a second, inflationary pool.
+ */
+export function createScoutingGeneratedPlayer(input: {
+  index: number;
+  season: number;
+  seed: string;
+  players: Record<string, Player>;
+  nationality: Player["nationality"];
+  country: string;
+  forcedName?: string;
+  preferredRole?: AuctionRoleGroup;
+  targetCurrentRange?: readonly [number, number];
+  minimumPotential?: number;
+  forceYoung?: boolean;
+}): Player {
+  return createGeneratedPlayer({
+    index: input.index,
+    season: input.season,
+    seed: `${input.seed}:scouting-intake`,
+    players: input.players,
+    forceStrong: false,
+    forceYoung: input.forceYoung,
+    targetCurrentRange: input.targetCurrentRange,
+    minimumPotential: input.minimumPotential,
+    forcedNationality: input.nationality,
+    forcedCountry: input.country,
+    forcedName: input.forcedName,
+    preferredRole: input.preferredRole,
+  });
 }
 
 function generatedRating(player: Player): number {

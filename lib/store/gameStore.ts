@@ -156,6 +156,16 @@ import {
   type HistoricalPlayerSnapshot,
 } from "@/lib/logic/careerLifecycle";
 import {
+  createScoutingAssignment,
+  getScoutingRegion,
+  reconcileCompletedScoutingAssignments,
+  type ScoutingAssignment,
+  type ScoutingAssignmentKind,
+  type ScoutingMarket,
+  type ScoutingNetwork,
+  type ScoutingReport,
+} from "@/lib/logic/scoutingAssignments";
+import {
   MINI_AUCTION_PURSE_LAKHS,
   calculateMiniAuctionKeptSalary,
   enforceMiniAuctionRetentionLimits,
@@ -260,6 +270,9 @@ interface GameStateAdditions {
   lastCareerRetirements: CareerRetirementRecord[];
   careerRetirementHistory: CareerRetirementRecord[];
   lastCareerGeneratedPlayerIds: string[];
+  scoutingAssignments: ScoutingAssignment[];
+  scoutingReports: ScoutingReport[];
+  scoutingNetworks: Record<string, ScoutingNetwork>;
 }
 
 interface GameActions {
@@ -381,6 +394,13 @@ interface GameActions {
     validateOnly?: boolean;
   }) => boolean;
   processAITrades: (input: { date: string; finalDate?: string; standingsTeamIds: string[] }) => TradeRecord[];
+  startScoutingAssignment: (input: {
+    market: ScoutingMarket;
+    regionId: string;
+    kind: ScoutingAssignmentKind;
+  }) => { ok: boolean; message: string };
+  cancelScoutingAssignment: (assignmentId: string) => { ok: boolean; message: string };
+  reconcileScoutingAssignments: (date?: string) => number;
 }
 
 // ---------------------------------------------------------------------------
@@ -1090,6 +1110,9 @@ export const useGameStore = create<Store>()(
       lastCareerRetirements: [],
       careerRetirementHistory: [],
       lastCareerGeneratedPlayerIds: [],
+      scoutingAssignments: [],
+      scoutingReports: [],
+      scoutingNetworks: {},
 
       // ----- Actions -----
       initNewGame: async (userTeamId) => {
@@ -1257,6 +1280,9 @@ export const useGameStore = create<Store>()(
           lastCareerRetirements: preparedPool.retirements,
           careerRetirementHistory: preparedPool.retirements,
           lastCareerGeneratedPlayerIds: preparedPool.generatedPlayers.map((player) => player.id),
+          scoutingAssignments: [],
+          scoutingReports: [],
+          scoutingNetworks: {},
           auction: {
             type: openingAuctionType,
             season: INITIAL_ACTIVE_SEASON,
@@ -3624,6 +3650,80 @@ export const useGameStore = create<Store>()(
         return applied;
       },
 
+      startScoutingAssignment: (input) => {
+        const state = get();
+        const result = createScoutingAssignment({
+          ...input,
+          currentDate: state.currentDate,
+          currentSeason: state.currentSeason,
+          saveSeed: state.saveId || state.fixtureSeed,
+          assignments: state.scoutingAssignments,
+        });
+        if (!result.assignment) return { ok: false, message: result.message };
+        set({ scoutingAssignments: [...state.scoutingAssignments, result.assignment] });
+        return { ok: true, message: result.message };
+      },
+
+      cancelScoutingAssignment: (assignmentId) => {
+        let result = { ok: false, message: "That scouting assignment is no longer active." };
+        set((state) => {
+          const assignment = state.scoutingAssignments.find((candidate) => candidate.id === assignmentId);
+          if (!assignment || assignment.status !== "active") return state;
+
+          // Active assignments normally have no output until their completion
+          // date. Remove linked output defensively as well so cancellation is a
+          // complete rollback if a partially migrated save contains any.
+          const removedReports = state.scoutingReports.filter((report) => report.assignmentId === assignmentId);
+          const remainingReports = state.scoutingReports.filter((report) => report.assignmentId !== assignmentId);
+          const remainingReferencedPlayerIds = new Set(remainingReports.map((report) => report.playerId));
+          const generatedPlayerIdsToRemove = new Set(removedReports
+            .filter((report) => report.isNewDiscovery && !remainingReferencedPlayerIds.has(report.playerId))
+            .map((report) => report.playerId));
+          const players = { ...state.players };
+          generatedPlayerIdsToRemove.forEach((playerId) => {
+            const player = players[playerId];
+            if (
+              player?.currentTeamId === null
+              && player.careerState?.origin === "generated"
+              && player.careerState.generatedSeason === assignment.scheduledAuctionSeason
+            ) delete players[playerId];
+          });
+
+          const regionName = getScoutingRegion(assignment.regionId)?.name ?? "the selected region";
+          result = { ok: true, message: `Scouting assignment in ${regionName} cancelled. Scout slot ${assignment.slot} is available.` };
+          return {
+            players,
+            scoutingAssignments: state.scoutingAssignments.filter((candidate) => candidate.id !== assignmentId),
+            scoutingReports: remainingReports,
+          };
+        });
+        return result;
+      },
+
+      reconcileScoutingAssignments: (date) => {
+        let completedCount = 0;
+        set((state) => {
+          const result = reconcileCompletedScoutingAssignments({
+            currentDate: date ?? state.currentDate,
+            currentSeason: state.currentSeason,
+            saveSeed: state.saveId || state.fixtureSeed,
+            players: state.players,
+            assignments: state.scoutingAssignments,
+            reports: state.scoutingReports,
+            networks: state.scoutingNetworks,
+          });
+          completedCount = result.completedCount;
+          if (completedCount === 0) return state;
+          return {
+            players: result.players,
+            scoutingAssignments: result.assignments,
+            scoutingReports: result.reports,
+            scoutingNetworks: result.networks,
+          };
+        });
+        return completedCount;
+      },
+
       beginNextSeasonRetention: (captainIdsByTeam, requestedAuctionType) => {
         let advanced = false;
         set((state) => {
@@ -4509,6 +4609,9 @@ export const useGameStore = create<Store>()(
           lastCareerRetirements: [],
           careerRetirementHistory: [],
           lastCareerGeneratedPlayerIds: [],
+          scoutingAssignments: [],
+          scoutingReports: [],
+          scoutingNetworks: {},
         });
       },
     }),
@@ -4561,6 +4664,9 @@ export const useGameStore = create<Store>()(
         lastCareerAuctionProcessedSeason: state.lastCareerAuctionProcessedSeason,
         pendingRetirementIntake: state.pendingRetirementIntake,
         careerRetirementHistory: state.careerRetirementHistory,
+        scoutingAssignments: state.scoutingAssignments,
+        scoutingReports: state.scoutingReports,
+        scoutingNetworks: state.scoutingNetworks,
       }),
       merge: (persisted, current) => {
         const p = persisted as Partial<Store>;
@@ -4743,6 +4849,9 @@ export const useGameStore = create<Store>()(
           lastCareerRetirements: [],
           careerRetirementHistory: p.careerRetirementHistory ?? p.lastCareerRetirements ?? [],
           lastCareerGeneratedPlayerIds: [],
+          scoutingAssignments: p.scoutingAssignments ?? [],
+          scoutingReports: p.scoutingReports ?? [],
+          scoutingNetworks: p.scoutingNetworks ?? {},
           homePitchSelections: normalizeHomePitchSelections(
             p.homePitchSelections,
             getAdditionalHomePitchIds(customPitchesByTeam),
