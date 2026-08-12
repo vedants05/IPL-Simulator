@@ -58,6 +58,7 @@ import {
 import { getClubSeasonHistory, LAST_HISTORICAL_CLUB_SEASON } from "@/lib/data/clubHistory";
 import { getAuctionTypeForSeason } from "@/lib/logic/auctionCycle";
 import { getClubFigures, type ClubFigureTier } from "@/lib/data/clubFigures";
+import { selectTeamOfSeason } from "@/lib/logic/teamOfSeason";
 import { HISTORICAL_LEAGUE_HISTORY, LEAGUE_HISTORY_TEAMS } from "@/lib/data/leagueHistory";
 import { OTHER_LEAGUE_RECORDS } from "@/lib/data/leagueRecords";
 import { computeDynamicLeagueRecords } from "@/lib/logic/leagueRecordTracker";
@@ -65,6 +66,7 @@ import { appendRainAffectedResultLabel, isRainAffectedMatch } from "@/lib/logic/
 import type { IplCareerMatchUpdate } from "@/lib/logic/iplCareerStats";
 import type { CareerReputationAchievements } from "@/lib/logic/careerLifecycle";
 import { formatStatValue } from "@/lib/logic/statFormatting";
+import { getBestPlayerScoutingReport, getPlayerScoutingConfidence } from "@/lib/logic/scoutingAssignments";
 import {
   createPlayerInjury,
   getInjuryReturnLabel,
@@ -317,6 +319,7 @@ function buildCareerReputationAchievements(
   fixtures: Match[],
   stats: Record<string, PlayerStats>,
   awards: ReturnType<typeof calculateSeasonAwardLeaders>,
+  players: Record<string, Player>,
 ): CareerReputationAchievements {
   const final = fixtures.find((fixture) => fixture.stage === "final" && fixture.played && fixture.winner);
   const winningLineup = final?.winner ? final.simulation?.lineups[final.winner] : undefined;
@@ -350,6 +353,8 @@ function buildCareerReputationAchievements(
     purpleCapPlayerId: purpleCap?.id ?? null,
     championCaptainId: winningLineup?.captainId ?? null,
     championFinalPlayerIds: Array.from(finalPlayerIds),
+    championTeamId: final?.winner ?? null,
+    teamOfSeasonPlayerIds: selectTeamOfSeason(players, seasonStats).map((selection) => selection.player.id),
     playerOfMatchCounts,
     playoffPlayerOfMatchCounts,
   };
@@ -681,6 +686,7 @@ function OverviewPageContent() {
     fixtureSeed,
     auction,
     clubFigureTierOverrides,
+    clubFigureProgression,
     simulatedLeagueHistory,
     careerSeasonArchives,
     homePitchSelections,
@@ -721,6 +727,7 @@ function OverviewPageContent() {
     processAIInjuryReplacements,
     executeTrade,
     processAITrades,
+    scoutingReports,
     reconcileScoutingAssignments,
   } = useGameStore();
   const matchArchiveCareerId = `${userTeamId}:${currentSeason}:${fixtureSeed}`;
@@ -1694,7 +1701,7 @@ function OverviewPageContent() {
       fixtures: fixturesForCareerHistory(fixtures),
       standings,
       playerStats,
-      reputationAchievements: buildCareerReputationAchievements(fixtures, playerStats, seasonAwards),
+      reputationAchievements: buildCareerReputationAchievements(fixtures, playerStats, seasonAwards, players),
       leagueRecords: computeDynamicLeagueRecords(
         fixtures as any[],
         players,
@@ -3742,7 +3749,7 @@ This record has been officially verified and added to the IPL Minor Records arch
       fixtures: fixturesForCareerHistory(fixturesRef.current),
       standings,
       playerStats: statsRecord,
-      reputationAchievements: buildCareerReputationAchievements(fixturesRef.current, statsRecord, seasonAwards),
+      reputationAchievements: buildCareerReputationAchievements(fixturesRef.current, statsRecord, seasonAwards, players),
       leagueRecords: computeDynamicLeagueRecords(
         fixturesRef.current as any[],
         players,
@@ -5162,7 +5169,7 @@ This record has been officially verified and added to the IPL Minor Records arch
   const clubTitles = clubSeasonHistory.filter((season) => season.outcome === "Champions");
   const clubRunnerUpFinishes = clubSeasonHistory.filter((season) => season.outcome === "Runners-up");
   const clubSeasonsPlayed = clubSeasonHistory.filter((season) => season.outcome !== "Did not participate").length;
-  const clubFigures = getClubFigures(userTeamId, players, clubFigureTierOverrides);
+  const clubFigures = getClubFigures(userTeamId, players, clubFigureTierOverrides, clubFigureProgression);
   const clubFigureSections: Array<{ tier: ClubFigureTier; title: string; description: string }> = [
     { tier: "legend", title: "Legends", description: "The defining names in club history" },
     { tier: "icon", title: "Icons", description: "Major figures closely associated with the club" },
@@ -6009,6 +6016,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                   currentSeason={currentSeason}
                   fixtures={fixtures}
                   currentDate={currentDate}
+                  clubFigureProgression={clubFigureProgression}
                   onViewAllFixtures={() => {
                     setActiveTab("season");
                     _setActiveSubTab("fixtures");
@@ -7634,19 +7642,46 @@ This record has been officially verified and added to the IPL Minor Records arch
                       {shortlist.length === 0 ? (
                         <div className="text-xs font-barlow text-text-secondary p-4 text-center">Shortlist is empty. Add players from player search.</div>
                       ) : (
-                        shortlist.map(id => players[id]).filter(Boolean).map(p => (
+                        shortlist.map(id => players[id]).filter(Boolean).map(p => {
+                          const scoutingConfidence = getPlayerScoutingConfidence(scoutingReports, p.id);
+                          const isFullyScouted = scoutingConfidence >= 100;
+                          const scoutingReport = getBestPlayerScoutingReport(scoutingReports, p.id);
+                          return (
                           <div key={p.id} className="py-2 flex items-center justify-between text-xs">
-                            <div>
-                              <div className="font-bold text-text-primary">{p.name}</div>
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                {isFullyScouted ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => setDetailedPlayerId(p.id)}
+                                    className="text-left font-bold text-text-primary underline-offset-2 transition-colors hover:text-accent hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
+                                    aria-label={`Open ${p.name}'s player profile`}
+                                  >
+                                    {p.name}
+                                  </button>
+                                ) : (
+                                  <span className="font-bold text-text-primary">{p.name}</span>
+                                )}
+                                {!isFullyScouted && (
+                                  <span className="font-space-mono text-[8px] font-bold uppercase text-warning">
+                                    Player not fully scouted{scoutingConfidence > 0 ? ` (${scoutingConfidence}%)` : ""}
+                                  </span>
+                                )}
+                              </div>
                               <div className="font-space-mono text-[9px] text-text-secondary mt-0.5">
-                                RTG: {getPlayerRating(p)} · {p.role.toUpperCase()}
+                                RTG: {isFullyScouted
+                                  ? getPlayerRating(p)
+                                  : scoutingReport
+                                    ? `${scoutingReport.currentAbilityRange[0]}–${scoutingReport.currentAbilityRange[1]}`
+                                    : "Unknown"} · {p.role.toUpperCase()}
                               </div>
                             </div>
                             <button onClick={() => toggleShortlist(p.id)} className="text-danger font-space-mono text-[9px] font-bold border border-danger/20 rounded px-2.5 py-1 hover:bg-danger/5">
                               Remove
                             </button>
                           </div>
-                        ))
+                          );
+                        })
                       )}
                     </div>
                   </div>
@@ -8395,6 +8430,11 @@ This record has been officially verified and added to the IPL Minor Records arch
                                       ? `Current Club: ${teams[figure.currentTeamId]?.shortName ?? figure.currentTeamId}`
                                       : "Free Agent"}
                                 </span>
+                                {figure.clubSeasons != null && (
+                                  <span className="mt-1 block font-space-mono text-[8px] font-bold uppercase tracking-wider text-text-secondary">
+                                    {figure.legacyPoints} points · {figure.clubSeasons} club {figure.clubSeasons === 1 ? "season" : "seasons"}
+                                  </span>
+                                )}
                               </span>
                               {figure.isLinked && <ChevronRight size={14} className="shrink-0 text-text-secondary" />}
                             </button>

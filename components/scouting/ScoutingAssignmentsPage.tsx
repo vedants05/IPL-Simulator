@@ -40,7 +40,7 @@ const INDIA_LOCATION_TO_REGION: Record<string, string> = {
 const WORLD_LOCATION_TO_REGION: Record<string, string> = {
   ae: "united-arab-emirates", af: "afghanistan", au: "australia", bd: "bangladesh",
   gb: "england", ie: "ireland", lk: "sri-lanka", na: "namibia", nl: "netherlands",
-  np: "nepal", nz: "new-zealand", pk: "pakistan", us: "united-states", za: "south-africa",
+  np: "nepal", nz: "new-zealand", us: "united-states", za: "south-africa",
   zw: "zimbabwe",
   // West Indies is a cricketing region rather than one sovereign country.
   ag: "west-indies", bb: "west-indies", dm: "west-indies", gd: "west-indies",
@@ -209,6 +209,7 @@ export default function ScoutingAssignmentsPage({ shortlist, onToggleShortlist }
     scoutingNetworks,
     startScoutingAssignment,
     cancelScoutingAssignment,
+    startDeepScoutingAssignment,
     reconcileScoutingAssignments,
   } = useGameStore();
   const [market, setMarket] = useState<ScoutingMarket>("india");
@@ -219,7 +220,7 @@ export default function ScoutingAssignmentsPage({ shortlist, onToggleShortlist }
 
   useEffect(() => {
     const completed = reconcileScoutingAssignments(currentDate);
-    if (completed > 0) setNotice(`${completed} scouting assignment${completed === 1 ? "" : "s"} completed. New reports are ready.`);
+    if (completed > 0) setNotice(`${completed} scouting assignment${completed === 1 ? "" : "s"} completed. Reports have been updated.`);
   }, [currentDate, reconcileScoutingAssignments]);
 
   const selectedId = market === "india" ? selectedIndia : selectedInternational;
@@ -241,6 +242,10 @@ export default function ScoutingAssignmentsPage({ shortlist, onToggleShortlist }
   const cancelAssignment = (assignmentId: string, regionName: string) => {
     if (!window.confirm(`Cancel the active scouting assignment in ${regionName}? All progress will be lost.`)) return;
     const result = cancelScoutingAssignment(assignmentId);
+    setNotice(result.message);
+  };
+  const scoutPlayerInMoreDepth = (reportId: string) => {
+    const result = startDeepScoutingAssignment(reportId);
     setNotice(result.message);
   };
   const hoveredName = hoveredRegion ? getScoutingRegion(hoveredRegion)?.name : undefined;
@@ -319,15 +324,20 @@ export default function ScoutingAssignmentsPage({ shortlist, onToggleShortlist }
               const assignment = active.find((candidate) => candidate.slot === slot);
               const region = assignment ? getScoutingRegion(assignment.regionId) : undefined;
               const option = assignment ? SCOUTING_ASSIGNMENT_OPTIONS.find((candidate) => candidate.kind === assignment.kind) : undefined;
-              return assignment && region && option ? (
+              const targetReport = assignment?.targetReportId
+                ? scoutingReports.find((report) => report.id === assignment.targetReportId)
+                : undefined;
+              const targetPlayer = targetReport ? players[targetReport.playerId] : undefined;
+              const assignmentLabel = assignment?.kind === "deep-scout" ? "In-depth player scout" : option?.label;
+              return assignment && region && assignmentLabel ? (
                 <div key={slot} className="rounded border border-border p-4">
                   <div className="flex items-center justify-between"><span className="font-space-mono text-[8px] font-bold uppercase text-accent">Scout slot {slot}</span><Clock3 size={13} className="text-text-secondary" /></div>
-                  <div className="mt-2 font-anton text-[16px] uppercase text-text-primary">{region.name}</div>
-                  <div className="mt-1 font-space-mono text-[8px] font-bold uppercase text-text-secondary">{option.label}</div>
+                  <div className="mt-2 font-anton text-[16px] uppercase text-text-primary">{targetPlayer?.name ?? region.name}</div>
+                  <div className="mt-1 font-space-mono text-[8px] font-bold uppercase text-text-secondary">{assignmentLabel}</div>
                   <div className="mt-4 flex items-center justify-between border-t border-[#16130f]/10 pt-3 font-space-mono text-[8px] font-bold uppercase"><span className="text-text-secondary">Report due</span><span className="text-text-primary">{assignment.completesOn}</span></div>
                   <button
                     type="button"
-                    onClick={() => cancelAssignment(assignment.id, region.name)}
+                    onClick={() => cancelAssignment(assignment.id, targetPlayer?.name ?? region.name)}
                     className="mt-3 flex w-full items-center justify-center gap-1.5 rounded border border-danger/35 px-2.5 py-2 font-space-mono text-[8px] font-bold uppercase text-danger transition-colors hover:bg-danger/10"
                   >
                     <X size={11} /> Cancel assignment
@@ -353,6 +363,8 @@ export default function ScoutingAssignmentsPage({ shortlist, onToggleShortlist }
               const region = getScoutingRegion(report.regionId);
               if (!player || !region) return null;
               const isShortlisted = shortlist.includes(player.id);
+              const deepScoutActive = active.some((assignment) => assignment.targetReportId === report.id);
+              const noScoutSlotAvailable = active.length >= MAX_ACTIVE_SCOUTING_ASSIGNMENTS;
               return (
                 <article key={report.id} className="rounded border border-border p-4 transition-colors hover:border-accent/60">
                   <div className="flex items-start justify-between gap-4">
@@ -362,15 +374,25 @@ export default function ScoutingAssignmentsPage({ shortlist, onToggleShortlist }
                     </div>
                     <div className="shrink-0 text-right"><div className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Confidence</div><div className="font-anton text-[17px] text-text-primary">{report.confidence}%</div></div>
                   </div>
-                  <div className="mt-4 grid grid-cols-3 gap-2">
+                  <div className="mt-4 grid grid-cols-2 gap-2">
                     <div className="rounded bg-[#16130f]/5 p-2"><div className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Current ability</div><div className="mt-1 font-anton text-[16px] text-text-primary">{report.currentAbilityRange[0]}–{report.currentAbilityRange[1]}</div></div>
                     <div className="rounded bg-[#16130f]/5 p-2"><div className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Potential</div><div className="mt-1 font-anton text-[16px] text-text-primary">{report.potentialRange[0]}–{report.potentialRange[1]}</div></div>
-                    <div className="rounded bg-[#16130f]/5 p-2"><div className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Auction</div><div className="mt-1 font-anton text-[16px] text-text-primary">{report.scheduledAuctionSeason}</div></div>
                   </div>
                   <p className="mt-3 text-[11px] leading-relaxed text-text-secondary">{report.summary}</p>
-                  <button type="button" onClick={() => onToggleShortlist(player.id)} className={`mt-3 flex w-full items-center justify-center gap-2 rounded border px-3 py-2 font-space-mono text-[8px] font-bold uppercase transition-colors ${isShortlisted ? "border-[var(--ink)] bg-[var(--ink)] text-bg" : "border-border text-text-primary hover:border-accent hover:bg-accent/5"}`}>
-                    {isShortlisted ? <Check size={12} /> : <UserPlus size={12} />} {isShortlisted ? "On auction shortlist" : "Add to auction shortlist"}
-                  </button>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    <button type="button" onClick={() => onToggleShortlist(player.id)} className={`flex min-h-9 items-center justify-center gap-2 rounded border px-3 py-2 font-space-mono text-[8px] font-bold uppercase transition-colors ${isShortlisted ? "border-[var(--ink)] bg-[var(--ink)] text-bg" : "border-border text-text-primary hover:border-accent hover:bg-accent/5"}`}>
+                      {isShortlisted ? <Check size={12} /> : <UserPlus size={12} />} {isShortlisted ? "On auction shortlist" : "Add to auction shortlist"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={report.confidence >= 100 || deepScoutActive || noScoutSlotAvailable}
+                      onClick={() => scoutPlayerInMoreDepth(report.id)}
+                      className="flex min-h-9 items-center justify-center gap-2 rounded border border-accent px-3 py-2 font-space-mono text-[8px] font-bold uppercase text-accent transition-colors hover:bg-accent/10 disabled:cursor-default disabled:border-border disabled:text-text-secondary disabled:opacity-60"
+                    >
+                      {report.confidence >= 100 ? <Check size={12} /> : deepScoutActive ? <Clock3 size={12} /> : <Search size={12} />}
+                      {report.confidence >= 100 ? "Fully scouted" : deepScoutActive ? "Scouting in progress" : noScoutSlotAvailable ? "No scout slot available" : "Scout in more depth · 14 days"}
+                    </button>
+                  </div>
                 </article>
               );
             })}

@@ -3,6 +3,10 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { Activity, ChevronDown, Gauge, Pause, Play, Shield, SkipForward, Target, UserPlus, Users, X, Zap } from "lucide-react";
 import {
+  chooseSituationalField,
+  createWeatherScenario,
+  ensurePlayableFieldIsLegal,
+  getAutomaticPlayableFieldPositions,
   getPlayableBowlingOptions,
   simulatePlayableMatch,
   type MatchDelivery,
@@ -343,6 +347,9 @@ export default function PlayableMatchEngine({ input, userTeamId, session, onSess
     const plans = teamId === input.teamA.id ? input.teamAPlans : input.teamBPlans;
     return teamId === progress.battingFirstTeamId ? plans.battingFirst : plans.bowlingFirst;
   };
+  const tacticsFor = (teamId: string) => (
+    teamId === input.teamA.id ? input.teamAPlans.tactics : input.teamBPlans.tactics
+  );
   const battingPlan = planFor(battingTeamId);
   const bowlingPlanLineup = planFor(bowlingTeamId);
   const impactChoice = session.decisions.impactByTeam?.[userTeamId];
@@ -492,10 +499,35 @@ export default function PlayableMatchEngine({ input, userTeamId, session, onSess
   const automaticBatterLabel = automaticBatterId
     ? input.players[automaticBatterId]?.name ?? "Smart selection"
     : "Smart selection";
-  const isPowerplay = (currentInnings?.legalBalls ?? 0) < 36;
+  const weatherScenario = useMemo(() => input.weatherScenario ?? createWeatherScenario(
+    input.seed,
+    input.conditions.stadiumId,
+    input.date,
+    input.time,
+  ), [input.conditions.stadiumId, input.date, input.seed, input.time, input.weatherScenario]);
+  const inningsMaxOvers = inningsNumber === 1
+    ? weatherScenario.firstInningsOvers
+    : weatherScenario.secondInningsOvers;
+  const powerplayOvers = Math.max(2, Math.round(inningsMaxOvers * 0.3));
+  const currentOverNumber = nextDelivery?.overNumber ?? lastDelivery?.overNumber ?? 1;
+  const isPowerplay = currentOverNumber <= powerplayOvers;
   const maxOutside = isPowerplay ? 2 : 5;
-  const outsideCount = fieldPositions.filter(isOutsideThirtyYardCircle).length;
-  const legBehind = fieldPositions.filter(isLegSideBehindSquare).length;
+  const aiFieldSetting = chooseSituationalField(
+    tacticsFor(bowlingTeamId).bowling.field,
+    currentOverNumber,
+    currentInnings?.wickets ?? 0,
+    currentInnings?.runs ?? 0,
+    currentInnings?.target,
+    inningsMaxOvers,
+  );
+  const automaticFieldPositions = useMemo(() => getAutomaticPlayableFieldPositions(
+    aiFieldSetting,
+    currentOverNumber,
+    inningsMaxOvers,
+  ), [aiFieldSetting, currentOverNumber, inningsMaxOvers]);
+  const activeFieldPositions = userIsBatting ? automaticFieldPositions : fieldPositions;
+  const outsideCount = activeFieldPositions.filter(isOutsideThirtyYardCircle).length;
+  const legBehind = activeFieldPositions.filter(isLegSideBehindSquare).length;
   const fieldIsIllegal = activeRole === "bowling" && (outsideCount > maxOutside || legBehind > 2);
   const renderedLhb = striker?.battingStyle === "Left-hand";
   const target = currentInnings?.target;
@@ -558,7 +590,12 @@ export default function PlayableMatchEngine({ input, userTeamId, session, onSess
       ? {
         battingApproach: batterApproaches[candidate.strikerId] ?? battingApproach,
         shotZone: batterShotZones[candidate.strikerId] ?? "all-ground",
-        fieldPositions: fieldPositions.map((position) => ({ ...position })),
+        fieldPositions: ensurePlayableFieldIsLegal(
+          automaticFieldPositions,
+          aiFieldSetting,
+          candidate.overNumber,
+          inningsMaxOvers,
+        ),
       }
       : { fieldPlan, bowlingPlan, fieldPositions: fieldPositions.map((position) => ({ ...position })) };
     return decisions;
@@ -603,7 +640,12 @@ export default function PlayableMatchEngine({ input, userTeamId, session, onSess
         ? {
           battingApproach: batterApproaches[candidate.strikerId] ?? battingApproach,
           shotZone: batterShotZones[candidate.strikerId] ?? "all-ground",
-          fieldPositions: fieldPositions.map((position) => ({ ...position })),
+          fieldPositions: ensurePlayableFieldIsLegal(
+            getAutomaticPlayableFieldPositions(aiFieldSetting, candidate.overNumber, inningsMaxOvers),
+            aiFieldSetting,
+            candidate.overNumber,
+            inningsMaxOvers,
+          ),
         }
         : { fieldPlan, bowlingPlan, fieldPositions: fieldPositions.map((position) => ({ ...position })) };
       revealedDeliveries += 1;
@@ -723,7 +765,7 @@ export default function PlayableMatchEngine({ input, userTeamId, session, onSess
     }
     const designatedCatchFielderIdx = caughtFielderIdx >= 0 ? caughtFielderIdx : droppedCatchFielderIdx;
     if (designatedCatchFielderIdx >= 0) {
-      const designatedPosition = fieldPositions[designatedCatchFielderIdx];
+      const designatedPosition = activeFieldPositions[designatedCatchFielderIdx];
       if (designatedPosition) {
         const designatedCatchPoint = clampInsideBoundary(
           deliveryIsLeftHanded ? 100 - designatedPosition.x : designatedPosition.x,
@@ -749,13 +791,13 @@ export default function PlayableMatchEngine({ input, userTeamId, session, onSess
     ));
 
     if (fielderCollects && !droppedCatch && !wide && runningRuns >= 2 && runningRuns < 4) {
-      const deepFielders = fieldPositions
+      const deepFielders = activeFieldPositions
         .map((position, index) => ({
           index,
           x: deliveryIsLeftHanded ? 100 - position.x : position.x,
           y: position.y,
         }))
-        .filter(({ index }) => isOutsideThirtyYardCircle(fieldPositions[index]));
+        .filter(({ index }) => isOutsideThirtyYardCircle(activeFieldPositions[index]));
       const nearestDeep = deepFielders.reduce<{ index: number; x: number; y: number; distance: number } | null>((closest, candidate) => {
         const distance = Math.hypot(candidate.x - hitX, candidate.y - hitY);
         return !closest || distance < closest.distance ? { ...candidate, distance } : closest;
@@ -780,8 +822,8 @@ export default function PlayableMatchEngine({ input, userTeamId, session, onSess
 
     // Measure every rendered fielder after the LHB/RHB transform. Candidate
     // restrictions must never make a visibly farther player collect the ball.
-    const nearestFielderIdx = fielderCollects ? fieldPositions.map((_, index) => index).reduce((closest, index) => {
-      const position = fieldPositions[index];
+    const nearestFielderIdx = fielderCollects ? activeFieldPositions.map((_, index) => index).reduce((closest, index) => {
+      const position = activeFieldPositions[index];
       const renderedX = deliveryIsLeftHanded ? 100 - position.x : position.x;
       const visiblePosition = clampInsideBoundary(renderedX, position.y);
       const distance = Math.hypot(visiblePosition.x - hitX, visiblePosition.y - hitY);
@@ -1159,7 +1201,7 @@ export default function PlayableMatchEngine({ input, userTeamId, session, onSess
   const runOutRunnersActive = Boolean(activeShot && activeShot.delivery.wicket?.kind === "run-out" && ["shot", "fielded", "run-out-throw", "run-out-wicket"].includes(activeShot.phase));
   const runnersActive = Boolean(activeShot && ["shot", "bye", "leg-bye", "wide-running", "keeper-error-spill", "missed-stumping-spill", "dropped-catch", "catch-spill", "misfield-stop", "misfield-bobble", "missed-run-out-throw", "missed-run-out-miss", "missed-run-out-safe", "fielded", "throw"].includes(activeShot.phase));
   const inningsDeliveries = [...visible].reverse();
-  const occupiedFieldZones = new Set(fieldPositions.map((position) => position.label));
+  const occupiedFieldZones = new Set(activeFieldPositions.map((position) => position.label));
 
   return (
     <main className={styles.shell} style={{ "--bat": battingTeam.primaryColor, "--bat-secondary": battingTeam.secondaryColor, "--bowl": bowlingTeam.primaryColor, "--bowl-secondary": bowlingTeam.secondaryColor } as CSSProperties}>
@@ -1230,7 +1272,7 @@ export default function PlayableMatchEngine({ input, userTeamId, session, onSess
             <div className={`${styles.batterMarker} ${runOutRunnersActive?styles.runOutNonStriker:runnersActive&&activeShot?.batRuns?styles[`runnerNonStriker${activeShot.batRuns}`]:""}`} style={{left:"51.8%",top:"40.5%","--running-duration":`${(activeShot?.runningDuration??3050)/speed}ms`} as CSSProperties}><span style={{color:battingTeam.primaryColor}}>▲</span><b>{surname(nonStriker?.name)}</b></div>
             <div className={`${styles.batterMarker} ${runOutRunnersActive?styles.runOutStriker:runnersActive&&activeShot?.batRuns?styles[`runnerStriker${activeShot.batRuns}`]:""} ${hitWicketAnimation?styles.hitWicketBatter:""}`} style={{left:"50%",top:"59%","--running-duration":`${(activeShot?.runningDuration??3050)/speed}ms`,"--hit-wicket-shift":renderedLhb?"-5px":"5px"} as CSSProperties}><span style={{color:battingTeam.primaryColor}}>▲</span><b>{surname(striker?.name)} <small>{renderedLhb?"LHB":"RHB"}</small></b></div>
             <div className={`${styles.fielder} ${keeperReceiving?styles.receivingFielder:""} ${activeShot?.phase==="stumping"||activeShot?.phase==="missed-stumping-attempt"?styles.stumpingFielder:""} ${activeShot?.phase==="wide-collected"||activeShot?.phase==="no-ball-collected"?styles.wideKeeper:""} ${activeShot&&["wide-missed","wide-running","wide-boundary"].includes(activeShot.phase)?styles.missedWideKeeper:""} ${keepingErrorAnimation?styles.keepingErrorKeeper:""} ${missedRunOutAtStumps?styles.missedRunOutFielder:""} ${successfulRunOutAtStumps?styles.runOutFielder:""}`} style={{left:`${keeperX}%`,top:`${keeperY}%`,"--receiver-duration":`${stumpingAnimation||missedStumpingAnimation||keepingErrorAnimation||wideAnimation||noBallTakeAnimation?300/speed:missedRunOutAnimation||successfulRunOutAnimation?Math.max(180,(activeShot?.throwDuration??700)/speed):Math.max(250,(activeShot?.shotDuration??700)/speed)}ms`} as CSSProperties}><span>WK</span><b>KEEPER</b><small>{surname(keeper?.name)}</small></div>
-            {fieldPositions.map((position, index) => {
+            {activeFieldPositions.map((position, index) => {
               const gathering = Boolean(
                 activeShot
                 && activeShot.fielderCollects

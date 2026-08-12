@@ -6,7 +6,7 @@ import { createScoutingGeneratedPlayer } from "@/lib/logic/careerLifecycle";
 import { generateIndianStateRegenName } from "@/lib/data/indianStateRegenNames";
 
 export type ScoutingMarket = "india" | "international";
-export type ScoutingAssignmentKind = "regional-scan" | "full-assignment" | "intensive-search";
+export type ScoutingAssignmentKind = "regional-scan" | "full-assignment" | "intensive-search" | "deep-scout";
 
 export interface ScoutingRegion {
   id: string;
@@ -32,6 +32,7 @@ export interface ScoutingAssignment {
   status: "active" | "completed";
   seed: string;
   reportIds: string[];
+  targetReportId?: string;
 }
 
 export interface ScoutingReport {
@@ -69,6 +70,8 @@ export const MAX_ACTIVE_SCOUTING_ASSIGNMENTS = 3;
 export const MAX_NEW_SCOUTING_PLAYERS_PER_AUCTION = 8;
 export const MAX_NEW_INDIAN_SCOUTING_PLAYERS_PER_AUCTION = 5;
 export const MAX_NEW_OVERSEAS_SCOUTING_PLAYERS_PER_AUCTION = 3;
+export const DEEP_SCOUT_CONFIDENCE_STEP = 10;
+export const DEEP_SCOUTING_DAYS = 14;
 
 export const SCOUTING_ASSIGNMENT_OPTIONS: ScoutingAssignmentOption[] = [
   {
@@ -159,7 +162,6 @@ export const INTERNATIONAL_SCOUTING_REGIONS: ScoutingRegion[] = [
   international("south-africa", "South Africa", 3, "Elite", ["High-pace bowlers", "Athletic batters"], ["PACE", "BAT", "AR"], "Exceptional athletic upside, with competition for emerging talent."),
   international("new-zealand", "New Zealand", 2, "Strong", ["Swing bowlers", "Adaptable batters"], ["PACE", "BAT", "AR"], "A small but transparent and consistently high-quality system."),
   international("west-indies", "West Indies", 4, "Strong", ["Power hitters", "Fast bowling"], ["BAT", "PACE", "AR"], "Island-by-island coverage is difficult but the T20 ceiling is enormous."),
-  international("pakistan", "Pakistan", 5, "Elite", ["Express pace", "Mystery spin"], ["PACE", "SPIN", "AR"], "Huge bowling upside, but access and projection carry extra uncertainty."),
   international("sri-lanka", "Sri Lanka", 3, "Strong", ["Mystery spin", "Spin all-rounders"], ["SPIN", "AR", "BAT"], "A technically rich system with distinctive spin profiles."),
   international("bangladesh", "Bangladesh", 3, "Strong", ["Left-arm spin", "Middle-order batters"], ["SPIN", "AR", "BAT"], "Dense domestic cricket is particularly useful for spin recruitment."),
   international("afghanistan", "Afghanistan", 5, "Strong", ["Wrist spin", "Power hitting"], ["SPIN", "AR", "BAT"], "Hard to cover, but capable of producing rare T20 match-winners."),
@@ -215,15 +217,61 @@ function abilityBand(market: ScoutingMarket, random: () => number): readonly [nu
 }
 
 function estimatedRange(value: number, confidence: number): [number, number] {
-  const margin = confidence >= 88 ? 1 : confidence >= 74 ? 2 : confidence >= 60 ? 3 : 5;
+  const margin = confidence >= 100 ? 0 : confidence >= 88 ? 1 : confidence >= 74 ? 2 : confidence >= 60 ? 3 : 5;
+  return [Math.max(45, value - margin), Math.min(99, value + margin)];
+}
+
+function tightenedEstimatedRange(
+  value: number,
+  confidence: number,
+  previousRange: [number, number],
+): [number, number] {
+  if (confidence >= 100) return [value, value];
+  const estimated = estimatedRange(value, confidence);
+  const estimatedMargin = Math.max(value - estimated[0], estimated[1] - value);
+  const previousMargin = Math.max(value - previousRange[0], previousRange[1] - value);
+  const margin = Math.max(1, Math.min(estimatedMargin, previousMargin - 1));
   return [Math.max(45, value - margin), Math.min(99, value + margin)];
 }
 
 function reportSummary(player: Player, region: ScoutingRegion, confidence: number): string {
   const role = player.role === "WK-Batsman" ? "wicketkeeper-batter" : player.role.toLowerCase();
+  if (confidence >= 100) return `Scouting is complete. The ${role}'s current ability and potential are now fully verified.`;
   if (confidence >= 82) return `Repeated viewings identify a ${role} with a credible route to the next IPL auction.`;
   if (confidence >= 65) return `Positive live evidence on this ${role}; another viewing would tighten the projection.`;
   return `An early lead from the ${region.name} network. The role is clear, but the rating projection remains broad.`;
+}
+
+export function deepenScoutingReport(report: ScoutingReport, player: Player): ScoutingReport {
+  const confidence = Math.min(100, report.confidence + DEEP_SCOUT_CONFIDENCE_STEP);
+  if (confidence === report.confidence) return report;
+  const currentAbility = Math.max(player.currentBatting, player.currentBowling);
+  const potential = Math.max(player.potentialBatting, player.potentialBowling);
+  const region = getScoutingRegion(report.regionId);
+  return {
+    ...report,
+    confidence,
+    currentAbilityRange: tightenedEstimatedRange(currentAbility, confidence, report.currentAbilityRange),
+    potentialRange: tightenedEstimatedRange(potential, confidence, report.potentialRange),
+    summary: region ? reportSummary(player, region, confidence) : report.summary,
+  };
+}
+
+export function getPlayerScoutingConfidence(reports: ScoutingReport[], playerId: string): number {
+  return reports.reduce((highest, report) => (
+    report.playerId === playerId ? Math.max(highest, Math.min(100, report.confidence)) : highest
+  ), 0);
+}
+
+export function getBestPlayerScoutingReport(
+  reports: ScoutingReport[],
+  playerId: string,
+): ScoutingReport | undefined {
+  return reports.reduce<ScoutingReport | undefined>((best, report) => {
+    if (report.playerId !== playerId) return best;
+    if (!best || report.confidence > best.confidence) return report;
+    return best;
+  }, undefined);
 }
 
 export function createScoutingAssignment(input: {
@@ -262,6 +310,42 @@ export function createScoutingAssignment(input: {
   };
 }
 
+export function createDeepScoutingAssignment(input: {
+  report: ScoutingReport;
+  player: Player;
+  currentDate: string;
+  currentSeason: number;
+  saveSeed: string;
+  assignments: ScoutingAssignment[];
+}): { assignment?: ScoutingAssignment; message: string } {
+  if (input.report.confidence >= 100) return { message: `${input.player.name} is already fully scouted.` };
+  const active = input.assignments.filter((assignment) => assignment.status === "active");
+  if (active.length >= MAX_ACTIVE_SCOUTING_ASSIGNMENTS) return { message: "All three scouting slots are currently occupied." };
+  if (active.some((assignment) => assignment.targetReportId === input.report.id)) {
+    return { message: `${input.player.name} is already being scouted in more depth.` };
+  }
+  const slot = [1, 2, 3].find((candidate) => !active.some((assignment) => assignment.slot === candidate)) ?? 1;
+  const sequence = input.assignments.length + 1;
+  const seed = `${input.saveSeed}:${input.currentSeason}:${input.report.id}:deep-scout:${sequence}`;
+  return {
+    assignment: {
+      id: `scout-${input.currentSeason}-${hashSeed(seed).toString(36)}`,
+      market: input.report.market,
+      regionId: input.report.regionId,
+      kind: "deep-scout",
+      slot,
+      startedOn: input.currentDate,
+      completesOn: addDaysToDateKey(input.currentDate, DEEP_SCOUTING_DAYS),
+      scheduledAuctionSeason: input.report.scheduledAuctionSeason,
+      status: "active",
+      seed,
+      reportIds: [],
+      targetReportId: input.report.id,
+    },
+    message: `A 14-day in-depth scouting assignment has started for ${input.player.name}.`,
+  };
+}
+
 export function reconcileCompletedScoutingAssignments(input: {
   currentDate: string;
   currentSeason: number;
@@ -289,6 +373,21 @@ export function reconcileCompletedScoutingAssignments(input: {
 
   due.sort((left, right) => left.completesOn.localeCompare(right.completesOn) || left.id.localeCompare(right.id));
   due.forEach((assignment) => {
+    if (assignment.kind === "deep-scout") {
+      const report = reports.find((candidate) => candidate.id === assignment.targetReportId);
+      const player = report ? players[report.playerId] : undefined;
+      if (report && player) {
+        reports = reports.map((candidate) => (
+          candidate.id === report.id ? deepenScoutingReport(candidate, player) : candidate
+        ));
+      }
+      assignmentsById.set(assignment.id, {
+        ...assignment,
+        status: "completed",
+        reportIds: report ? [report.id] : [],
+      });
+      return;
+    }
     const region = getScoutingRegion(assignment.regionId);
     const option = SCOUTING_ASSIGNMENT_OPTIONS.find((candidate) => candidate.kind === assignment.kind);
     if (!region || !option) return;

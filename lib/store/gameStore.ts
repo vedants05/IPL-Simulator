@@ -18,7 +18,8 @@ import {
 } from "@/lib/types";
 import { calculateBasePrice, fetchPlayersFromSupabase } from "@/lib/supabase/fetchPlayers";
 import { fetchTeamsFromSupabase } from "@/lib/supabase/fetchTeams";
-import type { ClubFigureTier, ClubFigureTierOverrides } from "@/lib/data/clubFigures";
+import type { ClubFigureProgression, ClubFigureTier, ClubFigureTierOverrides } from "@/lib/data/clubFigures";
+import { processClubFigureSeason } from "@/lib/logic/clubFigureProgression";
 import type { LeagueHistorySeason } from "@/lib/data/leagueHistory";
 import { HISTORICAL_LEAGUE_HISTORY } from "@/lib/data/leagueHistory";
 import {
@@ -157,6 +158,7 @@ import {
 } from "@/lib/logic/careerLifecycle";
 import {
   createScoutingAssignment,
+  createDeepScoutingAssignment,
   getScoutingRegion,
   reconcileCompletedScoutingAssignments,
   type ScoutingAssignment,
@@ -233,6 +235,7 @@ interface GameStateAdditions {
   aiAcceleratedTargets: Record<string, string[]>;
   aiAcceleratedBackups: Record<string, string[]>;
   clubFigureTierOverrides: ClubFigureTierOverrides;
+  clubFigureProgression: ClubFigureProgression;
   simulatedLeagueHistory: LeagueHistorySeason[];
   lastRolledOverSeason: number | null;
   careerSeasonArchives: Array<{
@@ -400,6 +403,7 @@ interface GameActions {
     kind: ScoutingAssignmentKind;
   }) => { ok: boolean; message: string };
   cancelScoutingAssignment: (assignmentId: string) => { ok: boolean; message: string };
+  startDeepScoutingAssignment: (reportId: string) => { ok: boolean; message: string };
   reconcileScoutingAssignments: (date?: string) => number;
 }
 
@@ -1079,6 +1083,7 @@ export const useGameStore = create<Store>()(
       aiAcceleratedTargets: {},
       aiAcceleratedBackups: {},
       clubFigureTierOverrides: {},
+      clubFigureProgression: {},
       simulatedLeagueHistory: [],
       lastRolledOverSeason: null,
       careerSeasonArchives: [],
@@ -1245,6 +1250,7 @@ export const useGameStore = create<Store>()(
           auctionTargets: {},
           auctionTargetPriorities: {},
           clubFigureTierOverrides: {},
+          clubFigureProgression: {},
           simulatedLeagueHistory: [],
           lastRolledOverSeason: null,
           careerSeasonArchives: [],
@@ -3700,6 +3706,25 @@ export const useGameStore = create<Store>()(
         return result;
       },
 
+      startDeepScoutingAssignment: (reportId) => {
+        const state = get();
+        const report = state.scoutingReports.find((candidate) => candidate.id === reportId);
+        if (!report) return { ok: false, message: "That scouting report is no longer available." };
+        const player = state.players[report.playerId];
+        if (!player) return { ok: false, message: "That player is no longer available to scout." };
+        const result = createDeepScoutingAssignment({
+          report,
+          player,
+          currentDate: state.currentDate,
+          currentSeason: state.currentSeason,
+          saveSeed: state.saveId || state.fixtureSeed,
+          assignments: state.scoutingAssignments,
+        });
+        if (!result.assignment) return { ok: false, message: result.message };
+        set({ scoutingAssignments: [...state.scoutingAssignments, result.assignment] });
+        return { ok: true, message: result.message };
+      },
+
       reconcileScoutingAssignments: (date) => {
         let completedCount = 0;
         set((state) => {
@@ -3917,6 +3942,7 @@ export const useGameStore = create<Store>()(
           // output after the live fixtures have rolled over.
           const archivedSeason = String(archive.season);
           const archivedStats = archive.playerStats as Record<string, {
+            teamId?: string;
             matches?: number;
             runs?: number;
             balls?: number;
@@ -3942,6 +3968,13 @@ export const useGameStore = create<Store>()(
               )),
             }];
           }));
+          const clubFigureProgression = processClubFigureSeason({
+            progression: state.clubFigureProgression,
+            players: state.players,
+            season: archive.season,
+            playerStats: archivedStats,
+            achievements: reputationAchievements,
+          });
 
           const injuredPlayerIds = new Set([
             ...Object.keys(state.activeInjuries),
@@ -3997,6 +4030,7 @@ export const useGameStore = create<Store>()(
           ]));
           return {
             careerSeasonArchives,
+            clubFigureProgression,
             players: developedPlayersWithSeasonStats,
             teams: lifecycle.teams,
             activeInjuries: withoutRetiredInjuries(state.activeInjuries, retiredIds),
@@ -4578,6 +4612,7 @@ export const useGameStore = create<Store>()(
           aiAcceleratedTargets: {},
           aiAcceleratedBackups: {},
           clubFigureTierOverrides: {},
+          clubFigureProgression: {},
           simulatedLeagueHistory: [],
           lastRolledOverSeason: null,
           careerSeasonArchives: [],
@@ -4635,6 +4670,7 @@ export const useGameStore = create<Store>()(
         auctionTargets: state.auctionTargets,
         auctionTargetPriorities: state.auctionTargetPriorities,
         clubFigureTierOverrides: state.clubFigureTierOverrides,
+        clubFigureProgression: state.clubFigureProgression,
         simulatedLeagueHistory: state.simulatedLeagueHistory,
         lastRolledOverSeason: state.lastRolledOverSeason,
         careerSeasonArchives: state.careerSeasonArchives,
@@ -4825,6 +4861,7 @@ export const useGameStore = create<Store>()(
           auctionTargets: removeResolvedAuctionTargets(p.auctionTargets ?? {}, persistedRetiredPlayerIds),
           auctionTargetPriorities: removeResolvedAuctionTargets(p.auctionTargetPriorities ?? {}, persistedRetiredPlayerIds),
           clubFigureTierOverrides: p.clubFigureTierOverrides ?? {},
+          clubFigureProgression: p.clubFigureProgression ?? {},
           simulatedLeagueHistory: p.simulatedLeagueHistory ?? [],
           lastRolledOverSeason: p.lastRolledOverSeason ?? null,
           careerSeasonArchives: p.careerSeasonArchives ?? [],
@@ -4849,9 +4886,11 @@ export const useGameStore = create<Store>()(
           lastCareerRetirements: [],
           careerRetirementHistory: p.careerRetirementHistory ?? p.lastCareerRetirements ?? [],
           lastCareerGeneratedPlayerIds: [],
-          scoutingAssignments: p.scoutingAssignments ?? [],
-          scoutingReports: p.scoutingReports ?? [],
-          scoutingNetworks: p.scoutingNetworks ?? {},
+          scoutingAssignments: (p.scoutingAssignments ?? []).filter((assignment) => assignment.regionId !== "pakistan"),
+          scoutingReports: (p.scoutingReports ?? []).filter((report) => report.regionId !== "pakistan"),
+          scoutingNetworks: Object.fromEntries(
+            Object.entries(p.scoutingNetworks ?? {}).filter(([regionId]) => regionId !== "pakistan"),
+          ),
           homePitchSelections: normalizeHomePitchSelections(
             p.homePitchSelections,
             getAdditionalHomePitchIds(customPitchesByTeam),

@@ -34,6 +34,8 @@ import { getSeasonDates, useGameStore } from "@/lib/store/gameStore";
 import { getLeagueSeasonStartDate } from "@/lib/logic/leagueSchedule";
 import { LEAGUE_HISTORY_TEAMS } from "@/lib/data/leagueHistory";
 import { addNewsDays, getNewsArticleExpiry, NEWS_REPEAT_COOLDOWN_DAYS } from "@/lib/logic/newsArticlePolicy";
+import { selectTeamOfSeason } from "@/lib/logic/teamOfSeason";
+import type { ClubFigureProgression } from "@/lib/data/clubFigures";
 
 interface NewsFixture {
   id: string;
@@ -59,8 +61,17 @@ interface NewsPageProps {
     wickets: number;
     runsConceded: number;
     oversBowled: number;
+    matches?: number;
+    dismissals?: number;
     fours?: number;
     sixes?: number;
+    dotBalls?: number;
+    catches?: number;
+    stumpings?: number;
+    runOuts?: number;
+    maidens?: number;
+    battingPerformanceBonus?: number;
+    bowlingPerformanceBonus?: number;
   }>;
   standings: Array<{
     teamId: string;
@@ -79,6 +90,7 @@ interface NewsPageProps {
   currentSeason: number;
   fixtures?: UnifiedMatchRecord[];
   currentDate?: string;
+  clubFigureProgression?: ClubFigureProgression;
   onViewAllFixtures?: () => void;
 }
 
@@ -127,6 +139,7 @@ export default function NewsPage({
   currentSeason,
   fixtures = [],
   currentDate = "",
+  clubFigureProgression = {},
   onViewAllFixtures
 }: NewsPageProps) {
   const saveId = useGameStore((state) => state.saveId);
@@ -3473,8 +3486,94 @@ export default function NewsPage({
     }
     const articleByIdentity = new Map<string, NewsArticle>();
     [...cachedArticles, ...freshArticles].forEach((article) => articleByIdentity.set(`${article.id}:${article.publishedAt}:${article.associatedEntityIds?.teamId || article.associatedEntityIds?.playerId || ""}`, article));
+    if (isSeasonConcluded) {
+      const teamOfSeason = selectTeamOfSeason(players, Object.entries(playerStats).map(([id, stats]) => ({
+        id,
+        name: players[id]?.name ?? id,
+        teamId: stats.teamId,
+        runs: stats.runs,
+        balls: stats.balls,
+        wickets: stats.wickets,
+        runsConceded: stats.runsConceded,
+        oversBowled: stats.oversBowled,
+        matches: stats.matches ?? getPlayerMatches(id),
+        fours: stats.fours,
+        sixes: stats.sixes,
+        dotBalls: stats.dotBalls,
+        catches: stats.catches,
+        stumpings: stats.stumpings,
+        runOuts: stats.runOuts,
+        maidens: stats.maidens,
+        battingPerformanceBonus: stats.battingPerformanceBonus,
+        bowlingPerformanceBonus: stats.bowlingPerformanceBonus,
+      })));
+      if (teamOfSeason.length === 12) {
+        const finalFixture = [...fixtures]
+          .filter((fixture) => fixture.played)
+          .sort((left, right) => String(right.date || "").localeCompare(String(left.date || "")) || right.matchNumber - left.matchNumber)[0];
+        const publishedAt = finalFixture?.date || currentDate;
+        const captain = [...teamOfSeason].sort((left, right) => right.impactScore - left.impactScore)[0];
+        const lines = teamOfSeason.map((selection) => {
+          const teamShort = teams[selection.stats.teamId]?.shortName || selection.stats.teamId || "IPL";
+          const batting = selection.stats.runs >= 100
+            ? `${selection.stats.runs} runs at ${selection.battingStrikeRate.toFixed(1)} SR`
+            : "";
+          const bowling = selection.stats.wickets > 0
+            ? `${selection.stats.wickets} wickets${selection.bowlingEconomy === null ? "" : ` at ${selection.bowlingEconomy.toFixed(2)} economy`}`
+            : "";
+          const seasonStats = [batting, bowling].filter(Boolean).join("; ") || `${selection.stats.matches} matches`;
+          return `${selection.player.name} (${teamShort}) - ${seasonStats}`;
+        });
+        const article: NewsArticle = {
+          id: `team-of-season-${currentSeason}`,
+          title: `${currentSeason} IPL Team of the Season revealed`,
+          subheading: "A balanced XI plus Impact Player, selected from the campaign's leading performers with no more than four overseas players.",
+          content: `THE XI + IMPACT PLAYER\n\n${lines.join("\n")}`,
+          category: "tournament_league",
+          tag: "Team of the Season",
+          timestamp: formatDate(publishedAt),
+          publishedAt,
+          expiresAt: addDays(publishedAt, 364),
+          imageMockupPrompt: `Editorial graphic presenting the ${currentSeason} IPL Team of the Season as a balanced cricket XI plus Impact Player`,
+          imagePlaceholder: "Team of the Season XI graphic",
+          author: "IPL Analysis Desk",
+          readTime: "4 min read",
+          isBreaking: true,
+        };
+        articleByIdentity.set(article.id, article);
+      }
+    }
+    Object.values(clubFigureProgression).forEach((record) => {
+      (record.promotions ?? [])
+        .filter((promotion) => promotion.season === currentSeason || promotion.season === currentSeason - 1)
+        .forEach((promotion) => {
+          const tierLabel = promotion.tier === "legend" ? "Club Legend" : "Club Icon";
+          const team = teams[record.teamId];
+          const publishedAt = promotion.season === currentSeason
+            ? currentDate
+            : `${promotion.season}-05-31`;
+          const article: NewsArticle = {
+            id: `club-figure-promotion-${record.id}-${promotion.season}-${promotion.tier}`,
+            title: `${record.playerName} becomes a ${tierLabel}`,
+            subheading: `${record.playerName}'s contribution to ${team?.name ?? record.teamId} has earned lasting recognition.`,
+            content: `${record.playerName} has been elevated to ${promotion.tier === "legend" ? "Legend" : "Icon"} status at ${team?.name ?? record.teamId} after reaching ${record.points} club-figure points across ${record.seasonKeys.length} club seasons.`,
+            category: record.teamId === userTeamId ? "user_team" : "player_news",
+            tag: "Club Figures",
+            timestamp: formatDate(publishedAt),
+            publishedAt,
+            expiresAt: addDays(publishedAt, 364),
+            playerId: record.playerId,
+            teamId: record.teamId,
+            associatedEntityIds: { playerId: record.playerId, teamId: record.teamId },
+            imagePlaceholder: `${record.playerName} club recognition portrait`,
+            author: "IPL Heritage Desk",
+            readTime: "2 min read",
+          };
+          articleByIdentity.set(article.id, article);
+        });
+    });
     return Array.from(articleByIdentity.values());
-  }, [userTeamId, players, teams, playerStats, standings, retirements, retirementHistory, retiredPlayerSnapshots, currentSeason, fixtures, topScorer, topWicketTaker, layout, currentDate, saveId]);
+  }, [userTeamId, players, teams, playerStats, standings, retirements, retirementHistory, retiredPlayerSnapshots, currentSeason, fixtures, topScorer, topWicketTaker, layout, currentDate, saveId, isSeasonConcluded, clubFigureProgression]);
 
   // Filter articles based on selected tab
   const filteredArticles = useMemo(() => {

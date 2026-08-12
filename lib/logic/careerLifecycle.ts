@@ -121,6 +121,8 @@ export interface CareerReputationAchievements {
   purpleCapPlayerId?: string | null;
   championCaptainId?: string | null;
   championFinalPlayerIds?: string[];
+  championTeamId?: string | null;
+  teamOfSeasonPlayerIds?: string[];
   playerOfMatchCounts?: Record<string, number>;
   playoffPlayerOfMatchCounts?: Record<string, number>;
 }
@@ -1729,6 +1731,15 @@ const OVERSEAS_COUNTRIES = [
   ["Zimbabwe", 2], ["Ireland", 1],
 ] as const;
 
+// These countries cannot produce new career-mode players, including through
+// forced scouting intake data from an older or externally modified save.
+const BLOCKED_REGEN_COUNTRIES = new Set(["pakistan"]);
+
+function permittedForcedRegenCountry(country: string | undefined): string | undefined {
+  if (!country) return undefined;
+  return BLOCKED_REGEN_COUNTRIES.has(country.trim().toLocaleLowerCase("en-GB")) ? undefined : country;
+}
+
 const OVERSEAS_ELITE_TALENT_MULTIPLIERS: Record<string, number> = {
   Australia: 1.2,
   England: 1.15,
@@ -2342,7 +2353,7 @@ function createGeneratedPlayer(input: {
     random,
     seededRandom(`${input.seed}:${input.season}:regen:${input.index}:defensive-profile`),
   );
-  const country = input.forcedCountry
+  const country = permittedForcedRegenCountry(input.forcedCountry)
     ?? (nationality === "Indian" ? "India" : chooseOverseasCountry(input.players, generatedAbility, random));
   const isCapped = generatedAbility >= 86 || (mature && (ratings.current >= 82 || nationality === "Overseas"));
   const serial = String(input.index + 1).padStart(3, "0");

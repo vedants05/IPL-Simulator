@@ -556,6 +556,123 @@ function isPlayableDeepPosition(position: PlayableFieldPosition): boolean {
   ) > 1;
 }
 
+function isPlayableLegSideBehindSquare(position: PlayableFieldPosition): boolean {
+  return position.x < 50 && position.y > 59;
+}
+
+export interface PlayableFieldLegality {
+  legal: boolean;
+  maxOutside: number;
+  outsideCount: number;
+  legSideBehindSquareCount: number;
+}
+
+export function getPlayableFieldLegality(
+  positions: readonly PlayableFieldPosition[],
+  overNumber: number,
+  maxOvers = 20,
+): PlayableFieldLegality {
+  const { powerplayEnd } = inningsPhaseThresholds(maxOvers);
+  const maxOutside = overNumber <= powerplayEnd ? 2 : 5;
+  const validCoordinates = positions.every((position) => (
+    Number.isFinite(position.x)
+    && Number.isFinite(position.y)
+    && position.x >= 0
+    && position.x <= 100
+    && position.y >= 0
+    && position.y <= 100
+  ));
+  const outsideCount = positions.filter(isPlayableDeepPosition).length;
+  const legSideBehindSquareCount = positions.filter(isPlayableLegSideBehindSquare).length;
+  return {
+    legal: positions.length === 9
+      && validCoordinates
+      && outsideCount <= maxOutside
+      && legSideBehindSquareCount <= 2,
+    maxOutside,
+    outsideCount,
+    legSideBehindSquareCount,
+  };
+}
+
+const AUTOMATIC_PLAYABLE_FIELDS: Record<FieldSetting, {
+  powerplay: readonly PlayableFieldPosition[];
+  openField: readonly PlayableFieldPosition[];
+}> = {
+  balanced: {
+    powerplay: [
+      { id: 0, label: "1st slip", x: 56, y: 69 }, { id: 1, label: "Point", x: 76, y: 55 },
+      { id: 2, label: "Cover", x: 73, y: 40 }, { id: 3, label: "Mid off", x: 58, y: 26 },
+      { id: 4, label: "Mid on", x: 42, y: 26 }, { id: 5, label: "Square leg", x: 24, y: 55 },
+      { id: 6, label: "Fine leg", x: 26, y: 90 }, { id: 7, label: "Third man", x: 79, y: 85 },
+      { id: 8, label: "Midwicket", x: 27, y: 38 },
+    ],
+    openField: [
+      { id: 0, label: "Point", x: 76, y: 55 }, { id: 1, label: "Cover", x: 73, y: 40 },
+      { id: 2, label: "Mid off", x: 58, y: 26 }, { id: 3, label: "Short fine leg", x: 36, y: 74 },
+      { id: 4, label: "Deep point", x: 95, y: 52 }, { id: 5, label: "Deep cover", x: 85, y: 20 },
+      { id: 6, label: "Long off", x: 58, y: 5 }, { id: 7, label: "Long on", x: 42, y: 5 },
+      { id: 8, label: "Deep midwicket", x: 15, y: 20 },
+    ],
+  },
+  attacking: {
+    powerplay: [
+      { id: 0, label: "1st slip", x: 56, y: 69 }, { id: 1, label: "2nd slip", x: 59.5, y: 68 },
+      { id: 2, label: "Gully", x: 65, y: 63 }, { id: 3, label: "Point", x: 76, y: 55 },
+      { id: 4, label: "Cover", x: 73, y: 40 }, { id: 5, label: "Mid off", x: 58, y: 26 },
+      { id: 6, label: "Mid on", x: 42, y: 26 }, { id: 7, label: "Square leg", x: 24, y: 55 },
+      { id: 8, label: "Fine leg", x: 26, y: 90 },
+    ],
+    openField: [
+      { id: 0, label: "1st slip", x: 56, y: 69 }, { id: 1, label: "Gully", x: 65, y: 63 },
+      { id: 2, label: "Short cover", x: 59.5, y: 50.5 }, { id: 3, label: "Mid off", x: 58, y: 26 },
+      { id: 4, label: "Mid on", x: 42, y: 26 }, { id: 5, label: "Deep point", x: 95, y: 52 },
+      { id: 6, label: "Deep cover", x: 85, y: 20 }, { id: 7, label: "Deep midwicket", x: 15, y: 20 },
+      { id: 8, label: "Fine leg", x: 26, y: 90 },
+    ],
+  },
+  defensive: {
+    powerplay: [
+      { id: 0, label: "Deep point", x: 95, y: 52 }, { id: 1, label: "Deep square leg", x: 5, y: 52 },
+      { id: 2, label: "Point", x: 76, y: 55 }, { id: 3, label: "Cover", x: 73, y: 40 },
+      { id: 4, label: "Extra cover", x: 66, y: 30 }, { id: 5, label: "Mid off", x: 58, y: 26 },
+      { id: 6, label: "Mid on", x: 42, y: 26 }, { id: 7, label: "Midwicket", x: 27, y: 38 },
+      { id: 8, label: "Short fine leg", x: 36, y: 74 },
+    ],
+    openField: [
+      { id: 0, label: "Deep point", x: 95, y: 52 }, { id: 1, label: "Deep cover", x: 85, y: 20 },
+      { id: 2, label: "Long off", x: 58, y: 5 }, { id: 3, label: "Long on", x: 42, y: 5 },
+      { id: 4, label: "Deep midwicket", x: 15, y: 20 }, { id: 5, label: "Point", x: 76, y: 55 },
+      { id: 6, label: "Cover", x: 73, y: 40 }, { id: 7, label: "Square leg", x: 24, y: 55 },
+      { id: 8, label: "Short fine leg", x: 36, y: 74 },
+    ],
+  },
+};
+
+export function getAutomaticPlayableFieldPositions(
+  field: FieldSetting,
+  overNumber: number,
+  maxOvers = 20,
+): PlayableFieldPosition[] {
+  const { powerplayEnd } = inningsPhaseThresholds(maxOvers);
+  const positions = overNumber <= powerplayEnd
+    ? AUTOMATIC_PLAYABLE_FIELDS[field].powerplay
+    : AUTOMATIC_PLAYABLE_FIELDS[field].openField;
+  return positions.map((position) => ({ ...position }));
+}
+
+export function ensurePlayableFieldIsLegal(
+  positions: readonly PlayableFieldPosition[] | undefined,
+  field: FieldSetting,
+  overNumber: number,
+  maxOvers = 20,
+): PlayableFieldPosition[] {
+  if (positions && getPlayableFieldLegality(positions, overNumber, maxOvers).legal) {
+    return positions.map((position) => ({ ...position }));
+  }
+  return getAutomaticPlayableFieldPositions(field, overNumber, maxOvers);
+}
+
 function nearestPlayableFielder(
   positions: readonly PlayableFieldPosition[],
   target: DeliveryShotTarget,
@@ -2954,6 +3071,25 @@ function simulateInnings(context: InningsContext): MatchInnings {
       );
       const deliveryId = `${context.inningsNumber}-${deliverySequence}`;
       const deliveryControl = context.playableDecisions?.deliveryControls[deliveryId];
+      const situationalField = chooseSituationalField(
+        context.bowlingTactics.bowling.field,
+        overNumber,
+        wickets,
+        runs,
+        target,
+        maxOvers,
+      );
+      // Every playable-match field passes through the same legality gate before
+      // it can influence an outcome. This also repairs illegal AI controls from
+      // an older saved session instead of allowing them to remain in play.
+      const legalFieldPositions = context.playableDecisions
+        ? ensurePlayableFieldIsLegal(
+          deliveryControl?.fieldPositions,
+          situationalField,
+          overNumber,
+          maxOvers,
+        )
+        : undefined;
       const fieldInfluenceBowlingPlan = deliveryControl?.bowlingPlan ?? automaticPlayableBowlingPlan(
         context.bowlingTactics,
         overNumber,
@@ -2983,7 +3119,7 @@ function simulateInnings(context: InningsContext): MatchInnings {
         .map((playerId) => players[playerId])
         .filter((player): player is Player => Boolean(player));
       const fieldInfluence = playableFieldInfluence(
-        deliveryControl?.fieldPositions,
+        legalFieldPositions,
         `${context.seed}:${deliveryId}`,
         intent,
         striker,
@@ -2996,14 +3132,7 @@ function simulateInnings(context: InningsContext): MatchInnings {
         context.bowlingTactics,
         overNumber,
         bowler,
-        chooseSituationalField(
-          context.bowlingTactics.bowling.field,
-          overNumber,
-          wickets,
-          runs,
-          target,
-          maxOvers,
-        ),
+        situationalField,
         maxOvers,
       );
       const fieldScoringAdjustment = deliveryControl?.fieldPlan === "protect"

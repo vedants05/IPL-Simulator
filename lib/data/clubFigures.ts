@@ -3,6 +3,23 @@ import type { Player } from "@/lib/types";
 export type ClubFigureTier = "legend" | "icon" | "hero";
 export type ClubFigureTierOverrides = Record<string, ClubFigureTier>;
 
+export interface ClubFigureProgressRecord {
+  id: string;
+  teamId: string;
+  playerId: string;
+  playerName: string;
+  points: number;
+  seasonKeys: string[];
+  processedSeasons: number[];
+  tier: ClubFigureTier | null;
+  promotions?: Array<{
+    season: number;
+    tier: "icon" | "legend";
+  }>;
+}
+
+export type ClubFigureProgression = Record<string, ClubFigureProgressRecord>;
+
 interface ClubFigureDefinition {
   id: string;
   name: string;
@@ -17,6 +34,8 @@ export interface ResolvedClubFigure {
   playerId: string | null;
   currentTeamId: string | null;
   isLinked: boolean;
+  legacyPoints?: number;
+  clubSeasons?: number;
 }
 
 const figures = (
@@ -106,6 +125,29 @@ export function getClubFigureId(teamId: string, name: string): string {
   return `${teamId}:${normalizeClubFigureName(name)}`;
 }
 
+const TIER_RANK: Record<ClubFigureTier, number> = { hero: 1, icon: 2, legend: 3 };
+
+export function clubFigureTierFloor(tier: ClubFigureTier): number {
+  return tier === "legend" ? 220 : tier === "icon" ? 120 : 50;
+}
+
+export function higherClubFigureTier(
+  left: ClubFigureTier | null,
+  right: ClubFigureTier | null,
+): ClubFigureTier | null {
+  if (!left) return right;
+  if (!right) return left;
+  return TIER_RANK[left] >= TIER_RANK[right] ? left : right;
+}
+
+export function getBaseClubFigureTier(teamId: string, playerName: string): ClubFigureTier | null {
+  const normalizedName = normalizeClubFigureName(playerName);
+  return (CLUB_FIGURES[teamId] ?? []).find((figure) => {
+    const possibleNames = [figure.name, ...(PLAYER_NAME_ALIASES[figure.name] ?? [])];
+    return possibleNames.some((name) => normalizeClubFigureName(name) === normalizedName);
+  })?.tier ?? null;
+}
+
 function getLegacyClubFigureOverrideKey(teamId: string, playerId: string | null, name: string): string {
   return `${teamId}:${playerId ?? normalizeClubFigureName(name)}`;
 }
@@ -114,28 +156,62 @@ export function getClubFigures(
   teamId: string,
   players: Record<string, Player>,
   tierOverrides: ClubFigureTierOverrides = {},
+  progression: ClubFigureProgression = {},
 ): ResolvedClubFigure[] {
   const playerByName = new Map<string, Player>();
   Object.values(players).forEach((player) => {
     playerByName.set(normalizeClubFigureName(player.name), player);
   });
 
-  return (CLUB_FIGURES[teamId] ?? []).map((figure) => {
+  const resolved = (CLUB_FIGURES[teamId] ?? []).map((figure) => {
     const possibleNames = [figure.name, ...(PLAYER_NAME_ALIASES[figure.name] ?? [])];
     const linkedPlayer = possibleNames
       .map((name) => playerByName.get(normalizeClubFigureName(name)))
       .find((player): player is Player => Boolean(player));
     const playerId = linkedPlayer?.id ?? null;
     const legacyOverrideKey = getLegacyClubFigureOverrideKey(teamId, playerId, figure.name);
+    const progress = Object.values(progression).find((record) => (
+      record.teamId === teamId
+      && (record.playerId === playerId || normalizeClubFigureName(record.playerName) === normalizeClubFigureName(figure.name))
+    ));
+    const progressedTier = higherClubFigureTier(figure.tier, progress?.tier ?? null) ?? figure.tier;
+    const overriddenTier = tierOverrides[figure.id] ?? tierOverrides[legacyOverrideKey] ?? null;
 
     return {
       id: figure.id,
       name: linkedPlayer?.name ?? figure.name,
       baseTier: figure.tier,
-      tier: tierOverrides[figure.id] ?? tierOverrides[legacyOverrideKey] ?? figure.tier,
+      tier: higherClubFigureTier(progressedTier, overriddenTier) ?? progressedTier,
       playerId,
       currentTeamId: linkedPlayer?.currentTeamId ?? null,
       isLinked: playerId !== null,
+      legacyPoints: progress?.points ?? clubFigureTierFloor(figure.tier),
+      clubSeasons: progress?.seasonKeys.length,
     };
   });
+
+  Object.values(progression)
+    .filter((record) => record.teamId === teamId && record.tier)
+    .forEach((record) => {
+      const existing = resolved.find((figure) => (
+        figure.playerId === record.playerId
+        || normalizeClubFigureName(figure.name) === normalizeClubFigureName(record.playerName)
+      ));
+      if (existing) return;
+      const linkedPlayer = players[record.playerId];
+      const overriddenTier = tierOverrides[record.id] ?? null;
+      resolved.push({
+        id: record.id,
+        name: linkedPlayer?.name ?? record.playerName,
+        baseTier: record.tier!,
+        tier: higherClubFigureTier(record.tier, overriddenTier) ?? record.tier!,
+        playerId: linkedPlayer?.id ?? null,
+        currentTeamId: linkedPlayer?.currentTeamId ?? null,
+        isLinked: Boolean(linkedPlayer),
+        legacyPoints: record.points,
+        clubSeasons: record.seasonKeys.length,
+      });
+    });
+
+  return resolved;
 }
