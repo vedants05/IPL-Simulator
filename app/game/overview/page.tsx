@@ -108,6 +108,7 @@ const SquadAnalysisPage = dynamic(() => import("@/components/squad/SquadAnalysis
 const InjuryHubPage = dynamic(() => import("@/components/squad/InjuryHubPage"), { ssr: false });
 import { InjuryStatusMarker } from "@/components/squad/InjuryStatusMarker";
 const TradeHubPage = dynamic(() => import("@/components/scouting/TradeHubPage"), { ssr: false });
+const SeasonDataAnalysisPage = dynamic(() => import("@/components/scouting/SeasonDataAnalysisPage"), { ssr: false });
 const ScoutingAssignmentsPage = dynamic(() => import("@/components/scouting/ScoutingAssignmentsPage"), { ssr: false });
 import TacticsLineupBuilder from "@/components/squad/TacticsLineupBuilder";
 const TeamTacticsPage = dynamic(() => import("@/components/squad/TeamTacticsPage"), { ssr: false });
@@ -4749,7 +4750,7 @@ This record has been officially verified and added to the IPL Minor Records arch
     scouting: {
       label: "Scouting",
       icon: Search,
-      subtabs: ["overview", "assignments", "search", "planner", "trades"]
+      subtabs: ["overview", "assignments", "seasonanalysis", "search", "planner", "trades"]
     },
     season: {
       label: "Season",
@@ -4774,6 +4775,7 @@ This record has been officially verified and added to the IPL Minor Records arch
     if (subtab === "injuryhub") return "Injury Hub";
     if (subtab === "search") return "Player Search";
     if (subtab === "assignments") return "Scouting Assignments";
+    if (subtab === "seasonanalysis") return "Season Data Analysis";
     if (subtab === "reports") return "Scout Reports";
     if (subtab === "planner") return "Auction Planner";
     if (subtab === "trades") return "Trade Hub";
@@ -7450,11 +7452,14 @@ This record has been officially verified and added to the IPL Minor Records arch
                   onToggleShortlist={toggleShortlist}
                 />
               )}
+              {activeSubTab === "seasonanalysis" && (
+                <SeasonDataAnalysisPage fixtures={fixtures} teams={teams} players={players} userTeamId={userTeamId} />
+              )}
               {/* Scouting Overview tab */}
               {activeSubTab === "overview" && (
-                <div className="grid grid-cols-2 gap-6 h-[calc(100vh-200px)] min-h-[500px] overflow-hidden">
+                <div className="grid h-[calc(100vh-200px)] min-h-[500px] grid-cols-12 grid-rows-[minmax(0,1.55fr)_minmax(0,0.75fr)] gap-4 overflow-hidden">
                   {/* Database search */}
-                  <div onClick={() => setActiveSubTab("search")} className="flex min-h-0 cursor-pointer flex-col overflow-hidden rounded-lg border-2 border-border bg-surface p-5 transition-colors hover:border-accent">
+                  <div onClick={() => setActiveSubTab("search")} className="col-span-7 flex min-h-0 cursor-pointer flex-col overflow-hidden rounded-lg border-2 border-border bg-surface p-5 transition-colors hover:border-accent">
                     <h4 className="font-anton text-[14px] uppercase border-b border-[#16130f]/10 pb-2 mb-3 shrink-0">GLOBAL SEARCH</h4>
                     <div className="grid grid-cols-[minmax(0,8rem)_2rem_2.5rem_5.5rem_minmax(0,1fr)] gap-1 border-b border-[#16130f]/10 pb-1.5 font-space-mono text-[10px] font-bold text-text-secondary uppercase shrink-0">
                       <span>Player</span>
@@ -7527,8 +7532,8 @@ This record has been officially verified and added to the IPL Minor Records arch
                     </div>
                   </div>
 
-                  <div className="grid min-h-0 grid-rows-[1.35fr_0.8fr_0.85fr] gap-4">
-                    <div onClick={() => setActiveSubTab("assignments")} className="flex min-h-0 cursor-pointer flex-col overflow-hidden rounded-lg border-2 border-border bg-surface p-4 transition-colors hover:border-accent">
+                  <div className="contents">
+                    <div onClick={() => setActiveSubTab("assignments")} className="col-span-5 flex min-h-0 cursor-pointer flex-col overflow-hidden rounded-lg border-2 border-border bg-surface p-4 transition-colors hover:border-accent">
                       <div className="flex min-h-0 flex-1 flex-col">
                         <div className="flex items-center justify-between border-b border-[#16130f]/10 pb-2"><h4 className="font-anton text-[14px] uppercase">Scouting assignments</h4><span className="font-space-mono text-[8px] font-bold uppercase text-text-secondary">{scoutingAssignments.filter((assignment) => assignment.status === "active").length}/3 active</span></div>
                         <div className="mt-2 grid min-h-0 flex-1 grid-cols-3 items-stretch gap-2">
@@ -7551,7 +7556,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                     </div>
 
                     {/* Auction planner */}
-                    <div onClick={() => setActiveSubTab("planner")} className="flex min-h-0 cursor-pointer flex-col justify-between overflow-hidden rounded-lg border-2 border-border bg-surface p-4 transition-colors hover:border-accent">
+                    <div onClick={() => setActiveSubTab("planner")} className="col-span-4 flex min-h-0 cursor-pointer flex-col justify-between overflow-hidden rounded-lg border-2 border-border bg-surface p-4 transition-colors hover:border-accent">
                     <div>
                       <h4 className="font-anton text-[14px] uppercase border-b border-[#16130f]/10 pb-2 mb-4">AUCTION PLANNER</h4>
                       <div className="space-y-2 text-xs font-space-mono text-text-secondary">
@@ -7562,7 +7567,7 @@ This record has been officially verified and added to the IPL Minor Records arch
 
                     </div>
 
-                    <div onClick={() => setActiveSubTab("trades")} className="flex min-h-0 cursor-pointer flex-col justify-between overflow-hidden rounded-lg border-2 border-border bg-surface p-4 transition-colors hover:border-accent">
+                    <div onClick={() => setActiveSubTab("trades")} className="col-span-4 flex min-h-0 cursor-pointer flex-col justify-between overflow-hidden rounded-lg border-2 border-border bg-surface p-4 transition-colors hover:border-accent">
                       {(() => {
                         const finalDate = getSeasonFinalDate();
                         const window = finalDate ? getTradeWindowDates(finalDate, currentSeason) : undefined;
@@ -7571,6 +7576,11 @@ This record has been officially verified and added to the IPL Minor Records arch
                         const beforeWindow = Boolean(window && currentDate < window.startsOn);
                         return <><div><div className="flex items-center justify-between border-b border-[#16130f]/10 pb-2"><h4 className="font-anton text-[14px] uppercase">Trade Hub</h4><span className={`rounded px-2 py-0.5 font-space-mono text-[7px] font-bold uppercase ${windowOpen ? "bg-success/15 text-success" : "bg-warning/15 text-warning"}`}>{windowOpen ? "Window open" : beforeWindow ? "Opens soon" : "Window shut"}</span></div><div className="mt-2 grid grid-cols-2 gap-2 font-space-mono text-[8px] uppercase text-text-secondary"><div><span className="block text-[7px]">Window</span><span className="font-bold text-text-primary">{window ? `${window.startsOn} – ${window.endsOn}` : "Awaiting schedule"}</span></div><div><span className="block text-[7px]">Completed deals</span><span className="font-bold text-text-primary">{completed}</span></div></div></div><div className="mt-2 flex items-center justify-between font-space-mono text-[8px] font-bold uppercase text-accent"><span>{windowOpen ? "Build a trade" : "View trade hub"}</span><span>→</span></div></>;
                       })()}
+                    </div>
+
+                    <div onClick={() => setActiveSubTab("seasonanalysis")} className="col-span-4 flex min-h-0 cursor-pointer flex-col justify-between overflow-hidden rounded-lg border-2 border-border bg-surface p-4 transition-colors hover:border-accent">
+                      <div><div className="flex items-center justify-between border-b border-[#16130f]/10 pb-2"><h4 className="font-anton text-[14px] uppercase">Season Data Analysis</h4><span className="font-space-mono text-[7px] font-bold uppercase text-accent">Advanced</span></div><p className="mt-2 line-clamp-2 text-[10px] leading-relaxed text-text-secondary">Compare teams by powerplay and death performance, pace and spin wickets, opening output, phase economy, and batting-first or chasing success.</p></div>
+                      <div className="mt-2 flex items-center justify-between font-space-mono text-[8px] font-bold uppercase text-accent"><span>Open analysis</span><span>→</span></div>
                     </div>
                   </div>
                 </div>
