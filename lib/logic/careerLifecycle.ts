@@ -34,6 +34,8 @@ export const CAREER_POLICY = {
   minimumAnnualGeneratedPlayers: 5,
   maximumAnnualGeneratedPlayers: 30,
   minimumEmergingEligiblePlayers: 10,
+  minimumEmergingCandidateAuctionRating: 74,
+  maximumEmergingCandidateCurrentRating: 79,
   minimumAuctionHighPotential: 81,
   targetIndianPlayerShare: 0.65,
   exceptionalTeenProdigyChance: 0.0005,
@@ -2531,19 +2533,22 @@ export function forecastRegenRetirementDemand(
   };
 }
 
-function countEmergingEligiblePlayers(input: {
+function countCompetitiveEmergingEligiblePlayers(input: {
   players: Iterable<Player>;
   season: number;
   initialSeason: number;
   previousWinnerNames: Iterable<string>;
 }): number {
   const previousWinnerNames = Array.from(input.previousWinnerNames);
-  return Array.from(input.players).filter((player) => getEmergingPlayerEligibility({
-    player,
-    season: input.season,
-    initialSeason: input.initialSeason,
-    previousWinnerNames,
-  }).eligible).length;
+  return Array.from(input.players).filter((player) => (
+    getEmergingPlayerEligibility({
+      player,
+      season: input.season,
+      initialSeason: input.initialSeason,
+      previousWinnerNames,
+    }).eligible
+    && getRawAuctionRating(player) >= CAREER_POLICY.minimumEmergingCandidateAuctionRating
+  )).length;
 }
 
 function hasAuctionHighPotentialPlayer(
@@ -2713,7 +2718,7 @@ export function prepareRetentionPlayerPool(input: {
 
   const initialSeason = input.initialSeason ?? input.season;
   const previousEmergingWinnerNames = Array.from(input.previousEmergingWinnerNames ?? []);
-  let emergingEligibleCount = countEmergingEligiblePlayers({
+  let emergingEligibleCount = countCompetitiveEmergingEligiblePlayers({
     players: Object.values(expanded),
     season: input.season,
     initialSeason,
@@ -2725,10 +2730,13 @@ export function prepareRetentionPlayerPool(input: {
   ) {
     const player = generateIntakePlayer({
       forceYoung: true,
-      targetCurrentRange: [67, 78],
+      targetCurrentRange: [
+        CAREER_POLICY.minimumEmergingCandidateAuctionRating,
+        CAREER_POLICY.maximumEmergingCandidateCurrentRating,
+      ],
     });
     if (!player) break;
-    emergingEligibleCount = countEmergingEligiblePlayers({
+    emergingEligibleCount = countCompetitiveEmergingEligiblePlayers({
       players: Object.values(expanded),
       season: input.season,
       initialSeason,

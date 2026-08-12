@@ -40,6 +40,10 @@ export function getHistoricalClubSeasonKeys(player: Player, teamId: string): str
 }
 
 export function tierForClubFigureScore(points: number, seasons: number): ClubFigureTier | null {
+  // Tenure provides an easier route, but only for players who made a genuine
+  // on-field contribution rather than simply occupying a squad place.
+  if (seasons >= 10 && points >= 100) return "legend";
+  if (seasons >= 7 && points >= 50) return "icon";
   if (points >= 220 && seasons >= 5) return "legend";
   if (points >= 120 && seasons >= 3) return "icon";
   if (points >= 50) return "hero";

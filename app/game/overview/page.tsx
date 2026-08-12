@@ -2291,15 +2291,19 @@ function OverviewPageContent() {
     } else if (stage === "qualifier2") {
       stadiumTeamId = previousSeason?.runnerUpTeamId ?? match.teamA;
     } else if (stage === "qualifier1" || stage === "eliminator") {
-      const excludedTeams = new Set([match.teamA, match.teamB]);
-      const eligible = HOME_STADIUMS.filter((candidate) => !excludedTeams.has(candidate.teamId));
-      const qualifier1Match = fixturesRef.current.find((fixture) => fixture.stage === "qualifier1");
-      const qualifier1ExcludedTeams = new Set([qualifier1Match?.teamA, qualifier1Match?.teamB]);
-      const qualifier1Pool = HOME_STADIUMS.filter((candidate) => !qualifier1ExcludedTeams.has(candidate.teamId));
+      const playoffTeamIds = new Set(
+        standings.slice(0, 4).map((entry) => entry.teamId),
+      );
+      const neutralVenuePool = HOME_STADIUMS.filter(
+        (candidate) => !playoffTeamIds.has(candidate.teamId),
+      );
+      const qualifier1Pool = neutralVenuePool;
       const qualifier1 = [...qualifier1Pool].sort((a, b) => hash(`${currentSeason}:qualifier1:${a.id}`) - hash(`${currentSeason}:qualifier1:${b.id}`))[0];
       const qualifier1Teams = new Set([qualifier1?.teamId]);
       const eliminatorPool = stage === "eliminator"
-        ? HOME_STADIUMS.filter((candidate) => !excludedTeams.has(candidate.teamId) && !qualifier1Teams.has(candidate.teamId))
+        ? neutralVenuePool.filter(
+            (candidate) => !qualifier1Teams.has(candidate.teamId),
+          )
         : [];
       const selected = stage === "qualifier1"
         ? qualifier1
@@ -2325,7 +2329,10 @@ function OverviewPageContent() {
       outfield,
     );
     return {
-      homeTeamId: match.teamA,
+      // For league matches this remains teamA. At playoff venues it identifies
+      // the stadium owner, which also prevents either participant receiving a
+      // false home-ground advantage at a neutral venue.
+      homeTeamId: stadiumTeamId,
       stadiumId: stadium.id,
       stadiumName: stadium.name,
       pitch,

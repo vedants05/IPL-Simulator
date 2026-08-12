@@ -350,10 +350,10 @@ export default function NewsPage({
         age: record.age,
         role: record.role,
         nationality: record.nationality,
-        currentBatting: record.rating,
-        currentBowling: record.rating,
-        potentialBatting: record.rating,
-        potentialBowling: record.rating,
+        currentBatting: snapshot?.currentBatting ?? record.rating,
+        currentBowling: snapshot?.currentBowling ?? record.rating,
+        potentialBatting: snapshot?.potentialBatting ?? snapshot?.currentBatting ?? record.rating,
+        potentialBowling: snapshot?.potentialBowling ?? snapshot?.currentBowling ?? record.rating,
         isOpener: snapshot?.isOpener ?? record.role === "Batsman",
         hasBattedAt3: snapshot?.hasBattedAt3 ?? record.role === "Batsman",
         hasBattedAt4: snapshot?.hasBattedAt4 ?? record.role === "All-Rounder",
@@ -964,8 +964,13 @@ export default function NewsPage({
       const player = retiredPlayerCandidates.find(({ record: item }) => item.playerId === record.playerId)?.player;
       if (!player) return false;
       const isKeeper = player.role === "WK-Batsman" || String(player.role).toLowerCase().includes("keeper") || Boolean(player.isWicketkeeper);
+      const allRounderBowlingLed = player.role === "All-Rounder" && (
+        player.currentBowling > player.currentBatting
+        || (player.currentBowling === player.currentBatting
+          && (player.iplStats?.wickets || 0) * 25 > (player.iplStats?.runs || 0))
+      );
       const isBowler = !isKeeper && (player.role === "Pace Bowler" || player.role === "Spin Bowler"
-        || (player.role === "All-Rounder" && player.currentBowling > player.currentBatting));
+        || allRounderBowlingLed);
       const isTopOrder = !isKeeper && !isBowler && Boolean(player.isOpener || player.hasBattedAt3);
       const isMiddleOrder = !isKeeper && !isBowler && !isTopOrder;
       const suffix = String(triggerType).split("_").pop();
@@ -979,7 +984,36 @@ export default function NewsPage({
     // beat legacy duplicates, while low-appearance careers use dedicated copy.
     const nonRetirementTemplates = dedupedTemplates.filter((template) => !isRetirementArticleTrigger(template.triggerType));
     const retirementTemplates = dedupedTemplates.filter((template) => isRetirementArticleTrigger(template.triggerType));
-    const expandedRetirementTemplates = finalRetirees.flatMap((record) => {
+    const retirementCohorts = Array.from(finalRetirees.reduce((groups, record) => {
+      const cohort = groups.get(record.season) || [];
+      cohort.push(record);
+      groups.set(record.season, cohort);
+      return groups;
+    }, new Map<number, CareerRetirementRecord[]>()).entries()).map(([season, records]) => {
+      const ranked = [...records].sort((left, right) => {
+        const leftPlayer = retiredPlayerCandidates.find(({ record }) => record.playerId === left.playerId)?.player;
+        const rightPlayer = retiredPlayerCandidates.find(({ record }) => record.playerId === right.playerId)?.player;
+        const leftRuns = leftPlayer?.iplStats?.runs || 0;
+        const rightRuns = rightPlayer?.iplStats?.runs || 0;
+        const leftWickets = leftPlayer?.iplStats?.wickets || 0;
+        const rightWickets = rightPlayer?.iplStats?.wickets || 0;
+        // Twenty-five career runs and one career wicket carry similar weight,
+        // while max() ensures elite specialist batters and bowlers both lead.
+        const leftImpact = Math.max(leftRuns / 25, leftWickets);
+        const rightImpact = Math.max(rightRuns / 25, rightWickets);
+        return rightImpact - leftImpact
+          || (rightRuns + rightWickets * 25) - (leftRuns + leftWickets * 25)
+          || (right.rating || 0) - (left.rating || 0);
+      });
+      return {
+        season,
+        headline: ranked.length > 5 ? ranked.slice(0, 5) : ranked,
+        additional: ranked.length > 5 ? ranked.slice(5) : [],
+      };
+    });
+    const headlineRetirees = retirementCohorts.flatMap((cohort) => cohort.headline);
+    const headlineRetireeIds = new Set(headlineRetirees.map((record) => record.playerId));
+    const expandedRetirementTemplates = headlineRetirees.flatMap((record) => {
       const player = retiredPlayerCandidates.find(({ record: item }) => item.playerId === record.playerId)?.player;
       const matches = player?.iplStats?.matches || 0;
       const matchBand = matches === 0 ? "none" : matches <= 10 ? "cameo" : undefined;
@@ -3472,6 +3506,10 @@ export default function NewsPage({
     try {
       cachedArticles = (JSON.parse(window.localStorage.getItem(articleCacheKey) || "[]") as NewsArticle[])
         .filter((article) => articleMatchesLayout(article)
+          && (!isRetirementArticleTrigger((article as any).triggerType)
+            || !article.associatedEntityIds?.playerId
+            || headlineRetireeIds.has(article.associatedEntityIds.playerId))
+          && !article.id.startsWith("club-figure-promotion-")
           && (!article.expiresAt || !currentDate || currentDate <= article.expiresAt)
           && !(completedPercent >= 100 && article.id === "art-tournament-league-scenarios")
           && !(playoffQualificationSettled && playoffScenarioTrigger((article as any).triggerType))
@@ -3490,6 +3528,26 @@ export default function NewsPage({
     }
     const articleByIdentity = new Map<string, NewsArticle>();
     [...cachedArticles, ...freshArticles].forEach((article) => articleByIdentity.set(`${article.id}:${article.publishedAt}:${article.associatedEntityIds?.teamId || article.associatedEntityIds?.playerId || ""}`, article));
+    retirementCohorts.forEach(({ season, additional }) => {
+      if (additional.length === 0) return;
+      const names = additional.map((record) => record.name);
+      const publishedAt = season === currentSeason ? currentDate : `${season}-05-31`;
+      const article: NewsArticle = {
+        id: `retirement-flurry-${season}`,
+        title: "A flurry of retirements occurs",
+        subheading: `${names.length} more players have called time on their IPL careers.`,
+        content: `Alongside the five major retirement announcements, ${names.join(", ")} ${names.length === 1 ? "has" : "have"} also announced their retirement from the IPL.`,
+        category: "player_news",
+        tag: "Retirements",
+        timestamp: formatDate(publishedAt),
+        publishedAt,
+        expiresAt: addDays(publishedAt, 364),
+        imagePlaceholder: "Departing IPL players retirement montage",
+        author: "IPL News Desk",
+        readTime: "2 min read",
+      };
+      articleByIdentity.set(article.id, article);
+    });
     if (isSeasonConcluded) {
       const teamOfSeason = selectTeamOfSeason(players, Object.entries(playerStats).map(([id, stats]) => ({
         id,
@@ -3547,34 +3605,45 @@ export default function NewsPage({
         articleByIdentity.set(article.id, article);
       }
     }
+    const clubPromotionsByTeam = new Map<string, Array<{
+      record: ClubFigureProgression[string];
+      promotion: NonNullable<ClubFigureProgression[string]["promotions"]>[number];
+    }>>();
     Object.values(clubFigureProgression).forEach((record) => {
       (record.promotions ?? [])
         .filter((promotion) => promotion.season === currentSeason || promotion.season === currentSeason - 1)
         .forEach((promotion) => {
-          const tierLabel = promotion.tier === "legend" ? "Club Legend" : "Club Icon";
-          const team = teams[record.teamId];
-          const publishedAt = promotion.season === currentSeason
-            ? currentDate
-            : `${promotion.season}-05-31`;
-          const article: NewsArticle = {
-            id: `club-figure-promotion-${record.id}-${promotion.season}-${promotion.tier}`,
-            title: `${record.playerName} becomes a ${tierLabel}`,
-            subheading: `${record.playerName}'s contribution to ${team?.name ?? record.teamId} has earned lasting recognition.`,
-            content: `${record.playerName} has been elevated to ${promotion.tier === "legend" ? "Legend" : "Icon"} status at ${team?.name ?? record.teamId} after reaching ${record.points} club-figure points across ${record.seasonKeys.length} club seasons.`,
-            category: record.teamId === userTeamId ? "user_team" : "player_news",
-            tag: "Club Figures",
-            timestamp: formatDate(publishedAt),
-            publishedAt,
-            expiresAt: addDays(publishedAt, 364),
-            playerId: record.playerId,
-            teamId: record.teamId,
-            associatedEntityIds: { playerId: record.playerId, teamId: record.teamId },
-            imagePlaceholder: `${record.playerName} club recognition portrait`,
-            author: "IPL Heritage Desk",
-            readTime: "2 min read",
-          };
-          articleByIdentity.set(article.id, article);
+          const entries = clubPromotionsByTeam.get(record.teamId) || [];
+          entries.push({ record, promotion });
+          clubPromotionsByTeam.set(record.teamId, entries);
         });
+    });
+    clubPromotionsByTeam.forEach((entries, teamId) => {
+      const team = teams[teamId];
+      const teamName = team?.name ?? teamId;
+      const latestSeason = Math.max(...entries.map(({ promotion }) => promotion.season));
+      const publishedAt = latestSeason === currentSeason ? currentDate : `${latestSeason}-05-31`;
+      const honours = entries
+        .sort((left, right) => right.promotion.season - left.promotion.season
+          || Number(right.promotion.tier === "legend") - Number(left.promotion.tier === "legend"))
+        .map(({ record, promotion }) => `${record.playerName} — Club ${promotion.tier === "legend" ? "Legend" : "Icon"} (${record.points} points, ${record.seasonKeys.length} club seasons)`);
+      const article: NewsArticle = {
+        id: `club-figure-promotions-${teamId}-${latestSeason}`,
+        title: `${teamName} updates its club honours`,
+        subheading: `${entries.length} ${entries.length === 1 ? "player has" : "players have"} earned new status in the club figures.`,
+        content: `${teamName} has confirmed its latest club-figure promotions:\n\n${honours.join("\n")}`,
+        category: teamId === userTeamId ? "user_team" : "player_news",
+        tag: "Club Figures",
+        timestamp: formatDate(publishedAt),
+        publishedAt,
+        expiresAt: addDays(publishedAt, 364),
+        teamId,
+        associatedEntityIds: { teamId },
+        imagePlaceholder: `${teamName} club honours graphic`,
+        author: "IPL Heritage Desk",
+        readTime: entries.length > 4 ? "3 min read" : "2 min read",
+      };
+      articleByIdentity.set(article.id, article);
     });
     return Array.from(articleByIdentity.values());
   }, [userTeamId, players, teams, playerStats, standings, retirements, retirementHistory, retiredPlayerSnapshots, currentSeason, fixtures, topScorer, topWicketTaker, layout, currentDate, saveId, isSeasonConcluded, clubFigureProgression]);

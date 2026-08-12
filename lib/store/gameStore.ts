@@ -2697,6 +2697,13 @@ export const useGameStore = create<Store>()(
         const simulateOne = (playerId: string) => {
           const player = newPlayers[playerId];
           if (!player) return;
+          // A player can only be resolved once. Defensive de-duplication here
+          // prevents overlapping/legacy auction sets from charging a team and
+          // appending the same player to its squad twice.
+          if (
+            newSoldIds.includes(playerId)
+            || Object.values(newTeams).some((team) => team.squad.includes(playerId))
+          ) return;
 
           const isCurrentLiveLot = isFirstProcessed && auction.currentPlayer?.id === player.id;
           isFirstProcessed = false;
@@ -3044,6 +3051,10 @@ export const useGameStore = create<Store>()(
         const simulateOne = (playerId: string) => {
           const player = newPlayers[playerId];
           if (!player) return;
+          if (
+            newSoldIds.includes(playerId)
+            || Object.values(newTeams).some((team) => team.squad.includes(playerId))
+          ) return;
 
           const isCurrentLiveLot = isFirstProcessed && auction.currentPlayer?.id === player.id;
           isFirstProcessed = false;
@@ -5149,6 +5160,36 @@ function hammerFall() {
     return;
   }
 
+  const winningTeam = teams[highBidder];
+  const playerAlreadyContracted = Object.values(teams).some((team) =>
+    team.squad.includes(player.id),
+  );
+  if (
+    !winningTeam
+    || playerAlreadyContracted
+    || winningTeam.squad.length >= (winningTeam.maxSquadSize ?? 25)
+  ) {
+    // Bid eligibility is normally enough, but the hammer is asynchronous. A
+    // final invariant check prevents stale bids or duplicate lots from taking
+    // a squad beyond its registered maximum.
+    useGameStore.setState((s) => ({
+      auction: s.auction
+        ? {
+            ...s.auction,
+            currentHighBidderTeamId: null,
+            unsoldPlayerIds: playerAlreadyContracted
+              ? s.auction.unsoldPlayerIds
+              : Array.from(new Set([...s.auction.unsoldPlayerIds, player.id])),
+            unsoldFlash: playerAlreadyContracted ? null : { playerId: player.id },
+            soldFlash: null,
+            timerSeconds: 0,
+          }
+        : null,
+    }));
+    setTimeout(() => advanceToNextLot(), playerAlreadyContracted ? 0 : 2200);
+    return;
+  }
+
   // Sold to highBidder
   const soldAmount = auction.currentBid;
 
@@ -5505,6 +5546,14 @@ function ensureMinimumSquadSizes(
   players: Record<string, Player>,
   fillToTarget = false
 ) {
+  Object.values(teams).forEach((team) => {
+    team.squad = Array.from(new Set(team.squad));
+    team.overseasPlayersCurrent = team.squad.reduce(
+      (count, playerId) =>
+        count + Number(players[playerId]?.nationality === "Overseas"),
+      0,
+    );
+  });
   const userTeamId = useGameStore.getState().userTeamId;
   const isWK = (p: Player) => !!(p.isWicketkeeper || p.isPartTimeWk || p.role === "WK-Batsman");
   const isFullTimeKeeper = (p: Player) => !!((p.isWicketkeeper || p.role === "WK-Batsman") && !p.isPartTimeWk);

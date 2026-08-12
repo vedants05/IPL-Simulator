@@ -2069,7 +2069,9 @@ export function getSeasonalPlayerForm(playerId: string, seed?: string): number {
   const u1 = Math.max(0.0001, (Math.abs(hash) % 10000) / 10000);
   const u2 = Math.max(0.0001, (Math.abs(hash >> 3) % 10000) / 10000);
   const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
-  return clamp(z * 3, -7.5, 7.5);
+  // Season-long form should provide background variation, not outweigh the
+  // stronger short-term recent-form adjustment or conceal a rating decline.
+  return clamp(z * 1.15, -3, 3);
 }
 
 export function capSeasonalFormAverages(
