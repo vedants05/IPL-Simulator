@@ -1,9 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { AuctionType, Player, Team, TradeRecord } from "@/lib/types";
-import { calculateTeamTradeValue, calculateTradePackageValue, getTeamTradeWillingness, getTradeOverseasLimit, getTradeSalaryBand, getTradeSalaryOptions, isTradeBalanced, isTradeWindowOpen, MINI_TRADE_OVERDRAFT_LAKHS } from "@/lib/logic/tradeEngine";
+import { calculateTeamTradeValue, calculateTradePackageValue, getTeamTradeWillingness, getTradeOverseasLimit, getTradeSalaryBand, getTradeSalaryOptions, getTradeWindowDates, isTradeBalanced, isTradeWindowOpen, MINI_TRADE_OVERDRAFT_LAKHS } from "@/lib/logic/tradeEngine";
 import { getPlayerSeasonHistory } from "@/lib/logic/playerHistory";
+import { addDaysToDateKey } from "@/lib/logic/careerCalendar";
+import TradeHubGuidedTour from "./TradeHubGuidedTour";
 
 interface TradeHubPageProps {
   currentDate: string;
@@ -14,7 +16,9 @@ interface TradeHubPageProps {
   players: Record<string, Player>;
   teams: Record<string, Team>;
   tradeRecords: TradeRecord[];
+  negotiationCooldowns: Record<string, string>;
   injuredPlayerIds: string[];
+  onSetNegotiationCooldown: (teamId: string, recoversOn: string | null) => void;
   onExecuteTrade: (input: {
     proposerTeamId: string;
     recipientTeamId: string;
@@ -46,7 +50,9 @@ export default function TradeHubPage({
   players,
   teams,
   tradeRecords,
+  negotiationCooldowns,
   injuredPlayerIds,
+  onSetNegotiationCooldown,
   onExecuteTrade,
 }: TradeHubPageProps) {
   const [recipientTeamId, setRecipientTeamId] = useState("");
@@ -59,12 +65,44 @@ export default function TradeHubPage({
   const [counterIndex, setCounterIndex] = useState(0);
   const [contractNegotiationOpen, setContractNegotiationOpen] = useState(false);
   const [hubView, setHubView] = useState<"hub" | "builder">("hub");
+  const [showGuide, setShowGuide] = useState(false);
   const injuredIds = useMemo(() => new Set(injuredPlayerIds), [injuredPlayerIds]);
-  const [patience, setPatience] = useState(4);
+  const [patienceByTeam, setPatienceByTeam] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    const openPageGuide = (event: Event) => {
+      const customEvent = event as CustomEvent<{ page?: string }>;
+      if (customEvent.detail?.page === "trade-hub") {
+        setHubView("builder");
+        setShowGuide(true);
+      }
+    };
+    window.addEventListener("open-page-guide", openPageGuide);
+    return () => window.removeEventListener("open-page-guide", openPageGuide);
+  }, []);
 
   const open = isTradeWindowOpen(currentDate, finalDate, currentSeason);
+  const tradeWindow = finalDate ? getTradeWindowDates(finalDate, currentSeason) : undefined;
+  const beforeTradeWindow = Boolean(tradeWindow && currentDate < tradeWindow.startsOn);
   const userTeam = teams[userTeamId];
   const recipientTeam = recipientTeamId ? teams[recipientTeamId] : undefined;
+  const cooldownEndsOn = recipientTeamId ? negotiationCooldowns[recipientTeamId] : undefined;
+  const negotiationCoolingDown = Boolean(cooldownEndsOn && currentDate < cooldownEndsOn);
+  const patience = recipientTeamId
+    ? (negotiationCoolingDown ? 0 : patienceByTeam[recipientTeamId] ?? 4)
+    : 4;
+
+  useEffect(() => {
+    Object.entries(negotiationCooldowns).forEach(([teamId, recoversOn]) => {
+      if (currentDate >= recoversOn) onSetNegotiationCooldown(teamId, null);
+    });
+  }, [currentDate, negotiationCooldowns, onSetNegotiationCooldown]);
+
+  const setTeamPatience = (value: number) => {
+    if (!recipientTeamId) return;
+    setPatienceByTeam((current) => ({ ...current, [recipientTeamId]: value }));
+  };
+  const setPatience = setTeamPatience;
   const currentWindowTradeRecords = useMemo(() => tradeRecords.filter((record) => (
     record.season === currentSeason
     && isTradeWindowOpen(record.date, finalDate, currentSeason)
@@ -122,7 +160,8 @@ export default function TradeHubPage({
       setMessage(`Trade cannot be submitted: ${failedRequirements.join("; ")}`);
       return;
     }
-    if (patience <= 0) { setMessage("Negotiation has broken down. Start a new proposal."); return; }
+    if (negotiationCoolingDown) { setMessage(`This club will not reopen negotiations until ${cooldownEndsOn}.`); return; }
+    if (patience <= 0) { setMessage("Negotiation has broken down for now."); return; }
     const demandedSalaries = Object.fromEntries(requestedIds.map((id) => [id, getTradeSalaryBand(players[id], currentSeason).demand]));
     const salaries = Object.fromEntries(requestedIds.map((id) => [id, Number(salaryInputs[id] ?? demandedSalaries[id])]));
     const successful = onExecuteTrade({
@@ -151,13 +190,13 @@ export default function TradeHubPage({
         explanation: `User proposal: ${recipientTeam.shortName} squad adjustment`,
       });
       if (completed) {
-        setMessage("Trade completed and recorded."); setPatience(4); setCounterOptions([]); setOfferedIds([]); setRequestedIds([]); setSalaryInputs({});
+        setMessage("Trade completed and recorded."); setTeamPatience(4); setCounterOptions([]); setOfferedIds([]); setRequestedIds([]); setSalaryInputs({});
       }
       return;
     }
     if (!successful) {
       const next = patience - 1;
-      setPatience(next);
+      setTeamPatience(next);
       if (next > 0) {
         const offeredRating = selectedPlayers(offeredIds).reduce((sum, p) => sum + Math.max(p.currentBatting, p.currentBowling), 0);
         const options = selectableRecipientPlayers.filter((p) => {
@@ -188,11 +227,13 @@ export default function TradeHubPage({
         }
       } else {
         setCounterOffer(null);
-        setMessage("Negotiation broke down after repeated rejected offers.");
+        const recoversOn = addDaysToDateKey(currentDate, 7);
+        onSetNegotiationCooldown(recipientTeam.id, recoversOn);
+        setMessage(`Negotiation broke down after repeated rejected offers. The club will talk again on ${recoversOn}.`);
       }
     } else {
       setMessage("Trade completed and recorded.");
-      setPatience(4);
+      setTeamPatience(4);
       setCounterOptions([]);
     }
     if (successful) {
@@ -349,8 +390,10 @@ export default function TradeHubPage({
 
       <div className="shrink-0"><button type="button" onClick={() => setHubView("hub")} className="border border-border px-2 py-1 font-space-mono text-[8px] font-bold uppercase text-text-secondary hover:border-accent hover:text-accent">← Trade Hub</button></div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-hidden lg:grid-cols-[minmax(170px,0.62fr)_minmax(0,2.6fr)_minmax(170px,0.62fr)]">
-        <section className="flex min-h-0 flex-col overflow-hidden border border-border bg-surface p-2.5">
+      {!open && <div className="shrink-0 border-2 border-warning bg-warning/15 px-4 py-3 text-center shadow-sm" role="status"><div className="font-anton text-[18px] uppercase text-text-primary">Trade window closed</div><p className="mt-1 font-space-mono text-[9px] font-bold uppercase text-text-secondary">{beforeTradeWindow && tradeWindow ? `The trade window opens on ${tradeWindow.startsOn}. Trade configurations are locked until then.` : "The trade window is shut. No further trade configurations can be made this season."}</p></div>}
+
+      <div className={`grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-hidden lg:grid-cols-[minmax(170px,0.62fr)_minmax(0,2.6fr)_minmax(170px,0.62fr)] ${open ? "" : "pointer-events-none select-none opacity-40"}`} aria-disabled={!open}>
+        <section data-tour="trade-your-players" className="flex min-h-0 flex-col overflow-hidden border border-border bg-surface p-2.5">
           <div className="flex shrink-0 items-center justify-between gap-2"><h3 className="font-anton text-[16px] uppercase text-text-primary">Your players</h3>{offeredIds.length > 0 && <button type="button" onClick={() => setOfferedIds([])} className="border border-border px-1.5 py-1 font-space-mono text-[7px] font-bold uppercase text-text-secondary hover:border-accent hover:text-accent">Clear selections</button>}</div>
           <p className="mb-3 shrink-0 font-space-mono text-[8px] uppercase text-text-secondary">Select up to three to offer</p>
           <div className="min-h-0 space-y-2 overflow-y-auto px-1">{selectableUserPlayers.map((player) => playerCard(player, offeredIds.includes(player.id), () => toggle(player.id, offeredIds, setOfferedIds), userTeam))}</div>
@@ -359,8 +402,8 @@ export default function TradeHubPage({
         <section className="flex min-h-0 flex-col gap-3 overflow-hidden border-2 border-accent/50 bg-surface p-4 shadow-sm">
           {message && <div className="shrink-0 border border-accent/30 bg-accent/10 px-2 py-1 text-[10px] text-text-primary">{message}</div>}
           {counterOffer && <div className="shrink-0 border-2 border-warning/60 bg-warning/10 px-2 py-2 text-[10px] font-semibold text-text-primary"><span className="font-space-mono text-[8px] font-bold uppercase text-warning">Theoretical club counteroffer {counterOptions.length ? `${counterIndex + 1}/${counterOptions.length}` : ""}</span>{counterOptions.length > 0 && <div className="mt-2 flex items-center gap-2"><div className="flex flex-wrap gap-2">{selectedPlayers(offeredIds).map((p) => <div key={p.id} className="flex h-16 w-16 items-center justify-center border border-accent bg-accent/10 p-1 text-center text-[8px]">{p.name}</div>)}</div><span className="text-lg text-warning">⇄</span><div className="flex flex-wrap gap-2">{counterOptions[counterIndex].map((id) => <div key={id} className="flex h-16 w-16 items-center justify-center border border-warning bg-warning/10 p-1 text-center text-[8px]">{players[id]?.name}</div>)}</div></div>}<div className="mt-2 text-text-primary">{counterOffer.replace("Club counteroffer: ", "")}</div>{counterOptions.length > 0 && <div className="mt-2 flex gap-2"><button type="button" className="border border-border px-2 py-1 font-space-mono text-[8px] uppercase" onClick={() => { const next = (counterIndex + 1) % counterOptions.length; setCounterIndex(next); setCounterOffer(`Club counteroffer: ${counterOptions[next].map((id) => players[id]?.name).join(" + ")}. This player exchange is within the club's acceptable valuation range.`); }}>Next offer</button><button type="button" className="border border-accent bg-accent px-2 py-1 font-space-mono text-[8px] uppercase text-white" onClick={() => { setRequestedIds(counterOptions[counterIndex]); setCounterOffer(null); }}>Use this deal</button></div>}</div>}
-          <button type="button" onClick={balanceTrade} disabled={!recipientTeam || (offeredIds.length === 0 && requestedIds.length === 0)} className="shrink-0 border border-warning/70 bg-warning/10 px-3 py-2 font-space-mono text-[9px] font-bold uppercase text-text-primary disabled:opacity-40">{offeredIds.length > 0 && requestedIds.length === 0 ? "What can you offer?" : requestedIds.length > 0 && offeredIds.length === 0 ? "What would it take?" : "Balance this trade"}</button>
-          <div className="min-h-0 flex-1 overflow-y-auto flex flex-wrap items-center justify-center content-start gap-2">
+          <button data-tour="trade-balance" type="button" onClick={balanceTrade} disabled={!recipientTeam || (offeredIds.length === 0 && requestedIds.length === 0)} className="shrink-0 border border-warning/70 bg-warning/10 px-3 py-2 font-space-mono text-[9px] font-bold uppercase text-text-primary disabled:opacity-40">{offeredIds.length > 0 && requestedIds.length === 0 ? "What can you offer?" : requestedIds.length > 0 && offeredIds.length === 0 ? "What would it take?" : "Balance this trade"}</button>
+          <div data-tour="trade-package" className="min-h-0 flex-1 overflow-y-auto flex flex-wrap items-center justify-center content-start gap-2">
             {requestedIds.length === 0 && <p className="py-6 text-center text-xs text-text-secondary">Select players from both columns to construct the swap.</p>}
             {offeredIds.length > 0 && <div className="flex flex-wrap items-center justify-center gap-2">{selectedPlayers(offeredIds).map((player) => <div key={player.id} className="flex h-24 w-24 flex-col justify-between border-2 p-2 text-center" style={{ borderColor: recipientTeam?.secondaryColor ?? "#888", backgroundColor: `${recipientTeam?.primaryColor ?? "#888"}22` }}><span className="break-words text-[10px] font-bold leading-tight text-text-primary">{player.name}</span><span className="font-space-mono text-[8px] uppercase text-text-secondary">To {recipientTeam?.shortName ?? "target"}</span></div>)}<span className="text-xl font-bold text-accent">⇄</span></div>}
             {requestedIds.map((id) => {
@@ -368,11 +411,12 @@ export default function TradeHubPage({
               return <div key={id} className="flex h-24 w-24 flex-col justify-between border-2 p-2 text-center text-xs" style={{ borderColor: userTeam?.secondaryColor ?? "#888", backgroundColor: userTeam?.primaryColor ?? "#555", color: "#fff" }}><div className="break-words text-[10px] font-bold leading-tight text-white">{player?.name}</div><span className="font-space-mono text-[8px] uppercase text-white/80">To {userTeam?.shortName}</span></div>;
             })}
           </div>
-          <div className="shrink-0 border border-border bg-bg p-2">
+          <div data-tour="trade-patience" className="shrink-0 border border-border bg-bg p-2">
             <div className="flex items-center justify-between font-space-mono text-[8px] font-bold uppercase text-text-secondary"><span>Negotiation patience</span><span>{patience}/4</span></div>
             <div className="mt-1 h-1.5 bg-border"><div className={`h-full ${patience <= 1 ? "bg-red-500" : "bg-accent"}`} style={{ width: `${patience * 25}%` }} /></div>
+            {negotiationCoolingDown && <p className="mt-1.5 font-space-mono text-[8px] font-bold uppercase text-red-600">Talks reopen {cooldownEndsOn}</p>}
           </div>
-          <div className="shrink-0 grid grid-cols-1 gap-1.5 text-[9px] xl:grid-cols-2">
+          <div data-tour="trade-requirements" className="shrink-0 grid grid-cols-1 gap-1.5 text-[9px] xl:grid-cols-2">
             {[
               ["Your requirements", yourRequirements],
               ["Target team requirements", targetRequirements.length ? targetRequirements : ["Choose a target team to calculate requirements."]],
@@ -386,10 +430,10 @@ export default function TradeHubPage({
               </div>;
             })}
           </div>
-          <button type="button" disabled={!open} onClick={submit} className="shrink-0 border border-accent bg-accent px-3 py-2 font-space-mono text-[9px] font-bold uppercase text-white disabled:cursor-not-allowed disabled:opacity-40">Submit trade proposal</button>
+          <button data-tour="trade-submit" type="button" disabled={!open} onClick={submit} className="shrink-0 border border-accent bg-accent px-3 py-2 font-space-mono text-[9px] font-bold uppercase text-white disabled:cursor-not-allowed disabled:opacity-40">Submit trade proposal</button>
         </section>
 
-        <section className="flex min-h-0 flex-col overflow-hidden border border-border bg-surface p-2.5">
+        <section data-tour="trade-target-players" className="flex min-h-0 flex-col overflow-hidden border border-border bg-surface p-2.5">
           <div className="flex shrink-0 items-center gap-1"><select value={recipientTeamId} onChange={(event) => { setRecipientTeamId(event.target.value); setRequestedIds([]); }} className="min-w-0 flex-1 border border-accent/60 bg-bg px-2 py-2 font-space-mono text-[9px] uppercase text-text-primary">
             <option value="">Choose team to trade with</option>
             {Object.values(teams).filter((team) => team.id !== userTeamId).map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}
@@ -399,6 +443,7 @@ export default function TradeHubPage({
       </div>
 
       {contractNegotiationOpen && recipientTeam && <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/65 p-4"><div className="w-full max-w-md border-2 border-accent bg-surface p-5 shadow-2xl"><h3 className="font-anton text-xl uppercase text-text-primary">Contract negotiation</h3><p className="mt-1 text-xs text-text-secondary">The clubs have agreed the trade. Each player has a fixed demand and may allow one or more auction-ladder steps below it.</p><div className="mt-4 space-y-3">{requestedIds.filter((id) => getTradeSalaryBand(players[id], currentSeason).demand !== contractSalary(id)).map((id) => { const player = players[id]; const band = getTradeSalaryBand(player, currentSeason); const options = getTradeSalaryOptions(player, currentSeason); return <div key={id} className="border border-border bg-bg p-3"><div className="font-semibold text-text-primary">{player.name}</div><div className="mt-1 font-space-mono text-[8px] uppercase text-text-secondary">Current {money(contractSalary(id))} · Requested {money(band.demand)}{band.minimum < band.demand ? ` · Negotiable to ${money(band.minimum)}` : " · Non-negotiable"}</div><select value={salaryInputs[id] ?? String(band.demand)} onChange={(event) => setSalaryInputs({ ...salaryInputs, [id]: event.target.value })} className="mt-2 w-full border border-border bg-surface px-2 py-2 font-space-mono text-[10px] text-text-primary">{options.map((amount) => <option key={amount} value={amount}>{money(amount)}</option>)}</select></div>; })}</div><div className="mt-4 flex justify-end gap-2"><button type="button" onClick={() => setContractNegotiationOpen(false)} className="border border-border px-3 py-2 font-space-mono text-[9px] uppercase text-text-primary">Cancel</button><button type="button" onClick={() => { const completed = onExecuteTrade({ proposerTeamId: userTeamId, recipientTeamId: recipientTeam.id, offeredPlayerIds: offeredIds, requestedPlayerIds: requestedIds, salaries: Object.fromEntries(requestedIds.map((id) => [id, Number(salaryInputs[id] ?? getTradeSalaryBand(players[id], currentSeason).demand)])), date: currentDate, finalDate, auctionType, explanation: `User proposal: ${recipientTeam.shortName} squad adjustment` }); if (completed) { setContractNegotiationOpen(false); setMessage("Trade and player contracts completed."); setOfferedIds([]); setRequestedIds([]); setSalaryInputs({}); setPatience(4); } else setMessage("Contract terms were rejected or the negotiated salary broke a trade requirement."); }} className="border border-accent bg-accent px-3 py-2 font-space-mono text-[9px] font-bold uppercase text-white">Agree terms and complete trade</button></div></div></div>}
+      {showGuide && <TradeHubGuidedTour onClose={() => setShowGuide(false)} />}
     </div>
   );
 }

@@ -153,7 +153,7 @@ export function getDaySimulationIntervalMs(
     : DAY_SIMULATION_INTERVAL_MS;
 }
 
-function daysBetweenDateKeys(startDate: string, endDate: string): number {
+export function daysBetweenDateKeys(startDate: string, endDate: string): number {
   const start = dateKeyToLocalDate(startDate);
   const end = dateKeyToLocalDate(endDate);
   const startUtc = Date.UTC(start.getFullYear(), start.getMonth(), start.getDate());

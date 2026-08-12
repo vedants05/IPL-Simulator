@@ -5,9 +5,11 @@ import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useGameStore, getSeasonDates, INITIAL_ACTIVE_SEASON } from "@/lib/store/gameStore";
 import { formatPrice } from "@/lib/logic/auctionRules";
+import { getTradeWindowDates, isTradeWindowOpen } from "@/lib/logic/tradeEngine";
 import {
   addDaysToDateKey,
   dateKeyToLocalDate,
+  daysBetweenDateKeys,
   findCalendarMonthIndex,
   getCareerCalendarStep,
   getCareerFastForwardStep,
@@ -66,7 +68,13 @@ import { appendRainAffectedResultLabel, isRainAffectedMatch } from "@/lib/logic/
 import type { IplCareerMatchUpdate } from "@/lib/logic/iplCareerStats";
 import type { CareerReputationAchievements } from "@/lib/logic/careerLifecycle";
 import { formatStatValue } from "@/lib/logic/statFormatting";
-import { getBestPlayerScoutingReport, getPlayerScoutingConfidence } from "@/lib/logic/scoutingAssignments";
+import {
+  DEEP_SCOUTING_DAYS,
+  getBestPlayerScoutingReport,
+  getPlayerScoutingConfidence,
+  getScoutingRegion,
+  SCOUTING_ASSIGNMENT_OPTIONS,
+} from "@/lib/logic/scoutingAssignments";
 import {
   createPlayerInjury,
   getInjuryReturnLabel,
@@ -717,6 +725,7 @@ function OverviewPageContent() {
     injuryHistory,
     injuryReplacementRecords,
     tradeRecords,
+    tradeNegotiationCooldowns,
     retiredPlayerSnapshots,
     lastCareerRetirements,
     careerRetirementHistory,
@@ -726,8 +735,10 @@ function OverviewPageContent() {
     signInjuryReplacement,
     processAIInjuryReplacements,
     executeTrade,
+    setTradeNegotiationCooldown,
     processAITrades,
     scoutingReports,
+    scoutingAssignments,
     reconcileScoutingAssignments,
   } = useGameStore();
   const matchArchiveCareerId = `${userTeamId}:${currentSeason}:${fixtureSeed}`;
@@ -1152,6 +1163,11 @@ function OverviewPageContent() {
     return getLeagueSeasonStartDate(currentSeason);
   }, [currentSeason]);
 
+  const calendarTradeWindow = useMemo(() => {
+    const finalDate = fixtures.find((fixture) => fixture.stage === "final")?.date;
+    return finalDate ? getTradeWindowDates(finalDate, currentSeason) : undefined;
+  }, [currentSeason, fixtures]);
+
   const getCalendarDayData = (dateString: string) => {
     const dayMatches = fixturesByDate.get(dateString) ?? [];
     const isOpeningMatchDay = dateString === openingMatchDateString;
@@ -1163,6 +1179,8 @@ function OverviewPageContent() {
       hasRetention: dateString === retentionDateString,
       hasUserMatch: dayMatches.some((match) => match.teamA === userTeamId || match.teamB === userTeamId),
       isAnnouncement: dateString === formattedAnnouncementDate,
+      isTradeWindowOpening: dateString === calendarTradeWindow?.startsOn,
+      isTradeWindowClosing: dateString === calendarTradeWindow?.endsOn,
       isOpeningMatchDay,
       isPreAnnouncementOpeningMatch,
     };
@@ -5736,7 +5754,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                           const dateString = `${inGameDate.getFullYear()}-${String(inGameDate.getMonth() + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
                           const dayData = getCalendarDayData(dateString);
                           const isCurrentDay = day === inGameDate.getDate();
-                          const hasRingedEvent = dayData.hasAuction || dayData.hasRetention || dayData.hasUserMatch;
+                          const hasRingedEvent = dayData.hasAuction || dayData.hasRetention || dayData.hasUserMatch || dayData.isTradeWindowOpening || dayData.isTradeWindowClosing;
                           const surfaceClass = isCurrentDay
                             ? "border-accent/60 bg-accent/[0.07] shadow-sm"
                             : dayData.isAnnouncement
@@ -5760,6 +5778,8 @@ This record has been officially verified and added to the IPL Minor Records arch
                                 dayData.hasAuction ? "Auction Day" : "",
                                 dayData.hasRetention ? "Retention Deadline" : "",
                                 dayData.isAnnouncement ? "Fixture Announcement" : "",
+                                dayData.isTradeWindowOpening ? "Trade Window Opens" : "",
+                                dayData.isTradeWindowClosing ? "Trade Window Closes" : "",
                                 dayData.hasUserMatch ? "Your team has a match" : "",
                               ].filter(Boolean).join(" · ")}
                             >
@@ -6294,9 +6314,11 @@ This record has been officially verified and added to the IPL Minor Records arch
                             hasRetention: hasRetentionDeadline,
                             hasUserMatch,
                             isAnnouncement: isAnnouncementDay,
+                            isTradeWindowOpening,
+                            isTradeWindowClosing,
                             isPreAnnouncementOpeningMatch,
                           } = getCalendarDayData(dateString);
-                          const unselectedDayStateClass = isAnnouncementDay
+                          const unselectedDayStateClass = isAnnouncementDay || isTradeWindowOpening || isTradeWindowClosing
                             ? "border-success bg-success/5 ring-2 ring-success/20"
                             : isPreAnnouncementOpeningMatch
                               ? "border-accent bg-accent/5 ring-2 ring-accent/25"
@@ -6405,11 +6427,13 @@ This record has been officially verified and added to the IPL Minor Records arch
                               )}
 
                               {/* Large, bold, readable event badge */}
-                              {(hasAuction || hasRetentionDeadline || isAnnouncementDay || isPreAnnouncementOpeningMatch) && (
+                              {(hasAuction || hasRetentionDeadline || isAnnouncementDay || isTradeWindowOpening || isTradeWindowClosing || isPreAnnouncementOpeningMatch) && (
                                 <div className="w-full text-[9px] font-anton tracking-wider uppercase mt-1 leading-none">
                                   {hasAuction && <span className="text-success block">AUCTION</span>}
                                   {hasRetentionDeadline && <span className="text-danger block">RETENTION</span>}
                                   {isAnnouncementDay && <span className="text-success block bg-success/15 border border-success/30 py-1 px-1.5 rounded text-center">FIXTURES</span>}
+                                  {isTradeWindowOpening && <span className="text-success block bg-success/15 border border-success/30 py-1 px-1.5 rounded text-center">TRADES OPEN</span>}
+                                  {isTradeWindowClosing && <span className="text-warning block bg-warning/15 border border-warning/30 py-1 px-1.5 rounded text-center">TRADES CLOSE</span>}
                                   {isPreAnnouncementOpeningMatch && <span className="text-accent block bg-accent/15 border border-accent/40 py-1 px-1.5 rounded text-center">SEASON OPENER</span>}
                                 </div>
                               )}
@@ -6422,7 +6446,7 @@ This record has been officially verified and added to the IPL Minor Records arch
 
                   {/* Right part: Detail Inspector Panel */}
                   <div className="flex h-full min-h-0 flex-col gap-2">
-                    <div className="min-h-0 flex-1 overflow-y-auto border-2 border-border bg-surface p-5">
+                    <div className="order-2 min-h-0 flex-1 overflow-y-auto border-2 border-border bg-surface p-5">
                       <div>
                       <h4 className="font-anton text-[16px] text-text-primary uppercase border-b border-[#16130f]/10 pb-2 mb-4">
                         Details: {selectedCalendarDay} {currentCalendarMonth.label} {currentCalendarMonth.year}
@@ -6433,6 +6457,8 @@ This record has been officially verified and added to the IPL Minor Records arch
                         const isRetentionDay = dateString === retentionDateString;
                         const isAuctionDay = dateString === auctionDateString;
                         const isAnnouncementDay = dateString === formattedAnnouncementDate;
+                        const isTradeWindowOpening = dateString === calendarTradeWindow?.startsOn;
+                        const isTradeWindowClosing = dateString === calendarTradeWindow?.endsOn;
 
                         if (!isFixturesAnnounced) {
                           const isTournamentMonth = currentCalendarMonth.month === 2 || currentCalendarMonth.month === 3 || currentCalendarMonth.month === 4;
@@ -6456,6 +6482,12 @@ This record has been officially verified and added to the IPL Minor Records arch
                                   <p className="mt-2 text-xs text-text-secondary">The complete fixture list and match schedule for the new season are officially announced today!</p>
                                 </div>
                               )}
+                              {isTradeWindowOpening && (
+                                <div className="rounded border border-success/20 bg-success/5 p-3"><span className="rounded bg-success px-2 py-0.5 font-space-mono text-[9px] font-bold uppercase text-white">Trade Window Opens</span><p className="mt-2 text-xs text-text-secondary">The trade window is now open. Clubs can configure and complete player trades until {calendarTradeWindow?.endsOn}.</p></div>
+                              )}
+                              {isTradeWindowClosing && (
+                                <div className="rounded border border-warning/20 bg-warning/5 p-3"><span className="rounded bg-warning px-2 py-0.5 font-space-mono text-[9px] font-bold uppercase text-white">Trade Window Closes</span><p className="mt-2 text-xs text-text-secondary">The trade window closes today. This is the final day to complete player trades this season.</p></div>
+                              )}
                               {dateString === openingMatchDateString && (
                                 <div className="border border-accent/30 bg-accent/10 rounded p-3">
                                   <span className="font-space-mono text-[9px] bg-accent text-white px-2 py-0.5 rounded font-bold uppercase">Season Opener</span>
@@ -6472,7 +6504,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                                   <p className="mt-1 text-[11px] font-bold text-accent">Schedule release: {userFriendlyAnnouncementDate}</p>
                                 </div>
                               )}
-                              {!isRetentionDay && !isAuctionDay && !isAnnouncementDay && !isTournamentMonth && (
+                              {!isRetentionDay && !isAuctionDay && !isAnnouncementDay && !isTradeWindowOpening && !isTradeWindowClosing && !isTournamentMonth && (
                                 <div className="text-xs font-barlow text-text-secondary py-8 text-center">
                                   No calendar events recorded for this day.
                                 </div>
@@ -6482,7 +6514,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                         }
 
                         const dayMatches = fixturesByDate.get(dateString) ?? [];
-                        if (dayMatches.length === 0 && !isRetentionDay && !isAuctionDay && !isAnnouncementDay) {
+                        if (dayMatches.length === 0 && !isRetentionDay && !isAuctionDay && !isAnnouncementDay && !isTradeWindowOpening && !isTradeWindowClosing) {
                           return (
                             <div className="text-xs font-barlow text-text-secondary py-8 text-center">
                               No calendar events recorded for this day.
@@ -6509,6 +6541,12 @@ This record has been officially verified and added to the IPL Minor Records arch
                                 <span className="font-space-mono text-[9px] bg-success text-white px-2 py-0.5 rounded font-bold uppercase">Schedule Announcement</span>
                                 <p className="mt-2 text-xs text-text-secondary">The complete fixture list and match schedule for the new season are officially announced today!</p>
                               </div>
+                            )}
+                            {isTradeWindowOpening && (
+                              <div className="rounded border border-success/20 bg-success/5 p-3"><span className="rounded bg-success px-2 py-0.5 font-space-mono text-[9px] font-bold uppercase text-white">Trade Window Opens</span><p className="mt-2 text-xs text-text-secondary">The trade window is now open. Clubs can configure and complete player trades until {calendarTradeWindow?.endsOn}.</p></div>
+                            )}
+                            {isTradeWindowClosing && (
+                              <div className="rounded border border-warning/20 bg-warning/5 p-3"><span className="rounded bg-warning px-2 py-0.5 font-space-mono text-[9px] font-bold uppercase text-white">Trade Window Closes</span><p className="mt-2 text-xs text-text-secondary">The trade window closes today. This is the final day to complete player trades this season.</p></div>
                             )}
                             {dayMatches.map((m) => {
                               const isUserGame = m.teamA === userTeamId || m.teamB === userTeamId;
@@ -6572,7 +6610,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                       </div>
                     </div>
                     {pendingSkipTargetDate ? (
-                      <div className="flex min-h-9 w-full shrink-0 items-center gap-2 border border-accent bg-accent/5 px-2 py-1.5">
+                      <div className="order-1 flex min-h-9 w-full shrink-0 items-center gap-2 border border-accent bg-accent/5 px-2 py-1.5">
                         <span className="min-w-0 flex-1 font-space-mono text-[8px] font-bold uppercase leading-relaxed text-text-primary">
                           {countUserFixturesBeforeCalendarDate(pendingSkipTargetDate) > 0
                             ? `${countUserFixturesBeforeCalendarDate(pendingSkipTargetDate)} ${
@@ -6612,7 +6650,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                         type="button"
                         onClick={() => setPendingSkipTargetDate(selectedCalendarDateString)}
                         disabled={!canSkipToSelectedCalendarDate || isSimulatingDays || isTickerAtImpasse}
-                        className="w-full shrink-0 border border-border bg-surface py-2 font-space-mono text-[9px] font-bold uppercase tracking-widest text-text-primary transition-colors hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
+                        className="order-1 w-full shrink-0 border border-border bg-surface py-6 font-space-mono text-[9px] font-bold uppercase tracking-widest text-text-primary transition-colors hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
                       >
                         {isTickerAtImpasse
                           ? "Play your fixture first"
@@ -7400,8 +7438,10 @@ This record has been officially verified and added to the IPL Minor Records arch
                   players={players}
                   teams={teams}
                   tradeRecords={tradeRecords}
+                  negotiationCooldowns={tradeNegotiationCooldowns}
                   injuredPlayerIds={Object.keys(activeInjuries)}
                   onExecuteTrade={executeTrade}
+                  onSetNegotiationCooldown={setTradeNegotiationCooldown}
                 />
               )}
               {activeSubTab === "assignments" && (
@@ -7487,17 +7527,31 @@ This record has been officially verified and added to the IPL Minor Records arch
                     </div>
                   </div>
 
-                  <div className="grid min-h-0 grid-rows-2 gap-6">
-                    <div onClick={() => setActiveSubTab("assignments")} className="flex min-h-0 cursor-pointer flex-col justify-between overflow-hidden rounded-lg border-2 border-border bg-surface p-5 transition-colors hover:border-accent">
-                      <div>
-                        <h4 className="mb-4 border-b border-[#16130f]/10 pb-2 font-anton text-[14px] uppercase">SCOUTING ASSIGNMENTS</h4>
-                        <p className="max-w-md text-xs leading-relaxed text-text-secondary">Scout India state by state or search international cricket markets. Build networks and identify players for the next auction.</p>
+                  <div className="grid min-h-0 grid-rows-[1.35fr_0.8fr_0.85fr] gap-4">
+                    <div onClick={() => setActiveSubTab("assignments")} className="flex min-h-0 cursor-pointer flex-col overflow-hidden rounded-lg border-2 border-border bg-surface p-4 transition-colors hover:border-accent">
+                      <div className="flex min-h-0 flex-1 flex-col">
+                        <div className="flex items-center justify-between border-b border-[#16130f]/10 pb-2"><h4 className="font-anton text-[14px] uppercase">Scouting assignments</h4><span className="font-space-mono text-[8px] font-bold uppercase text-text-secondary">{scoutingAssignments.filter((assignment) => assignment.status === "active").length}/3 active</span></div>
+                        <div className="mt-2 grid min-h-0 flex-1 grid-cols-3 items-stretch gap-2">
+                          {[1, 2, 3].map((slot) => {
+                            const assignment = scoutingAssignments.find((candidate) => candidate.status === "active" && candidate.slot === slot);
+                            if (!assignment) return <div key={slot} className="flex min-w-0 flex-col items-center justify-center rounded border border-dashed border-border bg-bg/40 px-2 py-3 text-center"><div className="font-space-mono text-[8px] font-bold uppercase text-text-secondary">Scout slot {slot}</div><div className="mt-1 font-space-mono text-[8px] font-bold uppercase text-accent">Available</div></div>;
+                            const region = getScoutingRegion(assignment.regionId);
+                            const option = SCOUTING_ASSIGNMENT_OPTIONS.find((candidate) => candidate.kind === assignment.kind);
+                            const targetReport = assignment.targetReportId ? scoutingReports.find((report) => report.id === assignment.targetReportId) : undefined;
+                            const targetPlayer = targetReport ? players[targetReport.playerId] : undefined;
+                            const totalDays = assignment.kind === "deep-scout" ? DEEP_SCOUTING_DAYS : option?.days ?? Math.max(daysBetweenDateKeys(assignment.startedOn, assignment.completesOn), 1);
+                            const remainingDays = Math.max(daysBetweenDateKeys(currentDate, assignment.completesOn), 0);
+                            const progress = Math.min(100, Math.max(0, ((totalDays - remainingDays) / totalDays) * 100));
+                            const assignmentLabel = assignment.kind === "deep-scout" ? "In-depth player scout" : option?.label ?? "Scouting assignment";
+                            return <div key={slot} className="flex min-w-0 flex-col rounded border border-border bg-bg/40 px-2.5 py-2"><div className="flex items-center justify-between gap-1 font-space-mono text-[7px] font-bold uppercase"><span className="truncate text-accent">Slot {slot} · {assignment.market === "india" ? "India" : "International"}</span><span className="shrink-0 text-text-primary">{remainingDays}d</span></div><div className="mt-1 truncate font-anton text-[12px] uppercase leading-tight text-text-primary">{targetPlayer?.name ?? region?.name ?? assignment.regionId}</div><div className="mt-1 truncate font-space-mono text-[7px] font-bold uppercase text-text-secondary">{assignmentLabel}</div><div className="mt-auto min-w-0 pt-1 font-space-mono text-[7px] uppercase text-text-secondary"><div className="truncate">{region?.depth ?? "Player"} depth · {option?.reportCount ?? 1} report{option?.reportCount === 1 ? "" : "s"}</div><div className="truncate">{totalDays} days · Due {assignment.completesOn}</div></div><div className="mt-1.5 h-1 overflow-hidden rounded bg-border"><div className="h-full bg-accent" style={{ width: `${progress}%` }} /></div></div>;
+                          })}
+                        </div>
                       </div>
                       <div className="mt-4 flex items-center justify-between font-space-mono text-[9px] font-bold uppercase text-accent"><span>Open interactive maps</span><span>→</span></div>
                     </div>
 
                     {/* Auction planner */}
-                    <div onClick={() => setActiveSubTab("planner")} className="flex min-h-0 cursor-pointer flex-col justify-between overflow-hidden rounded-lg border-2 border-border bg-surface p-5 transition-colors hover:border-accent">
+                    <div onClick={() => setActiveSubTab("planner")} className="flex min-h-0 cursor-pointer flex-col justify-between overflow-hidden rounded-lg border-2 border-border bg-surface p-4 transition-colors hover:border-accent">
                     <div>
                       <h4 className="font-anton text-[14px] uppercase border-b border-[#16130f]/10 pb-2 mb-4">AUCTION PLANNER</h4>
                       <div className="space-y-2 text-xs font-space-mono text-text-secondary">
@@ -7505,8 +7559,20 @@ This record has been officially verified and added to the IPL Minor Records arch
                         <div>SHORTLISTED: <span className="font-bold text-text-primary">{shortlist.length} Players</span></div>
                       </div>
                     </div>
+
+                    </div>
+
+                    <div onClick={() => setActiveSubTab("trades")} className="flex min-h-0 cursor-pointer flex-col justify-between overflow-hidden rounded-lg border-2 border-border bg-surface p-4 transition-colors hover:border-accent">
+                      {(() => {
+                        const finalDate = getSeasonFinalDate();
+                        const window = finalDate ? getTradeWindowDates(finalDate, currentSeason) : undefined;
+                        const windowOpen = isTradeWindowOpen(currentDate, finalDate, currentSeason);
+                        const completed = tradeRecords.filter((record) => record.season === currentSeason).length;
+                        const beforeWindow = Boolean(window && currentDate < window.startsOn);
+                        return <><div><div className="flex items-center justify-between border-b border-[#16130f]/10 pb-2"><h4 className="font-anton text-[14px] uppercase">Trade Hub</h4><span className={`rounded px-2 py-0.5 font-space-mono text-[7px] font-bold uppercase ${windowOpen ? "bg-success/15 text-success" : "bg-warning/15 text-warning"}`}>{windowOpen ? "Window open" : beforeWindow ? "Opens soon" : "Window shut"}</span></div><div className="mt-2 grid grid-cols-2 gap-2 font-space-mono text-[8px] uppercase text-text-secondary"><div><span className="block text-[7px]">Window</span><span className="font-bold text-text-primary">{window ? `${window.startsOn} – ${window.endsOn}` : "Awaiting schedule"}</span></div><div><span className="block text-[7px]">Completed deals</span><span className="font-bold text-text-primary">{completed}</span></div></div></div><div className="mt-2 flex items-center justify-between font-space-mono text-[8px] font-bold uppercase text-accent"><span>{windowOpen ? "Build a trade" : "View trade hub"}</span><span>→</span></div></>;
+                      })()}
+                    </div>
                   </div>
-                </div>
                 </div>
               )}
 

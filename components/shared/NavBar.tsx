@@ -76,6 +76,9 @@ export default function NavBar() {
   const activeTabFromUrl = searchParams.get("tab") || "home";
   const [continuedToSeason, setContinuedToSeason] = useState<boolean | null>(null);
   const isAuctionPage = pathname.startsWith("/game/auction");
+  const isTradeHubPage = pathname === "/game/overview"
+    && activeTabFromUrl === "scouting"
+    && searchParams.get("subtab") === "trades";
   const seasonPagesUnlocked = SEASON_ACCESS_ENABLED && continuedToSeason === true;
   const showSeasonNavigation = seasonPagesUnlocked && (!isAuctionPage || auction?.phase === "completed");
   const teamProfilePrefetchKey = Object.keys(teams).sort().join("|");
@@ -674,7 +677,7 @@ export default function NavBar() {
                     </button>
                   </div>
                 </div>
-                <div className="flex flex-col gap-2 border-t border-[var(--ink)]/15 pt-2">
+                {(isAuctionPage || isTradeHubPage) && <div className="flex flex-col gap-2 border-t border-[var(--ink)]/15 pt-2">
                   <span className="text-[9px] font-bold text-text-secondary uppercase tracking-wider">
                     Guides
                   </span>
@@ -682,7 +685,11 @@ export default function NavBar() {
                     onClick={() => {
                       setShowSettings(false);
                       setPaused(true);
-                      setShowHowToPlay(true);
+                      if (isTradeHubPage) {
+                        window.dispatchEvent(new CustomEvent("open-page-guide", { detail: { page: "trade-hub" } }));
+                      } else if (isAuctionPage) {
+                        setShowHowToPlay(true);
+                      }
                     }}
                     className="w-full flex items-center justify-between px-3 py-1.5 rounded border border-[var(--ink)] hover:bg-[var(--ink)]/5 text-[10px] font-bold cursor-pointer transition-all active:scale-[0.98]"
                   >
@@ -690,7 +697,7 @@ export default function NavBar() {
                       <BookOpen size={11} className="inline" /> How to Play
                     </span>
                   </button>
-                </div>
+                </div>}
                 <div className="flex flex-col gap-2 border-t border-[var(--ink)]/15 pt-2">
                   <span className="text-[9px] font-bold text-red-600 uppercase tracking-wider">
                     Danger Zone
@@ -942,7 +949,7 @@ export default function NavBar() {
           </div>
         </div>
       )}
-      {showHowToPlay && <AuctionGuidedTour onClose={() => setShowHowToPlay(false)} />}
+      {showHowToPlay && isAuctionPage && <AuctionGuidedTour onClose={() => setShowHowToPlay(false)} />}
     </nav>
   );
 }

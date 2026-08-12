@@ -263,6 +263,7 @@ interface GameStateAdditions {
   injuryReplacementRecords: InjuryReplacementRecord[];
   tradeRecords: TradeRecord[];
   tradeOffers: TradeOffer[];
+  tradeNegotiationCooldowns: Record<string, string>;
   processedAITradeDateKeys: string[];
   auctionMarketProfile: AuctionMarketProfile | null;
   retiredPlayerSnapshots: Record<string, HistoricalPlayerSnapshot>;
@@ -396,6 +397,7 @@ interface GameActions {
     explanation?: string;
     validateOnly?: boolean;
   }) => boolean;
+  setTradeNegotiationCooldown: (teamId: string, recoversOn: string | null) => void;
   processAITrades: (input: { date: string; finalDate?: string; standingsTeamIds: string[] }) => TradeRecord[];
   startScoutingAssignment: (input: {
     market: ScoutingMarket;
@@ -1105,6 +1107,7 @@ export const useGameStore = create<Store>()(
       injuryReplacementRecords: [],
       tradeRecords: [],
       tradeOffers: [],
+      tradeNegotiationCooldowns: {},
       processedAITradeDateKeys: [],
       auctionMarketProfile: null,
       retiredPlayerSnapshots: {},
@@ -1272,6 +1275,7 @@ export const useGameStore = create<Store>()(
           injuryReplacementRecords: [],
           tradeRecords: [],
           tradeOffers: [],
+          tradeNegotiationCooldowns: {},
           processedAITradeDateKeys: [],
           auctionMarketProfile,
           retiredPlayerSnapshots: appendHistoricalRetirees(
@@ -3900,6 +3904,7 @@ export const useGameStore = create<Store>()(
             // completed trades do not appear in the current season's history.
             tradeRecords: [],
             tradeOffers: [],
+            tradeNegotiationCooldowns: {},
             processedAITradeDateKeys: state.processedAITradeDateKeys,
             auctionMarketProfile: marketProfile,
             retiredPlayerSnapshots: appendHistoricalRetirees(
@@ -4345,6 +4350,13 @@ export const useGameStore = create<Store>()(
         return completed;
       },
 
+      setTradeNegotiationCooldown: (teamId, recoversOn) => set((state) => {
+        const next = { ...state.tradeNegotiationCooldowns };
+        if (recoversOn) next[teamId] = recoversOn;
+        else delete next[teamId];
+        return { tradeNegotiationCooldowns: next };
+      }),
+
       processAITrades: ({ date, finalDate, standingsTeamIds }) => {
         const snapshot = get();
         if (!isTradeWindowOpen(date, finalDate, snapshot.currentSeason) || snapshot.processedAITradeDateKeys.includes(date)) return [];
@@ -4634,6 +4646,7 @@ export const useGameStore = create<Store>()(
           injuryReplacementRecords: [],
           tradeRecords: [],
           tradeOffers: [],
+          tradeNegotiationCooldowns: {},
           processedAITradeDateKeys: [],
           auctionMarketProfile: null,
           retiredPlayerSnapshots: {},
@@ -4692,6 +4705,7 @@ export const useGameStore = create<Store>()(
         injuryReplacementRecords: state.injuryReplacementRecords,
         tradeRecords: state.tradeRecords,
         tradeOffers: state.tradeOffers,
+        tradeNegotiationCooldowns: state.tradeNegotiationCooldowns,
         processedAITradeDateKeys: state.processedAITradeDateKeys,
         auctionMarketProfile: state.auctionMarketProfile,
         retiredPlayerSnapshots: state.retiredPlayerSnapshots,
@@ -4876,6 +4890,7 @@ export const useGameStore = create<Store>()(
           injuryReplacementRecords,
           tradeRecords: p.tradeRecords ?? [],
           tradeOffers: p.tradeOffers ?? [],
+          tradeNegotiationCooldowns: p.tradeNegotiationCooldowns ?? {},
           processedAITradeDateKeys: p.processedAITradeDateKeys ?? [],
           auctionMarketProfile,
           retiredPlayerSnapshots: p.retiredPlayerSnapshots ?? {},
