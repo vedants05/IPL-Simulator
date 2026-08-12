@@ -907,8 +907,24 @@ export default function NewsPage({
     };
 
     const platformTemplates = [...filteredTemplates].sort((a, b) => Number(b.brand === layout) - Number(a.brand === layout));
+    const lastMatchSimulation = lastMatch?.simulation;
+    const userInningsIndex = lastMatchSimulation?.innings[0]?.battingTeamId === userTeamId ? 0 : 1;
+    const isUserChasing = userInningsIndex === 1;
+    const chasingInningsIndex = userInningsIndex === 0 ? 1 : 0;
+    const chasingLegalBalls = lastMatchSimulation?.innings[chasingInningsIndex]?.legalBalls || 0;
+    const isLastBallMatch = chasingLegalBalls === 120;
+    // Match-result variants must be made eligible before one template is chosen
+    // per trigger. Deduplicating first can discard the chasing/defending variant
+    // that actually describes the result.
+    const eligiblePlatformTemplates = platformTemplates.filter((template) => {
+      if (!matchArticleTriggers.has(template.triggerType)) return true;
+      if (template.chaseOrDefend === "chasing" && !isUserChasing) return false;
+      if (template.chaseOrDefend === "defending" && isUserChasing) return false;
+      if (template.requiresLastBall && !isLastBallMatch) return false;
+      return true;
+    });
     const seenMatchTriggerTypes = new Set<ArticleTemplate["triggerType"]>();
-    const selectedTemplates = platformTemplates.filter((template) => {
+    const selectedTemplates = eligiblePlatformTemplates.filter((template) => {
       if (!matchArticleTriggers.has(template.triggerType)) return true;
       if (seenMatchTriggerTypes.has(template.triggerType)) return false;
       seenMatchTriggerTypes.add(template.triggerType);
@@ -980,18 +996,6 @@ export default function NewsPage({
 
     const freshArticles = expandedTemplates.map((template) => {
       const sim = lastMatch?.simulation;
-      
-      // Chase or defend gating
-      const userInningsIndex = sim?.innings[0]?.battingTeamId === userTeamId ? 0 : 1;
-      const isUserChasing = userInningsIndex === 1;
-      if (template.chaseOrDefend === "chasing" && !isUserChasing) return null;
-      if (template.chaseOrDefend === "defending" && isUserChasing) return null;
-
-      // Last ball gating (chasing team faced exactly 120 legal balls)
-      const chasingInningsIndex = userInningsIndex === 0 ? 1 : 0;
-      const chasingLegalBallsVal = sim?.innings[chasingInningsIndex]?.legalBalls || 0;
-      const isLastBallMatch = chasingLegalBallsVal === 120;
-      if (template.requiresLastBall && !isLastBallMatch) return null;
 
       // Surging team outside top 4 gating
       if (template.requiresOutsideTopFour) {

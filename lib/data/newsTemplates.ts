@@ -447,6 +447,21 @@ export const newsTemplates: ArticleTemplate[] = [
     content: "Cricket is often a game of fine margins, but {userTeamName} erased any doubt at {venue} with an all-round dominant display against {opponentName}. Driven by {topScorerName}s pristine {topScorerRuns} off {topScorerBalls} balls, {userTeamName} set a formidable total of {userRuns}. In reply, {opponentName} struggled against a disciplined bowling effort that conceded just {bowlingBoundaryCount} boundaries in total. The pressure built exponentially in the middle overs, culminating in a mini-collapse where {opponentName} lost {collapseWickets} wickets for just {collapseRuns} runs. It represents a near-perfect blueprint for {userTeamName} as they continue their league campaign."
   },
 
+  {
+    id: "art-cricinfo-standard-loss",
+    category: "user_team",
+    tag: "Match Analysis",
+    author: "Sambit Bal",
+    readTime: "4 min read",
+    imageMockupPrompt: "Cricket players reflecting after a competitive league defeat under stadium lights",
+    triggerType: "user_loss",
+    brand: "cricinfo",
+    timestamp: "2 hours ago",
+    title: "{userTeamName} come up short against {opponentName} at {venue}",
+    subheading: "Decisive moments shape a competitive contest",
+    content: "{userTeamName} suffered a {winMargin} defeat to {opponentName} at {venue}. The match remained competitive, with {topScorerName} leading the batting effort with {topScorerRuns}, but {opponentName} handled the decisive phases better. The result leaves {userTeamName} with a Net Run Rate of {userNrr} and clear areas to address before their next fixture."
+  },
+
   // ==================== ESPNcricinfo (cricinfo) Thrilling Win Articles ====================
   {
     id: "art-cricinfo-thrill-v1",
@@ -509,6 +524,21 @@ export const newsTemplates: ArticleTemplate[] = [
     subheading: "Blueprint Failure",
     chaseOrDefend: "defending",
     content: "{userTeamName} suffered one of their most damaging defeats of the season, falling by {winMargin} to a clinical {opponentName} side at {venue}. The fundamental issues began in the middle overs, where {userTeamName} scored just {userMiddleOversRuns} runs while losing {userMiddleOversWickets} wickets. Defending {userRuns}, the bowling unit struggled for discipline, giving away {userExtrasConceded} extras and failing to build consistent dot-ball pressure. {oppTopScorerName} took full advantage with a blistering {oppTopScorerRuns} off {oppTopScorerBalls}. {userTeamName} must quickly reassess their tactical combination before their next outing."
+  },
+  {
+    id: "art-cricinfo-loss-chasing",
+    category: "user_team",
+    tag: "Tactics & Faultlines",
+    author: "Sambit Bal",
+    readTime: "5 min read",
+    imageMockupPrompt: "A subdued batting dugout after a failed run chase under floodlights",
+    triggerType: "user_heavy_defeat",
+    brand: "cricinfo",
+    timestamp: "2 hours ago",
+    title: "Chase unravels as {opponentName} overpower {userTeamName} at {venue}",
+    subheading: "Required rate pressure exposes the batting plan",
+    chaseOrDefend: "chasing",
+    content: "Set a target of {opponentRuns}, {userTeamName} were unable to establish control and fell to a heavy {winMargin} defeat at {venue}. {topScorerName} made {topScorerRuns}, but the chase lost momentum through the middle overs and ended on {userRuns}/{userWickets}. The verified scorecard leaves {userTeamName} with selection and tempo questions before their next match."
   },
 
   // ==================== ESPNcricinfo (cricinfo) Heartbreak Loss Articles ====================
@@ -851,6 +881,20 @@ export const newsTemplates: ArticleTemplate[] = [
     subheading: "Statement Victory",
     content: "{firstInningsTeamName} were in no mood to play nice today, posting {firstInningsScore} in the first innings before turning the pressure onto {chasingTeamName}. The chase became a minefield as {bowlerName} led the destruction with figures of {bowlerWickets}/{bowlerRuns}, keeping the opposition pinned down throughout. {chasingTeamName} finished on {chasingTeamScore}, completing a night of pure dominance for the winning side."
   },
+  {
+    id: "art-cricbuzz-standard-loss",
+    category: "user_team",
+    tag: "Match Report",
+    author: "Harsha Bhogle",
+    readTime: "3 min read",
+    imageMockupPrompt: "Competitive cricket match ending with the losing side walking back to the pavilion",
+    triggerType: "user_loss",
+    brand: "cricbuzz",
+    timestamp: "2 hours ago",
+    title: "{opponentName} get the better of {userTeamName} in a competitive contest",
+    subheading: "Key moments decide the game at {venue}",
+    content: "{userTeamName} went down to {opponentName} by {winMargin} at {venue}. {topScorerName} kept the contest alive with {topScorerRuns}, but {opponentName} were sharper when the match reached its decisive phase. It was not a collapse or a last-over heartbreak, just a hard-fought league defeat that {userTeamName} will look to learn from quickly."
+  },
 
   // ==================== Cricbuzz (cricbuzz) Thrilling Win Articles ====================
   {
@@ -883,6 +927,21 @@ export const newsTemplates: ArticleTemplate[] = [
     chaseOrDefend: "chasing",
     requiresLastBall: true,
     content: "Pure drama! {userTeamName} looked down and out, but a legendary ice-in-the-veins knock from {userFinisherName} ({userFinisherRuns}* off {userFinisherBalls}) turned the game completely on its head against {opponentName}! Needing {last3OversRequiredRuns} runs in the last 18 balls, {userFinisherName} went berserk, hitting {userFinisherSixesCount} massive sixes to break {opponentName} hearts. Winning with just {wicketsRemaining} wickets left on the very last ball, this incredible victory will be talked about for the rest of the season!"
+  },
+  {
+    id: "art-cricbuzz-thrill-chase-fallback",
+    category: "user_team",
+    tag: "Thriller",
+    author: "Harsha Bhogle",
+    readTime: "4 min read",
+    imageMockupPrompt: "Batters celebrating after completing a tense late run chase",
+    triggerType: "user_thrilling_win",
+    brand: "cricbuzz",
+    timestamp: "1 hour ago",
+    title: "CHASE COMPLETE! {userTeamName} squeeze past {opponentName} in a thriller",
+    subheading: "Nerves hold in a tense finish",
+    chaseOrDefend: "chasing",
+    content: "{userTeamName} held their nerve to chase down {opponentRuns} and defeat {opponentName} by {winMargin} at {venue}. {userFinisherName} guided the closing stages as the target was reached with {ballsRemaining} balls remaining. It was a tight finish without needing the final delivery, but the pressure and precision made it a memorable win."
   },
 
   // ==================== Cricbuzz (cricbuzz) Heavy Defeat Articles ====================
@@ -1257,6 +1316,20 @@ export const newsTemplates: ArticleTemplate[] = [
     subheading: "NRR Boost Special",
     content: "Pure fireworks at {venue}! {userTeamName} gave their fans everything to cheer for with a monster {winMargin} victory over {opponentName}. {topScorerName} set the stage with a fiery {topScorerRuns} before {bowlerName} tore through {opponentName}'s batting unit. The huge margin pushes {userTeamName}s Net Run Rate to {userNrr}! Next stop: the top of the table!"
   },
+  {
+    id: "art-newsletter-standard-loss",
+    category: "user_team",
+    tag: "Matchday Recap",
+    author: "Ian Bishop",
+    readTime: "3 min read",
+    imageMockupPrompt: "Newsletter match recap graphic showing two cricket teams and the final score",
+    triggerType: "user_loss",
+    brand: "newsletter",
+    timestamp: "2 hours ago",
+    title: "MATCH RECAP: {userTeamName} beaten by {opponentName}",
+    subheading: "A competitive game goes the other way",
+    content: "{userTeamName} lost to {opponentName} by {winMargin} at {venue}. {topScorerName} led the fight with {topScorerRuns}, but the opposition won the key moments and secured the result. It is a setback rather than a disaster, and {userTeamName} now turn their attention to the next fixture."
+  },
 
   // ==================== IPL Daily (newsletter) Thrilling Win Articles ====================
   {
@@ -1289,6 +1362,21 @@ export const newsTemplates: ArticleTemplate[] = [
     chaseOrDefend: "chasing",
     requiresLastBall: true,
     content: "HEART-STOPPING ACTION! {userTeamName} defeat {opponentName} in an absolute thriller! Chasing down {opponentRuns}, {userFinisherName} smashed {winningRunsHit} on the very last ball to seal the win! The dug-out ran onto the field in wild celebration! Tag a fan who almost had a heart attack watching this match!"
+  },
+  {
+    id: "art-newsletter-thrill-chase-fallback",
+    category: "user_team",
+    tag: "Nail-Biter Alert",
+    author: "Ian Bishop",
+    readTime: "3 min read",
+    imageMockupPrompt: "Bright newsletter graphic celebrating a tense successful cricket chase",
+    triggerType: "user_thrilling_win",
+    brand: "newsletter",
+    timestamp: "1 hour ago",
+    title: "NAIL-BITER! {userTeamName} complete a tense chase against {opponentName}",
+    subheading: "Pressure chase ends in celebration",
+    chaseOrDefend: "chasing",
+    content: "What a finish at {venue}! {userTeamName} chased down {opponentRuns} to beat {opponentName} by {winMargin}. {userFinisherName} steered the final phase and sealed the result with {ballsRemaining} balls still available. It did not reach the last ball, but it was every bit a thriller!"
   },
 
   // ==================== IPL Daily (newsletter) Heavy Defeat Articles ====================
@@ -1352,6 +1440,21 @@ export const newsTemplates: ArticleTemplate[] = [
     subheading: "Tough Pill to Swallow",
     requiresLastBall: true,
     content: "Pure drama at {venue}! {userTeamName} lost to {opponentName} by just {winMargin} in a match that went down to the absolute last delivery! Final score: {opponentName} {opponentRuns} vs {userTeamName} {userRuns}. What an incredible effort, but a tough one to take for all the fans! Leave your supportive messages for the team below!"
+  },
+  {
+    id: "art-newsletter-heart-defending",
+    category: "user_team",
+    tag: "Heartbreak Special",
+    author: "Ian Bishop",
+    readTime: "3 min read",
+    imageMockupPrompt: "Newsletter graphic showing a fielding side reacting to a narrow failed defence",
+    triggerType: "user_heartbreak_loss",
+    brand: "newsletter",
+    timestamp: "1 hour ago",
+    title: "HEARTBREAK! {opponentName} edge past {userTeamName} in a tense chase",
+    subheading: "A narrow defence slips away",
+    chaseOrDefend: "defending",
+    content: "So close at {venue}! {userTeamName} pushed {opponentName} all the way while defending {userRuns}, but the chase ended in a {winMargin} defeat. The bowling unit kept fighting until the closing stages before {opponentName} reached {opponentRuns}/{opponentWickets}. A painful result, but a contest full of fight from {userTeamName}."
   },
 
   // ==================== IPL Daily (newsletter) Mid-Season Report Cards ====================
