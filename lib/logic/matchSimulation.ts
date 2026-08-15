@@ -10,7 +10,10 @@ import {
   type TeamTactics,
   type TeamStrategy,
 } from "@/lib/logic/teamTactics";
-import { selectBattingFirstOutgoingBatter } from "@/lib/logic/aiLineupSelector";
+import {
+  findOptimalImpactBattingPosition,
+  selectBattingFirstOutgoingBatter,
+} from "@/lib/logic/aiLineupSelector";
 import { appendRainAffectedResultLabel, hasRainReducedOvers } from "@/lib/logic/matchWeather";
 import type { Player, Team } from "@/lib/types";
 
@@ -2462,13 +2465,19 @@ function activateBowlFirstImpact(
   if (!incoming || !outgoing) return;
 
   const outgoingPosition = teamState.battingOrder.indexOf(outgoing.id);
+  const automaticPosition = findOptimalImpactBattingPosition(
+    teamState.battingOrder
+      .map((playerId) => players[playerId])
+      .filter((player): player is Player => Boolean(player)),
+    incoming,
+    outgoing,
+    true,
+  );
   if (outgoingPosition >= 0) teamState.battingOrder.splice(outgoingPosition, 1);
   const requestedPosition = teamState.plan.plannedImpactBattingPosition;
   const insertionIndex = typeof requestedPosition === "number"
     ? clamp(Math.round(requestedPosition) - 1, 0, teamState.battingOrder.length)
-    : incoming.isOpener
-      ? Math.min(1, teamState.battingOrder.length)
-      : clamp(outgoingPosition, 2, Math.min(7, teamState.battingOrder.length));
+    : clamp(automaticPosition - 1, 0, teamState.battingOrder.length);
   teamState.battingOrder.splice(insertionIndex, 0, incoming.id);
   teamState.finalXI = teamState.finalXI.filter((playerId) => playerId !== outgoing.id);
   teamState.finalXI.push(incoming.id);

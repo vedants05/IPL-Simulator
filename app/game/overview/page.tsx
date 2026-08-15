@@ -2314,7 +2314,9 @@ function OverviewPageContent() {
 
     const stadium = getHomeStadium(stadiumTeamId);
     if (!stadium) return null;
-    const selectedPitchId = pitchId ?? stadium.defaultPitchId;
+    const selectedPitchId = pitchId
+      ?? homePitchSelections[stadium.teamId]
+      ?? stadium.defaultPitchId;
     const pitch = getCuratorPitch(selectedPitchId)
       ?? (customPitchesByTeam[stadium.teamId] ?? []).find((candidate) => candidate.id === selectedPitchId)
       ?? getDefaultCuratorPitch(stadium.teamId);
@@ -5458,7 +5460,7 @@ This record has been officially verified and added to the IPL Minor Records arch
           <button
             ref={calendarStopButtonRef}
             type="button"
-            onClick={stopSimulating}
+            onClick={() => cancelCareerFastForward()}
             className="flex shrink-0 items-center gap-2 rounded bg-danger px-3 py-2.5 font-space-mono text-[10px] font-bold uppercase tracking-wider text-white shadow-md transition-all hover:bg-danger/90 active:scale-95 sm:px-5 sm:text-xs"
             aria-label="Stop day-by-day simulation (Escape)"
           >
