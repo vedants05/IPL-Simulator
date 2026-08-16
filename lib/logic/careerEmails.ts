@@ -913,6 +913,27 @@ export function normalizeCareerEmails(value: unknown): CareerEmail[] {
   }));
 }
 
+export function getCareerEmailReadKeys(value: unknown): string[] {
+  return normalizeCareerEmails(value)
+    .filter((email) => !email.unread)
+    .map((email) => email.dedupeKey);
+}
+
+export function restoreCareerEmailReadState(value: unknown, persistedReadKeys: unknown): CareerEmail[] {
+  const emails = normalizeCareerEmails(value);
+  const readKeys = new Set(
+    Array.isArray(persistedReadKeys)
+      ? persistedReadKeys.filter((key): key is string => typeof key === "string")
+      : [],
+  );
+  if (readKeys.size === 0) return emails;
+  return emails.map((email) => (
+    email.unread && readKeys.has(email.dedupeKey)
+      ? { ...email, unread: false }
+      : email
+  ));
+}
+
 export function reconcileCareerEmails(existingValue: unknown, drafts: CareerEmail[]): CareerEmail[] {
   const original = Array.isArray(existingValue) ? existingValue : [];
   const existing = normalizeCareerEmails(existingValue);

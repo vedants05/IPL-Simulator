@@ -161,9 +161,10 @@ import {
 } from "@/lib/logic/aiLeadership";
 import {
   buildCareerEmailDrafts,
-  normalizeCareerEmails,
+  getCareerEmailReadKeys,
   orderCareerEmailThread,
   reconcileCareerEmails,
+  restoreCareerEmailReadState,
   type CareerEmail,
   type CareerEmailAction,
   type CareerEmailLineupStatus,
@@ -1384,7 +1385,20 @@ function OverviewPageContent() {
         // season. Remove older IndexedDB match archives after rollover.
         void deleteMatchSimulationsBeforeSeason(userTeamId, currentSeason)
           .catch((error) => console.error("Unable to clean old match archives:", error));
-        setInbox(normalizeCareerEmails(parsed.inbox));
+        const loadedInbox = restoreCareerEmailReadState(parsed.inbox, parsed.readEmailDedupeKeys);
+        setInbox(loadedInbox);
+        // Older saves only stored `unread` on each email. Backfill a separate
+        // read ledger so regenerated drafts cannot make read messages unread.
+        const loadedReadKeys = Array.from(new Set([
+          ...(Array.isArray(parsed.readEmailDedupeKeys)
+            ? parsed.readEmailDedupeKeys.filter((key: unknown): key is string => typeof key === "string")
+            : []),
+          ...getCareerEmailReadKeys(loadedInbox),
+        ]));
+        if (JSON.stringify(parsed.readEmailDedupeKeys ?? []) !== JSON.stringify(loadedReadKeys)) {
+          parsed.readEmailDedupeKeys = loadedReadKeys;
+          localStorage.setItem(`ipl_career_${userTeamId}`, JSON.stringify(parsed));
+        }
         if (
           parsed.activePlayedMatch?.version === 1
           && typeof parsed.activePlayedMatch.fixtureId === "string"
@@ -1597,6 +1611,17 @@ function OverviewPageContent() {
         ?? teamTactics?.preset
         ?? "custom",
     };
+    const persistedReadKeys = Array.isArray(latestSavedState.readEmailDedupeKeys)
+      ? latestSavedState.readEmailDedupeKeys.filter((key: unknown): key is string => typeof key === "string")
+      : [];
+    currentState.readEmailDedupeKeys = Array.from(new Set([
+      ...persistedReadKeys,
+      ...getCareerEmailReadKeys(currentState.inbox),
+    ]));
+    currentState.inbox = restoreCareerEmailReadState(
+      currentState.inbox,
+      currentState.readEmailDedupeKeys,
+    );
     // These fields are retained only as migration inputs for older saves.
     // Do not keep them in new saves because they duplicate canonical values.
     delete currentState.startingXI;
