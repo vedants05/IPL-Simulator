@@ -34,6 +34,7 @@ const NAV_ITEMS = [
   { label: "Club", href: "/game/overview?tab=club" },
   { label: "Scouting", href: "/game/overview?tab=scouting" },
   { label: "Season", href: "/game/overview?tab=season" },
+  { label: "League", href: "/game/overview?tab=league" },
   { label: "History", href: "/game/overview?tab=history" },
   { label: "Auction", href: "/game/auction" },
 ];
@@ -276,7 +277,7 @@ export default function NavBar() {
           if (item.href === "/game/auction") {
             active = pathname.startsWith("/game/auction");
           } else {
-            const itemTab = item.href.split("tab=")[1];
+            const itemTab = new URLSearchParams(item.href.split("?")[1]).get("tab");
             active = pathname.startsWith("/game/overview") && activeTabFromUrl === itemTab;
           }
           return (

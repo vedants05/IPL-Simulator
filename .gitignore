@@ -77,3 +77,6 @@ simulation_*_report.json
 # Root-level visual references are not application assets
 /Screenshot*.png
 
+# Local staff research source data
+/Coaches.xlsx
+

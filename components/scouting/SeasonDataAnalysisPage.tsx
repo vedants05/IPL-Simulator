@@ -15,6 +15,11 @@ type TeamLine = {
   wickets?: number;
   wicketShare?: number;
 };
+type PlayerContribution = {
+  playerId: string;
+  name: string;
+  value: number;
+};
 
 const phaseDeliveries = (
   record: MatchSimulationRecord,
@@ -330,6 +335,71 @@ export default function SeasonDataAnalysisPage({
           }, 0),
       0,
     );
+  const playerContributions = (
+    title: string,
+    teamId: string,
+  ): PlayerContribution[] => {
+    const totals = new Map<string, PlayerContribution>();
+    const add = (playerId: string, fallbackName: string, value: number) => {
+      if (value <= 0) return;
+      const current = totals.get(playerId);
+      totals.set(playerId, {
+        playerId,
+        name: players[playerId]?.name ?? fallbackName,
+        value: (current?.value ?? 0) + value,
+      });
+    };
+
+    if (title === "Opening runs") {
+      records.forEach((record) => {
+        record.innings
+          .filter((innings) => innings.battingTeamId === teamId)
+          .forEach((innings) => {
+            const openerIds = new Set(
+              innings.batting
+                .filter((entry) => entry.battingPosition <= 2)
+                .map((entry) => entry.id),
+            );
+            innings.oversDetail
+              .flatMap((over) => over.deliveries)
+              .filter((delivery) => openerIds.has(delivery.strikerId))
+              .forEach((delivery) => add(
+                delivery.strikerId,
+                delivery.strikerName,
+                delivery.runsOffBat,
+              ));
+          });
+      });
+    }
+
+    if (title === "Spin wickets" || title === "Pace wickets") {
+      const requiredStyle = title === "Spin wickets" ? "Spinner" : "Pacer";
+      records.forEach((record) => {
+        record.innings
+          .filter((innings) => innings.bowlingTeamId === teamId)
+          .flatMap((innings) => innings.oversDetail)
+          .flatMap((over) => over.deliveries)
+          .filter((delivery) => delivery.wicket?.bowlerCredited)
+          .forEach((delivery) => {
+            const bowler = players[delivery.bowlerId];
+            const style = bowler?.bowlingStyle ?? (
+              bowler?.role === "Spin Bowler"
+                ? "Spinner"
+                : bowler?.role === "Pace Bowler"
+                  ? "Pacer"
+                  : null
+            );
+            if (style === requiredStyle) {
+              add(delivery.bowlerId, delivery.bowlerName, 1);
+            }
+          });
+      });
+    }
+
+    return Array.from(totals.values()).sort((left, right) =>
+      right.value - left.value || left.name.localeCompare(right.name),
+    );
+  };
   const winPct = (teamId: string, chase: boolean) => {
     const sample = records.filter(
       (record) =>
@@ -1004,7 +1074,7 @@ export default function SeasonDataAnalysisPage({
           {displaySections.map((section) => (
             <section
               key={section.title}
-              className={`overflow-hidden rounded-lg border border-border bg-bg p-3 ${
+              className={`relative overflow-visible rounded-lg border border-border bg-bg p-3 hover:z-40 ${
                 section.title.startsWith("Powerplay")
                   ? "col-span-3"
                   : section.title.startsWith("Death")
@@ -1030,7 +1100,7 @@ export default function SeasonDataAnalysisPage({
                   {section.note}
                 </p>
               </div>
-              <div className="space-y-0.5 overflow-hidden font-space-mono text-[10px]">
+              <div className="space-y-0.5 overflow-visible font-space-mono text-[10px]">
                 <div
                   className={`grid border-b border-border pb-1 text-[9px] font-bold uppercase text-text-secondary ${
                     section.wicketBreakdown
@@ -1058,10 +1128,13 @@ export default function SeasonDataAnalysisPage({
                     <span className="text-right">Value</span>
                   )}
                 </div>
-                {section.rows.map((row, index) => (
+                {section.rows.map((row, index) => {
+                  const contributions = playerContributions(section.title, row.teamId);
+                  const contributionTotal = contributions.reduce((sum, contribution) => sum + contribution.value, 0);
+                  return (
                   <div
                     key={row.teamId}
-                    className={`grid items-center rounded px-1 py-0.5 ${
+                    className={`group/team relative grid items-center rounded px-1 py-0.5 ${
                       section.wicketBreakdown
                         ? "grid-cols-[40px_minmax(0,1fr)_72px_72px_92px] gap-3"
                         : "grid-cols-[35px_1fr_60px_74px]"
@@ -1113,8 +1186,32 @@ export default function SeasonDataAnalysisPage({
                         {row.matches ? section.format(row.value) : "—"}
                       </span>
                     )}
+                    {contributions.length > 0 && (
+                      <div className="pointer-events-none invisible absolute right-2 top-full z-50 mt-1 w-64 rounded border border-border bg-bg p-3 text-left opacity-0 shadow-xl transition-opacity group-hover/team:visible group-hover/team:opacity-100">
+                        <div className="flex items-center justify-between gap-3 border-b border-border pb-2">
+                          <span className="truncate font-bold text-text-primary">{teams[row.teamId]?.name ?? row.teamId}</span>
+                          <span className="shrink-0 text-[8px] font-bold uppercase text-accent">Contributions</span>
+                        </div>
+                        <div className="mt-2 max-h-52 space-y-1 overflow-y-auto">
+                          {contributions.map((contribution) => (
+                            <div key={contribution.playerId} className="grid grid-cols-[minmax(0,1fr)_38px_45px] items-center gap-2 text-[9px]">
+                              <span className="truncate font-bold text-text-primary">{contribution.name}</span>
+                              <span className="text-right font-bold text-accent">{contribution.value}</span>
+                              <span className="text-right text-text-secondary">
+                                {contributionTotal ? `${((contribution.value * 100) / contributionTotal).toFixed(1)}%` : "—"}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="mt-2 flex justify-between border-t border-border pt-2 text-[8px] font-bold uppercase text-text-secondary">
+                          <span>{contributions.length} contributor{contributions.length === 1 ? "" : "s"}</span>
+                          <span>Total {contributionTotal}</span>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </section>
           ))}

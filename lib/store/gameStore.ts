@@ -187,6 +187,25 @@ import {
   type AuctionMarketProfile,
 } from "@/lib/logic/auctionMarket";
 import { rankEmergingPlayerCandidates } from "@/lib/logic/seasonAwards";
+import { processAIStaffMarket } from "@/lib/logic/aiStaffMarket";
+import { reconcileAIMidseasonRecruitment } from "@/lib/logic/aiStaffRecruitment";
+import { processStaffSeasonPerformanceReview } from "@/lib/logic/staffPerformanceReview";
+import { processAnnualStaffDevelopment } from "@/lib/logic/staffDevelopment";
+import { convertRetiredPlayersToStaff } from "@/lib/logic/playerToStaffConversion";
+import {
+  emptyCareerStaffState,
+  appointCareerStaff,
+  initializeCareerStaffState,
+  normalizeCareerStaffState,
+  poachCareerStaff,
+  releaseCareerStaff,
+  renewCareerStaffContract,
+  synchronizeCareerStaffProfiles,
+  type CareerStaffState,
+  type StaffDepartureReason,
+  type StaffDirectoryMember,
+  type StaffStartingAssignment,
+} from "@/lib/logic/staffContracts";
 
 export const INITIAL_ACTIVE_SEASON = 2027;
 
@@ -277,6 +296,7 @@ interface GameStateAdditions {
   scoutingAssignments: ScoutingAssignment[];
   scoutingReports: ScoutingReport[];
   scoutingNetworks: Record<string, ScoutingNetwork>;
+  careerStaff: CareerStaffState;
 }
 
 interface GameActions {
@@ -407,6 +427,42 @@ interface GameActions {
   cancelScoutingAssignment: (assignmentId: string) => { ok: boolean; message: string };
   startDeepScoutingAssignment: (reportId: string) => { ok: boolean; message: string };
   reconcileScoutingAssignments: (date?: string) => number;
+  reconcileAIStaffRecruitment: (date?: string) => { searchesStarted: number; appointments: number; retries: number };
+  initializeCareerStaff: (
+    members: StaffDirectoryMember[],
+    assignments: StaffStartingAssignment[],
+  ) => boolean;
+  releaseStaffMember: (input: {
+    staffId: string;
+    reason: StaffDepartureReason;
+    effectiveOn?: string;
+  }) => boolean;
+  appointStaffMember: (input: {
+    staffId: string;
+    teamId: string;
+    roles: string[];
+    primaryRole: string;
+    endSeason: number | null;
+    annualSalary: number;
+    effectiveOn?: string;
+  }) => boolean;
+  renewStaffMember: (input: {
+    staffId: string;
+    endSeason: number | null;
+    annualSalary: number;
+    roles: string[];
+    primaryRole: string;
+    effectiveOn?: string;
+  }) => boolean;
+  poachStaffMember: (input: {
+    staffId: string;
+    teamId: string;
+    roles: string[];
+    primaryRole: string;
+    endSeason: number | null;
+    annualSalary: number;
+    effectiveOn?: string;
+  }) => boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -443,6 +499,21 @@ function appendHistoricalRetirees(
     output[player.id] = createHistoricalPlayerSnapshot(player, record);
   });
   return output;
+}
+
+async function fetchStartingStaffDirectory(): Promise<{
+  members: StaffDirectoryMember[];
+  assignments: StaffStartingAssignment[];
+}> {
+  const response = await fetch("/api/staff", { cache: "no-store" });
+  if (!response.ok) throw new Error("The staff directory did not load. No game state was created.");
+  const result = await response.json() as {
+    members?: StaffDirectoryMember[];
+    assignments?: StaffStartingAssignment[];
+    error?: string;
+  };
+  if (!result.members?.length) throw new Error(result.error || "The staff directory is empty.");
+  return { members: result.members, assignments: result.assignments ?? [] };
 }
 
 function getRetiredPlayerIds(state: Pick<Store, "careerRetirementHistory" | "lastCareerRetirements" | "retiredPlayerSnapshots">): Set<string> {
@@ -1121,15 +1192,17 @@ export const useGameStore = create<Store>()(
       scoutingAssignments: [],
       scoutingReports: [],
       scoutingNetworks: {},
+      careerStaff: emptyCareerStaffState(),
 
       // ----- Actions -----
       initNewGame: async (userTeamId) => {
         if (typeof window !== "undefined") {
           localStorage.removeItem(getSeasonAccessStorageKey(userTeamId));
         }
-        const [fetchedPlayers, fetchedTeams] = await Promise.all([
+        const [fetchedPlayers, fetchedTeams, staffDirectory] = await Promise.all([
           fetchPlayersFromSupabase(),
           fetchTeamsFromSupabase(),
+          fetchStartingStaffDirectory(),
         ]);
         if (fetchedPlayers.length === 0) {
           throw new Error("The player roster did not load. No game state was created.");
@@ -1185,6 +1258,11 @@ export const useGameStore = create<Store>()(
         }
 
         const newSaveId = uuidv4();
+        const careerStaff = initializeCareerStaffState(
+          staffDirectory.members,
+          staffDirectory.assignments,
+          INITIAL_ACTIVE_SEASON,
+        );
         const initializedPlayers = initializeCareerPlayers(playersMap, INITIAL_ACTIVE_SEASON - 1);
         const auctionMarketProfile = createAuctionMarketProfile(Object.values(initializedPlayers));
         const preparedPool = prepareRetentionPlayerPool({
@@ -1293,6 +1371,7 @@ export const useGameStore = create<Store>()(
           scoutingAssignments: [],
           scoutingReports: [],
           scoutingNetworks: {},
+          careerStaff,
           auction: {
             type: openingAuctionType,
             season: INITIAL_ACTIVE_SEASON,
@@ -3764,6 +3843,97 @@ export const useGameStore = create<Store>()(
         return completedCount;
       },
 
+      reconcileAIStaffRecruitment: (date) => {
+        const snapshot = get();
+        const currentDate = date ?? snapshot.currentDate;
+        const month = Number(currentDate.slice(5, 7));
+        const year = Number(currentDate.slice(0, 4));
+        if (!snapshot.careerStaff.initialized || snapshot.auction?.phase !== "completed"
+          || year !== snapshot.currentSeason || month < 3 || month > 6) {
+          return { searchesStarted: 0, appointments: 0, retries: 0 };
+        }
+        const result = reconcileAIMidseasonRecruitment({
+          state: snapshot.careerStaff,
+          teamIds: Object.keys(snapshot.teams),
+          userTeamId: snapshot.userTeamId,
+          currentDate,
+          currentSeason: snapshot.currentSeason,
+          seed: snapshot.saveId || snapshot.fixtureSeed,
+        });
+        if (result.state !== snapshot.careerStaff) set({ careerStaff: result.state });
+        return { searchesStarted: result.searchesStarted, appointments: result.appointments, retries: result.retries };
+      },
+
+      initializeCareerStaff: (members, assignments) => {
+        let changed = false;
+        set((state) => {
+          const next = state.careerStaff.initialized
+            ? synchronizeCareerStaffProfiles(state.careerStaff, members, assignments, state.currentSeason)
+            : initializeCareerStaffState(members, assignments, state.currentSeason);
+          changed = next !== state.careerStaff;
+          return changed ? { careerStaff: next } : state;
+        });
+        return changed;
+      },
+
+      releaseStaffMember: ({ staffId, reason, effectiveOn }) => {
+        let released = false;
+        set((state) => {
+          const next = releaseCareerStaff(
+            state.careerStaff,
+            staffId,
+            reason,
+            state.currentSeason,
+            effectiveOn ?? state.currentDate,
+          );
+          released = next !== state.careerStaff;
+          return released ? { careerStaff: next } : state;
+        });
+        return released;
+      },
+
+      appointStaffMember: (input) => {
+        let appointed = false;
+        set((state) => {
+          const next = appointCareerStaff(state.careerStaff, {
+            ...input,
+            startSeason: state.currentSeason,
+            effectiveOn: input.effectiveOn ?? state.currentDate,
+          });
+          appointed = next !== state.careerStaff;
+          return appointed ? { careerStaff: next } : state;
+        });
+        return appointed;
+      },
+
+      renewStaffMember: (input) => {
+        let renewed = false;
+        set((state) => {
+          const next = renewCareerStaffContract(state.careerStaff, {
+            ...input,
+            season: state.currentSeason,
+            effectiveOn: input.effectiveOn ?? state.currentDate,
+          });
+          renewed = next !== state.careerStaff;
+          return renewed ? { careerStaff: next } : state;
+        });
+        return renewed;
+      },
+
+      poachStaffMember: (input) => {
+        let poached = false;
+        set((state) => {
+          const next = poachCareerStaff(state.careerStaff, {
+            ...input,
+            startSeason: state.currentSeason,
+            effectiveOn: input.effectiveOn ?? state.currentDate,
+          });
+          poached = next !== state.careerStaff;
+          return poached ? { careerStaff: next } : state;
+        });
+        return poached;
+      },
+
       beginNextSeasonRetention: (captainIdsByTeam, requestedAuctionType) => {
         let advanced = false;
         set((state) => {
@@ -3773,6 +3943,16 @@ export const useGameStore = create<Store>()(
           ) return state;
 
           const completedSeason = state.currentSeason;
+          const completedSeasonFixtures = state.careerSeasonArchives.find((archive) => archive.season === completedSeason)?.fixtures as Array<{ stage?: string; date?: string }> | undefined;
+          const completedSeasonFinalDate = completedSeasonFixtures?.find((fixture) => fixture.stage === "final")?.date ?? state.currentDate;
+          const marketCareerStaff = processAIStaffMarket({
+            state: state.careerStaff,
+            teamIds: Object.keys(state.teams),
+            userTeamId: state.userTeamId,
+            completedSeason,
+            seed: state.saveId || state.fixtureSeed,
+            effectiveOn: completedSeasonFinalDate ? addDaysToDateKey(completedSeasonFinalDate, 1) : undefined,
+          }).state;
           const nextSeason = completedSeason + 1;
           const nextAuctionType = requestedAuctionType ?? getAuctionTypeForSeason(nextSeason);
           const dates = getSeasonDates(nextSeason);
@@ -3805,6 +3985,18 @@ export const useGameStore = create<Store>()(
               .map((record) => record.emergingPlayer!.name),
           });
           const careerRetirements = [...fallbackPostseason.retirements, ...preparedPool.retirements];
+          const developedCareerStaff = processAnnualStaffDevelopment({
+            state: marketCareerStaff,
+            completedSeason,
+            seed: state.saveId || state.fixtureSeed,
+          }).state;
+          const careerStaff = convertRetiredPlayersToStaff({
+            state: developedCareerStaff,
+            retiredPlayers: [...fallbackPostseason.retiredPlayers, ...preparedPool.retiredPlayers],
+            retirements: careerRetirements,
+            season: completedSeason,
+            seed: state.saveId || state.fixtureSeed,
+          }).state;
           const retiredIds = new Set(careerRetirements.map((record) => record.playerId));
           const reconciledInjuries = reconcileInjuryRecoveries({
             activeInjuries: withoutRetiredInjuries(state.activeInjuries, retiredIds),
@@ -3937,6 +4129,7 @@ export const useGameStore = create<Store>()(
               ...careerRetirements,
             ].filter((record, index, records) => records.findIndex((candidate) => candidate.playerId === record.playerId && candidate.season === record.season) === index),
             lastCareerGeneratedPlayerIds: preparedPool.generatedPlayers.map((player) => player.id),
+            careerStaff,
           };
         });
         return advanced;
@@ -4044,6 +4237,29 @@ export const useGameStore = create<Store>()(
               iplHistory: playersWithSeasonStats[id]?.iplHistory ?? player.iplHistory,
             },
           ]));
+          const reviewedCareerStaff = processStaffSeasonPerformanceReview({
+            state: state.careerStaff,
+            teams: state.teams,
+            players: state.players,
+            userTeamId: state.userTeamId,
+            completedSeason: archive.season,
+            standings: archive.standings as Array<{ teamId: string; played?: number }>,
+            playerStats: archivedStats,
+            leagueHistory: [...HISTORICAL_LEAGUE_HISTORY, ...state.simulatedLeagueHistory],
+            seed: state.saveId || state.fixtureSeed,
+          });
+          const developedCareerStaff = processAnnualStaffDevelopment({
+            state: reviewedCareerStaff,
+            completedSeason: archive.season,
+            seed: state.saveId || state.fixtureSeed,
+          }).state;
+          const careerStaff = convertRetiredPlayersToStaff({
+            state: developedCareerStaff,
+            retiredPlayers: lifecycle.retiredPlayers,
+            retirements: lifecycle.retirements,
+            season: archive.season,
+            seed: state.saveId || state.fixtureSeed,
+          }).state;
           return {
             careerSeasonArchives,
             clubFigureProgression,
@@ -4065,6 +4281,7 @@ export const useGameStore = create<Store>()(
               ...state.careerRetirementHistory,
               ...lifecycle.retirements,
             ].filter((record, index, records) => records.findIndex((candidate) => candidate.playerId === record.playerId && candidate.season === record.season) === index),
+            careerStaff,
           };
         });
       },
@@ -4547,6 +4764,13 @@ export const useGameStore = create<Store>()(
             ).length,
           });
           retirements = lifecycle.retirements;
+          const careerStaff = convertRetiredPlayersToStaff({
+            state: state.careerStaff,
+            retiredPlayers: lifecycle.retiredPlayers,
+            retirements: lifecycle.retirements,
+            season: auction.season,
+            seed: state.saveId || state.fixtureSeed,
+          }).state;
           const retiredIds = new Set(retirements.map((record) => record.playerId));
           return {
             players: lifecycle.players,
@@ -4573,6 +4797,7 @@ export const useGameStore = create<Store>()(
             lastCareerAuctionProcessedSeason: auction.season,
             pendingRetirementIntake: state.pendingRetirementIntake + retirements.length,
             lastCareerRetirements: retirements,
+            careerStaff,
           };
         });
         return retirements;
@@ -4671,6 +4896,7 @@ export const useGameStore = create<Store>()(
           scoutingAssignments: [],
           scoutingReports: [],
           scoutingNetworks: {},
+          careerStaff: emptyCareerStaffState(),
         });
       },
     }),
@@ -4728,6 +4954,7 @@ export const useGameStore = create<Store>()(
         scoutingAssignments: state.scoutingAssignments,
         scoutingReports: state.scoutingReports,
         scoutingNetworks: state.scoutingNetworks,
+        careerStaff: state.careerStaff,
       }),
       merge: (persisted, current) => {
         const p = persisted as Partial<Store>;
@@ -4917,6 +5144,7 @@ export const useGameStore = create<Store>()(
           scoutingNetworks: Object.fromEntries(
             Object.entries(p.scoutingNetworks ?? {}).filter(([regionId]) => regionId !== "pakistan"),
           ),
+          careerStaff: normalizeCareerStaffState(p.careerStaff),
           homePitchSelections: normalizeHomePitchSelections(
             p.homePitchSelections,
             getAdditionalHomePitchIds(customPitchesByTeam),

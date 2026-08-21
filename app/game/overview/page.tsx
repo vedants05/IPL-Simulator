@@ -114,6 +114,7 @@ import TacticsLineupBuilder from "@/components/squad/TacticsLineupBuilder";
 const TeamTacticsPage = dynamic(() => import("@/components/squad/TeamTacticsPage"), { ssr: false });
 const PitchCuratorPage = dynamic(() => import("@/components/club/PitchCuratorPage"), { ssr: false });
 const StadiumManagementPage = dynamic(() => import("@/components/club/StadiumManagementPage"), { ssr: false });
+const StaffManagementPage = dynamic(() => import("@/components/club/StaffManagementPage"), { ssr: false });
 const SocialMediaPage = dynamic(() => import("@/components/social/SocialMediaPage"), { ssr: false });
 const NewsPage = dynamic(() => import("@/components/news/NewsPage"), { ssr: false });
 import { PlayerProfileModal } from "@/components/player/PlayerProfileModal";
@@ -742,6 +743,9 @@ function OverviewPageContent() {
     scoutingReports,
     scoutingAssignments,
     reconcileScoutingAssignments,
+    reconcileAIStaffRecruitment,
+    careerStaff,
+    initializeCareerStaff,
   } = useGameStore();
   const matchArchiveCareerId = `${userTeamId}:${currentSeason}:${fixtureSeed}`;
   const userTeam = teams[userTeamId];
@@ -782,7 +786,8 @@ function OverviewPageContent() {
     reconcilePitchProjects();
     reconcileOutfieldProjects();
     reconcileScoutingAssignments(currentDate);
-  }, [currentDate, reconcileOutfieldProjects, reconcilePitchProjects, reconcileScoutingAssignments]);
+    reconcileAIStaffRecruitment(currentDate);
+  }, [careerStaff.initialized, currentDate, reconcileAIStaffRecruitment, reconcileOutfieldProjects, reconcilePitchProjects, reconcileScoutingAssignments]);
 
   // Dynamically generate months based on currentSeason
   const CALENDAR_MONTHS = useMemo(() => {
@@ -806,7 +811,7 @@ function OverviewPageContent() {
   // --------------------------------------------------------------------------
   // Core UI Tabs State
   // --------------------------------------------------------------------------
-  const [activeTab, setActiveTab] = useState<"home" | "club" | "squad" | "scouting" | "season" | "history">("home");
+  const [activeTab, setActiveTab] = useState<"home" | "club" | "squad" | "scouting" | "season" | "league" | "history">("home");
   const [activeSubTab, _setActiveSubTab] = useState<string>("overview");
   const [expandedLeagueHistorySeason, setExpandedLeagueHistorySeason] = useState<number | null>(null);
 
@@ -820,16 +825,16 @@ function OverviewPageContent() {
       router.replace("/game/overview?tab=club&subtab=office", { scroll: false });
       return;
     }
-    if (tabParam === "home" || tabParam === "club" || tabParam === "squad" || tabParam === "scouting" || tabParam === "season" || tabParam === "history") {
+    if (tabParam === "home" || tabParam === "club" || tabParam === "squad" || tabParam === "scouting" || tabParam === "season" || tabParam === "league" || tabParam === "history") {
       setActiveTab(tabParam as any);
-      _setActiveSubTab(subtabParam || "overview"); // Set to url subtab or reset to overview
+      _setActiveSubTab(subtabParam || "overview");
     }
   }, [router, tabParam, subtabParam]);
 
   useEffect(() => {
     const handleSwitchTab = (e: Event) => {
       const customEvent = e as CustomEvent<{ tab: string; subtab?: string }>;
-      if (customEvent.detail?.tab && ["home", "club", "squad", "scouting", "season", "history"].includes(customEvent.detail.tab)) {
+      if (customEvent.detail?.tab && ["home", "club", "squad", "scouting", "season", "league", "history"].includes(customEvent.detail.tab)) {
         setActiveTab(customEvent.detail.tab as any);
         _setActiveSubTab(customEvent.detail.subtab || "overview");
       }
@@ -848,10 +853,39 @@ function OverviewPageContent() {
   // --------------------------------------------------------------------------
   const [fixtures, setFixtures] = useState<Match[]>([]);
   const [standings, setStandings] = useState<LeagueStandings[]>([]);
+  const [standingsView, setStandingsView] = useState<"league" | "playoffs">("league");
   const [playerStats, setPlayerStats] = useState<Record<string, PlayerStats>>({});
   const [minorRecords, setMinorRecords] = useState<MinorRecord[]>(MINOR_RECORDS);
   const [inbox, setInbox] = useState<CareerEmail[]>([]);
   const [isCareerLoaded, setIsCareerLoaded] = useState(false);
+  const careerStaffNeedsProfileSync = !careerStaff.initialized || Object.values(careerStaff.contracts).some((contract) => (
+    !contract.roleRatings || Object.keys(contract.roleRatings).length === 0
+  ));
+
+  useEffect(() => {
+    if (!isCareerLoaded || !careerStaffNeedsProfileSync) return;
+    const controller = new AbortController();
+    void fetch("/api/staff", { cache: "no-store", signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Unable to initialize career staff contracts.");
+        return response.json() as Promise<{
+          members: Array<{
+            id: string;
+            primary_role: string;
+            salary_expectation?: number | null;
+            contract_start_year?: number | null;
+            contract_end_year?: number | null;
+          }>;
+          assignments: Array<{ staff_id: string; team_id: string; role: string; start_season: number }>;
+        }>;
+      })
+      .then((directory) => initializeCareerStaff(directory.members, directory.assignments))
+      .catch((error) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        console.error("Unable to initialize career staff:", error);
+      });
+    return () => controller.abort();
+  }, [careerStaffNeedsProfileSync, initializeCareerStaff, isCareerLoaded]);
   const [selectedMsgId, setSelectedMsgId] = useState<string | null>(null);
   const [battingFirstXI, setBattingFirstXI] = useState<string[]>([]);
   const [bowlingFirstXI, setBowlingFirstXI] = useState<string[]>([]);
@@ -4779,22 +4813,27 @@ This record has been officially verified and added to the IPL Minor Records arch
     club: {
       label: "Club",
       icon: ShieldCheck,
-      subtabs: ["overview", "office", "pitchcurator", "stadiummanagement"]
+      subtabs: ["overview", "office", "staffmanagement", "pitchcurator", "stadiummanagement"]
     },
     scouting: {
       label: "Scouting",
       icon: Search,
-      subtabs: ["overview", "assignments", "seasonanalysis", "search", "planner", "trades"]
+      subtabs: ["overview", "assignments", "search", "planner", "trades"]
     },
     season: {
       label: "Season",
       icon: Trophy,
-      subtabs: ["overview", "fixtures", "standings", "stats", "injuries"]
+      subtabs: ["overview", "fixtures", "standings", "stats"]
+    },
+    league: {
+      label: "League",
+      icon: Table,
+      subtabs: ["overview", "staff", "injuries", "seasonanalysis", "minorrecords"]
     },
     history: {
       label: "History",
       icon: HistoryIcon,
-      subtabs: ["overview", "records", "minorrecords", "clubhistory", "clubfigures", "leaguehistory", "leaguehalloffame"]
+      subtabs: ["overview", "records", "clubhistory", "clubfigures", "leaguehistory", "leaguehalloffame"]
     }
   };
 
@@ -4815,9 +4854,11 @@ This record has been officially verified and added to the IPL Minor Records arch
     if (subtab === "trades") return "Trade Hub";
     if (subtab === "injuries") return "Injuries";
     if (subtab === "fixtures") return "Fixtures & Results";
-    if (subtab === "standings") return "Points Table";
+    if (subtab === "standings") return "Standings";
     if (subtab === "stats") return "Tournament Key Players";
     if (subtab === "office") return "Manager Office";
+    if (subtab === "staffmanagement") return "Staff Management";
+    if (subtab === "staff") return "Staff";
     if (subtab === "pitchcurator") return "Pitch Curator";
     if (subtab === "stadiummanagement") return "Stadium Management";
     if (subtab === "calendar") return "Season Calendar";
@@ -5037,6 +5078,7 @@ This record has been officially verified and added to the IPL Minor Records arch
     return buildCareerEmailDrafts({
       currentDate,
       season: currentSeason,
+      initialSeason: INITIAL_ACTIVE_SEASON,
       fixtureAnnouncementDate: formattedAnnouncementDate,
       fixturesAnnounced: isFixturesAnnounced,
       userTeamId,
@@ -5344,7 +5386,7 @@ This record has been officially verified and added to the IPL Minor Records arch
   }
 
   return (
-    <div className={`overview-page h-[calc(100vh-3rem)] flex overflow-hidden bg-bg relative ${activeTab === "history" ? "compact-history" : ""}`}>
+    <div className={`overview-page h-[calc(100vh-3rem)] flex overflow-hidden bg-bg relative ${activeTab === "history" || (activeTab === "league" && activeSubTab === "minorrecords") ? "compact-history" : ""}`}>
       {/* Global Toast Alert */}
       {toastMessage && (
         <div className="fixed bottom-6 right-6 z-[100] bg-[var(--ink)] text-bg border border-border/20 px-4 py-3 rounded shadow-lg text-xs font-space-mono font-semibold uppercase tracking-wider animate-in fade-in slide-in-from-bottom-3 duration-200">
@@ -5569,7 +5611,7 @@ This record has been officially verified and added to the IPL Minor Records arch
         </header>
 
         {/* Dynamic Detail Body Screen */}
-        <div className={`flex min-h-0 flex-1 flex-col ${activeSubTab === "overview" || activeTab === "history" ? "overflow-y-auto p-8" : "overflow-hidden"}`}>
+        <div className={`flex min-h-0 flex-1 flex-col ${activeSubTab === "overview" || activeTab === "history" || (activeTab === "league" && activeSubTab === "minorrecords") ? "overflow-y-auto p-8" : "overflow-hidden"}`}>
           
           {/* ==================================================================
               MAIN TAB: HOME
@@ -6784,6 +6826,10 @@ This record has been officially verified and added to the IPL Minor Records arch
                 </div>
               )}
 
+              {activeSubTab === "staffmanagement" && (
+                <StaffManagementPage teams={Object.values(teams)} mode="club" />
+              )}
+
               {activeSubTab === "pitchcurator" && (
                 <PitchCuratorPage
                   teamId={userTeamId}
@@ -7486,9 +7532,6 @@ This record has been officially verified and added to the IPL Minor Records arch
                   onToggleShortlist={toggleShortlist}
                 />
               )}
-              {activeSubTab === "seasonanalysis" && (
-                <SeasonDataAnalysisPage fixtures={fixtures} teams={teams} players={players} userTeamId={userTeamId} />
-              )}
               {/* Scouting Overview tab */}
               {activeSubTab === "overview" && (
                 <div className="grid h-[calc(100vh-200px)] min-h-[500px] grid-cols-12 grid-rows-[minmax(0,1.55fr)_minmax(0,0.75fr)] gap-4 overflow-hidden">
@@ -7590,7 +7633,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                     </div>
 
                     {/* Auction planner */}
-                    <div onClick={() => setActiveSubTab("planner")} className="col-span-4 flex min-h-0 cursor-pointer flex-col justify-between overflow-hidden rounded-lg border-2 border-border bg-surface p-4 transition-colors hover:border-accent">
+                    <div onClick={() => setActiveSubTab("planner")} className="col-span-6 flex min-h-0 cursor-pointer flex-col justify-between overflow-hidden rounded-lg border-2 border-border bg-surface p-4 transition-colors hover:border-accent">
                     <div>
                       <h4 className="font-anton text-[14px] uppercase border-b border-[#16130f]/10 pb-2 mb-4">AUCTION PLANNER</h4>
                       <div className="space-y-2 text-xs font-space-mono text-text-secondary">
@@ -7601,7 +7644,7 @@ This record has been officially verified and added to the IPL Minor Records arch
 
                     </div>
 
-                    <div onClick={() => setActiveSubTab("trades")} className="col-span-4 flex min-h-0 cursor-pointer flex-col justify-between overflow-hidden rounded-lg border-2 border-border bg-surface p-4 transition-colors hover:border-accent">
+                    <div onClick={() => setActiveSubTab("trades")} className="col-span-6 flex min-h-0 cursor-pointer flex-col justify-between overflow-hidden rounded-lg border-2 border-border bg-surface p-4 transition-colors hover:border-accent">
                       {(() => {
                         const finalDate = getSeasonFinalDate();
                         const window = finalDate ? getTradeWindowDates(finalDate, currentSeason) : undefined;
@@ -7612,10 +7655,6 @@ This record has been officially verified and added to the IPL Minor Records arch
                       })()}
                     </div>
 
-                    <div onClick={() => setActiveSubTab("seasonanalysis")} className="col-span-4 flex min-h-0 cursor-pointer flex-col justify-between overflow-hidden rounded-lg border-2 border-border bg-surface p-4 transition-colors hover:border-accent">
-                      <div><div className="flex items-center justify-between border-b border-[#16130f]/10 pb-2"><h4 className="font-anton text-[14px] uppercase">Season Data Analysis</h4><span className="font-space-mono text-[7px] font-bold uppercase text-accent">Advanced</span></div><p className="mt-2 line-clamp-2 text-[10px] leading-relaxed text-text-secondary">Compare teams by powerplay and death performance, pace and spin wickets, opening output, phase economy, and batting-first or chasing success.</p></div>
-                      <div className="mt-2 flex items-center justify-between font-space-mono text-[8px] font-bold uppercase text-accent"><span>Open analysis</span><span>→</span></div>
-                    </div>
                   </div>
                 </div>
               )}
@@ -7807,21 +7846,6 @@ This record has been officially verified and added to the IPL Minor Records arch
               ================================================================== */}
           {activeTab === "season" && (
             <>
-              {activeSubTab === "injuries" && (
-                <InjuryHubPage
-                  mode="league"
-                  userTeamId={userTeamId}
-                  activeInjuries={activeInjuries}
-                  injuryHistory={injuryHistory}
-                  replacementRecords={injuryReplacementRecords}
-                  replacementPoolIds={injuryReplacementPoolIds}
-                  currentDate={currentDate}
-                  currentSeason={currentSeason}
-                  players={players}
-                  teams={teams}
-                  seasonFinalDate={fixtures.find((fixture) => fixture.stage === "final")?.date}
-                />
-              )}
               {/* Season Overview tab */}
               {activeSubTab === "overview" && (
                 <div className="grid grid-cols-3 gap-6 h-[calc(100vh-200px)] min-h-[500px] overflow-hidden">
@@ -7930,7 +7954,7 @@ This record has been officially verified and added to the IPL Minor Records arch
 
                   {/* Points Table standings */}
                   <div onClick={() => setActiveSubTab("standings")} className="flex min-h-0 cursor-pointer flex-col overflow-hidden rounded-lg border-2 border-border bg-surface p-5 transition-colors hover:border-accent">
-                    <h4 className="font-anton text-[14px] uppercase border-b border-[#16130f]/10 pb-2 mb-4 shrink-0">POINTS TABLE</h4>
+                    <h4 className="font-anton text-[14px] uppercase border-b border-[#16130f]/10 pb-2 mb-4 shrink-0">STANDINGS</h4>
                     <div className="grid grid-cols-[1.5rem_minmax(0,1fr)_2rem_2rem_2rem_2.5rem] gap-1 border-b border-[#16130f]/10 pb-2 font-space-mono text-[8px] font-bold uppercase text-text-secondary shrink-0">
                       <span aria-hidden="true" />
                       <span>Team</span>
@@ -8245,9 +8269,62 @@ This record has been officially verified and added to the IPL Minor Records arch
                 </div>
               )}
 
-              {/* Points Table page */}
+              {/* Standings page */}
               {activeSubTab === "standings" && (
-                <div className="points-table-panel border-2 border-border bg-surface h-full flex-1 min-h-0 flex flex-col overflow-hidden">
+                <div className="standings-panel h-full min-h-0 flex-1 overflow-hidden border-2 border-border bg-surface flex flex-col">
+                  {(() => {
+                    const playoffFixtures = fixtures.filter((fixture) => Boolean(fixture.stage));
+                    const playoffsHaveStarted = playoffFixtures.length > 0;
+                    const finalFixture = playoffFixtures.find((fixture) => fixture.stage === "final");
+                    const championTeamId = finalFixture?.winner;
+                    const runnerUpTeamId = finalFixture?.winner
+                      ? (finalFixture.teamA === finalFixture.winner ? finalFixture.teamB : finalFixture.teamA)
+                      : undefined;
+                    const visibleView = playoffsHaveStarted ? standingsView : "league";
+                    return (
+                      <>
+                        <div className="flex shrink-0 items-center justify-between gap-4 border-b border-border bg-black/[0.025] px-5 py-3 dark:bg-white/[0.025]">
+                          <div>
+                            <p className="font-space-mono text-[7px] font-bold uppercase tracking-[0.2em] text-accent">{currentSeason} season</p>
+                            <h3 className="mt-0.5 font-anton text-lg uppercase text-text-primary">Standings</h3>
+                          </div>
+                          {playoffsHaveStarted && (
+                            <div className="flex rounded border border-border bg-surface p-1" role="tablist" aria-label="Standings view">
+                              <button
+                                type="button"
+                                role="tab"
+                                aria-selected={visibleView === "league"}
+                                onClick={() => setStandingsView("league")}
+                                className={`rounded px-3 py-1.5 font-space-mono text-[8px] font-bold uppercase tracking-wider transition-colors ${visibleView === "league" ? "bg-accent text-white" : "text-text-secondary hover:text-text-primary"}`}
+                              >
+                                League table
+                              </button>
+                              <button
+                                type="button"
+                                role="tab"
+                                aria-selected={visibleView === "playoffs"}
+                                onClick={() => setStandingsView("playoffs")}
+                                className={`rounded px-3 py-1.5 font-space-mono text-[8px] font-bold uppercase tracking-wider transition-colors ${visibleView === "playoffs" ? "bg-accent text-white" : "text-text-secondary hover:text-text-primary"}`}
+                              >
+                                Playoffs
+                              </button>
+                            </div>
+                          )}
+                        </div>
+
+                        {visibleView === "playoffs" ? (
+                          <div className="min-h-0 flex-1 overflow-auto p-5">
+                            <div className="isolate min-h-[240px] border border-border bg-surface p-4">
+                              <PlayoffDiagramContent
+                                fixtures={playoffFixtures}
+                                teams={teams}
+                                standings={standings}
+                                championTeamId={championTeamId}
+                                runnerUpTeamId={runnerUpTeamId}
+                              />
+                            </div>
+                          </div>
+                        ) : (
                   <div className="min-h-0 flex-1 overflow-x-auto overflow-y-hidden">
                     <table className="points-table w-full text-left font-barlow divide-y divide-[#16130f]/10">
                       <colgroup>
@@ -8299,6 +8376,10 @@ This record has been officially verified and added to the IPL Minor Records arch
                       </tbody>
                     </table>
                   </div>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
               )}
 
@@ -8316,6 +8397,114 @@ This record has been officially verified and added to the IPL Minor Records arch
                   bestBowlingFigures={bestBowlingFigures}
                   onOpenPlayer={setDetailedPlayerId}
                 />
+              )}
+            </>
+          )}
+
+          {/* ==================================================================
+              MAIN TAB: LEAGUE
+              ================================================================== */}
+          {activeTab === "league" && (
+            <>
+              {activeSubTab === "overview" && (
+                <div className="grid h-[calc(100vh-200px)] min-h-[500px] grid-cols-4 gap-5 overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => setActiveSubTab("staff")}
+                    className="group flex min-h-0 flex-col rounded-lg border-2 border-border bg-surface p-6 text-left transition-colors hover:border-accent"
+                  >
+                    <div className="flex items-center justify-between border-b border-border pb-4">
+                      <span className="flex size-10 items-center justify-center rounded-lg bg-accent/10 text-accent"><Briefcase size={20} aria-hidden="true" /></span>
+                      <span className="font-space-mono text-[9px] font-bold uppercase tracking-wider text-text-secondary">Nine rival clubs</span>
+                    </div>
+                    <div className="mt-auto">
+                      <p className="font-anton text-5xl leading-none text-text-primary">{careerStaff.employmentHistory.filter((event) => event.teamId !== userTeamId).length}</p>
+                      <h3 className="mt-3 font-anton text-xl uppercase text-text-primary">Staff Activity</h3>
+                      <p className="mt-2 text-xs leading-relaxed text-text-secondary">Other clubs, appointments, departures, vacancies and job security.</p>
+                      <span className="mt-5 inline-flex items-center gap-2 font-space-mono text-[9px] font-bold uppercase tracking-wider text-accent">Open league staff <ChevronRight size={13} /></span>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveSubTab("injuries")}
+                    className="group flex min-h-0 flex-col rounded-lg border-2 border-border bg-surface p-6 text-left transition-colors hover:border-accent"
+                  >
+                    <div className="flex items-center justify-between border-b border-border pb-4">
+                      <span className="flex size-10 items-center justify-center rounded-lg bg-danger/10 text-danger">
+                        <Activity size={20} aria-hidden="true" />
+                      </span>
+                      <span className="font-space-mono text-[9px] font-bold uppercase tracking-wider text-text-secondary">League medical report</span>
+                    </div>
+                    <div className="mt-auto">
+                      <p className="font-anton text-5xl leading-none text-text-primary">{Object.keys(activeInjuries).length}</p>
+                      <h3 className="mt-3 font-anton text-xl uppercase text-text-primary">Active Injuries</h3>
+                      <p className="mt-2 text-xs leading-relaxed text-text-secondary">Review injuries, recovery dates and replacement activity across every club.</p>
+                      <span className="mt-5 inline-flex items-center gap-2 font-space-mono text-[9px] font-bold uppercase tracking-wider text-accent">Open injuries <ChevronRight size={13} /></span>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setActiveSubTab("seasonanalysis")}
+                    className="group flex min-h-0 flex-col rounded-lg border-2 border-border bg-surface p-6 text-left transition-colors hover:border-accent"
+                  >
+                    <div className="flex items-center justify-between border-b border-border pb-4">
+                      <span className="flex size-10 items-center justify-center rounded-lg bg-accent/10 text-accent">
+                        <TrendingUp size={20} aria-hidden="true" />
+                      </span>
+                      <span className="font-space-mono text-[9px] font-bold uppercase tracking-wider text-text-secondary">{currentSeason} competition</span>
+                    </div>
+                    <div className="mt-auto">
+                      <p className="font-anton text-5xl leading-none text-text-primary">{fixtures.filter((fixture) => fixture.played).length}</p>
+                      <h3 className="mt-3 font-anton text-xl uppercase text-text-primary">Matches Analysed</h3>
+                      <p className="mt-2 text-xs leading-relaxed text-text-secondary">Compare team and player performance trends from the current season.</p>
+                      <span className="mt-5 inline-flex items-center gap-2 font-space-mono text-[9px] font-bold uppercase tracking-wider text-accent">Open season analysis <ChevronRight size={13} /></span>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setActiveSubTab("minorrecords")}
+                    className="group flex min-h-0 flex-col rounded-lg border-2 border-border bg-surface p-6 text-left transition-colors hover:border-accent"
+                  >
+                    <div className="flex items-center justify-between border-b border-border pb-4">
+                      <span className="flex size-10 items-center justify-center rounded-lg bg-warning/10 text-warning">
+                        <Trophy size={20} aria-hidden="true" />
+                      </span>
+                      <span className="font-space-mono text-[9px] font-bold uppercase tracking-wider text-text-secondary">Competition archive</span>
+                    </div>
+                    <div className="mt-auto">
+                      <p className="font-anton text-5xl leading-none text-text-primary">{minorRecords.length}</p>
+                      <h3 className="mt-3 font-anton text-xl uppercase text-text-primary">Minor Records</h3>
+                      <p className="mt-2 text-xs leading-relaxed text-text-secondary">Browse the wider collection of notable league achievements and milestones.</p>
+                      <span className="mt-5 inline-flex items-center gap-2 font-space-mono text-[9px] font-bold uppercase tracking-wider text-accent">Open minor records <ChevronRight size={13} /></span>
+                    </div>
+                  </button>
+                </div>
+              )}
+              {activeSubTab === "injuries" && (
+                <InjuryHubPage
+                  mode="league"
+                  userTeamId={userTeamId}
+                  activeInjuries={activeInjuries}
+                  injuryHistory={injuryHistory}
+                  replacementRecords={injuryReplacementRecords}
+                  replacementPoolIds={injuryReplacementPoolIds}
+                  currentDate={currentDate}
+                  currentSeason={currentSeason}
+                  players={players}
+                  teams={teams}
+                  seasonFinalDate={fixtures.find((fixture) => fixture.stage === "final")?.date}
+                />
+              )}
+              {activeSubTab === "staff" && (
+                <StaffManagementPage teams={Object.values(teams)} mode="league" />
+              )}
+              {activeSubTab === "seasonanalysis" && (
+                <SeasonDataAnalysisPage fixtures={fixtures} teams={teams} players={players} userTeamId={userTeamId} />
+              )}
+              {activeSubTab === "minorrecords" && (
+                <MinorRecords minorRecords={minorRecords} />
               )}
             </>
           )}
@@ -8842,9 +9031,6 @@ This record has been officially verified and added to the IPL Minor Records arch
                   <h3 className="font-anton text-[18px] text-text-primary uppercase">{getSubTabLabel(activeSubTab)}</h3>
                   <p className="mt-3 text-xs text-text-secondary">No history has been recorded yet.</p>
                 </div>
-              )}
-              {activeSubTab === "minorrecords" && (
-                <MinorRecords minorRecords={minorRecords} />
               )}
             </>
           )}

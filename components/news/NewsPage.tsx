@@ -143,6 +143,7 @@ export default function NewsPage({
   onViewAllFixtures
 }: NewsPageProps) {
   const saveId = useGameStore((state) => state.saveId);
+  const careerStaff = useGameStore((state) => state.careerStaff);
   const [layout, setLayout] = useState<NewsLayout>("cricinfo");
   const [activeTab, setActiveTab] = useState<NewsTab>("all");
   const [selectedArticleId, setSelectedArticleId] = useState<string | null>(null);
@@ -3528,6 +3529,47 @@ export default function NewsPage({
     }
     const articleByIdentity = new Map<string, NewsArticle>();
     [...cachedArticles, ...freshArticles].forEach((article) => articleByIdentity.set(`${article.id}:${article.publishedAt}:${article.associatedEntityIds?.teamId || article.associatedEntityIds?.playerId || ""}`, article));
+    careerStaff.newsEvents.forEach((event) => {
+      const team = teams[event.teamId];
+      const teamName = team?.name ?? event.teamId;
+      const staffName = event.staffId ? careerStaff.contracts[event.staffId]?.fullName : null;
+      const isAppointment = event.kind === "head_coach_appointed";
+      const isPoaching = event.kind === "staff_poached";
+      const isSacking = event.kind === "head_coach_sacked";
+      const formerTeamName = event.sourceTeamId ? teams[event.sourceTeamId]?.name ?? event.sourceTeamId : null;
+      const article: NewsArticle = {
+        id: event.id,
+        title: isSacking ? `${teamName} sack ${staffName ?? "head coach"}`
+          : isPoaching ? `${teamName} prise ${staffName ?? "coach"} away${formerTeamName ? ` from ${formerTeamName}` : ""}`
+          : isAppointment ? `${teamName} appoint ${staffName ?? "new head coach"}` : `${teamName} begin head-coach search`,
+        subheading: isSacking
+          ? `The franchise has acted after its end-of-season performance review.`
+          : isPoaching
+          ? `${staffName ?? "The coach"} has agreed terms after the clubs settled contractual compensation.`
+          : isAppointment
+          ? `${staffName ?? "The new appointment"} takes charge for the remainder of the campaign.`
+          : staffName ? `${staffName} will oversee the team on an interim basis.` : "The franchise has opened an urgent recruitment process.",
+        content: isSacking
+          ? `${teamName} have dismissed ${staffName ?? "their head coach"} following an end-of-season review. The decision considered preseason expectations, the final position, two-season performance memory and the club's established patience culture.`
+          : isPoaching
+          ? `${teamName} have completed the appointment of ${staffName ?? "a new coach"}${formerTeamName ? ` from ${formerTeamName}` : ""}. The move reflects the coach's career ambitions, contractual terms and ties to the new club, with compensation paid for the remaining contract.`
+          : isAppointment
+          ? `${teamName} have confirmed the appointment of ${staffName ?? "a new head coach"}. The deal was completed after a mid-season recruitment process and takes effect immediately.`
+          : `${teamName} have opened a mid-season search for a permanent head coach.${staffName ? ` ${staffName} has been given interim responsibility while the process is completed.` : " Existing staff will share interim responsibility while candidates are assessed."}`,
+        category: event.teamId === userTeamId ? "user_team" : "transfers_auctions",
+        tag: "Staff Market",
+        timestamp: formatDate(event.publishedOn),
+        publishedAt: event.publishedOn,
+        expiresAt: addDays(event.publishedOn, 30),
+        teamId: event.teamId,
+        associatedEntityIds: { teamId: event.teamId },
+        imagePlaceholder: `${teamName} coaching announcement`,
+        author: "IPL News Desk",
+        readTime: "2 min read",
+        isBreaking: true,
+      };
+      articleByIdentity.set(article.id, article);
+    });
     retirementCohorts.forEach(({ season, additional }) => {
       if (additional.length === 0) return;
       const names = additional.map((record) => record.name);
@@ -3646,7 +3688,7 @@ export default function NewsPage({
       articleByIdentity.set(article.id, article);
     });
     return Array.from(articleByIdentity.values());
-  }, [userTeamId, players, teams, playerStats, standings, retirements, retirementHistory, retiredPlayerSnapshots, currentSeason, fixtures, topScorer, topWicketTaker, layout, currentDate, saveId, isSeasonConcluded, clubFigureProgression]);
+  }, [userTeamId, players, teams, playerStats, standings, retirements, retirementHistory, retiredPlayerSnapshots, currentSeason, fixtures, topScorer, topWicketTaker, layout, currentDate, saveId, isSeasonConcluded, clubFigureProgression, careerStaff]);
 
   // Filter articles based on selected tab
   const filteredArticles = useMemo(() => {

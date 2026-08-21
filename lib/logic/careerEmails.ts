@@ -99,6 +99,7 @@ export interface CareerEmailLineupStatus {
 export interface CareerEmailContext {
   currentDate: string;
   season: number;
+  initialSeason: number;
   fixtureAnnouncementDate: string;
   fixturesAnnounced: boolean;
   userTeamId: string;
@@ -261,7 +262,7 @@ export function buildCareerEmailDrafts(context: CareerEmailContext): CareerEmail
   const lineupReady = selectionReady(context);
   const leadershipComplete = leadershipReady(context);
 
-  if (openingPhase) {
+  if (openingPhase && context.season === context.initialSeason) {
     push({
       templateId: "career.welcome",
       dedupeKey: `welcome:${context.season}`,
@@ -277,7 +278,9 @@ export function buildCareerEmailDrafts(context: CareerEmailContext): CareerEmail
       actionCompleted: false,
       actions: [navigation("Open squad hub", "squad", "overview")],
     });
+  }
 
+  if (openingPhase) {
     push({
       templateId: "task.appoint-leadership",
       dedupeKey: `appoint-leadership:${context.season}`,
