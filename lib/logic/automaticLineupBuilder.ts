@@ -11,6 +11,12 @@ export interface AutomaticLineupSelection {
   bowlingFirstXI: string[];
   battingFirstImpactSubs: string[];
   bowlingFirstImpactSubs: string[];
+  battingFirstImpactPlayerId: string | null;
+  battingFirstOutgoingPlayerId: string | null;
+  battingFirstImpactBattingPosition: number | null;
+  bowlingFirstImpactPlayerId: string | null;
+  bowlingFirstOutgoingPlayerId: string | null;
+  bowlingFirstImpactBattingPosition: number | null;
 }
 
 export function playerToLineupCandidate(player: Player): LineupCandidate {
@@ -41,18 +47,40 @@ export function buildAutomaticLineupSelection(
   const recommended = buildAiMatchLineups(squad, options);
   const battingFirstXI = recommended.battingFirst.startingXI;
   const bowlingFirstXI = recommended.bowlingFirst.startingXI;
+
+  const batFirstPrimarySubId = recommended.battingFirst.impactPlayerId;
+  const bowlFirstPrimarySubId = recommended.bowlingFirst.impactPlayerId;
+
+  const batFirstBench = buildRecommendedImpactSubs(
+    battingFirstXI,
+    candidates,
+    "battingFirst",
+  );
+  if (batFirstPrimarySubId) {
+    const filtered = batFirstBench.filter((id) => id !== batFirstPrimarySubId);
+    batFirstBench.splice(0, batFirstBench.length, batFirstPrimarySubId, ...filtered.slice(0, 4));
+  }
+
+  const bowlFirstBench = buildRecommendedImpactSubs(
+    bowlingFirstXI,
+    candidates,
+    "bowlingFirst",
+  );
+  if (bowlFirstPrimarySubId) {
+    const filtered = bowlFirstBench.filter((id) => id !== bowlFirstPrimarySubId);
+    bowlFirstBench.splice(0, bowlFirstBench.length, bowlFirstPrimarySubId, ...filtered.slice(0, 4));
+  }
+
   return {
     battingFirstXI,
     bowlingFirstXI,
-    battingFirstImpactSubs: buildRecommendedImpactSubs(
-      battingFirstXI,
-      candidates,
-      "battingFirst",
-    ),
-    bowlingFirstImpactSubs: buildRecommendedImpactSubs(
-      bowlingFirstXI,
-      candidates,
-      "bowlingFirst",
-    ),
+    battingFirstImpactSubs: batFirstBench,
+    bowlingFirstImpactSubs: bowlFirstBench,
+    battingFirstImpactPlayerId: recommended.battingFirst.impactPlayerId,
+    battingFirstOutgoingPlayerId: recommended.battingFirst.likelyOutgoingPlayerId,
+    battingFirstImpactBattingPosition: recommended.battingFirst.impactBattingPosition ?? null,
+    bowlingFirstImpactPlayerId: recommended.bowlingFirst.impactPlayerId,
+    bowlingFirstOutgoingPlayerId: recommended.bowlingFirst.likelyOutgoingPlayerId,
+    bowlingFirstImpactBattingPosition: recommended.bowlingFirst.impactBattingPosition ?? null,
   };
 }

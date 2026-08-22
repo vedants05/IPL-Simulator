@@ -26,6 +26,7 @@ import {
 import {
   buildAutomaticLineupSelection,
   playerToLineupCandidate,
+  type AutomaticLineupSelection,
 } from "@/lib/logic/automaticLineupBuilder";
 import { type PlayerInjury } from "@/lib/logic/injuries";
 import { InjuryStatusMarker } from "./InjuryStatusMarker";
@@ -53,6 +54,14 @@ interface TacticsLineupBuilderProps {
     bowlingFirstXI: string[],
     battingFirstImpactSubs: string[],
     bowlingFirstImpactSubs: string[],
+    impactStrategy: Pick<AutomaticLineupSelection,
+      | "battingFirstImpactPlayerId"
+      | "battingFirstOutgoingPlayerId"
+      | "battingFirstImpactBattingPosition"
+      | "bowlingFirstImpactPlayerId"
+      | "bowlingFirstOutgoingPlayerId"
+      | "bowlingFirstImpactBattingPosition"
+    >,
   ) => void;
   onChangeImpactStrategy?: (
     plan: LineupPlan,
@@ -263,6 +272,7 @@ export default function TacticsLineupBuilder({
       recommended.bowlingFirstXI,
       recommended.battingFirstImpactSubs,
       recommended.bowlingFirstImpactSubs,
+      recommended,
     );
   };
 

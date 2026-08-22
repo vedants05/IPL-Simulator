@@ -509,6 +509,28 @@ export function getQuirks(team: Team): TeamQuirks {
 
 
 
+export function getSquadRoleBenchmark(squad: Player[], player: Player): number {
+  const isBowler = player.role === "Pace Bowler" || player.role === "Spin Bowler";
+  const isBat = player.role === "Batsman" || player.role === "WK-Batsman";
+  
+  if (isKeeper(player)) {
+    const keepers = squad.filter(isKeeper);
+    if (keepers.length === 0) return 65;
+    return Math.max(...keepers.map(ratingOf));
+  } else if (isBowler) {
+    const bowlers = squad.filter(p => p.role === "Pace Bowler" || p.role === "Spin Bowler");
+    if (bowlers.length < 4) return 65;
+    const sorted = bowlers.map(ratingOf).sort((a, b) => b - a);
+    return sorted[3] ?? 70;
+  } else if (isBat) {
+    const batters = squad.filter(p => p.role === "Batsman" || p.role === "WK-Batsman" || p.role === "All-Rounder");
+    if (batters.length < 6) return 65;
+    const sorted = batters.map(ratingOf).sort((a, b) => b - a);
+    return sorted[5] ?? 70;
+  }
+  return 72;
+}
+
 // ---------------------------------------------------------------------------
 // PLAYER FIT — the single "how much does THIS team want THIS player" score,
 // built from EVERY stat in the database crossed with the franchise's ideology
@@ -1314,6 +1336,27 @@ export function computeTeamValuation(
     base *= clamp(0.64 + fit * 0.40, 0.50, 1.08);
   }
 
+  // ── MINI AUCTION LIVE UTILITY & PURSE DOMINANCE ─────────────────────────────
+  if (isMiniAuction) {
+    const roleBenchmark = getSquadRoleBenchmark(squad, player);
+    const deltaXI = rating - roleBenchmark;
+
+    let utilityMultiplier = 1.0;
+    if (deltaXI > 8) utilityMultiplier = 2.25;       // Game-Changer Upgrade
+    else if (deltaXI > 6) utilityMultiplier = 1.90;  // Elite Upgrade
+    else if (deltaXI > 4) utilityMultiplier = 1.60;  // Major Upgrade
+    else if (deltaXI > 2) utilityMultiplier = 1.35;  // Solid Upgrade
+    else if (deltaXI > 0) utilityMultiplier = 1.15;  // Slight Upgrade
+    else utilityMultiplier = 1.00;                   // Depth / No Upgrade (1.0x Baseline)
+
+    base *= utilityMultiplier;
+
+    // Feature 4: Purse Dominance Aggression
+    if (team.remainingPurse >= 1800 && rating >= 78) {
+      base *= u(1.20, 1.40);
+    }
+  }
+
   // Diminishing returns begin when this purchase would become the third elite
   // overseas player in the same role group. Teams can still bid, but the third,
   // fourth and later duplicates receive progressively lower valuations.
@@ -1501,6 +1544,15 @@ export function computeTeamValuation(
     const superstarCap = team.remainingPurse * superstarMult;
     if (superstarCap > affordabilityCap) {
       affordabilityCap = affordabilityCap + (superstarCap - affordabilityCap) * superstarFactor;
+    }
+  }
+
+  if (isMiniAuction) {
+    // Feature 1: Marquee Purse Blowout (Starc/Cummins Effect)
+    // If team has >= 18 retained players and an 84+ CA superstar or 85+ reputation icon appears:
+    if (squad.length >= 18 && (rating >= 84 || (player.reputation ?? 0) >= 85)) {
+      const blowoutCap = team.remainingPurse * u(0.75, 0.85);
+      affordabilityCap = Math.max(affordabilityCap, blowoutCap);
     }
   }
 

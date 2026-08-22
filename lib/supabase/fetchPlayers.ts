@@ -81,9 +81,11 @@ export function mapRowsToPlayers(data: any[]): Player[] {
     const isPartTimeWk = name === "Rahul Tripathi" ? false : row.part_time_wicketkeeper === true;
     const isOpener = name === "Finn Allen" || name === "Ayush Mhatre" ? true : row.opener === true;
     const isRiyanParag = name === "Riyan Parag";
-    const isFinisher = isRiyanParag ? false : row.finisher === true;
+    const isRishabhPant = name === "Rishabh Pant";
+    const isSuryanshShedge = name === "Suryansh Shedge";
+    const isFinisher = isRishabhPant ? false : (isSuryanshShedge ? true : (isRiyanParag ? false : row.finisher === true));
     const isAnukul = name === "Anukul Roy";
-    const isCoreBatter = isRiyanParag ? true : (isAnukul ? false : row.core_batter === true);
+    const isCoreBatter = isRishabhPant ? true : (isRiyanParag ? true : (isAnukul ? false : row.core_batter === true));
     const onlyOpensOrBenched = name === "Finn Allen" ? true : row.only_opener === true;
     const captaincy = parseInt(row.captaincy) || 50;
     // The source field is a positive desire flag. A false value means that the
@@ -95,10 +97,10 @@ export function mapRowsToPlayers(data: any[]): Player[] {
     const isPhillips = name === "Glenn Phillips";
     const isTripathi = name === "Rahul Tripathi";
     const hasBattedAt3 = isPhillips ? true : row.has_batted_at_3 === true;
-    const hasBattedAt4 = row.has_batted_at_4 === true;
+    const hasBattedAt4 = isRishabhPant ? true : row.has_batted_at_4 === true;
     const hasBattedAt5 = row.has_batted_at_5 === true;
-    const hasBattedAt6 = isTripathi ? false : row.has_batted_at_6 === true;
-    const hasBattedAt7 = isTripathi ? false : row.has_batted_at_7 === true;
+    const hasBattedAt6 = isSuryanshShedge ? true : (isTripathi ? false : row.has_batted_at_6 === true);
+    const hasBattedAt7 = isSuryanshShedge ? true : (isTripathi ? false : row.has_batted_at_7 === true);
 
     const playerRating = Math.max(curBat, curBowl);
     const base = calculateBasePrice(isCapped, nat, playerRating, reputation);

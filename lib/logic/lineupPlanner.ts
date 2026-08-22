@@ -291,10 +291,10 @@ export function buildRecommendedImpactSubs(
   plan: LineupPlan,
 ): string[] {
   const starters = candidates.filter((candidate) => lineup.includes(candidate.id));
-  const overseasStarters = starters.filter(isOverseas).length;
+  const overseasStarters = Math.min(4, starters.filter(isOverseas).length);
   const available = candidates.filter((candidate) => (
     !lineup.includes(candidate.id)
-    && overseasStarters + (isOverseas(candidate) ? 1 : 0) <= 4
+    && (!isOverseas(candidate) || overseasStarters < 4)
   ));
   const preferred = available.filter((candidate) => (
     plan === "battingFirst" ? isBowlingOption(candidate) : (

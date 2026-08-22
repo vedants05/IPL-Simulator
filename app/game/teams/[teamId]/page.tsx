@@ -181,25 +181,15 @@ function normalizeTeamProfileCareer(parsed: Partial<TeamProfileCareer>): TeamPro
 }
 
 function readTeamProfileCareer(userTeamId: string): TeamProfileCareer {
-  const inMemoryCareer = getCachedTeamProfileCareer<TeamProfileCareer>(userTeamId);
-  if (inMemoryCareer) return inMemoryCareer;
-
   const storageKey = `ipl_career_${userTeamId}`;
+  if (typeof localStorage === "undefined") return EMPTY_CAREER;
   const serialized = localStorage.getItem(storageKey);
-  if (
-    cachedCareerSnapshot
-    && cachedCareerSnapshot.storageKey === storageKey
-    && cachedCareerSnapshot.serialized === serialized
-  ) {
-    return cachedCareerSnapshot.career;
+  if (!serialized) return EMPTY_CAREER;
+  try {
+    return normalizeTeamProfileCareer(JSON.parse(serialized) as Partial<TeamProfileCareer>);
+  } catch {
+    return EMPTY_CAREER;
   }
-
-  const career = serialized
-    ? normalizeTeamProfileCareer(JSON.parse(serialized) as Partial<TeamProfileCareer>)
-    : EMPTY_CAREER;
-  cachedCareerSnapshot = { storageKey, serialized, career };
-  cacheTeamProfileCareer(userTeamId, career);
-  return career;
 }
 
 const ROLE_ORDER: Record<Player["role"], number> = {
@@ -309,6 +299,9 @@ function LineupColumn({
           const rightBat = isBattingOption(right);
           if (leftBat !== rightBat) return Number(rightBat) - Number(leftBat);
         } else {
+          const leftSpecialist = left.role === "Pace Bowler" || left.role === "Spin Bowler";
+          const rightSpecialist = right.role === "Pace Bowler" || right.role === "Spin Bowler";
+          if (leftSpecialist !== rightSpecialist) return Number(rightSpecialist) - Number(leftSpecialist);
           const leftBowl = isAiBowlingOption(left);
           const rightBowl = isAiBowlingOption(right);
           if (leftBowl !== rightBowl) return Number(rightBowl) - Number(leftBowl);
@@ -331,7 +324,7 @@ function LineupColumn({
     const protectedIds = new Set<string>([
       ...(plan.captainId ? [plan.captainId] : []),
       ...(plan.viceCaptainId ? [plan.viceCaptainId] : []),
-      ...starters.slice(0, 2).map((p) => p.id),
+      ...starters.slice(0, 4).map((p) => p.id),
       ...starters.filter((p) => p.reputation === 10).map((p) => p.id),
     ]);
     const eligibleOutgoing = starters.filter((p) => !protectedIds.has(p.id));
@@ -499,6 +492,7 @@ function MountedTeamProfilePage() {
   const currentDate = useGameStore((state) => state.currentDate);
   const auction = useGameStore((state) => state.auction);
   const simulatedLeagueHistory = useGameStore((state) => state.simulatedLeagueHistory);
+  const careerStaff = useGameStore((state) => state.careerStaff);
   const [hasLoadedCareer, setHasLoadedCareer] = useState(() => Boolean(
     getCachedTeamProfileCareer<TeamProfileCareer>(userTeamId),
   ));
@@ -524,6 +518,25 @@ function MountedTeamProfilePage() {
   const teamId = decodeURIComponent(rawTeamId ?? "").toUpperCase();
   const team = teams[teamId];
   const homeStadium = getHomeStadium(teamId);
+
+  const teamContracts = useMemo(() => {
+    if (!careerStaff || !careerStaff.contracts || !team) return [];
+    return Object.values(careerStaff.contracts).filter(
+      (c) => c.teamId === team.id && c.status === "contracted"
+    );
+  }, [careerStaff, team]);
+
+  const headCoach = useMemo(() => {
+    return teamContracts.find(
+      (c) => c.roles.includes("head_coach") || c.primaryRole === "head_coach"
+    );
+  }, [teamContracts]);
+
+  const mentor = useMemo(() => {
+    return teamContracts.find(
+      (c) => c.roles.includes("mentor") || c.primaryRole === "mentor"
+    );
+  }, [teamContracts]);
 
   useEffect(() => {
     const syncTabWithHistory = () => setActiveTab(teamProfileTabFromUrl());
@@ -1254,6 +1267,14 @@ function MountedTeamProfilePage() {
                     )}
                     <dt className="font-space-mono uppercase text-text-secondary">Approach</dt>
                     <dd className="truncate font-semibold text-text-primary">{team.aiPersonality}</dd>
+                    <dt className="font-space-mono uppercase text-text-secondary">Head Coach</dt>
+                    <dd className="truncate font-semibold text-text-primary">{headCoach ? headCoach.fullName : "Unappointed"}</dd>
+                    {mentor && (
+                      <>
+                        <dt className="font-space-mono uppercase text-text-secondary">Mentor</dt>
+                        <dd className="truncate font-semibold text-text-primary">{mentor.fullName}</dd>
+                      </>
+                    )}
                   </dl>
                 </div>
                 {(() => {

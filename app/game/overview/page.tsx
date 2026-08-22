@@ -28,6 +28,7 @@ import { type LineupPlan, validateLineup } from "@/lib/logic/lineupPlanner";
 import {
   buildAutomaticLineupSelection,
   playerToLineupCandidate,
+  type AutomaticLineupSelection,
 } from "@/lib/logic/automaticLineupBuilder";
 import { findSpecialOpenerPair } from "@/lib/logic/openerPairs";
 import {
@@ -115,8 +116,17 @@ const TeamTacticsPage = dynamic(() => import("@/components/squad/TeamTacticsPage
 const PitchCuratorPage = dynamic(() => import("@/components/club/PitchCuratorPage"), { ssr: false });
 const StadiumManagementPage = dynamic(() => import("@/components/club/StadiumManagementPage"), { ssr: false });
 const StaffManagementPage = dynamic(() => import("@/components/club/StaffManagementPage"), { ssr: false });
+const BoardOverviewPage = dynamic(() => import("@/components/club/BoardOverviewPage"), { ssr: false });
 const SocialMediaPage = dynamic(() => import("@/components/social/SocialMediaPage"), { ssr: false });
 const NewsPage = dynamic(() => import("@/components/news/NewsPage"), { ssr: false });
+import { getClubOwnership } from "@/lib/data/clubOwnership";
+import { checkEmergencyBudgetExtensionApproval } from "@/lib/logic/staffContracts";
+import {
+  calculateSeasonUnderperformancePressure,
+  calculateEffectiveJobPressure,
+  getStaffJobSecurityState,
+} from "@/lib/logic/staffJobSecurity";
+import { calculateStaffExpectedRanks } from "@/lib/logic/staffPerformanceReview";
 import { PlayerProfileModal } from "@/components/player/PlayerProfileModal";
 import { PlayoffDiagramContent, ScheduleTileContent } from "@/components/season/ScheduleTileContent";
 import TournamentStatsDashboard from "@/components/season/TournamentStatsDashboard";
@@ -478,12 +488,16 @@ const CALENDAR_SELECTED_COLOR = "#2563eb";
 function ClubProfileSummaryTile({
   team,
   season,
+  headCoach,
+  mentor,
   captain,
   viceCaptain,
   featuredPlayers,
 }: {
   team: Team;
   season: number;
+  headCoach?: string | null;
+  mentor?: string | null;
   captain: Player | null;
   viceCaptain: Player | null;
   featuredPlayers: readonly Player[];
@@ -534,7 +548,17 @@ function ClubProfileSummaryTile({
       <div className="grid shrink-0 gap-3 border-t border-[#16130f]/10 pt-4 md:grid-cols-[minmax(0,.8fr)_minmax(0,1.2fr)]">
         <div className="rounded-lg border border-border bg-surface/75 p-3">
           <div className="font-space-mono text-[7px] font-bold uppercase tracking-[0.16em] text-text-secondary">Leadership</div>
-          <div className="mt-2 grid grid-cols-2 gap-3">
+          <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-2">
+            <div className="min-w-0">
+              <div className="font-space-mono text-[6px] font-bold uppercase text-accent">Head Coach</div>
+              <div className="mt-0.5 truncate font-barlow text-xs font-bold text-text-primary">{headCoach ?? "Unappointed"}</div>
+            </div>
+            {mentor && (
+              <div className="min-w-0">
+                <div className="font-space-mono text-[6px] font-bold uppercase text-accent">Mentor</div>
+                <div className="mt-0.5 truncate font-barlow text-xs font-bold text-text-primary">{mentor}</div>
+              </div>
+            )}
             <div className="min-w-0">
               <div className="font-space-mono text-[6px] font-bold uppercase text-accent">Captain</div>
               <div className="mt-0.5 truncate font-barlow text-xs font-bold text-text-primary">{captain?.name ?? "Not appointed"}</div>
@@ -1266,6 +1290,12 @@ function OverviewPageContent() {
       setBowlingFirstXI(recommended.bowlingFirstXI);
       setBattingFirstImpactSubs(recommended.battingFirstImpactSubs);
       setBowlingFirstImpactSubs(recommended.bowlingFirstImpactSubs);
+      setBattingFirstImpactPlayerId(recommended.battingFirstImpactPlayerId);
+      setBattingFirstOutgoingPlayerId(recommended.battingFirstOutgoingPlayerId);
+      setBattingFirstImpactBattingPosition(recommended.battingFirstImpactBattingPosition);
+      setBowlingFirstImpactPlayerId(recommended.bowlingFirstImpactPlayerId);
+      setBowlingFirstOutgoingPlayerId(recommended.bowlingFirstOutgoingPlayerId);
+      setBowlingFirstImpactBattingPosition(recommended.bowlingFirstImpactBattingPosition);
     }
   }, [
     battingFirstXI.length,
@@ -1495,17 +1525,23 @@ function OverviewPageContent() {
           setBowlingFirstXI(rebuiltPlan.bowlingFirstXI);
           setBattingFirstImpactSubs(rebuiltPlan.battingFirstImpactSubs);
           setBowlingFirstImpactSubs(rebuiltPlan.bowlingFirstImpactSubs);
+          setBattingFirstImpactPlayerId(rebuiltPlan.battingFirstImpactPlayerId);
+          setBattingFirstOutgoingPlayerId(rebuiltPlan.battingFirstOutgoingPlayerId);
+          setBattingFirstImpactBattingPosition(rebuiltPlan.battingFirstImpactBattingPosition);
+          setBowlingFirstImpactPlayerId(rebuiltPlan.bowlingFirstImpactPlayerId);
+          setBowlingFirstOutgoingPlayerId(rebuiltPlan.bowlingFirstOutgoingPlayerId);
+          setBowlingFirstImpactBattingPosition(rebuiltPlan.bowlingFirstImpactBattingPosition);
           parsed.battingFirstXI = rebuiltPlan.battingFirstXI;
           parsed.bowlingFirstXI = rebuiltPlan.bowlingFirstXI;
           parsed.battingFirstImpactSubs = rebuiltPlan.battingFirstImpactSubs;
           parsed.bowlingFirstImpactSubs = rebuiltPlan.bowlingFirstImpactSubs;
           parsed.startingXI = rebuiltPlan.battingFirstXI;
-          parsed.battingFirstImpactPlayerId = null;
-          parsed.battingFirstOutgoingPlayerId = null;
-          parsed.battingFirstImpactBattingPosition = null;
-          parsed.bowlingFirstImpactPlayerId = null;
-          parsed.bowlingFirstOutgoingPlayerId = null;
-          parsed.bowlingFirstImpactBattingPosition = null;
+          parsed.battingFirstImpactPlayerId = rebuiltPlan.battingFirstImpactPlayerId;
+          parsed.battingFirstOutgoingPlayerId = rebuiltPlan.battingFirstOutgoingPlayerId;
+          parsed.battingFirstImpactBattingPosition = rebuiltPlan.battingFirstImpactBattingPosition;
+          parsed.bowlingFirstImpactPlayerId = rebuiltPlan.bowlingFirstImpactPlayerId;
+          parsed.bowlingFirstOutgoingPlayerId = rebuiltPlan.bowlingFirstOutgoingPlayerId;
+          parsed.bowlingFirstImpactBattingPosition = rebuiltPlan.bowlingFirstImpactBattingPosition;
           localStorage.setItem(`ipl_career_${userTeamId}`, JSON.stringify(parsed));
         }
         if (typeof parsed.battingFirstImpactPlayerId === "string" || parsed.battingFirstImpactPlayerId === null) {
@@ -2496,8 +2532,9 @@ function OverviewPageContent() {
       });
       const outgoing = nextXI
         .map((id, index) => ({ player: players[id], index }))
-        .filter(({ player }) => Boolean(
+        .filter(({ player, index }) => Boolean(
           player
+          && index >= 4
           && !protectedIds.has(player.id)
           && (player.reputation ?? 0) < 10
           && !isStyle(player)
@@ -2734,7 +2771,7 @@ function OverviewPageContent() {
       tactics: isFacingUserTeam
         ? createTeamTactics("Balanced")
         : pitch
-        ? createIntelligentAiTactics(teams[teamId], pitch)
+        ? createIntelligentAiTactics(teams[teamId], pitch, careerStaff)
         : createTeamTactics(teams[teamId]?.aiPersonality === "Aggressive" ? "Ultra Aggressive" : "Balanced"),
       battingFirst: toMatchLineupPlan(
         tunedBattingFirst.startingXI,
@@ -4698,6 +4735,14 @@ This record has been officially verified and added to the IPL Minor Records arch
     nextBowlingFirstXI: string[],
     nextBattingFirstImpactSubs: string[],
     nextBowlingFirstImpactSubs: string[],
+    impactStrategy: Pick<AutomaticLineupSelection,
+      | "battingFirstImpactPlayerId"
+      | "battingFirstOutgoingPlayerId"
+      | "battingFirstImpactBattingPosition"
+      | "bowlingFirstImpactPlayerId"
+      | "bowlingFirstOutgoingPlayerId"
+      | "bowlingFirstImpactBattingPosition"
+    >,
   ) => {
     const hasWicketkeeper = nextBowlingFirstXI.some((playerId) => {
       const player = players[playerId];
@@ -4715,11 +4760,18 @@ This record has been officially verified and added to the IPL Minor Records arch
     setBowlingFirstXI(nextBowlingFirstXI);
     setBattingFirstImpactSubs(nextBattingFirstImpactSubs);
     setBowlingFirstImpactSubs(nextBowlingFirstImpactSubs);
+    setBattingFirstImpactPlayerId(impactStrategy.battingFirstImpactPlayerId);
+    setBattingFirstOutgoingPlayerId(impactStrategy.battingFirstOutgoingPlayerId);
+    setBattingFirstImpactBattingPosition(impactStrategy.battingFirstImpactBattingPosition);
+    setBowlingFirstImpactPlayerId(impactStrategy.bowlingFirstImpactPlayerId);
+    setBowlingFirstOutgoingPlayerId(impactStrategy.bowlingFirstOutgoingPlayerId);
+    setBowlingFirstImpactBattingPosition(impactStrategy.bowlingFirstImpactBattingPosition);
     saveCareerState({
       battingFirstXI: nextBattingFirstXI,
       bowlingFirstXI: nextBowlingFirstXI,
       battingFirstImpactSubs: nextBattingFirstImpactSubs,
       bowlingFirstImpactSubs: nextBowlingFirstImpactSubs,
+      ...impactStrategy,
     });
     showToast("Both match plans have been rebuilt.");
   };
@@ -4813,7 +4865,7 @@ This record has been officially verified and added to the IPL Minor Records arch
     club: {
       label: "Club",
       icon: ShieldCheck,
-      subtabs: ["overview", "office", "staffmanagement", "pitchcurator", "stadiummanagement"]
+      subtabs: ["overview", "board", "office", "staffmanagement", "pitchcurator", "stadiummanagement"]
     },
     scouting: {
       label: "Scouting",
@@ -4828,7 +4880,7 @@ This record has been officially verified and added to the IPL Minor Records arch
     league: {
       label: "League",
       icon: Table,
-      subtabs: ["overview", "staff", "injuries", "seasonanalysis", "minorrecords"]
+      subtabs: ["overview", "staff", "board", "injuries", "seasonanalysis", "minorrecords"]
     },
     history: {
       label: "History",
@@ -4840,6 +4892,7 @@ This record has been officially verified and added to the IPL Minor Records arch
   // Format tab label for rendering
   const getSubTabLabel = (subtab: string): string => {
     if (subtab === "overview") return "Overview";
+    if (subtab === "board") return "Board & Ownership";
     if (subtab === "roster") return "Roster Overview";
     if (subtab === "analysis") return "Squad Analysis";
     if (subtab === "playingxi") return "Playing XIs";
@@ -5042,6 +5095,20 @@ This record has been officially verified and added to the IPL Minor Records arch
       || left.name.localeCompare(right.name)
     ))
     .slice(0, 5), [players, userTeam?.squad]);
+
+  const userHeadCoach = useMemo(() => {
+    if (!careerStaff || !careerStaff.contracts || !userTeamId) return null;
+    return Object.values(careerStaff.contracts).find(
+      (c) => c.teamId === userTeamId && c.status === "contracted" && (c.roles.includes("head_coach") || c.primaryRole === "head_coach")
+    ) ?? null;
+  }, [careerStaff, userTeamId]);
+
+  const userMentor = useMemo(() => {
+    if (!careerStaff || !careerStaff.contracts || !userTeamId) return null;
+    return Object.values(careerStaff.contracts).find(
+      (c) => c.teamId === userTeamId && c.status === "contracted" && (c.roles.includes("mentor") || c.primaryRole === "mentor")
+    ) ?? null;
+  }, [careerStaff, userTeamId]);
   const emailLineupStatus = useMemo<CareerEmailLineupStatus>(() => {
     const battingValidation = validateLineup(battingFirstXI, emailLineupCandidates);
     const bowlingValidation = validateLineup(bowlingFirstXI, emailLineupCandidates);
@@ -6755,6 +6822,8 @@ This record has been officially verified and added to the IPL Minor Records arch
                   <ClubProfileSummaryTile
                     team={userTeam}
                     season={currentSeason}
+                    headCoach={userHeadCoach ? userHeadCoach.fullName : null}
+                    mentor={userMentor ? userMentor.fullName : null}
                     captain={teamLeadership.captainId ? players[teamLeadership.captainId] ?? null : null}
                     viceCaptain={teamLeadership.viceCaptainId ? players[teamLeadership.viceCaptainId] ?? null : null}
                     featuredPlayers={clubFeaturedPlayers}
@@ -6782,48 +6851,123 @@ This record has been officially verified and added to the IPL Minor Records arch
                 </div>
               )}
 
-              {activeSubTab === "office" && (
-                <div className="grid h-full min-h-0 flex-1 grid-cols-1 gap-6 md:grid-cols-2">
-                  <div className="flex flex-col gap-6 border-2 border-border bg-surface p-5">
-                    <div>
-                      <h3 className="mb-4 border-b border-[#16130f]/10 pb-2 font-anton text-[16px] uppercase text-text-primary">BOARD EXPECTATIONS</h3>
-                      <ul className="list-inside list-disc space-y-2 font-barlow text-xs text-text-secondary">
-                        <li>Expectation details: <span className="font-semibold text-text-primary">To be implemented.</span></li>
-                      </ul>
-                    </div>
-                  </div>
+              {activeSubTab === "office" && (() => {
+                const userOwnership = getClubOwnership(userTeamId);
+                const expectedRanks = calculateStaffExpectedRanks({
+                  teamIds: Object.keys(teams),
+                  teams,
+                  players,
+                  staffState: careerStaff,
+                  previousSeason: null,
+                });
+                const expectedPos = expectedRanks.overall[userTeamId] ?? 3;
+                const userStandingIdx = standings.findIndex((row) => row.teamId === userTeamId);
+                const realPos = userStandingIdx >= 0 ? userStandingIdx + 1 : 1;
+                const posDiff = expectedPos - realPos;
+                const patienceMod = userOwnership.patience_modifier;
 
-                  <div className="flex flex-col items-center justify-center border-2 border-border bg-surface p-5">
-                    <h3 className="mb-4 w-full border-b border-[#16130f]/10 pb-2 text-center font-anton text-[16px] uppercase text-text-primary">BOARD TRUST</h3>
-                    <div className="relative flex h-48 w-48 items-center justify-center">
-                      <svg className="h-full w-full -rotate-90 transform" viewBox="0 0 100 100">
-                        <circle cx="50" cy="50" r="40" stroke="rgba(22,19,15,.1)" strokeWidth="8" fill="transparent" />
-                        <circle
-                          cx="50"
-                          cy="50"
-                          r="40"
-                          stroke="var(--success)"
-                          strokeWidth="8"
-                          fill="transparent"
-                          strokeDasharray={251.2}
-                          strokeDashoffset={251.2}
-                          strokeLinecap="round"
-                        />
-                      </svg>
-                      <div className="absolute flex flex-col items-center">
-                        <span className="font-anton text-[36px] leading-none">--%</span>
-                        <span className="mt-1 font-space-mono text-[9px] uppercase text-text-secondary">CONFIDENCE</span>
+                const rawPressure = calculateSeasonUnderperformancePressure(expectedPos, realPos);
+                const effectivePressure = calculateEffectiveJobPressure({
+                  rawPressure,
+                  teamId: userTeamId,
+                  ownershipPatienceModifier: patienceMod,
+                });
+                const securityState = getStaffJobSecurityState(effectivePressure);
+
+                const strokeOffset = 251.2 * (1 - effectivePressure / 100);
+
+                const securityBadgeClasses: Record<string, { label: string; color: string }> = {
+                  secure: { label: "SECURE", color: "text-emerald-500" },
+                  stable: { label: "STABLE", color: "text-emerald-400" },
+                  under_scrutiny: { label: "UNDER SCRUTINY", color: "text-amber-400" },
+                  under_pressure: { label: "UNDER PRESSURE", color: "text-amber-500" },
+                  serious_risk: { label: "SERIOUS RISK", color: "text-rose-400" },
+                  expected_dismissal: { label: "EXPECTED DISMISSAL", color: "text-rose-500" },
+                  immediate_dismissal: { label: "IMMEDIATE DISMISSAL", color: "text-red-600" },
+                };
+
+                const activeSecurity = securityBadgeClasses[securityState] ?? securityBadgeClasses.secure;
+
+                return (
+                  <div className="grid h-full min-h-0 flex-1 grid-cols-1 gap-6 md:grid-cols-2">
+                    {/* Left Column: 3-Section Expected Position Bar */}
+                    <div className="flex flex-col justify-between border-2 border-border bg-surface p-5 shadow-sm">
+                      <div>
+                        <div className="flex items-center justify-between border-b border-[#16130f]/10 pb-2">
+                          <h3 className="font-anton text-[16px] uppercase text-text-primary">BOARD EXPECTATION & STANDING</h3>
+                          <span className="font-space-mono text-[9px] font-bold uppercase text-accent">
+                            {userOwnership.consortium_name}
+                          </span>
+                        </div>
+
+                        {/* 3-Section Bar: Expected Position | Difference | Real Position */}
+                        <div className="mt-8 grid grid-cols-3 gap-2 rounded border border-border/70 bg-background/50 p-4 text-center">
+                          {/* Section 1: Expected Position */}
+                          <div className="flex flex-col items-center justify-center border-r border-border/60 pr-2">
+                            <span className="font-space-mono text-[9px] font-bold uppercase tracking-wider text-text-secondary">EXPECTED</span>
+                            <span className="mt-1.5 font-anton text-2xl uppercase text-accent">#{expectedPos}</span>
+                          </div>
+
+                          {/* Section 2: Difference in Positions */}
+                          <div className="flex flex-col items-center justify-center border-r border-border/60 px-2">
+                            <span className="font-space-mono text-[9px] font-bold uppercase tracking-wider text-text-secondary">DIFFERENCE</span>
+                            <span className={`mt-1.5 font-anton text-2xl uppercase ${posDiff >= 0 ? "text-emerald-500" : "text-rose-500"}`}>
+                              {posDiff > 0 ? `+${posDiff}` : posDiff}
+                            </span>
+                          </div>
+
+                          {/* Section 3: Real Position */}
+                          <div className="flex flex-col items-center justify-center pl-2">
+                            <span className="font-space-mono text-[9px] font-bold uppercase tracking-wider text-text-secondary">REAL POSITION</span>
+                            <span className="mt-1.5 font-anton text-2xl uppercase text-text-primary">#{realPos}</span>
+                          </div>
+                        </div>
                       </div>
                     </div>
 
-                    <button
-                      disabled
-                      className="mt-6 cursor-not-allowed border border-border px-6 py-2 font-space-mono text-[9px] font-bold uppercase tracking-widest opacity-50"
-                    >
-                      REQUEST BUDGET INCREASE
-                    </button>
+                    {/* Right Column: Head Coach Security & Pressure Gauge */}
+                    <div className="flex flex-col items-center justify-between border-2 border-border bg-surface p-5 shadow-sm">
+                      <h3 className="w-full border-b border-[#16130f]/10 pb-2 text-center font-anton text-[16px] uppercase text-text-primary">
+                        HEAD COACH JOB SECURITY
+                      </h3>
+
+                      <div className="relative flex h-48 w-48 items-center justify-center my-2">
+                        <svg className="h-full w-full -rotate-90 transform" viewBox="0 0 100 100">
+                          <circle cx="50" cy="50" r="40" stroke="rgba(22,19,15,.1)" strokeWidth="8" fill="transparent" />
+                          <circle
+                            cx="50"
+                            cy="50"
+                            r="40"
+                            stroke={effectivePressure >= 65 ? "#ef4444" : effectivePressure >= 35 ? "#f59e0b" : "var(--success)"}
+                            strokeWidth="8"
+                            fill="transparent"
+                            strokeDasharray={251.2}
+                            strokeDashoffset={strokeOffset}
+                            strokeLinecap="round"
+                            className="transition-all duration-500"
+                          />
+                        </svg>
+                        <div className="absolute flex flex-col items-center">
+                          <span className="font-anton text-[36px] leading-none text-text-primary">{effectivePressure}%</span>
+                          <span className={`mt-1 font-space-mono text-[9px] font-bold uppercase ${activeSecurity.color}`}>
+                            {activeSecurity.label}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="w-full rounded border border-border/80 bg-background/50 p-3 text-center">
+                        <span className="font-space-mono text-[9px] uppercase text-text-secondary">Sacking Threat Level</span>
+                        <div className={`mt-1 font-anton text-sm uppercase ${activeSecurity.color}`}>
+                          {effectivePressure < 35 ? "No Immediate Dismissal Risk" : effectivePressure < 65 ? "Board Warning Sent by CEO" : "Critical Job Security Risk"}
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                </div>
+                );
+              })()}
+
+              {activeSubTab === "board" && (
+                <BoardOverviewPage teamId={userTeamId} mode="club" />
               )}
 
               {activeSubTab === "staffmanagement" && (
@@ -8499,6 +8643,9 @@ This record has been officially verified and added to the IPL Minor Records arch
               )}
               {activeSubTab === "staff" && (
                 <StaffManagementPage teams={Object.values(teams)} mode="league" />
+              )}
+              {activeSubTab === "board" && (
+                <BoardOverviewPage teamId={userTeamId} mode="league" />
               )}
               {activeSubTab === "seasonanalysis" && (
                 <SeasonDataAnalysisPage fixtures={fixtures} teams={teams} players={players} userTeamId={userTeamId} />

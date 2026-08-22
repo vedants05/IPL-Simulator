@@ -14,6 +14,8 @@ import {
   findOptimalImpactBattingPosition,
   selectBattingFirstOutgoingBatter,
 } from "@/lib/logic/aiLineupSelector";
+import type { CareerStaffState } from "@/lib/logic/staffContracts";
+import { calculateCoachingStaffModifiers, deriveAITeamTactics } from "@/lib/logic/coachingStrategyImpact";
 import { appendRainAffectedResultLabel, hasRainReducedOvers } from "@/lib/logic/matchWeather";
 import type { Player, Team } from "@/lib/types";
 
@@ -105,6 +107,7 @@ export interface MatchSimulationInput {
   stage?: string;
   isKnockout?: boolean;
   weatherScenario?: MatchWeatherScenario;
+  staffState?: CareerStaffState | null;
 }
 
 export type PlayableBattingApproach =
@@ -469,6 +472,7 @@ interface InningsContext {
   time?: string;
   maxOvers?: number;
   playableDecisions?: PlayableMatchDecisions;
+  staffState?: CareerStaffState | null;
 }
 
 const clamp = (value: number, minimum: number, maximum: number) => (
@@ -2958,6 +2962,16 @@ function simulateInnings(context: InningsContext): MatchInnings {
     0.94,
     1.06,
   );
+  const battingStaffModifiers = calculateCoachingStaffModifiers(
+    batting.team.id,
+    context.staffState,
+    context.tactics,
+  );
+  const bowlingStaffModifiers = calculateCoachingStaffModifiers(
+    bowling.team.id,
+    context.staffState,
+    context.bowlingTactics,
+  );
 
   while (
     legalBalls < maxOvers * 6
@@ -3116,6 +3130,8 @@ function simulateInnings(context: InningsContext): MatchInnings {
             : deliveryControl?.battingApproach === "six-hitting"
               ? 0.20
               : 0;
+      const isCollapsePhase = (overNumber <= 8 && wickets >= 3) || wickets >= 5;
+      const isHighChasePhase = Boolean(target && (target - runs) / Math.max(1, (maxOvers * 6 - (overNumber - 1) * 6)) > 0.16);
       const intent = battingIntent(
         context.tactics,
         overNumber,
@@ -3124,7 +3140,11 @@ function simulateInnings(context: InningsContext): MatchInnings {
         target,
         maxOvers,
       ) + bowlerRespectIntentAdjustment(battingRating, bowlingRating)
-        + battingApproachAdjustment;
+        + battingApproachAdjustment
+        + battingStaffModifiers.synergyModifier
+        + battingStaffModifiers.battingControlModifier
+        + (isCollapsePhase ? battingStaffModifiers.collapseMitigationFactor : 0)
+        + (isHighChasePhase ? battingStaffModifiers.chasePressureResilience : 0);
       const positionedFielders = bowling.finalXI
         .filter((playerId) => playerId !== bowler.id && playerId !== wicketkeeper?.id)
         .map((playerId) => players[playerId])
@@ -3146,6 +3166,12 @@ function simulateInnings(context: InningsContext): MatchInnings {
         situationalField,
         maxOvers,
       );
+      baseTacticalBowling.wicket += bowlingStaffModifiers.synergyModifier * 0.1;
+      if (isSpinner(bowler)) {
+        baseTacticalBowling.scoring -= bowlingStaffModifiers.spinExecutionModifier;
+      } else if (isPacer(bowler)) {
+        baseTacticalBowling.scoring -= bowlingStaffModifiers.paceExecutionModifier;
+      }
       const fieldScoringAdjustment = deliveryControl?.fieldPlan === "protect"
         ? -0.025
         : deliveryControl?.fieldPlan === "hunt-wickets"
@@ -4136,6 +4162,7 @@ function simulateMatchToCompletion(
     time: input.time,
     maxOvers: weatherScenario.firstInningsOvers,
     playableDecisions,
+    staffState: input.staffState,
   });
 
   const originalTarget = firstInnings.runs + 1;
@@ -4226,6 +4253,7 @@ function simulateMatchToCompletion(
     time: input.time,
     maxOvers: weatherScenario.secondInningsOvers,
     playableDecisions,
+    staffState: input.staffState,
   });
 
   const chasingImpact = bowlingFirstState.impactDecision;
@@ -4584,7 +4612,11 @@ export function getPlayableSkipTarget(
 export function createIntelligentAiTactics(
   team: Team,
   pitch: CuratorPitch,
+  staffState?: CareerStaffState | null,
 ): TeamTactics {
+  if (staffState && staffState.initialized) {
+    return deriveAITeamTactics(team.id, staffState, pitch);
+  }
   const bowlingSurface = (
     pitch.favours.includes("spin-bowlers")
     || pitch.favours.includes("pace-bowlers")

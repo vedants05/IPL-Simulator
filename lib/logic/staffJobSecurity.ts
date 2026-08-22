@@ -1,4 +1,5 @@
 import { getStaffClubCulture } from "../data/staffClubCulture";
+import { getClubOwnership } from "../data/clubOwnership";
 
 export type StaffJobSecurityState = "secure" | "stable" | "under_scrutiny" | "under_pressure"
   | "serious_risk" | "expected_dismissal" | "immediate_dismissal";
@@ -30,10 +31,11 @@ export const calculateEffectiveJobPressure = ({
   rawPressure,
   teamId,
   contextualProtection = 0,
-  ownershipPatienceModifier = 0,
+  ownershipPatienceModifier,
 }: EffectiveJobPressureInput) => {
   const clubPatienceModifier = getStaffClubCulture(teamId).patienceModifier;
-  const combinedCultureModifier = clamp(clubPatienceModifier + ownershipPatienceModifier, -15, 15);
+  const activeOwnershipPatience = ownershipPatienceModifier ?? getClubOwnership(teamId).patience_modifier;
+  const combinedCultureModifier = clamp(clubPatienceModifier + activeOwnershipPatience, -20, 20);
   const protection = clamp(contextualProtection, 0, 30);
   return Math.round(clamp(rawPressure - protection - combinedCultureModifier, 0, 100) * 10) / 10;
 };

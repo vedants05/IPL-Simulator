@@ -4,6 +4,7 @@ import { getAuctionRoleGroup } from "@/lib/logic/auctionMarket";
 import { addDaysToDateKey } from "@/lib/logic/careerCalendar";
 import { createScoutingGeneratedPlayer } from "@/lib/logic/careerLifecycle";
 import { generateIndianStateRegenName } from "@/lib/data/indianStateRegenNames";
+import { getClubOwnership } from "@/lib/data/clubOwnership";
 
 export type ScoutingMarket = "india" | "international";
 export type ScoutingAssignmentKind = "regional-scan" | "full-assignment" | "intensive-search" | "deep-scout";
@@ -67,6 +68,16 @@ export interface ScoutingAssignmentOption {
 }
 
 export const MAX_ACTIVE_SCOUTING_ASSIGNMENTS = 3;
+
+/**
+ * Calculates dynamic max scouting assignment slots (range: 2 to 4 slots).
+ */
+export function getMaxScoutingAssignments(teamId?: string | null): number {
+  if (!teamId) return MAX_ACTIVE_SCOUTING_ASSIGNMENTS;
+  const ownership = getClubOwnership(teamId);
+  return Math.min(4, Math.max(2, 2 + Math.floor(ownership.scouting_investment_level / 10)));
+}
+
 export const MAX_NEW_SCOUTING_PLAYERS_PER_AUCTION = 8;
 export const MAX_NEW_INDIAN_SCOUTING_PLAYERS_PER_AUCTION = 5;
 export const MAX_NEW_OVERSEAS_SCOUTING_PLAYERS_PER_AUCTION = 3;
@@ -282,14 +293,16 @@ export function createScoutingAssignment(input: {
   currentSeason: number;
   saveSeed: string;
   assignments: ScoutingAssignment[];
+  teamId?: string;
 }): { assignment?: ScoutingAssignment; message: string } {
   const region = getScoutingRegion(input.regionId);
   if (!region || region.market !== input.market) return { message: "Select a valid scouting region." };
   const option = SCOUTING_ASSIGNMENT_OPTIONS.find((candidate) => candidate.kind === input.kind);
   if (!option) return { message: "Select a valid assignment type." };
   const active = input.assignments.filter((assignment) => assignment.status === "active");
-  if (active.length >= MAX_ACTIVE_SCOUTING_ASSIGNMENTS) return { message: "All three scouting slots are currently occupied." };
-  const slot = [1, 2, 3].find((candidate) => !active.some((assignment) => assignment.slot === candidate)) ?? 1;
+  const maxSlots = getMaxScoutingAssignments(input.teamId);
+  if (active.length >= maxSlots) return { message: `All ${maxSlots} scouting slots are currently occupied.` };
+  const slot = [1, 2, 3, 4].find((candidate) => candidate <= maxSlots && !active.some((assignment) => assignment.slot === candidate)) ?? 1;
   const sequence = input.assignments.length + 1;
   const seed = `${input.saveSeed}:${input.currentSeason}:${input.regionId}:${input.kind}:${sequence}`;
   return {
@@ -317,14 +330,16 @@ export function createDeepScoutingAssignment(input: {
   currentSeason: number;
   saveSeed: string;
   assignments: ScoutingAssignment[];
+  teamId?: string;
 }): { assignment?: ScoutingAssignment; message: string } {
   if (input.report.confidence >= 100) return { message: `${input.player.name} is already fully scouted.` };
   const active = input.assignments.filter((assignment) => assignment.status === "active");
-  if (active.length >= MAX_ACTIVE_SCOUTING_ASSIGNMENTS) return { message: "All three scouting slots are currently occupied." };
+  const maxSlots = getMaxScoutingAssignments(input.teamId);
+  if (active.length >= maxSlots) return { message: `All ${maxSlots} scouting slots are currently occupied.` };
   if (active.some((assignment) => assignment.targetReportId === input.report.id)) {
     return { message: `${input.player.name} is already being scouted in more depth.` };
   }
-  const slot = [1, 2, 3].find((candidate) => !active.some((assignment) => assignment.slot === candidate)) ?? 1;
+  const slot = [1, 2, 3, 4].find((candidate) => candidate <= maxSlots && !active.some((assignment) => assignment.slot === candidate)) ?? 1;
   const sequence = input.assignments.length + 1;
   const seed = `${input.saveSeed}:${input.currentSeason}:${input.report.id}:deep-scout:${sequence}`;
   return {

@@ -717,3 +717,26 @@ export function validateCareerStaffState(state: CareerStaffState): string[] {
   });
   return errors;
 }
+
+import { getClubOwnership } from "../data/clubOwnership";
+
+export function getTeamStaffSalaryBudgetCap(teamId: string): number {
+  const ownership = getClubOwnership(teamId);
+  return 100000000 + (ownership.financial_generosity * 5000000);
+}
+
+export function getOwnerOfferedContractYears(teamId: string): number {
+  const ownership = getClubOwnership(teamId);
+  if (ownership.patience_modifier < 0) return 2;
+  if (ownership.patience_modifier < 5) return 3;
+  return 4;
+}
+
+export function checkEmergencyBudgetExtensionApproval(teamId: string): { approved: boolean; chance: number } {
+  const ownership = getClubOwnership(teamId);
+  const chance = ownership.staff_budget_flexibility * 0.05;
+  return {
+    approved: Math.random() < chance,
+    chance: Math.round(chance * 100),
+  };
+}
