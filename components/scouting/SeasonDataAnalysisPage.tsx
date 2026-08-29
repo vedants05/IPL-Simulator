@@ -20,6 +20,13 @@ type PlayerContribution = {
   name: string;
   value: number;
 };
+type PlayerAbilityOutputPoint = {
+  playerId: string;
+  name: string;
+  teamId: string;
+  output: number;
+  ability: number;
+};
 
 const phaseDeliveries = (
   record: MatchSimulationRecord,
@@ -154,15 +161,177 @@ function QuadrantComparison({
   );
 }
 
+function PlayerAbilityOutputChart({
+  points,
+  teams,
+  userTeamId,
+  yLabel,
+  xLabel,
+  outputLabel,
+  abilityLabel,
+  emptyMessage,
+}: {
+  points: PlayerAbilityOutputPoint[];
+  teams: Record<string, Team>;
+  userTeamId: string;
+  yLabel: string;
+  xLabel: string;
+  outputLabel: string;
+  abilityLabel: string;
+  emptyMessage: string;
+}) {
+  const abilities = points.map((point) => point.ability);
+  const maximumOutput = Math.max(1, ...points.map((point) => point.output));
+  const xMin = abilities.length > 0 ? Math.min(...abilities) : 0;
+  const xMax = abilities.length > 0 ? Math.max(...abilities) : 100;
+  const yStep = maximumOutput > 100 ? 100 : maximumOutput > 20 ? 10 : 5;
+  const yMax = Math.max(yStep, Math.ceil(maximumOutput / yStep) * yStep);
+  const xTicks = Array.from({ length: 6 }, (_, index) => xMin + ((xMax - xMin) * index) / 5);
+  const yTicks = Array.from({ length: 6 }, (_, index) => yMax - (yMax * index) / 5);
+  const xPosition = (ability: number) => ((ability - xMin) / Math.max(1, xMax - xMin)) * 100;
+  const yPosition = (runs: number) => (1 - runs / yMax) * 100;
+  const regression = (() => {
+    if (points.length < 2) return undefined;
+    const meanAbility = abilities.reduce((sum, ability) => sum + ability, 0) / points.length;
+    const meanOutput = points.reduce((sum, point) => sum + point.output, 0) / points.length;
+    const denominator = points.reduce(
+      (sum, point) => sum + Math.pow(point.ability - meanAbility, 2),
+      0,
+    );
+    if (denominator === 0) return undefined;
+    const slope = points.reduce(
+      (sum, point) => sum + (point.ability - meanAbility) * (point.output - meanOutput),
+      0,
+    ) / denominator;
+    const intercept = meanOutput - slope * meanAbility;
+    return {
+      x1: xPosition(xMin),
+      y1: yPosition(intercept + slope * xMin),
+      x2: xPosition(xMax),
+      y2: yPosition(intercept + slope * xMax),
+    };
+  })();
+
+  return (
+    <div className="grid grid-cols-[34px_42px_minmax(0,1fr)] gap-2 px-4 pb-5 pt-4 font-space-mono text-[9px] sm:px-6">
+      <div className="flex items-center justify-center [writing-mode:vertical-rl] rotate-180 font-bold uppercase tracking-wider text-text-secondary">
+        {yLabel}
+      </div>
+      <div className="relative h-[480px] text-[8px] text-text-secondary">
+        {yTicks.map((tick, index) => (
+          <span
+            key={tick}
+            className="absolute right-0 -translate-y-1/2"
+            style={{ top: `${index * 20}%` }}
+          >
+            {Math.round(tick)}
+          </span>
+        ))}
+      </div>
+      <div className="min-w-0">
+        <div className="relative h-[480px] border border-border bg-surface/5">
+          {xTicks.map((tick, index) => (
+            <div
+              key={`x-${tick}`}
+              className="absolute inset-y-0 border-l border-dashed border-border/50"
+              style={{ left: `${index * 20}%` }}
+            />
+          ))}
+          {yTicks.map((tick, index) => (
+            <div
+              key={`y-${tick}`}
+              className="absolute inset-x-0 border-t border-dashed border-border/50"
+              style={{ top: `${index * 20}%` }}
+            />
+          ))}
+          {regression && (
+            <svg
+              className="pointer-events-none absolute inset-0 z-10 h-full w-full overflow-hidden"
+              viewBox="0 0 100 100"
+              preserveAspectRatio="none"
+              aria-label="Ordinary least squares regression line"
+            >
+              <line
+                x1={regression.x1}
+                y1={regression.y1}
+                x2={regression.x2}
+                y2={regression.y2}
+                stroke="currentColor"
+                strokeWidth="0.45"
+                strokeDasharray="1.5 1"
+                vectorEffect="non-scaling-stroke"
+                className="text-text-primary/70"
+              />
+            </svg>
+          )}
+          {points.map((point) => {
+            const pointX = xPosition(point.ability);
+            const pointY = yPosition(point.output);
+            const tooltipX = pointX < 18
+              ? "left-0"
+              : pointX > 82
+                ? "right-0"
+                : "left-1/2 -translate-x-1/2";
+            const tooltipY = pointY < 30 ? "top-full mt-2" : "bottom-full mb-2";
+            return (
+              <div
+                key={point.playerId}
+                className={`group absolute z-10 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/70 shadow hover:z-50 hover:scale-150 ${
+                  point.teamId === userTeamId ? "ring-2 ring-accent ring-offset-1 ring-offset-bg" : ""
+                }`}
+                style={{
+                  left: `${pointX}%`,
+                  top: `${pointY}%`,
+                  backgroundColor: teams[point.teamId]?.primaryColor ?? "#666",
+                }}
+              >
+                <span className={`pointer-events-none invisible absolute z-50 min-w-[190px] rounded border border-border bg-bg px-3 py-2 text-left text-[8px] leading-4 text-text-primary opacity-0 shadow-xl group-hover:visible group-hover:opacity-100 ${tooltipX} ${tooltipY}`}>
+                  <span className="block font-bold">{point.name}</span>
+                  <span className="block text-text-secondary">{teams[point.teamId]?.name ?? point.teamId}</span>
+                  <span className="mt-1 block text-accent">{abilityLabel}: {point.ability}</span>
+                  <span className="block text-text-secondary">{outputLabel}: {point.output}</span>
+                </span>
+              </div>
+            );
+          })}
+          {points.length === 0 && (
+            <div className="absolute inset-0 flex items-center justify-center text-xs uppercase tracking-wider text-text-secondary">
+              {emptyMessage}
+            </div>
+          )}
+        </div>
+        <div className="relative h-5 text-[8px] text-text-secondary">
+          {xTicks.map((tick, index) => (
+            <span
+              key={tick}
+              className="absolute -translate-x-1/2 pt-1"
+              style={{ left: `${index * 20}%` }}
+            >
+              {Math.round(tick)}
+            </span>
+          ))}
+        </div>
+        <div className="pt-2 text-center font-bold uppercase tracking-wider text-text-secondary">
+          {xLabel}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function SeasonDataAnalysisPage({
   fixtures,
   teams,
   players,
+  seasonStartBattingAbilities,
+  seasonStartBowlingAbilities,
   userTeamId,
 }: {
   fixtures: Fixture[];
   teams: Record<string, Team>;
   players: Record<string, Player>;
+  seasonStartBattingAbilities: Record<string, number>;
+  seasonStartBowlingAbilities: Record<string, number>;
   userTeamId: string;
 }) {
   const completedScorecards = fixtures.filter(
@@ -1056,6 +1225,59 @@ export default function SeasonDataAnalysisPage({
       points: teamIds.map((teamId) => ({ teamId, x: battingPhaseStat(teamId, 17, 20, "dotRate"), y: lineValue(deathWicketLines, teamId) })),
     },
   ];
+  const seasonRunAbilityRows = Array.from(
+    completedScorecards.reduce((totals, fixture) => {
+      fixture.simulation!.innings.forEach((innings) => {
+        innings.batting.forEach((entry) => {
+          if (entry.didNotBat) return;
+          const current = totals.get(entry.id);
+          totals.set(entry.id, {
+            playerId: entry.id,
+            name: players[entry.id]?.name ?? entry.name,
+            teamId: innings.battingTeamId,
+            output: (current?.output ?? 0) + entry.runs,
+            ability: seasonStartBattingAbilities[entry.id] ?? players[entry.id]?.currentBatting ?? 0,
+          });
+        });
+      });
+      return totals;
+    }, new Map<string, PlayerAbilityOutputPoint>()),
+  )
+    .map(([, row]) => row)
+    .filter((row) => row.output > 100)
+    .sort((left, right) => (
+      right.output - left.output
+      || right.ability - left.ability
+      || left.name.localeCompare(right.name)
+    ));
+  const seasonWicketAbilityRows = (style: "Spinner" | "Pacer") => Array.from(
+    completedScorecards.reduce((totals, fixture) => {
+      fixture.simulation!.innings.forEach((innings) => {
+        innings.bowling.forEach((entry) => {
+          const player = players[entry.id];
+          if (player?.bowlingStyle !== style) return;
+          const current = totals.get(entry.id);
+          totals.set(entry.id, {
+            playerId: entry.id,
+            name: player.name ?? entry.name,
+            teamId: innings.bowlingTeamId,
+            output: (current?.output ?? 0) + entry.wickets,
+            ability: seasonStartBowlingAbilities[entry.id] ?? player.currentBowling ?? 0,
+          });
+        });
+      });
+      return totals;
+    }, new Map<string, PlayerAbilityOutputPoint>()),
+  )
+    .map(([, row]) => row)
+    .filter((row) => row.output > 0)
+    .sort((left, right) => (
+      right.output - left.output
+      || right.ability - left.ability
+      || left.name.localeCompare(right.name)
+    ));
+  const spinnerWicketAbilityRows = seasonWicketAbilityRows("Spinner");
+  const pacerWicketAbilityRows = seasonWicketAbilityRows("Pacer");
 
   return (
     <div className="h-full overflow-y-auto p-5">
@@ -1352,6 +1574,90 @@ export default function SeasonDataAnalysisPage({
               userTeamId={userTeamId}
             />
           ))}
+          <section className="order-[100] col-span-12 overflow-hidden rounded-lg border border-border bg-bg">
+            <div className="flex items-end justify-between gap-4 border-b border-border bg-surface/5 px-5 py-4">
+              <div>
+                <span className="font-space-mono text-[8px] font-bold uppercase tracking-[0.2em] text-accent">
+                  Full league batting sample
+                </span>
+                <h3 className="mt-1 font-anton text-xl uppercase tracking-wider text-text-primary">
+                  Runs vs Start-of-Season Batting Ability
+                </h3>
+                <p className="mt-1 font-space-mono text-[9px] text-text-secondary">
+                  Every player with more than 100 runs in the current season.
+                </p>
+              </div>
+              <span className="shrink-0 font-space-mono text-[9px] font-bold uppercase text-text-secondary">
+                {seasonRunAbilityRows.length} qualifiers
+              </span>
+            </div>
+            <PlayerAbilityOutputChart
+              points={seasonRunAbilityRows}
+              teams={teams}
+              userTeamId={userTeamId}
+              yLabel="Season Runs"
+              xLabel="Start-of-Season Batting Ability"
+              outputLabel="Season runs"
+              abilityLabel="Batting ability"
+              emptyMessage="No players have passed 100 runs yet"
+            />
+          </section>
+          <section className="order-[101] col-span-12 overflow-hidden rounded-lg border border-border bg-bg">
+            <div className="flex items-end justify-between gap-4 border-b border-border bg-surface/5 px-5 py-4">
+              <div>
+                <span className="font-space-mono text-[8px] font-bold uppercase tracking-[0.2em] text-accent">
+                  Full league spin-bowling sample
+                </span>
+                <h3 className="mt-1 font-anton text-xl uppercase tracking-wider text-text-primary">
+                  Spinner Wickets vs Start-of-Season Bowling Ability
+                </h3>
+                <p className="mt-1 font-space-mono text-[9px] text-text-secondary">
+                  Every spinner with at least one wicket in the current season.
+                </p>
+              </div>
+              <span className="shrink-0 font-space-mono text-[9px] font-bold uppercase text-text-secondary">
+                {spinnerWicketAbilityRows.length} qualifiers
+              </span>
+            </div>
+            <PlayerAbilityOutputChart
+              points={spinnerWicketAbilityRows}
+              teams={teams}
+              userTeamId={userTeamId}
+              yLabel="Season Wickets"
+              xLabel="Start-of-Season Bowling Ability"
+              outputLabel="Season wickets"
+              abilityLabel="Bowling ability"
+              emptyMessage="No spinners have taken a wicket yet"
+            />
+          </section>
+          <section className="order-[102] col-span-12 overflow-hidden rounded-lg border border-border bg-bg">
+            <div className="flex items-end justify-between gap-4 border-b border-border bg-surface/5 px-5 py-4">
+              <div>
+                <span className="font-space-mono text-[8px] font-bold uppercase tracking-[0.2em] text-accent">
+                  Full league pace-bowling sample
+                </span>
+                <h3 className="mt-1 font-anton text-xl uppercase tracking-wider text-text-primary">
+                  Pacer Wickets vs Start-of-Season Bowling Ability
+                </h3>
+                <p className="mt-1 font-space-mono text-[9px] text-text-secondary">
+                  Every pacer with at least one wicket in the current season.
+                </p>
+              </div>
+              <span className="shrink-0 font-space-mono text-[9px] font-bold uppercase text-text-secondary">
+                {pacerWicketAbilityRows.length} qualifiers
+              </span>
+            </div>
+            <PlayerAbilityOutputChart
+              points={pacerWicketAbilityRows}
+              teams={teams}
+              userTeamId={userTeamId}
+              yLabel="Season Wickets"
+              xLabel="Start-of-Season Bowling Ability"
+              outputLabel="Season wickets"
+              abilityLabel="Bowling ability"
+              emptyMessage="No pacers have taken a wicket yet"
+            />
+          </section>
         </div>
       )}
     </div>

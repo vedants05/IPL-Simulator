@@ -5,8 +5,13 @@ import { useGameStore } from "@/lib/store/gameStore";
 import { fetchTeamsFromSupabase } from "@/lib/supabase/fetchTeams";
 import { fetchPlayersFromSupabase } from "@/lib/supabase/fetchPlayers";
 import { Team } from "@/lib/types";
-import { Settings, Moon, Sun } from "lucide-react";
-import { switchColorMode } from "@/components/shared/TeamThemeProvider";
+import { Settings } from "lucide-react";
+import { applyTeamTheme, switchColorMode } from "@/components/shared/TeamThemeProvider";
+import ThemeSelector from "@/components/shared/ThemeSelector";
+import {
+  getStoredAppearanceTheme,
+  type AppearanceTheme,
+} from "@/lib/theme/appearance";
 
 export default function SetupPage() {
   const router = useRouter();
@@ -17,24 +22,20 @@ export default function SetupPage() {
   const [teams, setTeams] = useState<Team[]>([]);
   const [teamsLoading, setTeamsLoading] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
-  const [isDarkMode, setIsDarkMode] = useState(false);
+  const [appearanceTheme, setAppearanceTheme] = useState<AppearanceTheme>("light");
 
   useEffect(() => {
-    const savedTheme = localStorage.getItem("theme");
-    const isDark = savedTheme === "dark";
-    setIsDarkMode(isDark);
-    if (isDark) {
-      document.documentElement.classList.add("dark");
-    } else {
-      document.documentElement.classList.remove("dark");
-    }
+    setAppearanceTheme(getStoredAppearanceTheme());
   }, []);
 
-  const handleToggleDarkMode = () => {
-    const nextDark = !isDarkMode;
-    setIsDarkMode(nextDark);
-    switchColorMode(nextDark);
+  const handleThemeChange = (theme: AppearanceTheme) => {
+    setAppearanceTheme(theme);
+    switchColorMode(theme, selectedTeam || undefined);
   };
+
+  useEffect(() => {
+    if (appearanceTheme === "team" && selectedTeam) applyTeamTheme(selectedTeam);
+  }, [appearanceTheme, selectedTeam]);
 
   useEffect(() => {
     fetchTeamsFromSupabase()
@@ -69,7 +70,7 @@ export default function SetupPage() {
   const chosenTeam = teams.find((t) => t.id === selectedTeam);
 
   return (
-    <div className="min-h-screen bg-bg text-text-primary flex flex-col">
+    <div className="app-theme-shell min-h-screen bg-bg text-text-primary flex flex-col">
       {/* Top bar */}
       <div className="border-b-2 border-hairline px-8 py-5 flex items-center justify-between bg-surface shrink-0">
         <div className="flex items-baseline gap-4">
@@ -118,38 +119,7 @@ export default function SetupPage() {
                   <span className="text-[9px] font-bold text-text-secondary uppercase tracking-wider">
                     Color Theme
                   </span>
-                  <div className="flex items-center justify-between px-3 py-1.5 rounded border border-[var(--ink)]">
-                    <span className="flex items-center gap-1.5 text-[10px] font-bold">
-                      {isDarkMode ? <Moon size={11} className="inline" /> : <Sun size={11} className="inline" />}
-                      {isDarkMode ? "Dark Mode" : "Light Mode"}
-                    </span>
-                    <button
-                      onClick={handleToggleDarkMode}
-                      role="switch"
-                      aria-checked={isDarkMode}
-                      className="relative flex items-center cursor-pointer shrink-0 transition-all active:scale-95"
-                      style={{
-                        width: 44, height: 22, borderRadius: 11,
-                        backgroundColor: isDarkMode ? "var(--ink)" : "#d1d5db",
-                        border: "1.5px solid var(--ink)",
-                        transition: "background-color 0.25s ease",
-                        padding: 2,
-                      }}
-                    >
-                      <Sun size={10} className="absolute left-[4px] text-yellow-400 pointer-events-none" style={{ opacity: isDarkMode ? 0.3 : 1, transition: "opacity 0.2s" }} />
-                      <Moon size={10} className="absolute right-[4px] text-blue-300 pointer-events-none" style={{ opacity: isDarkMode ? 1 : 0.3, transition: "opacity 0.2s" }} />
-                      <span
-                        className="absolute rounded-full shadow-sm"
-                        style={{
-                          width: 16, height: 16,
-                          backgroundColor: isDarkMode ? "#1d55c4" : "#ffffff",
-                          top: "50%", transform: "translateY(-50%)",
-                          left: isDarkMode ? "calc(100% - 18px)" : 2,
-                          transition: "left 0.25s ease, background-color 0.25s ease",
-                        }}
-                      />
-                    </button>
-                  </div>
+                  <ThemeSelector value={appearanceTheme} onChange={handleThemeChange} />
                 </div>
               </div>
             </>
@@ -157,7 +127,7 @@ export default function SetupPage() {
         </div>
       </div>
 
-      <div className="flex-1 flex flex-col items-center justify-center px-8 py-10">
+      <div className="app-theme-background flex-1 flex flex-col items-center justify-center px-8 py-10">
         <div className="w-full max-w-5xl">
 
           {step === "team" && (

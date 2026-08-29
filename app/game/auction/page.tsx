@@ -95,7 +95,7 @@ export default function AuctionPage() {
   const totalLeft = auction.allPlayerIds.length - auction.soldPlayerIds.length - auction.unsoldPlayerIds.length;
 
   return (
-    <div className="h-[calc(100vh-3rem)] flex flex-col overflow-hidden bg-bg relative">
+    <div className="app-theme-background h-[calc(100vh-3rem)] flex flex-col overflow-hidden bg-bg relative">
       {showTargetNotice && auction.currentPlayer && currentTargetMax !== undefined && (
         <div
           className="fixed right-5 top-16 z-[90] flex w-[340px] items-start gap-3 rounded-[6px] border-2 p-3 shadow-xl"
@@ -1914,6 +1914,8 @@ function AuctionComplete() {
   const totalSpentAll = Object.values(teams).reduce((acc, team) => acc + auctionSpend(team.id), 0);
   const totalSold = soldPlayersList.length;
   const avgPrice = totalSold > 0 ? (totalSpentAll / totalSold).toFixed(1) : "0.0";
+  const auctionTypeLabel = auction?.type === "mini" ? "MINI" : "MEGA";
+  const auctionSeasonShort = String(auction?.season ?? currentSeason).slice(-2);
 
   // User squad details
   const userSquad = userTeam ? getAuctionEndSquadIds({ team: userTeam, auctionSeason: auction?.season, tradeRecords, replacementRecords: injuryReplacementRecords }).map((id) => players[id]).filter(Boolean) : [];
@@ -1923,7 +1925,7 @@ function AuctionComplete() {
   const userOverseas = userSquad.filter((p) => p.nationality === "Overseas").length;
 
   return (
-    <div className="min-h-screen bg-bg overflow-y-auto">
+    <div className="app-theme-background min-h-screen bg-bg overflow-y-auto">
       <div className="max-w-6xl mx-auto p-8">
         <div className="mb-8 flex flex-col sm:flex-row justify-between items-center border-b-2 border-hairline pb-6 gap-4">
           <div className="text-center sm:text-left">
@@ -1931,10 +1933,10 @@ function AuctionComplete() {
               Auction Completed
             </div>
             <h1 className="font-anton text-[48px] leading-none text-text-primary uppercase mb-2">
-              MEGA AUCTION SUMMARY
+              {auctionTypeLabel} AUCTION SUMMARY
             </h1>
             <p className="font-barlow text-[14px] text-text-secondary">
-              Simulations completed · Franchise squads finalized for Season &apos;27
+              Squads complete for {auctionSeasonShort}&apos; season
             </p>
           </div>
           {continued === false && userTeam && (

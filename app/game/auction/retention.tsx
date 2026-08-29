@@ -30,7 +30,10 @@ function MegaRetentionPhase() {
     return () => observer.disconnect();
   }, []);
 
-  const { teams, players, userTeamId, currentSeason } = useGameStore();
+  const teams = useGameStore((state) => state.teams);
+  const players = useGameStore((state) => state.players);
+  const userTeamId = useGameStore((state) => state.userTeamId);
+  const currentSeason = useGameStore((state) => state.currentSeason);
   const retainPlayer = useGameStore((s) => s.retainPlayer);
   const releaseRetention = useGameStore((s) => s.releaseRetention);
   const confirmRetentions = useGameStore((s) => s.confirmRetentions);
@@ -61,7 +64,7 @@ function MegaRetentionPhase() {
   const uncappedCount = retainedIds.length - cappedCount;
 
   return (
-    <div className="h-[calc(100vh-3rem)] flex flex-col bg-bg text-text-primary overflow-hidden">
+    <div className="app-theme-background h-[calc(100vh-3rem)] flex flex-col bg-bg text-text-primary overflow-hidden">
       {/* Header */}
       <div className="border-b-2 border-border px-8 py-6 shrink-0">
         <div className="font-space-mono font-bold text-[10px] tracking-[.16em] text-text-secondary mb-2 uppercase">

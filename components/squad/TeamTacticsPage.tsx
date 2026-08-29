@@ -22,6 +22,10 @@ interface TeamTacticsPageProps {
   tactics: TeamTactics;
   onChange: (tactics: TeamTactics) => void;
   onOpenPlayingXI: () => void;
+  coachRecommendation?: {
+    coachName: string;
+    tactics: TeamTactics;
+  } | null;
 }
 
 interface ChoiceOption<T extends string> {
@@ -171,7 +175,7 @@ function DecisionSelect<T extends string>({
   );
 }
 
-export default function TeamTacticsPage({ tactics, onChange, onOpenPlayingXI }: TeamTacticsPageProps) {
+export default function TeamTacticsPage({ tactics, onChange, onOpenPlayingXI, coachRecommendation }: TeamTacticsPageProps) {
   const profile = getTacticsRiskProfile(tactics);
   const updateBatting = (update: Partial<TeamTactics["batting"]>) => onChange({
     ...tactics,
@@ -193,6 +197,20 @@ export default function TeamTacticsPage({ tactics, onChange, onOpenPlayingXI }: 
           </div>
         </div>
         <div className="flex items-stretch gap-2">
+          {coachRecommendation && (
+            <button
+              type="button"
+              onClick={() => onChange(coachRecommendation.tactics)}
+              className="flex max-w-[14rem] items-center gap-2 border border-accent/60 bg-accent/[0.08] px-3 py-1.5 text-left transition-colors hover:bg-accent/[0.14]"
+              title={`Apply ${coachRecommendation.coachName}'s complete recommended match plan`}
+            >
+              <Sparkles size={14} className="shrink-0 text-accent" />
+              <span className="min-w-0">
+                <small className="block truncate font-space-mono text-[8px] font-bold uppercase text-text-secondary">{coachRecommendation.coachName} recommends</small>
+                <strong className="block truncate font-space-mono text-[10px] uppercase text-accent">{coachRecommendation.tactics.preset} · Apply</strong>
+              </span>
+            </button>
+          )}
           {[
             ["Tempo", profile.tempo, 6],
             ["Risk", profile.risk, 8],

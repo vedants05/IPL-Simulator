@@ -20,6 +20,7 @@
 # misc
 .DS_Store
 *.pem
+~$*
 
 # debug
 npm-debug.log*
@@ -45,6 +46,8 @@ scripts/.player_cache.json
 simulation_*_report.json
 
 # Local-only simulation/calibration tooling
+/calibration/*Calibration.ts
+/calibration/*Projection.ts
 /scripts/calibrate_*.ts
 /scripts/calculate_*_mvp.ts
 /scripts/run_*calibration*.ts

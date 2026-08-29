@@ -18,8 +18,17 @@ const DEFAULT_METRICS: ViewportMetrics = {
 };
 
 function measureViewport(): ViewportMetrics {
-  const viewportWidth = window.visualViewport?.width ?? window.innerWidth;
-  const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
+  // visualViewport reports the pinch-zoomed visual area and can briefly drop
+  // to a tiny value while dev tools, hot reload, or browser chrome resizes.
+  // Scaling the layout from that transient value shrinks the whole game into
+  // the top-left corner. innerWidth/innerHeight describe the stable CSS layout
+  // viewport that the fixed app shell actually occupies.
+  const viewportWidth = Number.isFinite(window.innerWidth) && window.innerWidth > 0
+    ? window.innerWidth
+    : DESIGN_WIDTH;
+  const viewportHeight = Number.isFinite(window.innerHeight) && window.innerHeight > 0
+    ? window.innerHeight
+    : DESIGN_HEIGHT;
   // Preserve the authored information density on larger displays. Scaling is
   // only used to fit the minimum canvas into a smaller viewport.
   const scale = Math.max(

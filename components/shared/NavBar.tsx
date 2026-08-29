@@ -4,6 +4,11 @@ import Link from "next/link";
 import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import { useGameStore } from "@/lib/store/gameStore";
 import { switchColorMode } from "./TeamThemeProvider";
+import ThemeSelector from "./ThemeSelector";
+import {
+  getStoredAppearanceTheme,
+  type AppearanceTheme,
+} from "@/lib/theme/appearance";
 import AuctionGuidedTour from "@/components/auction/AuctionGuidedTour";
 import {
   getSeasonAccessStorageKey,
@@ -16,8 +21,6 @@ import {
   Play,
   Pause,
   Settings,
-  Moon,
-  Sun,
   BookOpen,
   Zap,
   RefreshCw,
@@ -72,13 +75,13 @@ export default function NavBar() {
   const [showRestartConfirm, setShowRestartConfirm] = useState(false);
   const [showHowToPlay, setShowHowToPlay] = useState(false);
   const [activeTile, setActiveTile] = useState(0);
-  const [isDarkMode, setIsDarkMode] = useState(false);
+  const [appearanceTheme, setAppearanceTheme] = useState<AppearanceTheme>("light");
   const searchParams = useSearchParams();
   const activeTabFromUrl = searchParams.get("tab") || "home";
   const [continuedToSeason, setContinuedToSeason] = useState<boolean | null>(null);
   const isAuctionPage = pathname.startsWith("/game/auction");
   const isTradeHubPage = pathname === "/game/overview"
-    && activeTabFromUrl === "scouting"
+    && activeTabFromUrl === "league"
     && searchParams.get("subtab") === "trades";
   const seasonPagesUnlocked = SEASON_ACCESS_ENABLED && continuedToSeason === true;
   const showSeasonNavigation = seasonPagesUnlocked && (!isAuctionPage || auction?.phase === "completed");
@@ -120,10 +123,11 @@ export default function NavBar() {
     if (!seasonPagesUnlocked || !teamProfilePrefetchKey) return;
 
     const prefetchTeamProfiles = () => {
-      teamProfilePrefetchKey
-        .split("|")
-        .filter(Boolean)
-        .forEach((teamId) => router.prefetch(`/game/teams/${teamId}`));
+      // One dynamic-route prefetch warms the shared team-profile bundle. Ten
+      // simultaneous RSC prefetches compete with clicks and provide no extra
+      // client code, so prefer the user's club and let other data load on use.
+      const preferredTeamId = userTeamId || teamProfilePrefetchKey.split("|").find(Boolean);
+      if (preferredTeamId) router.prefetch(`/game/teams/${preferredTeamId}`);
     };
 
     if (typeof window.requestIdleCallback === "function") {
@@ -133,23 +137,15 @@ export default function NavBar() {
 
     const timeoutId = globalThis.setTimeout(prefetchTeamProfiles, 150);
     return () => globalThis.clearTimeout(timeoutId);
-  }, [router, seasonPagesUnlocked, teamProfilePrefetchKey]);
+  }, [router, seasonPagesUnlocked, teamProfilePrefetchKey, userTeamId]);
 
   useEffect(() => {
-    const savedTheme = localStorage.getItem("theme");
-    const isDark = savedTheme === "dark";
-    setIsDarkMode(isDark);
-    if (isDark) {
-      document.documentElement.classList.add("dark");
-    } else {
-      document.documentElement.classList.remove("dark");
-    }
+    setAppearanceTheme(getStoredAppearanceTheme());
   }, []);
 
-  const handleToggleDarkMode = () => {
-    const nextDark = !isDarkMode;
-    setIsDarkMode(nextDark);
-    switchColorMode(nextDark, userTeamId || undefined);
+  const handleThemeChange = (theme: AppearanceTheme) => {
+    setAppearanceTheme(theme);
+    switchColorMode(theme, userTeamId || undefined);
   };
 
   const handleRestartGame = () => {
@@ -224,7 +220,7 @@ export default function NavBar() {
   const userTeam = teams[userTeamId];
 
   return (
-    <nav className="h-12 border-b-2 border-border flex items-center px-5 gap-0 shrink-0 z-50">
+    <nav className="app-navbar h-12 border-b-2 border-border flex items-center px-5 gap-0 shrink-0 z-50">
       {/* Navigation history back/forward buttons */}
       <div className="flex items-center gap-1.5 mr-4 shrink-0">
         <button
@@ -284,6 +280,7 @@ export default function NavBar() {
             <Link
               key={item.href}
               href={item.href}
+              data-active={active ? "true" : "false"}
               onClick={(e) => {
                 e.preventDefault();
                 if (item.href.includes("tab=")) {
@@ -294,7 +291,7 @@ export default function NavBar() {
                 }
                 router.push(item.href);
               }}
-              className={`px-4 h-12 flex items-center text-[11px] font-bold tracking-widest uppercase font-space-mono transition-colors border-b-2
+              className={`app-navbar-link px-4 h-12 flex items-center text-[11px] font-bold tracking-widest uppercase font-space-mono transition-colors border-b-2
                 ${active
                   ? "bg-surface"
                   : "hover:bg-surface"
@@ -637,46 +634,7 @@ export default function NavBar() {
                   <span className="text-[9px] font-bold text-text-secondary uppercase tracking-wider">
                     Color Theme
                   </span>
-                  <div className="flex items-center justify-between px-3 py-1.5 rounded border border-[var(--ink)]">
-                    <span className="flex items-center gap-1.5 text-[10px] font-bold">
-                      {isDarkMode ? <Moon size={11} className="inline" /> : <Sun size={11} className="inline" />}
-                      {isDarkMode ? "Dark Mode" : "Light Mode"}
-                    </span>
-                    {/* Sliding toggle switch */}
-                    <button
-                      onClick={handleToggleDarkMode}
-                      role="switch"
-                      aria-checked={isDarkMode}
-                      className="relative flex items-center cursor-pointer shrink-0 transition-all active:scale-95"
-                      style={{
-                        width: 44,
-                        height: 22,
-                        borderRadius: 11,
-                        backgroundColor: isDarkMode ? "var(--ink)" : "#d1d5db",
-                        border: "1.5px solid var(--ink)",
-                        transition: "background-color 0.25s ease",
-                        padding: 2,
-                      }}
-                      title={isDarkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
-                    >
-                      {/* Icons on the track */}
-                      <Sun size={10} className="absolute left-[4px] text-yellow-400 pointer-events-none" style={{ opacity: isDarkMode ? 0.3 : 1, transition: "opacity 0.2s" }} />
-                      <Moon size={10} className="absolute right-[4px] text-blue-300 pointer-events-none" style={{ opacity: isDarkMode ? 1 : 0.3, transition: "opacity 0.2s" }} />
-                      {/* Sliding pill */}
-                      <span
-                        className="absolute rounded-full shadow-sm"
-                        style={{
-                          width: 16,
-                          height: 16,
-                          backgroundColor: isDarkMode ? "#1d55c4" : "#ffffff",
-                          top: "50%",
-                          transform: "translateY(-50%)",
-                          left: isDarkMode ? "calc(100% - 18px)" : 2,
-                          transition: "left 0.25s ease, background-color 0.25s ease",
-                        }}
-                      />
-                    </button>
-                  </div>
+                  <ThemeSelector value={appearanceTheme} onChange={handleThemeChange} />
                 </div>
                 {(isAuctionPage || isTradeHubPage) && <div className="flex flex-col gap-2 border-t border-[var(--ink)]/15 pt-2">
                   <span className="text-[9px] font-bold text-text-secondary uppercase tracking-wider">

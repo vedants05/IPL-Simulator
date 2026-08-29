@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 
 const MatchScorecardModal = dynamic(
@@ -143,6 +143,17 @@ export default function NewsPage({
   onViewAllFixtures
 }: NewsPageProps) {
   const saveId = useGameStore((state) => state.saveId);
+  useEffect(() => {
+    if (typeof window === "undefined" || !saveId) return;
+    const prefix = `ipl-news-article-cache-v34-${saveId}-`;
+    const activeKey = `${prefix}${currentSeason}`;
+    const staleKeys: string[] = [];
+    for (let index = 0; index < window.localStorage.length; index += 1) {
+      const key = window.localStorage.key(index);
+      if (key?.startsWith(prefix) && key !== activeKey) staleKeys.push(key);
+    }
+    staleKeys.forEach((key) => window.localStorage.removeItem(key));
+  }, [currentSeason, saveId]);
   const careerStaff = useGameStore((state) => state.careerStaff);
   const [layout, setLayout] = useState<NewsLayout>("cricinfo");
   const [activeTab, setActiveTab] = useState<NewsTab>("all");
@@ -3761,7 +3772,7 @@ export default function NewsPage({
       };
 
   return (
-    <div className={`news-page flex h-full min-h-0 flex-col gap-4 overflow-hidden ${pageTheme.shell}`}>
+    <div className={`news-page fixed-external-ui flex h-full min-h-0 flex-col gap-4 overflow-hidden ${pageTheme.shell}`}>
       {/* 1. Condense Header (Cricinfo / Cricbuzz / Newsletter brand specific layout) */}
       {layout === "cricinfo" && (
         <div className="flex shrink-0 items-center justify-between border-b border-[#d8dee6] px-4 py-2 bg-[#03a9f4] text-white">

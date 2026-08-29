@@ -797,7 +797,13 @@ export function buildCareerEmailDrafts(context: CareerEmailContext): CareerEmail
     });
   }
 
-  if (leagueUserFixtures.length > 0 && gamesPlayed === leagueUserFixtures.length) {
+  const allLeagueFixtures = context.fixtures.filter((f) => !f.stage);
+  const completedLeagueFixtures = allLeagueFixtures.filter((f) => f.played).length;
+  const isLeagueStageFullyComplete = allLeagueFixtures.length >= 70
+    ? completedLeagueFixtures >= 70
+    : allLeagueFixtures.length > 0 && completedLeagueFixtures === allLeagueFixtures.length;
+
+  if (isLeagueStageFullyComplete) {
     const topFour = userStandingIndex >= 0 && userStandingIndex < 4;
     push({
       templateId: topFour ? "season.top-four" : "season.eliminated",

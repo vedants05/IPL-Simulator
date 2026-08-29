@@ -135,6 +135,7 @@ import {
 } from "@/lib/logic/injuryReplacements";
 import {
   calculateTeamTradeValue,
+  getRequestedTradePremium,
   calculateTradePackageValue,
   getTeamTradeWillingness,
   isTradeBalanced,
@@ -172,6 +173,7 @@ import {
   calculateMiniAuctionKeptSalary,
   enforceMiniAuctionRetentionLimits,
   getMiniAuctionContractPrice,
+  repairMiniAuctionRetentionState,
   selectAIMiniAuctionKeeps,
   validateMiniAuctionRetentions,
 } from "@/lib/logic/miniAuctionRetention";
@@ -340,6 +342,7 @@ interface GameActions {
   recordIplMatchStats: (updates: IplCareerMatchUpdate[]) => number;
   beginNextSeasonRetention: (
     captainIdsByTeam?: Record<string, string | null | undefined>,
+    viceCaptainIdsByTeam?: Record<string, string | null | undefined>,
     auctionType?: AuctionType,
   ) => boolean;
   archiveCareerSeason: (archive: {
@@ -463,6 +466,7 @@ interface GameActions {
     annualSalary: number;
     effectiveOn?: string;
   }) => boolean;
+  setStaffNegotiationCooldown: (staffId: string, until: string | null) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -1465,6 +1469,8 @@ export const useGameStore = create<Store>()(
             potentialBatting: savedPlayer.potentialBatting,
             potentialBowling: savedPlayer.potentialBowling,
             potential: savedPlayer.potential,
+            captaincy: savedPlayer.captaincy ?? freshPlayer.captaincy,
+            reputation: savedPlayer.reputation ?? freshPlayer.reputation,
             country: savedPlayer.country ?? freshPlayer.country,
             careerState: savedPlayer.careerState,
             currentTeamId: savedPlayer.currentTeamId,
@@ -3934,12 +3940,26 @@ export const useGameStore = create<Store>()(
         return poached;
       },
 
-      beginNextSeasonRetention: (captainIdsByTeam, requestedAuctionType) => {
+      setStaffNegotiationCooldown: (staffId, until) => set((state) => {
+        const negotiationCooldowns = { ...state.careerStaff.negotiationCooldowns };
+        if (until) negotiationCooldowns[staffId] = until;
+        else delete negotiationCooldowns[staffId];
+        return { careerStaff: { ...state.careerStaff, negotiationCooldowns } };
+      }),
+
+      beginNextSeasonRetention: (captainIdsByTeam, viceCaptainIdsByTeam, requestedAuctionType) => {
         let advanced = false;
         set((state) => {
+          // The rollover state may have been persisted before navigation to
+          // the auction page completed (for example, after a reload or a
+          // storage-pressure crash). Treat that state as a successful retry so
+          // the overview can finish routing instead of trapping the career.
+          if (state.auction?.phase === "retention" && state.auction.season === state.currentSeason) {
+            advanced = true;
+            return state;
+          }
           if (
             state.lastRolledOverSeason === state.currentSeason
-            || (state.auction?.phase === "retention" && state.auction.season === state.currentSeason)
           ) return state;
 
           const completedSeason = state.currentSeason;
@@ -3956,12 +3976,15 @@ export const useGameStore = create<Store>()(
           const nextSeason = completedSeason + 1;
           const nextAuctionType = requestedAuctionType ?? getAuctionTypeForSeason(nextSeason);
           const dates = getSeasonDates(nextSeason);
+          const archivedPerformance = normalizeCareerSeasonPerformance(
+            state.careerSeasonArchives.find((archive) => archive.season === completedSeason)?.playerStats,
+          );
           const fallbackPostseason = state.lastCareerPostseasonSeason === completedSeason
             ? { players: state.players, teams: state.teams, retirements: [], retiredPlayers: [] }
             : processPostSeasonCareer({
                 players: state.players,
                 teams: state.teams,
-                performance: {},
+                performance: archivedPerformance,
                 completedSeason,
                 seed: state.saveId || state.fixtureSeed,
                 injuredPlayerIds: new Set(Object.keys(state.activeInjuries)),
@@ -4005,7 +4028,7 @@ export const useGameStore = create<Store>()(
             processedInjuryDateKeys: state.processedInjuryDateKeys,
           }, dates.retentionDate).state;
           const miniSquadIds = new Set(Object.values(preparedPool.teams).flatMap((team) => team.squad));
-          const resetPlayers = withAdaptiveBasePrices(Object.fromEntries(Object.entries(preparedPool.players).map(([id, player]) => [
+          let resetPlayers = withAdaptiveBasePrices(Object.fromEntries(Object.entries(preparedPool.players).map(([id, player]) => [
             id,
             {
               ...player,
@@ -4019,40 +4042,50 @@ export const useGameStore = create<Store>()(
                   : undefined,
             },
           ])));
-          const resetTeams = Object.fromEntries(Object.entries(preparedPool.teams).map(([id, team]) => [
-            id,
-            {
+          const resetTeams = Object.fromEntries(Object.entries(preparedPool.teams).map(([id, team]) => {
+            const eligibleSquadIds = team.squad.filter((playerId) => Boolean(resetPlayers[playerId]));
+            const miniKeptIds = nextAuctionType === "mini"
+              ? enforceMiniAuctionRetentionLimits(
+                  { ...team, squad: eligibleSquadIds },
+                  eligibleSquadIds,
+                  resetPlayers,
+                  nextSeason,
+                )
+              : [];
+            const miniKeptSalary = nextAuctionType === "mini"
+              ? calculateMiniAuctionKeptSalary(miniKeptIds, team.id, resetPlayers, nextSeason)
+              : 0;
+            return [id, {
               ...team,
               // Preserve the completed squad so the retention screen can
               // choose from it. confirmRetentions releases everyone else.
               retainedPlayers: nextAuctionType === "mini"
-                ? team.squad.filter((playerId) => Boolean(resetPlayers[playerId]))
+                ? miniKeptIds
                 : [],
               captainContinuityId: captainIdsByTeam
                 ? (captainIdsByTeam[id] && resetPlayers[captainIdsByTeam[id]!] ? captainIdsByTeam[id] : null)
                 : (team.captainContinuityId && resetPlayers[team.captainContinuityId] ? team.captainContinuityId : null),
-              viceCaptainContinuityId: team.viceCaptainContinuityId && resetPlayers[team.viceCaptainContinuityId]
-                ? team.viceCaptainContinuityId
-                : null,
+              viceCaptainContinuityId: viceCaptainIdsByTeam
+                ? (viceCaptainIdsByTeam[id] && resetPlayers[viceCaptainIdsByTeam[id]!] ? viceCaptainIdsByTeam[id] : null)
+                : (team.viceCaptainContinuityId && resetPlayers[team.viceCaptainContinuityId] ? team.viceCaptainContinuityId : null),
               totalPurse: nextAuctionType === "mini" ? MINI_AUCTION_PURSE_LAKHS : TOTAL_PURSE_LAKHS,
               remainingPurse: nextAuctionType === "mini"
-                ? Math.max(0, MINI_AUCTION_PURSE_LAKHS - calculateMiniAuctionKeptSalary(
-                    team.squad.filter((playerId) => Boolean(resetPlayers[playerId])),
-                    team.id,
-                    resetPlayers,
-                    nextSeason,
-                  ))
+                ? Math.max(0, MINI_AUCTION_PURSE_LAKHS - miniKeptSalary)
                 : TOTAL_PURSE_LAKHS,
-              spentAmount: nextAuctionType === "mini"
-                ? calculateMiniAuctionKeptSalary(
-                    team.squad.filter((playerId) => Boolean(resetPlayers[playerId])),
-                    team.id,
-                    resetPlayers,
-                    nextSeason,
-                  )
-                : 0,
+              spentAmount: miniKeptSalary,
               rtmCardsTotal: nextAuctionType === "mini" ? 0 : MAX_TOTAL_RETENTIONS,
               softSquadTarget: id === state.userTeamId ? 24 : pickSoftSquadTarget(),
+            }];
+          }));
+          const retainedPlayerIds = new Set(
+            Object.values(resetTeams).flatMap((team) => team.retainedPlayers),
+          );
+          resetPlayers = Object.fromEntries(Object.entries(resetPlayers).map(([playerId, player]) => [
+            playerId,
+            {
+              ...player,
+              isRetained: retainedPlayerIds.has(playerId),
+              retainedByTeamId: retainedPlayerIds.has(playerId) ? player.currentTeamId : null,
             },
           ]));
           advanced = true;
@@ -4452,6 +4485,8 @@ export const useGameStore = create<Store>()(
           const allIds = [...input.offeredPlayerIds, ...input.requestedPlayerIds];
           if (new Set(allIds).size !== allIds.length) return state;
           if (allIds.some((id) => !state.players[id])) return state;
+          const retiredPlayerIds = getRetiredPlayerIds(state);
+          if (allIds.some((id) => retiredPlayerIds.has(id))) return state;
           if (state.tradeRecords.some((record) => (
             record.season === state.currentSeason
             && [...record.outgoingPlayerIds, ...record.incomingPlayerIds].some((id) => allIds.includes(id))
@@ -4498,7 +4533,12 @@ export const useGameStore = create<Store>()(
           }, "available" as ReturnType<typeof getTeamTradeWillingness>);
           // The user controls the proposer and may knowingly accept an uneven
           // return. Only the opposing AI club's valuation can reject the deal.
-          if (!isTradeBalanced({ offeredValue: recipientIncomingValue, requestedValue: recipientOutgoingValue, requestedWillingness: recipientWillingness })) return state;
+          if (!isTradeBalanced({
+            offeredValue: recipientIncomingValue,
+            requestedValue: recipientOutgoingValue,
+            requestedWillingness: recipientWillingness,
+            requestedPremium: getRequestedTradePremium(requestedPlayers),
+          })) return state;
 
           const currentSalary = (player: Player) => getPlayerSeasonHistory(player.iplHistory, String(state.currentSeason))?.price ?? player.basePrice;
           const salaryFor = (player: Player) => Math.max(1, Math.round(input.salaries[player.id] ?? currentSalary(player)));
@@ -4663,7 +4703,7 @@ export const useGameStore = create<Store>()(
               // materially more useful. The selling club still applies its
               // full willingness premium to protect stars and core players.
               if (seekerIncoming < seekerOutgoing * 0.94) continue;
-              if (!isTradeBalanced({ offeredValue: partnerIncoming, requestedValue: partnerOutgoing, requestedWillingness: getTeamTradeWillingness({ player: requested, team: partner, players: state.players, season: state.currentSeason, currentInjured: Boolean(state.activeInjuries[requested.id]) }) })) continue;
+              if (!isTradeBalanced({ offeredValue: partnerIncoming, requestedValue: partnerOutgoing, requestedWillingness: getTeamTradeWillingness({ player: requested, team: partner, players: state.players, season: state.currentSeason, currentInjured: Boolean(state.activeInjuries[requested.id]) }), requestedPremium: getRequestedTradePremium([requested]) })) continue;
               const before = get().tradeRecords.length;
               const completed = get().executeTrade({ proposerTeamId: seeker.id, recipientTeamId: partner.id, offeredPlayerIds: [offered.id], requestedPlayerIds: [requested.id], salaries: { [requested.id]: getTradeSalaryBand(requested, state.currentSeason).demand }, date, finalDate, auctionType, explanation: `AI trade: ${seeker.shortName} addressed ${need} depth` });
               if (completed) return get().tradeRecords.slice(before);
@@ -4723,6 +4763,7 @@ export const useGameStore = create<Store>()(
                   offeredValue: offeredForPartner,
                   requestedValue: requestedForPartner,
                   requestedWillingness: getTeamTradeWillingness({ player: requested, team: partner, players: state.players, season: state.currentSeason, currentInjured: Boolean(state.activeInjuries[requested.id]) }),
+                  requestedPremium: getRequestedTradePremium([requested]),
                 })) continue;
                 const before = get().tradeRecords.length;
                 const completed = get().executeTrade({
@@ -5060,36 +5101,23 @@ export const useGameStore = create<Store>()(
         const expectedRetentionAuctionType = sanitizedAuction?.phase === "retention"
           ? getAuctionTypeForSeason(sanitizedAuction.season)
           : sanitizedAuction?.type;
-        const requiresRetentionCycleMigration = Boolean(
+        let cyclePlayers: Record<string, Player> = marketPlayers;
+        let cycleTeams: Record<string, Team> = cleanedTeams;
+        // Repair every persisted mini-retention cycle, not only saves whose
+        // auction type needed migration. Older builds could persist the full
+        // squad as retained before releasing illegal keeps one player at a
+        // time; those saves then failed validation forever after reloading.
+        if (
           sanitizedAuction?.phase === "retention"
-          && expectedRetentionAuctionType
-          && sanitizedAuction.type !== expectedRetentionAuctionType,
-        );
-        let cyclePlayers = marketPlayers;
-        let cycleTeams = cleanedTeams;
-        if (requiresRetentionCycleMigration && expectedRetentionAuctionType === "mini" && sanitizedAuction) {
-          cyclePlayers = { ...marketPlayers };
-          cycleTeams = Object.fromEntries(Object.entries(cleanedTeams).map(([id, team]) => {
-            const retainedPlayers = team.squad.filter((playerId) => Boolean(cyclePlayers[playerId]));
-            retainedPlayers.forEach((playerId) => {
-              cyclePlayers[playerId] = {
-                ...cyclePlayers[playerId],
-                currentTeamId: id,
-                isRetained: true,
-                retainedByTeamId: id,
-              };
-            });
-            const spentAmount = calculateMiniAuctionKeptSalary(retainedPlayers, id, cyclePlayers, sanitizedAuction.season);
-            return [id, {
-              ...team,
-              retainedPlayers,
-              totalPurse: MINI_AUCTION_PURSE_LAKHS,
-              spentAmount,
-              remainingPurse: Math.max(0, MINI_AUCTION_PURSE_LAKHS - spentAmount),
-              rtmCardsTotal: 0,
-              rtmCardsUsed: 0,
-            }];
-          }));
+          && expectedRetentionAuctionType === "mini"
+        ) {
+          const repairedCycle = repairMiniAuctionRetentionState({
+            teams: cleanedTeams,
+            players: marketPlayers,
+            season: sanitizedAuction.season,
+          });
+          cyclePlayers = repairedCycle.players;
+          cycleTeams = repairedCycle.teams;
         }
         const cycleAuction = sanitizedAuction && expectedRetentionAuctionType
           ? { ...sanitizedAuction, type: expectedRetentionAuctionType }

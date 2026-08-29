@@ -578,6 +578,13 @@ function MountedTeamProfilePage() {
   useEffect(() => {
     if (!userTeamId) return;
 
+    const cachedCareer = getCachedTeamProfileCareer<TeamProfileCareer>(userTeamId);
+    if (cachedCareer) {
+      setCareer(cachedCareer);
+      setHasLoadedCareer(true);
+      return;
+    }
+
     try {
       setCareer(readTeamProfileCareer(userTeamId));
     } catch (error) {
@@ -1125,7 +1132,7 @@ function MountedTeamProfilePage() {
 
   if (Object.keys(teams).length === 0) {
     return (
-      <div className="flex h-[calc(100vh-3rem)] items-center justify-center bg-bg font-space-mono text-[10px] font-bold uppercase text-text-secondary">
+      <div className="app-theme-background flex h-[calc(100vh-3rem)] items-center justify-center bg-bg font-space-mono text-[10px] font-bold uppercase text-text-secondary">
         Loading team profile...
       </div>
     );
@@ -1133,7 +1140,7 @@ function MountedTeamProfilePage() {
 
   if (!team) {
     return (
-      <div className="flex h-[calc(100vh-3rem)] flex-col items-center justify-center bg-bg p-8 text-center">
+      <div className="app-theme-background flex h-[calc(100vh-3rem)] flex-col items-center justify-center bg-bg p-8 text-center">
         <Shield className="size-12 text-text-secondary" aria-hidden="true" />
         <h1 className="mt-4 font-anton text-[28px] uppercase text-text-primary">Team not found</h1>
         <p className="mt-2 text-sm text-text-secondary">This team is not part of the active career.</p>
@@ -1168,7 +1175,7 @@ function MountedTeamProfilePage() {
   const topBorderColor = isDarkPrimary ? (team.secondaryColor || "var(--accent)") : team.primaryColor;
 
   return (
-    <div className="flex h-[calc(100vh-3rem)] min-h-0 flex-col overflow-hidden bg-bg">
+    <div className="app-theme-background flex h-[calc(100vh-3rem)] min-h-0 flex-col overflow-hidden bg-bg">
       <header
         className="relative shrink-0 overflow-hidden border-b-2 border-border"
         style={{

@@ -610,7 +610,8 @@ export default function PlayableMatchEngine({ input, userTeamId, session, onSess
     setActiveShot(null);
   };
   const skip = (kind: PlayableSkipKind) => {
-    if (activeShot || awaitingBatterSelection || awaitingToss || progress.awaitingImpactDecision || progress.complete || fieldIsIllegal) return;
+    if (activeShot || awaitingToss || progress.complete || fieldIsIllegal) return;
+    if (kind !== "innings" && (awaitingBatterSelection || progress.awaitingImpactDecision)) return;
     const decisions = cloneDecisions(sessionRef.current.decisions);
     let revealedDeliveries = sessionRef.current.revealedDeliveries;
     const startingInningsNumber = progress.nextDelivery?.inningsNumber ?? currentInnings?.inningsNumber;
@@ -623,12 +624,48 @@ export default function PlayableMatchEngine({ input, userTeamId, session, onSess
         ? startingLegalBalls + 30
         : undefined;
 
-    // Rebuild each skipped delivery with the selected control attached. This
-    // keeps per-batter aggression and bowling plans active through an entire
-    // skipped over/innings, including after wickets and changes of strike.
     for (let step = 0; step < 300; step += 1) {
       const current = simulatePlayableMatch(input, userTeamId, decisions, revealedDeliveries);
-      if (current.awaitingTossCall || current.awaitingTossDecision || current.awaitingTossAcknowledgement || current.awaitingImpactDecision || current.complete) break;
+
+      if (current.awaitingImpactDecision) {
+        const rec = current.impactRecommendation;
+        const impactTeamId = rec?.teamId ?? userTeamId;
+        const plans = impactTeamId === input.teamA.id ? input.teamAPlans : input.teamBPlans;
+        const plan = impactTeamId === current.battingFirstTeamId
+          ? plans.battingFirst
+          : plans.bowlingFirst;
+        const incomingId = plan.plannedImpactPlayerId ?? rec?.incomingPlayerId;
+        const outgoingId = plan.plannedOutgoingPlayerId ?? rec?.outgoingPlayerId;
+
+        if (incomingId && outgoingId) {
+          decisions.impactByTeam = {
+            ...(decisions.impactByTeam ?? {}),
+            [impactTeamId]: {
+              use: true,
+              incomingPlayerId: incomingId,
+              outgoingPlayerId: outgoingId,
+              activationInningsNumber: current.nextDelivery?.inningsNumber ?? startingInningsNumber,
+              activationDeliverySequence: 0,
+            },
+          };
+          continue;
+        } else {
+          break;
+        }
+      }
+
+      const currentLastDelivery = current.innings.at(-1)?.deliveries.at(-1);
+      const wicketKey = currentLastDelivery?.wicket
+        ? `${currentLastDelivery.inningsNumber}-${currentLastDelivery.wicketsAfter}`
+        : null;
+      if (wicketKey && !decisions.resolvedBatterWickets?.[wicketKey]) {
+        decisions.resolvedBatterWickets = {
+          ...(decisions.resolvedBatterWickets ?? {}),
+          [wicketKey]: true,
+        };
+      }
+
+      if (current.awaitingTossCall || current.awaitingTossDecision || current.awaitingTossAcknowledgement || current.complete) break;
 
       const innings = current.innings.find((entry) => entry.inningsNumber === startingInningsNumber);
       if (!innings || innings.complete) break;
@@ -649,7 +686,8 @@ export default function PlayableMatchEngine({ input, userTeamId, session, onSess
         }
         : { fieldPlan, bowlingPlan, fieldPositions: fieldPositions.map((position) => ({ ...position })) };
       revealedDeliveries += 1;
-      if (candidate.wicket && innings.battingTeamId === userTeamId) break;
+
+      if (candidate.wicket && innings.battingTeamId === userTeamId && kind !== "innings") break;
       if (kind === "ball") break;
     }
 
@@ -1222,7 +1260,7 @@ export default function PlayableMatchEngine({ input, userTeamId, session, onSess
             <button onClick={() => skip("ball")} disabled={Boolean(activeShot) || awaitingBatterSelection || awaitingToss || fieldIsIllegal} className="h-full border-r border-white/15 px-2.5 hover:bg-white/10 disabled:opacity-30">Skip ball</button>
             <button onClick={() => skip("over")} disabled={Boolean(activeShot) || awaitingBatterSelection || awaitingToss || fieldIsIllegal} className="h-full border-r border-white/15 px-2.5 hover:bg-white/10 disabled:opacity-30">Skip over</button>
             <button onClick={() => skip("five-overs")} disabled={Boolean(activeShot) || awaitingBatterSelection || awaitingToss || fieldIsIllegal} className="h-full border-r border-white/15 px-2.5 hover:bg-white/10 disabled:opacity-30">Skip 5 overs</button>
-            <button onClick={() => skip("innings")} disabled={Boolean(activeShot) || awaitingBatterSelection || awaitingToss || fieldIsIllegal} className="h-full px-2.5 hover:bg-white/10 disabled:opacity-30">Finish innings</button>
+            <button onClick={() => skip("innings")} disabled={Boolean(activeShot) || awaitingToss || fieldIsIllegal} className="h-full px-2.5 hover:bg-white/10 disabled:opacity-30">Finish innings</button>
           </div>
           <div className="flex h-[34px] items-center overflow-hidden rounded border border-white/20 bg-[#111622]">
             <button disabled={speed === 1} onClick={() => setSpeed(SPEEDS[Math.max(0, SPEEDS.indexOf(speed) - 1)])} className="h-full w-8 text-[10px] font-bold disabled:opacity-30">&lt;&lt;</button>

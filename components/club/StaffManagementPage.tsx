@@ -1,13 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { BriefcaseBusiness, RefreshCw, UserMinus, UserPlus, UsersRound, X } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, BriefcaseBusiness, RefreshCw, UserMinus, UserPlus, UsersRound, X } from "lucide-react";
 
 import type { Team } from "@/lib/types";
 import { useGameStore } from "@/lib/store/gameStore";
-import { calculateStaffMoveInterest, calculateStaffRenewalInterest, calculateStaffSalaryDemand, evaluateStaffContractOffer } from "@/lib/logic/staffNegotiations";
+import { calculateInitialStaffNegotiationPatience, calculateStaffRecruitmentInterest, calculateStaffSalaryDemand, evaluateStaffContractOffer } from "@/lib/logic/staffNegotiations";
 import { getStaffClubAffinity, type StaffAffinityProfile } from "@/lib/data/staffAffinities";
 import { addDaysToDateKey } from "@/lib/logic/careerCalendar";
+import { loadStaffDirectory } from "@/lib/logic/staffDirectoryClient";
+import { getStaffPreferenceColor, getStaffRatingColor } from "@/lib/theme/staffRatingColors";
 
 interface StaffMember extends Record<string, unknown> {
   id: string;
@@ -41,6 +43,9 @@ interface StaffManagementPageProps {
   teams: Team[];
   mode?: "club" | "league";
 }
+
+type StaffMarketSortKey = "staff_member" | "role_fit" | "ca" | "pa" | "interest" | "demand" | "club_link" | "budget" | "status";
+type StaffMarketSortDirection = "asc" | "desc";
 
 const TEAM_ORDER = ["CSK", "MI", "RCB", "KKR", "RR", "SRH", "GT", "PBKS", "LSG", "DC"];
 
@@ -132,11 +137,15 @@ function StaffProfileModal({
   const careerStaff = useGameStore((state) => state.careerStaff);
   const userTeamId = useGameStore((state) => state.userTeamId);
   const currentSeason = useGameStore((state) => state.currentSeason);
+  const currentDate = useGameStore((state) => state.currentDate);
   const appointStaffMember = useGameStore((state) => state.appointStaffMember);
   const renewStaffMember = useGameStore((state) => state.renewStaffMember);
   const releaseStaffMember = useGameStore((state) => state.releaseStaffMember);
   const poachStaffMember = useGameStore((state) => state.poachStaffMember);
+  const setStaffNegotiationCooldown = useGameStore((state) => state.setStaffNegotiationCooldown);
   const careerContract = careerStaff.contracts[member.id];
+  const negotiationCooldownUntil = careerStaff.negotiationCooldowns[member.id];
+  const negotiationCoolingDown = Boolean(negotiationCooldownUntil && currentDate < negotiationCooldownUntil);
   const isFreeAgent = careerContract?.status === "free_agent";
   const isUserStaff = careerContract?.status === "contracted" && careerContract.teamId === userTeamId;
   const isOtherClubStaff = careerContract?.status === "contracted" && careerContract.teamId !== userTeamId;
@@ -146,16 +155,47 @@ function StaffProfileModal({
   const [offerEndSeason, setOfferEndSeason] = useState(String(currentSeason + 2));
   const [offerSalary, setOfferSalary] = useState(() => String(((member.salary_expectation as number | null) ?? 10_000_000) / 10_000_000));
   const [contractMessage, setContractMessage] = useState<string | null>(null);
+  const [staffCounterOffer, setStaffCounterOffer] = useState<number | null>(null);
+  const [negotiationPatience, setNegotiationPatience] = useState(70);
+  const [negotiationEnded, setNegotiationEnded] = useState(false);
+  const [negotiationHasStarted, setNegotiationHasStarted] = useState(false);
+  const [showNegotiationExitWarning, setShowNegotiationExitWarning] = useState(false);
   const [showTerminationConfirm, setShowTerminationConfirm] = useState(false);
-  const coachingAttributes = member.coaching_attributes && typeof member.coaching_attributes === "object"
-    ? Object.entries(member.coaching_attributes as Record<string, number>)
+  const rawCoachingObj = (member.coaching_attributes && typeof member.coaching_attributes === "object" ? member.coaching_attributes : null)
+    ?? careerContract?.coachingAttributes
+    ?? null;
+  const coachingAttributes = rawCoachingObj
+    ? Object.entries(rawCoachingObj as Record<string, number>).filter(([, val]) => val !== null && val !== undefined && typeof val === "number")
     : [];
-  const traits = Array.isArray(member.traits) ? member.traits.map(String) : [];
-  const traitPreferences = member.trait_preferences && typeof member.trait_preferences === "object"
-    ? Object.entries(member.trait_preferences as Record<string, number>)
-      .sort((left, right) => right[1] - left[1])
-      .slice(0, 6)
-    : [];
+  const rawTraits = (Array.isArray(member.traits) && member.traits.length > 0 ? member.traits : null)
+    ?? (careerContract as any)?.traits
+    ?? null;
+  const traits = Array.isArray(rawTraits) && rawTraits.length > 0
+    ? rawTraits.map(String)
+    : [
+        ...(Number(member.reputation ?? 5) >= 7 ? ["Natural Leader", "Player Motivator"] : []),
+        ...(member.primary_role === "batting_coach" ? ["Role Specialist", "Hands-on Coach"] : []),
+        ...(member.primary_role === "pace_bowling_coach" || member.primary_role === "spin_bowling_coach" ? ["Role Specialist", "Tactical Innovator"] : []),
+        ...(member.primary_role === "head_coach" ? ["Tactical Innovator", "Hands-on Coach"] : []),
+        "Disciplinarian",
+        "Youth Developer",
+      ].slice(0, 3);
+
+  const rawTraitPrefs = (member.trait_preferences && typeof member.trait_preferences === "object" ? member.trait_preferences : null)
+    ?? (careerContract as any)?.traitPreferences
+    ?? {
+      batting_aggression: 60,
+      bowling_attack_bias: 60,
+      youth_trust: 55,
+      spin_preference: member.primary_role === "spin_bowling_coach" ? 75 : 50,
+      pace_preference: member.primary_role === "pace_bowling_coach" ? 75 : 50,
+      data_analytics_reliance: 55,
+    };
+
+  const traitPreferences = Object.entries(rawTraitPrefs as Record<string, number>)
+    .filter(([, val]) => typeof val === "number")
+    .sort((left, right) => right[1] - left[1])
+    .slice(0, 8);
   const roleRatings = Object.entries(member.role_ratings ?? {})
     .sort((left, right) => right[1] - left[1]);
   const topRoleRatings = roleRatings.slice(0, 3);
@@ -167,6 +207,9 @@ function StaffProfileModal({
   const offerSecondaryRole = normalizedOfferRoles[1] ?? "";
   const offeredSalaryRupees = Math.max(0, Math.round(Number(offerSalary || 0) * 10_000_000));
   const selectedRoleRating = Number(member.role_ratings?.[offerPrimaryRole] ?? member.current_ability ?? 50);
+  const currentAffinity = careerContract?.teamId ? getStaffClubAffinity(careerContract.affinityProfile, careerContract.teamId) : 0;
+  const destinationAffinity = careerContract ? getStaffClubAffinity(careerContract.affinityProfile, userTeamId) : 0;
+  const remainingContractSeasons = careerContract?.endSeason == null ? 1 : Math.max(0, careerContract.endSeason - currentSeason + 1);
   const salaryDemand = calculateStaffSalaryDemand({
     salaryExpectation: Number(member.salary_expectation ?? 0),
     reputation: Number(member.reputation ?? 0),
@@ -179,11 +222,39 @@ function StaffProfileModal({
     offeredPrimaryRole: offerPrimaryRole,
     incumbentRenewal: contractAction === "renew",
     currentRoleCount: careerContract?.roles.length ?? 1,
+    loyalty: careerContract?.loyalty ?? Number(member.loyalty ?? 50),
+    ambition: careerContract?.ambition ?? Number(member.ambition ?? 50),
+    adaptability: careerContract?.adaptability ?? Number(member.adaptability ?? 50),
+    currentAffinity,
+    destinationAffinity,
+    remainingContractSeasons,
+  });
+  const negotiationPatienceFor = (action: "hire" | "poach" | "renew") => calculateInitialStaffNegotiationPatience({
+    salaryExpectation: Number(member.salary_expectation ?? 0),
+    reputation: Number(member.reputation ?? 0),
+    roleRating: selectedRoleRating,
+    roleCount: normalizedOfferRoles.length,
+    startSeason: currentSeason,
+    endSeason: offerEndSeason === "rolling" ? null : Number(offerEndSeason),
+    poaching: action === "poach",
+    incumbentRenewal: action === "renew",
+    loyalty: careerContract?.loyalty ?? Number(member.loyalty ?? 50),
+    ambition: careerContract?.ambition ?? Number(member.ambition ?? 50),
+    adaptability: careerContract?.adaptability ?? Number(member.adaptability ?? 50),
+    currentAffinity,
+    destinationAffinity,
+    remainingContractSeasons,
   });
   const userFinance = careerStaff.financesByTeam[userTeamId];
   const availableBudget = Math.max(0, (userFinance?.annualBudget ?? 0) - (userFinance?.committedSalary ?? 0));
+  const maximumNegotiationSalary = availableBudget + (contractAction === "renew" ? careerContract?.annualSalary ?? 0 : 0);
 
   const submitContractOffer = () => {
+    if (negotiationCoolingDown) {
+      setContractMessage(`Negotiations are unavailable until ${negotiationCooldownUntil}.`);
+      return;
+    }
+    setNegotiationHasStarted(true);
     const evaluation = evaluateStaffContractOffer({
       salaryExpectation: Number(member.salary_expectation ?? 0),
       reputation: Number(member.reputation ?? 0),
@@ -197,49 +268,26 @@ function StaffProfileModal({
       offeredPrimaryRole: offerPrimaryRole,
       incumbentRenewal: contractAction === "renew",
       currentRoleCount: careerContract?.roles.length ?? 1,
+      loyalty: careerContract?.loyalty ?? Number(member.loyalty ?? 50),
+      ambition: careerContract?.ambition ?? Number(member.ambition ?? 50),
+      adaptability: careerContract?.adaptability ?? Number(member.adaptability ?? 50),
+      currentAffinity,
+      destinationAffinity,
+      remainingContractSeasons,
+      previousCounterOffer: staffCounterOffer ?? undefined,
+      negotiationPatience,
     });
     if (!evaluation.accepted) {
-      setContractMessage(`Offer rejected. Their minimum demand is ${formatSalary(evaluation.demand)}.`);
+      setNegotiationPatience(evaluation.patienceAfter);
+      setStaffCounterOffer(evaluation.counterOffer);
+      setNegotiationEnded(evaluation.outcome === "walked-away");
+      if (evaluation.outcome === "walked-away") {
+        setStaffNegotiationCooldown(member.id, addDaysToDateKey(currentDate, 7));
+      }
+      setContractMessage(evaluation.outcome === "countered"
+        ? `Counteroffer: ${formatSalary(evaluation.counterOffer)}. Improve the salary, role or contract length to continue negotiating.`
+        : evaluation.message);
       return;
-    }
-    if (contractAction === "renew" && careerContract?.teamId) {
-      const renewalInterest = calculateStaffRenewalInterest({
-        loyalty: careerContract.loyalty,
-        ambition: careerContract.ambition,
-        adaptability: careerContract.adaptability,
-        clubAffinity: getStaffClubAffinity(careerContract.affinityProfile, careerContract.teamId),
-        currentSalary: careerContract.annualSalary,
-        offeredSalary: offeredSalaryRupees,
-        remainingContractSeasons: careerContract.endSeason == null
-          ? 1
-          : Math.max(0, careerContract.endSeason - currentSeason),
-      });
-      if (!renewalInterest.interested) {
-        setContractMessage("Renewal rejected. The staff member currently prefers to explore their options rather than extend their contract.");
-        return;
-      }
-    }
-    if (contractAction === "poach" && careerContract?.teamId) {
-      const destinationAffinity = getStaffClubAffinity(careerContract.affinityProfile, userTeamId);
-      const currentAffinity = getStaffClubAffinity(careerContract.affinityProfile, careerContract.teamId);
-      const moveInterest = calculateStaffMoveInterest({
-        loyalty: careerContract.loyalty,
-        ambition: careerContract.ambition,
-        adaptability: careerContract.adaptability,
-        currentAffinity,
-        destinationAffinity,
-        currentSalary: careerContract.annualSalary,
-        offeredSalary: offeredSalaryRupees,
-        currentRoleRating: Number(careerContract.roleRatings[careerContract.primaryRole] ?? careerContract.currentAbility),
-        offeredRoleRating: selectedRoleRating,
-        currentPrimaryRole: careerContract.primaryRole,
-        offeredPrimaryRole: offerPrimaryRole,
-        remainingContractSeasons: careerContract.endSeason == null ? 1 : Math.max(0, careerContract.endSeason - currentSeason + 1),
-      });
-      if (!moveInterest.interested) {
-        setContractMessage("Approach rejected. Their loyalty, present club ties and current role outweigh the proposed move.");
-        return;
-      }
     }
     if (offeredSalaryRupees > availableBudget + (contractAction === "renew" ? careerContract?.annualSalary ?? 0 : 0)) {
       setContractMessage("This offer exceeds the club's available annual staff budget.");
@@ -269,35 +317,53 @@ function StaffProfileModal({
       ? contractAction === "renew" ? "Contract renewal accepted." : "Contract accepted. The staff member has joined your club."
       : "The contract could not be completed because its role or budget constraints are no longer valid.");
     if (completed) setContractAction(null);
+    if (completed) setStaffCounterOffer(null);
+    if (!completed) setNegotiationHasStarted(false);
+  };
+  const requestNegotiationClose = () => {
+    if (negotiationHasStarted && !negotiationEnded) {
+      setShowNegotiationExitWarning(true);
+      return;
+    }
+    setContractAction(null);
+  };
+  const abandonNegotiation = () => {
+    setStaffNegotiationCooldown(member.id, addDaysToDateKey(currentDate, 7));
+    setShowNegotiationExitWarning(false);
+    setNegotiationEnded(true);
+    setContractAction(null);
   };
   const profileFacts: Array<[string, unknown]> = [
     ["Primary role", roleLabel(member.primary_role)],
     ["Secondary roles", member.secondary_roles?.length > 0 ? member.secondary_roles.map(roleLabel).join(", ") : "None recorded"],
     ["Age", ageFromDateOfBirth(member.date_of_birth)],
-    ["Country", member.country],
-    ["Home region", member.affinity_profile?.homeRegion],
+    [
+      "Country",
+      member.country
+        ? (member.affinity_profile?.homeRegion ? `${member.country} (${member.affinity_profile.homeRegion})` : member.country)
+        : null,
+    ],
     ["Experience", typeof member.experience_years === "number" ? `${member.experience_years} years` : null],
     ["Personality", member.personality],
     ["Loyalty", typeof member.loyalty === "number" ? `${member.loyalty}/100` : member.loyalty],
     ["Philosophy", member.coaching_philosophy],
     ["Team strategy", member.preferred_team_strategy],
-    ["Profile confidence", member.profile_confidence],
   ];
-  const clubAffinities = member.affinity_profile?.clubs ?? [];
+  const clubAffinities = (member.affinity_profile?.clubs ?? []).filter((c) => Boolean(c.teamId) && c.teamId !== "UNSOLD");
 
   return (
     <div
-      className="fixed inset-0 z-[130] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm sm:p-10"
+      className="fixed inset-0 z-[130] flex items-center justify-center bg-black/70 p-3 backdrop-blur-sm sm:p-5"
       onMouseDown={onClose}
     >
       <div
         role="dialog"
         aria-modal="true"
         aria-label={`${member.full_name} staff profile`}
-        className="flex max-h-[calc(100vh-2rem)] w-full max-w-5xl flex-col overflow-hidden rounded-lg border-2 border-border bg-surface shadow-2xl"
+        className="flex h-[calc(100vh-1.5rem)] max-h-[97vh] w-full max-w-[96vw] 2xl:max-w-7xl flex-col overflow-hidden rounded-lg border-2 border-border bg-surface shadow-2xl sm:h-[calc(100vh-2.5rem)]"
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <header className="flex shrink-0 items-start justify-between border-b-2 border-border px-5 py-4 sm:px-6">
+        <header className="flex shrink-0 flex-wrap items-center justify-between gap-4 border-b-2 border-border px-5 py-3 sm:px-6">
           <div className="flex min-w-0 items-center gap-4">
             <div
               className="flex size-14 shrink-0 items-center justify-center rounded-full font-anton text-xl"
@@ -313,143 +379,98 @@ function StaffProfileModal({
               </p>
             </div>
           </div>
-          <button type="button" onClick={onClose} className="ml-4 flex size-9 shrink-0 items-center justify-center rounded border border-border text-text-primary hover:bg-black/5 dark:hover:bg-white/10" aria-label="Close staff profile">
-            <X size={17} />
-          </button>
-        </header>
 
-        <div className="min-h-0 overflow-y-auto bg-bg/40 p-5 sm:p-6">
-          {topRoleRatings.length > 0 && (
-            <section className="mb-5">
-              <div className="mb-3 flex items-end justify-between gap-4">
-                <div>
-                  <p className="font-space-mono text-[7px] font-bold uppercase tracking-[0.2em] text-accent">Best fit</p>
-                  <h3 className="font-anton text-lg uppercase text-text-primary">Top coaching positions</h3>
-                </div>
-                <p className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Role rating · 50–94</p>
+          <div className="flex items-center gap-3">
+            <div className="hidden sm:flex items-center gap-3.5 rounded-lg border border-border bg-bg px-4 py-2">
+              <div>
+                <p className="font-space-mono text-[7px] font-bold uppercase tracking-wider text-text-secondary">Contract</p>
+                <p className="font-anton text-xs uppercase text-text-primary">
+                  {member.contract_end_year ? `Until ${member.contract_end_year}` : (member.contract_status === "uncontracted" ? "Free Agent" : "Rolling")}
+                </p>
               </div>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                {topRoleRatings.map(([role, rating], index) => {
-                  const isPrimary = role === member.primary_role;
-                  return (
-                    <div
-                      key={role}
-                      className={`relative overflow-hidden rounded-lg border-2 p-4 ${isPrimary ? "border-accent bg-accent/10" : "border-border bg-surface"}`}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="font-space-mono text-[7px] font-bold uppercase tracking-wider text-text-secondary">#{index + 1} suitability</p>
-                          <p className="mt-1 font-anton text-base uppercase leading-tight text-text-primary">{roleLabel(role)}</p>
-                        </div>
-                        <span className="font-anton text-3xl tabular-nums leading-none text-text-primary">{rating}</span>
-                      </div>
-                      <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-border">
-                        <div className="h-full rounded-full bg-accent" style={{ width: `${rating}%` }} />
-                      </div>
-                      {isPrimary && <p className="mt-2 font-space-mono text-[7px] font-bold uppercase text-accent">Current primary role</p>}
-                    </div>
-                  );
-                })}
+              <div className="h-6 w-px bg-border" />
+              <div>
+                <p className="font-space-mono text-[7px] font-bold uppercase tracking-wider text-text-secondary">Salary</p>
+                <p className="font-anton text-xs uppercase text-accent">
+                  {formatSalary(member.annual_salary ?? member.salary_expectation)}
+                </p>
               </div>
-              {otherRoleRatings.length > 0 && (
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {otherRoleRatings.map(([role, rating]) => (
-                    <span key={role} className="rounded border border-border bg-surface px-2.5 py-1.5 font-space-mono text-[8px] font-bold uppercase text-text-secondary">
-                      {roleLabel(role)} <strong className="ml-1 text-text-primary">{rating}</strong>
-                    </span>
-                  ))}
-                </div>
+              {Boolean(member.contract_start_year) && (
+                <>
+                  <div className="h-6 w-px bg-border" />
+                  <div>
+                    <p className="font-space-mono text-[7px] font-bold uppercase tracking-wider text-text-secondary">Signed</p>
+                    <p className="font-anton text-xs uppercase text-text-primary">{formatFieldValue(member.contract_start_year)}</p>
+                  </div>
+                </>
               )}
-            </section>
-          )}
+            </div>
 
-          <section className="mb-5 grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+            <button type="button" onClick={onClose} className="ml-1 flex size-9 shrink-0 items-center justify-center rounded border border-border text-text-primary hover:bg-black/5 dark:hover:bg-white/10" aria-label="Close staff profile">
+              <X size={17} />
+            </button>
+          </div>
+        </header>
+        <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden bg-bg/40 p-3 sm:p-4 lg:grid-cols-[21rem_minmax(0,1fr)] lg:gap-4">
+          {/* LEFT SIDEBAR: Bio, Ratings Overview, Club Connections, Contract Actions */}
+          <div className="flex min-h-0 flex-col gap-3 overflow-hidden pr-1">
             <div className="rounded-lg border border-border bg-surface p-4">
-              <h3 className="mb-3 font-anton text-sm uppercase text-text-primary">Profile overview</h3>
-              <div className="grid grid-cols-2 gap-x-5 gap-y-3 sm:grid-cols-3">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="font-space-mono text-[7.5px] font-bold uppercase tracking-wider text-text-secondary">Primary role</p>
+                  <p className="mt-0.5 font-anton text-3xl leading-none text-text-primary">{ratingForRole(member, member.primary_role) ?? "–"}</p>
+                </div>
+                <div className="text-right">
+                  <p className="font-space-mono text-[7.5px] font-bold uppercase tracking-wider text-text-secondary">Potential</p>
+                  <p className="mt-0.5 font-anton text-3xl leading-none text-text-primary">{formatFieldValue(member.potential_ability)}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-border bg-surface p-4">
+              <h3 className="mb-3 font-anton text-xs uppercase text-text-primary">Profile overview</h3>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 text-xs">
                 {profileFacts.map(([label, value]) => (
-                  <div key={String(label)} className="border-t border-border/70 pt-2">
+                  <div key={String(label)} className="border-t border-border/60 pt-1.5">
                     <p className="font-space-mono text-[7px] font-bold uppercase tracking-wider text-text-secondary">{label}</p>
-                    <p className="mt-1 text-xs font-semibold text-text-primary">{formatFieldValue(value, String(label).toLowerCase().replace(/ /g, "_"))}</p>
+                    <p className="mt-0.5 text-xs font-semibold text-text-primary break-words">{formatFieldValue(value, String(label).toLowerCase().replace(/ /g, "_"))}</p>
                   </div>
                 ))}
               </div>
             </div>
+
             <div className="rounded-lg border border-border bg-surface p-4">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="font-space-mono text-[7px] font-bold uppercase tracking-wider text-text-secondary">Primary-role rating</p>
-                  <p className="mt-1 font-anton text-4xl leading-none text-text-primary">{ratingForRole(member, member.primary_role) ?? "–"}</p>
-                </div>
-                <div className="text-right">
-                  <p className="font-space-mono text-[7px] font-bold uppercase tracking-wider text-text-secondary">Potential</p>
-                  <p className="mt-1 font-anton text-2xl leading-none text-text-primary">{formatFieldValue(member.potential_ability)}</p>
-                </div>
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <h3 className="font-anton text-xs uppercase text-text-primary">Club connections</h3>
+                <span className="font-space-mono text-[7px] uppercase text-text-secondary">{member.affinity_profile?.homeCountry ?? String(member.country ?? "Unknown")}</span>
               </div>
-              {typeof member.rating_basis === "string" && member.rating_basis && (
-                <p className="mt-4 border-t border-border pt-3 text-xs leading-relaxed text-text-secondary">{member.rating_basis}</p>
-              )}
-            </div>
-          </section>
-
-          <section className="mb-5 rounded-lg border border-border bg-surface p-4">
-            <div className="mb-3 flex items-end justify-between gap-3">
-              <div>
-                <h3 className="font-anton text-sm uppercase text-text-primary">Club connections</h3>
-                <p className="mt-1 text-[10px] text-text-secondary">Home, playing and coaching ties influence contract decisions.</p>
-              </div>
-              <span className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Home country · {member.affinity_profile?.homeCountry ?? String(member.country ?? "Unknown")}</span>
-            </div>
-            {clubAffinities.length > 0 ? (
-              <div className="flex flex-wrap gap-2">
-                {clubAffinities.map((affinity) => (
-                  <span key={affinity.teamId} className="rounded border border-border bg-bg px-3 py-2 font-space-mono text-[8px] font-bold uppercase text-text-primary">
-                    {affinity.teamId} · {affinity.strength}<span className="ml-2 text-text-secondary">{affinity.reasons.map(fieldLabel).join(" · ")}</span>
-                  </span>
-                ))}
-              </div>
-            ) : <p className="text-xs text-text-secondary">No specific IPL club connection is recorded.</p>}
-          </section>
-
-          <section className="mb-5 rounded-lg border border-border bg-surface p-4">
-            <div className="mb-3 flex items-center justify-between gap-4">
-              <h3 className="font-anton text-sm uppercase text-text-primary">Contract information</h3>
-              <span className="font-space-mono text-[7px] font-bold uppercase tracking-wider text-text-secondary">
-                {member.contract_status === "fixed_term" ? "Fixed term" : member.contract_status === "uncontracted" ? "Free agent" : "Rolling"}
-              </span>
-            </div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              {[
-                ["Contract start", member.contract_start_year ?? "Not recorded"],
-                ["Contract end", member.contract_end_year ?? (member.contract_status === "uncontracted" ? "Uncontracted" : "Rolling")],
-                ["Annual salary", formatSalary(member.annual_salary ?? member.salary_expectation)],
-              ].map(([label, value]) => (
-                <div key={String(label)} className="rounded border border-border bg-bg px-4 py-3">
-                  <p className="font-space-mono text-[7px] font-bold uppercase tracking-wider text-text-secondary">{String(label)}</p>
-                  <p className="mt-1 font-anton text-lg uppercase text-text-primary">{formatFieldValue(value)}</p>
+              {clubAffinities.length > 0 ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {clubAffinities.map((affinity) => (
+                    <span key={affinity.teamId} className="rounded border border-border bg-bg px-2.5 py-1 font-space-mono text-[8px] font-bold uppercase text-text-primary">
+                      {affinity.teamId} · {affinity.strength}<span className="ml-1 text-text-secondary">{affinity.reasons.map(fieldLabel).join("·")}</span>
+                    </span>
+                  ))}
                 </div>
-              ))}
+              ) : <p className="text-xs text-text-secondary">No specific IPL club connection recorded.</p>}
             </div>
-          </section>
 
-          {allowContractActions && (isFreeAgent || isUserStaff || isOtherClubStaff) && (
-            <section className="mb-5 rounded-lg border-2 border-accent/40 bg-accent/5 p-4">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="font-space-mono text-[7px] font-bold uppercase tracking-[0.2em] text-accent">Contract actions</p>
-                  <h3 className="mt-1 font-anton text-lg uppercase text-text-primary">
-                    {isFreeAgent ? "Available to hire" : isUserStaff ? "Your coaching staff" : "Contracted elsewhere"}
-                  </h3>
-                </div>
-                <div className="flex flex-wrap gap-2">
+            {allowContractActions && (isFreeAgent || isUserStaff || isOtherClubStaff) && (
+              <div className="rounded-lg border-2 border-accent/40 bg-accent/5 p-4">
+                <p className="font-space-mono text-[7.5px] font-bold uppercase tracking-[0.2em] text-accent">Contract actions</p>
+                <div className="mt-2.5 flex flex-wrap gap-2">
                   {isFreeAgent && (
                     <button type="button" onClick={() => {
                       setOfferRoles([member.primary_role]);
                       setOfferPrimaryRole(member.primary_role);
                       setContractAction("hire");
                       setContractMessage(null);
-                    }} className="flex items-center gap-2 rounded bg-accent px-3 py-2 font-space-mono text-[8px] font-bold uppercase text-white">
-                      <UserPlus size={14} /> Offer contract
+                      setStaffCounterOffer(null);
+                      setNegotiationPatience(negotiationPatienceFor("hire"));
+                      setNegotiationEnded(false);
+                      setNegotiationHasStarted(false);
+                    }} disabled={negotiationCoolingDown} className="flex items-center gap-1.5 rounded bg-accent px-3 py-2 font-space-mono text-[8.5px] font-bold uppercase text-white hover:bg-accent/85 disabled:cursor-not-allowed disabled:opacity-40">
+                      <UserPlus size={13} /> {negotiationCoolingDown ? `Available ${negotiationCooldownUntil}` : "Offer contract"}
                     </button>
                   )}
                   {isUserStaff && (
@@ -461,15 +482,19 @@ function StaffProfileModal({
                         setOfferPrimaryRole(careerContract?.primaryRole ?? member.primary_role);
                         setContractAction("renew");
                         setContractMessage(null);
-                      }} className="rounded bg-accent px-3 py-2 font-space-mono text-[8px] font-bold uppercase text-white">
-                        Renew / change roles
+                        setStaffCounterOffer(null);
+                        setNegotiationPatience(negotiationPatienceFor("renew"));
+                        setNegotiationEnded(false);
+                        setNegotiationHasStarted(false);
+                      }} disabled={negotiationCoolingDown} className="rounded bg-accent px-3 py-2 font-space-mono text-[8.5px] font-bold uppercase text-white hover:bg-accent/85 disabled:cursor-not-allowed disabled:opacity-40">
+                        {negotiationCoolingDown ? `Available ${negotiationCooldownUntil}` : "Renew contract"}
                       </button>
                       <button type="button" onClick={() => {
                         setContractAction(null);
                         setContractMessage(null);
                         setShowTerminationConfirm(true);
-                      }} className="flex items-center gap-2 rounded border border-danger/40 bg-danger/10 px-3 py-2 font-space-mono text-[8px] font-bold uppercase text-danger">
-                        <UserMinus size={14} /> Terminate
+                      }} className="flex items-center gap-1.5 rounded border border-danger/40 bg-danger/10 px-3 py-2 font-space-mono text-[8.5px] font-bold uppercase text-danger hover:bg-danger/20">
+                        <UserMinus size={13} /> Terminate
                       </button>
                     </>
                   )}
@@ -480,79 +505,294 @@ function StaffProfileModal({
                       setOfferPrimaryRole(existingRoles.includes(careerContract?.primaryRole ?? "") ? careerContract!.primaryRole : existingRoles[0]);
                       setContractAction("poach");
                       setContractMessage(null);
-                    }} className="flex items-center gap-2 rounded bg-accent px-3 py-2 font-space-mono text-[8px] font-bold uppercase text-white">
-                      <UserPlus size={14} /> Approach staff
+                      setStaffCounterOffer(null);
+                      setNegotiationPatience(negotiationPatienceFor("poach"));
+                      setNegotiationEnded(false);
+                      setNegotiationHasStarted(false);
+                    }} disabled={negotiationCoolingDown} className="flex items-center gap-1.5 rounded bg-accent px-3 py-2 font-space-mono text-[8.5px] font-bold uppercase text-white hover:bg-accent/85 disabled:cursor-not-allowed disabled:opacity-40">
+                      <UserPlus size={13} /> {negotiationCoolingDown ? `Available ${negotiationCooldownUntil}` : "Approach staff"}
                     </button>
                   )}
                 </div>
+
+              </div>
+            )}
+          </div>
+
+          {/* RIGHT MAIN COLUMN: Top Roles, 3-Column Attributes, Traits & Preferences */}
+          <div className="flex min-h-0 flex-col gap-3 overflow-hidden pl-1">
+            {topRoleRatings.length > 0 && (
+              <section className="rounded-lg border border-border bg-surface p-4">
+                <div className="mb-2.5 flex items-center justify-between gap-2">
+                  <h3 className="font-anton text-xs uppercase text-text-primary">Top coaching positions</h3>
+                  <span className="font-space-mono text-[7px] uppercase text-text-secondary">Suitability rating</span>
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  {topRoleRatings.map(([role, rating], index) => {
+                    const isPrimary = role === member.primary_role;
+                    return (
+                      <div
+                        key={role}
+                        className={`relative overflow-hidden rounded-md border p-3 ${isPrimary ? "border-accent bg-accent/10" : "border-border bg-bg"}`}
+                      >
+                        <div className="flex items-start justify-between gap-1">
+                          <div>
+                            <p className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">#{index + 1} fit</p>
+                            <p className="font-anton text-sm uppercase leading-tight text-text-primary">{roleLabel(role)}</p>
+                          </div>
+                          <span className="font-anton text-2xl tabular-nums leading-none text-text-primary">{rating}</span>
+                        </div>
+                        <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-border">
+                          <div className="h-full rounded-full bg-accent" style={{ width: `${rating}%` }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                {otherRoleRatings.length > 0 && (
+                  <div className="mt-2.5 flex flex-wrap gap-2">
+                    {otherRoleRatings.map(([role, rating]) => (
+                      <span key={role} className="rounded border border-border/70 bg-bg px-2.5 py-1 font-space-mono text-[8px] font-bold uppercase text-text-secondary">
+                        {roleLabel(role)} <strong className="ml-1 text-text-primary">{rating}</strong>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </section>
+            )}
+
+            {coachingAttributes.length > 0 && (() => {
+              const attrMap = new Map<string, number>(coachingAttributes as [string, number][]);
+
+              const coachingKeys = [
+                "batting",
+                "batting_coaching",
+                "pace_bowling",
+                "pace_bowling_coaching",
+                "spin_bowling",
+                "spin_bowling_coaching",
+                "fielding",
+                "fielding_coaching",
+                "wicketkeeping",
+                "wicketkeeping_coaching",
+                "technical",
+                "technical_coaching",
+              ];
+
+              const knowledgeKeys = [
+                "tactical_knowledge",
+                "tactical",
+                "judging_ability",
+                "judging_potential",
+                "youth_development",
+              ];
+
+              const managerialKeys = [
+                "man_management",
+                "motivation",
+                "player_development",
+              ];
+
+              const renderAttributeRow = (key: string) => {
+                const value = attrMap.get(key);
+                if (value === undefined || value === null) return null;
+                const ratingColor = getStaffRatingColor(value);
+                return (
+                  <div key={key} className="grid grid-cols-[9.5rem_minmax(0,1fr)_1.75rem] items-center gap-2">
+                    <span className="font-space-mono text-[8.5px] font-bold uppercase text-text-secondary whitespace-nowrap" title={fieldLabel(key)}>
+                      {fieldLabel(key).replace(" Coaching", "")}
+                    </span>
+                    <div className="h-1.5 overflow-hidden rounded-full bg-[#252a34]">
+                      <div
+                        className="h-full rounded-full"
+                        style={{
+                          width: `${Math.max(0, Math.min(100, value * 5))}%`,
+                          backgroundColor: ratingColor,
+                        }}
+                      />
+                    </div>
+                    <span
+                      className="text-right font-space-mono text-[10px] font-bold"
+                      style={{ color: ratingColor }}
+                    >
+                      {value}
+                    </span>
+                  </div>
+                );
+              };
+
+              const classifiedKeys = new Set([...coachingKeys, ...knowledgeKeys, ...managerialKeys]);
+              const otherKeys = Array.from(attrMap.keys()).filter((k) => !classifiedKeys.has(k));
+
+              return (
+                <section className="rounded-lg border border-border bg-surface p-4">
+                  <h3 className="mb-3 border-b border-border pb-2 font-anton text-xs uppercase text-text-primary">
+                    Coaching Attributes · 1–20
+                  </h3>
+                  <div className="grid grid-cols-3 gap-5">
+                    <div className="flex flex-col gap-2.5">
+                      <h4 className="border-b border-border/60 pb-1 font-space-mono text-[8.5px] font-bold uppercase tracking-wider text-accent">
+                        Domains
+                      </h4>
+                      {coachingKeys.map(renderAttributeRow)}
+                    </div>
+
+                    <div className="flex flex-col gap-2.5">
+                      <h4 className="border-b border-border/60 pb-1 font-space-mono text-[8.5px] font-bold uppercase tracking-wider text-gold">
+                        Knowledge
+                      </h4>
+                      {knowledgeKeys.map(renderAttributeRow)}
+                    </div>
+
+                    <div className="flex flex-col gap-2.5">
+                      <h4 className="border-b border-border/60 pb-1 font-space-mono text-[8.5px] font-bold uppercase tracking-wider text-success">
+                        Managerial
+                      </h4>
+                      {managerialKeys.map(renderAttributeRow)}
+                      {otherKeys.map(renderAttributeRow)}
+                    </div>
+                  </div>
+                </section>
+              );
+            })()}
+
+            {(traits.length > 0 || traitPreferences.length > 0) && (
+              <section className="grid grid-cols-1 gap-3 sm:grid-cols-[0.7fr_1.3fr]">
+                {traits.length > 0 && (
+                  <div className="rounded-lg border border-border bg-surface p-4">
+                    <h3 className="mb-2.5 font-anton text-xs uppercase text-text-primary">Traits</h3>
+                    <div className="flex flex-wrap gap-2">
+                      {traits.map((trait) => (
+                        <span key={trait} className="rounded border border-accent/40 bg-accent/10 px-2.5 py-1 font-space-mono text-[8px] font-bold uppercase tracking-wider text-text-primary">
+                          {fieldLabel(trait)}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {traitPreferences.length > 0 && (
+                  <div className="rounded-lg border border-border bg-surface p-3">
+                    <h3 className="mb-2 font-anton text-xs uppercase text-text-primary">Behavioral preferences</h3>
+                    <div className="grid grid-cols-1 gap-x-4 gap-y-1.5 xl:grid-cols-2">
+                      {traitPreferences.map(([preference, value]) => {
+                        const boundedValue = Math.max(0, Math.min(100, value));
+                        const preferenceColor = getStaffPreferenceColor(boundedValue);
+                        return (
+                          <div key={preference} className="grid min-w-0 grid-cols-[minmax(0,1fr)_1.75rem] items-center gap-x-2 gap-y-0.5">
+                            <span className="col-span-2 whitespace-normal font-space-mono text-[7px] font-bold uppercase leading-tight text-text-secondary" title={fieldLabel(preference)}>{fieldLabel(preference)}</span>
+                            <div className="h-1.5 overflow-hidden rounded-sm border border-border bg-bg shadow-inner">
+                              <div className="h-full" style={{ width: `${boundedValue}%`, backgroundColor: preferenceColor }} />
+                            </div>
+                            <span className="text-right font-space-mono text-[10px] font-bold tabular-nums" style={{ color: preferenceColor }}>{boundedValue}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </section>
+            )}
+          </div>
+        </div>
+
+        {contractAction && (
+          <div className="fixed inset-0 z-[160] flex items-center justify-center bg-black/75 p-6 backdrop-blur-sm" role="presentation" onMouseDown={requestNegotiationClose}>
+            <div role="dialog" aria-modal="true" aria-labelledby="staff-negotiation-title" className="w-full max-w-2xl overflow-hidden rounded-lg border-2 border-accent bg-surface shadow-2xl" onMouseDown={(event) => event.stopPropagation()}>
+              <div className="flex items-start justify-between gap-4 border-b-2 border-accent/30 bg-accent/10 px-5 py-4">
+                <div>
+                  <p className="font-space-mono text-[8px] font-bold uppercase tracking-[0.2em] text-accent">Contract negotiation</p>
+                  <h3 id="staff-negotiation-title" className="mt-1 font-anton text-2xl uppercase leading-none text-text-primary">{member.full_name}</h3>
+                  <p className="mt-2 text-xs text-text-secondary">Build the role, duration and salary package. An insufficient offer may receive a counteroffer.</p>
+                </div>
+                <button type="button" onClick={requestNegotiationClose} className="flex size-9 shrink-0 items-center justify-center rounded border border-border text-text-primary hover:bg-black/5 dark:hover:bg-white/10" aria-label="Close negotiation"><X size={17} /></button>
               </div>
 
-              {contractAction && (
-                <div className="mt-4 border-t border-accent/30 pt-4">
-                  {(contractAction === "hire" || contractAction === "poach" || contractAction === "renew") && (
-                    <div className="mb-4">
-                      <p className="mb-2 font-space-mono text-[7px] font-bold uppercase tracking-wider text-text-secondary">Contracted responsibilities</p>
-                      <p className="mb-2 text-[10px] text-text-secondary">Choose one primary role and, optionally, one secondary role. Maximum two roles per contract.</p>
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        <label className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">
-                          Primary role
-                          <select value={offerPrimaryRole} onChange={(event) => {
-                            const role = event.target.value;
-                            setOfferPrimaryRole(role);
-                            setOfferRoles((current) => [role, ...current.filter((candidate) => candidate !== role)].slice(0, 2));
-                            setContractMessage(null);
-                          }} className="mt-1 block w-full rounded border border-border bg-surface px-3 py-2 text-xs text-text-primary">
-                            {ROLE_ORDER.map((role) => <option key={role} value={role}>{roleLabel(role)} · {member.role_ratings?.[role] ?? "–"}</option>)}
-                          </select>
-                        </label>
-                        <label className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">
-                          Secondary role
-                          <select value={offerSecondaryRole} onChange={(event) => {
-                            const role = event.target.value;
-                            setOfferRoles(role ? [offerPrimaryRole, role] : [offerPrimaryRole]);
-                            setContractMessage(null);
-                          }} className="mt-1 block w-full rounded border border-border bg-surface px-3 py-2 text-xs text-text-primary">
-                            <option value="">No secondary role</option>
-                            {ROLE_ORDER.filter((role) => role !== offerPrimaryRole).map((role) => <option key={role} value={role}>{roleLabel(role)} · {member.role_ratings?.[role] ?? "–"}</option>)}
-                          </select>
-                        </label>
-                      </div>
-                    </div>
-                  )}
-                  <div className="grid gap-3 sm:grid-cols-3">
-                    <label className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">
-                      Contract end
-                      <select value={offerEndSeason} onChange={(event) => setOfferEndSeason(event.target.value)} className="mt-1 block w-full rounded border border-border bg-surface px-3 py-2 text-xs text-text-primary">
-                        <option value="rolling">Rolling</option>
-                        {Array.from({ length: 6 }, (_, index) => currentSeason + index).map((season) => <option key={season} value={season}>After {season} season</option>)}
-                      </select>
-                    </label>
-                    <label className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">
-                      Annual salary · crore
-                      <input type="number" min="0.5" step="0.05" value={offerSalary} onChange={(event) => setOfferSalary(event.target.value)} className="mt-1 block w-full rounded border border-border bg-surface px-3 py-2 text-xs text-text-primary" />
-                    </label>
-                    <div className="rounded border border-border bg-surface px-3 py-2">
-                      <p className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Expected demand</p>
-                      <p className="mt-1 text-xs font-bold text-text-primary">{formatSalary(salaryDemand)}</p>
-                    </div>
-                  </div>
-                  <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-                    <div className="font-space-mono text-[8px] text-text-secondary">
-                      <p>Available staff budget: <strong className="text-text-primary">{formatSalary(availableBudget + (contractAction === "renew" ? careerContract?.annualSalary ?? 0 : 0))}</strong></p>
-                      {contractAction === "poach" && <p className="mt-1">Release compensation: <strong className="text-text-primary">{formatSalary((careerContract?.annualSalary ?? 0) * (careerContract?.endSeason == null ? 1 : Math.max(1, careerContract.endSeason - currentSeason + 1)))}</strong></p>}
-                    </div>
-                    <div className="flex gap-2">
-                      <button type="button" onClick={() => setContractAction(null)} className="rounded border border-border px-3 py-2 font-space-mono text-[8px] font-bold uppercase text-text-secondary">Cancel</button>
-                      <button type="button" onClick={submitContractOffer} className="rounded bg-success px-3 py-2 font-space-mono text-[8px] font-bold uppercase text-white">Submit offer</button>
-                    </div>
-                  </div>
+              <div className="border-b border-border bg-bg/70 px-5 py-3">
+                <div className="mb-1.5 flex items-center justify-between gap-3">
+                  <span className="font-space-mono text-[8px] font-bold uppercase tracking-wider text-text-secondary">Negotiation patience</span>
+                  <span className="font-space-mono text-[9px] font-bold tabular-nums" style={{ color: negotiationPatience >= 70 ? "#22c55e" : negotiationPatience >= 40 ? "#3b82f6" : negotiationPatience >= 20 ? "#facc15" : "#ef4444" }}>{negotiationPatience}/100</span>
                 </div>
-              )}
-              {contractMessage && <p className="mt-3 rounded border border-border bg-surface px-3 py-2 text-xs font-semibold text-text-primary">{contractMessage}</p>}
-            </section>
-          )}
+                <div className="h-2 overflow-hidden rounded-sm border border-border bg-surface">
+                  <div className="h-full transition-[width] duration-300" style={{ width: `${negotiationPatience}%`, backgroundColor: negotiationPatience >= 70 ? "#22c55e" : negotiationPatience >= 40 ? "#3b82f6" : negotiationPatience >= 20 ? "#facc15" : "#ef4444" }} />
+                </div>
+                <p className="mt-1.5 font-space-mono text-[7px] uppercase text-text-secondary">Poor offers consume more patience; credible improvements consume very little.</p>
+                {negotiationHasStarted && !negotiationEnded && <p className="mt-1 font-space-mono text-[7px] font-bold uppercase text-accent">Leaving now will fail negotiations and make this staff member unavailable for seven days.</p>}
+              </div>
 
-          {showTerminationConfirm && isUserStaff && (
+              <div className="grid grid-cols-2 gap-4 px-5 py-5">
+                <label className="font-space-mono text-[8px] font-bold uppercase text-text-secondary">
+                  Primary role
+                  <select value={offerPrimaryRole} onChange={(event) => {
+                    const role = event.target.value;
+                    setOfferPrimaryRole(role);
+                    setOfferRoles((current) => [role, ...current.filter((candidate) => candidate !== role)].slice(0, 2));
+                    setContractMessage(null);
+                    setStaffCounterOffer(null);
+                  }} className="mt-1.5 block w-full rounded border border-border bg-bg px-3 py-2 text-xs text-text-primary">
+                    {ROLE_ORDER.map((role) => <option key={role} value={role}>{roleLabel(role)} · {member.role_ratings?.[role] ?? "–"}</option>)}
+                  </select>
+                </label>
+                <label className="font-space-mono text-[8px] font-bold uppercase text-text-secondary">
+                  Secondary role
+                  <select value={offerSecondaryRole} onChange={(event) => {
+                    const role = event.target.value;
+                    setOfferRoles(role ? [offerPrimaryRole, role] : [offerPrimaryRole]);
+                    setContractMessage(null);
+                    setStaffCounterOffer(null);
+                  }} className="mt-1.5 block w-full rounded border border-border bg-bg px-3 py-2 text-xs text-text-primary">
+                    <option value="">No secondary role</option>
+                    {ROLE_ORDER.filter((role) => role !== offerPrimaryRole).map((role) => <option key={role} value={role}>{roleLabel(role)} · {member.role_ratings?.[role] ?? "–"}</option>)}
+                  </select>
+                </label>
+                <label className="font-space-mono text-[8px] font-bold uppercase text-text-secondary">
+                  Contract end
+                  <select value={offerEndSeason} onChange={(event) => { setOfferEndSeason(event.target.value); setStaffCounterOffer(null); setContractMessage(null); }} className="mt-1.5 block w-full rounded border border-border bg-bg px-3 py-2 text-xs text-text-primary">
+                    <option value="rolling">Rolling</option>
+                    {Array.from({ length: 6 }, (_, index) => currentSeason + index).map((season) => <option key={season} value={season}>After {season} season</option>)}
+                  </select>
+                </label>
+                <label className="font-space-mono text-[8px] font-bold uppercase text-text-secondary">
+                  Annual salary · crore
+                  <input type="number" min="0.5" step="0.05" value={offerSalary} onChange={(event) => setOfferSalary(event.target.value)} className="mt-1.5 block w-full rounded border border-border bg-bg px-3 py-2 text-xs text-text-primary" />
+                </label>
+              </div>
+
+              <div className="mx-5 grid grid-cols-4 gap-3">
+                <div className="rounded border border-border bg-bg p-3"><p className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Offer type</p><p className="mt-1 font-anton text-sm uppercase text-text-primary">{contractAction === "poach" ? "Club approach" : contractAction === "renew" ? "Renewal" : "Free-agent offer"}</p></div>
+                <div className="rounded border border-border bg-bg p-3"><p className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Proposed roles</p><p className="mt-1 font-anton text-sm uppercase text-text-primary">{normalizedOfferRoles.map(roleLabel).join(" + ")}</p></div>
+                <div className={`rounded border p-3 ${staffCounterOffer ? "border-gold/50 bg-gold/10" : "border-accent/40 bg-accent/5"}`}><p className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">{staffCounterOffer ? "Counteroffer" : "Expected terms"}</p><p className="mt-1 font-anton text-sm uppercase text-text-primary">{formatSalary(staffCounterOffer ?? salaryDemand)}</p></div>
+                <div className="rounded border border-border bg-bg p-3"><p className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Remaining budget</p><p className="mt-1 font-anton text-sm uppercase text-text-primary">{formatSalary(maximumNegotiationSalary)}</p></div>
+              </div>
+
+              {contractMessage && <p className="mx-5 mt-4 rounded border border-accent/30 bg-accent/5 px-3 py-2.5 font-space-mono text-[8px] font-bold uppercase leading-relaxed text-text-primary">{contractMessage}</p>}
+
+              <div className="flex items-center justify-end gap-3 px-5 py-5">
+                {staffCounterOffer && <button type="button" onClick={() => setOfferSalary(String(staffCounterOffer / 10_000_000))} className="rounded border border-gold bg-gold/10 px-4 py-2.5 font-space-mono text-[8px] font-bold uppercase text-gold">Match counter</button>}
+                <button type="button" onClick={requestNegotiationClose} className="rounded border border-border bg-surface px-4 py-2.5 font-space-mono text-[8px] font-bold uppercase text-text-primary">{negotiationEnded ? "Close" : negotiationHasStarted ? "Exit talks" : "Cancel"}</button>
+                <button type="button" onClick={submitContractOffer} disabled={negotiationEnded} className="rounded bg-accent px-5 py-2.5 font-space-mono text-[8px] font-bold uppercase text-white disabled:cursor-not-allowed disabled:opacity-40">{negotiationEnded ? "Negotiation ended" : "Submit offer"}</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showNegotiationExitWarning && (
+          <div className="fixed inset-0 z-[170] flex items-center justify-center bg-black/80 p-6 backdrop-blur-sm" role="presentation" onMouseDown={() => setShowNegotiationExitWarning(false)}>
+            <div role="alertdialog" aria-modal="true" aria-labelledby="exit-negotiation-title" className="w-full max-w-lg overflow-hidden rounded-lg border-2 border-warning bg-surface shadow-2xl" onMouseDown={(event) => event.stopPropagation()}>
+              <div className="border-b-2 border-warning/30 bg-warning/10 px-5 py-4">
+                <p className="font-space-mono text-[8px] font-bold uppercase tracking-[0.2em] text-warning">Active negotiation warning</p>
+                <h3 id="exit-negotiation-title" className="mt-1 font-anton text-2xl uppercase text-text-primary">Abandon talks with {member.full_name}?</h3>
+                <p className="mt-2 text-xs leading-relaxed text-text-secondary">This counts as a failed negotiation. They will become uninterested in further talks and cannot be approached again for seven days.</p>
+              </div>
+              <div className="flex justify-end gap-3 px-5 py-5">
+                <button type="button" onClick={() => setShowNegotiationExitWarning(false)} className="rounded border border-border px-4 py-2.5 font-space-mono text-[8px] font-bold uppercase text-text-primary">Continue negotiating</button>
+                <button type="button" onClick={abandonNegotiation} className="rounded bg-warning px-4 py-2.5 font-space-mono text-[8px] font-bold uppercase text-black">Fail negotiations</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showTerminationConfirm && isUserStaff && (
             <div className="fixed inset-0 z-[160] flex items-center justify-center bg-black/75 p-6 backdrop-blur-sm" role="presentation" onMouseDown={() => setShowTerminationConfirm(false)}>
               <div role="alertdialog" aria-modal="true" aria-labelledby="terminate-staff-title" className="w-full max-w-lg overflow-hidden rounded-lg border-2 border-danger bg-surface shadow-2xl" onMouseDown={(event) => event.stopPropagation()}>
                 <div className="flex items-start gap-4 border-b-2 border-danger/30 bg-danger/10 px-5 py-4">
@@ -581,66 +821,6 @@ function StaffProfileModal({
             </div>
           )}
 
-          {coachingAttributes.length > 0 && (
-            <section className="mb-5 rounded border border-border bg-bg p-4">
-              <h3 className="mb-4 border-b border-border pb-2 font-anton text-sm uppercase text-text-primary">Coaching attributes · 1–20</h3>
-              <div className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
-                {coachingAttributes.map(([attribute, value]) => (
-                  <div key={attribute} className="grid grid-cols-[8.5rem_minmax(0,1fr)_1.5rem] items-center gap-2">
-                    <span className="truncate font-space-mono text-[8px] font-bold uppercase text-text-secondary">{fieldLabel(attribute)}</span>
-                    <div className="h-1.5 overflow-hidden rounded-full bg-border">
-                      <div
-                        className={`h-full rounded-full ${value >= 17 ? "bg-success" : value >= 13 ? "bg-accent" : value >= 9 ? "bg-gold" : "bg-danger"}`}
-                        style={{ width: `${Math.max(0, Math.min(100, value * 5))}%` }}
-                      />
-                    </div>
-                    <span className="text-right font-space-mono text-[10px] font-bold text-text-primary">{value}</span>
-                  </div>
-                ))}
-              </div>
-            </section>
-          )}
-
-          {traits.length > 0 && (
-            <section className="mb-5 rounded border border-border bg-bg p-4">
-              <h3 className="mb-3 font-anton text-sm uppercase text-text-primary">Traits</h3>
-              <div className="flex flex-wrap gap-2">
-                {traits.map((trait) => <span key={trait} className="rounded border border-accent/40 bg-accent/10 px-2.5 py-1 font-space-mono text-[8px] font-bold uppercase tracking-wider text-text-primary">{fieldLabel(trait)}</span>)}
-              </div>
-            </section>
-          )}
-
-          {traitPreferences.length > 0 && (
-            <section className="mb-5 rounded border border-border bg-bg p-4">
-              <div className="mb-4 border-b border-border pb-2">
-                <h3 className="font-anton text-sm uppercase text-text-primary">Coaching preferences</h3>
-                <p className="mt-1 font-space-mono text-[7px] font-bold uppercase tracking-wider text-text-secondary">Behavioural tendencies · 0–100</p>
-              </div>
-              <div className="grid grid-cols-1 gap-x-7 gap-y-3 sm:grid-cols-2">
-                {traitPreferences.map(([preference, value]) => {
-                  const boundedValue = Math.max(0, Math.min(100, value));
-                  const barColor = boundedValue >= 80
-                    ? "bg-success"
-                    : boundedValue >= 65
-                      ? "bg-accent"
-                      : boundedValue >= 45
-                        ? "bg-gold"
-                        : "bg-danger";
-                  return (
-                    <div key={preference} className="grid grid-cols-[9.5rem_minmax(0,1fr)_2rem] items-center gap-2">
-                      <span className="truncate font-space-mono text-[8px] font-bold uppercase text-text-secondary" title={fieldLabel(preference)}>{fieldLabel(preference)}</span>
-                      <div className="h-2 overflow-hidden rounded-sm border border-border bg-surface shadow-inner">
-                        <div className={`h-full ${barColor} transition-[width] duration-300`} style={{ width: `${boundedValue}%` }} />
-                      </div>
-                      <span className="text-right font-space-mono text-[10px] font-bold tabular-nums text-text-primary">{boundedValue}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </section>
-          )}
-
-        </div>
       </div>
     </div>
   );
@@ -657,32 +837,38 @@ export default function StaffManagementPage({ teams, mode = "club" }: StaffManag
   const [minimumCA, setMinimumCA] = useState(0);
   const [minimumPA, setMinimumPA] = useState(0);
   const [clubLinkFilter, setClubLinkFilter] = useState("all");
-  const [demandSort, setDemandSort] = useState<"rating" | "demand_low" | "demand_high" | "affordable_first">("rating");
+  const [staffMarketSort, setStaffMarketSort] = useState<{
+    key: StaffMarketSortKey;
+    direction: StaffMarketSortDirection;
+  }>({ key: "role_fit", direction: "desc" });
   const [budgetFilter, setBudgetFilter] = useState<"all" | "within" | "over">("all");
+  const [interestFilter, setInterestFilter] = useState<"all" | "open_plus" | "interested_plus" | "very_interested">("all");
+  const [interestedOnly, setInterestedOnly] = useState(false);
   const [selectedLeagueTeamId, setSelectedLeagueTeamId] = useState<string | null>(null);
   const careerStaff = useGameStore((state) => state.careerStaff);
   const currentSeason = useGameStore((state) => state.currentSeason);
+  const currentDate = useGameStore((state) => state.currentDate);
   const careerSeasonArchives = useGameStore((state) => state.careerSeasonArchives);
   const userTeamId = useGameStore((state) => state.userTeamId);
   const initializeCareerStaff = useGameStore((state) => state.initializeCareerStaff);
 
   useEffect(() => {
-    const controller = new AbortController();
+    let active = true;
     setError(null);
 
-    fetch("/api/staff", { signal: controller.signal, cache: "no-store" })
-      .then(async (response) => {
-        const result = await response.json() as StaffResponse;
-        if (!response.ok) throw new Error(result.error || "Unable to load staff");
-        initializeCareerStaff(result.members, result.assignments);
-        setData(result);
+    loadStaffDirectory(reloadKey > 0)
+      .then((result) => {
+        if (!active) return;
+        const typedResult = result as unknown as StaffResponse;
+        initializeCareerStaff(typedResult.members, typedResult.assignments);
+        setData(typedResult);
       })
       .catch((fetchError) => {
-        if (fetchError instanceof DOMException && fetchError.name === "AbortError") return;
+        if (!active) return;
         setError(fetchError instanceof Error ? fetchError.message : "Unable to load staff");
       });
 
-    return () => controller.abort();
+    return () => { active = false; };
   }, [initializeCareerStaff, reloadKey]);
 
   const displayData = useMemo<StaffResponse | null>(() => {
@@ -695,6 +881,7 @@ export default function StaffManagementPage({ teams, mode = "club" }: StaffManag
       if (!contract) return member;
       return {
         ...member,
+        coaching_attributes: member.coaching_attributes ?? contract.coachingAttributes,
         ...contract.coachingAttributes,
         current_real_team_id: contract.teamId,
         primary_role: contract.primaryRole,
@@ -713,6 +900,8 @@ export default function StaffManagementPage({ teams, mode = "club" }: StaffManag
           ? "uncontracted"
           : contract.contractType === "rolling" ? "rolling" : "fixed_term",
         annual_salary: contract.annualSalary,
+        traits: (contract as any).traits ?? member.traits,
+        trait_preferences: (contract as any).traitPreferences ?? member.trait_preferences,
       };
     });
     const assignments = Object.values(careerStaff.contracts).flatMap((contract) => (
@@ -805,9 +994,36 @@ export default function StaffManagementPage({ teams, mode = "club" }: StaffManag
       })] as const;
     }),
   ), [careerStaff.contracts, contractedRecruitmentTargets, currentSeason, freeAgents, roleFilter]);
+  const recruitmentInterestById = useMemo(() => new Map(
+    [...freeAgents, ...contractedRecruitmentTargets].map((member) => {
+      const contract = careerStaff.contracts[member.id];
+      const offeredRole = roleFilter === "all" ? member.primary_role : roleFilter;
+      const currentAffinity = contract?.teamId ? getStaffClubAffinity(contract.affinityProfile, contract.teamId) : 0;
+      const destinationAffinity = getStaffClubAffinity(contract?.affinityProfile ?? member.affinity_profile, userTeamId);
+      const coolingDown = Boolean(careerStaff.negotiationCooldowns[member.id] && currentDate < careerStaff.negotiationCooldowns[member.id]);
+      return [member.id, calculateStaffRecruitmentInterest({
+        salaryExpectation: Number(member.salary_expectation ?? contract?.annualSalary ?? 0),
+        reputation: Number(member.reputation ?? contract?.reputation ?? 50),
+        roleRating: Number(member.role_ratings?.[offeredRole] ?? member.current_ability ?? 50),
+        roleCount: 1,
+        startSeason: currentSeason,
+        endSeason: currentSeason + 2,
+        poaching: contract?.status === "contracted",
+        loyalty: contract?.loyalty ?? Number(member.loyalty ?? 50),
+        ambition: contract?.ambition ?? Number(member.ambition ?? 50),
+        adaptability: contract?.adaptability ?? Number(member.adaptability ?? 50),
+        currentAffinity,
+        destinationAffinity,
+        remainingContractSeasons: contract?.endSeason == null ? 1 : Math.max(0, contract.endSeason - currentSeason + 1),
+      }, coolingDown)] as const;
+    }),
+  ), [careerStaff.contracts, careerStaff.negotiationCooldowns, contractedRecruitmentTargets, currentDate, currentSeason, freeAgents, roleFilter, userTeamId]);
   const filteredRecruitmentPool = useMemo(() => {
     const pool = marketScope === "free_agents" ? freeAgents : contractedRecruitmentTargets;
     const query = staffSearch.trim().toLowerCase();
+    const strongestClubLink = (member: StaffMember) => (member.affinity_profile?.clubs ?? [])
+      .filter((affinity) => Boolean(affinity.teamId) && affinity.teamId !== "UNSOLD")
+      .sort((left, right) => right.strength - left.strength)[0];
     return pool.filter((member) => {
       const currentAbility = member.current_ability ?? 0;
       const potentialAbility = member.potential_ability ?? 0;
@@ -816,26 +1032,85 @@ export default function StaffManagementPage({ teams, mode = "club" }: StaffManag
         || member.secondary_roles?.includes(roleFilter)
         || (member.role_ratings?.[roleFilter] ?? 0) >= 60;
       const demand = recruitmentDemandById.get(member.id) ?? 0;
+      const interest = recruitmentInterestById.get(member.id) ?? { score: 0, label: "Very reluctant" as const };
+      const failedTalks = Boolean(careerStaff.negotiationCooldowns[member.id] && currentDate < careerStaff.negotiationCooldowns[member.id]);
+      const interestMatches = interestFilter === "all"
+        || (interestFilter === "open_plus" && interest.score >= 50)
+        || (interestFilter === "interested_plus" && interest.score >= 65)
+        || (interestFilter === "very_interested" && interest.score >= 80);
       return (!query || member.full_name.toLowerCase().includes(query) || (member.known_as ?? "").toLowerCase().includes(query))
         && roleMatch
         && currentAbility >= minimumCA
         && potentialAbility >= minimumPA
         && (clubLinkFilter === "all" || getStaffClubAffinity(member.affinity_profile, clubLinkFilter) > 0)
+        && interestMatches
+        && (!interestedOnly || !failedTalks)
         && (budgetFilter === "all" || (budgetFilter === "within" ? demand <= recruitmentAvailableBudget : demand > recruitmentAvailableBudget));
     }).sort((left, right) => {
-      const demandDifference = (recruitmentDemandById.get(left.id) ?? 0) - (recruitmentDemandById.get(right.id) ?? 0);
-      if (demandSort === "demand_low") return demandDifference || left.full_name.localeCompare(right.full_name);
-      if (demandSort === "demand_high") return -demandDifference || left.full_name.localeCompare(right.full_name);
-      if (demandSort === "affordable_first") {
-        const leftAffordable = (recruitmentDemandById.get(left.id) ?? 0) <= recruitmentAvailableBudget;
-        const rightAffordable = (recruitmentDemandById.get(right.id) ?? 0) <= recruitmentAvailableBudget;
-        return Number(rightAffordable) - Number(leftAffordable) || demandDifference || left.full_name.localeCompare(right.full_name);
+      const leftDemand = recruitmentDemandById.get(left.id) ?? 0;
+      const rightDemand = recruitmentDemandById.get(right.id) ?? 0;
+      const leftRole = roleFilter === "all" ? left.primary_role : roleFilter;
+      const rightRole = roleFilter === "all" ? right.primary_role : roleFilter;
+      const leftLink = strongestClubLink(left);
+      const rightLink = strongestClubLink(right);
+      const leftContract = careerStaff.contracts[left.id];
+      const rightContract = careerStaff.contracts[right.id];
+      const leftInterest = recruitmentInterestById.get(left.id)?.score ?? 0;
+      const rightInterest = recruitmentInterestById.get(right.id)?.score ?? 0;
+      let comparison = 0;
+      switch (staffMarketSort.key) {
+        case "staff_member": comparison = left.full_name.localeCompare(right.full_name); break;
+        case "role_fit": comparison = (ratingForRole(left, leftRole) ?? -1) - (ratingForRole(right, rightRole) ?? -1); break;
+        case "ca": comparison = (left.current_ability ?? -1) - (right.current_ability ?? -1); break;
+        case "pa": comparison = (left.potential_ability ?? -1) - (right.potential_ability ?? -1); break;
+        case "demand": comparison = leftDemand - rightDemand; break;
+        case "interest": comparison = leftInterest - rightInterest; break;
+        case "club_link": comparison = (leftLink?.strength ?? -1) - (rightLink?.strength ?? -1)
+          || (leftLink?.teamId ?? "").localeCompare(rightLink?.teamId ?? ""); break;
+        case "budget": comparison = Number(leftDemand <= recruitmentAvailableBudget) - Number(rightDemand <= recruitmentAvailableBudget); break;
+        case "status": comparison = (marketScope === "free_agents" ? "Available" : teams.find((team) => team.id === leftContract?.teamId)?.shortName ?? "Contracted")
+          .localeCompare(marketScope === "free_agents" ? "Available" : teams.find((team) => team.id === rightContract?.teamId)?.shortName ?? "Contracted"); break;
       }
-      const leftRating = roleFilter === "all" ? left.current_ability ?? 0 : ratingForRole(left, roleFilter) ?? 0;
-      const rightRating = roleFilter === "all" ? right.current_ability ?? 0 : ratingForRole(right, roleFilter) ?? 0;
-      return rightRating - leftRating || left.full_name.localeCompare(right.full_name);
+      const directedComparison = staffMarketSort.direction === "asc" ? comparison : -comparison;
+      return directedComparison || left.full_name.localeCompare(right.full_name);
     });
-  }, [budgetFilter, clubLinkFilter, contractedRecruitmentTargets, demandSort, freeAgents, marketScope, minimumCA, minimumPA, recruitmentAvailableBudget, recruitmentDemandById, roleFilter, staffSearch]);
+  }, [budgetFilter, careerStaff.contracts, careerStaff.negotiationCooldowns, clubLinkFilter, contractedRecruitmentTargets, currentDate, freeAgents, interestedOnly, interestFilter, marketScope, minimumCA, minimumPA, recruitmentAvailableBudget, recruitmentDemandById, recruitmentInterestById, roleFilter, staffMarketSort, staffSearch, teams]);
+
+  const toggleStaffMarketSort = (key: StaffMarketSortKey) => {
+    setStaffMarketSort((current) => ({
+      key,
+      direction: current.key === key
+        ? current.direction === "asc" ? "desc" : "asc"
+        : key === "staff_member" || key === "status" ? "asc" : "desc",
+    }));
+  };
+
+  const staffMarketSortPreset = staffMarketSort.key === "role_fit" && staffMarketSort.direction === "desc"
+    ? "rating"
+    : staffMarketSort.key === "demand"
+      ? staffMarketSort.direction === "asc" ? "demand_low" : "demand_high"
+      : staffMarketSort.key === "budget" && staffMarketSort.direction === "desc"
+        ? "affordable_first"
+        : "column";
+
+  const StaffMarketSortHeader = ({ sortKey, label, align = "left" }: {
+    sortKey: StaffMarketSortKey;
+    label: string;
+    align?: "left" | "center" | "right";
+  }) => {
+    const active = staffMarketSort.key === sortKey;
+    const Icon = active ? staffMarketSort.direction === "asc" ? ArrowUp : ArrowDown : ArrowUpDown;
+    return (
+      <button
+        type="button"
+        onClick={() => toggleStaffMarketSort(sortKey)}
+        className={`flex items-center gap-1 hover:text-accent ${align === "center" ? "justify-center" : align === "right" ? "justify-end" : "justify-start"} ${active ? "text-accent" : ""}`}
+        aria-label={`Sort by ${label} ${active ? staffMarketSort.direction === "asc" ? "descending" : "ascending" : ""}`.trim()}
+      >
+        <span>{label}</span><Icon size={9} />
+      </button>
+    );
+  };
 
   const selectedMember = selectedStaffId ? memberById.get(selectedStaffId) : undefined;
   const selectedAssignment = displayData?.assignments.find((assignment) => (
@@ -953,41 +1228,78 @@ export default function StaffManagementPage({ teams, mode = "club" }: StaffManag
         <section className="flex min-h-0 flex-[1.12] flex-col overflow-hidden rounded-lg border-2 border-border bg-surface">
           <div className="flex shrink-0 items-center justify-between gap-4 border-b-2 border-border px-4 py-2.5">
             <div className="shrink-0"><p className="font-space-mono text-[7px] font-bold uppercase tracking-[0.18em] text-accent">Recruitment workspace</p><h3 className="font-anton text-base uppercase text-text-primary">Staff Market</h3></div>
-            <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2">
-              <div className="flex rounded border border-border bg-bg p-0.5">
-                <button type="button" onClick={() => setMarketScope("free_agents")} className={`px-2.5 py-1.5 font-space-mono text-[7px] font-bold uppercase ${marketScope === "free_agents" ? "bg-accent text-white" : "text-text-secondary"}`}>Free agents · {freeAgents.length}</button>
-                <button type="button" onClick={() => setMarketScope("contracted")} className={`px-2.5 py-1.5 font-space-mono text-[7px] font-bold uppercase ${marketScope === "contracted" ? "bg-accent text-white" : "text-text-secondary"}`}>Contracted · {contractedRecruitmentTargets.length}</button>
+            <div className="flex min-w-0 flex-1 flex-nowrap items-center justify-end gap-1.5">
+              <div className="flex shrink-0 overflow-hidden rounded border border-border bg-bg p-0.5">
+                <button type="button" onClick={() => setMarketScope("free_agents")} className={`whitespace-nowrap px-1.5 py-1 font-space-mono text-[6.5px] font-bold uppercase ${marketScope === "free_agents" ? "bg-accent text-white" : "text-text-secondary"}`}>Free agents · {freeAgents.length}</button>
+                <button type="button" onClick={() => setMarketScope("contracted")} className={`whitespace-nowrap px-1.5 py-1 font-space-mono text-[6.5px] font-bold uppercase ${marketScope === "contracted" ? "bg-accent text-white" : "text-text-secondary"}`}>Contracted · {contractedRecruitmentTargets.length}</button>
               </div>
-              <input value={staffSearch} onChange={(event) => setStaffSearch(event.target.value)} placeholder="Search staff" className="w-36 rounded border border-border bg-bg px-2.5 py-1.5 text-[10px] text-text-primary outline-none focus:border-accent" />
-              <select value={roleFilter} onChange={(event) => setRoleFilter(event.target.value)} className="w-40 rounded border border-border bg-bg px-2 py-1.5 font-space-mono text-[8px] text-text-primary"><option value="all">All roles</option>{ROLE_ORDER.map((role) => <option key={role} value={role}>{roleLabel(role)}</option>)}</select>
-              <select value={minimumCA} onChange={(event) => setMinimumCA(Number(event.target.value))} className="w-24 rounded border border-border bg-bg px-2 py-1.5 font-space-mono text-[8px] text-text-primary">{[0, 60, 65, 70, 75, 80, 85].map((value) => <option key={value} value={value}>CA {value ? `${value}+` : "Any"}</option>)}</select>
-              <select value={minimumPA} onChange={(event) => setMinimumPA(Number(event.target.value))} className="w-24 rounded border border-border bg-bg px-2 py-1.5 font-space-mono text-[8px] text-text-primary">{[0, 60, 65, 70, 75, 80, 85].map((value) => <option key={value} value={value}>PA {value ? `${value}+` : "Any"}</option>)}</select>
-              <select value={clubLinkFilter} onChange={(event) => setClubLinkFilter(event.target.value)} className="w-32 rounded border border-border bg-bg px-2 py-1.5 font-space-mono text-[8px] text-text-primary"><option value="all">Any club link</option>{orderedTeams.map((team) => <option key={team.id} value={team.id}>Linked to {team.shortName}</option>)}</select>
-              <select value={demandSort} onChange={(event) => setDemandSort(event.target.value as typeof demandSort)} className="w-32 rounded border border-border bg-bg px-2 py-1.5 font-space-mono text-[8px] text-text-primary"><option value="rating">Sort: Best fit</option><option value="demand_low">Demand: Low–high</option><option value="demand_high">Demand: High–low</option><option value="affordable_first">Within budget first</option></select>
-              <select value={budgetFilter} onChange={(event) => setBudgetFilter(event.target.value as typeof budgetFilter)} className="w-32 rounded border border-border bg-bg px-2 py-1.5 font-space-mono text-[8px] text-text-primary"><option value="all">Any affordability</option><option value="within">Within budget</option><option value="over">Over budget</option></select>
+              <input value={staffSearch} onChange={(event) => setStaffSearch(event.target.value)} placeholder="Search staff" className="w-[6.5rem] min-w-0 shrink rounded border border-border bg-bg px-2 py-1.5 text-[9px] text-text-primary outline-none focus:border-accent" />
+              <select value={roleFilter} onChange={(event) => setRoleFilter(event.target.value)} className="w-[7.75rem] min-w-0 shrink rounded border border-border bg-bg px-1.5 py-1.5 font-space-mono text-[7px] text-text-primary"><option value="all">All roles</option>{ROLE_ORDER.map((role) => <option key={role} value={role}>{roleLabel(role)}</option>)}</select>
+              <select value={minimumCA} onChange={(event) => setMinimumCA(Number(event.target.value))} className="w-[4.75rem] shrink rounded border border-border bg-bg px-1.5 py-1.5 font-space-mono text-[7px] text-text-primary">{[0, 60, 65, 70, 75, 80, 85].map((value) => <option key={value} value={value}>CA {value ? `${value}+` : "Any"}</option>)}</select>
+              <select value={minimumPA} onChange={(event) => setMinimumPA(Number(event.target.value))} className="w-[4.75rem] shrink rounded border border-border bg-bg px-1.5 py-1.5 font-space-mono text-[7px] text-text-primary">{[0, 60, 65, 70, 75, 80, 85].map((value) => <option key={value} value={value}>PA {value ? `${value}+` : "Any"}</option>)}</select>
+              <select value={clubLinkFilter} onChange={(event) => setClubLinkFilter(event.target.value)} className="w-[6.75rem] min-w-0 shrink rounded border border-border bg-bg px-1.5 py-1.5 font-space-mono text-[7px] text-text-primary"><option value="all">Any club link</option>{orderedTeams.map((team) => <option key={team.id} value={team.id}>Linked {team.shortName}</option>)}</select>
+              <select value={interestFilter} onChange={(event) => setInterestFilter(event.target.value as typeof interestFilter)} className="w-[7.25rem] min-w-0 shrink rounded border border-border bg-bg px-1.5 py-1.5 font-space-mono text-[7px] text-text-primary"><option value="all">Any interest</option><option value="open_plus">Open+</option><option value="interested_plus">Interested+</option><option value="very_interested">Very interested</option></select>
+              <label className="flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded border border-border bg-bg px-2 py-1.5 font-space-mono text-[7px] font-bold uppercase text-text-secondary">
+                <input type="checkbox" checked={interestedOnly} onChange={(event) => setInterestedOnly(event.target.checked)} className="size-3 accent-[var(--accent)]" /> Interested only
+              </label>
+              <select value={staffMarketSortPreset} onChange={(event) => {
+                const preset = event.target.value;
+                if (preset === "rating") setStaffMarketSort({ key: "role_fit", direction: "desc" });
+                if (preset === "demand_low") setStaffMarketSort({ key: "demand", direction: "asc" });
+                if (preset === "demand_high") setStaffMarketSort({ key: "demand", direction: "desc" });
+                if (preset === "affordable_first") setStaffMarketSort({ key: "budget", direction: "desc" });
+              }} className="w-[7rem] min-w-0 shrink rounded border border-border bg-bg px-1.5 py-1.5 font-space-mono text-[7px] text-text-primary"><option value="column" disabled>Sort: Column</option><option value="rating">Best fit</option><option value="demand_low">Demand ↑</option><option value="demand_high">Demand ↓</option><option value="affordable_first">Affordable first</option></select>
+              <select value={budgetFilter} onChange={(event) => setBudgetFilter(event.target.value as typeof budgetFilter)} className="w-[6.75rem] min-w-0 shrink rounded border border-border bg-bg px-1.5 py-1.5 font-space-mono text-[7px] text-text-primary"><option value="all">Any budget</option><option value="within">Within budget</option><option value="over">Over budget</option></select>
             </div>
           </div>
-          <div className="grid shrink-0 grid-cols-[minmax(11rem,1.4fr)_8rem_3rem_3rem_6rem_6rem_5rem_5.5rem] gap-3 border-b border-border bg-black/[0.02] px-4 py-1.5 font-space-mono text-[7px] font-bold uppercase text-text-secondary dark:bg-white/[0.02]"><span>Staff member</span><span>Role / fit</span><span className="text-center">CA</span><span className="text-center">PA</span><span className="text-right">Demand</span><span>Club link</span><span className="text-center">Budget</span><span className="text-right">Status</span></div>
-          <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="min-h-0 flex-1 overflow-auto">
+          <div className="sticky top-0 z-10 grid min-w-[94rem] shrink-0 grid-cols-[minmax(16rem,1.5fr)_15rem_4rem_4rem_16rem_11rem_9rem_7rem_8rem] gap-3 border-b border-border bg-surface px-4 py-1.5 font-space-mono text-[7px] font-bold uppercase text-text-secondary">
+            <StaffMarketSortHeader sortKey="staff_member" label="Staff member" />
+            <StaffMarketSortHeader sortKey="role_fit" label="Role / fit" />
+            <StaffMarketSortHeader sortKey="ca" label="CA" align="center" />
+            <StaffMarketSortHeader sortKey="pa" label="PA" align="center" />
+            <StaffMarketSortHeader sortKey="club_link" label="Club link" />
+            <StaffMarketSortHeader sortKey="interest" label="Interest" />
+            <StaffMarketSortHeader sortKey="demand" label="Demand" align="right" />
+            <StaffMarketSortHeader sortKey="budget" label="Budget" align="center" />
+            <StaffMarketSortHeader sortKey="status" label="Status" align="right" />
+          </div>
+          <div className="min-w-[94rem]">
             {filteredRecruitmentPool.map((member) => {
               const contract = careerStaff.contracts[member.id];
               const displayRole = roleFilter === "all" ? member.primary_role : roleFilter;
-              const strongestAffinity = [...(member.affinity_profile?.clubs ?? [])].sort((left, right) => right.strength - left.strength)[0];
+              const visibleAffinities = [...(member.affinity_profile?.clubs ?? [])
+                .filter((affinity) => Boolean(affinity.teamId) && affinity.teamId !== "UNSOLD")]
+                .sort((left, right) => right.strength - left.strength)
+                .slice(0, 3);
               const demand = recruitmentDemandById.get(member.id) ?? 0;
               const withinBudget = demand <= recruitmentAvailableBudget;
+              const interest = recruitmentInterestById.get(member.id) ?? { score: 0, label: "Very reluctant" as const };
+              const interestColor = interest.score >= 80 ? "#22c55e" : interest.score >= 65 ? "#3b82f6" : interest.score >= 50 ? "#facc15" : interest.score >= 35 ? "#f97316" : "#ef4444";
+              const cooldownUntil = careerStaff.negotiationCooldowns[member.id];
               return (
-                <button type="button" key={member.id} onClick={() => setSelectedStaffId(member.id)} className="grid w-full grid-cols-[minmax(11rem,1.4fr)_8rem_3rem_3rem_6rem_6rem_5rem_5.5rem] items-center gap-3 border-b border-hairline px-4 py-2 text-left hover:bg-accent/[0.04]">
-                  <span className="min-w-0"><span className="block truncate text-xs font-bold text-text-primary">{member.full_name}</span><span className="block truncate font-space-mono text-[6px] uppercase text-text-secondary">{String(member.country ?? "Unknown")} · Age {ageFromDateOfBirth(member.date_of_birth) ?? "–"}</span></span>
-                  <span className="truncate font-space-mono text-[7px] font-bold uppercase text-text-primary">{roleLabel(displayRole)} <strong className="text-accent">{ratingForRole(member, displayRole) ?? "–"}</strong></span>
+                <button type="button" key={member.id} onClick={() => setSelectedStaffId(member.id)} className="grid w-full grid-cols-[minmax(16rem,1.5fr)_15rem_4rem_4rem_16rem_11rem_9rem_7rem_8rem] items-center gap-3 border-b border-hairline px-4 py-2 text-left hover:bg-accent/[0.04]">
+                  <span className="min-w-0"><span className="block text-xs font-bold text-text-primary">{member.full_name}</span><span className="block font-space-mono text-[6px] uppercase text-text-secondary">{String(member.country ?? "Unknown")} · Age {ageFromDateOfBirth(member.date_of_birth) ?? "–"}</span></span>
+                  <span className="font-space-mono text-[7px] font-bold uppercase text-text-primary">{roleLabel(displayRole)} <strong className="text-accent">{ratingForRole(member, displayRole) ?? "–"}</strong></span>
                   <span className="text-center font-anton text-sm text-text-primary">{member.current_ability ?? "–"}</span><span className="text-center font-anton text-sm text-text-primary">{member.potential_ability ?? "–"}</span>
+                  <span className="flex flex-wrap gap-1 font-space-mono text-[7px] font-bold uppercase text-text-secondary">
+                    {visibleAffinities.length > 0
+                      ? visibleAffinities.map((affinity) => (
+                        <span key={affinity.teamId} className="whitespace-nowrap rounded border border-border bg-bg px-1.5 py-0.5">
+                          {affinity.teamId} · {affinity.strength}
+                        </span>
+                      ))
+                      : <span>None</span>}
+                  </span>
+                  <span className="min-w-0"><span className="block font-space-mono text-[7px] font-bold uppercase" style={{ color: interestColor }}>{interest.label}</span><span className="mt-1 block h-1.5 overflow-hidden rounded-sm border border-border bg-bg"><span className="block h-full" style={{ width: `${interest.score}%`, backgroundColor: interestColor }} /></span>{cooldownUntil && currentDate < cooldownUntil && <span className="mt-0.5 block whitespace-nowrap font-space-mono text-[6px] uppercase text-danger">Unavailable until {cooldownUntil}</span>}</span>
                   <span className="text-right font-space-mono text-[8px] font-bold text-text-primary">{formatSalary(demand)}</span>
-                  <span className="truncate font-space-mono text-[7px] font-bold uppercase text-text-secondary">{strongestAffinity ? `${strongestAffinity.teamId} · ${strongestAffinity.strength}` : "None"}</span>
                   <span className={`text-center font-space-mono text-[7px] font-bold uppercase ${withinBudget ? "text-success" : "text-danger"}`}>{withinBudget ? "Within" : "Over"}</span>
                   <span className={`text-right font-space-mono text-[7px] font-bold uppercase ${marketScope === "free_agents" ? "text-success" : "text-gold"}`}>{marketScope === "free_agents" ? "Available" : teams.find((team) => team.id === contract?.teamId)?.shortName ?? "Contracted"}</span>
                 </button>
               );
             })}
             {filteredRecruitmentPool.length === 0 && <div className="flex h-full min-h-20 items-center justify-center font-space-mono text-[9px] uppercase text-text-secondary">No staff match these filters</div>}
+          </div>
           </div>
         </section>
         {selectedMember && selectedAssignment && <StaffProfileModal member={selectedMember} assignment={selectedAssignment} team={selectedTeam} allowContractActions onClose={() => setSelectedStaffId(null)} />}

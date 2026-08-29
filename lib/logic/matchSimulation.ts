@@ -19,7 +19,7 @@ import { calculateCoachingStaffModifiers, deriveAITeamTactics } from "@/lib/logi
 import { appendRainAffectedResultLabel, hasRainReducedOvers } from "@/lib/logic/matchWeather";
 import type { Player, Team } from "@/lib/types";
 
-export const MATCH_SIMULATION_VERSION = 1;
+export const MATCH_SIMULATION_VERSION = 3;
 export const DEFAULT_CHASING_SCORING_BONUS = 0;
 export const HOME_ADVANTAGE_STRENGTH_BONUS = 0.5;
 export const POWERPLAY_BOUNDARY_MULTIPLIER = 1.06;
@@ -103,6 +103,9 @@ export interface MatchSimulationInput {
   teamBPlans: MatchTeamPlans;
   conditions: MatchGroundConditions;
   formAdjustments?: Record<string, number>;
+  battingFormAdjustments?: Record<string, number>;
+  bowlingFormAdjustments?: Record<string, number>;
+  seasonBattingStats?: Record<string, { runs: number; matches: number }>;
   recentScorecards?: Array<any>;
   stage?: string;
   isKnockout?: boolean;
@@ -463,7 +466,9 @@ interface InningsContext {
   skillEdge: number;
   performanceTilt: number;
   matchScoringEnvironment: number;
-  formAdjustments: Record<string, number>;
+  battingFormAdjustments: Record<string, number>;
+  bowlingFormAdjustments: Record<string, number>;
+  seasonBattingStats?: Readonly<Record<string, { runs: number; matches: number }>>;
   priorBattingBalls?: Readonly<Record<string, number>>;
   allowCollapseImpact: boolean;
   seed?: string;
@@ -1096,13 +1101,25 @@ export function getPlayableBowlingOptions(teamPlayers: readonly Player[]): Playe
       ].slice(0, Math.min(5, fallback.length));
 }
 
-const isBattingAllRounder = (player: Player | undefined) => Boolean(
-  player
-  && (
-    (player.role === "All-Rounder" && player.currentBatting >= 74 && player.currentBowling < 76)
-    || (player.currentBatting >= 78 && player.currentBowling < 76)
-  )
-);
+function battingAllRounderUsagePenalty(player: Player | undefined): number {
+  if (!player) return 0;
+  const isBattingLed = (
+    (player.role === "All-Rounder" && player.currentBatting >= 74)
+    || player.currentBatting >= 78
+  );
+  return isBattingLed ? 22 * clamp((82 - player.currentBowling) / 14, 0, 1) : 0;
+}
+
+/** Smoothly reduces the extra wicket threat of batting-led all-rounders. */
+export function battingAllRounderWicketRelief(player: Player | undefined): number {
+  if (!player) return 0;
+  const isBattingLed = (
+    (player.role === "All-Rounder" && player.currentBatting >= 74)
+    || player.currentBatting >= 78
+  );
+  if (!isBattingLed) return 0;
+  return 0.012 * clamp((82 - player.currentBowling) / 14, 0, 1);
+}
 
 const isSpinner = (player: Player | undefined) => Boolean(
   player
@@ -1553,10 +1570,11 @@ function chooseBowler(
       score -= 50;
     }
     // Selection penalty for batting all-rounders so primary specialist bowlers bowl first
-    if (isBattingAllRounder(player)) {
-      score -= 22;
+    const battingAllRounderPenalty = battingAllRounderUsagePenalty(player);
+    if (battingAllRounderPenalty > 0) {
+      score -= battingAllRounderPenalty;
       if (oversBowled >= 2) {
-        score -= 30; // Further penalty once they have completed 2 overs
+        score -= battingAllRounderPenalty * (30 / 22);
       }
     }
     // Frontline pacers get massive priority in overs 18-20
@@ -1815,10 +1833,14 @@ export function lowerRatedCenturyConversionAdjustment(
   battingRating: number,
   runs: number,
 ): { scoringFactor: number; wicketIncrease: number } {
-  if (battingRating >= 78 || runs < 85) {
+  if (runs < 85) {
     return { scoringFactor: 1, wicketIncrease: 0 };
   }
-  const ratingWeight = clamp((78 - battingRating) / 8, 0.6, 1);
+  // Conversion resistance fades smoothly instead of disappearing at a single
+  // rating threshold. Even elite batters retain a small amount of milestone
+  // pressure, while ordinary batters cannot become unrestricted at 78 CA.
+  const eliteRelief = clamp((battingRating - 74) / 18, 0, 1);
+  const ratingWeight = 1 - eliteRelief * 0.80;
   const milestoneProgress = clamp((runs - 85) / 15, 0, 1);
   return {
     scoringFactor: 1 - (0.04 + milestoneProgress * 0.06) * ratingWeight,
@@ -1826,14 +1848,104 @@ export function lowerRatedCenturyConversionAdjustment(
   };
 }
 
+export function sustainedPositiveFormCap(battingRating: number): number {
+  if (battingRating < 75) return 3;
+  if (battingRating < 80) return 4;
+  if (battingRating < 85) return 5;
+  if (battingRating < 90) return 6;
+  return 7;
+}
+
+export function expectedEliteSeasonRunsPerMatch(battingRating: number): number {
+  if (battingRating < 65) return 7;
+  if (battingRating < 70) return 12;
+  if (battingRating < 75) return 18;
+  if (battingRating < 78) return 28;
+  if (battingRating < 82) return 40;
+  if (battingRating < 86) return 50;
+  if (battingRating < 90) return 57;
+  return 62;
+}
+
+export function lowRatedBattingAdjustment(
+  battingRating: number,
+): { scoringFactor: number; wicketIncrease: number } {
+  const deficit = Math.max(0, 75 - battingRating);
+  return {
+    scoringFactor: clamp(1 - deficit * 0.12, 0.45, 1),
+    wicketIncrease: clamp(deficit * 0.007, 0, 0.04),
+  };
+}
+
+export function seasonBattingRegressionAdjustment(
+  battingRating: number,
+  stats?: { runs: number; matches: number },
+): number {
+  if (!stats || stats.matches < 4) return 0;
+  const runsPerMatch = stats.runs / Math.max(1, stats.matches);
+  const excess = runsPerMatch - expectedEliteSeasonRunsPerMatch(battingRating);
+  const productionRegression = excess > 0
+    ? clamp(
+        excess * (battingRating < 75 ? 0.34 : 0.11),
+        0,
+        battingRating < 75 ? 6 : 2.5,
+      )
+    : 0;
+  // Required quality rises continuously with the season total. This avoids
+  // milestone cliffs while making extreme production increasingly exclusive.
+  const requiredRating = stats.runs < 400
+    ? 0
+    : clamp(74 + (stats.runs - 400) * 0.04, 74, 93);
+  const qualificationRegression = Math.max(0, requiredRating - battingRating) * 0.65;
+  // Accumulated fatigue/form regression controls the far tail. It starts late
+  // enough not to suppress normal leading seasons, then increases smoothly so
+  // 900 remains exceptional and 1,000 requires repeated elite performances.
+  const extremeTailRegression = Math.max(0, stats.runs - 725) * 0.045;
+  const totalRegression = clamp(
+    productionRegression + qualificationRegression + extremeTailRegression,
+    0,
+    10,
+  );
+  return totalRegression === 0 ? 0 : -totalRegression;
+}
+
+export function extremeSeasonConversionAdjustment(
+  battingRating: number,
+  stats?: { runs: number; matches: number },
+): { scoringFactor: number; wicketIncrease: number } {
+  if (!stats || stats.matches < 6 || stats.runs < 725) {
+    return { scoringFactor: 1, wicketIncrease: 0 };
+  }
+  const progress = clamp((stats.runs - 725) / 175, 0, 1);
+  const eliteProtection = clamp((battingRating - 86) / 20, 0, 0.25);
+  const pressure = progress * (1 - eliteProtection);
+  return {
+    scoringFactor: 1 - pressure * 0.36,
+    wicketIncrease: pressure * 0.07,
+  };
+}
+
+export function abilityBasedConversionAdjustment(
+  battingRating: number,
+  runs: number,
+): { scoringFactor: number; wicketIncrease: number } {
+  if (runs < 30) return { scoringFactor: 1, wicketIncrease: 0 };
+  const nonEliteWeight = clamp((90 - battingRating) / 15, 0, 1);
+  const inningsProgress = clamp((runs - 30) / 50, 0, 1);
+  return {
+    scoringFactor: 1 - nonEliteWeight * (0.01 + inningsProgress * 0.05),
+    wicketIncrease: nonEliteWeight * (0.001 + inningsProgress * 0.005),
+  };
+}
+
 export function lowerRatedBowlingHaulMultiplier(
   bowlingRating: number,
   creditedWickets: number,
 ): number {
-  if (bowlingRating >= 77 || creditedWickets < 4) return 1;
-  const ratingDeficit = clamp((77 - bowlingRating) / 10, 0, 1);
-  const baseMultiplier = creditedWickets === 4 ? 0.72 : 0.58;
-  return clamp(baseMultiplier - ratingDeficit * 0.12, 0.42, 0.72);
+  if (creditedWickets < 4) return 1;
+  const fullHaulCredibility = clamp((bowlingRating - 72) / 16, 0, 1);
+  const lowAbilityMultiplier = creditedWickets === 4 ? 0.62 : 0.48;
+  return lowAbilityMultiplier + (1 - lowAbilityMultiplier) * fullHaulCredibility;
 }
 
 function isPartTimeKeeper(player: Player | undefined): boolean {
@@ -2061,13 +2173,17 @@ export function getEffectiveBowlingRating(
   return rating;
 }
 
-export function getSeasonalPlayerForm(playerId: string, seed?: string): number {
+export function getSeasonalPlayerForm(
+  playerId: string,
+  seed?: string,
+  discipline: "batting" | "bowling" = "batting",
+): number {
   if (!seed) return 0;
   // Match seeds are `${season}:${save-specific fixture seed}:${fixture}`.
   // Keeping the first two components makes form stable within one season and
   // different across separate careers.
   const seasonAndSaveKey = seed.split(":").slice(0, 2).join(":");
-  const hashStr = `${seasonAndSaveKey}:${playerId}:season_form_v3`;
+  const hashStr = `${seasonAndSaveKey}:${playerId}:${discipline}:season_form_v4`;
   let hash = 0;
   for (let index = 0; index < hashStr.length; index += 1) {
     hash = (hash << 5) - hash + hashStr.charCodeAt(index);
@@ -2085,9 +2201,10 @@ export function capSeasonalFormAverages(
   playerIds: readonly string[],
   playerGroups: readonly (readonly string[])[],
   seed?: string,
+  discipline: "batting" | "bowling" = "batting",
 ): Map<string, number> {
   const adjustedSeasonalForm = new Map(
-    playerIds.map((playerId) => [playerId, getSeasonalPlayerForm(playerId, seed)]),
+    playerIds.map((playerId) => [playerId, getSeasonalPlayerForm(playerId, seed, discipline)]),
   );
   playerGroups.forEach((group) => {
     const ids = Array.from(new Set(group)).filter((playerId) => adjustedSeasonalForm.has(playerId));
@@ -2111,24 +2228,47 @@ function createPlayerLuck(
   players: Record<string, Player>,
   formAdjustments: Record<string, number>,
   rng: SimulationRandom,
+  discipline: "batting" | "bowling",
+  seasonBattingStats?: Readonly<Record<string, { runs: number; matches: number }>>,
   seed?: string,
 ): Map<string, number> {
-  const adjustedSeasonalForm = capSeasonalFormAverages(playerIds, playerGroups, seed);
+  const adjustedSeasonalForm = capSeasonalFormAverages(playerIds, playerGroups, seed, discipline);
   return new Map(playerIds.map((playerId) => {
     const player = players[playerId];
     if (!player) return [playerId, 0];
     const ageConsistency = player.age >= 25 && player.age <= 33 ? 0.85 : 1.15;
     
     const seasonalForm = adjustedSeasonalForm.get(playerId) ?? 0;
+    const baseRating = discipline === "batting" ? player.currentBatting : player.currentBowling;
+    const recentForm = formAdjustments[playerId] ?? 0;
+    const positivePersistence = player.age <= 33
+      ? 1
+      : player.age <= 37
+        ? 0.94
+        : player.age <= 40
+          ? 0.86
+          : 0.78;
+    const sustainedForm = seasonalForm + recentForm;
+    const cappedSustainedForm = sustainedForm > 0
+      ? Math.min(sustainedForm * positivePersistence, sustainedPositiveFormCap(baseRating))
+      : Math.max(-6, sustainedForm);
+    const seasonRegression = discipline === "batting"
+      ? seasonBattingRegressionAdjustment(baseRating, seasonBattingStats?.[playerId])
+      : 0;
 
-    const standardDeviation = clamp(3.4 * ageConsistency, 1.8, 4.5);
+    const standardDeviation = clamp(2.8 * ageConsistency, 1.6, 3.8);
     const matchLuck = rng.gaussian() * standardDeviation;
-    const totalLuck = clamp(matchLuck + seasonalForm + (formAdjustments[playerId] ?? 0), -11, 11);
+    const totalLuck = clamp(matchLuck + cappedSustainedForm + seasonRegression, -8, 8);
     return [playerId, totalLuck];
   }));
 }
 
-export function derivePlayerFormAdjustments(
+export interface DisciplineFormAdjustments {
+  batting: Record<string, number>;
+  bowling: Record<string, number>;
+}
+
+export function derivePlayerDisciplineFormAdjustments(
   recentScorecards: Array<{
     inningsA?: {
       batting: Array<{ id: string; runs: number; balls: number }>;
@@ -2139,7 +2279,7 @@ export function derivePlayerFormAdjustments(
       bowling: Array<{ id: string; overs: number; runsConceded: number; wickets: number }>;
     };
   }>,
-): Record<string, number> {
+): DisciplineFormAdjustments {
   const playerBattingScores = new Map<string, Array<{ runs: number; balls: number }>>();
   const playerBowlingScores = new Map<string, Array<{ overs: number; runsConceded: number; wickets: number }>>();
 
@@ -2157,7 +2297,8 @@ export function derivePlayerFormAdjustments(
     });
   });
 
-  const adjustments: Record<string, number> = {};
+  const battingAdjustments: Record<string, number> = {};
+  const bowlingAdjustments: Record<string, number> = {};
 
   playerBattingScores.forEach((performances, playerId) => {
     const recent = performances.slice(-3);
@@ -2178,7 +2319,7 @@ export function derivePlayerFormAdjustments(
     if (hotCount >= 2) mod += 3.5;
     else if (coldCount >= 2) mod -= 3.5;
 
-    adjustments[playerId] = (adjustments[playerId] ?? 0) + mod;
+    battingAdjustments[playerId] = mod;
   });
 
   playerBowlingScores.forEach((performances, playerId) => {
@@ -2201,10 +2342,10 @@ export function derivePlayerFormAdjustments(
     if (hotCount >= 2) mod += 3.5;
     else if (coldCount >= 2) mod -= 3.5;
 
-    adjustments[playerId] = clamp((adjustments[playerId] ?? 0) + mod, -6.0, 6.0);
+    bowlingAdjustments[playerId] = clamp(mod, -6.0, 6.0);
   });
 
-  return adjustments;
+  return { batting: battingAdjustments, bowling: bowlingAdjustments };
 }
 
 function shouldUseCollapseBatter(
@@ -2822,12 +2963,24 @@ function simulateInnings(context: InningsContext): MatchInnings {
     ...bowling.finalXI,
     ...batting.plan.impactSubs,
   ]));
-  const playerLuck = createPlayerLuck(
+  const playerBattingLuck = createPlayerLuck(
     allParticipantIds,
     [[...batting.battingOrder, ...batting.plan.impactSubs], bowling.finalXI],
     players,
-    context.formAdjustments,
+    context.battingFormAdjustments,
     rng,
+    "batting",
+    context.seasonBattingStats,
+    context.seed,
+  );
+  const playerBowlingLuck = createPlayerLuck(
+    allParticipantIds,
+    [[...batting.battingOrder, ...batting.plan.impactSubs], bowling.finalXI],
+    players,
+    context.bowlingFormAdjustments,
+    rng,
+    "bowling",
+    undefined,
     context.seed,
   );
   const battingEntries = new Map<string, MutableBattingEntry>();
@@ -3071,7 +3224,7 @@ function simulateInnings(context: InningsContext): MatchInnings {
 
       const bowlingRating = (
         getEffectiveBowlingRating(bowler, rng, context.seed)
-        + (playerLuck.get(bowler.id) ?? 0)
+        + (playerBowlingLuck.get(bowler.id) ?? 0)
         + bowlingPitchAdjustment(bowler, conditions.pitch)
         - fourthSpellOverFatigue
         - powerplayAllRounderFatigue(
@@ -3088,7 +3241,7 @@ function simulateInnings(context: InningsContext): MatchInnings {
 
       const battingRating = (
         getEffectiveBattingRating(striker, rng, context.seed)
-        + (playerLuck.get(striker.id) ?? 0)
+        + (playerBattingLuck.get(striker.id) ?? 0)
         + battingPitchAdjustment(striker, conditions.pitch)
         + setBonus
         - playerPositionPenalty(striker, battingPosition)
@@ -3351,7 +3504,7 @@ function simulateInnings(context: InningsContext): MatchInnings {
           tailenderWicketModifier += 0.007 * (1 - lowerOrderCompetence * 0.70);
         }
 
-        const individualScoreScoringFactor = strikerEntry.runs >= 120
+        const baseIndividualScoreScoringFactor = strikerEntry.runs >= 120
           ? 0.44
           : strikerEntry.runs >= 100
             ? 0.58
@@ -3364,6 +3517,10 @@ function simulateInnings(context: InningsContext): MatchInnings {
                   : strikerEntry.runs >= 30
                     ? 0.96
                     : 1;
+        const eliteConversionRelief = clamp((striker.currentBatting - 84) / 8, 0, 0.45)
+          * clamp((80 - strikerEntry.runs) / 20, 0, 1);
+        const individualScoreScoringFactor = 1
+          - (1 - baseIndividualScoreScoringFactor) * (1 - eliteConversionRelief);
         const ballsRemaining = Math.max(1, 120 - legalBalls);
         const projectedScore = legalBalls > 0
           ? runs / legalBalls * 120
@@ -3414,6 +3571,15 @@ function simulateInnings(context: InningsContext): MatchInnings {
           striker.currentBatting,
           strikerEntry.runs,
         );
+        const abilityConversionAdjustment = abilityBasedConversionAdjustment(
+          striker.currentBatting,
+          strikerEntry.runs,
+        );
+        const lowRatedAdjustment = lowRatedBattingAdjustment(striker.currentBatting);
+        const extremeSeasonAdjustment = extremeSeasonConversionAdjustment(
+          striker.currentBatting,
+          context.seasonBattingStats?.[striker.id],
+        );
         const dotBallPressure = dotBallPressureAdjustment(consecutiveDotBalls);
         const aggressionProfile = battingAggressionScoringProfile(striker.battingAggression ?? 65);
         const runningPressure = groundRunningPressure(conditions);
@@ -3423,12 +3589,15 @@ function simulateInnings(context: InningsContext): MatchInnings {
           * inningsEnvironment
           // Ratings remain decisive, but an uncapped linear multiplier made a
           // strong XI compound the same advantage into unrealistic season NRR.
-          * (1 + Math.sign(skillDelta) * Math.pow(Math.abs(skillDelta), 0.9) * 0.006)
+          * (1 + Math.sign(skillDelta) * Math.pow(Math.abs(skillDelta), 0.95) * 0.008)
           * (1 + context.skillEdge)
           * (1 + context.performanceTilt)
           * individualScoreScoringFactor
           * milestoneScoringFactor
           * centuryConversionAdjustment.scoringFactor
+          * abilityConversionAdjustment.scoringFactor
+          * lowRatedAdjustment.scoringFactor
+          * extremeSeasonAdjustment.scoringFactor
           * phaseRunModifier
           * matchupRunModifier
           * rrrRunModifier
@@ -3462,7 +3631,7 @@ function simulateInnings(context: InningsContext): MatchInnings {
           0,
           0.5,
         ) * 0.026 * chaseCollapseResponse;
-        const individualScoreWicketPressure = strikerEntry.runs >= 120
+        const baseIndividualScoreWicketPressure = strikerEntry.runs >= 120
           ? 0.075
           : strikerEntry.runs >= 100
             ? 0.045
@@ -3475,6 +3644,8 @@ function simulateInnings(context: InningsContext): MatchInnings {
                   : strikerEntry.runs >= 30
                     ? 0.0035
                     : 0;
+        const individualScoreWicketPressure = baseIndividualScoreWicketPressure
+          * (1 - eliteConversionRelief * 0.65);
         const battingCaptain = players[batting.plan.captainId ?? ""];
         const battingCaptaincy = battingCaptain?.captaincy ?? 50;
         const captaincyPressureDampener = isKnockoutMatch
@@ -3501,11 +3672,15 @@ function simulateInnings(context: InningsContext): MatchInnings {
               0.02,
             )
           : 0;
-        const battingAllRounderRelief = isBattingAllRounder(bowler) ? 0.012 : 0;
+        const battingAllRounderRelief = battingAllRounderWicketRelief(bowler);
         const wicketProbability = clamp(
           0.038
-          + dampedRatingDiff * 0.00115
-          + Math.max(0, intent) * 0.035
+          + dampedRatingDiff * 0.00155
+          // Positive intent must buy enough scoring upside to define an
+          // attacking identity. The risk remains meaningful, but the former
+          // 0.035 slope made aggressive plans lose wickets so quickly that
+          // they scored less than cautious plans over a full innings.
+          + Math.max(0, intent) * 0.010
           + tacticalBowling.wicket
           + (fieldingRating - 75) * 0.00045
           + collapseWicketPressure
@@ -3525,6 +3700,9 @@ function simulateInnings(context: InningsContext): MatchInnings {
           - battingAllRounderRelief
           + individualScoreWicketPressure
           + centuryConversionAdjustment.wicketIncrease
+          + abilityConversionAdjustment.wicketIncrease
+          + lowRatedAdjustment.wicketIncrease
+          + extremeSeasonAdjustment.wicketIncrease
           + (fieldInfluence?.wicketAdjustment ?? 0)
           - Math.min(0, intent) * -0.014,
           0.018,
@@ -3810,12 +3988,17 @@ function simulateInnings(context: InningsContext): MatchInnings {
         const requestedBatterId = context.playableDecisions?.batterByWicket[
           `${context.inningsNumber}-${wickets}`
         ];
-        const requestedBatterIndex = requestedBatterId
-          ? batting.battingOrder.indexOf(requestedBatterId, nextBatterIndex)
-          : -1;
-        if (requestedBatterIndex >= nextBatterIndex) {
-          const [requestedBatter] = batting.battingOrder.splice(requestedBatterIndex, 1);
-          batting.battingOrder.splice(nextBatterIndex, 0, requestedBatter);
+        if (requestedBatterId) {
+          if (!batting.battingOrder.includes(requestedBatterId)) {
+            if (batting.finalXI.includes(requestedBatterId)) {
+              batting.battingOrder.push(requestedBatterId);
+            }
+          }
+          const requestedBatterIndex = batting.battingOrder.indexOf(requestedBatterId);
+          if (requestedBatterIndex >= 0) {
+            const [requestedBatter] = batting.battingOrder.splice(requestedBatterIndex, 1);
+            batting.battingOrder.splice(nextBatterIndex, 0, requestedBatter);
+          }
         }
         const nextBatterId = batting.battingOrder[nextBatterIndex];
         nextBatterIndex += 1;
@@ -4134,12 +4317,20 @@ function simulateMatchToCompletion(
   );
 
   const derivedForm = input.recentScorecards && input.recentScorecards.length > 0
-    ? derivePlayerFormAdjustments(input.recentScorecards)
-    : {};
-
-  const activeFormAdjustments = {
-    ...derivedForm,
+    ? derivePlayerDisciplineFormAdjustments(input.recentScorecards)
+    : { batting: {}, bowling: {} };
+  // `formAdjustments` remains a compatibility fallback for older callers. New
+  // callers should supply discipline-specific maps so one skill cannot inflate
+  // the other for all-rounders.
+  const activeBattingFormAdjustments = {
+    ...derivedForm.batting,
     ...(input.formAdjustments ?? {}),
+    ...(input.battingFormAdjustments ?? {}),
+  };
+  const activeBowlingFormAdjustments = {
+    ...derivedForm.bowling,
+    ...(input.formAdjustments ?? {}),
+    ...(input.bowlingFormAdjustments ?? {}),
   };
 
   const firstInnings = simulateInnings({
@@ -4154,7 +4345,9 @@ function simulateMatchToCompletion(
     skillEdge: strengthEdge,
     performanceTilt: performanceEdge,
     matchScoringEnvironment,
-    formAdjustments: activeFormAdjustments,
+    battingFormAdjustments: activeBattingFormAdjustments,
+    bowlingFormAdjustments: activeBowlingFormAdjustments,
+    seasonBattingStats: input.seasonBattingStats,
     allowCollapseImpact: battingFirstTeam.id !== userTeamId,
     seed: input.seed,
     stage: input.stage,
@@ -4242,7 +4435,9 @@ function simulateMatchToCompletion(
     skillEdge: -strengthEdge,
     performanceTilt: -performanceEdge,
     matchScoringEnvironment,
-    formAdjustments: activeFormAdjustments,
+    battingFormAdjustments: activeBattingFormAdjustments,
+    bowlingFormAdjustments: activeBowlingFormAdjustments,
+    seasonBattingStats: input.seasonBattingStats,
     priorBattingBalls: Object.fromEntries(
       firstInnings.batting.map((entry) => [entry.id, entry.balls]),
     ),
@@ -4615,7 +4810,7 @@ export function createIntelligentAiTactics(
   staffState?: CareerStaffState | null,
 ): TeamTactics {
   if (staffState && staffState.initialized) {
-    return deriveAITeamTactics(team.id, staffState, pitch);
+    return deriveAITeamTactics(team, staffState, pitch);
   }
   const bowlingSurface = (
     pitch.favours.includes("spin-bowlers")

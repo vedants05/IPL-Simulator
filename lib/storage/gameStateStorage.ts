@@ -68,6 +68,75 @@ async function deleteIndexedValue(name: string): Promise<void> {
   }
 }
 
+type PendingWrite = {
+  value: string;
+  waiters: Array<{ resolve: () => void; reject: (error: unknown) => void }>;
+  scheduled: boolean;
+  running: boolean;
+};
+
+const pendingWrites = new Map<string, PendingWrite>();
+
+async function persistValue(name: string, value: string): Promise<void> {
+  if (await writeIndexedValue(name, value)) {
+    removeLegacyValue(name);
+  } else if (typeof localStorage !== "undefined") {
+    localStorage.setItem(name, value);
+  }
+}
+
+function schedulePersistedWrite(name: string, pending: PendingWrite): void {
+  if (pending.scheduled || pending.running) return;
+  pending.scheduled = true;
+  globalThis.setTimeout(() => {
+    pending.scheduled = false;
+    if (pending.running || pending.waiters.length === 0) return;
+
+    const value = pending.value;
+    const waiters = pending.waiters.splice(0);
+    pending.running = true;
+    void persistValue(name, value)
+      .catch((error) => {
+        try {
+          if (typeof localStorage !== "undefined") localStorage.setItem(name, value);
+        } catch (fallbackError) {
+          waiters.forEach((waiter) => waiter.reject(fallbackError ?? error));
+          return false;
+        }
+        return true;
+      })
+      .then((saved) => {
+        if (saved !== false) waiters.forEach((waiter) => waiter.resolve());
+      })
+      .finally(() => {
+        pending.running = false;
+        if (pending.waiters.length > 0) {
+          // Writes received during the transaction are represented by only the
+          // newest string. Every caller resolves once that newest state lands.
+          schedulePersistedWrite(name, pending);
+        } else if (!pending.scheduled) {
+          pendingWrites.delete(name);
+        }
+      });
+  }, 0);
+}
+
+/** Keep at most one in-flight and one pending serialized Zustand save. */
+function queuePersistedWrite(name: string, value: string): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const pending = pendingWrites.get(name) ?? {
+      value,
+      waiters: [],
+      scheduled: false,
+      running: false,
+    };
+    pending.value = value;
+    pending.waiters.push({ resolve, reject });
+    pendingWrites.set(name, pending);
+    schedulePersistedWrite(name, pending);
+  });
+}
+
 function readLegacyValue(name: string): string | null {
   if (typeof localStorage === "undefined") return null;
   try {
@@ -115,15 +184,7 @@ export const gameStateStorage: StateStorage = {
   },
 
   setItem: async (name, value) => {
-    try {
-      if (await writeIndexedValue(name, value)) {
-        removeLegacyValue(name);
-        return;
-      }
-    } catch {
-      // Fall back for browsers that block IndexedDB.
-    }
-    if (typeof localStorage !== "undefined") localStorage.setItem(name, value);
+    await queuePersistedWrite(name, value);
   },
 
   removeItem: async (name) => {

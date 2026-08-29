@@ -2,6 +2,7 @@ import type { TeamTactics, TeamStrategy } from "@/lib/logic/teamTactics";
 import { createTeamTactics } from "@/lib/logic/teamTactics";
 import type { CareerStaffState, CareerStaffContract } from "@/lib/logic/staffContracts";
 import type { CuratorPitch } from "@/lib/data/pitchCurator";
+import type { Team } from "@/lib/types";
 
 export interface CoachingStaffModifiers {
   // Strategy Synergy Modifier: -0.03 to +0.03 (subtle execution multiplier)
@@ -84,7 +85,7 @@ export function calculateCoachingStaffModifiers(
 
   // 1. Strategy Alignment (Head Coach preferred_team_strategy vs Active Tactic Preset)
   if (headCoach) {
-    const rawStrategy = String((headCoach as unknown as Record<string, unknown>).preferred_team_strategy ?? "").toLowerCase();
+    const rawStrategy = (headCoach.preferredTeamStrategy ?? "").toLowerCase();
     const activePreset = tactics.preset.toLowerCase();
 
     const isAggressiveCoach = rawStrategy.includes("attack") || rawStrategy.includes("aggressive");
@@ -166,25 +167,31 @@ export function calculateCoachingStaffModifiers(
  * Derives AI Team Tactics based on their active Head Coach's strategy, philosophy, and tactical knowledge.
  */
 export function deriveAITeamTactics(
-  teamId: string,
+  team: Pick<Team, "id" | "aiPersonality">,
   staffState: CareerStaffState | null | undefined,
   pitch: CuratorPitch
 ): TeamTactics {
-  const defaultTactics = createTeamTactics("Balanced");
+  const fallbackPreset: TeamStrategy = team.aiPersonality === "Aggressive"
+    ? "Ultra Aggressive"
+    : team.aiPersonality === "Conservative"
+      ? "Anchor & Explode"
+      : "Balanced";
+  const defaultTactics = createTeamTactics(fallbackPreset);
 
   if (!staffState) return defaultTactics;
 
-  const teamContracts = getTeamStaffContracts(teamId, staffState);
+  const teamContracts = getTeamStaffContracts(team.id, staffState);
   const headCoach = findStaffByRole(teamContracts, "head_coach") || findStaffByRole(teamContracts, "coach");
 
   if (!headCoach) return defaultTactics;
 
-  const rawStrategy = String((headCoach as unknown as Record<string, unknown>).preferred_team_strategy ?? "").toLowerCase();
-  const rawPhilosophy = String((headCoach as unknown as Record<string, unknown>).coaching_philosophy ?? "").toLowerCase();
+  const rawStrategy = (headCoach.preferredTeamStrategy ?? "").toLowerCase();
+  const rawPhilosophy = (headCoach.coachingPhilosophy ?? "").toLowerCase();
   const tacticalKnowledge = headCoach.coachingAttributes?.tactical_knowledge ?? 10;
+  const preferences = headCoach.traitPreferences ?? {};
 
   // 1. Determine Preset Strategy
-  let preset: TeamStrategy = "Balanced";
+  let preset: TeamStrategy = fallbackPreset;
   if (rawStrategy.includes("attack") || rawStrategy.includes("aggressive")) {
     preset = "Ultra Aggressive";
   } else if (rawStrategy.includes("intensity")) {
@@ -213,6 +220,27 @@ export function deriveAITeamTactics(
   } else if (rawPhilosophy.includes("developmental")) {
     tactics.batting.collapseResponse = "stabilise";
     tactics.batting.chaseApproach = "stay-with-rate";
+  }
+
+  // Preferences only select existing tactics; they do not add another raw
+  // performance multiplier, keeping the total coaching effect bounded.
+  if ((preferences.batting_aggression ?? 50) >= 72) {
+    tactics.batting.powerplay = "attack";
+    tactics.batting.death = "all-out";
+  } else if ((preferences.batting_aggression ?? 50) <= 38) {
+    tactics.batting.powerplay = "cautious";
+  }
+  if ((preferences.bowling_attack_bias ?? 50) >= 72) {
+    tactics.bowling.field = "attacking";
+    tactics.bowling.death = "wicket-hunt";
+  }
+
+  // Tactical knowledge controls adaptation breadth, not a direct strength
+  // bonus. Average coaches retain their identity; elite coaches read surfaces.
+  if (tacticalKnowledge >= 13) {
+    tactics.tossPreference = "conditions";
+    if (pitch.expectedFirstInningsScore.max >= 200) tactics.batting.death = "all-out";
+    if (pitch.expectedFirstInningsScore.max <= 175) tactics.batting.collapseResponse = "stabilise";
   }
 
   // 3. Pitch Adaptation for High Tactical Knowledge (16+)

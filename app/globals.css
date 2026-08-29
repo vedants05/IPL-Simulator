@@ -25,6 +25,11 @@
   --team-bid-muted: #9aa4bc;
   --team-cta-bg: #1d55c4;
   --team-cta-text: #ffffff;
+  --accent: #ffc400;
+  --accent-hover: #000000;
+  --retro-nav-ink: #f4ecd0;
+  --retro-nav-muted: #c4c5a9;
+  --app-pattern-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='96' viewBox='0 0 96 96'%3E%3Cg fill='none' stroke='%231d55c4' stroke-width='1.4' stroke-linecap='round' opacity='.10'%3E%3Cpath d='M15 7v16M7 15h16' transform='rotate(-24 15 15)'/%3E%3Cpath d='M70 61v14M63 68h14' transform='rotate(-24 70 68)'/%3E%3C/g%3E%3C/svg%3E");
 
   /* neutral base */
   --base-bg: #f4f1ea;
@@ -46,6 +51,7 @@
   --app-base-bg: #0b0d13;
   --chrome-nav-active: #e5e7eb;
   --chrome-nav-muted: #9ca3af;
+  --app-pattern-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='96' viewBox='0 0 96 96'%3E%3Cg fill='none' stroke='%23849bd6' stroke-width='1.4' stroke-linecap='round' opacity='.13'%3E%3Cpath d='M15 7v16M7 15h16' transform='rotate(-24 15 15)'/%3E%3Cpath d='M70 61v14M63 68h14' transform='rotate(-24 70 68)'/%3E%3C/g%3E%3C/svg%3E");
 
   /* neutral base */
   --base-bg: #0f111a;
@@ -60,11 +66,116 @@
   --auction-status-border: #222638;
 }
 
+/* Retro is deliberately a skin, not a component redesign. It changes the
+   shared palette and adds a quiet period texture without touching layout,
+   typography metrics, radii, shadows or interaction timings. */
+.retro {
+  color-scheme: light;
+  --background: #d8d0b6;
+  --foreground: #172019;
+  --app-base-bg: #d2cab0;
+  --chrome-nav-active: var(--retro-nav-ink);
+  --chrome-nav-muted: var(--retro-nav-muted);
+  --base-bg: #d8d0b6;
+  --surface: #e3dcc3;
+  --surface2: #f2ecd5;
+  --ink: #172019;
+  --hairline: #9b9479;
+  --text-secondary: #5f604f;
+  --marquee: #efe1a5;
+  --modal-footer: #cbc2a5;
+  --auction-status-bg: #14372f;
+  --auction-status-border: #c99634;
+  --accent: #c68f27;
+  --accent-hover: #765019;
+  --app-pattern-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='96' viewBox='0 0 96 96'%3E%3Cg fill='none' stroke='%235e532d' stroke-width='1.4' stroke-linecap='round' opacity='.17'%3E%3Cpath d='M15 7v16M7 15h16' transform='rotate(-24 15 15)'/%3E%3Cpath d='M70 61v14M63 68h14' transform='rotate(-24 70 68)'/%3E%3C/g%3E%3C/svg%3E");
+}
+
+/* Neutral, contrast-safe fallback while the selected club palette hydrates. */
+.team {
+  color-scheme: dark;
+  --background: #0d1621;
+  --foreground: #f4f6fb;
+  --app-base-bg: #0d1621;
+  --base-bg: #0d1621;
+  --surface: #17212d;
+  --surface2: #202c3a;
+  --ink: #f4f6fb;
+  --hairline: #35465a;
+  --text-secondary: #aab9cb;
+  --marquee: #293442;
+  --modal-footer: #111b26;
+  --auction-status-bg: #09111b;
+  --auction-status-border: #35465a;
+  --accent: #008cff;
+  --accent-hover: #ffc72c;
+  --team-skin-nav-start: #102d4d;
+  --team-skin-nav-end: #0a111b;
+  --team-skin-selected: #153552;
+  --app-pattern-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='96' viewBox='0 0 96 96'%3E%3Cg fill='none' stroke-width='1.4' stroke-linecap='round'%3E%3Cpath d='M15 7v16M7 15h16' transform='rotate(-24 15 15)' stroke='%23008cff' opacity='.18'/%3E%3Cpath d='M70 61v14M63 68h14' transform='rotate(-24 70 68)' stroke='%23ffc72c' opacity='.16'/%3E%3C/g%3E%3C/svg%3E");
+}
+
 body {
   color: var(--foreground);
   background: var(--app-base-bg, var(--background));
   font-family: var(--font-barlow), system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
+}
+
+.app-theme-background {
+  background-color: var(--background);
+  background-image: var(--app-pattern-image);
+  background-size: 96px 96px;
+}
+
+.retro .app-navbar {
+  background: linear-gradient(180deg, #285244 0%, #173d34 52%, #102e28 100%);
+  border-bottom-color: #c99634 !important;
+  box-shadow:
+    inset 0 1px 0 rgba(244, 236, 208, 0.35),
+    inset 0 -1px 0 #091f1b;
+}
+
+.retro .app-navbar-link[data-active="true"] {
+  background-color: #0d2d27;
+}
+
+.retro .app-navbar-link:hover {
+  background-color: #234a3f;
+}
+
+.retro .app-navbar-link[data-active="true"]:hover {
+  background-color: #0d2d27;
+}
+
+.team .app-navbar {
+  background: linear-gradient(115deg, var(--team-skin-nav-start), var(--team-skin-nav-end));
+  border-bottom-color: var(--team-accent) !important;
+}
+
+.team .app-navbar-link[data-active="true"] {
+  background-color: var(--team-skin-selected);
+}
+
+.team .app-navbar-link:hover {
+  background-color: color-mix(in srgb, var(--team-skin-selected) 92%, white 8%);
+}
+
+/* News outlets and social networks deliberately keep their own real-world UI. */
+.retro .fixed-external-ui,
+.team .fixed-external-ui {
+  --background: #f4f1ea;
+  --foreground: #16130f;
+  --base-bg: #f4f1ea;
+  --surface: #efece3;
+  --surface2: #ffffff;
+  --ink: #16130f;
+  --hairline: #eee9dd;
+  --text-secondary: #8a8378;
+  --marquee: #fff6d6;
+  --modal-footer: #e6e2d6;
+  --accent: #ffc400;
+  --accent-hover: #000000;
 }
 
 /* Highest-score values in Tournament Stats establish the minimum readable
@@ -257,7 +368,8 @@ body {
   --history-tile-accent: var(--history-tile-accent-light);
 }
 
-.dark .history-archive-tile {
+.dark .history-archive-tile,
+.team .history-archive-tile {
   --history-tile-accent: var(--history-tile-accent-dark);
 }
 

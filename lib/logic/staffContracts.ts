@@ -73,6 +73,10 @@ export interface CareerStaffContract {
   loyalty: number;
   ambition: number;
   adaptability: number;
+  coachingPhilosophy: string | null;
+  preferredTeamStrategy: string | null;
+  traits: string[];
+  traitPreferences: Record<string, number>;
   affinityProfile: StaffAffinityProfile;
   coachingAttributes: StaffRatingAttributes;
   dateOfBirth: string | null;
@@ -122,6 +126,7 @@ export interface CareerStaffState {
   /** Save-specific profiles created from retiring players. Never written to the shared staff database. */
   generatedProfiles: Record<string, GeneratedStaffProfile>;
   lastDevelopmentSeason: number | null;
+  negotiationCooldowns: Record<string, string>;
 }
 
 export interface StaffRecruitmentSearch {
@@ -159,6 +164,7 @@ export const emptyCareerStaffState = (): CareerStaffState => ({
   salaryModelVersion: 0,
   generatedProfiles: {},
   lastDevelopmentSeason: null,
+  negotiationCooldowns: {},
 });
 
 const normalizeContractRoles = (roleValues: string[], requestedPrimaryRole: string) => {
@@ -191,6 +197,10 @@ export function normalizeCareerStaffState(state: CareerStaffState | null | undef
       loyalty: contract.loyalty ?? 70,
       ambition: contract.ambition ?? 70,
       adaptability: contract.adaptability ?? 70,
+      coachingPhilosophy: contract.coachingPhilosophy ?? null,
+      preferredTeamStrategy: contract.preferredTeamStrategy ?? null,
+      traits: Array.isArray(contract.traits) ? contract.traits : [],
+      traitPreferences: contract.traitPreferences ?? {},
       affinityProfile: contract.affinityProfile ?? { homeRegion: null, homeCountry: contract.country ?? "Unknown", clubs: [] },
       coachingAttributes: contract.coachingAttributes ?? {
         reputation: contract.reputation ?? 50,
@@ -219,6 +229,7 @@ export function normalizeCareerStaffState(state: CareerStaffState | null | undef
     salaryModelVersion: state.salaryModelVersion ?? 0,
     generatedProfiles: state.generatedProfiles ?? {},
     lastDevelopmentSeason: state.lastDevelopmentSeason ?? null,
+    negotiationCooldowns: state.negotiationCooldowns ?? {},
   };
 }
 
@@ -315,6 +326,12 @@ export function initializeCareerStaffState(
       loyalty: Math.max(0, Math.min(100, member.loyalty ?? 70)),
       ambition: Math.max(0, Math.min(100, member.ambition ?? 70)),
       adaptability: Math.max(0, Math.min(100, member.adaptability ?? 70)),
+      coachingPhilosophy: typeof member.coaching_philosophy === "string" ? member.coaching_philosophy : null,
+      preferredTeamStrategy: typeof member.preferred_team_strategy === "string" ? member.preferred_team_strategy : null,
+      traits: Array.isArray(member.traits) ? member.traits.filter((trait): trait is string => typeof trait === "string") : [],
+      traitPreferences: member.trait_preferences && typeof member.trait_preferences === "object"
+        ? Object.fromEntries(Object.entries(member.trait_preferences).filter((entry): entry is [string, number] => typeof entry[1] === "number"))
+        : {},
       affinityProfile: member.affinity_profile ?? { homeRegion: null, homeCountry: member.country?.trim() || "Unknown", clubs: [] },
       coachingAttributes: {
         reputation: member.reputation ?? 50,
@@ -357,6 +374,7 @@ export function initializeCareerStaffState(
     salaryModelVersion: STAFF_SALARY_MODEL_VERSION,
     generatedProfiles: {},
     lastDevelopmentSeason: null,
+    negotiationCooldowns: {},
   };
 }
 
@@ -383,6 +401,14 @@ export function synchronizeCareerStaffProfiles(
     const loyalty = Math.max(0, Math.min(100, member.loyalty ?? contract.loyalty ?? 70));
     const ambition = Math.max(0, Math.min(100, member.ambition ?? contract.ambition ?? 70));
     const adaptability = Math.max(0, Math.min(100, member.adaptability ?? contract.adaptability ?? 70));
+    const coachingPhilosophy = typeof member.coaching_philosophy === "string" ? member.coaching_philosophy : contract.coachingPhilosophy ?? null;
+    const preferredTeamStrategy = typeof member.preferred_team_strategy === "string" ? member.preferred_team_strategy : contract.preferredTeamStrategy ?? null;
+    const traits = Array.isArray(member.traits)
+      ? member.traits.filter((trait): trait is string => typeof trait === "string")
+      : contract.traits ?? [];
+    const traitPreferences = member.trait_preferences && typeof member.trait_preferences === "object"
+      ? Object.fromEntries(Object.entries(member.trait_preferences).filter((entry): entry is [string, number] => typeof entry[1] === "number"))
+      : contract.traitPreferences ?? {};
     const affinityProfile = contract.affinityProfile?.clubs?.length
       ? contract.affinityProfile
       : member.affinity_profile ?? contract.affinityProfile ?? { homeRegion: null, homeCountry: country, clubs: [] };
@@ -410,11 +436,15 @@ export function synchronizeCareerStaffProfiles(
       && potentialAbility === contract.potentialAbility
       && country === contract.country && loyalty === contract.loyalty && ambition === contract.ambition
       && adaptability === contract.adaptability
+      && coachingPhilosophy === contract.coachingPhilosophy
+      && preferredTeamStrategy === contract.preferredTeamStrategy
+      && JSON.stringify(traits) === JSON.stringify(contract.traits ?? [])
+      && JSON.stringify(traitPreferences) === JSON.stringify(contract.traitPreferences ?? {})
       && JSON.stringify(coachingAttributes) === JSON.stringify(contract.coachingAttributes)
       && JSON.stringify(affinityProfile) === JSON.stringify(contract.affinityProfile)) return;
     contracts[member.id] = {
       ...contract, staffSlug, fullName, roleRatings, reputation, currentAbility, potentialAbility, coachingAttributes,
-      country, loyalty, ambition, adaptability, affinityProfile,
+      country, loyalty, ambition, adaptability, coachingPhilosophy, preferredTeamStrategy, traits, traitPreferences, affinityProfile,
     };
     changed = true;
   });

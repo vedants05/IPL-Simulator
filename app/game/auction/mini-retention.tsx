@@ -1,18 +1,20 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useGameStore } from "@/lib/store/gameStore";
 import { formatPrice } from "@/lib/logic/auctionRules";
 import {
   MINI_AUCTION_PURSE_LAKHS,
-  enforceMiniAuctionRetentionLimits,
   getMiniAuctionContractPrice,
   selectAIMiniAuctionKeeps,
   validateMiniAuctionRetentions,
 } from "@/lib/logic/miniAuctionRetention";
 
 export default function MiniRetentionPhase() {
-  const { teams, players, userTeamId, currentSeason } = useGameStore();
+  const teams = useGameStore((state) => state.teams);
+  const players = useGameStore((state) => state.players);
+  const userTeamId = useGameStore((state) => state.userTeamId);
+  const currentSeason = useGameStore((state) => state.currentSeason);
   const retainPlayer = useGameStore((state) => state.retainPlayer);
   const releaseRetention = useGameStore((state) => state.releaseRetention);
   const autoRetainPlayers = useGameStore((state) => state.autoRetainPlayers);
@@ -25,9 +27,6 @@ export default function MiniRetentionPhase() {
   const [isVerifyingContracts, setIsVerifyingContracts] = useState(currentSeason === 2027);
   const [contractError, setContractError] = useState<string | null>(null);
   const team = teams[userTeamId];
-  const legalKeptIds = team
-    ? enforceMiniAuctionRetentionLimits(team, team.retainedPlayers, players, currentSeason)
-    : [];
 
   const verifyOpeningContracts = useCallback(async () => {
     setIsVerifyingContracts(true);
@@ -56,14 +55,6 @@ export default function MiniRetentionPhase() {
   }, [currentSeason, initNewGame, team, userTeamId]);
 
   useEffect(() => {
-    if (!team || legalKeptIds.length === team.retainedPlayers.length) return;
-    const legalIds = new Set(legalKeptIds);
-    team.retainedPlayers.forEach((playerId) => {
-      if (!legalIds.has(playerId)) releaseRetention(playerId);
-    });
-  }, [legalKeptIds, releaseRetention, team]);
-
-  useEffect(() => {
     if (
       currentSeason !== 2027
       || !team
@@ -74,11 +65,30 @@ export default function MiniRetentionPhase() {
     void verifyOpeningContracts();
   }, [currentSeason, team, verifyOpeningContracts]);
 
+  const aiValidationErrors = useMemo(() => Object.values(teams).flatMap((aiTeam) => {
+    if (aiTeam.id === userTeamId) return [];
+    const aiKeptIds = selectAIMiniAuctionKeeps(aiTeam, players, currentSeason);
+    const aiValidation = validateMiniAuctionRetentions({
+      team: aiTeam,
+      keptIds: aiKeptIds,
+      players,
+      season: currentSeason,
+    });
+    return aiValidation.errors.map((error) => `${aiTeam.shortName ?? aiTeam.id}: ${error}`);
+  }), [currentSeason, players, teams, userTeamId]);
+  const squadPlayers = useMemo(() => (team?.squad ?? [])
+    .map((playerId) => players[playerId])
+    .filter(Boolean)
+    .sort((left, right) => (
+      Math.max(right.currentBatting, right.currentBowling)
+      - Math.max(left.currentBatting, left.currentBowling)
+    )), [players, team]);
+
   if (!team) return null;
 
   if (currentSeason === 2027 && team.squad.length === 0) {
     return (
-      <div className="flex h-[calc(100vh-3rem)] items-center justify-center bg-bg px-8 text-center text-text-primary">
+      <div className="app-theme-background flex h-[calc(100vh-3rem)] items-center justify-center bg-bg px-8 text-center text-text-primary">
         <div>
           <h1 className="font-anton text-[36px] uppercase">Reloading contracted squad</h1>
           <p className="mt-2 font-barlow text-[13px] text-text-secondary">
@@ -91,27 +101,9 @@ export default function MiniRetentionPhase() {
 
   const keptIds = team.retainedPlayers;
   const validation = validateMiniAuctionRetentions({ team, keptIds, players, season: currentSeason });
-  const aiValidationErrors = Object.values(teams).flatMap((aiTeam) => {
-    if (aiTeam.id === userTeamId) return [];
-    const aiKeptIds = selectAIMiniAuctionKeeps(aiTeam, players, currentSeason);
-    const aiValidation = validateMiniAuctionRetentions({
-      team: aiTeam,
-      keptIds: aiKeptIds,
-      players,
-      season: currentSeason,
-    });
-    return aiValidation.errors.map((error) => `${aiTeam.shortName ?? aiTeam.id}: ${error}`);
-  });
-  const squadPlayers = team.squad
-    .map((playerId) => players[playerId])
-    .filter(Boolean)
-    .sort((left, right) => (
-      Math.max(right.currentBatting, right.currentBowling)
-      - Math.max(left.currentBatting, left.currentBowling)
-    ));
 
   return (
-    <div className="flex h-[calc(100vh-3rem)] flex-col overflow-hidden bg-bg text-text-primary">
+    <div className="app-theme-background flex h-[calc(100vh-3rem)] flex-col overflow-hidden bg-bg text-text-primary">
       <div className="shrink-0 border-b-2 border-border px-8 py-6">
         <div className="mb-2 font-space-mono text-[10px] font-bold uppercase tracking-[.16em] text-text-secondary">
           Mini Auction {currentSeason} · Contract Decisions

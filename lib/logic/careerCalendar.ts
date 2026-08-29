@@ -178,3 +178,11 @@ export function getSkipSimulationIntervalMs(
       - (SKIP_SIMULATION_SLOW_INTERVAL_MS - SKIP_SIMULATION_MAX_SPEED_INTERVAL_MS) * smoothProgress,
   );
 }
+
+/** A reached target must never trigger automatic work in the following phase. */
+export function isCareerFastForwardTargetPending(
+  targetDate: string | null | undefined,
+  currentDate: string,
+): targetDate is string {
+  return Boolean(targetDate && targetDate > currentDate);
+}

@@ -11,9 +11,56 @@ export interface StaffOfferInput {
   offeredPrimaryRole?: string;
   incumbentRenewal?: boolean;
   currentRoleCount?: number;
+  loyalty?: number;
+  ambition?: number;
+  adaptability?: number;
+  currentAffinity?: number;
+  destinationAffinity?: number;
+  remainingContractSeasons?: number;
+  previousCounterOffer?: number;
+  negotiationPatience?: number;
 }
 
 const roundTo = (value: number, increment: number) => Math.ceil(value / increment) * increment;
+const clamp = (value: number, minimum: number, maximum: number) => Math.max(minimum, Math.min(maximum, value));
+
+export function calculateInitialStaffNegotiationPatience(input: StaffOfferInput): number {
+  const loyaltyResistance = input.poaching ? Math.max(0, (input.loyalty ?? 50) - 50) * 0.22 : 0;
+  const affinityResistance = input.poaching
+    ? Math.max(0, (input.currentAffinity ?? 0) - (input.destinationAffinity ?? 0)) * 0.1
+    : 0;
+  return Math.round(clamp(
+    68 + ((input.adaptability ?? 50) - 50) * 0.18 - ((input.ambition ?? 50) - 50) * 0.1
+      - loyaltyResistance - affinityResistance,
+    30,
+    90,
+  ));
+}
+
+export type StaffRecruitmentInterestLabel = "Very interested" | "Interested" | "Open" | "Reluctant" | "Very reluctant" | "Not interested";
+
+export function calculateStaffRecruitmentInterest(input: StaffOfferInput, coolingDown = false): {
+  score: number;
+  label: StaffRecruitmentInterestLabel;
+} {
+  if (coolingDown) return { score: 0, label: "Not interested" };
+  const freeAgentBonus = input.poaching ? 0 : 10;
+  const contractSecurityPenalty = input.poaching
+    ? Math.min(15, Math.max(0, (input.remainingContractSeasons ?? 1) - 1) * 5)
+    : 0;
+  const destinationPull = Math.max(0, (input.destinationAffinity ?? 0) - (input.currentAffinity ?? 0)) * 0.08;
+  const score = Math.round(clamp(
+    calculateInitialStaffNegotiationPatience(input) + freeAgentBonus - contractSecurityPenalty + destinationPull,
+    0,
+    100,
+  ));
+  const label: StaffRecruitmentInterestLabel = score >= 80 ? "Very interested"
+    : score >= 65 ? "Interested"
+      : score >= 50 ? "Open"
+        : score >= 35 ? "Reluctant"
+          : "Very reluctant";
+  return { score, label };
+}
 
 export function calculateStaffSalaryDemand(input: StaffOfferInput): number {
   const baseline = Math.max(5_000_000, input.salaryExpectation || 0);
@@ -38,30 +85,80 @@ export function calculateStaffSalaryDemand(input: StaffOfferInput): number {
     ? 1 + Math.max(0, input.roleCount - Math.max(1, input.currentRoleCount ?? 1)) * 0.28
     : 1 + Math.max(0, input.roleCount - 1) * 0.28;
   const poachingMultiplier = input.poaching ? 1.1 : 1;
+  const loyaltyPremium = input.poaching
+    ? 1 + Math.max(0, (input.loyalty ?? 50) - 40) * 0.006
+    : input.incumbentRenewal ? 1 - Math.max(0, (input.loyalty ?? 50) - 50) * 0.002 : 1;
+  const affinityPremium = input.poaching
+    ? 1 + Math.max(0, (input.currentAffinity ?? 0) - (input.destinationAffinity ?? 0)) * 0.0025
+    : 1;
+  const securityPremium = input.poaching
+    ? 1 + Math.min(3, Math.max(0, (input.remainingContractSeasons ?? 1) - 1)) * 0.06
+    : 1;
+  const mobilityDiscount = input.poaching
+    ? 1 - (Math.max(0, (input.ambition ?? 50) - 50) + Math.max(0, (input.adaptability ?? 50) - 50)) * 0.0015
+    : 1;
   return roundTo(
     baseline * roleMultiplier * reputationMultiplier * durationMultiplier * hierarchyMultiplier
-      * outOfRoleMultiplier * responsibilityMultiplier * poachingMultiplier,
+      * outOfRoleMultiplier * responsibilityMultiplier * poachingMultiplier * loyaltyPremium
+      * affinityPremium * securityPremium * Math.max(0.88, mobilityDiscount),
     500_000,
   );
 }
 
 export function evaluateStaffContractOffer(input: StaffOfferInput): {
   accepted: boolean;
+  outcome: "accepted" | "exceptional-accepted" | "countered" | "instant-rejected" | "walked-away";
   demand: number;
+  counterOffer: number | null;
   shortfall: number;
+  patienceAfter: number;
+  patienceChange: number;
   message: string;
 } {
   const demand = calculateStaffSalaryDemand(input);
   const offered = Math.max(0, Math.round(input.offeredSalary ?? 0));
-  if (offered >= demand) {
-    return { accepted: true, demand, shortfall: 0, message: "Contract terms accepted." };
+  const agreedCounter = Math.max(0, input.previousCounterOffer ?? 0);
+  const patience = clamp(input.negotiationPatience ?? calculateInitialStaffNegotiationPatience(input), 0, 100);
+  if (offered >= demand * 1.12) {
+    return { accepted: true, outcome: "exceptional-accepted", demand, counterOffer: null, shortfall: 0, patienceAfter: patience, patienceChange: 0, message: "The exceptional offer was accepted immediately." };
+  }
+  if (offered >= demand || (agreedCounter > 0 && offered >= agreedCounter)) {
+    return { accepted: true, outcome: "accepted", demand, counterOffer: null, shortfall: 0, patienceAfter: patience, patienceChange: 0, message: "Contract terms accepted." };
   }
   const shortfall = demand - offered;
+  const offerRatio = offered / Math.max(1, demand);
+  const patienceLoss = offerRatio < 0.45 ? 55
+    : offerRatio < 0.6 ? 38
+      : offerRatio < 0.75 ? 24
+        : offerRatio < 0.88 ? 12
+          : Math.max(3, Math.round((1 - offerRatio) * 45));
+  const patienceAfter = Math.max(0, patience - patienceLoss);
+  if (patienceAfter <= 0) {
+    return { accepted: false, outcome: "walked-away", demand, counterOffer: null, shortfall, patienceAfter, patienceChange: -patienceLoss, message: "Patience exhausted. The staff member has ended negotiations." };
+  }
+  if (offerRatio < 0.45) {
+    return { accepted: false, outcome: "instant-rejected", demand, counterOffer: null, shortfall, patienceAfter, patienceChange: -patienceLoss, message: "The offer was rejected immediately as far below credible terms." };
+  }
+  const reservation = roundTo(demand * 0.88, 500_000);
+  const freshCounter = Math.min(demand, Math.max(reservation, roundTo(offered + shortfall * 0.55, 500_000)));
+  // Once staff name a figure it is an anchor. An improved bid can hold that
+  // figure or earn a small concession toward the club; it can never make the
+  // staff member increase the counter they already made.
+  const concession = agreedCounter > 0 && offerRatio >= 0.75
+    ? Math.min(1_000_000, Math.floor(Math.max(0, agreedCounter - offered) * 0.15 / 500_000) * 500_000)
+    : 0;
+  const counterOffer = agreedCounter > 0
+    ? Math.max(offered, Math.min(agreedCounter, agreedCounter - concession))
+    : freshCounter;
   return {
     accepted: false,
+    outcome: "countered",
     demand,
+    counterOffer,
     shortfall,
-    message: `Offer rejected. The staff member is seeking at least ${demand}.`,
+    patienceAfter,
+    patienceChange: -patienceLoss,
+    message: `The staff member has countered at ${counterOffer}.`,
   };
 }
 

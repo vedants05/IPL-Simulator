@@ -7,7 +7,7 @@ export default function GameLayout({ children }: { children: React.ReactNode }) 
   return (
     <TeamThemeProvider>
       <SupabasePlayerSync />
-      <div className="min-h-screen bg-bg text-text-primary flex flex-col" style={{ minWidth: 1280 }}>
+      <div className="app-theme-shell min-h-screen bg-bg text-text-primary flex flex-col" style={{ minWidth: 1280 }}>
         <Suspense fallback={<div className="h-12 border-b-2 border-border bg-surface shrink-0" />}>
           <NavBar />
         </Suspense>

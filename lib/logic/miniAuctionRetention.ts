@@ -393,3 +393,46 @@ export function selectAIMiniAuctionKeeps(team: Team, players: Record<string, Pla
 
   return enforceMiniAuctionRetentionLimits(team, kept.map(({ player }) => player.id), players, season);
 }
+
+/** Normalize a retention-phase save created by older builds into a legal state. */
+export function repairMiniAuctionRetentionState(input: {
+  teams: Record<string, Team>;
+  players: Record<string, Player>;
+  season: number;
+}): { teams: Record<string, Team>; players: Record<string, Player> } {
+  const players = Object.fromEntries(Object.entries(input.players).map(([playerId, player]) => [
+    playerId,
+    { ...player, isRetained: false, retainedByTeamId: null },
+  ])) as Record<string, Player>;
+  const teams = Object.fromEntries(Object.entries(input.teams).map(([teamId, team]) => {
+    const eligibleSquadIds = team.squad.filter((playerId) => (
+      Boolean(players[playerId]) && players[playerId].currentTeamId === teamId
+    ));
+    const retainedPlayers = enforceMiniAuctionRetentionLimits(
+      { ...team, squad: eligibleSquadIds },
+      eligibleSquadIds,
+      players,
+      input.season,
+    );
+    retainedPlayers.forEach((playerId) => {
+      players[playerId] = {
+        ...players[playerId],
+        currentTeamId: teamId,
+        isRetained: true,
+        retainedByTeamId: teamId,
+      };
+    });
+    const spentAmount = calculateMiniAuctionKeptSalary(retainedPlayers, teamId, players, input.season);
+    return [teamId, {
+      ...team,
+      squad: eligibleSquadIds,
+      retainedPlayers,
+      totalPurse: MINI_AUCTION_PURSE_LAKHS,
+      spentAmount,
+      remainingPurse: Math.max(0, MINI_AUCTION_PURSE_LAKHS - spentAmount),
+      rtmCardsTotal: 0,
+      rtmCardsUsed: 0,
+    }];
+  })) as Record<string, Team>;
+  return { teams, players };
+}

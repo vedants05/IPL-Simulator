@@ -8,6 +8,11 @@ export interface TeamLeadership {
   permanentlyUninterestedPlayerIds: string[];
 }
 
+export interface TeamLeadershipContinuity {
+  captainId?: string | null;
+  viceCaptainId?: string | null;
+}
+
 export const CAPTAIN_CHANGE_COOLDOWN_GAMES = 3;
 
 export const EMPTY_TEAM_LEADERSHIP: TeamLeadership = {
@@ -157,6 +162,34 @@ export function normalizeTeamLeadership(
     temporaryUninterestedThroughSeason,
     permanentlyUninterestedPlayerIds: Array.from(permanentlyUninterestedPlayerIds),
   };
+}
+
+/**
+ * Restores the previous season's leadership appointments after the auction has
+ * rebuilt the squad. Explicit null continuity values clear released leaders;
+ * undefined values retain legacy saved appointments for older careers.
+ */
+export function restoreTeamLeadershipContinuity(
+  value: unknown,
+  squad: Player[],
+  continuity: TeamLeadershipContinuity,
+  gamesPlayed = 0,
+  activeSeason = 0,
+): TeamLeadership {
+  const raw = isObject(value) ? value : {};
+  const squadIds = new Set(squad.map((player) => player.id));
+  const restoreId = (continuityId: string | null | undefined, savedId: unknown) => {
+    if (continuityId === undefined) return savedId;
+    return typeof continuityId === "string" && squadIds.has(continuityId)
+      ? continuityId
+      : null;
+  };
+
+  return normalizeTeamLeadership({
+    ...raw,
+    captainId: restoreId(continuity.captainId, raw.captainId),
+    viceCaptainId: restoreId(continuity.viceCaptainId, raw.viceCaptainId),
+  }, squad, gamesPlayed, activeSeason);
 }
 
 export function recommendTeamLeadership(

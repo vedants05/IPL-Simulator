@@ -84,8 +84,9 @@ export function appointAiTeamLeadership(
       && hasConsecutiveFranchiseSeasons(player, team.id, season)
     ))
     .sort(leadershipRanking);
-  const retainedCaptain = team.captainContinuityId
-    && team.retainedPlayers.includes(team.captainContinuityId)
+  const captainIsInSquad = team.captainContinuityId
+    && (team.retainedPlayers.includes(team.captainContinuityId) || squad.some((player) => player.id === team.captainContinuityId));
+  const retainedCaptain = captainIsInSquad
     ? squad.find((player) => (
         player.id === team.captainContinuityId
         && !player.isIplCaptaincyUnavailable
@@ -108,8 +109,9 @@ export function appointAiTeamLeadership(
     : null;
 
   const viceCandidates = eligible.filter((player) => player.id !== captain?.id);
-  const retainedViceCaptain = team.viceCaptainContinuityId
-    && team.retainedPlayers.includes(team.viceCaptainContinuityId)
+  const viceCaptainIsInSquad = team.viceCaptainContinuityId
+    && (team.retainedPlayers.includes(team.viceCaptainContinuityId) || squad.some((player) => player.id === team.viceCaptainContinuityId));
+  const retainedViceCaptain = viceCaptainIsInSquad
     ? squad.find((player) => (
         player.id === team.viceCaptainContinuityId
         && player.id !== captain?.id

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { AuctionType, Player, Team, TradeRecord } from "@/lib/types";
-import { calculateTeamTradeValue, calculateTradePackageValue, getTeamTradeWillingness, getTradeOverseasLimit, getTradeSalaryBand, getTradeSalaryOptions, getTradeWindowDates, isTradeBalanced, isTradeWindowOpen, MINI_TRADE_OVERDRAFT_LAKHS } from "@/lib/logic/tradeEngine";
+import { calculateTeamTradeValue, calculateTradePackageValue, getRequestedTradePremium, getTeamTradeWillingness, getTradeOverseasLimit, getTradeSalaryBand, getTradeSalaryOptions, getTradeWindowDates, isTradeBalanced, isTradeWindowOpen, MINI_TRADE_OVERDRAFT_LAKHS } from "@/lib/logic/tradeEngine";
 import { getPlayerSeasonHistory } from "@/lib/logic/playerHistory";
 import { addDaysToDateKey } from "@/lib/logic/careerCalendar";
 import TradeHubGuidedTour from "./TradeHubGuidedTour";
@@ -210,7 +210,7 @@ export default function TradeHubPage({
           const targetOverseas = overseasCountAfter(recipientTeam, [p.id], offeredIds);
           const userPurseAfter = userTeam.remainingPurse + selectedPlayers(offeredIds).reduce((sum, player) => sum + (player.basePrice ?? 0), 0) - candidateSalary;
           const targetPurseAfter = recipientTeam.remainingPurse + candidateSalary - selectedPlayers(offeredIds).reduce((sum, player) => sum + (player.basePrice ?? 0), 0);
-          return isTradeBalanced({ offeredValue, requestedValue, requestedWillingness: getTeamTradeWillingness({ player: p, team: recipientTeam, players, season: currentSeason }) })
+          return isTradeBalanced({ offeredValue, requestedValue, requestedWillingness: getTeamTradeWillingness({ player: p, team: recipientTeam, players, season: currentSeason }), requestedPremium: getRequestedTradePremium([p]) })
             && isTradeBalanced({ offeredValue: reverseOffered, requestedValue: reverseRequested, requestedWillingness: "open" })
             && userOverseas <= getTradeOverseasLimit(userTeam, players) && targetOverseas <= getTradeOverseasLimit(recipientTeam, players)
             && (auctionType === "mega" || (userPurseAfter >= -MINI_TRADE_OVERDRAFT_LAKHS && targetPurseAfter >= -MINI_TRADE_OVERDRAFT_LAKHS));
@@ -280,7 +280,7 @@ export default function TradeHubPage({
     if (offeredIds.length > 0 && requestedIds.length === 0) {
       const offeredValue = aiValue(selectedPlayers(offeredIds));
       const bestReturn = packages(selectableRecipientPlayers)
-        .filter((group) => legal(offeredIds, group.map((p) => p.id)) && isTradeBalanced({ offeredValue, requestedValue: aiValue(group), requestedWillingness: strongestWillingness(group) }))
+        .filter((group) => legal(offeredIds, group.map((p) => p.id)) && isTradeBalanced({ offeredValue, requestedValue: aiValue(group), requestedWillingness: strongestWillingness(group), requestedPremium: getRequestedTradePremium(group) }))
         .sort((a, b) => aiValue(b) - aiValue(a)).find((group) => passesFinalValidator(selectedPlayers(offeredIds), group));
       if (!bestReturn) { setMessage("The opposing club has no legal acceptable offer for those players."); return; }
       setRequestedIds(bestReturn.map((p) => p.id));
@@ -293,7 +293,7 @@ export default function TradeHubPage({
       const requestedValue = aiValue(requested);
       const willingness = strongestWillingness(requested);
       const minimumOffer = packages(selectableUserPlayers)
-        .filter((group) => legal(group.map((p) => p.id), requestedIds) && isTradeBalanced({ offeredValue: aiValue(group), requestedValue, requestedWillingness: willingness }))
+        .filter((group) => legal(group.map((p) => p.id), requestedIds) && isTradeBalanced({ offeredValue: aiValue(group), requestedValue, requestedWillingness: willingness, requestedPremium: getRequestedTradePremium(selectedPlayers(requestedIds)) }))
         .sort((a, b) => aiValue(a) - aiValue(b)).find((group) => passesFinalValidator(group, requested));
       if (!minimumOffer) { setMessage("No legal one-, two- or three-player package from your squad meets the club's demand."); return; }
       setOfferedIds(minimumOffer.map((p) => p.id));
@@ -319,7 +319,7 @@ export default function TradeHubPage({
       const requestedValue = aiValue(requested);
       const willingness = strongestWillingness(requested);
       if (!legal(offered.map((p) => p.id), requested.map((p) => p.id))) return;
-      if (!isTradeBalanced({ offeredValue, requestedValue, requestedWillingness: willingness })) return;
+      if (!isTradeBalanced({ offeredValue, requestedValue, requestedWillingness: willingness, requestedPremium: getRequestedTradePremium(requested) })) return;
       candidates.push({ offered, requested, surplus: offeredValue - requestedValue, additions: offeredExtra.length + requestedExtra.length });
     }));
     const best = candidates.sort((a, b) => a.additions - b.additions || a.surplus - b.surplus).find((candidate) => passesFinalValidator(candidate.offered, candidate.requested));
@@ -359,7 +359,7 @@ export default function TradeHubPage({
         const incomingValue = calculateTradePackageValue([calculateTeamTradeValue({ player: offered, team, players, season: currentSeason, auctionType, currentInjured: injuredIds.has(offered.id) })]);
         const outgoingValue = calculateTradePackageValue([calculateTeamTradeValue({ player: requested, team, players, season: currentSeason, auctionType, currentInjured: injuredIds.has(requested.id) })]);
         const willingness = getTeamTradeWillingness({ player: requested, team, players, season: currentSeason, currentInjured: injuredIds.has(requested.id) });
-        if (!isTradeBalanced({ offeredValue: incomingValue, requestedValue: outgoingValue, requestedWillingness: willingness })) return;
+        if (!isTradeBalanced({ offeredValue: incomingValue, requestedValue: outgoingValue, requestedWillingness: willingness, requestedPremium: getRequestedTradePremium([requested]) })) return;
         if (overseasCountAfter(userTeam, [offered.id], [requested.id]) > getTradeOverseasLimit(userTeam, players) || overseasCountAfter(team, [requested.id], [offered.id]) > getTradeOverseasLimit(team, players)) return;
         const userPurse = userTeam.remainingPurse + contractSalary(offered.id) - getTradeSalaryBand(requested, currentSeason).demand;
         const aiPurse = team.remainingPurse + contractSalary(requested.id) - contractSalary(offered.id);

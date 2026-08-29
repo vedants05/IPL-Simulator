@@ -297,7 +297,7 @@ function getOpeningPair(squad: readonly Player[], captainId?: string | null): Pl
   // still selected separately by the XI balance rules, but must not split an
   // intact special pair such as Head/Abhishek.
   const specialPair = findSpecialOpenerPair(squad);
-  if (specialPair && specialPair.every((player) => currentAbility(player) >= 74)) {
+  if (specialPair) {
     return specialPair;
   }
 

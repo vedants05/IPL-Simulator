@@ -16,6 +16,7 @@ import {
   getDaySimulationIntervalMs,
   getSkipSimulationIntervalMs,
   isCareerCalendarAtImpasse,
+  isCareerFastForwardTargetPending,
   TICKING_CALENDAR_OFFSETS,
 } from "@/lib/logic/careerCalendar";
 import { createDayTicker, type DayTickerController } from "@/lib/logic/dayTicker";
@@ -92,6 +93,11 @@ import {
 } from "@/lib/logic/injuryReplacements";
 import { getTeamColorStyle } from "@/lib/theme/teamColors";
 import { cacheTeamProfileCareer } from "@/lib/logic/teamProfileCareerCache";
+import { loadStaffDirectory } from "@/lib/logic/staffDirectoryClient";
+import {
+  captureSeasonStartBattingAbilities,
+  captureSeasonStartBowlingAbilities,
+} from "@/lib/logic/seasonAbilitySnapshot";
 import {
   calculateBattingPerformanceBonus,
   calculateBowlingPerformanceBonus,
@@ -162,6 +168,7 @@ import {
   EMPTY_TEAM_LEADERSHIP,
   getCaptainChangeGamesRemaining,
   normalizeTeamLeadership,
+  restoreTeamLeadershipContinuity,
   type TeamLeadership,
 } from "@/lib/logic/captaincy";
 import {
@@ -849,6 +856,14 @@ function OverviewPageContent() {
       router.replace("/game/overview?tab=club&subtab=office", { scroll: false });
       return;
     }
+    if (tabParam === "scouting" && subtabParam === "trades") {
+      router.replace("/game/overview?tab=league&subtab=trades", { scroll: false });
+      return;
+    }
+    if (tabParam === "league" && subtabParam === "board") {
+      router.replace("/game/overview?tab=league&subtab=overview", { scroll: false });
+      return;
+    }
     if (tabParam === "home" || tabParam === "club" || tabParam === "squad" || tabParam === "scouting" || tabParam === "season" || tabParam === "league" || tabParam === "history") {
       setActiveTab(tabParam as any);
       _setActiveSubTab(subtabParam || "overview");
@@ -876,9 +891,12 @@ function OverviewPageContent() {
   // Simulation & Career States (Saved in LocalStorage)
   // --------------------------------------------------------------------------
   const [fixtures, setFixtures] = useState<Match[]>([]);
+  const [detailedFixtureSimulations, setDetailedFixtureSimulations] = useState<Record<string, MatchSimulationRecord>>({});
   const [standings, setStandings] = useState<LeagueStandings[]>([]);
   const [standingsView, setStandingsView] = useState<"league" | "playoffs">("league");
   const [playerStats, setPlayerStats] = useState<Record<string, PlayerStats>>({});
+  const [seasonStartBattingAbilities, setSeasonStartBattingAbilities] = useState<Record<string, number>>({});
+  const [seasonStartBowlingAbilities, setSeasonStartBowlingAbilities] = useState<Record<string, number>>({});
   const [minorRecords, setMinorRecords] = useState<MinorRecord[]>(MINOR_RECORDS);
   const [inbox, setInbox] = useState<CareerEmail[]>([]);
   const [isCareerLoaded, setIsCareerLoaded] = useState(false);
@@ -888,27 +906,19 @@ function OverviewPageContent() {
 
   useEffect(() => {
     if (!isCareerLoaded || !careerStaffNeedsProfileSync) return;
-    const controller = new AbortController();
-    void fetch("/api/staff", { cache: "no-store", signal: controller.signal })
-      .then(async (response) => {
-        if (!response.ok) throw new Error("Unable to initialize career staff contracts.");
-        return response.json() as Promise<{
-          members: Array<{
-            id: string;
-            primary_role: string;
-            salary_expectation?: number | null;
-            contract_start_year?: number | null;
-            contract_end_year?: number | null;
-          }>;
-          assignments: Array<{ staff_id: string; team_id: string; role: string; start_season: number }>;
-        }>;
+    let active = true;
+    void loadStaffDirectory()
+      .then((directory) => {
+        if (active) initializeCareerStaff(
+          directory.members as Parameters<typeof initializeCareerStaff>[0],
+          directory.assignments,
+        );
       })
-      .then((directory) => initializeCareerStaff(directory.members, directory.assignments))
       .catch((error) => {
-        if (error instanceof DOMException && error.name === "AbortError") return;
+        if (!active) return;
         console.error("Unable to initialize career staff:", error);
       });
-    return () => controller.abort();
+    return () => { active = false; };
   }, [careerStaffNeedsProfileSync, initializeCareerStaff, isCareerLoaded]);
   const [selectedMsgId, setSelectedMsgId] = useState<string | null>(null);
   const [battingFirstXI, setBattingFirstXI] = useState<string[]>([]);
@@ -990,6 +1000,53 @@ function OverviewPageContent() {
     );
   }, [activeScorecard?.id]);
 
+  // Keep the season fixture graph compact. Full deliveries are hydrated only
+  // for views that genuinely inspect them, then released when the view closes.
+  const detailedFixtures = useMemo(() => {
+    if (Object.keys(detailedFixtureSimulations).length === 0) return fixtures;
+    return fixtures.map((fixture) => (
+      detailedFixtureSimulations[fixture.id]
+        ? { ...fixture, simulation: detailedFixtureSimulations[fixture.id] }
+        : fixture
+    ));
+  }, [detailedFixtureSimulations, fixtures]);
+  useEffect(() => {
+    const needsLeagueDetails = activeSubTab === "social"
+      || activeSubTab === "news"
+      || activeSubTab === "seasonanalysis";
+    if (!needsLeagueDetails) {
+      setDetailedFixtureSimulations((current) => Object.keys(current).length > 0 ? {} : current);
+      return;
+    }
+    const fixtureIds = fixtures
+      .filter((fixture) => fixture.simulation && !hasArchivedDeliveries(fixture.simulation))
+      .map((fixture) => fixture.id);
+    if (fixtureIds.length === 0) return;
+    let cancelled = false;
+    void loadMatchSimulations(matchArchiveCareerId, fixtureIds)
+      .then((archived) => {
+        if (!cancelled) setDetailedFixtureSimulations(archived);
+      })
+      .catch((error) => console.error("Unable to hydrate detailed match view:", error));
+    return () => { cancelled = true; };
+  }, [activeSubTab, fixtures, matchArchiveCareerId]);
+
+  // A scorecard carries compact innings immediately; hydrate only its full
+  // delivery archive for the existing ball-by-ball tab.
+  useEffect(() => {
+    if (!activeScorecard?.simulation || hasArchivedDeliveries(activeScorecard.simulation)) return;
+    let cancelled = false;
+    void loadMatchSimulations(matchArchiveCareerId, [activeScorecard.id])
+      .then((archived) => {
+        if (cancelled || !archived[activeScorecard.id]) return;
+        setActiveScorecard((current) => current?.id === activeScorecard.id
+          ? { ...current, simulation: archived[activeScorecard.id] }
+          : current);
+      })
+      .catch((error) => console.error("Unable to hydrate match scorecard archive:", error));
+    return () => { cancelled = true; };
+  }, [activeScorecard?.id, activeScorecard?.simulation, matchArchiveCareerId]);
+
   // Day-by-day career ticking simulation states & refs
   const [isSimulatingDays, setIsSimulatingDays] = useState(false);
   const [isCalendarClosing, setIsCalendarClosing] = useState(false);
@@ -999,6 +1056,7 @@ function OverviewPageContent() {
   const [pendingSkipTargetDate, setPendingSkipTargetDate] = useState<string | null>(null);
   const fixturesRef = useRef<Match[]>([]);
   const lastCareerSaveRef = useRef<string | null>(null);
+  const careerSaveStateRef = useRef<Record<string, any> | null>(null);
   const playerStatsRef = useRef<Record<string, PlayerStats>>({});
   const advanceOneDayRef = useRef<() => void>(() => undefined);
   const dayTickerRef = useRef<DayTickerController | null>(null);
@@ -1009,6 +1067,7 @@ function OverviewPageContent() {
   const continueButtonRef = useRef<HTMLButtonElement | null>(null);
   const calendarStopButtonRef = useRef<HTMLButtonElement | null>(null);
   const wasSimulatingDaysRef = useRef(false);
+  const seasonRolloverInProgressRef = useRef(false);
 
   if (dayTickerRef.current === null) {
     dayTickerRef.current = createDayTicker({
@@ -1332,22 +1391,29 @@ function OverviewPageContent() {
           parsed.fixtures
           && (parsed.fixtures.length === LEAGUE_FIXTURE_COUNT || parsed.fixtures.length === TOTAL_FIXTURE_COUNT)
         ) {
+          const embeddedSimulations = (parsed.fixtures as Match[])
+            .filter((fixture) => fixture.simulation && hasArchivedDeliveries(fixture.simulation))
+            .map((fixture) => fixture.simulation!);
+          if (embeddedSimulations.length > 0) {
+            void saveMatchSimulations(matchArchiveCareerId, embeddedSimulations)
+              .catch((error) => console.error("Unable to migrate embedded match archives:", error));
+          }
           // Local storage keeps the compact simulation as the canonical
           // scorecard. Rebuild the legacy UI shape on load instead of storing
           // the same batting and bowling tables twice for every match.
-          parsed.fixtures = (parsed.fixtures as Match[]).map((fixture) => (
-            fixture.simulation && !fixture.scorecard
-              ? {
-                ...fixture,
-                commentary: fixture.commentary ?? fixture.simulation.summary,
-                scorecard: simulationToLegacyScorecard(
-                  fixture.simulation,
-                  fixture.teamA,
-                  fixture.teamB,
-                ),
-              }
-              : fixture
-          ));
+          parsed.fixtures = (parsed.fixtures as Match[]).map((fixture) => {
+            if (!fixture.simulation) return fixture;
+            return {
+              ...fixture,
+              commentary: fixture.commentary ?? fixture.simulation.summary,
+              scorecard: fixture.scorecard ?? simulationToLegacyScorecard(
+                fixture.simulation,
+                fixture.teamA,
+                fixture.teamB,
+              ),
+              simulation: compactMatchSimulation(fixture.simulation),
+            };
+          });
           const persistedLeagueFixtures = parsed.fixtures.slice(0, LEAGUE_FIXTURE_COUNT);
           const expectedStartDate = new Date(currentSeason, 2, 31);
           while (expectedStartDate.getDay() !== 6) {
@@ -1408,35 +1474,31 @@ function OverviewPageContent() {
           setStandings(calculateStandings(regeneratedFixtures));
           localStorage.setItem(`ipl_career_${userTeamId}`, JSON.stringify(parsed));
         }
-        const archivedFixtureIds = (parsed.fixtures as Match[])
-          .filter((fixture) => fixture.simulation && !hasArchivedDeliveries(fixture.simulation))
-          .map((fixture) => fixture.id);
-        if (archivedFixtureIds.length > 0) {
-          void loadMatchSimulations(matchArchiveCareerId, archivedFixtureIds)
-            .then((archived) => {
-              if (Object.keys(archived).length === 0) return;
-              setFixtures((current) => {
-                const hydrated = current.map((fixture) => (
-                  archived[fixture.id]
-                    ? { ...fixture, simulation: archived[fixture.id] }
-                    : fixture
-                ));
-                fixturesRef.current = hydrated;
-                return hydrated;
-              });
-              setActiveScorecard((current) => (
-                current && archived[current.id]
-                  ? { ...current, simulation: archived[current.id] }
-                  : current
-              ));
-            })
-            .catch((error) => {
-              console.error("Unable to hydrate ball-by-ball match archives:", error);
-            });
-        }
         if (parsed.playerStats) {
           playerStatsRef.current = parsed.playerStats;
           setPlayerStats(parsed.playerStats);
+        }
+        const loadedSeasonStartBattingAbilities = parsed.seasonStartBattingAbilitiesSeason === currentSeason
+          && parsed.seasonStartBattingAbilities
+          && typeof parsed.seasonStartBattingAbilities === "object"
+          ? parsed.seasonStartBattingAbilities as Record<string, number>
+          : captureSeasonStartBattingAbilities(players, currentSeason);
+        setSeasonStartBattingAbilities(loadedSeasonStartBattingAbilities);
+        const loadedSeasonStartBowlingAbilities = parsed.seasonStartBowlingAbilitiesSeason === currentSeason
+          && parsed.seasonStartBowlingAbilities
+          && typeof parsed.seasonStartBowlingAbilities === "object"
+          ? parsed.seasonStartBowlingAbilities as Record<string, number>
+          : captureSeasonStartBowlingAbilities(players, currentSeason);
+        setSeasonStartBowlingAbilities(loadedSeasonStartBowlingAbilities);
+        if (parsed.seasonStartBattingAbilitiesSeason !== currentSeason || !parsed.seasonStartBattingAbilities) {
+          parsed.seasonStartBattingAbilitiesSeason = currentSeason;
+          parsed.seasonStartBattingAbilities = loadedSeasonStartBattingAbilities;
+          localStorage.setItem(`ipl_career_${userTeamId}`, JSON.stringify(parsed));
+        }
+        if (parsed.seasonStartBowlingAbilitiesSeason !== currentSeason || !parsed.seasonStartBowlingAbilities) {
+          parsed.seasonStartBowlingAbilitiesSeason = currentSeason;
+          parsed.seasonStartBowlingAbilities = loadedSeasonStartBowlingAbilities;
+          localStorage.setItem(`ipl_career_${userTeamId}`, JSON.stringify(parsed));
         }
         const loadedRecords = applyMinorRecordBaselineUpdates(
           Array.isArray(parsed.minorRecords) && parsed.minorRecords.length > 0
@@ -1571,36 +1633,27 @@ function OverviewPageContent() {
         const userSquadPlayers = (userTeam?.squad ?? [])
           .map((id) => players[id])
           .filter((player): player is Player => Boolean(player));
-        const loadedLeadership = normalizeTeamLeadership(
+        const loadedLeadership = restoreTeamLeadershipContinuity(
           parsed.teamLeadership,
           userSquadPlayers,
+          {
+            // A valid explicit save remains authoritative. The continuity
+            // fields recover careers initialized by the old captain-only path.
+            captainId: typeof parsed.teamLeadership?.captainId === "string"
+              ? undefined
+              : userTeam?.captainContinuityId,
+            viceCaptainId: typeof parsed.teamLeadership?.viceCaptainId === "string"
+              ? undefined
+              : userTeam?.viceCaptainContinuityId,
+          },
           loadedUserGamesPlayed,
           currentSeason,
         );
-        const canValidateLeadershipSquad = userSquadPlayers.length > 0;
-        const savedCaptainId = typeof parsed.teamLeadership?.captainId === "string"
-          && (
-            !canValidateLeadershipSquad
-            || userSquadPlayers.some((player) => player.id === parsed.teamLeadership.captainId)
-          )
-          ? parsed.teamLeadership.captainId
-          : null;
-        const savedViceCaptainId = typeof parsed.teamLeadership?.viceCaptainId === "string"
-          && parsed.teamLeadership.viceCaptainId !== savedCaptainId
-          && (
-            !canValidateLeadershipSquad
-            || userSquadPlayers.some((player) => player.id === parsed.teamLeadership.viceCaptainId)
-          )
-          ? parsed.teamLeadership.viceCaptainId
-          : null;
-        setTeamLeadership({
-          ...loadedLeadership,
-          // User appointments are authoritative across navigation and reloads.
-          // Normalisation may migrate metadata, but it must not silently replace
-          // valid saved captain or vice-captain selections.
-          captainId: savedCaptainId,
-          viceCaptainId: savedViceCaptainId,
-        });
+        setTeamLeadership(loadedLeadership);
+        if (JSON.stringify(parsed.teamLeadership ?? {}) !== JSON.stringify(loadedLeadership)) {
+          parsed.teamLeadership = loadedLeadership;
+          localStorage.setItem(`ipl_career_${userTeamId}`, JSON.stringify(parsed));
+        }
         const loadedAiTeamLeadership = reconcileAiLeagueLeadership(
           parsed.aiTeamLeadership,
           teams,
@@ -1620,11 +1673,13 @@ function OverviewPageContent() {
         if (!savedDeadline) {
           localStorage.setItem(`ipl_career_${userTeamId}`, JSON.stringify({ ...parsed, retentionDeadline: nextDeadline }));
         }
+        careerSaveStateRef.current = parsed;
       } catch (e) {
         console.error("Error loading career save:", e);
       }
     } else {
       // Initialize Career
+      careerSaveStateRef.current = null;
       initCareer();
     }
     setIsCareerLoaded(true);
@@ -1632,12 +1687,14 @@ function OverviewPageContent() {
 
   const saveCareerState = useCallback((updatedData: any) => {
     const storageKey = `ipl_career_${userTeamId}`;
-    let latestSavedState: Record<string, any> = {};
-    try {
-      const saved = localStorage.getItem(storageKey);
-      if (saved) latestSavedState = JSON.parse(saved);
-    } catch (error) {
-      console.error("Unable to merge latest career save:", error);
+    let latestSavedState = careerSaveStateRef.current ?? {};
+    if (careerSaveStateRef.current === null) {
+      try {
+        const saved = localStorage.getItem(storageKey);
+        if (saved) latestSavedState = JSON.parse(saved);
+      } catch (error) {
+        console.error("Unable to merge latest career save:", error);
+      }
     }
 
     const fallbackState = {
@@ -1646,6 +1703,10 @@ function OverviewPageContent() {
       fixtures,
       standings,
       playerStats,
+      seasonStartBattingAbilities,
+      seasonStartBattingAbilitiesSeason: currentSeason,
+      seasonStartBowlingAbilities,
+      seasonStartBowlingAbilitiesSeason: currentSeason,
       inbox,
       battingFirstXI,
       bowlingFirstXI,
@@ -1733,6 +1794,7 @@ function OverviewPageContent() {
     if (lastCareerSaveRef.current === serializedState) return;
     try {
       localStorage.setItem(storageKey, serializedState);
+      careerSaveStateRef.current = currentState;
       lastCareerSaveRef.current = serializedState;
     } catch (error) {
       if (error instanceof DOMException && error.name === "QuotaExceededError") {
@@ -1742,10 +1804,15 @@ function OverviewPageContent() {
       }
       throw error;
     }
-  }, [userTeamId, currentSeason, fixtures, standings, playerStats, inbox, battingFirstXI, bowlingFirstXI, battingFirstImpactSubs, bowlingFirstImpactSubs, battingFirstImpactPlayerId, battingFirstOutgoingPlayerId, battingFirstImpactBattingPosition, bowlingFirstImpactPlayerId, bowlingFirstOutgoingPlayerId, bowlingFirstImpactBattingPosition, teamTactics, teamLeadership, aiTeamLeadership, shortlist, retentionDeadline, matchArchiveCareerId]);
+  }, [userTeamId, currentSeason, fixtures, standings, playerStats, seasonStartBattingAbilities, seasonStartBowlingAbilities, inbox, battingFirstXI, bowlingFirstXI, battingFirstImpactSubs, bowlingFirstImpactSubs, battingFirstImpactPlayerId, battingFirstOutgoingPlayerId, battingFirstImpactBattingPosition, bowlingFirstImpactPlayerId, bowlingFirstOutgoingPlayerId, bowlingFirstImpactBattingPosition, teamTactics, teamLeadership, aiTeamLeadership, shortlist, retentionDeadline, matchArchiveCareerId]);
 
   useEffect(() => {
-    if (!isCareerLoaded || !userTeamId || (battingFirstXI.length === 0 && bowlingFirstXI.length === 0)) return;
+    if (
+      seasonRolloverInProgressRef.current
+      || !isCareerLoaded
+      || !userTeamId
+      || (battingFirstXI.length === 0 && bowlingFirstXI.length === 0)
+    ) return;
     saveCareerState({
       battingFirstXI,
       bowlingFirstXI,
@@ -1845,14 +1912,16 @@ function OverviewPageContent() {
     const squad = userTeam.squad
       .map((id) => players[id])
       .filter((player): player is Player => Boolean(player));
-    const retainedCaptainId = userTeam.captainContinuityId
-      && userTeam.retainedPlayers.includes(userTeam.captainContinuityId)
-      ? userTeam.captainContinuityId
-      : null;
-    const initialTeamLeadership = normalizeTeamLeadership({
-      ...teamLeadership,
-      captainId: retainedCaptainId,
-    }, squad, 0, currentSeason);
+    const initialTeamLeadership = restoreTeamLeadershipContinuity(
+      teamLeadership,
+      squad,
+      {
+        captainId: userTeam.captainContinuityId,
+        viceCaptainId: userTeam.viceCaptainContinuityId,
+      },
+      0,
+      currentSeason,
+    );
     const recommendedLineups = buildAutomaticLineupSelection(squad, {
       captainId: initialTeamLeadership.captainId,
       viceCaptainId: initialTeamLeadership.viceCaptainId,
@@ -1892,6 +1961,8 @@ function OverviewPageContent() {
     // 3. Generate initial inbox messages
     const initialInbox: CareerEmail[] = [];
     const nextRetentionDeadline = generateNextRetentionDeadline(currentSeason);
+    const initialSeasonStartBattingAbilities = captureSeasonStartBattingAbilities(players, currentSeason);
+    const initialSeasonStartBowlingAbilities = captureSeasonStartBowlingAbilities(players, currentSeason);
 
     // Set and save
     fixturesRef.current = GeneratedFixtures;
@@ -1900,6 +1971,8 @@ function OverviewPageContent() {
     setStandings(initialStandings);
     setInbox(initialInbox);
     setPlayerStats({});
+    setSeasonStartBattingAbilities(initialSeasonStartBattingAbilities);
+    setSeasonStartBowlingAbilities(initialSeasonStartBowlingAbilities);
     setMinorRecords(MINOR_RECORDS);
     setRetentionDeadline(nextRetentionDeadline);
     setBattingFirstXI(initialBattingFirstXI);
@@ -1915,6 +1988,10 @@ function OverviewPageContent() {
       standings: initialStandings,
       inbox: initialInbox,
       playerStats: {},
+      seasonStartBattingAbilities: initialSeasonStartBattingAbilities,
+      seasonStartBattingAbilitiesSeason: currentSeason,
+      seasonStartBowlingAbilities: initialSeasonStartBowlingAbilities,
+      seasonStartBowlingAbilitiesSeason: currentSeason,
       minorRecords: MINOR_RECORDS,
       retentionDeadline: nextRetentionDeadline,
       battingFirstXI: initialBattingFirstXI,
@@ -2768,9 +2845,7 @@ function OverviewPageContent() {
     return {
       teamId,
       isUserControlled,
-      tactics: isFacingUserTeam
-        ? createTeamTactics("Balanced")
-        : pitch
+      tactics: pitch
         ? createIntelligentAiTactics(teams[teamId], pitch, careerStaff)
         : createTeamTactics(teams[teamId]?.aiPersonality === "Aggressive" ? "Ultra Aggressive" : "Balanced"),
       battingFirst: toMatchLineupPlan(
@@ -2802,7 +2877,7 @@ function OverviewPageContent() {
     };
   };
 
-  const getRecentFormAdjustments = (match: Match): Record<string, number> => {
+  const getRecentFormAdjustments = (match: Match): { batting: Record<string, number>; bowling: Record<string, number> } => {
     const involvedTeamIds = new Set([match.teamA, match.teamB]);
     const recent = fixtures
       .filter((fixture) => (
@@ -2811,47 +2886,64 @@ function OverviewPageContent() {
         && (involvedTeamIds.has(fixture.teamA) || involvedTeamIds.has(fixture.teamB))
       ))
       .slice(-20);
-    const performances = new Map<string, number[]>();
+    const battingPerformances = new Map<string, number[]>();
+    const bowlingPerformances = new Map<string, number[]>();
     recent.forEach((fixture) => {
-      const matchPerformances = new Map<string, number>();
+      const matchBatting = new Map<string, number>();
+      const matchBowling = new Map<string, number>();
       fixture.simulation?.innings.forEach((innings) => {
         innings.batting.forEach((entry) => {
           if (entry.didNotBat) return;
-          matchPerformances.set(
-            entry.id,
-            (matchPerformances.get(entry.id) ?? 0)
-              + Math.min(5, Math.max(-5, (entry.runs - 24) / 12)),
-          );
+          const strikeRate = entry.balls > 0 ? entry.runs * 100 / entry.balls : 0;
+          const battingForm = entry.runs >= 50
+            ? Math.min(2, 1 + (entry.runs - 50) / 50)
+            : entry.runs >= 35 && strikeRate >= 150
+              ? 0.8
+              : entry.balls >= 5 && entry.runs < 10
+                ? -1.2
+                : entry.runs < 20
+                  ? -0.4
+                  : 0;
+          matchBatting.set(entry.id, battingForm);
         });
         innings.bowling.forEach((entry) => {
           if (entry.balls === 0) return;
           const economy = entry.runsConceded / (entry.balls / 6);
-          matchPerformances.set(
-            entry.id,
-            (matchPerformances.get(entry.id) ?? 0)
-              + Math.min(5, Math.max(-5, entry.wickets * 1.3 + (8 - economy) * 0.4)),
-          );
+          matchBowling.set(entry.id, Math.min(5, Math.max(-5, entry.wickets * 1.3 + (8 - economy) * 0.4)));
         });
       });
-      matchPerformances.forEach((performance, playerId) => {
-        const values = performances.get(playerId) ?? [];
-        values.push(Math.min(5, Math.max(-5, performance)));
-        performances.set(playerId, values.slice(-5));
+      Object.values(fixture.simulation?.lineups ?? {}).forEach((lineup) => {
+        [...lineup.startingXI, ...lineup.finalXI].forEach((playerId) => {
+          if (!matchBatting.has(playerId)) matchBatting.set(playerId, 0);
+          if (!matchBowling.has(playerId)) matchBowling.set(playerId, 0);
+        });
       });
+      const append = (target: Map<string, number[]>, performance: number, playerId: string) => {
+        const values = target.get(playerId) ?? [];
+        values.push(Math.min(5, Math.max(-5, performance)));
+        target.set(playerId, values.slice(-5));
+      };
+      matchBatting.forEach((value, playerId) => append(battingPerformances, value, playerId));
+      matchBowling.forEach((value, playerId) => append(bowlingPerformances, value, playerId));
     });
-    const base = Object.fromEntries(Array.from(performances, ([playerId, values]) => [
-      playerId,
-      Math.max(-3, Math.min(3, values.reduce((sum, value) => sum + value, 0) / values.length)),
-    ]));
-    const isPlayoff = Boolean(match.stage);
-    const isQualifierTwo = match.stage === "qualifier2";
-    const topTwo = new Set(standings.slice(0, 2).map((standing) => standing.teamId));
-    return Object.fromEntries(Object.entries(base).map(([playerId, value]) => {
-      const player = players[playerId];
-      const playoffForm = isPlayoff ? value * 1.75 : value;
-      const qualifierTwoAdvantage = isQualifierTwo && player && topTwo.has(player.currentTeamId ?? "") ? 1.5 : 0;
-      return [playerId, playoffForm + qualifierTwoAdvantage];
+    const calculate = (performances: Map<string, number[]>) => Object.fromEntries(Array.from(performances, ([playerId, values]) => {
+      const weights = values.map((_, index) => index + 1);
+      const weightedAverage = values.reduce(
+        (sum, value, index) => sum + value * weights[index],
+        0,
+      ) / weights.reduce((sum, weight) => sum + weight, 0);
+      const excellentMatches = values.filter((value) => value >= 1).length;
+      const decayed = weightedAverage > 0 && excellentMatches < 2 ? 0 : weightedAverage;
+      return [playerId, Math.max(-2.5, Math.min(2, decayed))];
     }));
+    const isPlayoff = Boolean(match.stage);
+    const applyMatchContext = (base: Record<string, number>) => Object.fromEntries(
+      Object.entries(base).map(([playerId, value]) => [playerId, isPlayoff ? value * 1.75 : value]),
+    );
+    return {
+      batting: applyMatchContext(calculate(battingPerformances)),
+      bowling: applyMatchContext(calculate(bowlingPerformances)),
+    };
   };
 
   const simulationToLegacyScorecard = (
@@ -3185,7 +3277,9 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}${replacementEligible
       teamAPlans,
       teamBPlans,
       conditions,
-      formAdjustments: getRecentFormAdjustments(match),
+      battingFormAdjustments: getRecentFormAdjustments(match).batting,
+      bowlingFormAdjustments: getRecentFormAdjustments(match).bowling,
+      seasonBattingStats: playerStats,
       stage: match.stage,
       isKnockout: Boolean(match.stage),
     };
@@ -3248,7 +3342,9 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}${replacementEligible
       teamAPlans,
       teamBPlans,
       conditions,
-      formAdjustments: getRecentFormAdjustments(match),
+      battingFormAdjustments: getRecentFormAdjustments(match).batting,
+      bowlingFormAdjustments: getRecentFormAdjustments(match).bowling,
+      seasonBattingStats: playerStats,
       stage: match.stage,
       isKnockout: Boolean(match.stage),
     });
@@ -3293,8 +3389,15 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}${replacementEligible
     sourceFixtures = fixturesRef.current,
     sourceStats = playerStatsRef.current,
   ) => {
+    if (simulatedMatch.simulation && hasArchivedDeliveries(simulatedMatch.simulation)) {
+      void saveMatchSimulations(matchArchiveCareerId, [simulatedMatch.simulation])
+        .catch((error) => console.error("Unable to archive completed match details:", error));
+    }
+    const memoryMatch = simulatedMatch.simulation
+      ? { ...simulatedMatch, simulation: compactMatchSimulation(simulatedMatch.simulation) }
+      : simulatedMatch;
     let nextFixtures = sourceFixtures.map((fixture) => (
-      fixture.id === simulatedMatch.id ? simulatedMatch : fixture
+      fixture.id === memoryMatch.id ? memoryMatch : fixture
     ));
     const nextPlayerStats = Object.fromEntries(
       Object.entries(sourceStats).map(([playerId, stats]) => [playerId, { ...stats }]),
@@ -3587,8 +3690,15 @@ This record has been officially verified and added to the IPL Minor Records arch
 
     matches.forEach((match) => {
       const simulatedMatch = buildSimulatedMatch(match);
+      if (simulatedMatch.simulation && hasArchivedDeliveries(simulatedMatch.simulation)) {
+        void saveMatchSimulations(matchArchiveCareerId, [simulatedMatch.simulation])
+          .catch((error) => console.error("Unable to archive completed AI match details:", error));
+      }
+      const memoryMatch = simulatedMatch.simulation
+        ? { ...simulatedMatch, simulation: compactMatchSimulation(simulatedMatch.simulation) }
+        : simulatedMatch;
       nextFixtures = nextFixtures.map((fixture) => (
-        fixture.id === match.id ? simulatedMatch : fixture
+        fixture.id === match.id ? memoryMatch : fixture
       ));
       if (simulatedMatch.scorecard) {
         accumulateStats(
@@ -3718,12 +3828,28 @@ This record has been officially verified and added to the IPL Minor Records arch
   }, [stopSimulating]);
 
   const rolloverToNextSeason = () => {
+    const liveState = useGameStore.getState();
+    if (
+      liveState.auction?.phase === "retention"
+      && liveState.auction.season === liveState.currentSeason
+    ) {
+      stopSimulating();
+      router.replace("/game/auction");
+      return true;
+    }
+    if (seasonRolloverInProgressRef.current) return false;
+    seasonRolloverInProgressRef.current = true;
+    // Stop before doing any postseason work so a queued tick or a rapid second
+    // click cannot enter the expensive rollover a second time.
+    stopSimulating();
+
+    try {
     const final = fixturesRef.current.find((fixture) => fixture.stage === "final" && fixture.played && fixture.winner);
     if (!final?.winner) {
-      stopSimulating();
       useGameStore.getState().setCareerFastForwardTarget(null);
       sessionStorage.removeItem(CAREER_FAST_FORWARD_RECOVERY_KEY);
       showToast("Cannot begin the offseason until the season final has a recorded winner.");
+      seasonRolloverInProgressRef.current = false;
       return false;
     }
     const runnerUpTeamId = final.winner === final.teamA ? final.teamB : final.teamA;
@@ -3843,44 +3969,49 @@ This record has been officially verified and added to the IPL Minor Records arch
       ?? fallbackPlayer.currentTeamId
       ?? final.winner;
 
-    recordSimulatedLeagueSeason({
-      season: currentSeason,
-      championTeamId: final.winner,
-      runnerUpTeamId,
-      orangeCap: { name: orangeCap.name, teamId: orangeCap.teamId },
-      purpleCap: { name: purpleCap.name, teamId: purpleCap.teamId },
-      emergingPlayer: seasonAwards.emerging
-        ? { name: seasonAwards.emerging.name, teamId: seasonAwards.emerging.teamId }
-        : undefined,
-      mvp: {
-        name: mvpName,
-        teamId: mvpTeamId,
-      },
-      source: "career",
-      standings: standings.map((standing) => ({
-        teamId: standing.teamId,
-        teamName: standing.teamName,
-        played: standing.played,
-        won: standing.won,
-        lost: standing.lost,
-        noResults: standing.noResults,
-        points: standing.points,
-        nrr: standing.nrr,
-      })),
-    });
-    archiveCareerSeason({
-      season: currentSeason,
-      fixtures: fixturesForCareerHistory(fixturesRef.current),
-      standings,
-      playerStats: statsRecord,
-      reputationAchievements: buildCareerReputationAchievements(fixturesRef.current, statsRecord, seasonAwards, players),
-      leagueRecords: computeDynamicLeagueRecords(
-        fixturesRef.current as any[],
-        players,
-        teams,
-        careerSeasonArchives.find((archive) => archive.season < currentSeason)?.leagueRecords ?? OTHER_LEAGUE_RECORDS,
-      ),
-    });
+    const postseasonState = useGameStore.getState();
+    if (!postseasonState.simulatedLeagueHistory.some((season) => season.season === currentSeason)) {
+      recordSimulatedLeagueSeason({
+        season: currentSeason,
+        championTeamId: final.winner,
+        runnerUpTeamId,
+        orangeCap: { name: orangeCap.name, teamId: orangeCap.teamId },
+        purpleCap: { name: purpleCap.name, teamId: purpleCap.teamId },
+        emergingPlayer: seasonAwards.emerging
+          ? { name: seasonAwards.emerging.name, teamId: seasonAwards.emerging.teamId }
+          : undefined,
+        mvp: {
+          name: mvpName,
+          teamId: mvpTeamId,
+        },
+        source: "career",
+        standings: standings.map((standing) => ({
+          teamId: standing.teamId,
+          teamName: standing.teamName,
+          played: standing.played,
+          won: standing.won,
+          lost: standing.lost,
+          noResults: standing.noResults,
+          points: standing.points,
+          nrr: standing.nrr,
+        })),
+      });
+    }
+    if (postseasonState.lastCareerPostseasonSeason !== currentSeason) {
+      archiveCareerSeason({
+        season: currentSeason,
+        fixtures: fixturesForCareerHistory(fixturesRef.current),
+        standings,
+        playerStats: statsRecord,
+        reputationAchievements: buildCareerReputationAchievements(fixturesRef.current, statsRecord, seasonAwards, players),
+        leagueRecords: computeDynamicLeagueRecords(
+          fixturesRef.current as any[],
+          players,
+          teams,
+          careerSeasonArchives.find((archive) => archive.season < currentSeason)?.leagueRecords ?? OTHER_LEAGUE_RECORDS,
+        ),
+      });
+    }
     const captainIdsByTeam: Record<string, string | null> = {
       [userTeamId]: teamLeadership.captainId,
       ...Object.fromEntries(Object.entries(aiTeamLeadership).map(([teamId, leadership]) => [
@@ -3888,13 +4019,35 @@ This record has been officially verified and added to the IPL Minor Records arch
         leadership.captainId,
       ])),
     };
-    const advanced = beginNextSeasonRetention(captainIdsByTeam);
-    if (!advanced) return false;
+    const viceCaptainIdsByTeam: Record<string, string | null> = {
+      [userTeamId]: teamLeadership.viceCaptainId,
+      ...Object.fromEntries(Object.entries(aiTeamLeadership).map(([teamId, leadership]) => [
+        teamId,
+        leadership.viceCaptainId,
+      ])),
+    };
+    const advanced = beginNextSeasonRetention(captainIdsByTeam, viceCaptainIdsByTeam);
+    if (!advanced) {
+      seasonRolloverInProgressRef.current = false;
+      return false;
+    }
     // The completed totals are safely archived above; live totals now belong
     // to the new season and must start from zero.
     playerStatsRef.current = {};
     setPlayerStats({});
-    const fastForwardTarget = useGameStore.getState().careerFastForwardTargetDate;
+    const stateAfterRollover = useGameStore.getState();
+    const persistedFastForwardTarget = stateAfterRollover.careerFastForwardTargetDate;
+    // A target equal to the date we just reached is complete. Older code
+    // treated that stale value as a multi-season request and synchronously ran
+    // retention plus the whole auction, which could lock up the browser.
+    const fastForwardTarget = isCareerFastForwardTargetPending(
+      persistedFastForwardTarget,
+      stateAfterRollover.currentDate,
+    ) ? persistedFastForwardTarget : null;
+    if (!fastForwardTarget && persistedFastForwardTarget) {
+      useGameStore.getState().setCareerFastForwardTarget(null);
+      sessionStorage.removeItem(CAREER_FAST_FORWARD_RECOVERY_KEY);
+    }
     if (fastForwardTarget) {
       const auctionCompleted = completeOffseasonAutomatically();
       if (!auctionCompleted) {
@@ -3919,6 +4072,14 @@ This record has been officially verified and added to the IPL Minor Records arch
     stopSimulating();
     router.push("/game/auction");
     return true;
+    } catch (error) {
+      seasonRolloverInProgressRef.current = false;
+      useGameStore.getState().setCareerFastForwardTarget(null);
+      sessionStorage.removeItem(CAREER_FAST_FORWARD_RECOVERY_KEY);
+      stopSimulating();
+      showToast(error instanceof Error ? error.message : "The offseason transition could not be completed safely.");
+      return false;
+    }
   };
 
   const advanceOneDay = () => {
@@ -4171,6 +4332,13 @@ This record has been officially verified and added to the IPL Minor Records arch
           // The saved deadline is stale: finish the overdue rollover now,
           // rather than refusing the request or jumping across a season
           // without running retention, trades, injuries, and offseason work.
+          const reachedTarget = useGameStore.getState().careerFastForwardTargetDate;
+          if (reachedTarget && reachedTarget <= liveDate) {
+            useGameStore.getState().setCareerFastForwardTarget(null);
+          }
+          sessionStorage.removeItem(CAREER_FAST_FORWARD_RECOVERY_KEY);
+          skipStartDateRef.current = null;
+          skipTargetDateRef.current = null;
           rolloverToNextSeason();
         } else {
           startFastForward(retentionTarget);
@@ -4796,13 +4964,7 @@ This record has been officially verified and added to the IPL Minor Records arch
       persistedImpactPlayerId = impactBowler?.id ?? null;
     }
 
-    // null remains the persisted Auto state. Every consumer resolves it from
-    // the current XI through selectBattingFirstOutgoingBatter, avoiding stale
-    // outgoing IDs after lineup or leadership changes.
     const persistedOutgoingPlayerId = outgoingPlayerId;
-    // Auto is resolved once, at the point the user selects it. Persisting the
-    // concrete slot keeps the club-profile view from running a second,
-    // potentially different position-selection algorithm.
     let persistedEntryPosition = entryPosition;
     if (plan === "bowlingFirst" && persistedEntryPosition === null) {
       const starters = bowlingFirstXI
@@ -4846,6 +5008,20 @@ This record has been officially verified and added to the IPL Minor Records arch
     const normalizedLeadership = normalizeTeamLeadership(nextLeadership, squad, userGamesPlayed, currentSeason);
     setTeamLeadership(normalizedLeadership);
     saveCareerState({ teamLeadership: normalizedLeadership });
+
+    const currentTeams = useGameStore.getState().teams;
+    if (userTeamId && currentTeams[userTeamId]) {
+      useGameStore.setState({
+        teams: {
+          ...currentTeams,
+          [userTeamId]: {
+            ...currentTeams[userTeamId],
+            captainContinuityId: normalizedLeadership.captainId,
+            viceCaptainContinuityId: normalizedLeadership.viceCaptainId,
+          },
+        },
+      });
+    }
   };
 
   // --------------------------------------------------------------------------
@@ -4870,7 +5046,7 @@ This record has been officially verified and added to the IPL Minor Records arch
     scouting: {
       label: "Scouting",
       icon: Search,
-      subtabs: ["overview", "assignments", "search", "planner", "trades"]
+      subtabs: ["overview", "assignments", "search", "planner"]
     },
     season: {
       label: "Season",
@@ -4880,7 +5056,7 @@ This record has been officially verified and added to the IPL Minor Records arch
     league: {
       label: "League",
       icon: Table,
-      subtabs: ["overview", "staff", "board", "injuries", "seasonanalysis", "minorrecords"]
+      subtabs: ["overview", "staff", "trades", "injuries", "seasonanalysis", "minorrecords"]
     },
     history: {
       label: "History",
@@ -4936,7 +5112,7 @@ This record has been officially verified and added to the IPL Minor Records arch
       .filter((p) => (p.careerState?.generatedSeason ?? currentSeason) <= currentSeason)
       .filter(p => {
         if (searchQuery) {
-          return p.name.toLowerCase().includes(searchQuery.toLowerCase());
+          return (p?.name ?? "").toLowerCase().includes(searchQuery.toLowerCase());
         }
         return true;
       })
@@ -5453,7 +5629,7 @@ This record has been officially verified and added to the IPL Minor Records arch
   }
 
   return (
-    <div className={`overview-page h-[calc(100vh-3rem)] flex overflow-hidden bg-bg relative ${activeTab === "history" || (activeTab === "league" && activeSubTab === "minorrecords") ? "compact-history" : ""}`}>
+    <div className={`app-theme-background overview-page h-[calc(100vh-3rem)] flex overflow-hidden bg-bg relative ${activeTab === "history" ? "compact-history" : ""}`}>
       {/* Global Toast Alert */}
       {toastMessage && (
         <div className="fixed bottom-6 right-6 z-[100] bg-[var(--ink)] text-bg border border-border/20 px-4 py-3 rounded shadow-lg text-xs font-space-mono font-semibold uppercase tracking-wider animate-in fade-in slide-in-from-bottom-3 duration-200">
@@ -5609,7 +5785,7 @@ This record has been officially verified and added to the IPL Minor Records arch
       {/* ----------------------------------------------------------------------
           Main Content Column
           ---------------------------------------------------------------------- */}
-      <section className="flex-grow flex flex-col overflow-hidden bg-bg">
+      <section className="app-theme-background flex-grow flex flex-col overflow-hidden bg-bg">
         {/* Top Sub-navigation Bar */}
         <header className="border-b-2 border-hairline bg-surface shrink-0 px-8 py-3 flex items-center justify-between">
           <div className="flex gap-1 overflow-x-auto py-1">
@@ -6160,7 +6336,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                   playerStats={playerStats}
                   battingFirstXI={battingFirstXI}
                   bowlingFirstXI={bowlingFirstXI}
-                  fixtures={fixtures}
+                  fixtures={detailedFixtures}
                   captainId={teamLeadership.captainId}
                   impactPlayerIds={[battingFirstImpactPlayerId, bowlingFirstImpactPlayerId]}
                   currentDate={currentDate}
@@ -6179,7 +6355,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                   retirementHistory={careerRetirementHistory}
                   retiredPlayerSnapshots={retiredPlayerSnapshots}
                   currentSeason={currentSeason}
-                  fixtures={fixtures}
+                  fixtures={detailedFixtures}
                   currentDate={currentDate}
                   clubFigureProgression={clubFigureProgression}
                   onViewAllFixtures={() => {
@@ -7625,6 +7801,10 @@ This record has been officially verified and added to the IPL Minor Records arch
                   tactics={teamTactics}
                   onChange={handleTacticsChange}
                   onOpenPlayingXI={() => setActiveSubTab("playingxi")}
+                  coachRecommendation={userTeam && userSelectedPitch && userHeadCoach ? {
+                    coachName: userHeadCoach.fullName,
+                    tactics: createIntelligentAiTactics(userTeam, userSelectedPitch, careerStaff),
+                  } : null}
                 />
               )}
 
@@ -7654,22 +7834,6 @@ This record has been officially verified and added to the IPL Minor Records arch
               ================================================================== */}
           {activeTab === "scouting" && (
             <>
-              {activeSubTab === "trades" && (
-                <TradeHubPage
-                  currentDate={currentDate}
-                  currentSeason={currentSeason}
-                  finalDate={getSeasonFinalDate()}
-                  auctionType={getAuctionTypeForSeason(currentSeason + 1)}
-                  userTeamId={userTeamId}
-                  players={players}
-                  teams={teams}
-                  tradeRecords={tradeRecords}
-                  negotiationCooldowns={tradeNegotiationCooldowns}
-                  injuredPlayerIds={Object.keys(activeInjuries)}
-                  onExecuteTrade={executeTrade}
-                  onSetNegotiationCooldown={setTradeNegotiationCooldown}
-                />
-              )}
               {activeSubTab === "assignments" && (
                 <ScoutingAssignmentsPage
                   shortlist={shortlist}
@@ -7777,7 +7941,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                     </div>
 
                     {/* Auction planner */}
-                    <div onClick={() => setActiveSubTab("planner")} className="col-span-6 flex min-h-0 cursor-pointer flex-col justify-between overflow-hidden rounded-lg border-2 border-border bg-surface p-4 transition-colors hover:border-accent">
+                    <div onClick={() => setActiveSubTab("planner")} className="col-span-12 flex min-h-0 cursor-pointer flex-col justify-between overflow-hidden rounded-lg border-2 border-border bg-surface p-4 transition-colors hover:border-accent">
                     <div>
                       <h4 className="font-anton text-[14px] uppercase border-b border-[#16130f]/10 pb-2 mb-4">AUCTION PLANNER</h4>
                       <div className="space-y-2 text-xs font-space-mono text-text-secondary">
@@ -7786,17 +7950,6 @@ This record has been officially verified and added to the IPL Minor Records arch
                       </div>
                     </div>
 
-                    </div>
-
-                    <div onClick={() => setActiveSubTab("trades")} className="col-span-6 flex min-h-0 cursor-pointer flex-col justify-between overflow-hidden rounded-lg border-2 border-border bg-surface p-4 transition-colors hover:border-accent">
-                      {(() => {
-                        const finalDate = getSeasonFinalDate();
-                        const window = finalDate ? getTradeWindowDates(finalDate, currentSeason) : undefined;
-                        const windowOpen = isTradeWindowOpen(currentDate, finalDate, currentSeason);
-                        const completed = tradeRecords.filter((record) => record.season === currentSeason).length;
-                        const beforeWindow = Boolean(window && currentDate < window.startsOn);
-                        return <><div><div className="flex items-center justify-between border-b border-[#16130f]/10 pb-2"><h4 className="font-anton text-[14px] uppercase">Trade Hub</h4><span className={`rounded px-2 py-0.5 font-space-mono text-[7px] font-bold uppercase ${windowOpen ? "bg-success/15 text-success" : "bg-warning/15 text-warning"}`}>{windowOpen ? "Window open" : beforeWindow ? "Opens soon" : "Window shut"}</span></div><div className="mt-2 grid grid-cols-2 gap-2 font-space-mono text-[8px] uppercase text-text-secondary"><div><span className="block text-[7px]">Window</span><span className="font-bold text-text-primary">{window ? `${window.startsOn} – ${window.endsOn}` : "Awaiting schedule"}</span></div><div><span className="block text-[7px]">Completed deals</span><span className="font-bold text-text-primary">{completed}</span></div></div></div><div className="mt-2 flex items-center justify-between font-space-mono text-[8px] font-bold uppercase text-accent"><span>{windowOpen ? "Build a trade" : "View trade hub"}</span><span>→</span></div></>;
-                      })()}
                     </div>
 
                   </div>
@@ -8550,82 +8703,180 @@ This record has been officially verified and added to the IPL Minor Records arch
               ================================================================== */}
           {activeTab === "league" && (
             <>
-              {activeSubTab === "overview" && (
-                <div className="grid h-[calc(100vh-200px)] min-h-[500px] grid-cols-4 gap-5 overflow-hidden">
-                  <button
-                    type="button"
-                    onClick={() => setActiveSubTab("staff")}
-                    className="group flex min-h-0 flex-col rounded-lg border-2 border-border bg-surface p-6 text-left transition-colors hover:border-accent"
-                  >
-                    <div className="flex items-center justify-between border-b border-border pb-4">
-                      <span className="flex size-10 items-center justify-center rounded-lg bg-accent/10 text-accent"><Briefcase size={20} aria-hidden="true" /></span>
-                      <span className="font-space-mono text-[9px] font-bold uppercase tracking-wider text-text-secondary">Nine rival clubs</span>
-                    </div>
-                    <div className="mt-auto">
-                      <p className="font-anton text-5xl leading-none text-text-primary">{careerStaff.employmentHistory.filter((event) => event.teamId !== userTeamId).length}</p>
-                      <h3 className="mt-3 font-anton text-xl uppercase text-text-primary">Staff Activity</h3>
-                      <p className="mt-2 text-xs leading-relaxed text-text-secondary">Other clubs, appointments, departures, vacancies and job security.</p>
-                      <span className="mt-5 inline-flex items-center gap-2 font-space-mono text-[9px] font-bold uppercase tracking-wider text-accent">Open league staff <ChevronRight size={13} /></span>
-                    </div>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setActiveSubTab("injuries")}
-                    className="group flex min-h-0 flex-col rounded-lg border-2 border-border bg-surface p-6 text-left transition-colors hover:border-accent"
-                  >
-                    <div className="flex items-center justify-between border-b border-border pb-4">
-                      <span className="flex size-10 items-center justify-center rounded-lg bg-danger/10 text-danger">
-                        <Activity size={20} aria-hidden="true" />
-                      </span>
-                      <span className="font-space-mono text-[9px] font-bold uppercase tracking-wider text-text-secondary">League medical report</span>
-                    </div>
-                    <div className="mt-auto">
-                      <p className="font-anton text-5xl leading-none text-text-primary">{Object.keys(activeInjuries).length}</p>
-                      <h3 className="mt-3 font-anton text-xl uppercase text-text-primary">Active Injuries</h3>
-                      <p className="mt-2 text-xs leading-relaxed text-text-secondary">Review injuries, recovery dates and replacement activity across every club.</p>
-                      <span className="mt-5 inline-flex items-center gap-2 font-space-mono text-[9px] font-bold uppercase tracking-wider text-accent">Open injuries <ChevronRight size={13} /></span>
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setActiveSubTab("seasonanalysis")}
-                    className="group flex min-h-0 flex-col rounded-lg border-2 border-border bg-surface p-6 text-left transition-colors hover:border-accent"
-                  >
-                    <div className="flex items-center justify-between border-b border-border pb-4">
-                      <span className="flex size-10 items-center justify-center rounded-lg bg-accent/10 text-accent">
-                        <TrendingUp size={20} aria-hidden="true" />
-                      </span>
-                      <span className="font-space-mono text-[9px] font-bold uppercase tracking-wider text-text-secondary">{currentSeason} competition</span>
-                    </div>
-                    <div className="mt-auto">
-                      <p className="font-anton text-5xl leading-none text-text-primary">{fixtures.filter((fixture) => fixture.played).length}</p>
-                      <h3 className="mt-3 font-anton text-xl uppercase text-text-primary">Matches Analysed</h3>
-                      <p className="mt-2 text-xs leading-relaxed text-text-secondary">Compare team and player performance trends from the current season.</p>
-                      <span className="mt-5 inline-flex items-center gap-2 font-space-mono text-[9px] font-bold uppercase tracking-wider text-accent">Open season analysis <ChevronRight size={13} /></span>
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setActiveSubTab("minorrecords")}
-                    className="group flex min-h-0 flex-col rounded-lg border-2 border-border bg-surface p-6 text-left transition-colors hover:border-accent"
-                  >
-                    <div className="flex items-center justify-between border-b border-border pb-4">
-                      <span className="flex size-10 items-center justify-center rounded-lg bg-warning/10 text-warning">
-                        <Trophy size={20} aria-hidden="true" />
-                      </span>
-                      <span className="font-space-mono text-[9px] font-bold uppercase tracking-wider text-text-secondary">Competition archive</span>
-                    </div>
-                    <div className="mt-auto">
-                      <p className="font-anton text-5xl leading-none text-text-primary">{minorRecords.length}</p>
-                      <h3 className="mt-3 font-anton text-xl uppercase text-text-primary">Minor Records</h3>
-                      <p className="mt-2 text-xs leading-relaxed text-text-secondary">Browse the wider collection of notable league achievements and milestones.</p>
-                      <span className="mt-5 inline-flex items-center gap-2 font-space-mono text-[9px] font-bold uppercase tracking-wider text-accent">Open minor records <ChevronRight size={13} /></span>
-                    </div>
-                  </button>
-                </div>
+              {activeSubTab === "trades" && (
+                <TradeHubPage
+                  currentDate={currentDate}
+                  currentSeason={currentSeason}
+                  finalDate={getSeasonFinalDate()}
+                  auctionType={getAuctionTypeForSeason(currentSeason + 1)}
+                  userTeamId={userTeamId}
+                  players={players}
+                  teams={teams}
+                  tradeRecords={tradeRecords}
+                  negotiationCooldowns={tradeNegotiationCooldowns}
+                  injuredPlayerIds={Object.keys(activeInjuries)}
+                  onExecuteTrade={executeTrade}
+                  onSetNegotiationCooldown={setTradeNegotiationCooldown}
+                />
               )}
+              {activeSubTab === "overview" && (() => {
+                const rivalContracts = Object.values(careerStaff.contracts).filter((contract) => (
+                  contract.status === "contracted" && Boolean(contract.teamId) && contract.teamId !== userTeamId
+                ));
+                const rivalStaffEvents = careerStaff.employmentHistory.filter((event) => (
+                  event.season === currentSeason && Boolean(event.teamId) && event.teamId !== userTeamId
+                ));
+                const recentStaffEvents = rivalStaffEvents.slice(-2).reverse();
+                const leagueInjuries = Object.values(activeInjuries);
+                const majorInjuries = leagueInjuries.filter((injury) => injury.category === "major");
+                const injuredClubs = new Set(leagueInjuries.map((injury) => injury.teamId)).size;
+                const featuredInjuries = [...leagueInjuries]
+                  .sort((left, right) => left.estimatedReturnLatest.localeCompare(right.estimatedReturnLatest))
+                  .slice(0, 2);
+                const finalDate = getSeasonFinalDate();
+                const tradeWindow = finalDate ? getTradeWindowDates(finalDate, currentSeason) : undefined;
+                const tradeWindowOpen = isTradeWindowOpen(currentDate, finalDate, currentSeason);
+                const seasonTrades = tradeRecords.filter((record) => record.season === currentSeason);
+                const recentTrades = seasonTrades.slice(-2).reverse();
+                const playedMatches = fixtures.filter((fixture) => fixture.played).length;
+                const seasonProgress = Math.round((playedMatches / Math.max(1, fixtures.length)) * 100);
+                const verifiedRecords = minorRecords.filter((record) => record.verified);
+                const recordCategories = new Set(minorRecords.map((record) => record.category)).size;
+                const featuredRecords = verifiedRecords.slice(0, 2);
+
+                return (
+                  <div className="grid h-[calc(100vh-200px)] min-h-[560px] grid-cols-12 grid-rows-2 gap-4 overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => setActiveSubTab("staff")}
+                      className="group relative col-span-4 flex min-h-0 flex-col overflow-hidden rounded-xl border-2 border-border bg-surface p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-accent hover:shadow-md"
+                    >
+                      <div className="pointer-events-none absolute -right-12 -top-14 size-36 rounded-full bg-sky-500/10 blur-3xl" />
+                      <div className="relative flex items-start justify-between border-b border-border pb-3">
+                        <div className="flex items-center gap-3">
+                          <span className="flex size-9 items-center justify-center rounded-lg bg-sky-500/10 text-sky-600 dark:text-sky-400"><Briefcase size={18} aria-hidden="true" /></span>
+                          <div><p className="font-space-mono text-[8px] font-bold uppercase tracking-[0.18em] text-text-secondary">League personnel</p><h3 className="mt-1 font-anton text-lg uppercase leading-none text-text-primary">Staff Activity</h3></div>
+                        </div>
+                        <ArrowUpRight size={15} className="text-accent transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
+                      </div>
+                      <div className="relative mt-3 grid grid-cols-2 gap-2">
+                        <div className="rounded-lg bg-bg/70 p-3"><p className="font-anton text-3xl leading-none text-text-primary">{rivalContracts.length}</p><p className="mt-1 font-space-mono text-[8px] font-bold uppercase text-text-secondary">Rival staff in post</p></div>
+                        <div className="rounded-lg bg-bg/70 p-3"><p className="font-anton text-3xl leading-none text-text-primary">{rivalStaffEvents.length}</p><p className="mt-1 font-space-mono text-[8px] font-bold uppercase text-text-secondary">Moves this season</p></div>
+                      </div>
+                      <div className="relative mt-3 min-h-0 flex-1 space-y-1.5 overflow-hidden">
+                        {recentStaffEvents.length > 0 ? recentStaffEvents.map((event) => (
+                          <div key={event.id} className="flex items-center justify-between gap-3 border-t border-border/70 pt-1.5 text-[11px]">
+                            <span className="truncate font-semibold text-text-primary">{careerStaff.contracts[event.staffId]?.fullName ?? "Staff member"}</span>
+                            <span className="shrink-0 font-space-mono text-[8px] font-bold uppercase text-text-secondary">{teams[event.teamId ?? ""]?.shortName ?? "League"} · {event.kind.replaceAll("_", " ")}</span>
+                          </div>
+                        )) : <p className="pt-2 text-xs text-text-secondary">No rival appointments or departures this season.</p>}
+                      </div>
+                      <span className="relative mt-2 inline-flex items-center gap-1 font-space-mono text-[8px] font-bold uppercase tracking-wider text-accent">Open league staff <ChevronRight size={12} /></span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setActiveSubTab("injuries")}
+                      className="group relative col-span-4 flex min-h-0 flex-col overflow-hidden rounded-xl border-2 border-border bg-surface p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-accent hover:shadow-md"
+                    >
+                      <div className="pointer-events-none absolute -right-12 -top-14 size-36 rounded-full bg-red-500/10 blur-3xl" />
+                      <div className="relative flex items-start justify-between border-b border-border pb-3">
+                        <div className="flex items-center gap-3">
+                          <span className="flex size-9 items-center justify-center rounded-lg bg-danger/10 text-danger"><Activity size={18} aria-hidden="true" /></span>
+                          <div><p className="font-space-mono text-[8px] font-bold uppercase tracking-[0.18em] text-text-secondary">Medical report</p><h3 className="mt-1 font-anton text-lg uppercase leading-none text-text-primary">Active Injuries</h3></div>
+                        </div>
+                        <ArrowUpRight size={15} className="text-accent transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
+                      </div>
+                      <div className="relative mt-3 flex items-end gap-5">
+                        <div><p className="font-anton text-4xl leading-none text-text-primary">{leagueInjuries.length}</p><p className="font-space-mono text-[8px] font-bold uppercase text-text-secondary">Active cases</p></div>
+                        <div className="pb-0.5 font-space-mono text-[8px] font-bold uppercase leading-relaxed text-text-secondary"><span className="text-danger">{majorInjuries.length} major</span><br />{injuredClubs} clubs affected</div>
+                      </div>
+                      <div className="relative mt-3 min-h-0 flex-1 space-y-1.5 overflow-hidden">
+                        {featuredInjuries.length > 0 ? featuredInjuries.map((injury) => (
+                          <div key={injury.id} className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 rounded-md bg-bg/70 px-3 py-2">
+                            <span className="min-w-0"><span className="block truncate text-[11px] font-semibold text-text-primary">{injury.playerName}</span><span className="block truncate font-space-mono text-[8px] uppercase text-text-secondary">{teams[injury.teamId]?.shortName ?? injury.teamId} · {injury.conditionName}</span></span>
+                            <span className="self-center font-space-mono text-[8px] font-bold uppercase text-text-secondary">to {injury.estimatedReturnEarliest}</span>
+                          </div>
+                        )) : <p className="rounded-md bg-success/5 px-3 py-2 text-xs text-success">No active injuries across the league.</p>}
+                      </div>
+                      <span className="relative mt-2 inline-flex items-center gap-1 font-space-mono text-[8px] font-bold uppercase tracking-wider text-accent">Open injury report <ChevronRight size={12} /></span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setActiveSubTab("trades")}
+                      className={`group relative col-span-4 flex min-h-0 flex-col overflow-hidden rounded-xl border-2 bg-surface p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md ${tradeWindowOpen ? "border-success/50 hover:border-success" : "border-border hover:border-accent"}`}
+                    >
+                      <div className={`pointer-events-none absolute -right-12 -top-14 size-36 rounded-full blur-3xl ${tradeWindowOpen ? "bg-emerald-500/15" : "bg-slate-500/10"}`} />
+                      <div className="relative flex items-start justify-between border-b border-border pb-3">
+                        <div className="flex items-center gap-3">
+                          <span className={`flex size-9 items-center justify-center rounded-lg ${tradeWindowOpen ? "bg-success/10 text-success" : "bg-black/5 text-text-secondary dark:bg-white/5"}`}><HeartHandshake size={18} aria-hidden="true" /></span>
+                          <div><p className="font-space-mono text-[8px] font-bold uppercase tracking-[0.18em] text-text-secondary">League transactions</p><h3 className="mt-1 font-anton text-lg uppercase leading-none text-text-primary">Trade Hub</h3></div>
+                        </div>
+                        <ArrowUpRight size={15} className="text-accent transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
+                      </div>
+                      {tradeWindowOpen ? (
+                        <>
+                          <div className="relative mt-3 flex items-center justify-between"><span className="rounded bg-success/10 px-2 py-1 font-space-mono text-[8px] font-bold uppercase text-success">Trade window open</span><span className="font-space-mono text-[8px] font-bold uppercase text-text-secondary">Closes {tradeWindow?.endsOn}</span></div>
+                          <div className="relative mt-3 min-h-0 flex-1 space-y-1.5 overflow-hidden">
+                            {recentTrades.length > 0 ? recentTrades.map((record) => {
+                              const outgoing = record.outgoingPlayerIds.map((id) => players[id]?.name ?? id).join(" + ");
+                              const incoming = record.incomingPlayerIds.map((id) => players[id]?.name ?? id).join(" + ");
+                              return <div key={record.id} className="rounded-md bg-bg/70 px-3 py-2"><div className="font-space-mono text-[8px] font-bold uppercase text-success">{teams[record.fromTeamId]?.shortName ?? record.fromTeamId} ↔ {teams[record.toTeamId]?.shortName ?? record.toTeamId}</div><div className="mt-1 truncate text-[11px] text-text-primary">{outgoing} / {incoming}</div></div>;
+                            }) : <div className="rounded-md border border-dashed border-border px-3 py-3 text-xs text-text-secondary">No completed deals yet. Open the builder to explore available moves.</div>}
+                          </div>
+                          <span className="relative mt-2 inline-flex items-center gap-1 font-space-mono text-[8px] font-bold uppercase tracking-wider text-success">Build a trade <ChevronRight size={12} /></span>
+                        </>
+                      ) : (
+                        <div className="relative flex min-h-0 flex-1 flex-col items-center justify-center py-4 text-center">
+                          <Lock size={22} className="mb-3 text-text-secondary" aria-hidden="true" />
+                          <p className="font-anton text-2xl uppercase leading-none text-text-primary">Trade Window Closed</p>
+                          <p className="mt-2 font-space-mono text-[8px] font-bold uppercase text-text-secondary">
+                            {tradeWindow ? (currentDate < tradeWindow.startsOn ? `Opens ${tradeWindow.startsOn}` : `Closed ${tradeWindow.endsOn}`) : "Dates awaiting season schedule"}
+                          </p>
+                          <p className="mt-3 text-xs text-text-secondary">{seasonTrades.length} completed {seasonTrades.length === 1 ? "deal" : "deals"} recorded this season</p>
+                        </div>
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setActiveSubTab("seasonanalysis")}
+                      className="group relative col-span-7 flex min-h-0 overflow-hidden rounded-xl border-2 border-border bg-surface p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-accent hover:shadow-md"
+                    >
+                      <div className="pointer-events-none absolute -bottom-20 -right-10 size-48 rounded-full bg-violet-500/10 blur-3xl" />
+                      <div className="relative flex w-[42%] shrink-0 flex-col border-r border-border pr-5">
+                        <div className="flex items-center justify-between"><span className="flex size-9 items-center justify-center rounded-lg bg-violet-500/10 text-violet-600 dark:text-violet-400"><TrendingUp size={18} aria-hidden="true" /></span><ArrowUpRight size={15} className="text-accent transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" /></div>
+                        <p className="mt-auto font-anton text-4xl leading-none text-text-primary">{playedMatches}<span className="text-xl text-text-secondary">/{fixtures.length}</span></p>
+                        <h3 className="mt-2 font-anton text-xl uppercase leading-none text-text-primary">Season Analysis</h3>
+                        <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-border"><div className="h-full rounded-full bg-violet-500" style={{ width: `${seasonProgress}%` }} /></div>
+                        <p className="mt-1 font-space-mono text-[8px] font-bold uppercase text-text-secondary">{seasonProgress}% of matches complete</p>
+                      </div>
+                      <div className="relative grid min-w-0 flex-1 grid-cols-2 content-center gap-3 pl-5">
+                        <div className="rounded-lg bg-bg/70 p-4"><p className="font-space-mono text-[8px] font-bold uppercase text-text-secondary">Leading runs</p><p className="mt-2 truncate text-sm font-bold text-text-primary">{orangeCapLeaders[0]?.name ?? "Awaiting matches"}</p><p className="mt-1 font-anton text-xl text-orange-500">{orangeCapLeaders[0] ? `${orangeCapLeaders[0].runs} runs` : "—"}</p></div>
+                        <div className="rounded-lg bg-bg/70 p-4"><p className="font-space-mono text-[8px] font-bold uppercase text-text-secondary">Leading wickets</p><p className="mt-2 truncate text-sm font-bold text-text-primary">{purpleCapLeaders[0]?.name ?? "Awaiting matches"}</p><p className="mt-1 font-anton text-xl text-purple-600 dark:text-purple-400">{purpleCapLeaders[0] ? `${purpleCapLeaders[0].wickets} wickets` : "—"}</p></div>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setActiveSubTab("minorrecords")}
+                      className="group relative col-span-5 flex min-h-0 flex-col overflow-hidden rounded-xl border-2 border-border bg-surface p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-accent hover:shadow-md"
+                    >
+                      <div className="pointer-events-none absolute -bottom-16 -right-8 size-40 rounded-full bg-amber-500/10 blur-3xl" />
+                      <div className="relative flex items-start justify-between border-b border-border pb-3">
+                        <div className="flex items-center gap-3"><span className="flex size-9 items-center justify-center rounded-lg bg-warning/10 text-warning"><Trophy size={18} aria-hidden="true" /></span><div><p className="font-space-mono text-[8px] font-bold uppercase tracking-[0.18em] text-text-secondary">Competition archive</p><h3 className="mt-1 font-anton text-lg uppercase leading-none text-text-primary">Minor Records</h3></div></div>
+                        <ArrowUpRight size={15} className="text-accent transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
+                      </div>
+                      <div className="relative mt-3 grid grid-cols-[auto_auto_1fr] items-end gap-5"><div><p className="font-anton text-3xl leading-none text-text-primary">{minorRecords.length}</p><p className="font-space-mono text-[8px] font-bold uppercase text-text-secondary">Records</p></div><div><p className="font-anton text-3xl leading-none text-success">{verifiedRecords.length}</p><p className="font-space-mono text-[8px] font-bold uppercase text-text-secondary">Verified</p></div><p className="pb-0.5 text-right font-space-mono text-[8px] font-bold uppercase text-text-secondary">{recordCategories} categories</p></div>
+                      <div className="relative mt-3 grid min-h-0 flex-1 grid-cols-2 gap-2 overflow-hidden">
+                        {featuredRecords.map((record) => <div key={record.id} className="min-w-0 rounded-lg bg-bg/70 p-3"><p className="line-clamp-2 text-[10px] font-semibold leading-tight text-text-primary">{record.title}</p><p className="mt-2 truncate font-anton text-lg text-warning">{record.value}</p><p className="truncate font-space-mono text-[8px] uppercase text-text-secondary">{record.holder}</p></div>)}
+                      </div>
+                      <span className="relative mt-2 inline-flex items-center gap-1 font-space-mono text-[8px] font-bold uppercase tracking-wider text-accent">Browse the archive <ChevronRight size={12} /></span>
+                    </button>
+                  </div>
+                );
+              })()}
               {activeSubTab === "injuries" && (
                 <InjuryHubPage
                   mode="league"
@@ -8644,11 +8895,8 @@ This record has been officially verified and added to the IPL Minor Records arch
               {activeSubTab === "staff" && (
                 <StaffManagementPage teams={Object.values(teams)} mode="league" />
               )}
-              {activeSubTab === "board" && (
-                <BoardOverviewPage teamId={userTeamId} mode="league" />
-              )}
               {activeSubTab === "seasonanalysis" && (
-                <SeasonDataAnalysisPage fixtures={fixtures} teams={teams} players={players} userTeamId={userTeamId} />
+                <SeasonDataAnalysisPage fixtures={detailedFixtures} teams={teams} players={players} seasonStartBattingAbilities={seasonStartBattingAbilities} seasonStartBowlingAbilities={seasonStartBowlingAbilities} userTeamId={userTeamId} />
               )}
               {activeSubTab === "minorrecords" && (
                 <MinorRecords minorRecords={minorRecords} />
@@ -8725,7 +8973,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                         key={subtab}
                         type="button"
                         onClick={() => setActiveSubTab(subtab)}
-                        className={`history-archive-tile group relative flex min-h-0 flex-col overflow-hidden border-2 border-[#d8d1c4] bg-[#fbfaf6] text-left text-text-primary shadow-[0_7px_22px_rgba(64,52,35,0.08)] transition-all hover:-translate-y-0.5 hover:shadow-[0_14px_30px_rgba(64,52,35,0.14)] dark:border-[#303a4a] dark:bg-[#111721] dark:text-white dark:shadow-sm dark:hover:shadow-[0_14px_32px_rgba(0,0,0,0.3)] ${featured ? "p-6" : "p-5"} ${position}`}
+                        className={`history-archive-tile group relative flex min-h-0 flex-col overflow-hidden border-2 border-border bg-surface2 text-left text-text-primary shadow-[0_7px_22px_rgba(64,52,35,0.08)] transition-all hover:-translate-y-0.5 hover:shadow-[0_14px_30px_rgba(64,52,35,0.14)] dark:shadow-sm dark:hover:shadow-[0_14px_32px_rgba(0,0,0,0.3)] ${featured ? "p-6" : "p-5"} ${position}`}
                         style={{
                           "--history-tile-accent-light": lightAccent,
                           "--history-tile-accent-dark": accent,
@@ -8747,15 +8995,15 @@ This record has been officially verified and added to the IPL Minor Records arch
                         </span>
 
                         <span className={`relative flex flex-1 flex-col ${featured ? "justify-center py-6" : "justify-end pt-3"}`}>
-                          <span className="block font-space-mono text-[8px] font-bold uppercase tracking-[0.22em] text-[#52769d] dark:text-[#83aee8]">History archive</span>
+                          <span className="block font-space-mono text-[8px] font-bold uppercase tracking-[0.22em] text-accent">History archive</span>
                           <span className={`mt-2 block font-anton uppercase leading-none tracking-wide ${featured ? "text-[34px]" : "text-[23px]"}`}>{title}</span>
-                          <span className={`mt-3 block leading-relaxed text-[#716a60] dark:text-white/55 ${featured ? "max-w-sm text-[12px]" : "max-w-md text-[11px]"}`}>{description}</span>
+                          <span className={`mt-3 block leading-relaxed text-text-secondary ${featured ? "max-w-sm text-[12px]" : "max-w-md text-[11px]"}`}>{description}</span>
 
                           <span className={featured ? "mt-7 grid grid-cols-2 gap-1.5" : "mt-4 flex flex-wrap gap-1.5"}>
                             {highlights.map((highlight) => (
                               <span
                                 key={highlight}
-                                className={`border px-2 py-1 font-space-mono font-bold uppercase tracking-wider text-[#625b51] dark:text-white/65 ${featured ? "text-center text-[8px]" : "text-[7px]"}`}
+                                className={`border px-2 py-1 font-space-mono font-bold uppercase tracking-wider text-text-secondary ${featured ? "text-center text-[8px]" : "text-[7px]"}`}
                                 style={{ borderColor: "color-mix(in srgb, var(--history-tile-accent) 32%, transparent)", backgroundColor: "color-mix(in srgb, var(--history-tile-accent) 6%, transparent)" }}
                               >
                                 {highlight}
@@ -8764,7 +9012,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                           </span>
                         </span>
 
-                        <span className="relative flex items-center justify-between border-t border-[#16130f]/10 pt-3 font-space-mono text-[8px] font-bold uppercase tracking-[0.16em] text-[#81796d] dark:border-white/10 dark:text-white/40">
+                        <span className="relative flex items-center justify-between border-t border-border pt-3 font-space-mono text-[8px] font-bold uppercase tracking-[0.16em] text-text-secondary">
                           <span>Open archive</span>
                           <span className="transition-colors" style={{ color: "var(--history-tile-accent)" }}>View</span>
                         </span>

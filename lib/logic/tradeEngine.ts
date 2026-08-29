@@ -8,6 +8,7 @@ export const TRADE_WINDOW_END_MONTH = 10;
 export const TRADE_WINDOW_END_DAY = 31;
 export const MAX_TRADE_COUNTER_OFFERS = 20;
 export const MINI_TRADE_OVERDRAFT_LAKHS = 500;
+export const REPUTATION_TEN_TRADE_PREMIUM = 1.45;
 
 /** A trade may preserve, but must not worsen, an existing overseas overflow. */
 export function getTradeOverseasLimit(team: Team, players: Record<string, Player>): number {
@@ -132,8 +133,9 @@ export function calculateTeamTradeValue(input: {
   const highPotentialBonus = player.age <= 28 ? Math.pow(Math.max(0, potential - 82), 2) * 2.5 : 0;
   const eliteCaPremium = current >= 89 ? 1.35 : current >= 86 ? 1.22 : current >= 82 ? 1.1 : 1;
   const base = (caBase + cappedHeadroom * headroomRate + highPotentialBonus) * eliteCaPremium;
+  const reputationValuePremium = reputation >= 10 ? 1.35 : reputation >= 9 ? 1.16 : reputation >= 8 ? 1.07 : 1;
   const value = base * ageFactor(player.age) * (0.72 + performance * 0.28) * salaryEfficiency
-    * teamRoleNeed(team, player, players) * (1 + Math.max(0, reputation - 7) * 0.045) * leadership * loyalty * injury;
+    * teamRoleNeed(team, player, players) * reputationValuePremium * leadership * loyalty * injury;
   return Math.round(value);
 }
 
@@ -211,11 +213,21 @@ export function isTradeBalanced(input: {
   offeredValue: number;
   requestedValue: number;
   requestedWillingness: TradeWillingness;
+  requestedPremium?: number;
 }): boolean {
   if (input.requestedValue <= 0) return false;
-  const required = input.requestedValue * willingnessThreshold[input.requestedWillingness];
+  const required = input.requestedValue
+    * willingnessThreshold[input.requestedWillingness]
+    * Math.max(1, input.requestedPremium ?? 1);
   // Avoid rounding noise making marginal low-value swaps appear acceptable.
   return input.offeredValue >= Math.ceil(required);
+}
+
+/** Reputation-10 players are franchise assets: a merely fair package is never enough. */
+export function getRequestedTradePremium(players: Player[]): number {
+  return players.some((player) => (player.reputation ?? 0) >= 10)
+    ? REPUTATION_TEN_TRADE_PREMIUM
+    : 1;
 }
 
 export function calculateTradePackageValue(values: number[]): number {

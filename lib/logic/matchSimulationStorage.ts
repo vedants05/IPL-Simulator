@@ -30,7 +30,13 @@ function openDatabase(): Promise<IDBDatabase | null> {
 
 const storageKey = (careerId: string, fixtureId: string) => `${careerId}:${fixtureId}`;
 
-export async function saveMatchSimulations(
+// IndexedDB structured-clones every simulation passed to a transaction. A
+// fast-forward can complete several matches before earlier writes settle, so
+// serialize archive transactions to prevent multiple full delivery graphs
+// being cloned in memory at the same time.
+let archiveWriteQueue: Promise<void> = Promise.resolve();
+
+async function writeMatchSimulations(
   careerId: string,
   simulations: readonly MatchSimulationRecord[],
 ): Promise<void> {
@@ -57,11 +63,24 @@ export async function saveMatchSimulations(
   database.close();
 }
 
+export function saveMatchSimulations(
+  careerId: string,
+  simulations: readonly MatchSimulationRecord[],
+): Promise<void> {
+  if (simulations.length === 0) return Promise.resolve();
+  const write = archiveWriteQueue
+    .catch(() => undefined)
+    .then(() => writeMatchSimulations(careerId, simulations));
+  archiveWriteQueue = write;
+  return write;
+}
+
 export async function loadMatchSimulations(
   careerId: string,
   fixtureIds: readonly string[],
 ): Promise<Record<string, MatchSimulationRecord>> {
   if (fixtureIds.length === 0) return {};
+  await archiveWriteQueue.catch(() => undefined);
   const database = await openDatabase();
   if (!database) return {};
   const records = await new Promise<Record<string, MatchSimulationRecord>>((resolve, reject) => {
