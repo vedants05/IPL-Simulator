@@ -12,6 +12,7 @@ export function getNewsArticleExpiry(input: {
   publishedDate: string;
   durationDays: number;
   isFinalResult: boolean;
+  isFinalRunnerUp: boolean;
   isRetirement: boolean;
   isLegendRetirement: boolean;
   nextRetentionDate: string;
@@ -19,16 +20,17 @@ export function getNewsArticleExpiry(input: {
   postAuctionCutoffDate: string;
   isFixtureAnnouncement: boolean;
   seasonStartDate: string;
+  nextSeasonStartDate: string;
 }): string {
-  if (input.isFinalResult) return addNewsDays(input.publishedDate, 30);
+  if (input.isFinalResult) return addNewsDays(input.nextSeasonStartDate, -1);
+  if (input.isFinalRunnerUp) return addNewsDays(input.publishedDate, 14);
   if (input.isRetirement) {
     // Expiry is inclusive: 364 is the final visible day in a 365-day window.
     return input.isLegendRetirement
-      ? addNewsDays(input.publishedDate, 364)
+      ? addNewsDays(input.nextSeasonStartDate, -1)
       : addNewsDays(input.nextRetentionDate, -1);
   }
   if (input.isPostAuction) return input.postAuctionCutoffDate;
   if (input.isFixtureAnnouncement) return addNewsDays(input.seasonStartDate, -1);
   return addNewsDays(input.publishedDate, input.durationDays);
 }
-

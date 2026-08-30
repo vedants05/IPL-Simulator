@@ -1,5 +1,6 @@
 import {
   appointCareerStaff,
+  getTeamStaffSalaryBudgetCap,
   poachCareerStaff,
   processStaffContractExpiries,
   releaseCareerStaff,
@@ -25,8 +26,6 @@ const AI_MENTOR_CLUBS = new Set(["CSK", "DC", "GT", "KKR", "LSG", "MI", "RCB", "
 const AI_ASSISTANT_COACH_CLUBS = new Set(["CSK", "KKR", "LSG", "MI", "PBKS"]);
 const AI_GENERAL_COACH_CLUBS = new Set(["DC", "GT", "RCB"]);
 export const MIN_AI_MENTOR_REPUTATION = 85;
-const AI_MINIMUM_STAFF_BUDGET = 160_000_000;
-const AI_STAFF_BUDGET_HEADROOM = 1.45;
 
 /** A club's intended staff structure. Core technical coverage is universal;
  * support roles deliberately vary so every AI club does not build the same staff. */
@@ -49,10 +48,7 @@ export function ensureAIStaffBudgets(state: CareerStaffState, teamIds: string[])
   teamIds.forEach((teamId) => {
     const finance = financesByTeam[teamId];
     const committedSalary = finance?.committedSalary ?? 0;
-    const annualBudget = Math.max(
-      AI_MINIMUM_STAFF_BUDGET,
-      Math.ceil(committedSalary * AI_STAFF_BUDGET_HEADROOM / 1_000_000) * 1_000_000,
-    );
+    const annualBudget = getTeamStaffSalaryBudgetCap(teamId, Object.values(state.contracts));
     if (finance?.annualBudget === annualBudget) return;
     financesByTeam[teamId] = {
       annualBudget,

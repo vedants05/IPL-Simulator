@@ -178,18 +178,31 @@ export function restoreTeamLeadershipContinuity(
 ): TeamLeadership {
   const raw = isObject(value) ? value : {};
   const squadIds = new Set(squad.map((player) => player.id));
-  const restoreId = (continuityId: string | null | undefined, savedId: unknown) => {
-    if (continuityId === undefined) return savedId;
-    return typeof continuityId === "string" && squadIds.has(continuityId)
-      ? continuityId
+  const restoreId = (continuityId: string | null | undefined, savedId: unknown): string | null => {
+    const candidateId = continuityId === undefined ? savedId : continuityId;
+    return typeof candidateId === "string" && squadIds.has(candidateId)
+      ? candidateId
       : null;
   };
+  const captainId = restoreId(continuity.captainId, raw.captainId);
+  const viceCaptainId = restoreId(continuity.viceCaptainId, raw.viceCaptainId);
 
-  return normalizeTeamLeadership({
+  // Normalize cooldown and interest metadata separately from the incumbent
+  // appointments. Interest controls whether a player accepts a new role; it
+  // must not silently remove an existing captain or vice-captain who was kept
+  // by the franchise. Retention membership is authoritative at rollover.
+  const normalized = normalizeTeamLeadership({
     ...raw,
-    captainId: restoreId(continuity.captainId, raw.captainId),
-    viceCaptainId: restoreId(continuity.viceCaptainId, raw.viceCaptainId),
+    captainId: null,
+    viceCaptainId: null,
   }, squad, gamesPlayed, activeSeason);
+
+  return {
+    ...normalized,
+    captainId,
+    viceCaptainId: viceCaptainId !== captainId ? viceCaptainId : null,
+    captainChangeLockedUntilGamesPlayed: null,
+  };
 }
 
 export function recommendTeamLeadership(

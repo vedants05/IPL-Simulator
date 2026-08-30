@@ -17,6 +17,7 @@ import {
 import { getClubOwnership, getAllClubOwnerships, type ClubOwnershipRecord, type OwnershipArchetype } from "@/lib/data/clubOwnership";
 import { getMaxScoutingAssignments } from "@/lib/logic/scoutingAssignments";
 import { getTeamStaffSalaryBudgetCap, getOwnerOfferedContractYears } from "@/lib/logic/staffContracts";
+import { useGameStore } from "@/lib/store/gameStore";
 
 interface BoardOverviewPageProps {
   teamId: string;
@@ -60,13 +61,17 @@ const ARCHETYPE_LABELS: Record<OwnershipArchetype, { title: string; badgeClass: 
 export default function BoardOverviewPage({ teamId: initialTeamId, mode = "club" }: BoardOverviewPageProps) {
   const [selectedTeamId, setSelectedTeamId] = useState(initialTeamId);
   const allOwnerships = useMemo(() => getAllClubOwnerships(), []);
+  const careerStaff = useGameStore((state) => state.careerStaff);
   const activeRecord: ClubOwnershipRecord = getClubOwnership(selectedTeamId);
 
   const archetypeInfo = ARCHETYPE_LABELS[activeRecord.ownership_archetype] ?? ARCHETYPE_LABELS.corporate_analytical;
   const ArchetypeIcon = archetypeInfo.icon;
 
   const maxScoutingSlots = useMemo(() => getMaxScoutingAssignments(selectedTeamId), [selectedTeamId]);
-  const staffWageCapCr = useMemo(() => (getTeamStaffSalaryBudgetCap(selectedTeamId) / 10000000).toFixed(1), [selectedTeamId]);
+  const staffWageCapCr = useMemo(() => (
+    (careerStaff.financesByTeam[selectedTeamId]?.annualBudget
+      ?? getTeamStaffSalaryBudgetCap(selectedTeamId, Object.values(careerStaff.contracts))) / 10_000_000
+  ).toFixed(2), [careerStaff.contracts, careerStaff.financesByTeam, selectedTeamId]);
   const maxContractYears = useMemo(() => getOwnerOfferedContractYears(selectedTeamId), [selectedTeamId]);
   const emergencyTopUpChance = useMemo(() => Math.round(activeRecord.staff_budget_flexibility * 5), [activeRecord.staff_budget_flexibility]);
 
@@ -223,6 +228,10 @@ export default function BoardOverviewPage({ teamId: initialTeamId, mode = "club"
                   ₹{staffWageCapCr} Cr
                 </dd>
               </div>
+
+              <p className="col-span-2 font-space-mono text-[8px] leading-relaxed text-text-secondary">
+                Set from current staff wage demands, with recruitment headroom adjusted by board generosity and flexibility.
+              </p>
 
               <div>
                 <dt className="font-space-mono uppercase text-text-secondary">Financial Generosity</dt>

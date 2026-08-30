@@ -74,7 +74,10 @@ export default function LeagueHallOfFame({ players, teams, onOpenPlayer }: Leagu
 
   return (
     <section className="flex h-[calc(100vh-200px)] min-h-[500px] flex-col overflow-hidden border-2 border-border bg-surface">
-      <header className="relative shrink-0 overflow-hidden border-b-2 border-[#c9a95f]/55 bg-[#f6edd9] px-6 py-5 text-[#261f15] dark:border-[#d6ad55]/45 dark:bg-[#100d17] dark:text-white">
+      <header
+        className="relative shrink-0 overflow-hidden border-b-2 border-[#c9a95f]/55 px-6 py-5 text-text-primary dark:border-[#d6ad55]/45"
+        style={{ background: "linear-gradient(135deg, color-mix(in srgb, var(--surface2) 92%, #d6ad55 8%), var(--surface))" }}
+      >
         <div className="pointer-events-none absolute -left-20 -top-24 h-64 w-64 rounded-full bg-[#8d68c7]/10 blur-3xl dark:bg-[#6f3db5]/30" />
         <div className="pointer-events-none absolute right-0 top-0 h-full w-2/5 bg-[radial-gradient(circle_at_center,rgba(184,137,46,0.16),transparent_68%)] dark:bg-[radial-gradient(circle_at_center,rgba(214,173,85,0.22),transparent_68%)]" />
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-[#d6ad55] to-transparent" />
@@ -87,7 +90,7 @@ export default function LeagueHallOfFame({ players, teams, onOpenPlayer }: Leagu
             <div>
               <p className="font-space-mono text-[8px] font-bold uppercase tracking-[0.32em] text-[#8d6218] dark:text-[#d6ad55]">Immortals of the Indian Premier League</p>
               <h3 className="mt-1 font-anton text-[32px] uppercase leading-none tracking-wide">League Hall of Fame</h3>
-              <p className="mt-2 max-w-2xl text-[11px] leading-relaxed text-[#6e6250] dark:text-white/55">
+              <p className="mt-2 max-w-2xl text-[11px] leading-relaxed text-text-secondary">
                 The first-ballot class: players whose leadership, records and defining moments permanently shaped the league.
               </p>
             </div>
@@ -96,10 +99,10 @@ export default function LeagueHallOfFame({ players, teams, onOpenPlayer }: Leagu
           <div className="hidden items-center gap-7 lg:flex">
             <div className="text-right">
               <div className="font-anton text-[28px] leading-none text-[#946514] dark:text-[#e7c576]">{LEAGUE_HALL_OF_FAME.length}</div>
-              <div className="mt-1 font-space-mono text-[7px] font-bold uppercase tracking-[0.18em] text-[#746957] dark:text-white/40">Founding class</div>
+              <div className="mt-1 font-space-mono text-[7px] font-bold uppercase tracking-[0.18em] text-text-secondary">Founding class</div>
             </div>
-            <div className="h-9 w-px bg-[#261f15]/15 dark:bg-white/15" />
-            <div className="flex items-center gap-2 text-[#6e6250] dark:text-white/55">
+            <div className="h-9 w-px bg-current opacity-15" />
+            <div className="flex items-center gap-2 text-text-secondary">
               <ShieldCheck size={17} className="text-[#946514] dark:text-[#d6ad55]" />
               <span className="font-space-mono text-[8px] font-bold uppercase tracking-wider">First ballot</span>
             </div>
@@ -145,7 +148,8 @@ export default function LeagueHallOfFame({ players, teams, onOpenPlayer }: Leagu
                     type="button"
                     disabled={!linkedPlayer}
                     onClick={() => linkedPlayer && onOpenPlayer(linkedPlayer.id)}
-                    className="group relative min-h-44 overflow-hidden border border-[#d2b873] bg-[linear-gradient(145deg,#fffdf7,#f0e4cb)] p-4 text-left text-text-primary shadow-[0_5px_16px_rgba(73,56,28,0.09)] transition-all enabled:hover:-translate-y-0.5 enabled:hover:border-[#a9781e] enabled:hover:shadow-lg disabled:cursor-default dark:border-[#d6ad55]/35 dark:bg-[#15111d] dark:bg-none dark:text-white dark:shadow-sm dark:enabled:hover:border-[#d6ad55]"
+                    className="group relative min-h-44 overflow-hidden border border-[#d2b873]/60 p-4 text-left text-text-primary shadow-sm transition-all enabled:hover:-translate-y-0.5 enabled:hover:border-[#a9781e] enabled:hover:shadow-lg disabled:cursor-default dark:border-[#d6ad55]/35 dark:enabled:hover:border-[#d6ad55]"
+                    style={{ background: "linear-gradient(145deg, color-mix(in srgb, var(--surface2) 94%, #d6ad55 6%), var(--surface))" }}
                     title={linkedPlayer ? `Open ${linkedPlayer.name}'s player profile` : `${member.name} is not in the current player database`}
                   >
                     <div className="absolute inset-y-0 left-0 w-1" style={{ backgroundColor: team.primaryColor }} />
@@ -160,7 +164,7 @@ export default function LeagueHallOfFame({ players, teams, onOpenPlayer }: Leagu
                       <div className="mt-auto pt-4">
                         <p className="font-space-mono text-[7px] font-bold uppercase tracking-[0.18em] text-[#8d6218] dark:text-[#d6ad55]/80">{member.role} · {member.era}</p>
                         <h5 className="mt-1 font-anton text-[21px] uppercase leading-none">{member.name}</h5>
-                        <p className="mt-2 line-clamp-2 text-[10px] leading-relaxed text-[#6e6250] dark:text-white/55">{member.legacy}</p>
+                        <p className="mt-2 line-clamp-2 text-[10px] leading-relaxed text-text-secondary">{member.legacy}</p>
                       </div>
                     </div>
                   </button>

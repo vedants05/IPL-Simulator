@@ -3,7 +3,7 @@ import type { StaffSeasonReview } from "./staffPerformanceReview";
 import { calculateStaffSalaryDemand } from "./staffNegotiations";
 import type { StaffRatingAttributes } from "./staffRatings";
 
-export const STAFF_SALARY_MODEL_VERSION = 2;
+export const STAFF_SALARY_MODEL_VERSION = 3;
 
 export type StaffContractType = "fixed_term" | "rolling";
 export type StaffEmploymentStatus = "contracted" | "free_agent" | "retired";
@@ -253,6 +253,7 @@ const moveAffinityToCurrentClub = (profile: StaffAffinityProfile, teamId: string
 export function recalculateStaffFinances(
   contracts: Record<string, CareerStaffContract>,
   previous: Record<string, TeamStaffFinance> = {},
+  refreshAnnualBudgets = false,
 ): Record<string, TeamStaffFinance> {
   const committed = new Map<string, number>();
   Object.values(contracts).forEach((contract) => {
@@ -264,7 +265,9 @@ export function recalculateStaffFinances(
     const committedSalary = committed.get(teamId) ?? 0;
     const prior = previous[teamId];
     return [teamId, {
-      annualBudget: prior?.annualBudget ?? Math.max(100_000_000, Math.ceil(committedSalary * 1.25 / 1_000_000) * 1_000_000),
+      annualBudget: !refreshAnnualBudgets && prior?.annualBudget
+        ? prior.annualBudget
+        : getTeamStaffSalaryBudgetCap(teamId, Object.values(contracts)),
       committedSalary,
       compensationPaid: prior?.compensationPaid ?? 0,
       compensationReceived: prior?.compensationReceived ?? 0,
@@ -483,7 +486,7 @@ export function synchronizeCareerStaffProfiles(
     ...state,
     contracts,
     salaryModelVersion,
-    financesByTeam: recalculateStaffFinances(contracts, state.financesByTeam),
+    financesByTeam: recalculateStaffFinances(contracts, state.financesByTeam, (state.salaryModelVersion ?? 0) < STAFF_SALARY_MODEL_VERSION),
   } : state;
 }
 
@@ -750,9 +753,26 @@ export function validateCareerStaffState(state: CareerStaffState): string[] {
 
 import { getClubOwnership } from "../data/clubOwnership";
 
-export function getTeamStaffSalaryBudgetCap(teamId: string): number {
+/** Builds the board allowance around actual staff wage demands. */
+export function getTeamStaffSalaryBudgetCap(
+  teamId: string,
+  contracts: CareerStaffContract[] = [],
+): number {
   const ownership = getClubOwnership(teamId);
-  return 100000000 + (ownership.financial_generosity * 5000000);
+  const activeSalaries = contracts
+    .filter((contract) => contract.status === "contracted" && contract.teamId === teamId)
+    .map((contract) => Math.max(0, contract.annualSalary));
+  const committedDemand = activeSalaries.reduce((sum, salary) => sum + salary, 0);
+  const averageDemand = committedDemand / Math.max(1, activeSalaries.length);
+  const recruitmentReserve = averageDemand * (
+    1.1
+    + ownership.staff_budget_flexibility * 0.035
+    + ownership.financial_generosity * 0.012
+  );
+  const emptyStaffFloor = 80_000_000
+    + Math.pow(ownership.financial_generosity, 1.35) * 1_650_000
+    + ownership.staff_budget_flexibility * 425_000;
+  return Math.round(Math.max(committedDemand + recruitmentReserve, emptyStaffFloor) / 100_000) * 100_000;
 }
 
 export function getOwnerOfferedContractYears(teamId: string): number {

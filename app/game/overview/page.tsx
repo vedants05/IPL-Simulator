@@ -123,10 +123,11 @@ const PitchCuratorPage = dynamic(() => import("@/components/club/PitchCuratorPag
 const StadiumManagementPage = dynamic(() => import("@/components/club/StadiumManagementPage"), { ssr: false });
 const StaffManagementPage = dynamic(() => import("@/components/club/StaffManagementPage"), { ssr: false });
 const BoardOverviewPage = dynamic(() => import("@/components/club/BoardOverviewPage"), { ssr: false });
+const SupportersPage = dynamic(() => import("@/components/club/SupportersPage"), { ssr: false });
 const SocialMediaPage = dynamic(() => import("@/components/social/SocialMediaPage"), { ssr: false });
 const NewsPage = dynamic(() => import("@/components/news/NewsPage"), { ssr: false });
 import { getClubOwnership } from "@/lib/data/clubOwnership";
-import { checkEmergencyBudgetExtensionApproval } from "@/lib/logic/staffContracts";
+import { checkEmergencyBudgetExtensionApproval, STAFF_SALARY_MODEL_VERSION } from "@/lib/logic/staffContracts";
 import {
   calculateSeasonUnderperformancePressure,
   calculateEffectiveJobPressure,
@@ -900,9 +901,11 @@ function OverviewPageContent() {
   const [minorRecords, setMinorRecords] = useState<MinorRecord[]>(MINOR_RECORDS);
   const [inbox, setInbox] = useState<CareerEmail[]>([]);
   const [isCareerLoaded, setIsCareerLoaded] = useState(false);
-  const careerStaffNeedsProfileSync = !careerStaff.initialized || Object.values(careerStaff.contracts).some((contract) => (
-    !contract.roleRatings || Object.keys(contract.roleRatings).length === 0
-  ));
+  const careerStaffNeedsProfileSync = !careerStaff.initialized
+    || careerStaff.salaryModelVersion < STAFF_SALARY_MODEL_VERSION
+    || Object.values(careerStaff.contracts).some((contract) => (
+      !contract.roleRatings || Object.keys(contract.roleRatings).length === 0
+    ));
 
   useEffect(() => {
     if (!isCareerLoaded || !careerStaffNeedsProfileSync) return;
@@ -1633,23 +1636,36 @@ function OverviewPageContent() {
         const userSquadPlayers = (userTeam?.squad ?? [])
           .map((id) => players[id])
           .filter((player): player is Player => Boolean(player));
+        const hasCaptainContinuity = Object.prototype.hasOwnProperty.call(userTeam ?? {}, "captainContinuityId");
+        const hasViceCaptainContinuity = Object.prototype.hasOwnProperty.call(userTeam ?? {}, "viceCaptainContinuityId");
         const loadedLeadership = restoreTeamLeadershipContinuity(
           parsed.teamLeadership,
           userSquadPlayers,
           {
-            // A valid explicit save remains authoritative. The continuity
-            // fields recover careers initialized by the old captain-only path.
-            captainId: typeof parsed.teamLeadership?.captainId === "string"
-              ? undefined
-              : userTeam?.captainContinuityId,
-            viceCaptainId: typeof parsed.teamLeadership?.viceCaptainId === "string"
-              ? undefined
-              : userTeam?.viceCaptainContinuityId,
+            // Retention-confirmed franchise continuity is authoritative. A
+            // missing continuity value falls back to the career-page copy so
+            // older saves can be migrated without losing valid appointments.
+            captainId: hasCaptainContinuity ? userTeam?.captainContinuityId ?? null : undefined,
+            viceCaptainId: hasViceCaptainContinuity ? userTeam?.viceCaptainContinuityId ?? null : undefined,
           },
           loadedUserGamesPlayed,
           currentSeason,
         );
         setTeamLeadership(loadedLeadership);
+        if (userTeam && (userTeam.captainContinuityId !== loadedLeadership.captainId
+          || userTeam.viceCaptainContinuityId !== loadedLeadership.viceCaptainId)) {
+          const currentTeams = useGameStore.getState().teams;
+          useGameStore.setState({
+            teams: {
+              ...currentTeams,
+              [userTeamId]: {
+                ...currentTeams[userTeamId],
+                captainContinuityId: loadedLeadership.captainId,
+                viceCaptainContinuityId: loadedLeadership.viceCaptainId,
+              },
+            },
+          });
+        }
         if (JSON.stringify(parsed.teamLeadership ?? {}) !== JSON.stringify(loadedLeadership)) {
           parsed.teamLeadership = loadedLeadership;
           localStorage.setItem(`ipl_career_${userTeamId}`, JSON.stringify(parsed));
@@ -5041,7 +5057,7 @@ This record has been officially verified and added to the IPL Minor Records arch
     club: {
       label: "Club",
       icon: ShieldCheck,
-      subtabs: ["overview", "board", "office", "staffmanagement", "pitchcurator", "stadiummanagement"]
+      subtabs: ["overview", "supporters", "board", "office", "staffmanagement", "pitchcurator", "stadiummanagement"]
     },
     scouting: {
       label: "Scouting",
@@ -5069,6 +5085,7 @@ This record has been officially verified and added to the IPL Minor Records arch
   const getSubTabLabel = (subtab: string): string => {
     if (subtab === "overview") return "Overview";
     if (subtab === "board") return "Board & Ownership";
+    if (subtab === "supporters") return "Supporters";
     if (subtab === "roster") return "Roster Overview";
     if (subtab === "analysis") return "Squad Analysis";
     if (subtab === "playingxi") return "Playing XIs";
@@ -5271,6 +5288,95 @@ This record has been officially verified and added to the IPL Minor Records arch
       || left.name.localeCompare(right.name)
     ))
     .slice(0, 5), [players, userTeam?.squad]);
+  const supporterFixtures = useMemo(() => {
+    const byId = new Map<string, Match>();
+    careerSeasonArchives.forEach((archive) => {
+      ((archive.fixtures ?? []) as Match[]).forEach((fixture) => byId.set(fixture.id, fixture));
+    });
+    fixtures.forEach((fixture) => byId.set(fixture.id, fixture));
+    return Array.from(byId.values()).map((fixture) => ({
+      ...fixture,
+      playerOfTheMatchId: fixture.simulation?.playerOfTheMatchId ?? null,
+    }));
+  }, [careerSeasonArchives, fixtures]);
+  const userSupporterStaff = useMemo(() => Object.values(careerStaff.contracts)
+    .filter((contract) => contract.teamId === userTeamId && contract.status === "contracted")
+    .map((contract) => ({
+      id: contract.staffId,
+      fullName: contract.fullName,
+      primaryRole: contract.primaryRole.replaceAll("_", " "),
+      roles: contract.roles,
+      currentAbility: contract.currentAbility,
+      reputation: contract.reputation,
+      loyalty: contract.loyalty,
+      tenureSeasons: contract.startSeason ? Math.max(0, currentSeason - contract.startSeason + 1) : 0,
+    })), [careerStaff.contracts, currentSeason, userTeamId]);
+  const supporterClubEvents = useMemo(() => {
+    const tradeEvents = tradeRecords
+      .filter((record) => record.fromTeamId === userTeamId || record.toTeamId === userTeamId)
+      .map((record) => {
+        const arrivals = record.toTeamId === userTeamId ? record.incomingPlayerIds : record.outgoingPlayerIds;
+        const departures = record.fromTeamId === userTeamId ? record.outgoingPlayerIds : record.incomingPlayerIds;
+        const names = (ids: string[]) => ids.map((id) => players[id]?.name ?? "a player").join(", ");
+        return {
+          id: `supporters-trade-${record.id}`,
+          date: record.date,
+          season: record.season,
+          category: "squad" as const,
+          kind: "trade",
+          title: arrivals.length ? `Trade brought in ${names(arrivals)}` : `Trade departure: ${names(departures)}`,
+          detail: `${arrivals.length ? `Arrivals: ${names(arrivals)}. ` : ""}${departures.length ? `Departures: ${names(departures)}.` : ""}`,
+          impact: arrivals.length * 2 - departures.length * 2,
+        };
+      });
+    const staffEvents = careerStaff.employmentHistory
+      .filter((event) => event.teamId === userTeamId || event.paidByTeamId === userTeamId)
+      .map((event) => {
+        const staffName = careerStaff.contracts[event.staffId]?.fullName ?? careerStaff.generatedProfiles[event.staffId]?.fullName ?? "Staff member";
+        const positive = event.kind === "appointed" || event.kind === "contract_renewed";
+        return {
+          id: `supporters-staff-${event.id}`,
+          date: event.effectiveOn,
+          season: event.season,
+          category: "staff" as const,
+          kind: event.kind,
+          title: `${staffName} ${event.kind.replaceAll("_", " ")}`,
+          detail: `${event.roles.map((role) => role.replaceAll("_", " ")).join(", ")}${event.compensation ? ` · compensation ₹${event.compensation.toFixed(1)} Cr` : ""}`,
+          impact: positive ? 2 : event.kind === "released" ? -3 : -1,
+          subjectId: event.staffId,
+        };
+      });
+    const injuries = [...injuryHistory, ...Object.values(activeInjuries)]
+      .filter((injury, index, all) => injury.teamId === userTeamId && all.findIndex((item) => item.id === injury.id) === index)
+      .map((injury) => ({
+        id: `supporters-injury-${injury.id}`,
+        date: injury.endedOn ?? injury.startedOn,
+        season: injury.season,
+        category: "injuries" as const,
+        kind: injury.endedOn ? "recovery" : "injury",
+        title: injury.endedOn ? `${injury.playerName} returned from injury` : `${injury.playerName} suffered ${injury.conditionName}`,
+        detail: `${injury.category} injury · ${injury.matchesMissed} match${injury.matchesMissed === 1 ? "" : "es"} missed`,
+        impact: injury.endedOn ? Math.min(4, 1 + injury.matchesMissed) : -Math.min(7, 2 + injury.matchesMissed),
+        subjectId: injury.playerId,
+      }));
+    const recruitmentEvents = (userTeam?.squad ?? []).flatMap((playerId) => {
+      const player = players[playerId];
+      return (player?.iplHistory ?? [])
+        .filter((entry) => entry.teamId === userTeamId && Number(entry.season) >= 2025)
+        .map((entry) => ({
+          id: `supporters-recruitment-${playerId}-${entry.season}`,
+          date: `${entry.season}-02-01`,
+          season: Number(entry.season),
+          category: "squad" as const,
+          kind: entry.isRtm ? "rtm" : entry.isInjuryReplacement ? "injury_replacement" : "recruitment",
+          title: `${player.name} joined for ₹${entry.price.toFixed(1)} Cr`,
+          detail: entry.isRtm ? "Signed through Right to Match" : entry.isInjuryReplacement ? "Signed as an injury replacement" : "Auction or retention squad investment",
+          impact: Math.min(5, 1 + entry.price / 6),
+          subjectId: playerId,
+        }));
+    });
+    return [...tradeEvents, ...staffEvents, ...injuries, ...recruitmentEvents];
+  }, [activeInjuries, careerStaff.contracts, careerStaff.employmentHistory, careerStaff.generatedProfiles, injuryHistory, players, tradeRecords, userTeam?.squad, userTeamId]);
 
   const userHeadCoach = useMemo(() => {
     if (!careerStaff || !careerStaff.contracts || !userTeamId) return null;
@@ -7144,6 +7250,52 @@ This record has been officially verified and added to the IPL Minor Records arch
 
               {activeSubTab === "board" && (
                 <BoardOverviewPage teamId={userTeamId} mode="club" />
+              )}
+
+              {activeSubTab === "supporters" && userTeam && (
+                <SupportersPage
+                  team={userTeam}
+                  fixtures={supporterFixtures}
+                  standingPosition={Math.max(0, standings.findIndex((standing) => standing.teamId === userTeamId)) + 1}
+                  squadPlayers={userTeam.squad.map((playerId) => players[playerId]).filter((player): player is Player => Boolean(player))}
+                  playerStats={Object.fromEntries(Object.entries(playerStats).map(([playerId, stats]) => [playerId, {
+                    matches: stats.matches,
+                    runs: stats.runs,
+                    wickets: stats.wickets,
+                    strikeRate: stats.balls > 0 ? stats.runs / stats.balls * 100 : undefined,
+                    economy: stats.oversBowled > 0 ? stats.runsConceded / stats.oversBowled : undefined,
+                    runsConceded: stats.runsConceded,
+                    oversBowled: stats.oversBowled,
+                    catches: stats.catches,
+                    stumpings: stats.stumpings,
+                    runOuts: stats.runOuts,
+                  }]))}
+                  staff={userSupporterStaff}
+                  ownership={getClubOwnership(userTeamId)}
+                  captainId={teamLeadership.captainId}
+                  viceCaptainId={teamLeadership.viceCaptainId}
+                  activeInjuryCount={userTeam.squad.filter((playerId) => Boolean(activeInjuries[playerId])).length}
+                  clubEvents={supporterClubEvents}
+                  departmentReviews={careerStaff.performanceReviews
+                    .filter((review) => review.teamId === userTeamId)
+                    .map((review) => ({
+                      season: review.season,
+                      expectedPosition: review.expectedPosition,
+                      finalPosition: review.finalPosition,
+                      wonTitle: review.wonTitle,
+                      batting: review.departments.batting,
+                      bowling: review.departments.bowling,
+                      fielding: review.departments.fielding,
+                    }))}
+                  boardContext={{
+                    annualStaffBudget: careerStaff.financesByTeam[userTeamId]?.annualBudget,
+                    committedStaffSalary: careerStaff.financesByTeam[userTeamId]?.committedSalary,
+                    compensationPaid: careerStaff.financesByTeam[userTeamId]?.compensationPaid,
+                    activeProjects: Number(Boolean(userPitchProject)) + Number(Boolean(userOutfieldProject)),
+                  }}
+                  currentSeason={currentSeason}
+                  onOpenPlayer={setDetailedPlayerId}
+                />
               )}
 
               {activeSubTab === "staffmanagement" && (
@@ -9142,28 +9294,31 @@ This record has been officially verified and added to the IPL Minor Records arch
 
               {activeSubTab === "leaguehistory" && (
                 <section className="flex h-[calc(100vh-200px)] min-h-[500px] flex-col overflow-hidden border-2 border-border bg-surface">
-                  <div className="relative shrink-0 overflow-hidden border-b-2 border-[#d5c9b6] bg-[#f5eddf] px-6 py-5 text-[#241d15] dark:border-border dark:bg-[#16130f] dark:text-white">
+                  <div
+                    className="relative shrink-0 overflow-hidden border-b-2 border-border px-6 py-5 text-text-primary"
+                    style={{ background: "linear-gradient(135deg, color-mix(in srgb, var(--surface2) 94%, #d97706 6%), var(--surface))" }}
+                  >
                     <div className="pointer-events-none absolute -right-16 -top-24 h-56 w-56 rounded-full bg-orange-400/15 blur-3xl dark:bg-orange-500/20" />
                     <div className="pointer-events-none absolute right-24 top-0 h-40 w-40 rounded-full bg-purple-500/10 blur-3xl dark:bg-purple-600/25" />
                     <div className="relative flex items-end justify-between gap-6">
                       <div>
-                        <p className="font-space-mono text-[9px] font-bold uppercase tracking-[0.24em] text-[#796a58] dark:text-white/60">The complete honours archive</p>
+                        <p className="font-space-mono text-[9px] font-bold uppercase tracking-[0.24em] text-text-secondary">The complete honours archive</p>
                         <div className="mt-2 flex items-center gap-3">
                           <Trophy size={25} className="text-amber-400" />
                           <h3 className="font-anton text-[30px] uppercase leading-none">IPL League History</h3>
                         </div>
-                        <p className="mt-3 max-w-2xl text-xs leading-relaxed text-[#6d6255] dark:text-white/65">
+                        <p className="mt-3 max-w-2xl text-xs leading-relaxed text-text-secondary">
                           Every final and individual cap winner from the inaugural season. Career seasons will be saved separately with an expandable final league table.
                         </p>
                       </div>
                       <div className="hidden shrink-0 gap-8 text-right md:flex">
                         <div>
                           <div className="font-anton text-[28px] leading-none">{HISTORICAL_LEAGUE_HISTORY.length}</div>
-                          <div className="mt-1 font-space-mono text-[8px] font-bold uppercase tracking-wider text-[#796f63] dark:text-white/55">Official seasons</div>
+                          <div className="mt-1 font-space-mono text-[8px] font-bold uppercase tracking-wider text-text-secondary">Official seasons</div>
                         </div>
                         <div>
                           <div className="font-anton text-[28px] leading-none">{careerLeagueHistoryCount}</div>
-                          <div className="mt-1 font-space-mono text-[8px] font-bold uppercase tracking-wider text-[#796f63] dark:text-white/55">Career seasons</div>
+                          <div className="mt-1 font-space-mono text-[8px] font-bold uppercase tracking-wider text-text-secondary">Career seasons</div>
                         </div>
                       </div>
                     </div>
@@ -9171,7 +9326,7 @@ This record has been officially verified and added to the IPL Minor Records arch
 
                   <div className="min-h-0 flex-1 overflow-auto">
                     <div className="min-w-[1340px]">
-                      <div className="sticky top-0 z-10 grid grid-cols-[5rem_minmax(30rem,2.2fr)_minmax(9.5rem,0.75fr)_minmax(9.5rem,0.75fr)_minmax(9.5rem,0.75fr)_minmax(9.5rem,0.75fr)_2.5rem] items-center border-b border-border bg-[#efece3] px-5 py-3 font-space-mono text-[8px] font-bold uppercase tracking-[0.14em] text-text-secondary shadow-sm dark:bg-[#171a25]">
+                      <div className="sticky top-0 z-10 grid grid-cols-[5rem_minmax(30rem,2.2fr)_minmax(9.5rem,0.75fr)_minmax(9.5rem,0.75fr)_minmax(9.5rem,0.75fr)_minmax(9.5rem,0.75fr)_2.5rem] items-center border-b border-border bg-surface2 px-5 py-3 font-space-mono text-[8px] font-bold uppercase tracking-[0.14em] text-text-secondary shadow-sm">
                         <span>Season</span>
                         <span>Finalists</span>
                         <span className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-orange-500" />Orange Cap</span>

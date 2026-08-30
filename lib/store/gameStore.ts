@@ -2291,6 +2291,8 @@ export const useGameStore = create<Store>()(
         const state = get();
         if (state.acceleratedPlanningState) {
           set({ skipSetSummary: null, isPaused: true });
+        } else if (state.auction?.phase === "completed") {
+          set({ skipSetSummary: null, isPaused: false });
         } else {
           set({ skipSetSummary: null, isPaused: false });
           advanceToNextLot();
@@ -3077,17 +3079,23 @@ export const useGameStore = create<Store>()(
           updatedPurses[t.id] = { remaining: t.remainingPurse, squadCount: t.squad.length };
         });
 
+        const completedTargetResults = Array.from(targetResults.values());
+
         set({
           teams: newTeams,
           players: newPlayers,
           auctionTargets: {},
           auctionTargetPriorities: {},
-          isPaused: false,
+          isPaused: completedTargetResults.length > 0,
           acceleratedPlanningState: null,
           userAcceleratedTargets: [],
           aiAcceleratedTargets: {},
           aiAcceleratedBackups: {},
-          skipSetSummary: null,
+          skipSetSummary: completedTargetResults.length > 0 ? {
+            setIndex: -1,
+            setName: "Target Results",
+            results: completedTargetResults,
+          } : null,
           auction: {
             ...auction,
             sets: updatedSets,
@@ -5042,6 +5050,9 @@ export const useGameStore = create<Store>()(
             retainedPlayers: team.retainedPlayers.filter((playerId) => Boolean(migratedPlayers[playerId])),
             captainContinuityId: team.captainContinuityId && migratedPlayers[team.captainContinuityId]
               ? team.captainContinuityId
+              : null,
+            viceCaptainContinuityId: team.viceCaptainContinuityId && migratedPlayers[team.viceCaptainContinuityId]
+              ? team.viceCaptainContinuityId
               : null,
           },
         ]));
