@@ -7,7 +7,7 @@ export interface DayTickerController {
 
 interface DayTickerOptions {
   intervalMs: number | (() => number);
-  onTick: () => void;
+  onTick: () => void | Promise<void>;
   onError?: (error: unknown) => void;
   schedule?: typeof setTimeout;
   cancel?: typeof clearTimeout;
@@ -40,7 +40,17 @@ export function createDayTicker({
       if (!running) return;
 
       try {
-        onTick();
+        const tickResult = onTick();
+        if (tickResult instanceof Promise) {
+          void tickResult.then(() => {
+            if (running && timer === null) queueNextTick();
+          }).catch((error) => {
+            running = false;
+            clearPendingTimer();
+            onError?.(error);
+          });
+          return;
+        }
       } catch (error) {
         running = false;
         clearPendingTimer();

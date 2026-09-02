@@ -197,9 +197,16 @@ function generateConvertedStaffTraits(player: Player, attributes: ConvertedStaff
     }
   }
 
-  while (selectedSet.size < 3) {
-    const idx = Math.floor(hashUnit(`${player.id}:extra-trait:${selectedSet.size}`) * fallbackPool.length);
-    selectedSet.add(fallbackPool[idx]);
+  // The old loop seeded its choice only with selectedSet.size. If the chosen
+  // fallback was already present, the size stayed unchanged and the exact
+  // same trait was selected forever during season rollover. Rank every
+  // fallback once instead, then take the first missing traits deterministically.
+  const orderedFallbacks = fallbackPool
+    .map((trait) => ({ trait, order: hashUnit(`${player.id}:extra-trait:${trait}`) }))
+    .sort((left, right) => left.order - right.order || left.trait.localeCompare(right.trait));
+  for (const { trait } of orderedFallbacks) {
+    if (selectedSet.size >= 3) break;
+    selectedSet.add(trait);
   }
 
   return Array.from(selectedSet);

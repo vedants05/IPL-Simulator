@@ -1,3 +1,5 @@
+import { INDIAN_STATE_REGEN_NAME_POOLS } from "./indianStateRegenNames";
+
 /**
  * Common-name pools for generated players.  These intentionally contain
  * broadly familiar given names and surnames rather than real-player records,
@@ -9,10 +11,17 @@ export type RegenNamePool = {
   lastNames: readonly string[];
 };
 
+const INDIAN_FIRST_NAMES = Array.from(new Set(
+  Object.values(INDIAN_STATE_REGEN_NAME_POOLS).flatMap((pool) => pool.firstNames),
+));
+const INDIAN_LAST_NAMES = Array.from(new Set(
+  Object.values(INDIAN_STATE_REGEN_NAME_POOLS).flatMap((pool) => pool.lastNames),
+));
+
 export const REGEN_NAME_DATABASE: Record<string, RegenNamePool> = {
   India: {
-    firstNames: ["Aarav", "Aditya", "Akash", "Aman", "Ankit", "Arjun", "Aryan", "Ashish", "Deepak", "Dev", "Gaurav", "Harsh", "Ishaan", "Karan", "Kartik", "Kunal", "Manish", "Mayank", "Mohit", "Nikhil", "Nitin", "Pranav", "Rahul", "Rajat", "Rakesh", "Rishabh", "Rohan", "Raj", "Rohit", "Sahil", "Sameer", "Sandeep", "Sanjay", "Shivam", "Shubham", "Siddharth", "Suraj", "Tushar", "Varun", "Vikas", "Vikram", "Vineet", "Vivek", "Yash", "Abhinav", "Aayush", "Anurag", "Bhavesh", "Chirag", "Dhruv", "Naveen"],
-    lastNames: ["Agarwal", "Bansal", "Chauhan", "Chopra", "Das", "Desai", "Dubey", "Ghosh", "Gill", "Goel", "Gupta", "Iyer", "Jain", "Kapoor", "Khan", "Kohli", "Kumar", "Malhotra", "Mehta", "Mishra", "Mukherjee", "Nair", "Pandey", "Patel", "Rana", "Rao", "Reddy", "Roy", "Saxena", "Shah", "Sharma", "Shetty", "Singh", "Sinha", "Soni", "Srivastava", "Tiwari", "Trivedi", "Varma", "Verma", "Yadav", "Bhat", "Bose", "Chandra", "Dutta", "Joshi", "Kulkarni", "Menon", "Pillai", "Prasad", "Suresh"],
+    firstNames: INDIAN_FIRST_NAMES,
+    lastNames: INDIAN_LAST_NAMES,
   },
   Australia: {
     firstNames: ["Aaron", "Adam", "Alex", "Andrew", "Anthony", "Ben", "Blake", "Brad", "Brendan", "Callum", "Cameron", "Chris", "Connor", "Daniel", "David", "Dylan", "Ethan", "Grant", "Hayden", "Jack", "Jacob", "Jake", "James", "Jason", "Josh", "Lachlan", "Liam", "Luke", "Marcus", "Mark", "Matthew", "Max", "Mitchell", "Nathan", "Nick", "Oliver", "Patrick", "Peter", "Rhys", "Ryan", "Sam", "Scott", "Sean", "Simon", "Tim", "Tom", "Travis", "Tyler", "William", "Zach", "Jordan"],

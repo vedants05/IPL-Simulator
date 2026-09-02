@@ -162,6 +162,7 @@ import {
   hasArchivedDeliveries,
   loadMatchSimulations,
   saveMatchSimulations,
+  waitForPendingMatchSimulationWrites,
 } from "@/lib/logic/matchSimulationStorage";
 import BallByBallSummary from "@/components/match/BallByBallSummary";
 import PlayableMatchEngine, { type PlayableMatchSession } from "@/components/match/PlayableMatchEngine";
@@ -1053,6 +1054,7 @@ function OverviewPageContent() {
   // Day-by-day career ticking simulation states & refs
   const [isSimulatingDays, setIsSimulatingDays] = useState(false);
   const [isCalendarClosing, setIsCalendarClosing] = useState(false);
+  const [seasonTransitionStage, setSeasonTransitionStage] = useState<string | null>(null);
   const [fastForwardElapsedMs, setFastForwardElapsedMs] = useState(0);
   const fastForwardStartedAtRef = useRef<number | null>(null);
   const fastForwardOriginDateRef = useRef<string | null>(null);
@@ -1101,7 +1103,15 @@ function OverviewPageContent() {
           ? Math.max(1, Math.round(baseInterval / 1.5))
           : baseInterval;
       },
-      onTick: () => advanceOneDayRef.current(),
+      onTick: async () => {
+        advanceOneDayRef.current();
+        // Skip simulation can generate another match every few milliseconds.
+        // Apply storage backpressure so full ball-by-ball archives reach
+        // IndexedDB before the ticker creates more large delivery graphs.
+        if (skipTargetDateRef.current) {
+          await waitForPendingMatchSimulationWrites();
+        }
+      },
       onError: (error) => {
         console.error("Day-by-day simulation stopped unexpectedly:", error);
         skipStartDateRef.current = null;
@@ -3843,7 +3853,7 @@ This record has been officially verified and added to the IPL Minor Records arch
     showToast(message);
   }, [stopSimulating]);
 
-  const rolloverToNextSeason = () => {
+  const rolloverToNextSeason = async () => {
     const liveState = useGameStore.getState();
     if (
       liveState.auction?.phase === "retention"
@@ -3853,6 +3863,16 @@ This record has been officially verified and added to the IPL Minor Records arch
       router.replace("/game/auction");
       return true;
     }
+    if (isCareerCalendarAtImpasse(liveState.currentDate, fixturesRef.current)) {
+      // Never enter postseason lifecycle work while matchday state is still
+      // incomplete. This guard protects every rollover caller, including
+      // restored fast-forwards and future UI controls, rather than relying on
+      // each caller to remember the ordering requirement.
+      autoSimUserFixturesRef.current = true;
+      if (dayTickerRef.current?.start()) setIsSimulatingDays(true);
+      showToast("Finishing overdue fixtures before opening retention...");
+      return false;
+    }
     if (seasonRolloverInProgressRef.current) return false;
     seasonRolloverInProgressRef.current = true;
     // Stop before doing any postseason work so a queued tick or a rapid second
@@ -3860,19 +3880,33 @@ This record has been officially verified and added to the IPL Minor Records arch
     stopSimulating();
 
     try {
+    // requestAnimationFrame can be throttled or suspended while Chrome is
+    // under memory pressure, leaving the transition parked at the previous
+    // diagnostic stage forever. A zero-delay task yields for painting without
+    // depending on animation-frame scheduling.
+    const yieldToBrowser = () => new Promise<void>((resolve) => {
+      window.setTimeout(resolve, 0);
+    });
+    setSeasonTransitionStage(`Transition 1/8 · Validating ${fixturesRef.current.length} season fixtures...`);
+    await yieldToBrowser();
     const final = fixturesRef.current.find((fixture) => fixture.stage === "final" && fixture.played && fixture.winner);
     if (!final?.winner) {
       useGameStore.getState().setCareerFastForwardTarget(null);
       sessionStorage.removeItem(CAREER_FAST_FORWARD_RECOVERY_KEY);
       showToast("Cannot begin the offseason until the season final has a recorded winner.");
       seasonRolloverInProgressRef.current = false;
+      setSeasonTransitionStage(null);
       return false;
     }
     const runnerUpTeamId = final.winner === final.teamA ? final.teamB : final.teamA;
 
     // Self-healing: Re-accumulate player stats from played fixtures if playerStatsRef is empty
+    setSeasonTransitionStage(`Transition 2/8 · Checking saved statistics for ${Object.keys(playerStatsRef.current).length} players...`);
+    await yieldToBrowser();
     let statsRecord = { ...playerStatsRef.current };
     if (Object.keys(statsRecord).length === 0) {
+      setSeasonTransitionStage(`Transition 2/8 · Rebuilding statistics from ${fixturesRef.current.filter((fixture) => fixture.played).length} completed matches...`);
+      await yieldToBrowser();
       (fixturesRef.current ?? []).forEach((match) => {
         if (match.played && match.simulation?.innings) {
           Object.values(match.simulation.lineups).forEach((lineup) => {
@@ -3951,6 +3985,8 @@ This record has been officially verified and added to the IPL Minor Records arch
       setPlayerStats(statsRecord);
     }
 
+    setSeasonTransitionStage(`Transition 3/8 · Ranking awards from ${Object.keys(statsRecord).length} player records...`);
+    await yieldToBrowser();
     const allStatsList = Object.values(statsRecord).map((st) => ({
       ...st,
       teamId: teams[st.teamId] ? st.teamId : (players[st.id]?.currentTeamId ?? Object.keys(teams)[0] ?? "CSK"),
@@ -3986,6 +4022,8 @@ This record has been officially verified and added to the IPL Minor Records arch
       ?? final.winner;
 
     const postseasonState = useGameStore.getState();
+    setSeasonTransitionStage(`Transition 4/8 · Saving league-history summary for season ${currentSeason}...`);
+    await yieldToBrowser();
     if (!postseasonState.simulatedLeagueHistory.some((season) => season.season === currentSeason)) {
       recordSimulatedLeagueSeason({
         season: currentSeason,
@@ -4013,8 +4051,10 @@ This record has been officially verified and added to the IPL Minor Records arch
         })),
       });
     }
+    setSeasonTransitionStage(`Transition 5/8 · Preparing detailed postseason archive for season ${currentSeason}...`);
+    await yieldToBrowser();
     if (postseasonState.lastCareerPostseasonSeason !== currentSeason) {
-      archiveCareerSeason({
+      await archiveCareerSeason({
         season: currentSeason,
         fixtures: fixturesForCareerHistory(fixturesRef.current),
         standings,
@@ -4026,27 +4066,39 @@ This record has been officially verified and added to the IPL Minor Records arch
           teams,
           careerSeasonArchives.find((archive) => archive.season < currentSeason)?.leagueRecords ?? OTHER_LEAGUE_RECORDS,
         ),
-      });
+      }, setSeasonTransitionStage);
     }
+    setSeasonTransitionStage(`Transition 6/8 · Preparing captaincy continuity for ${Object.keys(teams).length} teams...`);
+    await yieldToBrowser();
     const captainIdsByTeam: Record<string, string | null> = {
-      [userTeamId]: teamLeadership.captainId,
       ...Object.fromEntries(Object.entries(aiTeamLeadership).map(([teamId, leadership]) => [
         teamId,
-        leadership.captainId,
+        leadership.captainId ?? teams[teamId]?.captainContinuityId ?? null,
       ])),
+      [userTeamId]: teamLeadership.captainId ?? teams[userTeamId]?.captainContinuityId ?? null,
     };
     const viceCaptainIdsByTeam: Record<string, string | null> = {
-      [userTeamId]: teamLeadership.viceCaptainId,
       ...Object.fromEntries(Object.entries(aiTeamLeadership).map(([teamId, leadership]) => [
         teamId,
-        leadership.viceCaptainId,
+        leadership.viceCaptainId ?? teams[teamId]?.viceCaptainContinuityId ?? null,
       ])),
+      [userTeamId]: teamLeadership.viceCaptainId ?? teams[userTeamId]?.viceCaptainContinuityId ?? null,
     };
-    const advanced = beginNextSeasonRetention(captainIdsByTeam, viceCaptainIdsByTeam);
+    setSeasonTransitionStage(`Transition 7/8 · Building season ${currentSeason + 1} retention pool and lifecycle state...`);
+    await yieldToBrowser();
+    const advanced = await beginNextSeasonRetention(
+      captainIdsByTeam,
+      viceCaptainIdsByTeam,
+      undefined,
+      setSeasonTransitionStage,
+    );
     if (!advanced) {
       seasonRolloverInProgressRef.current = false;
+      setSeasonTransitionStage(null);
       return false;
     }
+    setSeasonTransitionStage(`Transition 8/8 · Opening season ${currentSeason + 1} retention screen...`);
+    await yieldToBrowser();
     // The completed totals are safely archived above; live totals now belong
     // to the new season and must start from zero.
     playerStatsRef.current = {};
@@ -4065,7 +4117,7 @@ This record has been officially verified and added to the IPL Minor Records arch
       sessionStorage.removeItem(CAREER_FAST_FORWARD_RECOVERY_KEY);
     }
     if (fastForwardTarget) {
-      const auctionCompleted = completeOffseasonAutomatically();
+      const auctionCompleted = await completeOffseasonAutomatically();
       if (!auctionCompleted) {
         useGameStore.getState().setCareerFastForwardTarget(null);
         sessionStorage.removeItem(CAREER_FAST_FORWARD_RECOVERY_KEY);
@@ -4090,6 +4142,7 @@ This record has been officially verified and added to the IPL Minor Records arch
     return true;
     } catch (error) {
       seasonRolloverInProgressRef.current = false;
+      setSeasonTransitionStage(null);
       useGameStore.getState().setCareerFastForwardTarget(null);
       sessionStorage.removeItem(CAREER_FAST_FORWARD_RECOVERY_KEY);
       stopSimulating();
@@ -4251,18 +4304,6 @@ This record has been officially verified and added to the IPL Minor Records arch
     const followingDate = addDaysToDateKey(simulationDate, 1);
     const requestedTarget = skipTargetDateRef.current;
 
-    // Retention is a navigation boundary, not a normal ticking day. Handling
-    // it directly avoids leaving a career stranded on the preceding date when
-    // the ticker has stopped or been recreated after a reload.
-    if (
-      retentionDateString
-      && (simulationDate >= retentionDateString || followingDate >= retentionDateString)
-      && (!requestedTarget || requestedTarget > retentionDateString)
-    ) {
-      rolloverToNextSeason();
-      return;
-    }
-
     if (isCareerCalendarAtImpasse(simulationDate, fixturesRef.current)) {
       const earliestOverdueDate = fixturesRef.current
         .filter((match) => !match.played && Boolean(match.date && match.date <= simulationDate))
@@ -4297,6 +4338,19 @@ This record has been officially verified and added to the IPL Minor Records arch
           setIsSimulatingDays(true);
         }
       }
+      return;
+    }
+
+    // Retention is a navigation boundary, but overdue fixtures must be
+    // resolved first. The old ordering attempted rollover before this impasse
+    // repair, so a final left unplayed on Retention Day made every Continue or
+    // Skip-to-retention click repeat the same failed rollover forever.
+    if (
+      retentionDateString
+      && (simulationDate >= retentionDateString || followingDate >= retentionDateString)
+      && (!requestedTarget || requestedTarget > retentionDateString)
+    ) {
+      rolloverToNextSeason();
       return;
     }
 
@@ -4340,7 +4394,18 @@ This record has been officially verified and added to the IPL Minor Records arch
         return;
       }
       if (kind === "retention") {
-        const liveDate = useGameStore.getState().currentDate;
+        const liveState = useGameStore.getState();
+        const liveDate = liveState.currentDate;
+        // This command is an explicit stop boundary. Always discard any
+        // older one-year/three-year target before rollover; otherwise the
+        // rollover sees that future target and synchronously runs retention,
+        // the full auction, and another season from this single click. That
+        // workload grows with long careers and can freeze or crash the tab.
+        liveState.setCareerFastForwardTarget(null);
+        sessionStorage.removeItem(CAREER_FAST_FORWARD_RECOVERY_KEY);
+        skipStartDateRef.current = null;
+        skipTargetDateRef.current = null;
+        autoSimUserFixturesRef.current = false;
         // Derive this from the active season instead of the hydrated deadline,
         // which can briefly still describe the season that has just finished.
         const retentionTarget = getSeasonDates(currentSeason + 1).retentionDate;
@@ -4348,14 +4413,16 @@ This record has been officially verified and added to the IPL Minor Records arch
           // The saved deadline is stale: finish the overdue rollover now,
           // rather than refusing the request or jumping across a season
           // without running retention, trades, injuries, and offseason work.
-          const reachedTarget = useGameStore.getState().careerFastForwardTargetDate;
-          if (reachedTarget && reachedTarget <= liveDate) {
-            useGameStore.getState().setCareerFastForwardTarget(null);
+          if (isCareerCalendarAtImpasse(liveDate, fixturesRef.current)) {
+            // A skip can land on Retention Day before that day's final is
+            // closed. Resume with automatic user-fixture resolution; once all
+            // overdue fixtures are complete, startSimulating crosses the
+            // retention boundary normally.
+            autoSimUserFixturesRef.current = true;
+            startSimulating();
+          } else {
+            rolloverToNextSeason();
           }
-          sessionStorage.removeItem(CAREER_FAST_FORWARD_RECOVERY_KEY);
-          skipStartDateRef.current = null;
-          skipTargetDateRef.current = null;
-          rolloverToNextSeason();
         } else {
           startFastForward(retentionTarget);
         }
@@ -4370,7 +4437,7 @@ This record has been officially verified and added to the IPL Minor Records arch
     };
     window.addEventListener("ipl-career-fast-forward", handler);
     return () => window.removeEventListener("ipl-career-fast-forward", handler);
-  }, [currentSeason, retentionDateString, rolloverToNextSeason, setCareerFastForwardTarget, showToast, skipToCalendarDate]);
+  }, [currentSeason, retentionDateString, rolloverToNextSeason, setCareerFastForwardTarget, showToast, skipToCalendarDate, startSimulating]);
 
   // Restore an in-progress multi-season job only after initCareer has created
   // the new season's fixtures. This prevents an empty fixture list from making
@@ -5736,6 +5803,23 @@ This record has been officially verified and added to the IPL Minor Records arch
 
   return (
     <div className={`app-theme-background overview-page h-[calc(100vh-3rem)] flex overflow-hidden bg-bg relative ${activeTab === "history" ? "compact-history" : ""}`}>
+      {seasonTransitionStage && (
+        <div
+          className="fixed inset-0 z-[250] flex items-center justify-center bg-[#0b1018]/95 px-6 text-white backdrop-blur-sm"
+          role="status"
+          aria-live="polite"
+          aria-busy="true"
+        >
+          <div className="w-full max-w-md border-2 border-white/15 bg-[#111925] p-8 text-center shadow-2xl">
+            <div className="mx-auto h-9 w-9 animate-spin rounded-full border-2 border-white/20 border-t-accent" />
+            <p className="mt-6 font-space-mono text-[9px] font-bold uppercase tracking-[0.24em] text-accent">
+              Season transition
+            </p>
+            <h2 className="mt-3 font-anton text-3xl uppercase">Preparing retention</h2>
+            <p className="mt-3 text-sm text-white/65">{seasonTransitionStage}</p>
+          </div>
+        </div>
+      )}
       {/* Global Toast Alert */}
       {toastMessage && (
         <div className="fixed bottom-6 right-6 z-[100] bg-[var(--ink)] text-bg border border-border/20 px-4 py-3 rounded shadow-lg text-xs font-space-mono font-semibold uppercase tracking-wider animate-in fade-in slide-in-from-bottom-3 duration-200">

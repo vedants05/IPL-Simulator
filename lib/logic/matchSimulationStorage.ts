@@ -3,6 +3,7 @@ import type { MatchSimulationRecord } from "./matchSimulation";
 const DATABASE_NAME = "ipl-simulator-match-archive";
 const DATABASE_VERSION = 1;
 const STORE_NAME = "simulations";
+const ARCHIVE_OPERATION_TIMEOUT_MS = 15_000;
 
 interface StoredSimulation {
   key: string;
@@ -16,6 +17,9 @@ function openDatabase(): Promise<IDBDatabase | null> {
   if (typeof indexedDB === "undefined") return Promise.resolve(null);
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DATABASE_NAME, DATABASE_VERSION);
+    const timeoutId = setTimeout(() => {
+      reject(new Error("Opening detailed match storage timed out."));
+    }, ARCHIVE_OPERATION_TIMEOUT_MS);
     request.onupgradeneeded = () => {
       const database = request.result;
       if (!database.objectStoreNames.contains(STORE_NAME)) {
@@ -23,8 +27,18 @@ function openDatabase(): Promise<IDBDatabase | null> {
         store.createIndex("careerId", "careerId", { unique: false });
       }
     };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error ?? new Error("Unable to open the match archive."));
+    request.onsuccess = () => {
+      clearTimeout(timeoutId);
+      resolve(request.result);
+    };
+    request.onerror = () => {
+      clearTimeout(timeoutId);
+      reject(request.error ?? new Error("Unable to open the match archive."));
+    };
+    request.onblocked = () => {
+      clearTimeout(timeoutId);
+      reject(new Error("Detailed match storage is blocked by another game tab. Close the other tab and try again."));
+    };
   });
 }
 
@@ -46,6 +60,14 @@ async function writeMatchSimulations(
   await new Promise<void>((resolve, reject) => {
     const transaction = database.transaction(STORE_NAME, "readwrite");
     const store = transaction.objectStore(STORE_NAME);
+    const timeoutId = setTimeout(() => {
+      try {
+        transaction.abort();
+      } catch {
+        // The transaction may have completed between the timeout and abort.
+      }
+      reject(new Error("Saving detailed match history timed out."));
+    }, ARCHIVE_OPERATION_TIMEOUT_MS);
     simulations.forEach((simulation) => {
       const record: StoredSimulation = {
         key: storageKey(careerId, simulation.fixtureId),
@@ -56,9 +78,18 @@ async function writeMatchSimulations(
       };
       store.put(record);
     });
-    transaction.oncomplete = () => resolve();
-    transaction.onerror = () => reject(transaction.error ?? new Error("Unable to save match records."));
-    transaction.onabort = () => reject(transaction.error ?? new Error("Saving match records was aborted."));
+    transaction.oncomplete = () => {
+      clearTimeout(timeoutId);
+      resolve();
+    };
+    transaction.onerror = () => {
+      clearTimeout(timeoutId);
+      reject(transaction.error ?? new Error("Unable to save match records."));
+    };
+    transaction.onabort = () => {
+      clearTimeout(timeoutId);
+      reject(transaction.error ?? new Error("Saving match records was aborted."));
+    };
   });
   database.close();
 }
@@ -70,9 +101,27 @@ export function saveMatchSimulations(
   if (simulations.length === 0) return Promise.resolve();
   const write = archiveWriteQueue
     .catch(() => undefined)
-    .then(() => writeMatchSimulations(careerId, simulations));
+    .then(async () => {
+      try {
+        await writeMatchSimulations(careerId, simulations);
+      } catch (firstError) {
+        // A stale connection left behind by a crashed tab commonly succeeds
+        // on a fresh open. Retry once while retaining this single bounded
+        // batch, rather than allowing the calendar to wait forever.
+        try {
+          await writeMatchSimulations(careerId, simulations);
+        } catch {
+          throw firstError;
+        }
+      }
+    });
   archiveWriteQueue = write;
   return write;
+}
+
+/** Wait until every detailed simulation queued so far has reached IndexedDB. */
+export function waitForPendingMatchSimulationWrites(): Promise<void> {
+  return archiveWriteQueue;
 }
 
 export async function loadMatchSimulations(

@@ -330,7 +330,7 @@ interface GameActions {
   increaseSpeed: () => void;
   decreaseSpeed: () => void;
   skipCurrentSet: () => void;
-  skipAllAuction: () => void;
+  skipAllAuction: () => Promise<void>;
   skipToAcceleratedAuction: () => void;
   dismissSkipSetSummary: () => void;
   setAuctionTarget: (playerId: string, maxBidLakhs: number, priority?: AuctionTargetPriority) => void;
@@ -344,7 +344,8 @@ interface GameActions {
     captainIdsByTeam?: Record<string, string | null | undefined>,
     viceCaptainIdsByTeam?: Record<string, string | null | undefined>,
     auctionType?: AuctionType,
-  ) => boolean;
+    onStage?: (stage: string) => void,
+  ) => Promise<boolean>;
   archiveCareerSeason: (archive: {
     season: number;
     fixtures: unknown[];
@@ -352,9 +353,9 @@ interface GameActions {
     playerStats: Record<string, unknown>;
     leagueRecords?: OtherLeagueRecord[];
     reputationAchievements?: CareerReputationAchievements;
-  }) => void;
+  }, onStage?: (stage: string) => void) => Promise<void>;
   setCareerFastForwardTarget: (targetDate: string | null) => void;
-  completeOffseasonAutomatically: () => boolean;
+  completeOffseasonAutomatically: () => Promise<boolean>;
   setHomePitchSelection: (teamId: string, pitchId: string) => void;
   setHomeBoundaryDimensions: (
     teamId: string,
@@ -885,6 +886,34 @@ function removeResolvedAuctionTargets<T>(
   const remainingTargets = { ...targets };
   Array.from(resolvedPlayerIds).forEach((playerId) => delete remainingTargets[playerId]);
   return remainingTargets;
+}
+
+const MAX_PERSISTED_AUTOMATIC_BIDS = 24;
+
+function compactAuctionBidHistory(auction: GameState["auction"]): GameState["auction"] {
+  if (!auction) return null;
+  return {
+    ...auction,
+    biddingHistory: auction.biddingHistory.slice(0, MAX_PERSISTED_AUTOMATIC_BIDS),
+    saleHistory: auction.saleHistory.map((sale) => ({
+      ...sale,
+      bids: sale.bids.slice(0, MAX_PERSISTED_AUTOMATIC_BIDS),
+    })),
+  };
+}
+
+function compactCompletedAuctionForRollover(auction: GameState["auction"]): GameState["auction"] {
+  if (!auction || auction.phase !== "completed") return compactAuctionBidHistory(auction);
+  return {
+    ...auction,
+    allPlayerIds: [],
+    soldPlayerIds: [],
+    unsoldPlayerIds: [],
+    sets: [],
+    saleHistory: [],
+    biddingHistory: [],
+    currentPlayer: null,
+  };
 }
 
 function getTargetBidBlockReason(
@@ -2543,7 +2572,10 @@ export const useGameStore = create<Store>()(
 
             currentBid = nextBid;
             highBidderTeamId = bidder.id;
-            biddingHistory = [{ teamId: bidder.id, amount: nextBid, timestamp: Date.now() }, ...biddingHistory];
+            biddingHistory = [
+              { teamId: bidder.id, amount: nextBid, timestamp: Date.now() },
+              ...biddingHistory,
+            ].slice(0, 24);
           }
 
           if (!highBidderTeamId) {
@@ -2748,7 +2780,7 @@ export const useGameStore = create<Store>()(
         }
       },
 
-      skipAllAuction: () => {
+      skipAllAuction: async () => {
         const state = get();
         const { auction, players, teams, userTeamId, auctionTargets, auctionTargetPriorities } = state;
         if (!auction || auction.phase !== "live") return;
@@ -2764,6 +2796,16 @@ export const useGameStore = create<Store>()(
         const totalLots = auction.allPlayerIds.length;
         const targetResults = new Map<string, SkipSetResultItem>();
         let userPurchasesDuringSkip = 0;
+        const resolvedPlayerIds = new Set<string>([
+          ...newSoldIds,
+          ...Object.values(newTeams).flatMap((team) => team.squad),
+        ]);
+        let lastBrowserYieldAt = performance.now();
+        const yieldToBrowserIfNeeded = async () => {
+          if (performance.now() - lastBrowserYieldAt < 12) return;
+          await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+          lastBrowserYieldAt = performance.now();
+        };
 
         // Gather all remaining players across all remaining sets
         const remainingPlayerIds: string[] = [];
@@ -2788,8 +2830,7 @@ export const useGameStore = create<Store>()(
           // prevents overlapping/legacy auction sets from charging a team and
           // appending the same player to its squad twice.
           if (
-            newSoldIds.includes(playerId)
-            || Object.values(newTeams).some((team) => team.squad.includes(playerId))
+            resolvedPlayerIds.has(playerId)
           ) return;
 
           const isCurrentLiveLot = isFirstProcessed && auction.currentPlayer?.id === player.id;
@@ -2797,9 +2838,7 @@ export const useGameStore = create<Store>()(
           resetLotCache();
 
           const ctx: AuctionContext = {
-            remainingPlayerIds: auction.allPlayerIds.filter(
-              (id) => !newSoldIds.includes(id) && id !== player.id
-            ),
+            remainingPlayerIds: auction.allPlayerIds.filter((id) => !resolvedPlayerIds.has(id) && id !== player.id),
             soldPlayerIds: newSoldIds,
             currentLotIndex,
             totalLots,
@@ -2840,7 +2879,10 @@ export const useGameStore = create<Store>()(
 
             currentBid = nextBid;
             highBidderTeamId = bidder.id;
-            biddingHistory = [{ teamId: bidder.id, amount: nextBid, timestamp: Date.now() }, ...biddingHistory];
+            biddingHistory = [
+              { teamId: bidder.id, amount: nextBid, timestamp: Date.now() },
+              ...biddingHistory,
+            ].slice(0, 24);
           }
 
           if (!highBidderTeamId) {
@@ -2929,6 +2971,7 @@ export const useGameStore = create<Store>()(
             };
 
             newSoldIds.push(player.id);
+            resolvedPlayerIds.add(player.id);
 
             newSaleHistory.push({
               playerId: player.id,
@@ -2968,7 +3011,10 @@ export const useGameStore = create<Store>()(
         };
 
         // Simulate all remaining players in regular sets
-        remainingPlayerIds.forEach(simulateOne);
+        for (let index = 0; index < remainingPlayerIds.length; index += 1) {
+          simulateOne(remainingPlayerIds[index]);
+          await yieldToBrowserIfNeeded();
+        }
 
         const updatedSets = auction.sets.map((s) => ({
           ...s,
@@ -2985,9 +3031,10 @@ export const useGameStore = create<Store>()(
           const playersToSimulate = [...newUnsoldIds];
           newUnsoldIds = []; // Clear for the current round's unsold players
           
-          playersToSimulate.forEach((playerId) => {
+          for (let index = 0; index < playersToSimulate.length; index += 1) {
+            const playerId = playersToSimulate[index];
             const player = newPlayers[playerId];
-            if (!player) return;
+            if (!player) continue;
 
             const ctx: AuctionContext = {
               remainingPlayerIds: playersToSimulate.filter(id => id !== player.id),
@@ -3026,7 +3073,10 @@ export const useGameStore = create<Store>()(
 
               currentBid = nextBid;
               highBidderTeamId = bidder.id;
-              biddingHistory = [{ teamId: bidder.id, amount: nextBid, timestamp: Date.now() }, ...biddingHistory];
+              biddingHistory = [
+                { teamId: bidder.id, amount: nextBid, timestamp: Date.now() },
+                ...biddingHistory,
+              ].slice(0, 24);
             }
 
             if (!highBidderTeamId) {
@@ -3054,6 +3104,7 @@ export const useGameStore = create<Store>()(
               };
 
               newSoldIds.push(player.id);
+              resolvedPlayerIds.add(player.id);
 
               newSaleHistory.push({
                 playerId: player.id,
@@ -3064,7 +3115,8 @@ export const useGameStore = create<Store>()(
               });
             }
             currentLotIndex++;
-          });
+            await yieldToBrowserIfNeeded();
+          }
 
           madeProgress = newUnsoldIds.length < lastUnsoldCount;
           lastUnsoldCount = newUnsoldIds.length;
@@ -3197,7 +3249,10 @@ export const useGameStore = create<Store>()(
 
             currentBid = nextBid;
             highBidderTeamId = bidder.id;
-            biddingHistory = [{ teamId: bidder.id, amount: nextBid, timestamp: Date.now() }, ...biddingHistory];
+            biddingHistory = [
+              { teamId: bidder.id, amount: nextBid, timestamp: Date.now() },
+              ...biddingHistory,
+            ].slice(0, 24);
           }
 
           if (!highBidderTeamId) {
@@ -3719,6 +3774,10 @@ export const useGameStore = create<Store>()(
 
       recordSimulatedLeagueSeason: (season) => {
         set((state) => ({
+          // Old saves may still hold hundreds of automatic bids per player.
+          // Release that legacy payload before the season-history write so
+          // persistence does not stringify it during rollover.
+          auction: compactCompletedAuctionForRollover(state.auction),
           simulatedLeagueHistory: [
             { ...season, source: "career" as const },
             ...state.simulatedLeagueHistory.filter((record) => record.season !== season.season),
@@ -3955,24 +4014,28 @@ export const useGameStore = create<Store>()(
         return { careerStaff: { ...state.careerStaff, negotiationCooldowns } };
       }),
 
-      beginNextSeasonRetention: (captainIdsByTeam, viceCaptainIdsByTeam, requestedAuctionType) => {
-        let advanced = false;
-        set((state) => {
+      beginNextSeasonRetention: async (captainIdsByTeam, viceCaptainIdsByTeam, requestedAuctionType, onStage) => {
+          const state = get();
+          const stage = async (message: string) => {
+            onStage?.(message);
+            await new Promise<void>((resolve) => globalThis.setTimeout(resolve, 0));
+          };
           // The rollover state may have been persisted before navigation to
           // the auction page completed (for example, after a reload or a
           // storage-pressure crash). Treat that state as a successful retry so
           // the overview can finish routing instead of trapping the career.
           if (state.auction?.phase === "retention" && state.auction.season === state.currentSeason) {
-            advanced = true;
-            return state;
+            return true;
           }
           if (
             state.lastRolledOverSeason === state.currentSeason
-          ) return state;
+          ) return false;
 
           const completedSeason = state.currentSeason;
+          await stage(`Retention 1/10 · Reading season ${completedSeason} archive and final date...`);
           const completedSeasonFixtures = state.careerSeasonArchives.find((archive) => archive.season === completedSeason)?.fixtures as Array<{ stage?: string; date?: string }> | undefined;
           const completedSeasonFinalDate = completedSeasonFixtures?.find((fixture) => fixture.stage === "final")?.date ?? state.currentDate;
+          await stage(`Retention 2/10 · Processing staff market for ${Object.keys(state.teams).length} teams...`);
           const marketCareerStaff = processAIStaffMarket({
             state: state.careerStaff,
             teamIds: Object.keys(state.teams),
@@ -3984,9 +4047,11 @@ export const useGameStore = create<Store>()(
           const nextSeason = completedSeason + 1;
           const nextAuctionType = requestedAuctionType ?? getAuctionTypeForSeason(nextSeason);
           const dates = getSeasonDates(nextSeason);
+          await stage(`Retention 3/10 · Normalizing archived player performance...`);
           const archivedPerformance = normalizeCareerSeasonPerformance(
             state.careerSeasonArchives.find((archive) => archive.season === completedSeason)?.playerStats,
           );
+          await stage(`Retention 4/10 · Verifying postseason player development state...`);
           const fallbackPostseason = state.lastCareerPostseasonSeason === completedSeason
             ? { players: state.players, teams: state.teams, retirements: [], retiredPlayers: [] }
             : processPostSeasonCareer({
@@ -3997,10 +4062,12 @@ export const useGameStore = create<Store>()(
                 seed: state.saveId || state.fixtureSeed,
                 injuredPlayerIds: new Set(Object.keys(state.activeInjuries)),
               });
+          await stage(`Retention 5/10 · Normalizing auction market profile for ${Object.keys(fallbackPostseason.players).length} players...`);
           const marketProfile = normalizeAuctionMarketProfile(
             state.auctionMarketProfile,
             Object.values(fallbackPostseason.players),
           );
+          await stage(`Retention 6/10 · Generating season ${nextSeason} player pool and retirement intake...`);
           const preparedPool = prepareRetentionPlayerPool({
             players: fallbackPostseason.players,
             teams: fallbackPostseason.teams,
@@ -4016,11 +4083,13 @@ export const useGameStore = create<Store>()(
               .map((record) => record.emergingPlayer!.name),
           });
           const careerRetirements = [...fallbackPostseason.retirements, ...preparedPool.retirements];
+          await stage(`Retention 7A/11 · Applying annual development to ${Object.keys(marketCareerStaff.contracts).length} staff contracts...`);
           const developedCareerStaff = processAnnualStaffDevelopment({
             state: marketCareerStaff,
             completedSeason,
             seed: state.saveId || state.fixtureSeed,
           }).state;
+          await stage(`Retention 7B/11 · Converting ${careerRetirements.length} eligible retirees into staff candidates...`);
           const careerStaff = convertRetiredPlayersToStaff({
             state: developedCareerStaff,
             retiredPlayers: [...fallbackPostseason.retiredPlayers, ...preparedPool.retiredPlayers],
@@ -4028,6 +4097,7 @@ export const useGameStore = create<Store>()(
             season: completedSeason,
             seed: state.saveId || state.fixtureSeed,
           }).state;
+          await stage(`Retention 8/11 · Reconciling injuries and repricing ${Object.keys(preparedPool.players).length} players...`);
           const retiredIds = new Set(careerRetirements.map((record) => record.playerId));
           const reconciledInjuries = reconcileInjuryRecoveries({
             activeInjuries: withoutRetiredInjuries(state.activeInjuries, retiredIds),
@@ -4050,8 +4120,23 @@ export const useGameStore = create<Store>()(
                   : undefined,
             },
           ])));
+          await stage(`Retention 9/11 · Validating squads, captains, purses and retention limits...`);
           const resetTeams = Object.fromEntries(Object.entries(preparedPool.teams).map(([id, team]) => {
-            const eligibleSquadIds = team.squad.filter((playerId) => Boolean(resetPlayers[playerId]));
+            // Long careers can contain stale squad/leadership references after
+            // trades, retirements, or saves written during navigation. A
+            // player may exist but no longer belong to this club; carrying
+            // that ID into retention creates an illegal cross-team keep and
+            // can make the next retention screen impossible to complete.
+            const eligibleSquadIds = Array.from(new Set(team.squad)).filter((playerId) => (
+              resetPlayers[playerId]?.currentTeamId === id
+            ));
+            const eligibleSquadIdSet = new Set(eligibleSquadIds);
+            // Page-local leadership can briefly hydrate as null during the
+            // rollover. Never let that transient value erase valid persisted
+            // continuity: the incumbent keeps the role if and only if they
+            // remain in this team's retention-candidate squad.
+            const incumbentCaptainId = captainIdsByTeam?.[id] ?? team.captainContinuityId ?? null;
+            const incumbentViceCaptainId = viceCaptainIdsByTeam?.[id] ?? team.viceCaptainContinuityId ?? null;
             const miniKeptIds = nextAuctionType === "mini"
               ? enforceMiniAuctionRetentionLimits(
                   { ...team, squad: eligibleSquadIds },
@@ -4065,23 +4150,31 @@ export const useGameStore = create<Store>()(
               : 0;
             return [id, {
               ...team,
+              squad: eligibleSquadIds,
               // Preserve the completed squad so the retention screen can
               // choose from it. confirmRetentions releases everyone else.
               retainedPlayers: nextAuctionType === "mini"
                 ? miniKeptIds
                 : [],
-              captainContinuityId: captainIdsByTeam
-                ? (captainIdsByTeam[id] && resetPlayers[captainIdsByTeam[id]!] ? captainIdsByTeam[id] : null)
-                : (team.captainContinuityId && resetPlayers[team.captainContinuityId] ? team.captainContinuityId : null),
-              viceCaptainContinuityId: viceCaptainIdsByTeam
-                ? (viceCaptainIdsByTeam[id] && resetPlayers[viceCaptainIdsByTeam[id]!] ? viceCaptainIdsByTeam[id] : null)
-                : (team.viceCaptainContinuityId && resetPlayers[team.viceCaptainContinuityId] ? team.viceCaptainContinuityId : null),
+              captainContinuityId: incumbentCaptainId && eligibleSquadIdSet.has(incumbentCaptainId)
+                ? incumbentCaptainId
+                : null,
+              viceCaptainContinuityId: incumbentViceCaptainId
+                  && incumbentViceCaptainId !== incumbentCaptainId
+                  && eligibleSquadIdSet.has(incumbentViceCaptainId)
+                ? incumbentViceCaptainId
+                : null,
               totalPurse: nextAuctionType === "mini" ? MINI_AUCTION_PURSE_LAKHS : TOTAL_PURSE_LAKHS,
               remainingPurse: nextAuctionType === "mini"
                 ? Math.max(0, MINI_AUCTION_PURSE_LAKHS - miniKeptSalary)
                 : TOTAL_PURSE_LAKHS,
               spentAmount: miniKeptSalary,
               rtmCardsTotal: nextAuctionType === "mini" ? 0 : MAX_TOTAL_RETENTIONS,
+              // RTM usage belongs to one auction only. Carrying this counter
+              // across seasons is invisible in the first 2028 mega auction,
+              // but leaves later mega auctions (2031, 2034, ...) with cards
+              // already marked as spent.
+              rtmCardsUsed: 0,
               softSquadTarget: id === state.userTeamId ? 24 : pickSoftSquadTarget(),
             }];
           }));
@@ -4096,8 +4189,18 @@ export const useGameStore = create<Store>()(
               retainedByTeamId: retainedPlayerIds.has(playerId) ? player.currentTeamId : null,
             },
           ]));
-          advanced = true;
-          return {
+          await stage(`Retention 10/11 · Building historical retirement snapshots...`);
+          const retiredPlayerSnapshots = appendHistoricalRetirees(
+            appendHistoricalRetirees(
+              state.retiredPlayerSnapshots,
+              fallbackPostseason,
+              getReferencedRecordPlayerIds(state.players, state.careerSeasonArchives),
+            ),
+            preparedPool,
+            getReferencedRecordPlayerIds(state.players, state.careerSeasonArchives),
+          );
+          await stage(`Retention 11/11 · Persisting ${Object.keys(resetPlayers).length} players and opening retention...`);
+          set({
             currentSeason: nextSeason,
             currentDate: dates.retentionDate,
             auctionCycle: state.auctionCycle + 1,
@@ -4151,15 +4254,7 @@ export const useGameStore = create<Store>()(
             tradeNegotiationCooldowns: {},
             processedAITradeDateKeys: state.processedAITradeDateKeys,
             auctionMarketProfile: marketProfile,
-            retiredPlayerSnapshots: appendHistoricalRetirees(
-              appendHistoricalRetirees(
-                state.retiredPlayerSnapshots,
-                fallbackPostseason,
-                getReferencedRecordPlayerIds(state.players, state.careerSeasonArchives),
-              ),
-              preparedPool,
-              getReferencedRecordPlayerIds(state.players, state.careerSeasonArchives),
-            ),
+            retiredPlayerSnapshots,
             lastCareerPostseasonSeason: completedSeason,
             lastCareerAgedSeason: nextSeason,
             lastCareerAuctionProcessedSeason: null,
@@ -4171,20 +4266,41 @@ export const useGameStore = create<Store>()(
             ].filter((record, index, records) => records.findIndex((candidate) => candidate.playerId === record.playerId && candidate.season === record.season) === index),
             lastCareerGeneratedPlayerIds: preparedPool.generatedPlayers.map((player) => player.id),
             careerStaff,
-          };
-        });
-        return advanced;
+          });
+          return true;
       },
 
-      archiveCareerSeason: (archive) => {
-        set((state) => {
+      archiveCareerSeason: async (archive, onStage) => {
+          const state = get();
+          const stage = async (message: string) => {
+            onStage?.(message);
+            await new Promise<void>((resolve) => globalThis.setTimeout(resolve, 0));
+          };
+          const playerCount = Object.keys(state.players).length;
+          const historyEntryCount = Object.values(state.players).reduce((total, player) => total + player.iplHistory.length, 0);
+          await stage(`Archive 1/14 · Normalizing ${playerCount} players and ${historyEntryCount} history rows...`);
+          const normalizedPlayers = Object.fromEntries(Object.entries(state.players).map(([id, player]) => {
+            const historyBySeason = new Map<string, Player["iplHistory"][number]>();
+            player.iplHistory.forEach((entry) => historyBySeason.set(String(entry.season), entry));
+            return [id, {
+              ...player,
+              iplHistory: Array.from(historyBySeason.values()).sort((left, right) => (
+                Number(left.season) - Number(right.season)
+              )),
+            }];
+          }));
+          await stage(`Archive 2/14 · Building compact archive from ${archive.fixtures.length} playoff fixtures...`);
           const { reputationAchievements, ...archiveForHistory } = archive;
           const compactArchive = { ...archiveForHistory, playerStats: {} };
           const careerSeasonArchives = [
             compactArchive,
             ...state.careerSeasonArchives.filter((record) => record.season !== archive.season),
           ].sort((left, right) => right.season - left.season);
-          if (state.lastCareerPostseasonSeason === archive.season) return { careerSeasonArchives };
+          if (state.lastCareerPostseasonSeason === archive.season) {
+            await stage(`Archive 14/14 · Persisting previously processed season ${archive.season}...`);
+            set({ careerSeasonArchives });
+            return;
+          }
 
           // Keep a compact per-season contribution on the player's history.
           // The full fixture archive is intentionally compacted for storage,
@@ -4200,7 +4316,8 @@ export const useGameStore = create<Store>()(
             runsConceded?: number;
             oversBowled?: number;
           }>;
-          const playersWithSeasonStats = Object.fromEntries(Object.entries(state.players).map(([id, player]) => {
+          await stage(`Archive 3/14 · Attaching season totals to ${Object.keys(archivedStats).length} player records...`);
+          const playersWithSeasonStats = Object.fromEntries(Object.entries(normalizedPlayers).map(([id, player]) => {
             const stats = archivedStats[id];
             if (!stats) return [id, player];
             const seasonStats = {
@@ -4218,20 +4335,23 @@ export const useGameStore = create<Store>()(
               )),
             }];
           }));
+          await stage(`Archive 4/14 · Updating club-figure progression for season ${archive.season}...`);
           const clubFigureProgression = processClubFigureSeason({
             progression: state.clubFigureProgression,
-            players: state.players,
+            players: normalizedPlayers,
             season: archive.season,
             playerStats: archivedStats,
             achievements: reputationAchievements,
           });
 
+          await stage(`Archive 5/14 · Reconciling ${Object.keys(state.activeInjuries).length} active injuries...`);
           const injuredPlayerIds = new Set([
             ...Object.keys(state.activeInjuries),
             ...state.injuryHistory
               .filter((injury) => injury.season === archive.season)
               .map((injury) => injury.playerId),
           ]);
+          await stage(`Archive 6/14 · Normalizing ${Object.keys(archive.playerStats).length} performance records...`);
           const performance = normalizeCareerSeasonPerformance(archive.playerStats);
           const previousEmergingWinners = [
             ...HISTORICAL_LEAGUE_HISTORY,
@@ -4239,19 +4359,21 @@ export const useGameStore = create<Store>()(
           ]
             .filter((record) => record.season < archive.season && record.emergingPlayer)
             .map((record) => record.emergingPlayer!.name);
+          await stage(`Archive 7/14 · Ranking emerging-player candidates from ${Object.keys(performance).length} records...`);
           const emergingCandidates = rankEmergingPlayerCandidates({
             stats: Object.entries(performance).map(([id, stats]) => ({
               ...stats,
               id,
-              name: stats.name ?? state.players[id]?.name ?? id,
-              teamId: stats.teamId ?? state.players[id]?.currentTeamId ?? "",
+              name: stats.name ?? normalizedPlayers[id]?.name ?? id,
+              teamId: stats.teamId ?? normalizedPlayers[id]?.currentTeamId ?? "",
             })),
-            players: state.players,
+            players: normalizedPlayers,
             season: archive.season,
             initialSeason: INITIAL_ACTIVE_SEASON,
             previousWinnerNames: previousEmergingWinners,
           });
           const emergingByPlayerId = new Map(emergingCandidates.map((candidate) => [candidate.id, candidate]));
+          await stage(`Archive 8/14 · Building development inputs for ${Object.keys(performance).length} players...`);
           const developmentPerformance = Object.fromEntries(Object.entries(performance).map(([id, stats]) => {
             const emerging = emergingByPlayerId.get(id);
             return [id, {
@@ -4261,8 +4383,9 @@ export const useGameStore = create<Store>()(
               emergingBowlingImpact: emerging?.bowlingImpact ?? 0,
             }];
           }));
+          await stage(`Archive 9/14 · Applying postseason development to ${playerCount} players...`);
           const lifecycle = processPostSeasonCareer({
-            players: state.players,
+            players: normalizedPlayers,
             teams: state.teams,
             performance: developmentPerformance,
             completedSeason: archive.season,
@@ -4270,6 +4393,7 @@ export const useGameStore = create<Store>()(
             injuredPlayerIds,
             reputationAchievements,
           });
+          await stage(`Archive 10/14 · Merging developed players and ${lifecycle.retirements.length} retirements...`);
           const retiredIds = new Set(lifecycle.retirements.map((record) => record.playerId));
           const developedPlayersWithSeasonStats = Object.fromEntries(Object.entries(lifecycle.players).map(([id, player]) => [
             id,
@@ -4278,10 +4402,11 @@ export const useGameStore = create<Store>()(
               iplHistory: playersWithSeasonStats[id]?.iplHistory ?? player.iplHistory,
             },
           ]));
+          await stage(`Archive 11/14 · Reviewing ${Object.keys(state.careerStaff.contracts).length} coaching staff contracts...`);
           const reviewedCareerStaff = processStaffSeasonPerformanceReview({
             state: state.careerStaff,
             teams: state.teams,
-            players: state.players,
+            players: normalizedPlayers,
             userTeamId: state.userTeamId,
             completedSeason: archive.season,
             standings: archive.standings as Array<{ teamId: string; played?: number }>,
@@ -4289,11 +4414,13 @@ export const useGameStore = create<Store>()(
             leagueHistory: [...HISTORICAL_LEAGUE_HISTORY, ...state.simulatedLeagueHistory],
             seed: state.saveId || state.fixtureSeed,
           });
+          await stage(`Archive 12/14 · Applying annual staff development...`);
           const developedCareerStaff = processAnnualStaffDevelopment({
             state: reviewedCareerStaff,
             completedSeason: archive.season,
             seed: state.saveId || state.fixtureSeed,
           }).state;
+          await stage(`Archive 13/14 · Converting eligible retirees into staff candidates...`);
           const careerStaff = convertRetiredPlayersToStaff({
             state: developedCareerStaff,
             retiredPlayers: lifecycle.retiredPlayers,
@@ -4301,7 +4428,8 @@ export const useGameStore = create<Store>()(
             season: archive.season,
             seed: state.saveId || state.fixtureSeed,
           }).state;
-          return {
+          await stage(`Archive 14/14 · Persisting ${playerCount} players and ${careerSeasonArchives.length} season archives...`);
+          set({
             careerSeasonArchives,
             clubFigureProgression,
             players: developedPlayersWithSeasonStats,
@@ -4313,7 +4441,7 @@ export const useGameStore = create<Store>()(
             retiredPlayerSnapshots: appendHistoricalRetirees(
               state.retiredPlayerSnapshots,
               lifecycle,
-              getReferencedRecordPlayerIds(state.players, careerSeasonArchives),
+              getReferencedRecordPlayerIds(normalizedPlayers, careerSeasonArchives),
             ),
             lastCareerPostseasonSeason: archive.season,
             pendingRetirementIntake: state.pendingRetirementIntake + lifecycle.retirements.length,
@@ -4323,8 +4451,7 @@ export const useGameStore = create<Store>()(
               ...lifecycle.retirements,
             ].filter((record, index, records) => records.findIndex((candidate) => candidate.playerId === record.playerId && candidate.season === record.season) === index),
             careerStaff,
-          };
-        });
+          });
       },
 
       processMatchInjuries: (input) => {
@@ -4854,7 +4981,7 @@ export const useGameStore = create<Store>()(
 
       setCareerFastForwardTarget: (targetDate) => set({ careerFastForwardTargetDate: targetDate }),
 
-      completeOffseasonAutomatically: () => {
+      completeOffseasonAutomatically: async () => {
         const initial = get();
         if (initial.auction?.phase !== "retention") return false;
         initial.autoRetainPlayers();
@@ -4873,7 +5000,7 @@ export const useGameStore = create<Store>()(
           const state = get();
           if (state.auction?.phase === "completed") return true;
           if (state.auction?.phase !== "live") return false;
-          state.skipAllAuction();
+          await state.skipAllAuction();
           const afterSkip = get();
           if (afterSkip.auction?.phase === "completed") return true;
           if (afterSkip.acceleratedPlanningState === "nominating") {
@@ -4962,7 +5089,10 @@ export const useGameStore = create<Store>()(
         players: state.players,
         teams: state.teams,
         userTeamId: state.userTeamId,
-        auction: state.auction,
+        // Persistence runs JSON.stringify synchronously before its IndexedDB
+        // write is queued. Compact legacy automatic bid trails at this
+        // boundary so any state update remains cheap enough to paint.
+        auction: compactAuctionBidHistory(state.auction),
         isSetupComplete: state.isSetupComplete,
         isPaused: state.isPaused,
         speed: state.speed,

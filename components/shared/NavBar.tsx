@@ -71,6 +71,7 @@ export default function NavBar() {
 
   const [showConfirmAll, setShowConfirmAll] = useState(false);
   const [wasPausedBeforeConfirmAll, setWasPausedBeforeConfirmAll] = useState(false);
+  const [isSkippingAll, setIsSkippingAll] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showRestartConfirm, setShowRestartConfirm] = useState(false);
   const [showHowToPlay, setShowHowToPlay] = useState(false);
@@ -206,9 +207,14 @@ export default function NavBar() {
     setShowConfirmAll(true);
   };
 
-  const handleConfirmAll = () => {
+  const handleConfirmAll = async () => {
     setShowConfirmAll(false);
-    skipAllAuction();
+    setIsSkippingAll(true);
+    try {
+      await skipAllAuction();
+    } finally {
+      setIsSkippingAll(false);
+    }
   };
 
   const handleCancelAll = () => {
@@ -481,6 +487,7 @@ export default function NavBar() {
             <div className="relative flex items-center">
               <button
                 onClick={handleSkipAllPress}
+                disabled={isSkippingAll}
                 className="shrink-0 whitespace-nowrap px-3 rounded font-space-mono font-bold text-[10px] tracking-wider uppercase transition-all duration-150 flex items-center justify-center gap-1.5 h-[28px] cursor-pointer hover:bg-danger hover:text-white hover:scale-105 active:scale-95"
                 style={{
                   border: "1.5px solid var(--ink)",
@@ -490,7 +497,8 @@ export default function NavBar() {
                 }}
                 title="Skip and simulate the rest of the entire auction"
               >
-                <SkipForward size={12} className="inline" /> Skip All
+                <SkipForward size={12} className={isSkippingAll ? "inline animate-pulse" : "inline"} />
+                {isSkippingAll ? "Simulating..." : "Skip All"}
               </button>
 
               {showConfirmAll && (
