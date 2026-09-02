@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 
 import { HISTORICAL_LEAGUE_HISTORY } from "@/lib/data/leagueHistory";
+import { getClubFigures, type ClubFigureTier } from "@/lib/data/clubFigures";
 import { getHomeStadium } from "@/lib/data/pitchCurator";
 import { getTeamAuctionDescriptor } from "@/lib/constants/auctionDescriptors";
 import { formatPrice } from "@/lib/logic/auctionRules";
@@ -37,7 +38,7 @@ const MatchScorecardModal = dynamic(
   { ssr: false },
 );
 
-type TeamProfileTab = "overview" | "squad" | "fixtures" | "lineups";
+type TeamProfileTab = "overview" | "squad" | "fixtures" | "clubfigures" | "lineups";
 type ClubSquadView = "general" | "bowling" | "batting";
 type ClubSquadSortKey =
   | "name" | "age" | "role" | "nationality" | "rating" | "potential" | "acquisition"
@@ -46,7 +47,12 @@ type ClubSquadSortKey =
 type ClubSquadSortDirection = "asc" | "desc";
 type AiLineupModule = typeof import("@/lib/logic/aiLineupSelector");
 
-const TEAM_PROFILE_TABS: readonly TeamProfileTab[] = ["overview", "squad", "fixtures", "lineups"];
+const TEAM_PROFILE_TABS: readonly TeamProfileTab[] = ["overview", "squad", "fixtures", "clubfigures", "lineups"];
+const CLUB_FIGURE_SECTIONS: Array<{ tier: ClubFigureTier; title: string; description: string }> = [
+  { tier: "legend", title: "Legends", description: "The defining names in club history" },
+  { tier: "icon", title: "Icons", description: "Major figures closely associated with the club" },
+  { tier: "hero", title: "Heroes", description: "Memorable performers and fan favourites" },
+];
 const NEXT_FIXTURE_ROW_HEIGHT = 24;
 
 function teamProfileTabFromUrl(): TeamProfileTab {
@@ -493,6 +499,8 @@ function MountedTeamProfilePage() {
   const auction = useGameStore((state) => state.auction);
   const simulatedLeagueHistory = useGameStore((state) => state.simulatedLeagueHistory);
   const careerStaff = useGameStore((state) => state.careerStaff);
+  const clubFigureTierOverrides = useGameStore((state) => state.clubFigureTierOverrides);
+  const clubFigureProgression = useGameStore((state) => state.clubFigureProgression);
   const [hasLoadedCareer, setHasLoadedCareer] = useState(() => Boolean(
     getCachedTeamProfileCareer<TeamProfileCareer>(userTeamId),
   ));
@@ -518,6 +526,10 @@ function MountedTeamProfilePage() {
   const teamId = decodeURIComponent(rawTeamId ?? "").toUpperCase();
   const team = teams[teamId];
   const homeStadium = getHomeStadium(teamId);
+  const clubFigures = useMemo(
+    () => getClubFigures(teamId, players, clubFigureTierOverrides, clubFigureProgression),
+    [clubFigureProgression, clubFigureTierOverrides, players, teamId],
+  );
 
   const teamContracts = useMemo(() => {
     if (!careerStaff || !careerStaff.contracts || !team) return [];
@@ -1226,6 +1238,7 @@ function MountedTeamProfilePage() {
           ["overview", "Overview"],
           ["squad", `Squad (${squad.length})`],
           ["fixtures", "Fixtures"],
+          ["clubfigures", "Club Figures"],
           ["lineups", "Lineups"],
         ] as Array<[TeamProfileTab, string]>).map(([tab, label]) => (
           <button
@@ -1582,6 +1595,58 @@ function MountedTeamProfilePage() {
               )}
             </div>
           </section>
+        )}
+
+        {activeTab === "clubfigures" && (
+          <div className="grid h-full min-h-0 grid-cols-1 gap-4 overflow-hidden lg:grid-cols-3">
+            {CLUB_FIGURE_SECTIONS.map(({ tier, title, description }) => {
+              const tierFigures = clubFigures.filter((figure) => figure.tier === tier);
+              return (
+                <section key={tier} className="flex min-h-0 flex-col overflow-hidden border-2 border-border bg-surface p-5">
+                  <div className="mb-3 shrink-0 border-b border-border pb-3">
+                    <p className="font-space-mono text-[8px] font-bold uppercase tracking-[0.2em] text-accent">{team.shortName} club figures</p>
+                    <h2 className="mt-1 font-anton text-[22px] uppercase leading-none text-text-primary">{title}</h2>
+                    <p className="mt-2 text-[11px] text-text-secondary">{description}</p>
+                  </div>
+
+                  <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
+                    {tierFigures.map((figure, index) => (
+                      <button
+                        key={figure.id}
+                        type="button"
+                        onClick={() => figure.playerId && setDetailedPlayerId(figure.playerId)}
+                        disabled={!figure.isLinked}
+                        className="flex w-full items-center gap-3 border border-border bg-black/[0.02] px-3 py-3 text-left transition-colors enabled:hover:border-accent enabled:hover:bg-accent/5 disabled:cursor-default dark:bg-white/[0.02]"
+                        title={figure.isLinked ? `Open ${figure.name}'s player profile` : `${figure.name} is retired`}
+                      >
+                        <span className="w-6 shrink-0 text-center font-anton text-lg text-text-secondary">{index + 1}</span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-bold text-text-primary">{figure.name}</span>
+                          <span className={`mt-0.5 block font-space-mono text-[9px] font-bold uppercase tracking-wider ${figure.isLinked ? "text-success" : "text-text-secondary"}`}>
+                            {!figure.isLinked
+                              ? "Retired"
+                              : figure.currentTeamId
+                                ? `Current club: ${teams[figure.currentTeamId]?.shortName ?? figure.currentTeamId}`
+                                : "Free agent"}
+                          </span>
+                          {figure.clubSeasons != null && (
+                            <span className="mt-1 block font-space-mono text-[8px] font-bold uppercase tracking-wider text-text-secondary">
+                              {figure.legacyPoints} points · {figure.clubSeasons} club {figure.clubSeasons === 1 ? "season" : "seasons"}
+                            </span>
+                          )}
+                        </span>
+                      </button>
+                    ))}
+                    {tierFigures.length === 0 && (
+                      <div className="flex h-full min-h-32 items-center justify-center text-center font-space-mono text-[9px] font-bold uppercase text-text-secondary">
+                        No {title.toLowerCase()} recorded
+                      </div>
+                    )}
+                  </div>
+                </section>
+              );
+            })}
+          </div>
         )}
 
         {activeTab === "lineups" && profileLineups && aiLineupLogic && (

@@ -42,6 +42,11 @@ const NAV_ITEMS = [
   { label: "Auction", href: "/game/auction" },
 ];
 
+const formatDisplayDate = (date: string) => {
+  const [year, month, day] = date.split("-");
+  return year && month && day ? `${day}-${month}-${year}` : date;
+};
+
 export default function NavBar() {
   const pathname = usePathname();
   const router = useRouter();
@@ -334,7 +339,7 @@ export default function NavBar() {
                 </button>
               ))}
             </div>
-            <span className="tracking-wider" style={{ color: "var(--chrome-nav-muted)" }}>{currentDate}</span>
+            <span className="tracking-wider" style={{ color: "var(--chrome-nav-muted)" }}>{formatDisplayDate(currentDate)}</span>
           </>
         )}
         {isAuctionPage && auction && auction.phase === "live" && (

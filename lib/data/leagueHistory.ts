@@ -24,6 +24,14 @@ export interface LeagueHistorySeason {
   mvp?: LeagueHistoryHonour;
   source: "historical" | "career";
   standings?: LeagueHistoryStanding[];
+  teamOutcomes?: Record<string, LeagueHistoryTeamOutcome>;
+}
+
+export type LeagueHistoryPlayoffOutcome = "champion" | "runner-up" | "semi-final" | "eliminator" | "qualifier-2";
+
+export interface LeagueHistoryTeamOutcome {
+  leaguePosition: number;
+  playoffOutcome?: LeagueHistoryPlayoffOutcome;
 }
 
 export interface LeagueHistoryTeam {
@@ -62,7 +70,7 @@ export const LEAGUE_HISTORY_TEAMS: Record<string, LeagueHistoryTeam> = {
   PWI: team("PWI", "Pune Warriors India", "PWI", "#1f5fa8"),
 };
 
-export const HISTORICAL_LEAGUE_HISTORY: LeagueHistorySeason[] = [
+const HISTORICAL_LEAGUE_HISTORY_BASE: LeagueHistorySeason[] = [
   { season: 2026, championTeamId: "RCB", runnerUpTeamId: "GT", orangeCap: { name: "Vaibhav Suryavanshi", teamId: "RR" }, purpleCap: { name: "Kagiso Rabada", teamId: "GT" }, emergingPlayer: { name: "Vaibhav Suryavanshi", teamId: "RR" }, mvp: { name: "Vaibhav Suryavanshi", teamId: "RR" }, source: "historical" },
   { season: 2025, championTeamId: "RCB", runnerUpTeamId: "PBKS", orangeCap: { name: "Sai Sudharsan", teamId: "GT" }, purpleCap: { name: "Prasidh Krishna", teamId: "GT" }, emergingPlayer: { name: "Sai Sudharsan", teamId: "GT" }, mvp: { name: "Suryakumar Yadav", teamId: "MI" }, source: "historical" },
   { season: 2024, championTeamId: "KKR", runnerUpTeamId: "SRH", orangeCap: { name: "Virat Kohli", teamId: "RCB" }, purpleCap: { name: "Harshal Patel", teamId: "PBKS" }, emergingPlayer: { name: "Nitish Kumar Reddy", teamId: "SRH" }, mvp: { name: "Sunil Narine", teamId: "KKR" }, source: "historical" },
@@ -83,3 +91,101 @@ export const HISTORICAL_LEAGUE_HISTORY: LeagueHistorySeason[] = [
   { season: 2009, championTeamId: "DCG", runnerUpTeamId: "RCB", orangeCap: { name: "Matthew Hayden", teamId: "CSK" }, purpleCap: { name: "RP Singh", teamId: "DCG" }, emergingPlayer: { name: "Rohit Sharma", teamId: "DCG" }, mvp: { name: "Adam Gilchrist", teamId: "DCG" }, source: "historical" },
   { season: 2008, championTeamId: "RR", runnerUpTeamId: "CSK", orangeCap: { name: "Shaun Marsh", teamId: "KXIP" }, purpleCap: { name: "Sohail Tanvir", teamId: "RR" }, emergingPlayer: { name: "Shreevats Goswami", teamId: "RCB" }, mvp: { name: "Shane Watson", teamId: "RR" }, source: "historical" },
 ];
+
+// Final league-table order before the playoffs. Keeping this separate from the
+// honours data makes every participating club's season record explicit.
+const HISTORICAL_LEAGUE_ORDER: Record<number, string[]> = {
+  2026: ["RCB", "GT", "RR", "PBKS", "MI", "SRH", "LSG", "KKR", "DC", "CSK"],
+  2025: ["PBKS", "RCB", "GT", "MI", "DC", "SRH", "LSG", "KKR", "RR", "CSK"],
+  2024: ["KKR", "SRH", "RR", "RCB", "CSK", "DC", "LSG", "GT", "PBKS", "MI"],
+  2023: ["GT", "CSK", "LSG", "MI", "RR", "RCB", "KKR", "PBKS", "DC", "SRH"],
+  2022: ["GT", "RR", "LSG", "RCB", "DC", "PBKS", "KKR", "SRH", "CSK", "MI"],
+  2021: ["DC", "CSK", "RCB", "KKR", "MI", "PBKS", "RR", "SRH"],
+  2020: ["MI", "DC", "SRH", "RCB", "KKR", "KXIP", "CSK", "RR"],
+  2019: ["MI", "CSK", "DC", "SRH", "KKR", "KXIP", "RR", "RCB"],
+  2018: ["SRH", "CSK", "KKR", "RR", "MI", "RCB", "KXIP", "DD"],
+  2017: ["MI", "RPS", "SRH", "KKR", "KXIP", "DD", "GL", "RCB"],
+  2016: ["GL", "RCB", "SRH", "KKR", "MI", "DD", "RPS", "KXIP"],
+  2015: ["CSK", "MI", "RCB", "RR", "KKR", "SRH", "DD", "KXIP"],
+  2014: ["KXIP", "KKR", "CSK", "MI", "RR", "SRH", "RCB", "DD"],
+  2013: ["CSK", "MI", "RR", "SRH", "RCB", "KXIP", "KKR", "PWI", "DD"],
+  2012: ["DD", "KKR", "MI", "CSK", "RCB", "KXIP", "RR", "DCG", "PWI"],
+  2011: ["RCB", "CSK", "MI", "KKR", "KXIP", "RR", "DCG", "KTK", "PWI", "DD"],
+  2010: ["MI", "DCG", "CSK", "RCB", "DD", "KKR", "RR", "KXIP"],
+  2009: ["DD", "CSK", "RCB", "DCG", "KXIP", "RR", "MI", "KKR"],
+  2008: ["RR", "KXIP", "CSK", "DD", "MI", "KKR", "RCB", "DCG"],
+};
+
+const HISTORICAL_PLAYOFF_EXITS: Record<number, Partial<Record<LeagueHistoryPlayoffOutcome, string | string[]>>> = {
+  2026: { "qualifier-2": "RR", eliminator: "PBKS" },
+  2025: { "qualifier-2": "MI", eliminator: "GT" },
+  2024: { "qualifier-2": "RR", eliminator: "RCB" },
+  2023: { "qualifier-2": "MI", eliminator: "LSG" },
+  2022: { "qualifier-2": "RCB", eliminator: "LSG" },
+  2021: { "qualifier-2": "DC", eliminator: "RCB" },
+  2020: { "qualifier-2": "SRH", eliminator: "RCB" },
+  2019: { "qualifier-2": "DC", eliminator: "SRH" },
+  2018: { "qualifier-2": "KKR", eliminator: "RR" },
+  2017: { "qualifier-2": "KKR", eliminator: "SRH" },
+  2016: { "qualifier-2": "GL", eliminator: "KKR" },
+  2015: { "qualifier-2": "RCB", eliminator: "RR" },
+  2014: { "qualifier-2": "CSK", eliminator: "MI" },
+  2013: { "qualifier-2": "RR", eliminator: "SRH" },
+  2012: { "qualifier-2": "DD", eliminator: "MI" },
+  2011: { "qualifier-2": "MI", eliminator: "KKR" },
+  2010: { "semi-final": ["DCG", "RCB"] },
+  2009: { "semi-final": ["DD", "CSK"] },
+  2008: { "semi-final": ["DD", "KXIP"] },
+};
+
+function historicalTeamOutcomes(season: LeagueHistorySeason): Record<string, LeagueHistoryTeamOutcome> {
+  const outcomes: Record<string, LeagueHistoryTeamOutcome> = {};
+  (HISTORICAL_LEAGUE_ORDER[season.season] ?? []).forEach((teamId, index) => {
+    outcomes[teamId] = { leaguePosition: index + 1 };
+  });
+  if (outcomes[season.championTeamId]) outcomes[season.championTeamId].playoffOutcome = "champion";
+  if (outcomes[season.runnerUpTeamId]) outcomes[season.runnerUpTeamId].playoffOutcome = "runner-up";
+  Object.entries(HISTORICAL_PLAYOFF_EXITS[season.season] ?? {}).forEach(([outcome, teamIds]) => {
+    for (const teamId of Array.isArray(teamIds) ? teamIds : [teamIds]) {
+      if (teamId && outcomes[teamId]) outcomes[teamId].playoffOutcome = outcome as LeagueHistoryPlayoffOutcome;
+    }
+  });
+  return outcomes;
+}
+
+export const HISTORICAL_LEAGUE_HISTORY: LeagueHistorySeason[] = HISTORICAL_LEAGUE_HISTORY_BASE.map((season) => ({
+  ...season,
+  teamOutcomes: historicalTeamOutcomes(season),
+}));
+
+interface PlayoffFixtureResult {
+  stage?: string;
+  teamA?: string;
+  teamB?: string;
+  winner?: string | null;
+  played?: boolean;
+}
+
+export function buildLeagueHistoryTeamOutcomes(
+  standings: Array<{ teamId: string }>,
+  fixtures: unknown[],
+): Record<string, LeagueHistoryTeamOutcome> {
+  const playoffFixtures = fixtures.filter((entry): entry is PlayoffFixtureResult => Boolean(entry && typeof entry === "object"));
+  const outcomes: Record<string, LeagueHistoryTeamOutcome> = {};
+  standings.forEach((standing, index) => { outcomes[standing.teamId] = { leaguePosition: index + 1 }; });
+  const applyLoser = (stage: string, playoffOutcome: LeagueHistoryPlayoffOutcome) => {
+    const fixture = playoffFixtures.find((entry) => entry.stage === stage && entry.played && entry.winner);
+    if (!fixture?.winner || !fixture.teamA || !fixture.teamB) return;
+    const loser = fixture.winner === fixture.teamA ? fixture.teamB : fixture.teamA;
+    if (outcomes[loser]) outcomes[loser].playoffOutcome = playoffOutcome;
+  };
+  applyLoser("eliminator", "eliminator");
+  applyLoser("qualifier2", "qualifier-2");
+  const final = playoffFixtures.find((entry) => entry.stage === "final" && entry.played && entry.winner);
+  if (final?.winner && final.teamA && final.teamB) {
+    const runnerUp = final.winner === final.teamA ? final.teamB : final.teamA;
+    if (outcomes[final.winner]) outcomes[final.winner].playoffOutcome = "champion";
+    if (outcomes[runnerUp]) outcomes[runnerUp].playoffOutcome = "runner-up";
+  }
+  return outcomes;
+}

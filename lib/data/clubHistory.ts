@@ -1,4 +1,6 @@
-export type ClubSeasonOutcome = "Champions" | "Runners-up" | "League season" | "Did not participate";
+import { HISTORICAL_LEAGUE_HISTORY, type LeagueHistorySeason, type LeagueHistoryTeamOutcome } from "./leagueHistory";
+
+export type ClubSeasonOutcome = string;
 
 export interface ClubSeasonHistoryEntry {
   season: number;
@@ -11,27 +13,19 @@ export const LAST_HISTORICAL_CLUB_SEASON = 2026;
 interface ClubHistoryDefinition {
   firstSeason: number;
   names?: Array<{ from: number; name: string }>;
-  champions: number[];
-  runnersUp: number[];
   didNotParticipate?: number[];
 }
 
 const CLUB_HISTORY: Record<string, ClubHistoryDefinition> = {
   MI: {
     firstSeason: 2008,
-    champions: [2013, 2015, 2017, 2019, 2020],
-    runnersUp: [2010],
   },
   CSK: {
     firstSeason: 2008,
-    champions: [2010, 2011, 2018, 2021, 2023],
-    runnersUp: [2008, 2012, 2013, 2015, 2019],
     didNotParticipate: [2016, 2017],
   },
   KKR: {
     firstSeason: 2008,
-    champions: [2012, 2014, 2024],
-    runnersUp: [2021],
   },
   RCB: {
     firstSeason: 2008,
@@ -39,18 +33,12 @@ const CLUB_HISTORY: Record<string, ClubHistoryDefinition> = {
       { from: 2008, name: "Royal Challengers Bangalore" },
       { from: 2024, name: "Royal Challengers Bengaluru" },
     ],
-    champions: [2025, 2026],
-    runnersUp: [2009, 2011, 2016],
   },
   SRH: {
     firstSeason: 2013,
-    champions: [2016],
-    runnersUp: [2018, 2024],
   },
   RR: {
     firstSeason: 2008,
-    champions: [2008],
-    runnersUp: [2022],
     didNotParticipate: [2016, 2017],
   },
   DC: {
@@ -59,8 +47,6 @@ const CLUB_HISTORY: Record<string, ClubHistoryDefinition> = {
       { from: 2008, name: "Delhi Daredevils" },
       { from: 2019, name: "Delhi Capitals" },
     ],
-    champions: [],
-    runnersUp: [2020],
   },
   PBKS: {
     firstSeason: 2008,
@@ -68,18 +54,12 @@ const CLUB_HISTORY: Record<string, ClubHistoryDefinition> = {
       { from: 2008, name: "Kings XI Punjab" },
       { from: 2021, name: "Punjab Kings" },
     ],
-    champions: [],
-    runnersUp: [2014, 2025],
   },
   GT: {
     firstSeason: 2022,
-    champions: [2022],
-    runnersUp: [2023, 2026],
   },
   LSG: {
     firstSeason: 2022,
-    champions: [],
-    runnersUp: [],
   },
 };
 
@@ -96,13 +76,10 @@ export function getClubSeasonHistory(teamId: string, fallbackName: string): Club
 
   return Array.from({ length: LAST_HISTORICAL_CLUB_SEASON - definition.firstSeason + 1 }, (_, index) => {
     const season = definition.firstSeason + index;
+    const leagueSeason = HISTORICAL_LEAGUE_HISTORY.find((entry) => entry.season === season);
     const outcome: ClubSeasonOutcome = definition.didNotParticipate?.includes(season)
       ? "Did not participate"
-      : definition.champions.includes(season)
-        ? "Champions"
-        : definition.runnersUp.includes(season)
-          ? "Runners-up"
-          : "League season";
+      : formatClubSeasonOutcome(findClubTeamOutcome(leagueSeason, teamId));
 
     return {
       season,
@@ -110,4 +87,41 @@ export function getClubSeasonHistory(teamId: string, fallbackName: string): Club
       outcome,
     };
   }).reverse();
+}
+
+const CLUB_TEAM_ALIASES: Record<string, string[]> = {
+  DC: ["DC", "DD"],
+  PBKS: ["PBKS", "KXIP"],
+};
+
+export function findClubTeamOutcome(
+  season: LeagueHistorySeason | undefined,
+  teamId: string,
+): LeagueHistoryTeamOutcome | undefined {
+  const aliases = CLUB_TEAM_ALIASES[teamId] ?? [teamId];
+  for (const alias of aliases) {
+    const outcome = season?.teamOutcomes?.[alias];
+    if (outcome) return outcome;
+  }
+  return undefined;
+}
+
+function ordinal(position: number): string {
+  const mod100 = position % 100;
+  const suffix = mod100 >= 11 && mod100 <= 13
+    ? "th"
+    : position % 10 === 1 ? "st" : position % 10 === 2 ? "nd" : position % 10 === 3 ? "rd" : "th";
+  return `${position}${suffix}`;
+}
+
+export function formatClubSeasonOutcome(outcome: LeagueHistoryTeamOutcome | undefined): ClubSeasonOutcome {
+  if (!outcome) return "Did not participate";
+  switch (outcome.playoffOutcome) {
+    case "champion": return "Champions";
+    case "runner-up": return "Runners-up";
+    case "semi-final": return "Eliminated in semi-final";
+    case "eliminator": return "Eliminated in eliminator";
+    case "qualifier-2": return "Eliminated in Qualifier 2";
+    default: return `${ordinal(outcome.leaguePosition)} place`;
+  }
 }

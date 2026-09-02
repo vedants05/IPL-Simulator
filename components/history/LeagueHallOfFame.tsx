@@ -5,6 +5,7 @@ import { ChevronRight, Crown, ShieldCheck, Sparkles, Trophy } from "lucide-react
 
 import { LEAGUE_HALL_OF_FAME, type HallOfFameRole, type LeagueHallOfFameMember } from "@/lib/data/leagueHallOfFame";
 import { LEAGUE_HISTORY_TEAMS } from "@/lib/data/leagueHistory";
+import { useGameStore } from "@/lib/store/gameStore";
 import type { Player, Team } from "@/lib/types";
 
 interface LeagueHallOfFameProps {
@@ -28,11 +29,25 @@ const getInitials = (name: string) => name
 
 export default function LeagueHallOfFame({ players, teams, onOpenPlayer }: LeagueHallOfFameProps) {
   const [activeFilter, setActiveFilter] = useState<HallFilter>("All");
+  const retiredPlayerSnapshots = useGameStore((state) => state.retiredPlayerSnapshots);
   const playersByName = useMemo(() => {
     const mappedPlayers = new Map<string, Player>();
     Object.values(players).forEach((player) => mappedPlayers.set(normalizeName(player.name), player));
     return mappedPlayers;
   }, [players]);
+  const retiredPlayersByName = useMemo(() => {
+    const mappedPlayers = new Map<string, number>();
+    Object.values(retiredPlayerSnapshots).forEach((player) => {
+      mappedPlayers.set(normalizeName(player.name), player.retirementSeason);
+    });
+    return mappedPlayers;
+  }, [retiredPlayerSnapshots]);
+
+  const getMemberEra = (member: LeagueHallOfFameMember) => {
+    const retirementSeason = retiredPlayersByName.get(normalizeName(member.name));
+    if (retirementSeason === undefined || !/present$/i.test(member.era)) return member.era;
+    return member.era.replace(/present$/i, String(retirementSeason));
+  };
 
   const filteredMembers = activeFilter === "All"
     ? LEAGUE_HALL_OF_FAME
@@ -162,7 +177,7 @@ export default function LeagueHallOfFame({ players, teams, onOpenPlayer }: Leagu
                         <Trophy size={15} className="text-[#946514]/75 dark:text-[#d6ad55]/70" />
                       </div>
                       <div className="mt-auto pt-4">
-                        <p className="font-space-mono text-[7px] font-bold uppercase tracking-[0.18em] text-[#8d6218] dark:text-[#d6ad55]/80">{member.role} · {member.era}</p>
+                        <p className="font-space-mono text-[7px] font-bold uppercase tracking-[0.18em] text-[#8d6218] dark:text-[#d6ad55]/80">{member.role} · {getMemberEra(member)}</p>
                         <h5 className="mt-1 font-anton text-[21px] uppercase leading-none">{member.name}</h5>
                         <p className="mt-2 line-clamp-2 text-[10px] leading-relaxed text-text-secondary">{member.legacy}</p>
                       </div>
@@ -207,7 +222,7 @@ export default function LeagueHallOfFame({ players, teams, onOpenPlayer }: Leagu
                   <span className="mt-2 block text-[10px] leading-relaxed text-text-secondary">{member.legacy}</span>
                   <span className="mt-auto flex items-end justify-between gap-3 pt-3">
                     {renderTeamMarks(member)}
-                    <span className="shrink-0 font-space-mono text-[7px] font-bold uppercase text-text-secondary">{member.era}</span>
+                    <span className="shrink-0 font-space-mono text-[7px] font-bold uppercase text-text-secondary">{getMemberEra(member)}</span>
                   </span>
                 </span>
               </button>

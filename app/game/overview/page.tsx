@@ -59,11 +59,11 @@ import {
   FIXTURE_SIMULATION_ENABLED,
   SEASON_ACCESS_ENABLED,
 } from "@/lib/config/featureFlags";
-import { getClubSeasonHistory, LAST_HISTORICAL_CLUB_SEASON } from "@/lib/data/clubHistory";
+import { findClubTeamOutcome, formatClubSeasonOutcome, getClubSeasonHistory, LAST_HISTORICAL_CLUB_SEASON } from "@/lib/data/clubHistory";
 import { getAuctionTypeForSeason } from "@/lib/logic/auctionCycle";
 import { getClubFigures, type ClubFigureTier } from "@/lib/data/clubFigures";
 import { selectTeamOfSeason } from "@/lib/logic/teamOfSeason";
-import { HISTORICAL_LEAGUE_HISTORY, LEAGUE_HISTORY_TEAMS } from "@/lib/data/leagueHistory";
+import { buildLeagueHistoryTeamOutcomes, HISTORICAL_LEAGUE_HISTORY, LEAGUE_HISTORY_TEAMS } from "@/lib/data/leagueHistory";
 import { OTHER_LEAGUE_RECORDS } from "@/lib/data/leagueRecords";
 import { computeDynamicLeagueRecords } from "@/lib/logic/leagueRecordTracker";
 import { appendRainAffectedResultLabel, isRainAffectedMatch } from "@/lib/logic/matchWeather";
@@ -1865,6 +1865,9 @@ function OverviewPageContent() {
 
     const final = fixtures.find((fixture) => fixture.stage === "final" && fixture.played && fixture.winner);
     if (!final?.winner) return;
+    // During rollover currentSeason advances before the completed fixture list
+    // is replaced. Never archive those old fixtures under the new season.
+    if (!final.date || Number(final.date.slice(0, 4)) !== currentSeason) return;
 
     const orangeCap = Object.values(playerStats)
       .filter((stats) => stats.runs > 0 && teams[stats.teamId])
@@ -1892,6 +1895,7 @@ function OverviewPageContent() {
         : undefined,
       mvp: { name: seasonAwards.mvp.name, teamId: seasonAwards.mvp.teamId },
       source: "career",
+      teamOutcomes: buildLeagueHistoryTeamOutcomes(standings, fixtures),
       standings: standings.map((standing) => ({
         teamId: standing.teamId,
         teamName: standing.teamName,
@@ -4039,6 +4043,7 @@ This record has been officially verified and added to the IPL Minor Records arch
           teamId: mvpTeamId,
         },
         source: "career",
+        teamOutcomes: buildLeagueHistoryTeamOutcomes(standings, fixturesRef.current),
         standings: standings.map((standing) => ({
           teamId: standing.teamId,
           teamName: standing.teamName,
@@ -5665,14 +5670,13 @@ This record has been officially verified and added to the IPL Minor Records arch
     getClubSeasonHistory(userTeamId, userTeam.name).map((season) => [season.season, season]),
   );
   simulatedLeagueHistory.forEach((season) => {
+    const archivedFixtures = careerSeasonArchives.find((archive) => archive.season === season.season)?.fixtures ?? [];
+    const teamOutcomes = season.teamOutcomes
+      ?? (season.standings ? buildLeagueHistoryTeamOutcomes(season.standings, archivedFixtures) : undefined);
     clubSeasonHistoryBySeason.set(season.season, {
       season: season.season,
       clubName: userTeam.name,
-      outcome: season.championTeamId === userTeamId
-        ? "Champions"
-        : season.runnerUpTeamId === userTeamId
-          ? "Runners-up"
-          : "League season",
+      outcome: formatClubSeasonOutcome(findClubTeamOutcome({ ...season, teamOutcomes }, userTeamId)),
     });
   });
   const clubSeasonHistory = Array.from(clubSeasonHistoryBySeason.values())
@@ -6044,7 +6048,11 @@ This record has been officially verified and added to the IPL Minor Records arch
         </header>
 
         {/* Dynamic Detail Body Screen */}
-        <div className={`flex min-h-0 flex-1 flex-col ${activeSubTab === "overview" || activeTab === "history" || (activeTab === "league" && activeSubTab === "minorrecords") ? "overflow-y-auto p-8" : "overflow-hidden"}`}>
+        <div className={`flex min-h-0 flex-1 flex-col ${activeSubTab === "overview"
+          ? `${activeTab === "scouting" ? "overflow-hidden" : "overflow-y-auto"} p-8`
+          : activeTab === "history" || (activeTab === "league" && activeSubTab === "minorrecords")
+            ? "overflow-y-auto p-8"
+            : "overflow-hidden"}`}>
           
           {/* ==================================================================
               MAIN TAB: HOME
@@ -6548,6 +6556,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                   fixtures={detailedFixtures}
                   currentDate={currentDate}
                   clubFigureProgression={clubFigureProgression}
+                  onOpenPlayer={setDetailedPlayerId}
                   onViewAllFixtures={() => {
                     setActiveTab("season");
                     _setActiveSubTab("fixtures");
@@ -9273,7 +9282,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                       </div>
                     </div>
 
-                    <div className="grid shrink-0 grid-cols-[4.5rem_minmax(0,1fr)_9rem] border-b border-[#16130f]/10 pb-2 font-space-mono text-[8px] font-bold uppercase text-text-secondary">
+                    <div className="grid shrink-0 grid-cols-[4.5rem_minmax(0,1fr)_14rem] border-b border-[#16130f]/10 pb-2 pr-4 font-space-mono text-[8px] font-bold uppercase text-text-secondary">
                       <span>Season</span>
                       <span>Club</span>
                       <span>IPL outcome</span>
@@ -9285,11 +9294,11 @@ This record has been officially verified and added to the IPL Minor Records arch
                         return (
                           <div
                             key={season.season}
-                            className={`grid min-h-11 grid-cols-[4.5rem_minmax(0,1fr)_9rem] items-center border-b border-[#16130f]/10 text-xs ${isTitle ? "bg-black/5 font-bold dark:bg-white/5" : ""}`}
+                            className={`grid min-h-11 grid-cols-[4.5rem_minmax(0,1fr)_14rem] items-center border-b border-[#16130f]/10 pr-4 text-xs ${isTitle ? "bg-black/5 font-bold dark:bg-white/5" : ""}`}
                           >
                             <span className="font-space-mono text-sm font-bold text-text-primary">{season.season}</span>
                             <span className="truncate pr-4 text-text-primary">{season.clubName}</span>
-                            <span className={`font-space-mono text-[10px] uppercase ${isTitle || isRunnerUp ? "font-bold text-text-primary" : "text-text-secondary"}`}>
+                            <span className={`whitespace-nowrap font-space-mono text-[10px] uppercase ${isTitle || isRunnerUp ? "font-bold text-text-primary" : "text-text-secondary"}`}>
                               {season.outcome}
                             </span>
                           </div>

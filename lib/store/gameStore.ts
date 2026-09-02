@@ -20,6 +20,7 @@ import { calculateBasePrice, fetchPlayersFromSupabase } from "@/lib/supabase/fet
 import { fetchTeamsFromSupabase } from "@/lib/supabase/fetchTeams";
 import type { ClubFigureProgression, ClubFigureTier, ClubFigureTierOverrides } from "@/lib/data/clubFigures";
 import { processClubFigureSeason } from "@/lib/logic/clubFigureProgression";
+import { applyOffseasonStatsToCareer, generateOffseasonStats, offseasonPeriodKey, type OffseasonStatsPeriod } from "@/lib/logic/offseasonStats";
 import type { LeagueHistorySeason } from "@/lib/data/leagueHistory";
 import { HISTORICAL_LEAGUE_HISTORY } from "@/lib/data/leagueHistory";
 import {
@@ -257,6 +258,8 @@ interface GameStateAdditions {
   aiAcceleratedBackups: Record<string, string[]>;
   clubFigureTierOverrides: ClubFigureTierOverrides;
   clubFigureProgression: ClubFigureProgression;
+  offseasonStats: OffseasonStatsPeriod | null;
+  careerT20ProcessedOffseasonKeys: string[];
   simulatedLeagueHistory: LeagueHistorySeason[];
   lastRolledOverSeason: number | null;
   careerSeasonArchives: Array<{
@@ -299,6 +302,56 @@ interface GameStateAdditions {
   scoutingReports: ScoutingReport[];
   scoutingNetworks: Record<string, ScoutingNetwork>;
   careerStaff: CareerStaffState;
+}
+
+function leagueHistoryResultFingerprint(record: LeagueHistorySeason): string {
+  return JSON.stringify({
+    championTeamId: record.championTeamId,
+    runnerUpTeamId: record.runnerUpTeamId,
+    orangeCap: record.orangeCap,
+    purpleCap: record.purpleCap,
+    mvp: record.mvp,
+    standings: record.standings,
+  });
+}
+
+/**
+ * Repairs saves written by the old rollover race. That race could relabel the
+ * just-completed season as the following year while its fixtures were still
+ * mounted. Emerging Player is deliberately excluded from the fingerprint:
+ * its prior-winner rule is why that one field differed on the corrupt copy.
+ */
+function removeRelabelledLeagueHistoryCopies(records: LeagueHistorySeason[]): {
+  records: LeagueHistorySeason[];
+  removedSeasons: Set<number>;
+} {
+  const ordered = [...records].sort((left, right) => left.season - right.season);
+  const kept: LeagueHistorySeason[] = [];
+  const removedSeasons = new Set<number>();
+  for (const record of ordered) {
+    const previous = kept[kept.length - 1];
+    if (
+      previous
+      && record.season === previous.season + 1
+      && leagueHistoryResultFingerprint(record) === leagueHistoryResultFingerprint(previous)
+    ) {
+      removedSeasons.add(record.season);
+      continue;
+    }
+    kept.push(record);
+  }
+  return { records: kept.sort((left, right) => right.season - left.season), removedSeasons };
+}
+
+function archivedFixtureSeason(archive: { fixtures: unknown[] }): number | null {
+  for (const fixture of archive.fixtures) {
+    if (!fixture || typeof fixture !== "object") continue;
+    const candidate = fixture as { stage?: unknown; date?: unknown };
+    if (candidate.stage !== "final" || typeof candidate.date !== "string") continue;
+    const year = Number(candidate.date.slice(0, 4));
+    if (Number.isInteger(year) && year >= INITIAL_ACTIVE_SEASON) return year;
+  }
+  return null;
 }
 
 interface GameActions {
@@ -1190,6 +1243,8 @@ export const useGameStore = create<Store>()(
       aiAcceleratedBackups: {},
       clubFigureTierOverrides: {},
       clubFigureProgression: {},
+      offseasonStats: null,
+      careerT20ProcessedOffseasonKeys: [],
       simulatedLeagueHistory: [],
       lastRolledOverSeason: null,
       careerSeasonArchives: [],
@@ -1365,6 +1420,8 @@ export const useGameStore = create<Store>()(
           auctionTargetPriorities: {},
           clubFigureTierOverrides: {},
           clubFigureProgression: {},
+          offseasonStats: null,
+          careerT20ProcessedOffseasonKeys: [],
           simulatedLeagueHistory: [],
           lastRolledOverSeason: null,
           careerSeasonArchives: [],
@@ -4062,14 +4119,27 @@ export const useGameStore = create<Store>()(
                 seed: state.saveId || state.fixtureSeed,
                 injuredPlayerIds: new Set(Object.keys(state.activeInjuries)),
               });
+          const fallbackOffseason = state.offseasonStats?.toSeason === nextSeason && state.offseasonStats.generatorVersion === 4
+            ? { players: fallbackPostseason.players, period: state.offseasonStats }
+            : generateOffseasonStats({
+                players: fallbackPostseason.players,
+                performance: archivedPerformance,
+                completedSeason,
+                seed: state.saveId || state.fixtureSeed,
+                injuredPlayerIds: new Set(Object.keys(state.activeInjuries)),
+              });
+          const fallbackOffseasonKey = offseasonPeriodKey(fallbackOffseason.period);
+          const fallbackPlayersWithT20 = state.careerT20ProcessedOffseasonKeys.includes(fallbackOffseasonKey)
+            ? fallbackOffseason.players
+            : applyOffseasonStatsToCareer(fallbackOffseason.players, fallbackOffseason.period);
           await stage(`Retention 5/10 · Normalizing auction market profile for ${Object.keys(fallbackPostseason.players).length} players...`);
           const marketProfile = normalizeAuctionMarketProfile(
             state.auctionMarketProfile,
-            Object.values(fallbackPostseason.players),
+            Object.values(fallbackPlayersWithT20),
           );
           await stage(`Retention 6/10 · Generating season ${nextSeason} player pool and retirement intake...`);
           const preparedPool = prepareRetentionPlayerPool({
-            players: fallbackPostseason.players,
+            players: fallbackPlayersWithT20,
             teams: fallbackPostseason.teams,
             season: nextSeason,
             seed: state.saveId || state.fixtureSeed,
@@ -4239,6 +4309,8 @@ export const useGameStore = create<Store>()(
             aiAcceleratedTargets: {},
             aiAcceleratedBackups: {},
             lastRolledOverSeason: completedSeason,
+            offseasonStats: fallbackOffseason.period,
+            careerT20ProcessedOffseasonKeys: Array.from(new Set([...state.careerT20ProcessedOffseasonKeys, fallbackOffseasonKey])),
             careerIplProcessedMatchKeys: [],
             careerT20ProcessedMatchKeys: [],
             careerIplTrackingSeason: nextSeason,
@@ -4393,9 +4465,20 @@ export const useGameStore = create<Store>()(
             injuredPlayerIds,
             reputationAchievements,
           });
+          const offseason = generateOffseasonStats({
+            players: lifecycle.players,
+            performance: developmentPerformance,
+            completedSeason: archive.season,
+            seed: state.saveId || state.fixtureSeed,
+            injuredPlayerIds,
+          });
+          const offseasonKey = offseasonPeriodKey(offseason.period);
+          const offseasonPlayersWithT20 = state.careerT20ProcessedOffseasonKeys.includes(offseasonKey)
+            ? offseason.players
+            : applyOffseasonStatsToCareer(offseason.players, offseason.period);
           await stage(`Archive 10/14 · Merging developed players and ${lifecycle.retirements.length} retirements...`);
           const retiredIds = new Set(lifecycle.retirements.map((record) => record.playerId));
-          const developedPlayersWithSeasonStats = Object.fromEntries(Object.entries(lifecycle.players).map(([id, player]) => [
+          const developedPlayersWithSeasonStats = Object.fromEntries(Object.entries(offseasonPlayersWithT20).map(([id, player]) => [
             id,
             {
               ...player,
@@ -4432,6 +4515,8 @@ export const useGameStore = create<Store>()(
           set({
             careerSeasonArchives,
             clubFigureProgression,
+            offseasonStats: offseason.period,
+            careerT20ProcessedOffseasonKeys: Array.from(new Set([...state.careerT20ProcessedOffseasonKeys, offseasonKey])),
             players: developedPlayersWithSeasonStats,
             teams: lifecycle.teams,
             activeInjuries: withoutRetiredInjuries(state.activeInjuries, retiredIds),
@@ -5037,6 +5122,8 @@ export const useGameStore = create<Store>()(
           aiAcceleratedBackups: {},
           clubFigureTierOverrides: {},
           clubFigureProgression: {},
+          offseasonStats: null,
+          careerT20ProcessedOffseasonKeys: [],
           simulatedLeagueHistory: [],
           lastRolledOverSeason: null,
           careerSeasonArchives: [],
@@ -5100,6 +5187,8 @@ export const useGameStore = create<Store>()(
         auctionTargetPriorities: state.auctionTargetPriorities,
         clubFigureTierOverrides: state.clubFigureTierOverrides,
         clubFigureProgression: state.clubFigureProgression,
+        offseasonStats: state.offseasonStats,
+        careerT20ProcessedOffseasonKeys: state.careerT20ProcessedOffseasonKeys,
         simulatedLeagueHistory: state.simulatedLeagueHistory,
         lastRolledOverSeason: state.lastRolledOverSeason,
         careerSeasonArchives: state.careerSeasonArchives,
@@ -5271,6 +5360,52 @@ export const useGameStore = create<Store>()(
           ],
           records: p.injuryReplacementRecords ?? [],
         });
+        const repairedLeagueHistory = removeRelabelledLeagueHistoryCopies(p.simulatedLeagueHistory ?? []);
+        const survivingSeasonArchives = (p.careerSeasonArchives ?? []).filter(
+          (archive) => !repairedLeagueHistory.removedSeasons.has(archive.season),
+        );
+        // The detailed fixture dates are authoritative. In affected saves the
+        // archive key and summary year are +1, but every match still carries
+        // its real calendar year, allowing the whole later chain to be fixed.
+        const actualSeasonByStoredSeason = new Map<number, number>();
+        survivingSeasonArchives.forEach((archive) => {
+          actualSeasonByStoredSeason.set(archive.season, archivedFixtureSeason(archive) ?? archive.season);
+        });
+        const repairedArchiveBySeason = new Map<number, (typeof survivingSeasonArchives)[number]>();
+        survivingSeasonArchives.forEach((archive) => {
+          const season = actualSeasonByStoredSeason.get(archive.season) ?? archive.season;
+          repairedArchiveBySeason.set(season, { ...archive, season });
+        });
+        const repairedSeasonArchives = Array.from(repairedArchiveBySeason.values())
+          .sort((left, right) => right.season - left.season);
+        const repairedHistoryBySeason = new Map<number, LeagueHistorySeason>();
+        repairedLeagueHistory.records.forEach((record) => {
+          const season = actualSeasonByStoredSeason.get(record.season) ?? record.season;
+          repairedHistoryBySeason.set(season, { ...record, season });
+        });
+        const repairedLeagueHistoryRecords = Array.from(repairedHistoryBySeason.values())
+          .sort((left, right) => right.season - left.season);
+        const repairedLastPostseasonSeason = p.lastCareerPostseasonSeason == null
+          ? null
+          : actualSeasonByStoredSeason.get(p.lastCareerPostseasonSeason)
+            ?? (repairedLeagueHistory.removedSeasons.has(p.lastCareerPostseasonSeason)
+              ? p.lastCareerPostseasonSeason - 1
+              : p.lastCareerPostseasonSeason);
+        const previousSeasonArchive = repairedSeasonArchives.find((archive) => archive.season === migratedCurrentSeason - 1);
+        const migratedOffseasonStats = p.offseasonStats?.generatorVersion === 4 ? p.offseasonStats : (previousSeasonArchive
+          ? generateOffseasonStats({
+              players: cyclePlayers,
+              performance: normalizeCareerSeasonPerformance(previousSeasonArchive.playerStats),
+              completedSeason: previousSeasonArchive.season,
+              seed: p.saveId || migratedFixtureSeed,
+              injuredPlayerIds: new Set(Object.keys(p.activeInjuries ?? {})),
+            }).period
+          : null);
+        const persistedOffseasonKeys = p.careerT20ProcessedOffseasonKeys ?? [];
+        const migratedOffseasonKey = migratedOffseasonStats ? offseasonPeriodKey(migratedOffseasonStats) : null;
+        const migratedCyclePlayers = migratedOffseasonStats && migratedOffseasonKey && !persistedOffseasonKeys.includes(migratedOffseasonKey)
+          ? applyOffseasonStatsToCareer(cyclePlayers, migratedOffseasonStats)
+          : cyclePlayers;
         return {
           ...current,
           ...p,
@@ -5278,14 +5413,18 @@ export const useGameStore = create<Store>()(
           fixtureSeed: migratedFixtureSeed,
           auction: cycleAuction ?? null,
           teams: cycleTeams,
-          players: cyclePlayers,
+          players: migratedCyclePlayers,
           auctionTargets: removeResolvedAuctionTargets(p.auctionTargets ?? {}, persistedRetiredPlayerIds),
           auctionTargetPriorities: removeResolvedAuctionTargets(p.auctionTargetPriorities ?? {}, persistedRetiredPlayerIds),
           clubFigureTierOverrides: p.clubFigureTierOverrides ?? {},
           clubFigureProgression: p.clubFigureProgression ?? {},
-          simulatedLeagueHistory: p.simulatedLeagueHistory ?? [],
+          offseasonStats: migratedOffseasonStats,
+          careerT20ProcessedOffseasonKeys: migratedOffseasonKey
+            ? Array.from(new Set([...persistedOffseasonKeys, migratedOffseasonKey]))
+            : persistedOffseasonKeys,
+          simulatedLeagueHistory: repairedLeagueHistoryRecords,
           lastRolledOverSeason: p.lastRolledOverSeason ?? null,
-          careerSeasonArchives: p.careerSeasonArchives ?? [],
+          careerSeasonArchives: repairedSeasonArchives,
           careerIplProcessedMatchKeys: p.careerIplProcessedMatchKeys ?? [],
           careerT20ProcessedMatchKeys: p.careerT20ProcessedMatchKeys ?? [],
           careerIplTrackingSeason: p.careerIplTrackingSeason ?? null,
@@ -5301,7 +5440,7 @@ export const useGameStore = create<Store>()(
           processedAITradeDateKeys: p.processedAITradeDateKeys ?? [],
           auctionMarketProfile,
           retiredPlayerSnapshots: p.retiredPlayerSnapshots ?? {},
-          lastCareerPostseasonSeason: p.lastCareerPostseasonSeason ?? null,
+          lastCareerPostseasonSeason: repairedLastPostseasonSeason,
           lastCareerAgedSeason: p.lastCareerAgedSeason ?? null,
           lastCareerAuctionProcessedSeason: p.lastCareerAuctionProcessedSeason ?? null,
           pendingRetirementIntake: p.pendingRetirementIntake ?? 0,

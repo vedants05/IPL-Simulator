@@ -8,7 +8,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "test:offseason-stats": "tsx calibration/offseasonStatsCalibration.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.0",

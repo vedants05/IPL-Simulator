@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
+import OffseasonStatsDashboard from "@/components/news/OffseasonStatsDashboard";
 
 const MatchScorecardModal = dynamic(
   () => import("@/components/match/MatchScorecardModal"),
@@ -33,6 +34,15 @@ import type { ArticleTemplate } from "@/lib/data/newsTemplates";
 import type { UnifiedMatchRecord } from "@/components/match/MatchScorecardModal";
 import { getSeasonDates, useGameStore } from "@/lib/store/gameStore";
 import { getLeagueSeasonStartDate } from "@/lib/logic/leagueSchedule";
+import {
+  offseasonBattingAverage,
+  offseasonBattingStrikeRate,
+  offseasonBowlingAverage,
+  offseasonBowlingEconomy,
+  offseasonBowlingStrikeRate,
+  offseasonOvers,
+} from "@/lib/logic/offseasonStats";
+import { getSeasonScheduleAnnouncementDate } from "@/lib/logic/careerCalendar";
 import { LEAGUE_HISTORY_TEAMS } from "@/lib/data/leagueHistory";
 import { addNewsDays, getNewsArticleExpiry, NEWS_REPEAT_COOLDOWN_DAYS } from "@/lib/logic/newsArticlePolicy";
 import { selectTeamOfSeason } from "@/lib/logic/teamOfSeason";
@@ -93,6 +103,7 @@ interface NewsPageProps {
   currentDate?: string;
   clubFigureProgression?: ClubFigureProgression;
   onViewAllFixtures?: () => void;
+  onOpenPlayer?: (playerId: string) => void;
 }
 
 export interface NewsArticle {
@@ -124,6 +135,7 @@ const newsArticleIdentity = (article: NewsArticle) => [
 
 type NewsLayout = "cricinfo" | "cricbuzz" | "newsletter";
 type NewsTab = "all" | NewsArticle["category"];
+type NewsSection = "news" | "stats";
 
 const CATEGORY_LABELS: Record<NewsTab, string> = {
   all: "All stories",
@@ -147,12 +159,13 @@ export default function NewsPage({
   fixtures = [],
   currentDate = "",
   clubFigureProgression = {},
-  onViewAllFixtures
+  onViewAllFixtures,
+  onOpenPlayer,
 }: NewsPageProps) {
   const saveId = useGameStore((state) => state.saveId);
   useEffect(() => {
     if (typeof window === "undefined" || !saveId) return;
-    const prefix = `ipl-news-article-cache-v34-${saveId}-`;
+    const prefix = `ipl-news-article-cache-v35-${saveId}-`;
     const activeKey = `${prefix}${currentSeason}`;
     const staleKeys: string[] = [];
     for (let index = 0; index < window.localStorage.length; index += 1) {
@@ -162,12 +175,32 @@ export default function NewsPage({
     staleKeys.forEach((key) => window.localStorage.removeItem(key));
   }, [currentSeason, saveId]);
   const careerStaff = useGameStore((state) => state.careerStaff);
+  const offseasonStatsPeriod = useGameStore((state) => state.offseasonStats);
   const [layout, setLayout] = useState<NewsLayout>("cricinfo");
+  const [section, setSection] = useState<NewsSection>("news");
   const [activeTab, setActiveTab] = useState<NewsTab>("all");
   const [selectedArticleId, setSelectedArticleId] = useState<string | null>(null);
   const [activeScorecard, setActiveScorecard] = useState<any | null>(null);
   const [pinnedArticleIds, setPinnedArticleIds] = useState<string[]>([]);
+  const [offseasonSearch, setOffseasonSearch] = useState("");
+  const [offseasonNationality, setOffseasonNationality] = useState<"all" | "Indian" | "Overseas">("all");
+  const [offseasonLevel, setOffseasonLevel] = useState<"all" | "International" | "Domestic">("all");
   const pinStorageKey = `ipl-news-pins-v1-${saveId || "unsaved"}`;
+
+  const offseasonStats = useMemo(() => {
+    const query = offseasonSearch.trim().toLocaleLowerCase("en-GB");
+    const rows = Object.values(offseasonStatsPeriod?.players ?? {}).filter((row) => {
+      if (query && !row.playerName.toLocaleLowerCase("en-GB").includes(query)) return false;
+      if (offseasonNationality !== "all" && row.nationality !== offseasonNationality) return false;
+      if (offseasonLevel !== "all" && !row.competitionLevel.includes(offseasonLevel)) return false;
+      return true;
+    });
+    return {
+      period: offseasonStatsPeriod,
+      batting: [...rows].filter((row) => row.innings > 0).sort((a, b) => b.runs - a.runs || b.matches - a.matches),
+      bowling: [...rows].filter((row) => row.bowlingBalls > 0).sort((a, b) => b.wickets - a.wickets || a.runsConceded - b.runsConceded),
+    };
+  }, [offseasonLevel, offseasonNationality, offseasonSearch, offseasonStatsPeriod]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -935,7 +968,7 @@ export default function NewsPage({
       if (teamFormArticleTriggers.has(template.triggerType)) return 7;
       return 5;
     };
-    const articleCacheKey = `ipl-news-article-cache-v34-${saveId || "unsaved"}-${currentSeason}`;
+    const articleCacheKey = `ipl-news-article-cache-v35-${saveId || "unsaved"}-${currentSeason}`;
     const articleMatchesLayout = (article: NewsArticle) => !article.brand || article.brand === layout;
 
     const isPlayoffStageFixture = (fixture: any, stage?: ArticleTemplate["playoffSummaryStage"]) => {
@@ -3725,27 +3758,74 @@ export default function NewsPage({
       });
     });
     careerStaff.newsEvents.forEach((event) => {
+      const eventYear = Number(event.publishedOn.slice(0, 4));
+      const relatedVacancy = event.kind === "head_coach_sacked"
+        ? careerStaff.newsEvents.find((candidate) => (
+            candidate.kind === "head_coach_vacancy"
+            && candidate.teamId === event.teamId
+            && Number(candidate.publishedOn.slice(0, 4)) === eventYear
+          ))
+        : null;
+      // The vacancy report below contains the dismissal and interim details;
+      // do not publish a second, incomplete article for the same decision.
+      if (event.kind === "head_coach_sacked" && relatedVacancy) return;
       const team = teams[event.teamId];
       const teamName = team?.name ?? event.teamId;
-      const staffName = event.staffId ? careerStaff.contracts[event.staffId]?.fullName : null;
+      const staffNameForId = (staffId: string | null | undefined) => staffId
+        ? careerStaff.contracts[staffId]?.fullName ?? careerStaff.generatedProfiles[staffId]?.fullName ?? null
+        : null;
+      const staffName = staffNameForId(event.staffId);
       const isAppointment = event.kind === "head_coach_appointed";
       const isPoaching = event.kind === "staff_poached";
       const isSacking = event.kind === "head_coach_sacked";
+      const isVacancy = event.kind === "head_coach_vacancy";
+      const relatedSacking = isVacancy
+        ? [...careerStaff.newsEvents]
+            .filter((candidate) => (
+              candidate.kind === "head_coach_sacked"
+              && candidate.teamId === event.teamId
+              && Number(candidate.publishedOn.slice(0, 4)) === eventYear
+              && candidate.publishedOn <= event.publishedOn
+            ))
+            .sort((left, right) => right.publishedOn.localeCompare(left.publishedOn))[0]
+        : null;
+      const dismissedCoachName = staffNameForId(relatedSacking?.staffId ?? (isSacking ? event.staffId : null));
+      const interimCoachName = isVacancy ? staffName : null;
+      const dismissalReview = [...(careerStaff.performanceReviews ?? [])]
+        .filter((review) => review.teamId === event.teamId && review.headCoachDismissed && review.season <= eventYear)
+        .sort((left, right) => right.season - left.season)[0];
+      const positionLabel = (position: number) => {
+        const mod100 = position % 100;
+        const suffix = mod100 >= 11 && mod100 <= 13
+          ? "th"
+          : position % 10 === 1 ? "st" : position % 10 === 2 ? "nd" : position % 10 === 3 ? "rd" : "th";
+        return `${position}${suffix}`;
+      };
+      const dismissalReason = dismissalReview
+        ? `${teamName} finished ${positionLabel(dismissalReview.finalPosition)} after being expected to finish ${positionLabel(dismissalReview.expectedPosition)}, producing a job-pressure rating of ${Math.round(dismissalReview.effectivePressure)}/100.`
+        : `${teamName}'s end-of-season review concluded that results had fallen below the board's expectations.`;
       const formerTeamName = event.sourceTeamId ? teams[event.sourceTeamId]?.name ?? event.sourceTeamId : null;
       const article: NewsArticle = {
-        id: event.id,
-        title: isSacking ? `${teamName} sack ${staffName ?? "head coach"}`
+        id: relatedSacking?.id ?? event.id,
+        title: isVacancy && relatedSacking
+          ? `${teamName} sack ${dismissedCoachName ?? "head coach"}${interimCoachName ? `; ${interimCoachName} takes interim charge` : ""}`
+          : isSacking ? `${teamName} sack ${staffName ?? "head coach"}`
           : isPoaching ? `${teamName} prise ${staffName ?? "coach"} away${formerTeamName ? ` from ${formerTeamName}` : ""}`
-          : isAppointment ? `${teamName} appoint ${staffName ?? "new head coach"}` : `${teamName} begin head-coach search`,
-        subheading: isSacking
+          : isAppointment ? `${teamName} appoint ${staffName ?? "new head coach"}`
+          : interimCoachName ? `${teamName} name ${interimCoachName} interim head coach` : `${teamName} open head-coach search`,
+        subheading: isVacancy && relatedSacking
+          ? `${dismissedCoachName ?? "The head coach"} has departed after the season review${interimCoachName ? `, with ${interimCoachName} placed in temporary charge` : ""}.`
+          : isSacking
           ? `The franchise has acted after its end-of-season performance review.`
           : isPoaching
           ? `${staffName ?? "The coach"} has agreed terms after the clubs settled contractual compensation.`
           : isAppointment
           ? `${staffName ?? "The new appointment"} takes charge for the remainder of the campaign.`
           : staffName ? `${staffName} will oversee the team on an interim basis.` : "The franchise has opened an urgent recruitment process.",
-        content: isSacking
-          ? `${teamName} have dismissed ${staffName ?? "their head coach"} following an end-of-season review. The decision considered preseason expectations, the final position, two-season performance memory and the club's established patience culture.`
+        content: isVacancy && relatedSacking
+          ? `${teamName} have dismissed head coach ${dismissedCoachName ?? "their incumbent head coach"} following the club's end-of-season performance review. ${dismissalReason} The board also considered the coach's two-season performance record and the franchise's established patience policy.${interimCoachName ? ` ${interimCoachName} has been appointed interim head coach and will oversee first-team operations while the club conducts its permanent recruitment process.` : " The existing coaching staff will share interim responsibility while the club conducts its permanent recruitment process."}`
+          : isSacking
+          ? `${teamName} have dismissed ${staffName ?? "their head coach"} following an end-of-season review. ${dismissalReason}`
           : isPoaching
           ? `${teamName} have completed the appointment of ${staffName ?? "a new coach"}${formerTeamName ? ` from ${formerTeamName}` : ""}. The move reflects the coach's career ambitions, contractual terms and ties to the new club, with compensation paid for the remaining contract.`
           : isAppointment
@@ -3755,7 +3835,7 @@ export default function NewsPage({
         tag: "Staff Market",
         timestamp: formatDate(event.publishedOn),
         publishedAt: event.publishedOn,
-        expiresAt: addDays(event.publishedOn, isSacking || isAppointment ? 21 : 14),
+        expiresAt: addDays(event.publishedOn, isSacking || isAppointment || Boolean(relatedSacking) ? 21 : 14),
         teamId: event.teamId,
         associatedEntityIds: { teamId: event.teamId },
         imagePlaceholder: `${teamName} coaching announcement`,
@@ -3934,16 +4014,21 @@ export default function NewsPage({
     return generatedArticles.find((article) => newsArticleIdentity(article) === selectedArticleId);
   }, [selectedArticleId, generatedArticles]);
 
-  // Derive score cards for ticker (completed matches sorted from recent to oldest, or upcoming matches fallback, limited to 10)
+  const fixturesAnnounced = Boolean(currentDate)
+    && currentDate >= getSeasonScheduleAnnouncementDate(currentSeason);
+
+  // Keep the score/fixture strip private until the official schedule release.
+  // Fixtures exist internally before then so the career can prepare the season,
+  // but Cricinfo and Cricbuzz should not reveal them early.
   const tickerFixtures = useMemo(() => {
-    if (!fixtures || fixtures.length === 0) return [];
+    if (!fixturesAnnounced || !fixtures || fixtures.length === 0) return [];
     const played = fixtures.filter(f => f.played);
     if (played.length > 0) {
       return [...played].sort((a, b) => b.matchNumber - a.matchNumber).slice(0, 10);
     }
     // Pre-season fallback: show upcoming fixtures sorted chronologically
     return [...fixtures].sort((a, b) => a.matchNumber - b.matchNumber).slice(0, 10);
-  }, [fixtures]);
+  }, [fixtures, fixturesAnnounced]);
 
   // Theme matching actual referenced websites
   const pageTheme = layout === "cricinfo"
@@ -3980,10 +4065,10 @@ export default function NewsPage({
       };
 
   return (
-    <div className={`news-page fixed-external-ui flex h-full min-h-0 flex-col gap-4 overflow-hidden ${pageTheme.shell}`}>
+    <div className={`news-page fixed-external-ui relative flex h-full min-h-0 flex-col gap-4 overflow-hidden ${pageTheme.shell}`}>
       {/* 1. Condense Header (Cricinfo / Cricbuzz / Newsletter brand specific layout) */}
       {layout === "cricinfo" && (
-        <div className="flex shrink-0 items-center justify-between border-b border-[#d8dee6] px-4 py-2 bg-[#03a9f4] text-white">
+        <div className="relative z-50 flex shrink-0 items-center justify-between border-b border-[#d8dee6] px-4 py-2 bg-[#03a9f4] text-white">
           <div className="flex items-center gap-6 overflow-hidden">
             <div className="flex items-center shrink-0">
               <span className="font-sans font-black text-sm tracking-tighter lowercase">
@@ -3991,13 +4076,16 @@ export default function NewsPage({
               </span>
             </div>
             <div className="hidden md:flex items-center gap-4 font-sans text-[9px] font-bold uppercase tracking-wider opacity-90">
-              {["Live Scores", "Series", "Teams", "News", "Stats"].map((item, index) => (
-                <span 
-                  key={item} 
-                  className={`cursor-pointer hover:opacity-100 transition-colors ${index === 3 ? "border-b-2 border-white pb-0.5" : ""}`}
+              {["Live Scores", "Series", "Teams", "News", "Stats"].map((item) => (
+                <button
+                  key={item}
+                  type="button"
+                  disabled={item !== "News" && item !== "Stats"}
+                  onClick={() => item === "News" ? setSection("news") : item === "Stats" ? setSection("stats") : undefined}
+                  className={`transition-colors enabled:cursor-pointer enabled:hover:opacity-100 disabled:cursor-default ${(item === "News" && section === "news") || (item === "Stats" && section === "stats") ? "border-b-2 border-white pb-0.5" : ""}`}
                 >
                   {item}
-                </span>
+                </button>
               ))}
             </div>
           </div>
@@ -4019,7 +4107,7 @@ export default function NewsPage({
       )}
 
       {layout === "cricbuzz" && (
-        <div className="flex shrink-0 items-center justify-between border-b border-[#007b5e] px-4 py-2 bg-[#009270] text-white">
+        <div className="relative z-50 flex shrink-0 items-center justify-between border-b border-[#007b5e] px-4 py-2 bg-[#009270] text-white">
           <div className="flex items-center gap-6 overflow-hidden">
             <div className="flex items-center shrink-0">
               <span className="font-sans font-black text-sm tracking-tight lowercase">
@@ -4027,13 +4115,16 @@ export default function NewsPage({
               </span>
             </div>
             <div className="hidden md:flex items-center gap-4 font-sans text-[9px] font-bold uppercase tracking-wider opacity-90">
-              {["Matches", "Series", "Videos", "News", "Stats"].map((item, index) => (
-                <span 
-                  key={item} 
-                  className={`cursor-pointer hover:opacity-100 transition-colors ${index === 3 ? "border-b-2 border-[#fbc02d] pb-0.5" : ""}`}
+              {["Matches", "Series", "Videos", "News", "Stats"].map((item) => (
+                <button
+                  key={item}
+                  type="button"
+                  disabled={item !== "News" && item !== "Stats"}
+                  onClick={() => item === "News" ? setSection("news") : item === "Stats" ? setSection("stats") : undefined}
+                  className={`transition-colors enabled:cursor-pointer enabled:hover:opacity-100 disabled:cursor-default ${(item === "News" && section === "news") || (item === "Stats" && section === "stats") ? "border-b-2 border-[#fbc02d] pb-0.5" : ""}`}
                 >
                   {item}
-                </span>
+                </button>
               ))}
             </div>
           </div>
@@ -4055,7 +4146,7 @@ export default function NewsPage({
       )}
 
       {layout === "newsletter" && (
-        <div className="flex shrink-0 items-center justify-between border-b border-[#eadfd2] px-4 py-2 bg-[#242424] text-white">
+        <div className="relative z-50 flex shrink-0 items-center justify-between border-b border-[#eadfd2] px-4 py-2 bg-[#242424] text-white">
           <div className="flex items-center gap-6 overflow-hidden">
             <div className="flex items-center shrink-0">
               <span className="font-serif font-bold text-sm tracking-wide">
@@ -4083,6 +4174,103 @@ export default function NewsPage({
             ))}
           </div>
         </div>
+      )}
+
+      {section === "stats" && layout !== "newsletter" && (
+        <OffseasonStatsDashboard
+          period={offseasonStatsPeriod}
+          teams={teams}
+          layout={layout}
+          onOpenPlayer={onOpenPlayer}
+        />
+      )}
+
+      {false && section === "stats" && layout !== "newsletter" && (
+        <section className={`absolute inset-x-0 bottom-0 top-10 z-40 overflow-y-auto p-5 ${layout === "cricbuzz" ? "bg-[#f5f5f5] text-[#222]" : "bg-[#f2f4f7] text-[#17202a]"}`}>
+          <div className="mx-auto max-w-6xl">
+            <header className={`border px-5 py-4 ${layout === "cricbuzz" ? "border-[#dedede] bg-white" : "border-[#d8dee6] bg-white"}`}>
+              <div className="flex flex-wrap items-end justify-between gap-4">
+                <div>
+                  <p className={`font-sans text-[9px] font-extrabold uppercase tracking-[0.2em] ${layout === "cricbuzz" ? "text-[#009270]" : "text-[#038dcc]"}`}>
+                    Off-season T20 statistics
+                  </p>
+                  <h2 className="mt-1 font-sans text-2xl font-black">{offseasonStats.period ? `${offseasonStats.period?.fromSeason} IPL end → ${offseasonStats.period?.toSeason} IPL start` : "Off-season statistical leaders"}</h2>
+                  <p className="mt-1 text-xs text-slate-500">
+                    General T20 performances generated between IPL seasons. These figures are separate from every IPL record and career total.
+                  </p>
+                </div>
+                <div className={`px-3 py-2 text-center ${layout === "cricbuzz" ? "bg-[#009270] text-white" : "bg-[#03a9f4] text-white"}`}>
+                  <div className="text-lg font-black">{offseasonStats.period?.toSeason ?? "—"}</div>
+                  <div className="text-[8px] font-bold uppercase tracking-wider">Active IPL season</div>
+                </div>
+              </div>
+              <div className="mt-4 grid gap-2 border-t border-slate-200 pt-3 sm:grid-cols-[minmax(0,1fr)_10rem_12rem]">
+                <input value={offseasonSearch} onChange={(event) => setOffseasonSearch(event.target.value)} placeholder="Search player" className="h-9 border border-slate-300 bg-white px-3 text-xs outline-none focus:border-slate-500" />
+                <select value={offseasonNationality} onChange={(event) => setOffseasonNationality(event.target.value as typeof offseasonNationality)} className="h-9 border border-slate-300 bg-white px-2 text-xs font-bold">
+                  <option value="all">All nationalities</option><option value="Indian">Indian</option><option value="Overseas">Overseas</option>
+                </select>
+                <select value={offseasonLevel} onChange={(event) => setOffseasonLevel(event.target.value as typeof offseasonLevel)} className="h-9 border border-slate-300 bg-white px-2 text-xs font-bold">
+                  <option value="all">All competition levels</option><option value="International">International</option><option value="Domestic">Domestic / franchise</option>
+                </select>
+              </div>
+            </header>
+
+            <div className="mt-4 grid gap-4 lg:grid-cols-2">
+              {[
+                { title: "Most runs", rows: offseasonStats.batting.slice(0, 12), metric: "runs" as const },
+                { title: "Most wickets", rows: offseasonStats.bowling.slice(0, 12), metric: "wickets" as const },
+              ].map((board) => (
+                <div key={board.title} className="border border-[#d8dee6] bg-white">
+                  <div className={`border-b px-4 py-3 ${layout === "cricbuzz" ? "border-[#dedede]" : "border-[#d8dee6]"}`}>
+                    <h3 className="text-sm font-black uppercase tracking-wide">{board.title}</h3>
+                  </div>
+                  <div className="grid grid-cols-[2rem_minmax(0,1fr)_4rem_5rem] gap-2 border-b border-[#e5e7eb] bg-slate-50 px-4 py-2 text-[8px] font-bold uppercase text-slate-500">
+                    <span>#</span><span>Player</span><span className="text-right">Matches</span><span className="text-right">{board.metric}</span>
+                  </div>
+                  {board.rows.map((row, index) => (
+                    <div key={row.playerId} className="grid min-h-10 grid-cols-[2rem_minmax(0,1fr)_4rem_5rem] items-center gap-2 border-b border-[#eef0f2] px-4 text-xs last:border-b-0">
+                      <span className="font-bold text-slate-400">{index + 1}</span>
+                      <span className="min-w-0">
+                        <button type="button" onClick={() => onOpenPlayer?.(row.playerId)} className="block truncate font-bold text-slate-800 hover:underline">{row.playerName}</button>
+                        <span className="block truncate text-[8px] font-bold uppercase text-slate-400">{row.country} · {row.selectionStatus}</span>
+                      </span>
+                      <span className="text-right text-slate-500">{row.matches}</span>
+                      <span className={`text-right text-sm font-black ${layout === "cricbuzz" ? "text-[#009270]" : "text-[#038dcc]"}`}>
+                        {board.metric === "runs" ? row.runs : row.wickets}
+                      </span>
+                    </div>
+                  ))}
+                  {board.rows.length === 0 && <p className="px-4 py-8 text-center text-xs text-slate-500">No statistics are available yet.</p>}
+                </div>
+              ))}
+            </div>
+
+            {offseasonStats.period && (
+              <div className="mt-4 space-y-4">
+                <div className="overflow-hidden border border-[#d8dee6] bg-white">
+                  <div className="border-b border-[#d8dee6] px-4 py-3"><h3 className="text-sm font-black uppercase tracking-wide">Complete batting records</h3></div>
+                  <div className="overflow-x-auto"><table className="w-full min-w-[1000px] text-xs">
+                    <thead className="bg-slate-50 text-[8px] font-bold uppercase text-slate-500"><tr><th className="px-3 py-2 text-left">#</th><th className="px-3 py-2 text-left">Player</th><th className="px-3 py-2 text-left">Level</th><th className="px-3 py-2 text-right">Mat</th><th className="px-3 py-2 text-right">Inn</th><th className="px-3 py-2 text-right">Runs</th><th className="px-3 py-2 text-right">Balls</th><th className="px-3 py-2 text-right">NO</th><th className="px-3 py-2 text-right">HS</th><th className="px-3 py-2 text-right">Avg</th><th className="px-3 py-2 text-right">SR</th></tr></thead>
+                    <tbody>{offseasonStats.batting.map((row, index) => (
+                      <tr key={row.playerId} className="border-t border-[#eef0f2] hover:bg-slate-50"><td className="px-3 py-2 text-slate-400">{index + 1}</td><td className="px-3 py-2"><button type="button" onClick={() => onOpenPlayer?.(row.playerId)} className="font-bold text-slate-800 hover:underline">{row.playerName}</button><span className="ml-2 text-[8px] font-bold uppercase text-slate-400">{row.country} · {row.selectionStatus}</span></td><td className="px-3 py-2 text-[9px] font-bold text-slate-500">{row.competitionLevel}</td><td className="px-3 py-2 text-right">{row.matches}</td><td className="px-3 py-2 text-right">{row.innings}</td><td className={`px-3 py-2 text-right font-black ${layout === "cricbuzz" ? "text-[#009270]" : "text-[#038dcc]"}`}>{row.runs}</td><td className="px-3 py-2 text-right">{row.balls}</td><td className="px-3 py-2 text-right">{row.notOuts}</td><td className="px-3 py-2 text-right">{row.highestScore}</td><td className="px-3 py-2 text-right">{offseasonBattingAverage(row)?.toFixed(2) ?? "—"}</td><td className="px-3 py-2 text-right">{offseasonBattingStrikeRate(row)?.toFixed(2) ?? "—"}</td></tr>
+                    ))}</tbody>
+                  </table></div>
+                </div>
+
+                <div className="overflow-hidden border border-[#d8dee6] bg-white">
+                  <div className="border-b border-[#d8dee6] px-4 py-3"><h3 className="text-sm font-black uppercase tracking-wide">Complete bowling records</h3></div>
+                  <div className="overflow-x-auto"><table className="w-full min-w-[1000px] text-xs">
+                    <thead className="bg-slate-50 text-[8px] font-bold uppercase text-slate-500"><tr><th className="px-3 py-2 text-left">#</th><th className="px-3 py-2 text-left">Player</th><th className="px-3 py-2 text-left">Level</th><th className="px-3 py-2 text-right">Mat</th><th className="px-3 py-2 text-right">Overs</th><th className="px-3 py-2 text-right">Runs</th><th className="px-3 py-2 text-right">Wkts</th><th className="px-3 py-2 text-right">Best</th><th className="px-3 py-2 text-right">Avg</th><th className="px-3 py-2 text-right">Econ</th><th className="px-3 py-2 text-right">SR</th></tr></thead>
+                    <tbody>{offseasonStats.bowling.map((row, index) => (
+                      <tr key={row.playerId} className="border-t border-[#eef0f2] hover:bg-slate-50"><td className="px-3 py-2 text-slate-400">{index + 1}</td><td className="px-3 py-2"><button type="button" onClick={() => onOpenPlayer?.(row.playerId)} className="font-bold text-slate-800 hover:underline">{row.playerName}</button><span className="ml-2 text-[8px] font-bold uppercase text-slate-400">{row.country} · {row.selectionStatus}</span></td><td className="px-3 py-2 text-[9px] font-bold text-slate-500">{row.competitionLevel}</td><td className="px-3 py-2 text-right">{row.matches}</td><td className="px-3 py-2 text-right">{offseasonOvers(row.bowlingBalls)}</td><td className="px-3 py-2 text-right">{row.runsConceded}</td><td className={`px-3 py-2 text-right font-black ${layout === "cricbuzz" ? "text-[#009270]" : "text-[#038dcc]"}`}>{row.wickets}</td><td className="px-3 py-2 text-right">{row.bestBowlingWickets}/{row.bestBowlingRuns}</td><td className="px-3 py-2 text-right">{offseasonBowlingAverage(row)?.toFixed(2) ?? "—"}</td><td className="px-3 py-2 text-right">{offseasonBowlingEconomy(row)?.toFixed(2) ?? "—"}</td><td className="px-3 py-2 text-right">{offseasonBowlingStrikeRate(row)?.toFixed(2) ?? "—"}</td></tr>
+                    ))}</tbody>
+                  </table></div>
+                </div>
+              </div>
+            )}
+            {!offseasonStats.period && <p className="mt-4 border border-[#d8dee6] bg-white px-4 py-12 text-center text-xs text-slate-500">Off-season statistics will be generated after the current IPL season is archived.</p>}
+          </div>
+        </section>
       )}
 
       {/* Score ticker at the top - ESPNcricinfo Light Gray Version */}
