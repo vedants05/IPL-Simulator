@@ -118,6 +118,7 @@ import {
   processBackgroundInjuries as resolveBackgroundInjuries,
   processMatchInjuries as resolveMatchInjuries,
   reconcileInjuryRecoveries,
+  calculateInjuryAbsenceShares,
   type InjuryProcessingResult,
   type InjurySystemState,
   type MatchInjuryParticipant,
@@ -4433,6 +4434,21 @@ export const useGameStore = create<Store>()(
               .filter((injury) => injury.season === archive.season)
               .map((injury) => injury.playerId),
           ]);
+          const seasonInjuries = [
+            ...Object.values(state.activeInjuries),
+            ...state.injuryHistory,
+          ].filter((injury) => injury.season === archive.season);
+          const fixtureDates = (archive.fixtures as Array<{ date?: string }>)
+            .map((fixture) => fixture.date)
+            .filter((date): date is string => Boolean(date))
+            .sort();
+          const injuryAbsenceShares = fixtureDates.length > 0
+            ? calculateInjuryAbsenceShares(
+                seasonInjuries,
+                fixtureDates[0],
+                fixtureDates[fixtureDates.length - 1],
+              )
+            : new Map<string, number>();
           await stage(`Archive 6/14 · Normalizing ${Object.keys(archive.playerStats).length} performance records...`);
           const performance = normalizeCareerSeasonPerformance(archive.playerStats);
           const previousEmergingWinners = [
@@ -4473,6 +4489,7 @@ export const useGameStore = create<Store>()(
             completedSeason: archive.season,
             seed: state.saveId || state.fixtureSeed,
             injuredPlayerIds,
+            injuryAbsenceShares,
             reputationAchievements,
           });
           const offseason = generateOffseasonStats({

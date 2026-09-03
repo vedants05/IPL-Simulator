@@ -92,6 +92,8 @@ export interface PlayerCareerState {
   belowAuctionStandardSeasons: number;
   lastRetirementEvaluationSeason?: number;
   consecutiveLowUsageSeasons: number;
+  /** Fractional long-term pressure from limited match opportunities. */
+  lowUsagePressure?: number;
   lastDevelopmentSeason?: number;
   lastAgedSeason?: number;
   initialPotentialBatting: number;

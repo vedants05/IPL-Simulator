@@ -211,6 +211,24 @@ function clamp(value: number, minimum: number, maximum: number): number {
   return Math.max(minimum, Math.min(maximum, value));
 }
 
+function smoothstep01(value: number): number {
+  const progress = clamp(value, 0, 1);
+  return progress * progress * (3 - 2 * progress);
+}
+
+function interpolateAnchors(value: number, anchors: ReadonlyArray<readonly [number, number]>): number {
+  if (value <= anchors[0][0]) return anchors[0][1];
+  for (let index = 1; index < anchors.length; index += 1) {
+    const [upperValue, upperResult] = anchors[index];
+    const [lowerValue, lowerResult] = anchors[index - 1];
+    if (value <= upperValue) {
+      const progress = (value - lowerValue) / (upperValue - lowerValue);
+      return lowerResult + (upperResult - lowerResult) * progress;
+    }
+  }
+  return anchors[anchors.length - 1][1];
+}
+
 function hashSeed(value: string): number {
   let hash = 2166136261;
   for (let index = 0; index < value.length; index += 1) {
@@ -257,6 +275,7 @@ export function initializePlayerCareerState(player: Player, baselineSeason: numb
       belowAuctionStandardSeasons: existing.belowAuctionStandardSeasons ?? 0,
       lastRetirementEvaluationSeason: existing.lastRetirementEvaluationSeason,
       consecutiveLowUsageSeasons: existing.consecutiveLowUsageSeasons ?? 0,
+      lowUsagePressure: existing.lowUsagePressure ?? existing.consecutiveLowUsageSeasons ?? 0,
       initialPotentialBatting: existing.initialPotentialBatting ?? player.potentialBatting,
       initialPotentialBowling: existing.initialPotentialBowling ?? player.potentialBowling,
       battingDevelopmentBank: existing.battingDevelopmentBank ?? 0,
@@ -295,6 +314,7 @@ export function initializePlayerCareerState(player: Player, baselineSeason: numb
     belowAuctionStandardSeasons: 0,
     lastRetirementEvaluationSeason: undefined,
     consecutiveLowUsageSeasons: 0,
+    lowUsagePressure: 0,
     initialPotentialBatting: player.potentialBatting,
     initialPotentialBowling: player.potentialBowling,
     battingDevelopmentBank: 0,
@@ -764,30 +784,24 @@ function roleDeclineBase(player: Player, skill: "batting" | "bowling"): number {
 }
 
 function agingDecline(age: number): number {
-  if (age <= 32) return 0;
-  if (age === 33) return 0.15;
-  if (age === 34) return 0.55;
-  if (age === 35) return 0.75;
-  if (age === 36) return 1;
-  if (age === 37) return 1.3;
-  if (age === 38) return 1.7;
-  if (age === 39) return 2.4;
-  if (age === 40) return 3.2;
-  if (age === 41) return 5;
-  if (age === 42) return 7;
-  return 7 + (age - 42) * 1.5;
+  const yearsIntoDecline = Math.max(0, age - 32);
+  return 0.15 * ((1.32 ** yearsIntoDecline - 1) / 0.32);
 }
 
 function performanceProtection(performance: number, age: number): number {
-  const raw = performance >= 1.45 ? 0.6
-    : performance >= 1.25 ? 0.45
-      : performance >= 1.05 ? 0.25
-        : performance >= 0.85 ? 0.1
-          : 0;
-  if (age >= 42) return Math.min(raw, 0.05);
-  if (age >= 40) return Math.min(raw, 0.12);
-  if (age >= 39) return Math.min(raw, 0.25);
-  return raw;
+  const raw = interpolateAnchors(performance, [
+    [0.65, 0],
+    [0.85, 0.1],
+    [1.05, 0.25],
+    [1.25, 0.45],
+    [1.45, 0.6],
+  ]);
+  const maximumForAge = 0.02 + 0.38 / (1 + Math.exp(age - 37.5));
+  return Math.min(raw, maximumForAge);
+}
+
+function eliteDeclineResistance(age: number): number {
+  return 1 - 0.1 / (1 + Math.exp(1.15 * (age - 37.5)));
 }
 
 function applyBank(value: number, bank: number, delta: number, minimum = 0, maximum = 97): { value: number; bank: number } {
@@ -799,21 +813,34 @@ function applyBank(value: number, bank: number, delta: number, minimum = 0, maxi
   };
 }
 
-// Season labels are relative to ability. Up to the low-80s, strong raw IPL
-// production is legitimate over-performance. From 85 upward the benchmark
-// rises progressively, so an elite player's routine output does not keep
-// generating elite-development bonuses.
-function ratingAdjustedPerformance(performance: number, current: number): number {
-  const eliteSteps = Math.max(0, current - 84);
-  const expectationPenalty = eliteSteps <= 3
-    ? eliteSteps * 0.02
-    : 0.06 + (eliteSteps - 3) * 0.04;
-  return clamp(performance - Math.min(0.3, expectationPenalty), 0, 1.65);
+function applyAbilityBank(
+  value: number,
+  bank: number,
+  delta: number,
+  effectivePotential: number,
+): { value: number; bank: number } {
+  const total = bank + delta;
+  // Positive fractional and whole-point movement share one hard ceiling. Any
+  // excess is discarded rather than stored for an unexplained future jump.
+  const cappedTotal = total > 0
+    ? Math.min(total, Math.max(0, effectivePotential - value))
+    : total;
+  const whole = cappedTotal >= 0 ? Math.floor(cappedTotal) : Math.ceil(cappedTotal);
+  return {
+    value: clamp(value + whole, 0, Math.min(97, effectivePotential)),
+    bank: cappedTotal - whole,
+  };
 }
 
-function ratingAdjustedProductionThreshold(threshold: number, current: number): number {
-  const multiplier = clamp(1 + (current - 80) * 0.03, 0.8, 1.35);
-  return threshold * multiplier;
+// Performance classifications use the same statistical standard at every
+// rating. Elite development is made harder once, through the smooth final
+// growth multiplier, rather than by weakening the evidence itself as well.
+function ratingAdjustedPerformance(performance: number, _current: number): number {
+  return clamp(performance, 0, 1.65);
+}
+
+function ratingAdjustedProductionThreshold(threshold: number, _current: number): number {
+  return threshold;
 }
 
 function reachesRatingAdjustedProductionTier(
@@ -836,199 +863,21 @@ function hasMeaningfulDisciplineSample(
     : cricketOversToBalls(stats.oversBowled) >= 72;
 }
 
-function youngPoorSeasonChange(
-  age: number,
-  performance: number,
-  meaningfulSample: boolean,
-  consecutivePoorSeasons: number,
-): number {
-  if (!meaningfulSample) return 0;
-  const ageWeight = age <= 20 ? 0.7 : age <= 23 ? 0.85 : 1;
-  const repeatPenalty = Math.min(0.65, Math.max(0, consecutivePoorSeasons - 1) * 0.22);
-  if (performance < 0.42) return -(0.85 + repeatPenalty) * ageWeight;
-  if (performance < 0.62) return -(0.45 + repeatPenalty * 0.7) * ageWeight;
-  if (performance < 0.78 && consecutivePoorSeasons >= 2) {
-    return -(0.18 + repeatPenalty * 0.35) * ageWeight;
-  }
-  return 0;
-}
-
-function youngGrowth(
-  age: number,
-  current: number,
-  potential: number,
-  matches: number,
-  performance: number,
-  lowUsageSeasons: number,
-  production: number,
-  emergingBonus: number,
-  skill: "batting" | "bowling",
-  random: () => number,
-): number {
-  if (age > 27) return 0;
-  const breakoutBonus = reachesRatingAdjustedProductionTier(skill, production, 800, 35, current)
-    ? 2.45
-    : reachesRatingAdjustedProductionTier(skill, production, 700, 30, current)
-      ? 2
-      : reachesRatingAdjustedProductionTier(skill, production, 600, 25, current)
-        ? 1.55
-        : reachesRatingAdjustedProductionTier(skill, production, 500, 20, current)
-          ? 1.1
-          : reachesRatingAdjustedProductionTier(skill, production, 400, 15, current)
-            ? 0.55
-            : 0;
-  if (potential <= current && breakoutBonus === 0 && emergingBonus === 0) return 0;
-  const ageBase = age <= 20 ? 1.75 : age <= 23 ? 1.48 : age <= 25 ? 1.12 : age === 26 ? 0.9 : 0.72;
-  const playingTime = clamp(matches / 14, 0, 1);
-  const opportunity = 0.12 + playingTime * 0.88;
-  const availableGrowth = Math.max(potential - current, breakoutBonus > 0 ? 2 : 0);
-  const gap = clamp(availableGrowth / 10, 0.35, 1);
-  const performanceFactor = matches <= 0 ? 0.5 : clamp(0.68 + performance * 0.5, 0.6, 1.5);
-  const variance = 0.88 + random() * 0.24;
-  const ratingDifficulty = current >= 89 ? 0.45 : current >= 86 ? 0.65 : current >= 83 ? 0.82 : 1;
-  const inactivityPenalty = age >= 26 && lowUsageSeasons >= 2
-    ? Math.min(0.9, (lowUsageSeasons - 1) * 0.3)
-    : 0;
-  return (
-    ageBase * opportunity * gap * performanceFactor * variance
-    + breakoutBonus
-    + emergingBonus
-  ) * ratingDifficulty - inactivityPenalty;
-}
-
-function emergingDevelopmentBonus(
-  stats: CareerSeasonPerformance,
-  skill: "batting" | "bowling",
-): number {
-  const points = stats.emergingPoints ?? 0;
-  if (points < 275) return 0;
-  const pointsBonus = points >= 650
-    ? 1.8
-    : points >= 550
-      ? 1.4
-      : points >= 450
-        ? 1
-        : points >= 350
-          ? 0.6
-          : 0.3;
-  const skillImpact = skill === "batting"
-    ? stats.emergingBattingImpact ?? 0
-    : stats.emergingBowlingImpact ?? 0;
-  const strongestImpact = Math.max(
-    stats.emergingBattingImpact ?? 0,
-    stats.emergingBowlingImpact ?? 0,
-  );
-  if (strongestImpact <= 0) return 0;
-  const impactShare = skillImpact / strongestImpact;
-  if (impactShare < 0.35) return 0;
-  return pointsBonus * (impactShare >= 0.7 ? 1 : 0.55);
-}
-
-function underThirtyOnePotentialPerformanceBoost(
-  age: number,
-  current: number,
-  potential: number,
-  performance: number,
-  matches: number,
-  production: number,
-  skill: "batting" | "bowling",
-): number {
-  if (age > 31 || potential <= current || matches < 8) return 0;
-  const exceptional = performance >= 1.58 || reachesRatingAdjustedProductionTier(skill, production, 750, 32, current);
-  const massive = performance >= 1.45 || reachesRatingAdjustedProductionTier(skill, production, 650, 28, current);
-  const standout = performance >= 1.25 || reachesRatingAdjustedProductionTier(skill, production, 500, 22, current);
-  const strong = performance >= 1.12 || reachesRatingAdjustedProductionTier(skill, production, 400, 16, current);
-  const productive = performance >= 0.92 || reachesRatingAdjustedProductionTier(skill, production, 300, 12, current);
-  const seasonTier = exceptional
-    ? 3.1
-    : massive
-      ? 2.65
-      : standout
-        ? 2.2
-        : strong
-          ? 1.2
-          : productive
-            ? 0.45
-            : 0;
-  if (seasonTier === 0) return 0;
-
-  // Young players already receive baseline growth, so this extra component is
-  // smaller for them. Ages 28-31 rely much more heavily on what they produce.
-  const ageFactor = age <= 27 ? 0.65 : age <= 29 ? 1 : 0.9;
-  const headroomFactor = clamp((potential - current) / 6, 0.45, 1);
-  const ratingDifficulty = current >= 92
-    ? 0.1
-    : current >= 89
-      ? 0.18
-      : current >= 87
-        ? 0.3
-        : current >= 86
-          ? 0.52
-          : current >= 83
-            ? 0.78
-            : 1;
-  return seasonTier * ageFactor * headroomFactor * ratingDifficulty;
-}
-
-function peakPerformanceChange(
-  current: number,
-  performance: number,
-  matches: number,
-  production: number,
-  skill: "batting" | "bowling",
-): number {
-  if (matches <= 0) return -0.22;
-  const exceptional = performance >= 1.58 || reachesRatingAdjustedProductionTier(skill, production, 750, 32, current);
-  const massive = performance >= 1.45 || reachesRatingAdjustedProductionTier(skill, production, 650, 28, current);
-  const standout = performance >= 1.25 || reachesRatingAdjustedProductionTier(skill, production, 500, 22, current);
-  const strong = performance >= 1.12 || reachesRatingAdjustedProductionTier(skill, production, 400, 16, current);
-  // Elite ratings should require repeated elite production rather than
-  // compounding upward after every merely good season. Fractional gains are
-  // retained in the development bank, so exceptional seasons still count.
-  if (exceptional) return current >= 92 ? 0.3 : current >= 89 ? 0.8 : current >= 87 ? 1.25 : current >= 86 ? 2.05 : 3.05;
-  if (massive) return current >= 92 ? 0.1 : current >= 89 ? 0.25 : current >= 87 ? 0.55 : current >= 86 ? 1.55 : 2.35;
-  if (standout) return current >= 92 ? 0 : current >= 89 ? 0.08 : current >= 87 ? 0.2 : current >= 86 ? 0.95 : 1.4;
-  if (strong) return current >= 87 ? 0 : current >= 86 ? 0.45 : 0.7;
-  if (performance < 0.42) return -0.55;
-  if (performance < 0.68) return -0.28;
-  return 0;
-}
-
-// Exceptional late-prime seasons can reveal a little more ceiling than a
-// player's pre-season projection. This is deliberately limited to ages 34-35
-// and truly elite full seasons, so ordinary veteran form still follows the
-// normal decline curve.
-function latePrimeResurgence(
-  age: number,
-  current: number,
-  performance: number,
-  matches: number,
-  production: number,
-  skill: "batting" | "bowling",
-): number {
-  if (age < 34 || age > 35 || matches < 8) return 0;
-  const exceptional = performance >= 1.58 || reachesRatingAdjustedProductionTier(skill, production, 750, 32, current);
-  const massive = performance >= 1.45 || reachesRatingAdjustedProductionTier(skill, production, 650, 28, current);
-  if (exceptional) return age === 34 ? 1.85 : 1.55;
-  if (massive) return age === 34 ? 1.05 : 0.8;
-  return 0;
-}
-
 function dynamicPotentialGain(
   skill: "batting" | "bowling",
   current: number,
   performance: number,
   production: number,
 ): number {
-  const exceptional = performance >= 1.45
-    || reachesRatingAdjustedProductionTier(skill, production, 700, 30, current);
-  const elite = performance >= 1.25
-    || reachesRatingAdjustedProductionTier(skill, production, 600, 25, current);
-  if (!exceptional && !elite) return 0;
-  if (current >= 92) return exceptional ? 0.08 : 0;
-  if (current >= 89) return exceptional ? 0.18 : 0.06;
-  if (current >= 87) return exceptional ? 0.35 : 0.15;
-  return exceptional ? 0.6 : 0.3;
+  const performanceEvidence = smoothstep01((performance - 1.05) / 0.4);
+  const productionStart = skill === "batting" ? 500 : 20;
+  const productionMaximum = skill === "batting" ? 700 : 30;
+  const productionEvidence = smoothstep01(
+    (production - productionStart) / (productionMaximum - productionStart),
+  );
+  const evidence = Math.max(performanceEvidence, productionEvidence);
+  const ratingDifficulty = 0.1 + 0.9 / (1 + Math.exp((current - 87) / 1.5));
+  return 0.6 * evidence * ratingDifficulty;
 }
 
 function unrealizedPotentialCompression(
@@ -1044,39 +893,17 @@ function unrealizedPotentialCompression(
   const gap = Math.max(0, potential - current);
   if (age < 30 || gap <= 0) return 0;
 
-  const agePressure = age === 30
-    ? 0.05
-    : age === 31
-      ? 0.1
-      : age === 32
-        ? 0.3
-        : age === 33
-          ? 0.45
-          : age === 34
-            ? 0.6
-            : age === 35
-              ? 0.75
-              : age === 36
-                ? 0.9
-                : 1.1;
-  const performancePressure = meaningfulSample
-    ? performance >= 1.45
-      ? 0
-      : performance >= 1.25
-        ? 0.15
-        : performance >= 1.12
-          ? 0.35
-          : performance >= 0.92
-            ? 0.6
-            : performance >= 0.78
-              ? 0.85
-              : 1.15 + Math.min(0.6, Math.max(0, consecutivePoorSeasons - 1) * 0.2)
+  const agePressure = 0.05 + 0.076 * Math.max(0, age - 30) ** 1.35;
+  let performancePressure = meaningfulSample
+    ? 1.15 * clamp((1.5 - performance) / 0.8, 0, 1) ** 1.6
+      + Math.min(0.6, Math.max(0, consecutivePoorSeasons - 1) * 0.2)
+        * clamp((0.78 - performance) / 0.36, 0, 1)
     : injuryProtectedAbsence
       ? 0.3
       : matches === 0
         ? 1
         : 0.8;
-  const abilityFactor = current >= 88 ? 0.75 : current >= 83 ? 0.9 : 1.05;
+  const abilityFactor = 1.05 - 0.3 * smoothstep01((current - 80) / 12);
   const gapFactor = clamp(gap / 6, 0.45, 1.25);
   const injuryFactor = injuryProtectedAbsence ? 0.3 : 1;
   return Math.min(gap, agePressure * performancePressure * abilityFactor * gapFactor * injuryFactor);
@@ -1094,30 +921,29 @@ function updatePotential(
   currentLoss: number,
   meaningfulSample: boolean,
   consecutivePoorSeasons: number,
+  lowUsageSeasons: number,
   injuryProtectedAbsence: boolean,
 ): { potential: number; bank: number; loss: number } {
   let delta = 0;
   let loss = currentLoss;
-  const performanceGain = player.age <= 29
-    ? dynamicPotentialGain(skill, current, performance, production)
-    : 0;
-  if (matches >= 8 && performanceGain > 0) {
+  const ageEligibilityProgress = clamp((32 - player.age) / 4, 0, 1);
+  const ageEligibility = smoothstep01(ageEligibilityProgress);
+  const performanceGain = dynamicPotentialGain(skill, current, performance, production)
+    * ageEligibility
+    * participationConfidence(matches);
+  if (matches >= 6 && meaningfulSample && performanceGain > 0) {
     delta = performanceGain;
-  } else if (matches === 0 && player.age >= 24) {
+  } else if (matches === 0 && player.age >= 28 && lowUsageSeasons > 2) {
     const remainingLoss = CAREER_POLICY.maximumYoungUnrealizedPotentialLoss - loss;
-    const requested = Math.min(remainingLoss, 0.4 * (injuryProtectedAbsence ? 0.3 : 1));
+    const pressureFactor = clamp(lowUsageSeasons - 2, 0, 1);
+    const requested = Math.min(remainingLoss, 0.25 * pressureFactor * (injuryProtectedAbsence ? 0.3 : 1));
     delta = -requested;
     loss += requested;
   } else if (meaningfulSample && performance < 0.78) {
     const remainingLoss = CAREER_POLICY.maximumYoungUnrealizedPotentialLoss - loss;
     const repeatPenalty = Math.min(0.9, Math.max(0, consecutivePoorSeasons - 1) * 0.3);
-    const requested = performance < 0.45
-      ? 1 + repeatPenalty
-      : performance < 0.62
-        ? 0.5 + repeatPenalty * 0.7
-        : consecutivePoorSeasons >= 2
-          ? 0.2 + repeatPenalty * 0.35
-          : 0;
+    const severity = clamp((0.78 - performance) / 0.36, 0, 1);
+    const requested = severity ** 1.2 + repeatPenalty * severity;
     const appliedLoss = Math.min(remainingLoss, requested * (injuryProtectedAbsence ? 0.3 : 1));
     delta = -appliedLoss;
     loss += appliedLoss;
@@ -1132,7 +958,7 @@ function updatePotential(
     consecutivePoorSeasons,
     injuryProtectedAbsence,
   );
-  const maximumPotential = potential > 97 ? CAREER_POLICY.maximumPotentialRating : 97;
+  const maximumPotential = CAREER_POLICY.maximumPotentialRating;
   const applied = applyBank(
     potential,
     currentBank,
@@ -1162,114 +988,198 @@ function playerDevelopmentPhase(age: number): PlayerDevelopmentPhase {
 }
 
 function naturalGrowthBase(age: number): number {
-  if (age <= 19) return 2.2;
-  if (age <= 22) return 1.9;
-  if (age <= 25) return 1.45;
-  if (age <= 27) return 1;
-  if (age <= 30) return 0.35;
-  if (age <= 32) return 0.1;
-  return 0;
+  return interpolateAnchors(age, [
+    [17, 2.3],
+    [18, 2.25],
+    [19, 2.2],
+    [20, 2.1],
+    [21, 2],
+    [22, 1.9],
+    [23, 1.75],
+    [24, 1.6],
+    [25, 1.45],
+    [26, 1.23],
+    [27, 1],
+    [28, 0.75],
+    [29, 0.6],
+    [30, 0.45],
+    [31, 0.3],
+    [32, 0.15],
+    [33, 0],
+  ]);
 }
 
-function opportunityFactor(matches: number): number {
-  if (matches <= 0) return 0.15;
-  if (matches <= 3) return 0.3;
-  if (matches <= 7) return 0.55;
-  if (matches <= 11) return 0.8;
-  return 1;
+function backgroundOpportunityFactor(age: number): number {
+  return clamp(0.6 - Math.max(0, age - 17) * 0.025, 0.3, 0.6);
+}
+
+function backgroundCatchUpMultiplier(age: number, current: number, potential: number): number {
+  const ratingMultiplier = interpolateAnchors(current, [
+    [67, 2.2],
+    [70, 2.1],
+    [73, 1.75],
+    [76, 1.4],
+    [79, 1.15],
+    [82, 1],
+  ]);
+  const headroomActivation = interpolateAnchors(Math.max(0, potential - current), [
+    [5, 0],
+    [10, 0.35],
+    [15, 0.7],
+    [20, 1],
+  ]);
+  const ageActivation = interpolateAnchors(age, [
+    [19, 1],
+    [20, 0.9],
+    [21, 0.8],
+    [22, 0.7],
+    [23, 0.55],
+    [24, 0.4],
+    [25, 0.25],
+    [26, 0.15],
+    [27, 0.05],
+    [28, 0],
+  ]);
+  return 1 + Math.max(0, ratingMultiplier - 1) * headroomActivation * ageActivation;
+}
+
+function opportunityFactor(matches: number, age: number): number {
+  return interpolateAnchors(matches, [
+    [0, backgroundOpportunityFactor(age)],
+    [3, 0.45],
+    [7, 0.65],
+    [11, 0.85],
+    [14, 1],
+  ]);
+}
+
+function participationConfidence(matches: number): number {
+  return clamp((matches - 5) / 4, 0, 1);
+}
+
+function disciplineSampleConfidence(stats: CareerSeasonPerformance, skill: "batting" | "bowling"): number {
+  const sample = skill === "batting"
+    ? stats.balls
+    : cricketOversToBalls(stats.oversBowled);
+  const fullConfidenceSample = skill === "batting" ? 60 : 72;
+  return clamp(sample / fullConfidenceSample, 0, 1);
 }
 
 function developmentPerformanceMultiplier(performance: number): number {
-  if (performance < 0.65) return 0;
-  if (performance < 0.85) return 0.35;
-  if (performance < 1.05) return 0.75;
-  if (performance < 1.25) return 1;
-  if (performance < 1.45) return 1.25;
-  return 1.5;
+  return interpolateAnchors(performance, [
+    [0.45, 0],
+    [0.65, 0.35],
+    [0.85, 0.75],
+    [1.05, 1],
+    [1.25, 1.25],
+    [1.45, 1.5],
+  ]);
 }
 
-function potentialHeadroomFactor(current: number, potential: number, performance: number): number {
+function potentialHeadroomFactor(current: number, potential: number, _performance: number): number {
   const headroom = Math.max(0, potential - current);
-  if (headroom <= 0) return performance >= 1.45 ? 0.15 : 0;
-  if (headroom <= 2) return 0.45;
-  if (headroom <= 5) return 0.7;
-  if (headroom <= 9) return 0.9;
-  return 1;
+  return 0.65 + 0.35 * (1 - Math.exp(-headroom / 4));
 }
 
 function highAbilityGrowthFactor(current: number): number {
-  if (current < 80) return 1;
-  if (current <= 84) return 0.9;
-  if (current <= 87) return 0.75;
-  if (current <= 90) return 0.55;
-  if (current <= 93) return 0.3;
-  return 0.12;
+  if (current <= 79) return 1;
+  const eliteProgress = clamp((current - 79) / 18, 0, 1);
+  return 1 - 0.88 * eliteProgress ** 1.3;
 }
 
 function primeFormMovement(performance: number, variation: number): number {
-  if (performance >= 1.45) return 1.4 * variation;
-  if (performance >= 1.25) return 0.9 * variation;
-  if (performance >= 1.05) return 0.45 * variation;
-  if (performance >= 0.85) return (performance - 0.95) * 2.5 * variation;
-  if (performance >= 0.65) return -0.25 / variation;
-  return -0.35 / variation;
+  return interpolateAnchors(performance, [
+    [0.45, -0.35],
+    [0.65, -0.25],
+    [0.85, -0.25],
+    [0.95, 0],
+    [1.05, 0.45],
+    [1.25, 0.9],
+    [1.45, 1.4],
+  ]) * variation;
 }
 
-function breakoutGrowth(skill: "batting" | "bowling", production: number, current: number): number {
-  const tiers = skill === "batting"
-    ? [[800, 1.5], [700, 1.2], [600, 0.9], [500, 0.6], [400, 0.3]] as const
-    : [[35, 1.5], [30, 1.2], [25, 0.9], [20, 0.6], [15, 0.3]] as const;
-  const ratingMultiplier = clamp(1 + (current - 80) * 0.03, 0.8, 1.35);
-  return tiers.find(([threshold]) => production >= threshold * ratingMultiplier)?.[1] ?? 0;
-}
-
-function annualPositiveMovementCap(age: number): number {
-  if (age <= 20) return 3.5;
-  if (age <= 23) return 3;
-  if (age <= 26) return 2.4;
-  if (age <= 29) return 1.8;
-  if (age <= 32) return 1.2;
-  if (age === 33) return 0.7;
-  if (age === 34) return 1.2;
-  if (age === 35) return 0.9;
-  return 0;
+function breakoutGrowth(skill: "batting" | "bowling", production: number, _current: number): number {
+  const baseline = skill === "batting" ? 300 : 10;
+  const fullBreakoutProduction = skill === "batting" ? 800 : 35;
+  const progress = clamp(
+    (production - baseline) / (fullBreakoutProduction - baseline),
+    0,
+    1,
+  );
+  return progress * 1.5;
 }
 
 function annualNegativeMovementCap(age: number): number {
-  if (age <= 27) return 1.5;
-  if (age <= 33) return 2;
-  if (age <= 36) return 2.5;
-  if (age <= 38) return 3.5;
-  if (age <= 40) return 5;
-  return Number.POSITIVE_INFINITY;
+  const yearsBeyondYoungPlayerProtection = Math.max(0, age - 27);
+  return 1.5
+    + 0.015 * yearsBeyondYoungPlayerProtection ** 2
+    + 0.0008 * yearsBeyondYoungPlayerProtection ** 3;
 }
 
-function poorPerformanceLoss(age: number, performance: number, meaningfulSample: boolean, consecutivePoorSeasons: number): number {
-  if (!meaningfulSample || performance >= 0.85) return 0;
-  const base = performance < 0.45 ? 0.8 : performance < 0.65 ? 0.45 : consecutivePoorSeasons >= 2 ? 0.2 : 0;
-  const repeat = Math.min(0.6, Math.max(0, consecutivePoorSeasons - 1) * 0.2);
-  const ageFactor = age <= 20 ? 0.65 : age <= 23 ? 0.8 : age <= 27 ? 0.95 : 1;
-  return -(base + repeat) * ageFactor;
+function poorPerformanceLoss(age: number, performance: number, sampleConfidence: number, consecutivePoorSeasons: number): number {
+  if (sampleConfidence <= 0 || performance >= 0.85) return 0;
+  const base = interpolateAnchors(performance, [
+    [0.45, 0.8],
+    [0.65, 0.45],
+    [0.85, 0],
+  ]);
+  const repeatSeverity = interpolateAnchors(performance, [
+    [0.45, 1],
+    [0.65, 0.5],
+    [0.85, 0],
+  ]);
+  const repeat = Math.min(0.6, Math.max(0, consecutivePoorSeasons - 1) * 0.2) * repeatSeverity;
+  const ageFactor = 0.65 + 0.35 * smoothstep01((age - 20) / 8);
+  return -(base + repeat) * ageFactor * sampleConfidence;
 }
 
-function inactivityAbilityLoss(age: number, matches: number, lowUsageSeasons: number): number {
-  if (matches === 0) {
-    if (age <= 27) return 0;
-    if (age <= 30) return -0.15;
-    if (age <= 33) return -0.3;
-  }
-  if (age >= 26 && lowUsageSeasons >= 2) return -Math.min(0.8, 0.2 + (lowUsageSeasons - 2) * 0.15);
-  return 0;
+export function calculateLowUsagePressure(
+  previousPressure: number,
+  matches: number,
+  injuryAbsenceShare = 0,
+): number {
+  const current = Math.max(0, previousPressure);
+  // Time that was genuinely unavailable through injury must not build the same
+  // selection-related inactivity history as time spent healthy on the bench.
+  const availableShare = 1 - clamp(injuryAbsenceShare, 0, 1);
+  const pressureChange = clamp(1 - Math.max(0, matches) / 3, -1.5, 1);
+  const availabilityAdjustedChange = pressureChange > 0
+    ? pressureChange * availableShare
+    : pressureChange;
+  return Math.max(0, current + availabilityAdjustedChange);
 }
 
-function lateCareerPerformanceGrowth(age: number, performance: number, matches: number): number {
-  if (matches < 8) return 0;
-  const exceptional = performance >= 1.45;
-  const elite = performance >= 1.25;
-  if (age === 33) return exceptional ? 0.7 : elite ? 0.4 : 0;
-  if (age === 34) return exceptional ? 1.2 : elite ? 0.7 : 0;
-  if (age === 35) return exceptional ? 0.9 : elite ? 0.45 : 0;
-  return 0;
+function inactivityAbilityLoss(age: number, lowUsagePressure: number): number {
+  if (age < 28 || lowUsagePressure <= 1) return 0;
+  const initialPressure = Math.min(1, lowUsagePressure - 1) * 0.2;
+  const sustainedPressure = Math.max(0, lowUsagePressure - 2) * 0.15;
+  return -Math.min(0.8, initialPressure + sustainedPressure);
+}
+
+function lateCareerPerformanceGrowth(
+  age: number,
+  performance: number,
+  matches: number,
+  skill: "batting" | "bowling",
+  production: number,
+): number {
+  const ageProgress = clamp((38 - age) / 5, 0, 1);
+  // A shallow power taper keeps truly exceptional ages 36-37 capable of a
+  // small gain after the separate decline and protection curves are applied.
+  const maximumReward = 1.2 * ageProgress ** 0.6;
+  if (maximumReward <= 0) return 0;
+  const productionStart = skill === "batting" ? 400 : 15;
+  const productionMaximum = skill === "batting" ? 700 : 30;
+  const productionProgress = clamp(
+    (production - productionStart) / (productionMaximum - productionStart),
+    0,
+    1,
+  );
+  const productionEquivalent = 1.05 + 0.4 * productionProgress;
+  const evidence = Math.max(performance, productionEquivalent);
+  const evidenceStrength = smoothstep01((evidence - 1.05) / 0.4) ** 0.78;
+  return maximumReward * evidenceStrength * participationConfidence(matches);
 }
 
 /**
@@ -1287,47 +1197,95 @@ export function calculateAbilityChange(input: {
   consecutivePoorSeasons: number;
   lowUsageSeasons: number;
   injuryProtectedAbsence: boolean;
+  injuryAbsenceShare?: number;
   random: () => number;
 }): AbilityChangeBreakdown {
   const { player, stats, skill, current, potential, performance } = input;
   const phase = playerDevelopmentPhase(player.age);
   const production = skill === "batting" ? stats.runs : stats.wickets;
-  const injuryPenaltyFactor = input.injuryProtectedAbsence ? 0.3 : 1;
+  const participatedInDiscipline = skill === "batting"
+    ? stats.balls > 0
+    : cricketOversToBalls(stats.oversBowled) > 0;
+  const sampleConfidence = disciplineSampleConfidence(stats, skill);
+  const hasFullDisciplineConfidence = sampleConfidence >= 1;
+  const injuryAbsenceShare = clamp(input.injuryAbsenceShare ?? (input.injuryProtectedAbsence ? 1 : 0), 0, 1);
+  const injuryPenaltyFactor = 1 - 0.7 * injuryAbsenceShare;
   const abilityDifficulty = highAbilityGrowthFactor(current);
   const headroom = potentialHeadroomFactor(current, potential, performance);
   const variation = 0.92 + input.random() * 0.16;
 
-  if (phase !== "decline") {
-    const naturalAndOpportunityGrowth = naturalGrowthBase(player.age)
-      * opportunityFactor(stats.matches)
-      * developmentPerformanceMultiplier(performance)
-      * headroom
-      * abilityDifficulty
-      * variation;
-    const breakout = breakoutGrowth(skill, production, current) * headroom * abilityDifficulty;
-    const formMovement = phase === "prime"
-      ? primeFormMovement(performance, variation) * (performance >= 1.05 ? headroom * abilityDifficulty : 1)
-      : 0;
-    const performanceGrowth = breakout + formMovement;
-    const poorFormLoss = poorPerformanceLoss(
-      player.age, performance, input.meaningfulSample, input.consecutivePoorSeasons,
-    ) * injuryPenaltyFactor;
-    const inactivityLoss = inactivityAbilityLoss(player.age, stats.matches, input.lowUsageSeasons) * injuryPenaltyFactor;
-    const uncapped = naturalAndOpportunityGrowth + performanceGrowth + poorFormLoss + inactivityLoss;
-    const finalDelta = clamp(uncapped, -annualNegativeMovementCap(player.age), annualPositiveMovementCap(player.age));
-    return { phase, naturalAndOpportunityGrowth, performanceGrowth, poorFormLoss: poorFormLoss + inactivityLoss, agingDecline: 0, declineProtection: 0, finalDelta };
-  }
+  // Career phases overlap smoothly instead of swapping entire formulas on one
+  // birthday. Natural development fades through 31-35, while prime form rises
+  // through the mid-20s and fades across the same late-prime transition.
+  const declineWeight = smoothstep01((player.age - 31) / 4);
+  const preDeclineWeight = 1 - declineWeight;
+  const primeEntryWeight = smoothstep01((player.age - 24) / 4);
+  const primeFormWeight = primeEntryWeight * preDeclineWeight;
 
+  // Gradually replace academy/background development with match-driven
+  // development as evidence in this discipline approaches a full sample.
+  const backgroundPath = backgroundOpportunityFactor(player.age)
+    * backgroundCatchUpMultiplier(player.age, current, potential);
+  const performancePath = opportunityFactor(stats.matches, player.age)
+    * developmentPerformanceMultiplier(performance);
+  const blendedDevelopmentFactor = backgroundPath
+    + (performancePath - backgroundPath) * sampleConfidence;
+  const unadjustedNaturalGrowth = naturalGrowthBase(player.age)
+    * blendedDevelopmentFactor
+    * headroom
+    * abilityDifficulty
+    * variation;
+  const injuryAdjustedNaturalGrowth = stats.matches === 0
+    ? unadjustedNaturalGrowth * injuryPenaltyFactor
+    : unadjustedNaturalGrowth;
+  const naturalAndOpportunityGrowth = injuryAdjustedNaturalGrowth * preDeclineWeight;
+  const breakout = hasFullDisciplineConfidence
+    ? breakoutGrowth(skill, production, current) * headroom * abilityDifficulty * preDeclineWeight
+    : 0;
+  const rawPrimeFormMovement = participatedInDiscipline
+    ? primeFormMovement(performance, variation) * primeFormWeight
+    : 0;
+  const formMovement = rawPrimeFormMovement > 0
+    ? (hasFullDisciplineConfidence ? rawPrimeFormMovement * headroom * abilityDifficulty : 0)
+    : rawPrimeFormMovement * sampleConfidence;
   const rawDecline = agingDecline(player.age) * roleDeclineBase(player, skill);
-  const formProtection = performanceProtection(performance, player.age);
+  const formProtection = hasFullDisciplineConfidence
+    ? performanceProtection(performance, player.age)
+    : 0;
   const protectedDecline = rawDecline * (1 - formProtection);
-  const eliteResistance = current >= 88 && performance >= 1.25 && player.age <= 38 ? 0.82 : 1;
+  const eliteAbilityConfidence = smoothstep01((current - 84) / 8);
+  const elitePerformanceConfidence = smoothstep01((performance - 1.05) / 0.4);
+  const maximumEliteResistance = eliteDeclineResistance(player.age);
+  const eliteResistance = hasFullDisciplineConfidence
+    ? 1 - (1 - maximumEliteResistance) * eliteAbilityConfidence * elitePerformanceConfidence
+    : 1;
   const appliedDecline = protectedDecline * eliteResistance;
-  const performanceGrowth = lateCareerPerformanceGrowth(player.age, performance, stats.matches) * abilityDifficulty;
-  const poorFormLoss = poorPerformanceLoss(player.age, performance, input.meaningfulSample, input.consecutivePoorSeasons) * injuryPenaltyFactor;
-  const uncapped = performanceGrowth - appliedDecline + poorFormLoss;
-  const finalDelta = clamp(uncapped, -annualNegativeMovementCap(player.age), annualPositiveMovementCap(player.age));
-  return { phase, naturalAndOpportunityGrowth: 0, performanceGrowth, poorFormLoss, agingDecline: appliedDecline, declineProtection: rawDecline - appliedDecline, finalDelta };
+  const lateCareerGrowth = hasFullDisciplineConfidence
+    ? lateCareerPerformanceGrowth(player.age, performance, stats.matches, skill, production)
+      * abilityDifficulty
+      * declineWeight
+    : 0;
+  const poorFormLoss = poorPerformanceLoss(player.age, performance, sampleConfidence, input.consecutivePoorSeasons) * injuryPenaltyFactor;
+  const inactivityLoss = inactivityAbilityLoss(player.age, input.lowUsageSeasons)
+    * injuryPenaltyFactor
+    * preDeclineWeight;
+  const performanceGrowth = breakout + formMovement + lateCareerGrowth;
+  const weightedAgingDecline = appliedDecline * declineWeight;
+  const combinedPoorFormLoss = poorFormLoss + inactivityLoss;
+  const uncapped = naturalAndOpportunityGrowth + performanceGrowth + combinedPoorFormLoss - weightedAgingDecline;
+  // Positive movement is governed by performance, rating difficulty and the
+  // player's effective PA headroom. Do not discard a legitimate breakout with
+  // a second, age-only annual ceiling; applyAbilityBank() enforces CA <= PA.
+  const finalDelta = Math.max(uncapped, -annualNegativeMovementCap(player.age));
+  return {
+    phase,
+    naturalAndOpportunityGrowth,
+    performanceGrowth,
+    poorFormLoss: combinedPoorFormLoss,
+    agingDecline: weightedAgingDecline,
+    declineProtection: (rawDecline - appliedDecline) * declineWeight,
+    finalDelta,
+  };
 }
 
 export function developPlayerAfterSeason(
@@ -1336,13 +1294,16 @@ export function developPlayerAfterSeason(
   season: number,
   seed: string,
   injuryProtectedAbsence = false,
+  injuryAbsenceShare = injuryProtectedAbsence ? 1 : 0,
 ): Player {
   const state = initializePlayerCareerState(player, season - 1);
   if (state.lastDevelopmentSeason === season) return player;
   const random = seededRandom(`${seed}:${season}:${player.id}:development`);
-  const lowUsageSeasons = stats.matches < 3
-    ? state.consecutiveLowUsageSeasons + 1
-    : 0;
+  const lowUsagePressure = calculateLowUsagePressure(
+    state.lowUsagePressure ?? state.consecutiveLowUsageSeasons,
+    stats.matches,
+    injuryAbsenceShare,
+  );
   const battingForm = battingPerformance(stats);
   const bowlingForm = calculateBowlingSeasonPerformance(stats);
   const battingDevelopmentForm = ratingAdjustedPerformance(battingForm, player.currentBatting);
@@ -1355,20 +1316,24 @@ export function developPlayerAfterSeason(
   const consecutivePoorBowlingSeasons = meaningfulBowlingSample && bowlingDevelopmentForm < 0.78
     ? (state.consecutivePoorBowlingSeasons ?? 0) + 1
     : 0;
+  // Potential moves first. Exceptional seasons may therefore create legitimate
+  // new headroom, but CA can never manufacture PA by overshooting it.
+  const potentialBatting = updatePotential(player, "batting", player.currentBatting, player.potentialBatting, battingDevelopmentForm, stats.matches, stats.runs, state.potentialBattingBank, state.unrealizedPotentialBattingLoss, meaningfulBattingSample, consecutivePoorBattingSeasons, lowUsagePressure, injuryProtectedAbsence);
+  const potentialBowling = updatePotential(player, "bowling", player.currentBowling, player.potentialBowling, bowlingDevelopmentForm, stats.matches, stats.wickets, state.potentialBowlingBank, state.unrealizedPotentialBowlingLoss, meaningfulBowlingSample, consecutivePoorBowlingSeasons, lowUsagePressure, injuryProtectedAbsence);
   const battingDelta = calculateAbilityChange({
-    player, stats, skill: "batting", current: player.currentBatting, potential: player.potentialBatting,
+    player, stats, skill: "batting", current: player.currentBatting, potential: potentialBatting.potential,
     performance: battingDevelopmentForm, meaningfulSample: meaningfulBattingSample,
-    consecutivePoorSeasons: consecutivePoorBattingSeasons, lowUsageSeasons,
-    injuryProtectedAbsence, random,
+    consecutivePoorSeasons: consecutivePoorBattingSeasons, lowUsageSeasons: lowUsagePressure,
+    injuryProtectedAbsence, injuryAbsenceShare, random,
   }).finalDelta;
   const bowlingDelta = calculateAbilityChange({
-    player, stats, skill: "bowling", current: player.currentBowling, potential: player.potentialBowling,
+    player, stats, skill: "bowling", current: player.currentBowling, potential: potentialBowling.potential,
     performance: bowlingDevelopmentForm, meaningfulSample: meaningfulBowlingSample,
-    consecutivePoorSeasons: consecutivePoorBowlingSeasons, lowUsageSeasons,
-    injuryProtectedAbsence, random,
+    consecutivePoorSeasons: consecutivePoorBowlingSeasons, lowUsageSeasons: lowUsagePressure,
+    injuryProtectedAbsence, injuryAbsenceShare, random,
   }).finalDelta;
-  const batting = applyBank(player.currentBatting, state.battingDevelopmentBank, battingDelta, 0, 97);
-  const bowling = applyBank(player.currentBowling, state.bowlingDevelopmentBank, bowlingDelta, 0, 97);
+  const batting = applyAbilityBank(player.currentBatting, state.battingDevelopmentBank, battingDelta, potentialBatting.potential);
+  const bowling = applyAbilityBank(player.currentBowling, state.bowlingDevelopmentBank, bowlingDelta, potentialBowling.potential);
   const captaincyRating = player.captaincy ?? 50;
   const captaincyRandom = seededRandom(`${seed}:${season}:${player.id}:captaincy-development`);
   const captaincyDelta = calculateCaptaincyDevelopment({
@@ -1411,9 +1376,6 @@ export function developPlayerAfterSeason(
     majorReputationAchievements: state.majorReputationAchievements,
   });
 
-  const potentialBatting = updatePotential(player, "batting", batting.value, player.potentialBatting, battingDevelopmentForm, stats.matches, stats.runs, state.potentialBattingBank, state.unrealizedPotentialBattingLoss, meaningfulBattingSample, consecutivePoorBattingSeasons, injuryProtectedAbsence);
-  const potentialBowling = updatePotential(player, "bowling", bowling.value, player.potentialBowling, bowlingDevelopmentForm, stats.matches, stats.wickets, state.potentialBowlingBank, state.unrealizedPotentialBowlingLoss, meaningfulBowlingSample, consecutivePoorBowlingSeasons, injuryProtectedAbsence);
-
   const updated: Player = {
     ...player,
     currentBatting: batting.value,
@@ -1424,7 +1386,10 @@ export function developPlayerAfterSeason(
     reputation: reputation.reputation,
     careerState: {
       ...state,
-      consecutiveLowUsageSeasons: lowUsageSeasons,
+      // Keep the legacy field synchronized so older saves/builds can migrate
+      // without abruptly discarding accumulated low-usage history.
+      consecutiveLowUsageSeasons: lowUsagePressure,
+      lowUsagePressure,
       lastDevelopmentSeason: season,
       battingDevelopmentBank: batting.bank,
       bowlingDevelopmentBank: bowling.bank,
@@ -1735,6 +1700,7 @@ export function processPostSeasonCareer(input: {
   completedSeason: number;
   seed: string;
   injuredPlayerIds?: Set<string>;
+  injuryAbsenceShares?: ReadonlyMap<string, number>;
   reputationAchievements?: CareerReputationAchievements;
 }): CareerLifecycleResult {
   const rankedMvp = rankMvpCandidates(Object.entries(input.performance).map(([id, stats]) => ({
@@ -1784,15 +1750,19 @@ export function processPostSeasonCareer(input: {
         }
       : { matches: 0, runs: 0, balls: 0, wickets: 0, runsConceded: 0, oversBowled: 0, teamMatches: 0 },
   ]));
-  const developed = Object.fromEntries(Object.entries(input.players).map(([id, player]) => [id,
-    developPlayerAfterSeason(
+  const developed = Object.fromEntries(Object.entries(input.players).map(([id, player]) => {
+    const injuryAbsenceShare = input.injuryAbsenceShares
+      ? (input.injuryAbsenceShares.get(id) ?? 0)
+      : (input.injuredPlayerIds?.has(id) ? 1 : 0);
+    return [id, developPlayerAfterSeason(
       player,
       enrichedPerformance[id],
       input.completedSeason,
       input.seed,
-      input.injuredPlayerIds?.has(id) ?? false,
-    ),
-  ]));
+      injuryAbsenceShare > 0,
+      injuryAbsenceShare,
+    )];
+  }));
   const capping = applyInternationalCappingAfterSeason({
     players: developed,
     performance: enrichedPerformance,

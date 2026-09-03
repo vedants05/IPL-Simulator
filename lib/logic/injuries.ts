@@ -1,4 +1,5 @@
 import type { Player } from "@/lib/types";
+import { dateKeyToLocalDate } from "@/lib/logic/careerCalendar";
 
 export type InjuryCategory = "minor" | "major";
 export type InjuryWorseningRisk = "mild" | "moderate" | "severe";
@@ -47,6 +48,49 @@ export interface InjurySystemState {
   injuryHistory: PlayerInjury[];
   processedInjuryMatchIds: string[];
   processedInjuryDateKeys: string[];
+}
+
+/**
+ * Returns the share of the competitive season each player was unavailable.
+ * Overlapping/worsened injury records are merged so the same day is never
+ * counted twice. The season and injury ranges use [start, end) day intervals.
+ */
+export function calculateInjuryAbsenceShares(
+  injuries: ReadonlyArray<PlayerInjury>,
+  seasonStart: string,
+  seasonEnd: string,
+): Map<string, number> {
+  const day = 24 * 60 * 60 * 1000;
+  const windowStart = dateKeyToLocalDate(seasonStart).getTime();
+  const windowEnd = dateKeyToLocalDate(seasonEnd).getTime() + day;
+  const seasonDays = Math.max(1, Math.round((windowEnd - windowStart) / day));
+  const rangesByPlayer = new Map<string, Array<[number, number]>>();
+
+  injuries.forEach((injury) => {
+    const start = Math.max(windowStart, dateKeyToLocalDate(injury.startedOn).getTime());
+    const returnDate = injury.endedOn ?? injury.actualReturnDate;
+    const end = Math.min(windowEnd, dateKeyToLocalDate(returnDate).getTime());
+    if (end <= start) return;
+    const ranges = rangesByPlayer.get(injury.playerId) ?? [];
+    ranges.push([start, end]);
+    rangesByPlayer.set(injury.playerId, ranges);
+  });
+
+  return new Map(Array.from(rangesByPlayer.entries()).map(([playerId, ranges]) => {
+    const ordered = ranges.sort((left, right) => left[0] - right[0]);
+    let unavailableMs = 0;
+    let [currentStart, currentEnd] = ordered[0];
+    ordered.slice(1).forEach(([start, end]) => {
+      if (start <= currentEnd) currentEnd = Math.max(currentEnd, end);
+      else {
+        unavailableMs += currentEnd - currentStart;
+        currentStart = start;
+        currentEnd = end;
+      }
+    });
+    unavailableMs += currentEnd - currentStart;
+    return [playerId, Math.min(1, unavailableMs / day / seasonDays)];
+  }));
 }
 
 export interface InjurySystemModifiers {
