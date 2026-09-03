@@ -159,6 +159,7 @@ export function processAIStaffMarket(input: {
   state: CareerStaffState;
   teamIds: string[];
   userTeamId: string;
+  delegateUserTeam?: boolean;
   completedSeason: number;
   seed: string;
   effectiveOn?: string;
@@ -166,7 +167,9 @@ export function processAIStaffMarket(input: {
   if (!input.state.initialized || input.state.lastAIProcessedSeason === input.completedSeason) {
     return { state: input.state, renewed: 0, released: 0, hired: 0, poached: 0 };
   }
-  const aiTeamIds = input.teamIds.filter((teamId) => teamId !== input.userTeamId).sort();
+  const aiTeamIds = input.teamIds
+    .filter((teamId) => input.delegateUserTeam || teamId !== input.userTeamId)
+    .sort();
   let state = ensureAIStaffBudgets(input.state, aiTeamIds);
   let renewed = 0;
   let released = 0;
@@ -294,7 +297,8 @@ export function processAIStaffMarket(input: {
       ));
       const candidates = Object.values(state.contracts)
         .filter((contract) => contract.status === "free_agent" || (
-          contract.status === "contracted" && contract.teamId !== teamId && contract.teamId !== input.userTeamId
+          contract.status === "contracted" && contract.teamId !== teamId
+          && (input.delegateUserTeam || contract.teamId !== input.userTeamId)
         ))
         .filter((contract) => !releasedByTeamThisSeason(state, contract.staffId, teamId, input.completedSeason))
         .map((contract) => {

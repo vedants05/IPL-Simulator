@@ -40,6 +40,8 @@ interface MatchPartnership {
 
 interface MatchSimulationRecord {
   partnerships?: MatchPartnership[];
+  battingFirstTeamId?: string;
+  winnerId?: string;
 }
 
 interface Match {
@@ -51,6 +53,7 @@ interface Match {
   scoreB?: MatchScore;
   scorecard?: MatchScorecard;
   simulation?: MatchSimulationRecord;
+  winner?: string;
   date?: string;
 }
 
@@ -107,18 +110,69 @@ export function trackMinorRecordsOnMatchComplete(
   // 1. Team scores: Highest & Lowest
   if (match.scoreA) {
     const scoreAStr = `${match.scoreA.runs}/${match.scoreA.wickets}`;
-    updateRecord(`highest-score-${match.teamA.toLowerCase()}`, scoreAStr, teamA.name, `vs ${teamB.shortName}`);
+    updateRecord(`highest-score-${match.teamA.toLowerCase()}`, scoreAStr, teamA.shortName, `vs ${teamB.shortName}`);
     if (match.scoreA.wickets === 10 || match.scoreA.overs >= 20) {
-      updateRecord(`lowest-score-${match.teamA.toLowerCase()}`, scoreAStr, teamA.name, `vs ${teamB.shortName}`);
+      updateRecord(`lowest-score-${match.teamA.toLowerCase()}`, scoreAStr, teamA.shortName, `vs ${teamB.shortName}`);
     }
   }
 
   if (match.scoreB) {
     const scoreBStr = `${match.scoreB.runs}/${match.scoreB.wickets}`;
-    updateRecord(`highest-score-${match.teamB.toLowerCase()}`, scoreBStr, teamB.name, `vs ${teamA.shortName}`);
+    updateRecord(`highest-score-${match.teamB.toLowerCase()}`, scoreBStr, teamB.shortName, `vs ${teamA.shortName}`);
     if (match.scoreB.wickets === 10 || match.scoreB.overs >= 20) {
-      updateRecord(`lowest-score-${match.teamB.toLowerCase()}`, scoreBStr, teamB.name, `vs ${teamA.shortName}`);
+      updateRecord(`lowest-score-${match.teamB.toLowerCase()}`, scoreBStr, teamB.shortName, `vs ${teamA.shortName}`);
     }
+  }
+
+  // Match-level team records derived from the completed scorecard.
+  if (match.scoreA && match.scoreB) {
+    const battingFirstTeamId = match.simulation?.battingFirstTeamId ?? match.teamA;
+    const battingSecondTeamId = battingFirstTeamId === match.teamA ? match.teamB : match.teamA;
+    const battingFirstScore = battingFirstTeamId === match.teamA ? match.scoreA : match.scoreB;
+    const battingSecondScore = battingSecondTeamId === match.teamA ? match.scoreA : match.scoreB;
+    const battingFirstTeam = teams[battingFirstTeamId];
+    const battingSecondTeam = teams[battingSecondTeamId];
+    const winnerId = match.winner ?? match.simulation?.winnerId;
+    const matchLabel = `${teamA.shortName} vs ${teamB.shortName}`;
+    const aggregateRuns = match.scoreA.runs + match.scoreB.runs;
+    const allBatting = [
+      ...match.scorecard.inningsA.batting,
+      ...match.scorecard.inningsB.batting,
+    ];
+    const totalSixes = allBatting.reduce((sum, player) => sum + (player.sixes ?? 0), 0);
+    const totalBoundaries = allBatting.reduce(
+      (sum, player) => sum + (player.fours ?? 0) + (player.sixes ?? 0),
+      0,
+    );
+
+    updateRecord("most-runs-in-match", `${aggregateRuns} runs`, matchLabel, `${match.scoreA.runs}/${match.scoreA.wickets} & ${match.scoreB.runs}/${match.scoreB.wickets}`);
+    updateRecord("most-sixes-in-match", `${totalSixes} sixes`, matchLabel, seasonStr);
+    updateRecord("most-boundaries-in-match", `${totalBoundaries} boundaries`, matchLabel, seasonStr);
+
+    // A runs-margin victory and a defended total both require the side batting
+    // first to have won; chase victories are tracked for the second innings.
+    if (winnerId === battingFirstTeamId && battingFirstTeam && battingSecondTeam) {
+      const winningMargin = battingFirstScore.runs - battingSecondScore.runs;
+      if (winningMargin > 0) {
+        updateRecord("largest-victory-runs", `${winningMargin} runs`, battingFirstTeam.shortName, `vs ${battingSecondTeam.shortName}`);
+      }
+      if (battingFirstScore.wickets === 10 || battingFirstScore.overs >= 20) {
+        const defendedScore = `${battingFirstScore.runs}/${battingFirstScore.wickets}`;
+        updateRecord("lowest-score-defended", defendedScore, battingFirstTeam.shortName, `vs ${battingSecondTeam.shortName}`);
+        updateRecord(`lowest-defended-totals-${battingFirstTeamId.toLowerCase()}`, defendedScore, battingFirstTeam.shortName, `vs ${battingSecondTeam.shortName}`);
+      }
+    } else if (winnerId === battingSecondTeamId && battingFirstTeam && battingSecondTeam) {
+      const chaseScore = `${battingSecondScore.runs}/${battingSecondScore.wickets}`;
+      updateRecord(`highest-runs-chased-${battingSecondTeamId.toLowerCase()}`, chaseScore, battingSecondTeam.shortName, `vs ${battingFirstTeam.shortName}`);
+    }
+
+    const extrasConceded = [
+      { team: teamB, value: match.scorecard.inningsA.extras, opponent: teamA },
+      { team: teamA, value: match.scorecard.inningsB.extras, opponent: teamB },
+    ];
+    extrasConceded.forEach(({ team, value, opponent }) => {
+      updateRecord("most-extras-in-innings", `${value} extras`, team.shortName, `vs ${opponent.shortName}`);
+    });
   }
 
   // 2. Individual batting scores by position

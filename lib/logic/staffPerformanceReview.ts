@@ -167,6 +167,7 @@ export function processStaffSeasonPerformanceReview(input: {
   teams: Record<string, Team>;
   players: Record<string, Player>;
   userTeamId: string;
+  delegateUserTeam?: boolean;
   completedSeason: number;
   standings: StaffReviewStanding[];
   playerStats: Record<string, StaffReviewPlayerStats>;
@@ -213,7 +214,7 @@ export function processStaffSeasonPerformanceReview(input: {
         pressure: departmentPressure(expected.fielding[teamId], actualDepartments.fielding?.[teamId] ?? finalPosition),
       },
     };
-    const aiControlled = teamId !== input.userTeamId;
+    const aiControlled = input.delegateUserTeam || teamId !== input.userTeamId;
     const headDismissed = Boolean(headCoach && aiControlled && !trophyProtected
       && shouldDismissHeadCoach(effectivePressure, `${input.seed}:${input.completedSeason}:${teamId}`));
     const assistantDismissals: string[] = [];

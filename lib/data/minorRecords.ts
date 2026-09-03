@@ -96,6 +96,16 @@ export const MINOR_RECORDS: MinorRecord[] = [
   // --- OVERSEAS vs INDIAN vs UNCAPPED UNIQUE SEASONAL RECORDS ---
   { id: "season-runs-uncapped-record", category: "season_batting", title: "Most runs in a season by an uncapped player", value: "788 runs", holder: "Vaibhav Sooryavanshi", season: "2026", notes: "RR", source: "IPL records", verified: true },
   { id: "season-runs-uncapped-previous", category: "season_batting", title: "Previous most runs in a season by an uncapped player", value: "625 runs", holder: "Yashasvi Jaiswal", season: "2023", notes: "RR", source: "IPL records", verified: true },
+  { id: "all-time-season-runs-1", category: "season_batting", title: "All-time batting season #1", value: "973 runs", holder: "Virat Kohli", season: "2016", notes: "RCB", source: "IPL records", verified: true },
+  { id: "all-time-season-runs-2", category: "season_batting", title: "All-time batting season #2", value: "890 runs", holder: "Shubman Gill", season: "2023", notes: "GT", source: "IPL records", verified: true },
+  { id: "all-time-season-runs-3", category: "season_batting", title: "All-time batting season #3", value: "863 runs", holder: "Jos Buttler", season: "2022", notes: "RR", source: "IPL records", verified: true },
+  { id: "all-time-season-runs-4", category: "season_batting", title: "All-time batting season #4", value: "848 runs", holder: "David Warner", season: "2016", notes: "SRH", source: "IPL records", verified: true },
+  { id: "all-time-season-runs-5", category: "season_batting", title: "All-time batting season #5", value: "788 runs", holder: "Vaibhav Sooryavanshi", season: "2026", notes: "RR", source: "IPL records", verified: true },
+  { id: "all-time-season-runs-6", category: "season_batting", title: "All-time batting season #6", value: "741 runs", holder: "Virat Kohli", season: "2024", notes: "RCB", source: "IPL records", verified: true },
+  { id: "all-time-season-runs-7", category: "season_batting", title: "All-time batting season #7", value: "735 runs", holder: "Kane Williamson", season: "2018", notes: "SRH", source: "IPL records", verified: true },
+  { id: "all-time-season-runs-8", category: "season_batting", title: "All-time batting season #8", value: "733 runs", holder: "Chris Gayle", season: "2012", notes: "RCB", source: "IPL records", verified: true },
+  { id: "all-time-season-runs-9", category: "season_batting", title: "All-time batting season #9", value: "732 runs", holder: "Shubman Gill", season: "2026", notes: "GT", source: "IPL records", verified: true },
+  { id: "all-time-season-runs-10", category: "season_batting", title: "All-time batting season #10", value: "730 runs", holder: "Faf du Plessis", season: "2023", notes: "RCB", source: "IPL records", verified: true },
   { id: "season-wickets-uncapped-record", category: "season_bowling", title: "Most wickets in a season by an uncapped bowler", value: "32 wickets", holder: "Harshal Patel", season: "2021", notes: "RCB", source: "IPL records", verified: true },
   { id: "highest-score-uncapped-match", category: "milestone", title: "Highest individual score by an uncapped player", value: "124", holder: "Yashasvi Jaiswal", season: "2023", notes: "RR vs MI", source: "IPL records", verified: true },
   { id: "highest-score-uncapped-playoffs", category: "milestone", title: "Highest score by an uncapped player in playoffs", value: "112*", holder: "Rajat Patidar", season: "2022", notes: "RCB vs LSG", source: "IPL records", verified: true },
@@ -253,16 +263,25 @@ export const MINOR_RECORDS: MinorRecord[] = [
 
 export function applyMinorRecordBaselineUpdates(records: readonly MinorRecord[]): MinorRecord[] {
   const rrHighestScore = MINOR_RECORDS.find((record) => record.id === "highest-score-rr");
-  if (!rrHighestScore) return [...records];
+  let updated = [...records];
 
-  const savedRecord = records.find((record) => record.id === rrHighestScore.id);
-  if (!savedRecord) return [...records, { ...rrHighestScore }];
+  if (rrHighestScore) {
+    const savedRecord = updated.find((record) => record.id === rrHighestScore.id);
+    if (!savedRecord) {
+      updated.push({ ...rrHighestScore });
+    } else {
+      const savedRuns = Number.parseInt(savedRecord.value.split("/")[0], 10);
+      const baselineRuns = Number.parseInt(rrHighestScore.value.split("/")[0], 10);
+      if (!Number.isFinite(savedRuns) || savedRuns <= baselineRuns) {
+        updated = updated.map((record) => record.id === rrHighestScore.id ? { ...rrHighestScore } : record);
+      }
+    }
+  }
 
-  const savedRuns = Number.parseInt(savedRecord.value.split("/")[0], 10);
-  const baselineRuns = Number.parseInt(rrHighestScore.value.split("/")[0], 10);
-  if (Number.isFinite(savedRuns) && savedRuns > baselineRuns) return [...records];
+  const savedIds = new Set(updated.map((record) => record.id));
+  MINOR_RECORDS
+    .filter((record) => record.id.startsWith("all-time-season-runs-") && !savedIds.has(record.id))
+    .forEach((record) => updated.push({ ...record }));
 
-  return records.map((record) => (
-    record.id === rrHighestScore.id ? { ...rrHighestScore } : record
-  ));
+  return updated;
 }

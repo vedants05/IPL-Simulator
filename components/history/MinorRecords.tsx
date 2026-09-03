@@ -9,6 +9,13 @@ const labels: Record<string, string> = {
   fielding: "Fielding", team: "Team records",
 };
 
+function getHistoryTeam(holder: string) {
+  return LEAGUE_HISTORY_TEAMS[holder]
+    ?? Object.values(LEAGUE_HISTORY_TEAMS).find((team) => (
+      team.name === holder || team.shortName === holder
+    ));
+}
+
 interface MinorRecordsProps {
   minorRecords?: MinorRecord[];
 }
@@ -56,6 +63,11 @@ export default function MinorRecords({ minorRecords = MINOR_RECORDS }: MinorReco
         return posA - posB;
       });
   }, [minorRecords]);
+
+  const allTimeBattingSeasons = useMemo(() => minorRecords
+    .filter((record) => record.id.startsWith("all-time-season-runs-"))
+    .sort((left, right) => Number.parseInt(right.value, 10) - Number.parseInt(left.value, 10))
+    .slice(0, 10), [minorRecords]);
 
   // Group and sort partnerships by position
   const partnershipPosScores = useMemo(() => {
@@ -149,6 +161,7 @@ export default function MinorRecords({ minorRecords = MINOR_RECORDS }: MinorReco
     return (record.category === "team" && (id.startsWith("highest-score-") || id.startsWith("lowest-score-"))) ||
            id.startsWith("highest-score-pos-") ||
            id.startsWith("highest-partnership-pos-") ||
+           id.startsWith("all-time-season-runs-") ||
            id.startsWith("season-most-runs-") ||
            id.startsWith("season-most-wickets-") ||
            id.startsWith("lowest-defended-totals-") ||
@@ -245,7 +258,7 @@ export default function MinorRecords({ minorRecords = MINOR_RECORDS }: MinorReco
                   <span className="text-right">Season</span>
                 </div>
                 {highestScores.map((record, index) => {
-                  const teamInfo = LEAGUE_HISTORY_TEAMS[record.holder];
+                  const teamInfo = getHistoryTeam(record.holder);
                   const primaryColor = teamInfo?.primaryColor ?? "#ccc";
                   return (
                     <div key={record.id} className="grid grid-cols-[25px_1fr_65px_50px] items-center py-1 px-1 rounded hover:bg-surface/5 whitespace-nowrap overflow-hidden text-ellipsis">
@@ -276,7 +289,7 @@ export default function MinorRecords({ minorRecords = MINOR_RECORDS }: MinorReco
                   <span className="text-right">Season</span>
                 </div>
                 {lowestScores.map((record, index) => {
-                  const teamInfo = LEAGUE_HISTORY_TEAMS[record.holder];
+                  const teamInfo = getHistoryTeam(record.holder);
                   const primaryColor = teamInfo?.primaryColor ?? "#ccc";
                   return (
                     <div key={record.id} className="grid grid-cols-[25px_1fr_65px_50px] items-center py-1 px-1 rounded hover:bg-surface/5 whitespace-nowrap overflow-hidden text-ellipsis">
@@ -310,7 +323,7 @@ export default function MinorRecords({ minorRecords = MINOR_RECORDS }: MinorReco
                   <span className="text-right">Opponent</span>
                 </div>
                 {lowestDefendedTotals.map((record, index) => {
-                  const teamInfo = LEAGUE_HISTORY_TEAMS[record.holder];
+                  const teamInfo = getHistoryTeam(record.holder);
                   const primaryColor = teamInfo?.primaryColor ?? "#ccc";
                   return (
                     <div key={record.id} className="grid grid-cols-[25px_1fr_65px_50px_100px] items-center py-1 px-1 rounded hover:bg-surface/5 whitespace-nowrap overflow-hidden text-ellipsis">
@@ -343,7 +356,7 @@ export default function MinorRecords({ minorRecords = MINOR_RECORDS }: MinorReco
                   <span className="text-right">Opponent</span>
                 </div>
                 {highestRunsChased.map((record, index) => {
-                  const teamInfo = LEAGUE_HISTORY_TEAMS[record.holder];
+                  const teamInfo = getHistoryTeam(record.holder);
                   const primaryColor = teamInfo?.primaryColor ?? "#ccc";
                   return (
                     <div key={record.id} className="grid grid-cols-[25px_1fr_65px_50px_100px] items-center py-1 px-1 rounded hover:bg-surface/5 whitespace-nowrap overflow-hidden text-ellipsis">
@@ -360,6 +373,35 @@ export default function MinorRecords({ minorRecords = MINOR_RECORDS }: MinorReco
                 })}
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {(category === "all" || category === "season_batting") && (
+        <div className="mb-8 rounded-lg border border-border bg-bg p-4 overflow-hidden">
+          <div className="mb-3 border-b border-border/40 pb-2">
+            <h3 className="font-anton text-sm uppercase tracking-wider text-text-primary">Top 10 Highest-Run Batting Seasons</h3>
+            <p className="font-space-mono text-[9px] text-text-secondary">Most runs scored by a player in a single IPL season</p>
+          </div>
+          <div className="space-y-1 font-space-mono text-[11px] overflow-hidden">
+            <div className="grid grid-cols-[35px_minmax(0,1fr)_70px_65px_55px] border-b border-border pb-1 mb-1 text-[9px] font-bold uppercase text-text-secondary whitespace-nowrap">
+              <span>#</span><span>Player</span><span className="text-right">Runs</span><span className="text-right">Team</span><span className="text-right">Season</span>
+            </div>
+            {allTimeBattingSeasons.map((record, index) => {
+              const teamInfo = record.notes ? getHistoryTeam(record.notes) : undefined;
+              return (
+                <div key={record.id} className="grid grid-cols-[35px_minmax(0,1fr)_70px_65px_55px] items-center rounded px-1 py-1 hover:bg-surface/5 whitespace-nowrap">
+                  <span className="font-anton text-[11px] text-accent">{index + 1}</span>
+                  <span className="truncate font-bold text-text-primary">{record.holder}</span>
+                  <span className="text-right font-bold text-accent">{Number.parseInt(record.value, 10)}</span>
+                  <span className="flex items-center justify-end gap-1.5 text-right font-bold text-text-primary">
+                    <span className="size-2 shrink-0 rounded-full border border-border" style={{ backgroundColor: teamInfo?.primaryColor ?? "#ccc" }} />
+                    {teamInfo?.shortName ?? record.notes ?? "—"}
+                  </span>
+                  <span className="text-right text-[10px] text-text-secondary">{record.season}</span>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

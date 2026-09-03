@@ -302,6 +302,7 @@ interface GameStateAdditions {
   scoutingReports: ScoutingReport[];
   scoutingNetworks: Record<string, ScoutingNetwork>;
   careerStaff: CareerStaffState;
+  delegateStaffToCeo: boolean;
 }
 
 function leagueHistoryResultFingerprint(record: LeagueHistorySeason): string {
@@ -485,6 +486,7 @@ interface GameActions {
   startDeepScoutingAssignment: (reportId: string) => { ok: boolean; message: string };
   reconcileScoutingAssignments: (date?: string) => number;
   reconcileAIStaffRecruitment: (date?: string) => { searchesStarted: number; appointments: number; retries: number };
+  setDelegateStaffToCeo: (delegated: boolean) => void;
   initializeCareerStaff: (
     members: StaffDirectoryMember[],
     assignments: StaffStartingAssignment[],
@@ -1281,6 +1283,7 @@ export const useGameStore = create<Store>()(
       scoutingReports: [],
       scoutingNetworks: {},
       careerStaff: emptyCareerStaffState(),
+      delegateStaffToCeo: false,
 
       // ----- Actions -----
       initNewGame: async (userTeamId) => {
@@ -3986,12 +3989,18 @@ export const useGameStore = create<Store>()(
           state: snapshot.careerStaff,
           teamIds: Object.keys(snapshot.teams),
           userTeamId: snapshot.userTeamId,
+          delegateUserTeam: snapshot.delegateStaffToCeo,
           currentDate,
           currentSeason: snapshot.currentSeason,
           seed: snapshot.saveId || snapshot.fixtureSeed,
         });
         if (result.state !== snapshot.careerStaff) set({ careerStaff: result.state });
         return { searchesStarted: result.searchesStarted, appointments: result.appointments, retries: result.retries };
+      },
+
+      setDelegateStaffToCeo: (delegated) => {
+        set({ delegateStaffToCeo: delegated });
+        if (delegated) get().reconcileAIStaffRecruitment();
       },
 
       initializeCareerStaff: (members, assignments) => {
@@ -4097,6 +4106,7 @@ export const useGameStore = create<Store>()(
             state: state.careerStaff,
             teamIds: Object.keys(state.teams),
             userTeamId: state.userTeamId,
+            delegateUserTeam: state.delegateStaffToCeo,
             completedSeason,
             seed: state.saveId || state.fixtureSeed,
             effectiveOn: completedSeasonFinalDate ? addDaysToDateKey(completedSeasonFinalDate, 1) : undefined,
@@ -4491,6 +4501,7 @@ export const useGameStore = create<Store>()(
             teams: state.teams,
             players: normalizedPlayers,
             userTeamId: state.userTeamId,
+            delegateUserTeam: state.delegateStaffToCeo,
             completedSeason: archive.season,
             standings: archive.standings as Array<{ teamId: string; played?: number }>,
             playerStats: archivedStats,
@@ -5160,6 +5171,7 @@ export const useGameStore = create<Store>()(
           scoutingReports: [],
           scoutingNetworks: {},
           careerStaff: emptyCareerStaffState(),
+          delegateStaffToCeo: false,
         });
       },
     }),
@@ -5223,6 +5235,7 @@ export const useGameStore = create<Store>()(
         scoutingReports: state.scoutingReports,
         scoutingNetworks: state.scoutingNetworks,
         careerStaff: state.careerStaff,
+        delegateStaffToCeo: state.delegateStaffToCeo,
       }),
       merge: (persisted, current) => {
         const p = persisted as Partial<Store>;
@@ -5453,6 +5466,7 @@ export const useGameStore = create<Store>()(
             Object.entries(p.scoutingNetworks ?? {}).filter(([regionId]) => regionId !== "pakistan"),
           ),
           careerStaff: normalizeCareerStaffState(p.careerStaff),
+          delegateStaffToCeo: p.delegateStaffToCeo ?? false,
           homePitchSelections: normalizeHomePitchSelections(
             p.homePitchSelections,
             getAdditionalHomePitchIds(customPitchesByTeam),

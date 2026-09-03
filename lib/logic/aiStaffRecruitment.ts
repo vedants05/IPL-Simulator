@@ -61,11 +61,14 @@ export function reconcileAIMidseasonRecruitment(input: {
   state: CareerStaffState;
   teamIds: string[];
   userTeamId: string;
+  delegateUserTeam?: boolean;
   currentDate: string;
   currentSeason: number;
   seed: string;
 }): AIMidseasonRecruitmentResult {
-  const aiTeams = input.teamIds.filter((teamId) => teamId !== input.userTeamId).sort();
+  const aiTeams = input.teamIds
+    .filter((teamId) => input.delegateUserTeam || teamId !== input.userTeamId)
+    .sort();
   let state = ensureAIStaffBudgets(normalizeCareerStaffState(input.state), aiTeams);
   let searches = [...state.recruitmentSearches];
   let newsEvents = [...state.newsEvents];
@@ -174,7 +177,8 @@ export function reconcileAIMidseasonRecruitment(input: {
     const candidates = Object.values(state.contracts)
       .filter((contract) => contract.status === "free_agent" || (
         search.attempts >= 2 && contract.status === "contracted"
-        && contract.teamId !== search.teamId && contract.teamId !== input.userTeamId
+        && contract.teamId !== search.teamId
+        && (input.delegateUserTeam || contract.teamId !== input.userTeamId)
       ))
       .filter((contract) => !releasedByTeamThisSeason(state, contract.staffId, search.teamId, input.currentSeason))
       .map((contract) => {

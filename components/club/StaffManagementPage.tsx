@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowDown, ArrowUp, ArrowUpDown, BriefcaseBusiness, RefreshCw, UserMinus, UserPlus, UsersRound, X } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, Bot, BriefcaseBusiness, RefreshCw, UserMinus, UserPlus, UsersRound, X } from "lucide-react";
 
 import type { Team } from "@/lib/types";
 import { useGameStore } from "@/lib/store/gameStore";
@@ -850,6 +850,8 @@ export default function StaffManagementPage({ teams, mode = "club" }: StaffManag
   const currentDate = useGameStore((state) => state.currentDate);
   const careerSeasonArchives = useGameStore((state) => state.careerSeasonArchives);
   const userTeamId = useGameStore((state) => state.userTeamId);
+  const delegateStaffToCeo = useGameStore((state) => state.delegateStaffToCeo);
+  const setDelegateStaffToCeo = useGameStore((state) => state.setDelegateStaffToCeo);
   const initializeCareerStaff = useGameStore((state) => state.initializeCareerStaff);
 
   useEffect(() => {
@@ -1180,18 +1182,36 @@ export default function StaffManagementPage({ teams, mode = "club" }: StaffManag
               <h2 className="font-anton text-xl uppercase leading-none text-text-primary">Staff Management</h2>
             </div>
           </div>
-          <div className="flex items-center gap-5 font-space-mono text-[8px] font-bold uppercase text-text-secondary">
-            <span>{userStaffEntries.length} staff</span>
-            <span>{vacantUserRoles.length} core vacancies</span>
-            <span>{userStaffContracts.filter((contract) => contract.endSeason === currentSeason).length} expiring</span>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-5 font-space-mono text-[8px] font-bold uppercase text-text-secondary">
+              <span>{userStaffEntries.length} staff</span>
+              <span>{vacantUserRoles.length} core vacancies</span>
+              <span>{userStaffContracts.filter((contract) => contract.endSeason === currentSeason).length} expiring</span>
+            </div>
+            <button
+              type="button"
+              aria-pressed={delegateStaffToCeo}
+              onClick={() => setDelegateStaffToCeo(!delegateStaffToCeo)}
+              className={`flex items-center gap-2 rounded border px-3 py-2 font-space-mono text-[7px] font-bold uppercase tracking-wider transition-colors ${delegateStaffToCeo ? "border-success/50 bg-success/10 text-success" : "border-border bg-bg text-text-primary hover:border-accent"}`}
+            >
+              <Bot className="size-3.5" />
+              {delegateStaffToCeo ? "CEO in control" : "Delegate to CEO"}
+            </button>
           </div>
         </header>
+
+        {delegateStaffToCeo && (
+          <div className="flex shrink-0 items-center justify-between rounded-lg border border-success/40 bg-success/[0.08] px-4 py-2 font-space-mono text-[7px] font-bold uppercase tracking-wider text-success">
+            <span>CEO delegation active · Staff hiring, releases, renewals and contracts are managed automatically</span>
+            <span>Use the button above to take back control</span>
+          </div>
+        )}
 
         <div className="grid min-h-0 flex-[0.88] grid-cols-[minmax(0,2fr)_minmax(17rem,0.72fr)] gap-3">
           <section className="flex min-h-0 flex-col overflow-hidden rounded-lg border-2 border-border bg-surface">
             <div className="flex shrink-0 items-center justify-between border-b border-border px-4 py-2.5">
               <div><p className="font-space-mono text-[7px] font-bold uppercase tracking-[0.18em] text-accent">Current contracts</p><h3 className="font-anton text-base uppercase text-text-primary">Your Staff</h3></div>
-              <span className="font-space-mono text-[8px] font-bold uppercase text-text-secondary">Select a profile to renew, change roles or terminate</span>
+              <span className="font-space-mono text-[8px] font-bold uppercase text-text-secondary">{delegateStaffToCeo ? "CEO-managed · profiles are view only" : "Select a profile to renew, change roles or terminate"}</span>
             </div>
             <div className="grid min-h-0 flex-1 grid-cols-2 content-start overflow-y-auto">
               {userStaffEntries.map(({ member, primaryAssignment, secondaryAssignments }) => {
@@ -1302,7 +1322,7 @@ export default function StaffManagementPage({ teams, mode = "club" }: StaffManag
           </div>
           </div>
         </section>
-        {selectedMember && selectedAssignment && <StaffProfileModal member={selectedMember} assignment={selectedAssignment} team={selectedTeam} allowContractActions onClose={() => setSelectedStaffId(null)} />}
+        {selectedMember && selectedAssignment && <StaffProfileModal member={selectedMember} assignment={selectedAssignment} team={selectedTeam} allowContractActions={!delegateStaffToCeo} onClose={() => setSelectedStaffId(null)} />}
       </div>
     );
   }

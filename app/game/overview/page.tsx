@@ -916,8 +916,13 @@ function OverviewPageContent() {
   const [seasonStartBattingAbilities, setSeasonStartBattingAbilities] = useState<Record<string, number>>({});
   const [seasonStartBowlingAbilities, setSeasonStartBowlingAbilities] = useState<Record<string, number>>({});
   const [minorRecords, setMinorRecords] = useState<MinorRecord[]>(MINOR_RECORDS);
+  const minorRecordsRef = useRef<MinorRecord[]>(MINOR_RECORDS);
   const [inbox, setInbox] = useState<CareerEmail[]>([]);
   const [isCareerLoaded, setIsCareerLoaded] = useState(false);
+
+  useEffect(() => {
+    minorRecordsRef.current = minorRecords;
+  }, [minorRecords]);
   const careerStaffNeedsProfileSync = !careerStaff.initialized
     || careerStaff.salaryModelVersion < STAFF_SALARY_MODEL_VERSION
     || Object.values(careerStaff.contracts).some((contract) => (
@@ -3461,11 +3466,12 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}${replacementEligible
     if (careerUpdate) recordIplMatchStats([careerUpdate]);
     processCompletedMatchInjuries(simulatedMatch);
 
-    const recordCheck = trackMinorRecordsOnMatchComplete(simulatedMatch, minorRecords, teams, currentSeason);
-    let nextMinorRecords = minorRecords;
+    const recordCheck = trackMinorRecordsOnMatchComplete(simulatedMatch, minorRecordsRef.current, teams, currentSeason);
+    let nextMinorRecords = minorRecordsRef.current;
     let nextInbox = inbox;
     if (recordCheck.brokenRecordNotices.length > 0) {
       nextMinorRecords = recordCheck.updatedRecords;
+      minorRecordsRef.current = nextMinorRecords;
       setMinorRecords(nextMinorRecords);
       
       const newEmails = recordCheck.brokenRecordNotices.map((notice, idx) => {
@@ -3731,7 +3737,7 @@ This record has been officially verified and added to the IPL Minor Records arch
       && match.teamB !== userTeamId
     ));
     const careerUpdates: IplCareerMatchUpdate[] = [];
-    let nextMinorRecords = minorRecords;
+    let nextMinorRecords = minorRecordsRef.current;
     const allNotices: string[] = [];
 
     matches.forEach((match) => {
@@ -3770,6 +3776,7 @@ This record has been officially verified and added to the IPL Minor Records arch
       recordIplMatchStats(careerUpdates);
       let nextInbox = inbox;
       if (allNotices.length > 0) {
+        minorRecordsRef.current = nextMinorRecords;
         setMinorRecords(nextMinorRecords);
         const newEmails = allNotices.map((notice, idx) => {
           const recordTitle = notice.split('"')[1] ?? "IPL Record";
@@ -6425,13 +6432,13 @@ This record has been officially verified and added to the IPL Minor Records arch
                       className={`flex min-h-0 flex-col overflow-hidden rounded-lg border-2 border-border bg-surface p-5 transition-colors ${isFixturesAnnounced ? "cursor-pointer hover:border-accent" : "cursor-default"}`}
                     >
                       <>
-                      <h3 className="shrink-0 font-anton text-[14px] uppercase text-text-primary border-b border-[#16130f]/10 pb-2 mb-3">RECENT &amp; NEXT FIXTURES</h3>
+                      <h3 className="mb-0.5 shrink-0 border-b border-[#16130f]/10 pb-2 font-anton text-[14px] uppercase text-text-primary">RESULTS &amp; FIXTURES</h3>
                       {!isFixturesAnnounced ? (
                         <div className="flex min-h-0 flex-1 items-center justify-center text-center font-space-mono text-xs uppercase text-text-secondary">
                           Fixtures not yet announced
                         </div>
                       ) : (
-                      <div className="grid min-h-0 flex-1 grid-rows-5 overflow-hidden">
+                      <div className="grid min-h-0 flex-1 grid-rows-5 gap-1 overflow-hidden">
                         {(() => {
                           const userFixtures = fixtures
                             .filter((fixture) => (
@@ -6490,15 +6497,20 @@ This record has been officially verified and added to the IPL Minor Records arch
                             return (
                               <div
                                 key={`next-fixture-${fixture.id}`}
-                                className={`grid min-h-0 grid-cols-[2.75rem_minmax(0,1fr)_auto] items-center gap-2 border-b border-[#16130f]/10 px-1.5 text-text-primary ${
+                                className={`relative grid h-full min-h-0 w-full grid-cols-[2.75rem_minmax(0,1fr)_auto] items-center gap-2 border-b border-[#16130f]/10 px-1.5 py-0.5 text-text-primary ${
                                   isNextFixture
-                                    ? "bg-accent/15 ring-1 ring-inset ring-accent/30"
+                                    ? "bg-[#2d6bb5]/10"
                                     : index % 2 === 0
                                       ? "bg-black/[0.055] dark:bg-white/[0.07]"
                                       : "bg-black/[0.015] dark:bg-white/[0.025]"
                                 }`}
+                                style={isNextFixture ? {
+                                  outline: "2px solid #2d6bb5",
+                                  outlineOffset: 0,
+                                  zIndex: 1,
+                                } : undefined}
                               >
-                                <div className="flex flex-col items-center justify-center leading-none">
+                                <div className="flex h-full min-h-0 flex-col items-center justify-center leading-none">
                                   <span className="font-space-mono text-[12px] font-bold">{fixtureDate?.getDate() ?? "-"}</span>
                                   <span className="mt-0.5 font-space-mono text-[6px] uppercase text-text-secondary">
                                     {fixtureDate?.toLocaleDateString("en-GB", { month: "short" }) ?? ""}
@@ -8489,7 +8501,7 @@ This record has been officially verified and added to the IPL Minor Records arch
             <>
               {/* Season Overview tab */}
               {activeSubTab === "overview" && (
-                <div className="grid grid-cols-3 gap-6 h-[calc(100vh-200px)] min-h-[500px] overflow-hidden">
+                <div className="grid h-[calc(100vh-200px)] min-h-[500px] grid-cols-3 gap-6 overflow-visible">
                   {/* Fixtures progress */}
                   <div onClick={() => isFixturesAnnounced && setActiveSubTab("fixtures")} className={`flex min-h-0 flex-col overflow-hidden rounded-lg border-2 border-border bg-surface p-5 transition-colors ${isFixturesAnnounced ? "cursor-pointer hover:border-accent" : "opacity-75"}`}>
                     {fixtures.filter((fixture) => !fixture.stage && fixture.matchNumber <= LEAGUE_FIXTURE_COUNT).length > 0
@@ -9089,7 +9101,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                 const featuredRecords = verifiedRecords.slice(0, 2);
 
                 return (
-                  <div className="grid h-[calc(100vh-200px)] min-h-[560px] grid-cols-12 grid-rows-2 gap-4 overflow-hidden">
+                  <div className="grid h-[calc(100vh-200px)] min-h-[560px] grid-cols-12 grid-rows-2 gap-4 overflow-visible">
                     <button
                       type="button"
                       onClick={() => setActiveSubTab("staff")}
@@ -9254,7 +9266,7 @@ This record has been officially verified and added to the IPL Minor Records arch
           {activeTab === "history" && (
             <>
               {activeSubTab === "overview" && (
-                <div className="relative h-[calc(100vh-200px)] min-h-[500px] overflow-hidden bg-[radial-gradient(circle_at_center,rgba(45,107,181,0.075),transparent_52%)] dark:bg-[radial-gradient(circle_at_center,rgba(45,107,181,0.08),transparent_52%)]">
+                <div className="relative h-[calc(100vh-200px)] min-h-[500px] overflow-visible bg-[radial-gradient(circle_at_center,rgba(45,107,181,0.075),transparent_52%)] dark:bg-[radial-gradient(circle_at_center,rgba(45,107,181,0.08),transparent_52%)]">
                   <div className="grid h-full grid-cols-12 grid-rows-2 gap-4">
                     {[
                       {
