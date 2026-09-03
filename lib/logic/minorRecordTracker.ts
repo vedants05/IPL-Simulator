@@ -73,6 +73,7 @@ export function trackMinorRecordsOnMatchComplete(
   }
 
   const seasonStr = currentSeason.toString();
+  const brokenOn = match.date ?? seasonStr;
 
   const updateRecord = (id: string, newValue: string, holder: string, notes: string) => {
     const idx = updatedRecords.findIndex(r => r.id === id);
@@ -92,13 +93,19 @@ export function trackMinorRecordsOnMatchComplete(
         : newVal > oldVal;
 
       if (shouldUpdate) {
+        const breakSequence = updatedRecords.reduce(
+          (latest, record) => Math.max(latest, record.breakSequence ?? 0),
+          0,
+        ) + 1;
         updatedRecords[idx] = {
           ...oldRecord,
           value: newValue,
           holder,
           season: seasonStr,
           notes,
-          verified: true
+          verified: true,
+          lastBrokenOn: brokenOn,
+          breakSequence,
         };
         brokenRecordNotices.push(
           `Record Broken! "${oldRecord.title}" has been updated: ${holder} achieved ${newValue} (${notes}, ${seasonStr})`

@@ -111,14 +111,17 @@ function InteractiveWorldMap({ selectedId, hoveredId, onSelect, onHover }: {
             d={location.path}
             fill={region ? (active ? undefined : hovered ? "var(--accent)" : difficultyColor(region.difficulty)) : "var(--text-secondary)"}
             fillOpacity={region ? 1 : 0.32}
-            stroke="var(--surface)"
-            strokeWidth={active ? 2.2 : 0.7}
+            stroke={active ? "var(--accent)" : "var(--surface)"}
+            strokeWidth={0.7}
             vectorEffect="non-scaling-stroke"
-            onClick={selectable ? () => onSelect(regionId) : undefined}
-            onMouseEnter={selectable ? () => onHover(regionId) : undefined}
-            onMouseLeave={selectable ? () => onHover(null) : undefined}
-            className={`${selectable ? "cursor-pointer transition-all duration-150" : "pointer-events-none"} ${active ? "fill-black dark:fill-white" : ""}`}
-            style={{ filter: active || hovered ? "drop-shadow(0 4px 5px rgb(0 0 0 / 0.22))" : undefined }}
+            onClick={selectable ? () => {
+              onSelect(regionId);
+              onHover(regionId);
+            } : undefined}
+            onPointerEnter={selectable ? () => onHover(regionId) : undefined}
+            onPointerLeave={selectable ? () => onHover(null) : undefined}
+            className={`${selectable ? "cursor-pointer transition-colors duration-150" : "pointer-events-none"} ${active ? "fill-black dark:fill-white" : ""}`}
+            style={{ pointerEvents: selectable ? "visiblePainted" : "none" }}
           >
             <title>{region?.name ?? location.name}</title>
           </path>
@@ -245,6 +248,7 @@ export default function ScoutingAssignmentsPage({ shortlist, onToggleShortlist }
   const [hoveredRegion, setHoveredRegion] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [reportsExpanded, setReportsExpanded] = useState(false);
+  const [pendingCancellation, setPendingCancellation] = useState<string | null>(null);
 
   useEffect(() => {
     const completed = reconcileScoutingAssignments(currentDate);
@@ -267,10 +271,20 @@ export default function ScoutingAssignmentsPage({ shortlist, onToggleShortlist }
     const result = startScoutingAssignment({ market, regionId: selectedId, kind });
     if (!result.ok) setNotice(result.message);
   };
-  const cancelAssignment = (assignmentId: string, regionName: string) => {
-    if (!window.confirm(`Cancel the active scouting assignment in ${regionName}? All progress will be lost.`)) return;
-    const result = cancelScoutingAssignment(assignmentId);
+  useEffect(() => {
+    if (!pendingCancellation) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setPendingCancellation(null);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [pendingCancellation]);
+
+  const confirmCancellation = () => {
+    if (!pendingCancellation) return;
+    const result = cancelScoutingAssignment(pendingCancellation);
     setNotice(result.message);
+    setPendingCancellation(null);
   };
   const scoutPlayerInMoreDepth = (reportId: string) => {
     const result = startDeepScoutingAssignment(reportId);
@@ -298,18 +312,18 @@ export default function ScoutingAssignmentsPage({ shortlist, onToggleShortlist }
 
       <div className="col-span-8 row-span-2 grid min-h-0 grid-cols-[minmax(0,1.25fr)_minmax(320px,0.9fr)] gap-3 overflow-hidden">
         <section className="flex min-h-0 flex-col rounded-lg border-2 border-border bg-surface p-4">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#16130f]/10 pb-4">
-            <div className="inline-flex rounded border border-border bg-[#16130f]/5 p-1">
-              <button type="button" onClick={() => setMarket("india")} className={`flex items-center gap-2 rounded px-4 py-2 font-space-mono text-[9px] font-bold uppercase transition-colors ${market === "india" ? "bg-[var(--ink)] text-bg" : "text-text-secondary hover:text-text-primary"}`}><Map size={13} /> Scout India</button>
-              <button type="button" onClick={() => setMarket("international")} className={`flex items-center gap-2 rounded px-4 py-2 font-space-mono text-[9px] font-bold uppercase transition-colors ${market === "international" ? "bg-[var(--ink)] text-bg" : "text-text-secondary hover:text-text-primary"}`}><Globe2 size={13} /> Scout internationally</button>
+          <div className="flex min-w-0 items-center gap-2 border-b border-[#16130f]/10 pb-4">
+            <div className="inline-flex shrink-0 rounded border border-border bg-[#16130f]/5 p-1">
+              <button type="button" onClick={() => setMarket("india")} className={`flex items-center gap-1 whitespace-nowrap rounded px-2 py-2 font-space-mono text-[7px] font-bold uppercase transition-colors ${market === "india" ? "bg-[var(--ink)] text-bg" : "text-text-secondary hover:text-text-primary"}`}><Map size={12} /> Scout India</button>
+              <button type="button" onClick={() => setMarket("international")} className={`flex items-center gap-1 whitespace-nowrap rounded px-2 py-2 font-space-mono text-[7px] font-bold uppercase transition-colors ${market === "international" ? "bg-[var(--ink)] text-bg" : "text-text-secondary hover:text-text-primary"}`}><Globe2 size={12} /> Scout internationally</button>
             </div>
-            <div className="flex items-center gap-3">
-              <div className="hidden font-space-mono text-[8px] font-bold uppercase text-text-secondary md:block">{hoveredName ? `Viewing: ${hoveredName}` : `${visibleRegions.length} selectable regions`}</div>
+            <div className="ml-auto flex min-w-0 items-center justify-end gap-2">
+              <div className="shrink-0 whitespace-nowrap font-space-mono text-[7px] font-bold uppercase text-text-secondary">{hoveredName ? `Viewing: ${hoveredName}` : `${visibleRegions.length} selectable regions`}</div>
               <select
                 value={selectedId}
                 onChange={(event) => selectRegion(event.target.value)}
                 aria-label={market === "india" ? "Select an Indian state" : "Select an international country"}
-                className="max-w-48 rounded border border-border bg-surface px-2.5 py-2 font-space-mono text-[8px] font-bold uppercase text-text-primary outline-none focus:border-accent"
+                className="w-[9.5rem] shrink-0 rounded border border-border bg-surface px-2 py-2 font-space-mono text-[7px] font-bold uppercase text-text-primary outline-none focus:border-accent"
               >
                 {visibleRegions.map((region) => <option key={region.id} value={region.id}>{region.name}</option>)}
               </select>
@@ -357,19 +371,29 @@ export default function ScoutingAssignmentsPage({ shortlist, onToggleShortlist }
                 : undefined;
               const targetPlayer = targetReport ? players[targetReport.playerId] : undefined;
               const assignmentLabel = assignment?.kind === "deep-scout" ? "In-depth player scout" : option?.label;
+              const isPendingCancellation = assignment?.id === pendingCancellation;
               return assignment && region && assignmentLabel ? (
-                <div key={slot} className="flex min-h-0 min-w-0 flex-col rounded border border-border p-2">
-                  <div className="flex items-center justify-between"><span className="font-space-mono text-[8px] font-bold uppercase text-accent">Scout slot {slot}</span><Clock3 size={13} className="text-text-secondary" /></div>
-                  <div className="mt-1 truncate font-anton text-[13px] uppercase text-text-primary">{targetPlayer?.name ?? region.name}</div>
-                  <div className="mt-1 font-space-mono text-[8px] font-bold uppercase text-text-secondary">{assignmentLabel}</div>
-                  <div className="mt-auto flex items-center justify-between gap-1 border-t border-[#16130f]/10 pt-1.5 font-space-mono text-[7px] font-bold uppercase"><span className="text-text-secondary">Due</span><span className="truncate text-text-primary">{assignment.completesOn}</span></div>
-                  <button
-                    type="button"
-                    onClick={() => cancelAssignment(assignment.id, targetPlayer?.name ?? region.name)}
-                    className="mt-1.5 flex w-full shrink-0 items-center justify-center gap-1 rounded border border-danger/35 px-1 py-0.5 font-space-mono text-[7px] font-bold uppercase text-danger transition-colors hover:bg-danger/10"
-                  >
-                    <X size={11} /> Cancel assignment
-                  </button>
+                <div key={slot} className="relative min-h-0 min-w-0 overflow-hidden rounded border border-border">
+                  <div className={`flex h-full min-h-0 min-w-0 flex-col p-2 transition-all ${isPendingCancellation ? "blur-[2px] brightness-75" : ""}`}>
+                    <div className="flex items-center justify-between"><span className="font-space-mono text-[8px] font-bold uppercase text-accent">Scout slot {slot}</span><Clock3 size={13} className="text-text-secondary" /></div>
+                    <div className="mt-1 truncate font-anton text-[13px] uppercase text-text-primary">{targetPlayer?.name ?? region.name}</div>
+                    <div className="mt-1 font-space-mono text-[8px] font-bold uppercase text-text-secondary">{assignmentLabel}</div>
+                    <div className="mt-auto flex items-center justify-between gap-1 border-t border-[#16130f]/10 pt-1.5 font-space-mono text-[7px] font-bold uppercase"><span className="text-text-secondary">Due</span><span className="truncate text-text-primary">{assignment.completesOn}</span></div>
+                    <button
+                      type="button"
+                      disabled={pendingCancellation !== null}
+                      onClick={() => setPendingCancellation(assignment.id)}
+                      className="mt-1.5 flex w-full shrink-0 items-center justify-center gap-1 rounded border border-danger/35 px-1 py-0.5 font-space-mono text-[7px] font-bold uppercase text-danger transition-colors hover:bg-danger/10 disabled:cursor-default"
+                    >
+                      <X size={11} /> Cancel assignment
+                    </button>
+                  </div>
+                  {isPendingCancellation && (
+                    <div className="absolute inset-0 z-10 flex items-center justify-center gap-1.5 bg-surface/35 px-1 backdrop-blur-[1px]">
+                      <button type="button" autoFocus onClick={() => setPendingCancellation(null)} className="rounded border border-border bg-surface px-2 py-1.5 font-space-mono text-[7px] font-bold uppercase text-text-primary shadow-sm hover:border-accent">Go back</button>
+                      <button type="button" onClick={confirmCancellation} className="rounded border border-danger bg-danger px-2 py-1.5 font-space-mono text-[7px] font-bold uppercase text-white shadow-sm hover:brightness-110">Confirm</button>
+                    </div>
+                  )}
                 </div>
               ) : <div key={slot} className="flex min-h-20 items-center justify-center rounded border border-dashed border-border px-1 text-center font-space-mono text-[7px] font-bold uppercase text-text-secondary">Scout slot {slot} available</div>;
             })}
@@ -482,6 +506,7 @@ export default function ScoutingAssignmentsPage({ shortlist, onToggleShortlist }
           </>
         )}
       </section>
+
     </div>
   );
 }

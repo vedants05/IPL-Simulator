@@ -8,6 +8,8 @@ export interface MinorRecord {
   notes?: string;
   source?: string;
   verified: boolean;
+  lastBrokenOn?: string;
+  breakSequence?: number;
 }
 
 export const MINOR_RECORDS: MinorRecord[] = [

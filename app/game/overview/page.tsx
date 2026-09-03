@@ -9096,9 +9096,25 @@ This record has been officially verified and added to the IPL Minor Records arch
                 const recentTrades = seasonTrades.slice(-2).reverse();
                 const playedMatches = fixtures.filter((fixture) => fixture.played).length;
                 const seasonProgress = Math.round((playedMatches / Math.max(1, fixtures.length)) * 100);
-                const verifiedRecords = minorRecords.filter((record) => record.verified);
-                const recordCategories = new Set(minorRecords.map((record) => record.category)).size;
-                const featuredRecords = verifiedRecords.slice(0, 2);
+                const recentlyBrokenRecords = minorRecords
+                  .filter((record) => record.lastBrokenOn)
+                  .sort((left, right) => (
+                    (right.lastBrokenOn ?? "").localeCompare(left.lastBrokenOn ?? "")
+                    || (right.breakSequence ?? 0) - (left.breakSequence ?? 0)
+                  ))
+                  .slice(0, 9);
+                const hasCareerRecordBreaks = recentlyBrokenRecords.length > 0;
+                const featuredRecords = hasCareerRecordBreaks
+                  ? recentlyBrokenRecords
+                  : [...minorRecords]
+                    .filter((record) => record.season)
+                    .sort((left, right) => {
+                      const latestYear = (season?: string) => Math.max(
+                        ...(season?.match(/\d{4}/g)?.map(Number) ?? [0]),
+                      );
+                      return latestYear(right.season) - latestYear(left.season);
+                    })
+                    .slice(0, 9);
 
                 return (
                   <div className="grid h-[calc(100vh-200px)] min-h-[560px] grid-cols-12 grid-rows-2 gap-4 overflow-visible">
@@ -9217,18 +9233,31 @@ This record has been officially verified and added to the IPL Minor Records arch
                     <button
                       type="button"
                       onClick={() => setActiveSubTab("minorrecords")}
-                      className="group relative col-span-5 flex min-h-0 flex-col overflow-hidden rounded-xl border-2 border-border bg-surface p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-accent hover:shadow-md"
+                      className="group relative col-span-5 flex min-h-0 flex-col overflow-hidden rounded-xl border-2 border-border bg-surface p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-accent hover:shadow-md"
                     >
                       <div className="pointer-events-none absolute -bottom-16 -right-8 size-40 rounded-full bg-amber-500/10 blur-3xl" />
-                      <div className="relative flex items-start justify-between border-b border-border pb-3">
+                      <div className="relative flex items-start justify-between border-b border-border pb-2">
                         <div className="flex items-center gap-3"><span className="flex size-9 items-center justify-center rounded-lg bg-warning/10 text-warning"><Trophy size={18} aria-hidden="true" /></span><div><p className="font-space-mono text-[8px] font-bold uppercase tracking-[0.18em] text-text-secondary">Competition archive</p><h3 className="mt-1 font-anton text-lg uppercase leading-none text-text-primary">Minor Records</h3></div></div>
                         <ArrowUpRight size={15} className="text-accent transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
                       </div>
-                      <div className="relative mt-3 grid grid-cols-[auto_auto_1fr] items-end gap-5"><div><p className="font-anton text-3xl leading-none text-text-primary">{minorRecords.length}</p><p className="font-space-mono text-[8px] font-bold uppercase text-text-secondary">Records</p></div><div><p className="font-anton text-3xl leading-none text-success">{verifiedRecords.length}</p><p className="font-space-mono text-[8px] font-bold uppercase text-text-secondary">Verified</p></div><p className="pb-0.5 text-right font-space-mono text-[8px] font-bold uppercase text-text-secondary">{recordCategories} categories</p></div>
-                      <div className="relative mt-3 grid min-h-0 flex-1 grid-cols-2 gap-2 overflow-hidden">
-                        {featuredRecords.map((record) => <div key={record.id} className="min-w-0 rounded-lg bg-bg/70 p-3"><p className="line-clamp-2 text-[10px] font-semibold leading-tight text-text-primary">{record.title}</p><p className="mt-2 truncate font-anton text-lg text-warning">{record.value}</p><p className="truncate font-space-mono text-[8px] uppercase text-text-secondary">{record.holder}</p></div>)}
-                      </div>
-                      <span className="relative mt-2 inline-flex items-center gap-1 font-space-mono text-[8px] font-bold uppercase tracking-wider text-accent">Browse the archive <ChevronRight size={12} /></span>
+                      <p className="relative mt-2 font-space-mono text-[8px] font-bold uppercase tracking-[0.16em] text-text-secondary">{hasCareerRecordBreaks ? "Most recently broken" : "Most recent records"}</p>
+                      {featuredRecords.length > 0 ? (
+                        <div className="relative mt-1.5 grid min-h-0 flex-1 grid-cols-3 grid-rows-3 gap-1.5 overflow-hidden">
+                          {featuredRecords.map((record) => (
+                            <div key={record.id} className="flex min-h-0 min-w-0 flex-col rounded-md bg-bg/70 px-2 py-1.5">
+                              <p className="text-[8px] font-semibold leading-[9px] text-text-primary">{record.title}</p>
+                              <p className="mt-auto font-anton text-sm leading-none text-warning">{record.value}</p>
+                              <p className="mt-0.5 break-words font-space-mono text-[6px] font-bold uppercase leading-[7px] text-text-secondary">{record.holder}</p>
+                              <p className="break-words font-space-mono text-[6px] uppercase leading-[7px] text-text-secondary">
+                                {hasCareerRecordBreaks ? `Broken ${record.lastBrokenOn}` : `Record year ${record.season}`}{record.notes ? ` · ${record.notes}` : ""}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="relative mt-2 flex min-h-0 flex-1 items-center justify-center rounded-lg border border-dashed border-border bg-bg/40 px-4 text-center text-xs text-text-secondary">No dated records are available.</div>
+                      )}
+                      <span className="relative mt-1 inline-flex items-center gap-1 font-space-mono text-[8px] font-bold uppercase tracking-wider text-accent">Browse the archive <ChevronRight size={12} /></span>
                     </button>
                   </div>
                 );
