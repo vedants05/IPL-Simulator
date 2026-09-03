@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { CalendarDays, Check, Clock3, Globe2, Map, Search, Star, UserPlus, Users, X } from "lucide-react";
+import { CalendarDays, Check, Clock3, Globe2, Map, Maximize2, Minimize2, Search, Star, UserPlus, Users, X } from "lucide-react";
 import IndiaMap from "@svg-maps/india";
 import WorldMap from "@svg-maps/world";
 import { useGameStore } from "@/lib/store/gameStore";
@@ -134,6 +134,12 @@ function RegionDetails({ region, networkLevel, activeSlots, onStart }: {
   activeSlots: number;
   onStart: (kind: ScoutingAssignmentKind) => void;
 }) {
+  const [pendingKind, setPendingKind] = useState<ScoutingAssignmentKind | null>(null);
+
+  useEffect(() => {
+    setPendingKind(null);
+  }, [region.id]);
+
   return (
     <div className="flex h-full min-h-0 flex-col rounded-lg border-2 border-border bg-surface p-3">
       <div className="shrink-0 border-b border-[#16130f]/10 pb-2">
@@ -174,13 +180,15 @@ function RegionDetails({ region, networkLevel, activeSlots, onStart }: {
       </div>
 
       <div className="grid min-h-0 flex-1 grid-rows-3 gap-1.5 overflow-hidden border-t border-[#16130f]/10 pt-2.5">
-        {SCOUTING_ASSIGNMENT_OPTIONS.map((option) => (
+        {SCOUTING_ASSIGNMENT_OPTIONS.map((option) => {
+          const isPending = pendingKind === option.kind;
+          return (
+          <div key={option.kind} className="relative min-h-0 overflow-hidden rounded">
           <button
-            key={option.kind}
             type="button"
-            disabled={activeSlots >= MAX_ACTIVE_SCOUTING_ASSIGNMENTS}
-            onClick={() => onStart(option.kind)}
-            className="group flex min-h-0 w-full flex-col justify-center rounded border border-border px-2.5 py-1.5 text-left transition-colors hover:border-accent hover:bg-accent/5 disabled:cursor-not-allowed disabled:opacity-40"
+            disabled={activeSlots >= MAX_ACTIVE_SCOUTING_ASSIGNMENTS || pendingKind !== null}
+            onClick={() => setPendingKind(option.kind)}
+            className={`group flex h-full min-h-0 w-full flex-col justify-center rounded border border-border px-2.5 py-1.5 text-left transition-all hover:border-accent hover:bg-accent/5 disabled:cursor-not-allowed ${activeSlots >= MAX_ACTIVE_SCOUTING_ASSIGNMENTS ? "opacity-40" : ""} ${isPending ? "blur-[2px] brightness-75" : ""}`}
           >
             <span className="flex items-center justify-between gap-3">
               <span className="font-anton text-[12px] uppercase text-text-primary">{option.label}</span>
@@ -193,7 +201,26 @@ function RegionDetails({ region, networkLevel, activeSlots, onStart }: {
                 : `${option.reportCount} reports · up to ${option.newDiscoveryLimit} new discoveries`}
             </span>
           </button>
-        ))}
+          {isPending && (
+            <div className="absolute inset-0 z-10 flex items-center justify-center gap-2 bg-surface/35 px-2 backdrop-blur-[1px]">
+              <button type="button" onClick={() => setPendingKind(null)} className="rounded border border-border bg-surface px-3 py-1.5 font-space-mono text-[8px] font-bold uppercase text-text-primary shadow-sm hover:border-accent">
+                Go back
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onStart(option.kind);
+                  setPendingKind(null);
+                }}
+                className="rounded border border-accent bg-accent px-3 py-1.5 font-space-mono text-[8px] font-bold uppercase text-white shadow-sm hover:brightness-110"
+              >
+                Confirm
+              </button>
+            </div>
+          )}
+          </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -217,6 +244,7 @@ export default function ScoutingAssignmentsPage({ shortlist, onToggleShortlist }
   const [selectedInternational, setSelectedInternational] = useState("australia");
   const [hoveredRegion, setHoveredRegion] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [reportsExpanded, setReportsExpanded] = useState(false);
 
   useEffect(() => {
     const completed = reconcileScoutingAssignments(currentDate);
@@ -237,7 +265,7 @@ export default function ScoutingAssignmentsPage({ shortlist, onToggleShortlist }
   };
   const startAssignment = (kind: ScoutingAssignmentKind) => {
     const result = startScoutingAssignment({ market, regionId: selectedId, kind });
-    setNotice(result.message);
+    if (!result.ok) setNotice(result.message);
   };
   const cancelAssignment = (assignmentId: string, regionName: string) => {
     if (!window.confirm(`Cancel the active scouting assignment in ${regionName}? All progress will be lost.`)) return;
@@ -246,12 +274,12 @@ export default function ScoutingAssignmentsPage({ shortlist, onToggleShortlist }
   };
   const scoutPlayerInMoreDepth = (reportId: string) => {
     const result = startDeepScoutingAssignment(reportId);
-    setNotice(result.message);
+    if (!result.ok) setNotice(result.message);
   };
   const hoveredName = hoveredRegion ? getScoutingRegion(hoveredRegion)?.name : undefined;
 
   return (
-    <div className="grid h-full min-h-0 grid-cols-12 grid-rows-[auto_minmax(210px,0.82fr)_minmax(0,1.18fr)] gap-3 overflow-hidden">
+    <div className="relative grid h-full min-h-0 grid-cols-12 grid-rows-[auto_minmax(210px,0.82fr)_minmax(0,1.18fr)] gap-3 overflow-hidden p-1">
       <section className="col-span-12 rounded-lg border-2 border-border bg-surface px-3 py-2">
         <div className="flex items-center justify-between gap-4">
           <div>
@@ -349,15 +377,68 @@ export default function ScoutingAssignmentsPage({ shortlist, onToggleShortlist }
         )}
       </section>
 
-      <section className="col-span-4 row-start-3 flex min-h-0 flex-col overflow-hidden rounded-lg border-2 border-border bg-surface p-3">
+      <section className={`${reportsExpanded ? "absolute inset-1 z-30" : "col-span-4 row-start-3"} flex min-h-0 flex-col overflow-hidden rounded-lg border-2 border-border bg-surface p-3 shadow-sm`}>
         <div className="mb-2 flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#16130f]/10 pb-2">
           <div><h2 className="font-anton text-[18px] uppercase text-text-primary">Scouting reports</h2><p className="mt-1 text-[11px] text-text-secondary">Rating ranges narrow as assignment depth and regional network strength improve.</p></div>
-          <div className="flex items-center gap-2 font-space-mono text-[8px] font-bold uppercase text-text-secondary"><CalendarDays size={13} /> Reserved for the {currentSeason + 1} auction intake</div>
+          <div className="flex items-center gap-2">
+            <div className="hidden items-center gap-2 font-space-mono text-[8px] font-bold uppercase text-text-secondary sm:flex"><CalendarDays size={13} /> Reserved for the {currentSeason + 1} auction intake</div>
+            <button type="button" onClick={() => setReportsExpanded((value) => !value)} className="flex h-7 w-7 items-center justify-center rounded border border-border text-text-secondary transition-colors hover:border-accent hover:text-accent" title={reportsExpanded ? "Collapse scouting reports" : "Expand scouting reports"} aria-label={reportsExpanded ? "Collapse scouting reports" : "Expand scouting reports"}>
+              {reportsExpanded ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
+            </button>
+          </div>
         </div>
         {latestReports.length === 0 ? (
           <div className="flex min-h-0 flex-1 flex-col items-center justify-center rounded border border-dashed border-border text-center"><Search size={22} className="text-text-secondary" /><div className="mt-2 font-space-mono text-[9px] font-bold uppercase text-text-secondary">No completed reports yet</div></div>
         ) : (
-          <div className="grid min-h-0 flex-1 grid-cols-1 gap-2 overflow-y-auto pr-1">
+          <>
+          {reportsExpanded && (
+            <div className="min-h-0 flex-1 overflow-auto border border-border">
+              <table className="w-full min-w-[1080px] table-fixed text-left">
+                <thead className="sticky top-0 z-10 bg-surface2 font-space-mono text-[8px] font-bold uppercase tracking-wider text-text-secondary shadow-sm">
+                  <tr>
+                    <th className="w-52 px-4 py-3">Player</th>
+                    <th className="w-14 px-3 py-3 text-center">Age</th>
+                    <th className="w-32 px-3 py-3">Role</th>
+                    <th className="w-36 px-3 py-3">Region</th>
+                    <th className="w-24 px-3 py-3 text-center">Ability</th>
+                    <th className="w-24 px-3 py-3 text-center">Potential</th>
+                    <th className="w-24 px-3 py-3 text-center">Confidence</th>
+                    <th className="w-28 px-3 py-3">Status</th>
+                    <th className="px-3 py-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {latestReports.map((report) => {
+                    const player = players[report.playerId];
+                    const region = getScoutingRegion(report.regionId);
+                    if (!player || !region) return null;
+                    const isShortlisted = shortlist.includes(player.id);
+                    const deepScoutActive = active.some((assignment) => assignment.targetReportId === report.id);
+                    const noScoutSlotAvailable = active.length >= MAX_ACTIVE_SCOUTING_ASSIGNMENTS;
+                    return (
+                      <tr key={report.id} className="bg-surface text-[11px] transition-colors hover:bg-black/[0.03] dark:hover:bg-white/[0.03]">
+                        <td className="px-4 py-3"><div className="truncate font-semibold text-text-primary">{player.name}</div><div className="mt-0.5 truncate text-[9px] text-text-secondary">{report.summary}</div></td>
+                        <td className="px-3 py-3 text-center font-space-mono text-text-secondary">{player.age}</td>
+                        <td className="truncate px-3 py-3 font-space-mono text-[9px] font-bold uppercase text-text-secondary">{player.role}</td>
+                        <td className="truncate px-3 py-3 text-text-secondary">{region.name}</td>
+                        <td className="px-3 py-3 text-center font-anton text-[15px] text-text-primary">{report.currentAbilityRange[0]}–{report.currentAbilityRange[1]}</td>
+                        <td className="px-3 py-3 text-center font-anton text-[15px] text-text-primary">{report.potentialRange[0]}–{report.potentialRange[1]}</td>
+                        <td className="px-3 py-3 text-center font-space-mono font-bold text-text-primary">{report.confidence}%</td>
+                        <td className="px-3 py-3 font-space-mono text-[8px] font-bold uppercase text-text-secondary">{isShortlisted ? "Shortlisted" : deepScoutActive ? "Deep scout active" : report.confidence >= 100 ? "Fully scouted" : "Available"}</td>
+                        <td className="px-3 py-2">
+                          <div className="flex justify-end gap-2">
+                            <button type="button" onClick={() => onToggleShortlist(player.id)} className={`h-8 whitespace-nowrap rounded border px-2 font-space-mono text-[7px] font-bold uppercase ${isShortlisted ? "border-[var(--ink)] bg-[var(--ink)] text-bg" : "border-border text-text-primary hover:border-accent"}`}>{isShortlisted ? "Remove shortlist" : "Shortlist"}</button>
+                            <button type="button" disabled={report.confidence >= 100 || deepScoutActive || noScoutSlotAvailable} onClick={() => scoutPlayerInMoreDepth(report.id)} className="h-8 whitespace-nowrap rounded border border-accent px-2 font-space-mono text-[7px] font-bold uppercase text-accent hover:bg-accent/10 disabled:cursor-default disabled:border-border disabled:text-text-secondary disabled:opacity-50">{report.confidence >= 100 ? "Complete" : deepScoutActive ? "In progress" : "Deep scout"}</button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <div className={`min-h-0 flex-1 content-start gap-2 overflow-y-auto pr-1 ${reportsExpanded ? "hidden" : "grid grid-cols-2"}`}>
             {latestReports.map((report) => {
               const player = players[report.playerId];
               const region = getScoutingRegion(report.regionId);
@@ -366,20 +447,20 @@ export default function ScoutingAssignmentsPage({ shortlist, onToggleShortlist }
               const deepScoutActive = active.some((assignment) => assignment.targetReportId === report.id);
               const noScoutSlotAvailable = active.length >= MAX_ACTIVE_SCOUTING_ASSIGNMENTS;
               return (
-                <article key={report.id} className="rounded border border-border p-3 transition-colors hover:border-accent/60">
-                  <div className="flex items-start justify-between gap-4">
+                <article key={report.id} className={`rounded border border-border transition-colors hover:border-accent/60 ${reportsExpanded ? "p-3" : "p-2"}`}>
+                  <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <span className="flex items-center gap-2"><span className="truncate font-anton text-[16px] uppercase text-text-primary">{player.name}</span>{report.isNewDiscovery && <span className="rounded bg-accent/15 px-1.5 py-0.5 font-space-mono text-[7px] font-bold uppercase text-accent">New</span>}</span>
-                      <span className="mt-1 block font-space-mono text-[8px] font-bold uppercase text-text-secondary">{player.age} · {player.role} · {region.name}</span>
+                      <span className={`${reportsExpanded ? "truncate text-[16px]" : "whitespace-normal text-[13px] leading-tight"} block font-anton uppercase text-text-primary`}>{player.name}</span>
+                      <span className="mt-0.5 block truncate font-space-mono text-[7px] font-bold uppercase text-text-secondary">{player.age} · {player.role}</span>
                     </div>
-                    <div className="shrink-0 text-right"><div className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Confidence</div><div className="font-anton text-[17px] text-text-primary">{report.confidence}%</div></div>
+                    <div className="shrink-0 text-right"><div className="font-space-mono text-[6px] font-bold uppercase text-text-secondary">Confidence</div><div className={`font-anton text-text-primary ${reportsExpanded ? "text-[14px]" : "text-[11px]"}`}>{report.confidence}%</div></div>
                   </div>
-                  <div className="mt-3 grid grid-cols-2 gap-2">
-                    <div className="rounded bg-[#16130f]/5 p-2"><div className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Current ability</div><div className="mt-1 font-anton text-[16px] text-text-primary">{report.currentAbilityRange[0]}–{report.currentAbilityRange[1]}</div></div>
-                    <div className="rounded bg-[#16130f]/5 p-2"><div className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Potential</div><div className="mt-1 font-anton text-[16px] text-text-primary">{report.potentialRange[0]}–{report.potentialRange[1]}</div></div>
+                  <div className={`grid grid-cols-2 gap-1.5 ${reportsExpanded ? "mt-3" : "mt-1.5"}`}>
+                    <div className={`rounded bg-[#16130f]/5 ${reportsExpanded ? "p-2" : "px-1.5 py-1"}`}><div className="font-space-mono text-[6px] font-bold uppercase text-text-secondary">{reportsExpanded ? "Current ability" : "Ability"}</div><div className={`font-anton text-text-primary ${reportsExpanded ? "mt-1 text-[16px]" : "text-[13px]"}`}>{report.currentAbilityRange[0]}–{report.currentAbilityRange[1]}</div></div>
+                    <div className={`rounded bg-[#16130f]/5 ${reportsExpanded ? "p-2" : "px-1.5 py-1"}`}><div className="font-space-mono text-[6px] font-bold uppercase text-text-secondary">Potential</div><div className={`font-anton text-text-primary ${reportsExpanded ? "mt-1 text-[16px]" : "text-[13px]"}`}>{report.potentialRange[0]}–{report.potentialRange[1]}</div></div>
                   </div>
-                  <p className="mt-3 text-[11px] leading-relaxed text-text-secondary">{report.summary}</p>
-                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  {reportsExpanded && <p className="mt-3 text-[11px] leading-relaxed text-text-secondary">{report.summary}</p>}
+                  {reportsExpanded && <div className="mt-3 grid gap-2 sm:grid-cols-2">
                     <button type="button" onClick={() => onToggleShortlist(player.id)} className={`flex min-h-9 items-center justify-center gap-2 rounded border px-3 py-2 font-space-mono text-[8px] font-bold uppercase transition-colors ${isShortlisted ? "border-[var(--ink)] bg-[var(--ink)] text-bg" : "border-border text-text-primary hover:border-accent hover:bg-accent/5"}`}>
                       {isShortlisted ? <Check size={12} /> : <UserPlus size={12} />} {isShortlisted ? "On auction shortlist" : "Add to auction shortlist"}
                     </button>
@@ -392,11 +473,13 @@ export default function ScoutingAssignmentsPage({ shortlist, onToggleShortlist }
                       {report.confidence >= 100 ? <Check size={12} /> : deepScoutActive ? <Clock3 size={12} /> : <Search size={12} />}
                       {report.confidence >= 100 ? "Fully scouted" : deepScoutActive ? "Scouting in progress" : noScoutSlotAvailable ? "No scout slot available" : "Scout in more depth · 14 days"}
                     </button>
-                  </div>
+                  </div>}
+                  {!reportsExpanded && (isShortlisted || deepScoutActive) && <div className="mt-1.5 truncate font-space-mono text-[6px] font-bold uppercase text-text-secondary">{isShortlisted ? "Shortlisted" : "Deep scout active"}</div>}
                 </article>
               );
             })}
           </div>
+          </>
         )}
       </section>
     </div>

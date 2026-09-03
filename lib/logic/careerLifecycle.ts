@@ -1920,6 +1920,11 @@ export function processPostAuctionCareer(input: {
   const discretionary: Array<{ player: Player; record: CareerRetirementRecord; priority: number }> = [];
   Object.values(updated).forEach((player) => {
     const rating = Math.max(player.currentBatting ?? 0, player.currentBowling ?? 0);
+    // Contracted players have already survived the pre-retention retirement
+    // pass and may have consumed a retention slot or auction purse. They must
+    // not retire immediately after being retained or bought. Their next
+    // retirement decision belongs to the following pre-retention pass.
+    if (player.currentTeamId) return;
     if (
       isMandatoryVeteranRetirement(player)
       && !hasOpeningSeasonDhoniRetirementGrace(player)
@@ -1927,7 +1932,6 @@ export function processPostAuctionCareer(input: {
       mandatory.push({ player, record: retirementRecord(player, input.season, player.age, "natural") });
       return;
     }
-    if (player.currentTeamId) return;
     const streak = player.careerState?.unsoldAuctionStreak ?? 0;
     const belowStandardSeasons = player.careerState?.belowAuctionStandardSeasons ?? 0;
     if (belowStandardSeasons >= CAREER_POLICY.belowAuctionStandardRetirementSeasons) {

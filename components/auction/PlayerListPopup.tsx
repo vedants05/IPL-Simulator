@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Target, X } from "lucide-react";
 import { useGameStore } from "@/lib/store/gameStore";
 import { AuctionTargetPriority, Player } from "@/lib/types";
@@ -35,6 +35,7 @@ function PlayerRow({
   buyerColor,
   targetMax,
   targetPriority,
+  isPlannerShortlisted = false,
   onSetTarget,
   onRemoveTarget,
 }: {
@@ -45,6 +46,7 @@ function PlayerRow({
   buyerColor?: string;
   targetMax?: number;
   targetPriority?: AuctionTargetPriority;
+  isPlannerShortlisted?: boolean;
   onSetTarget?: (maxBidLakhs: number, priority: AuctionTargetPriority) => void;
   onRemoveTarget?: () => void;
 }) {
@@ -75,7 +77,12 @@ function PlayerRow({
   const targetButtonDisabled = targetButtonLocked || targetLimitReached;
 
   return (
-    <div className="flex flex-col border-b border-border/10">
+    <div
+      className="flex flex-col border-b border-border/10"
+      style={type === "left" && isPlannerShortlisted ? {
+        background: "linear-gradient(90deg, var(--team-primary-tint, rgba(29, 85, 196, 0.12)), transparent 72%)",
+      } : undefined}
+    >
       <div
         onClick={() => setIsOpen((v) => !v)}
         className="flex items-center justify-between px-6 py-[9px] hover:bg-black/5 cursor-pointer transition-colors select-none"
@@ -83,8 +90,22 @@ function PlayerRow({
         <div className="flex items-center gap-3 min-w-0 flex-1">
 
           <div className="min-w-0">
-            <div className="font-barlow font-semibold text-[13px] text-text-primary truncate leading-tight">
-              {player.name}
+            <div className="flex min-w-0 items-center gap-2 leading-tight">
+              <span className="truncate font-barlow text-[13px] font-semibold text-text-primary">
+                {player.name}
+              </span>
+              {type === "left" && isPlannerShortlisted && (
+                <span
+                  className="shrink-0 rounded-[2px] border px-1.5 py-0.5 font-space-mono text-[7px] font-bold tracking-[.08em]"
+                  style={{
+                    backgroundColor: "var(--team-accent)",
+                    borderColor: "var(--team-accent)",
+                    color: "var(--team-accent-text)",
+                  }}
+                >
+                  SHORTLISTED
+                </span>
+              )}
             </div>
             <div className="flex items-center gap-1.5 mt-[1px]">
               {player.nationality === "Overseas" && (
@@ -271,6 +292,28 @@ export default function PlayerListPopup({
   onClose: () => void;
 }) {
   const { auction, players, teams, userTeamId, auctionTargets, auctionTargetPriorities, setAuctionTarget, removeAuctionTarget } = useGameStore();
+  const [plannerShortlist, setPlannerShortlist] = useState<Set<string>>(() => new Set());
+
+  useEffect(() => {
+    try {
+      const savedCareer = localStorage.getItem(`ipl_career_${userTeamId}`);
+      if (!savedCareer) {
+        setPlannerShortlist(new Set());
+        return;
+      }
+
+      const parsed = JSON.parse(savedCareer) as { shortlist?: unknown };
+      setPlannerShortlist(new Set(
+        Array.isArray(parsed.shortlist)
+          ? parsed.shortlist.filter((id): id is string => typeof id === "string")
+          : []
+      ));
+    } catch (error) {
+      console.warn("Unable to load auction planner shortlist:", error);
+      setPlannerShortlist(new Set());
+    }
+  }, [userTeamId]);
+
   if (!auction) return null;
 
   const ids =
@@ -392,6 +435,7 @@ export default function PlayerListPopup({
                       key={p.id}
                       player={p}
                       type={type}
+                      isPlannerShortlisted={plannerShortlist.has(p.id)}
                       targetMax={auctionTargets[p.id]}
                       targetPriority={auctionTargetPriorities[p.id]}
                       onSetTarget={(maxBid, priority) => setAuctionTarget(p.id, maxBid, priority)}

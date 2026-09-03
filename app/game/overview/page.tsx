@@ -578,11 +578,11 @@ function ClubProfileSummaryTile({
             </div>
           </div>
         </div>
-        <div className="rounded-lg border border-border bg-surface/75 p-3">
+        <div className="flex flex-col rounded-lg border border-border bg-surface/75 p-3">
           <div className="font-space-mono text-[7px] font-bold uppercase tracking-[0.16em] text-text-secondary">Leading players</div>
-          <div className="mt-2 grid grid-cols-5 gap-2">
+          <div className="grid flex-1 grid-cols-5 items-center gap-2 pt-1">
             {featuredPlayers.map((player) => (
-              <div key={player.id} className="min-w-0">
+              <div key={player.id} className="min-w-0 text-center">
                 <div className="truncate font-barlow text-[10px] font-bold text-text-primary">{player.name}</div>
                 <div className="mt-0.5 font-space-mono text-[7px] font-bold text-accent">{getPlayerRating(player)}</div>
               </div>
@@ -594,7 +594,15 @@ function ClubProfileSummaryTile({
   );
 }
 
-function ManagerOfficeSummaryTile({ onOpen }: { onOpen: () => void }) {
+function ManagerOfficeSummaryTile({
+  boardConfidence,
+  onOpen,
+}: {
+  boardConfidence: number;
+  onOpen: () => void;
+}) {
+  const confidenceColor = `hsl(${boardConfidence * 1.2} 72% 42%)`;
+
   return (
     <button
       type="button"
@@ -606,12 +614,20 @@ function ManagerOfficeSummaryTile({ onOpen }: { onOpen: () => void }) {
       </div>
       <div className="space-y-4">
         <div>
-          <div className="mb-1 flex justify-between font-space-mono text-xs text-text-secondary">
+          <div className="mb-1.5 font-space-mono text-xs text-text-secondary">
             <span>BOARD CONFIDENCE</span>
-            <span className="font-bold text-text-primary">--%</span>
           </div>
-          <div className="h-2 w-full overflow-hidden rounded bg-[#16130f]/10">
-            <div className="h-full bg-success" style={{ width: "0%" }} />
+          <div className="relative h-7 w-full overflow-hidden rounded border border-[#16130f]/20 bg-[#16130f]/10">
+            <div
+              className="h-full transition-all duration-500"
+              style={{
+                width: `${Math.max(boardConfidence, 1.5)}%`,
+                backgroundColor: confidenceColor,
+              }}
+            />
+            <span className="absolute inset-0 flex items-center justify-center font-space-mono text-[10px] font-bold text-text-primary">
+              {boardConfidence}%
+            </span>
           </div>
         </div>
         <div className="font-space-mono text-xs text-text-secondary">
@@ -5360,6 +5376,26 @@ This record has been officially verified and added to the IPL Minor Records arch
       || left.name.localeCompare(right.name)
     ))
     .slice(0, 5), [players, userTeam?.squad]);
+  const managerBoardConfidence = useMemo(() => {
+    const expectedRanks = calculateStaffExpectedRanks({
+      teamIds: Object.keys(teams),
+      teams,
+      players,
+      staffState: careerStaff,
+      previousSeason: null,
+    });
+    const expectedPosition = expectedRanks.overall[userTeamId] ?? 3;
+    const standingIndex = standings.findIndex((row) => row.teamId === userTeamId);
+    const actualPosition = standingIndex >= 0 ? standingIndex + 1 : 1;
+    const rawPressure = calculateSeasonUnderperformancePressure(expectedPosition, actualPosition);
+    const effectivePressure = calculateEffectiveJobPressure({
+      rawPressure,
+      teamId: userTeamId,
+      ownershipPatienceModifier: getClubOwnership(userTeamId).patience_modifier,
+    });
+
+    return Math.round(Math.max(0, Math.min(100, 100 - effectivePressure)) * 10) / 10;
+  }, [careerStaff, players, standings, teams, userTeamId]);
   const supporterFixtures = useMemo(() => {
     const byId = new Map<string, Match>();
     careerSeasonArchives.forEach((archive) => {
@@ -5806,7 +5842,7 @@ This record has been officially verified and added to the IPL Minor Records arch
   }
 
   return (
-    <div className={`app-theme-background overview-page h-[calc(100vh-3rem)] flex overflow-hidden bg-bg relative ${activeTab === "history" ? "compact-history" : ""}`}>
+    <div className="app-theme-background overview-page relative flex h-[calc(100vh-3rem)] overflow-hidden bg-bg">
       {seasonTransitionStage && (
         <div
           className="fixed inset-0 z-[250] flex items-center justify-center bg-[#0b1018]/95 px-6 text-white backdrop-blur-sm"
@@ -6048,7 +6084,7 @@ This record has been officially verified and added to the IPL Minor Records arch
         </header>
 
         {/* Dynamic Detail Body Screen */}
-        <div className={`flex min-h-0 flex-1 flex-col ${activeSubTab === "overview"
+        <div className={`flex min-h-0 flex-1 flex-col ${activeTab === "history" ? "compact-history" : ""} ${activeSubTab === "overview"
           ? `${activeTab === "scouting" ? "overflow-hidden" : "overflow-y-auto"} p-8`
           : activeTab === "history" || (activeTab === "league" && activeSubTab === "minorrecords")
             ? "overflow-y-auto p-8"
@@ -6379,7 +6415,10 @@ This record has been officially verified and added to the IPL Minor Records arch
 
                   {/* Right column */}
                   <div className="grid min-h-0 grid-rows-3 gap-6">
-                    <ManagerOfficeSummaryTile onOpen={() => router.push("/game/overview?tab=club&subtab=office")} />
+                    <ManagerOfficeSummaryTile
+                      boardConfidence={managerBoardConfidence}
+                      onOpen={() => router.push("/game/overview?tab=club&subtab=office")}
+                    />
 
                     <div
                       onClick={() => isFixturesAnnounced && router.push("/game/overview?tab=season&subtab=fixtures")}
@@ -7203,7 +7242,10 @@ This record has been officially verified and added to the IPL Minor Records arch
                     viceCaptain={teamLeadership.viceCaptainId ? players[teamLeadership.viceCaptainId] ?? null : null}
                     featuredPlayers={clubFeaturedPlayers}
                   />
-                  <ManagerOfficeSummaryTile onOpen={() => setActiveSubTab("office")} />
+                  <ManagerOfficeSummaryTile
+                    boardConfidence={managerBoardConfidence}
+                    onOpen={() => setActiveSubTab("office")}
+                  />
                   {userHomeStadium && userSelectedPitch && (
                     <PitchCuratorSummaryTile
                       stadiumName={userHomeStadium.name}
@@ -8178,23 +8220,80 @@ This record has been officially verified and added to the IPL Minor Records arch
                             const remainingDays = Math.max(daysBetweenDateKeys(currentDate, assignment.completesOn), 0);
                             const progress = Math.min(100, Math.max(0, ((totalDays - remainingDays) / totalDays) * 100));
                             const assignmentLabel = assignment.kind === "deep-scout" ? "In-depth player scout" : option?.label ?? "Scouting assignment";
-                            return <div key={slot} className="flex min-w-0 flex-col rounded border border-border bg-bg/40 px-2.5 py-2"><div className="flex items-center justify-between gap-1 font-space-mono text-[7px] font-bold uppercase"><span className="truncate text-accent">Slot {slot} · {assignment.market === "india" ? "India" : "International"}</span><span className="shrink-0 text-text-primary">{remainingDays}d</span></div><div className="mt-1 truncate font-anton text-[12px] uppercase leading-tight text-text-primary">{targetPlayer?.name ?? region?.name ?? assignment.regionId}</div><div className="mt-1 truncate font-space-mono text-[7px] font-bold uppercase text-text-secondary">{assignmentLabel}</div><div className="mt-auto min-w-0 pt-1 font-space-mono text-[7px] uppercase text-text-secondary"><div className="truncate">{region?.depth ?? "Player"} depth · {option?.reportCount ?? 1} report{option?.reportCount === 1 ? "" : "s"}</div><div className="truncate">{totalDays} days · Due {assignment.completesOn}</div></div><div className="mt-1.5 h-1 overflow-hidden rounded bg-border"><div className="h-full bg-accent" style={{ width: `${progress}%` }} /></div></div>;
+                            const formattedDueDate = assignment.completesOn.split("-").reverse().join("-");
+                            return <div key={slot} className="flex min-w-0 flex-col rounded border border-border bg-bg/40 px-2.5 py-2"><div className="flex items-center justify-between gap-1 font-space-mono text-[7px] font-bold uppercase"><span className="truncate text-accent">Slot {slot} · {assignment.market === "india" ? "India" : "International"}</span><span className="shrink-0 text-text-primary">{remainingDays}d</span></div><div className="mt-1 font-anton text-[12px] uppercase leading-tight text-text-primary">{targetPlayer?.name ?? region?.name ?? assignment.regionId}</div><div className="mt-1 font-space-mono text-[7px] font-bold uppercase leading-tight text-text-secondary">{assignmentLabel}</div><div className="mt-2 flex min-w-0 items-center justify-between gap-1 font-space-mono text-[7px] uppercase text-text-secondary"><span>{region?.depth ?? "Player"} depth</span><span>{option?.reportCount ?? 1} report{option?.reportCount === 1 ? "" : "s"}</span></div><div className="mt-auto"><div className="mb-1 flex items-center justify-between gap-1 font-space-mono text-[7px] uppercase text-text-secondary"><span>{totalDays} days</span><span className="whitespace-nowrap">Due {formattedDueDate}</span></div><div className="h-1 shrink-0 overflow-hidden rounded bg-border"><div className="h-full bg-accent" style={{ width: `${progress}%` }} /></div></div></div>;
                           })}
                         </div>
                       </div>
-                      <div className="mt-4 flex items-center justify-between font-space-mono text-[9px] font-bold uppercase text-accent"><span>Open interactive maps</span><span>→</span></div>
+                      <div className="mt-2 flex items-center justify-between font-space-mono text-[9px] font-bold uppercase text-accent"><span>Open interactive maps</span><span>→</span></div>
                     </div>
 
                     {/* Auction planner */}
-                    <div onClick={() => setActiveSubTab("planner")} className="col-span-12 flex min-h-0 cursor-pointer flex-col justify-between overflow-hidden rounded-lg border-2 border-border bg-surface p-4 transition-colors hover:border-accent">
-                    <div>
-                      <h4 className="font-anton text-[14px] uppercase border-b border-[#16130f]/10 pb-2 mb-4">AUCTION PLANNER</h4>
-                      <div className="space-y-2 text-xs font-space-mono text-text-secondary">
+                    <div onClick={() => setActiveSubTab("planner")} className="col-span-12 flex min-h-0 cursor-pointer overflow-hidden rounded-lg border-2 border-border bg-surface p-4 transition-colors hover:border-accent">
+                      <div className="flex min-h-0 flex-1 items-stretch gap-4 overflow-hidden">
+                        <div className="flex w-44 shrink-0 flex-col font-space-mono text-xs text-text-secondary">
+                          <h4 className="mb-3 shrink-0 border-b border-[#16130f]/10 pb-2 font-anton text-[14px] uppercase text-text-primary">AUCTION PLANNER</h4>
+                          <div className="space-y-2">
                         <div>CAP LIMIT: <span className="font-bold text-text-primary">₹120.00 Cr</span></div>
                         <div>SHORTLISTED: <span className="font-bold text-text-primary">{shortlist.length} Players</span></div>
-                      </div>
-                    </div>
+                          </div>
+                        </div>
+                        <div className="flex min-w-0 flex-1 items-stretch justify-start gap-2 overflow-x-auto overflow-y-hidden border-l border-[#16130f]/10 py-1 pl-4">
+                          {shortlist.map((playerId) => players[playerId]).filter((player): player is Player => Boolean(player)).map((player) => {
+                            const ability = player.role === "Pace Bowler" || player.role === "Spin Bowler"
+                              ? player.currentBowling
+                              : player.role === "All-Rounder"
+                                ? Math.max(player.currentBatting, player.currentBowling)
+                                : player.currentBatting;
+                            const potential = player.role === "Pace Bowler" || player.role === "Spin Bowler"
+                              ? player.potentialBowling
+                              : player.role === "All-Rounder"
+                                ? Math.max(player.potentialBatting, player.potentialBowling)
+                                : player.potentialBatting;
+                            const scoutingConfidence = getPlayerScoutingConfidence(scoutingReports, player.id);
+                            const scoutingReport = getBestPlayerScoutingReport(scoutingReports, player.id);
+                            const usesScoutingEstimate = Boolean(scoutingReport && scoutingConfidence < 100);
+                            const abilityDisplay = usesScoutingEstimate && scoutingReport
+                              ? `${scoutingReport.currentAbilityRange[0]}–${scoutingReport.currentAbilityRange[1]}`
+                              : String(ability);
+                            const potentialDisplay = usesScoutingEstimate && scoutingReport
+                              ? `${scoutingReport.potentialRange[0]}–${scoutingReport.potentialRange[1]}`
+                              : String(potential);
 
+                            return (
+                              <div
+                                key={player.id}
+                                className="flex h-full min-h-0 shrink-0 flex-col justify-between rounded border border-border bg-bg/40 px-3 py-2.5"
+                                style={{ width: Math.max(150, player.name.length * 7 + 28) }}
+                              >
+                                <div className="min-w-0">
+                                  <div className="whitespace-nowrap font-barlow text-[12px] font-bold leading-tight text-text-primary">{player.name}</div>
+                                  <div className="mt-1 font-space-mono text-[7px] font-bold uppercase leading-tight text-text-secondary">{player.role}</div>
+                                  <div className="mt-1 font-space-mono text-[7px] uppercase text-text-secondary">
+                                    Age {player.age} · {player.nationality === "Overseas" ? "Overseas" : "Indian"} · {player.isCapped ? "Capped" : "Uncapped"}
+                                  </div>
+                                  <div className="mt-1 whitespace-nowrap font-space-mono text-[6px] font-bold uppercase text-text-secondary">
+                                    Base price {`₹${(player.basePrice / 100).toFixed(2)} Cr`}
+                                  </div>
+                                </div>
+                                <div className="-mx-1 mt-2 grid w-[calc(100%+0.5rem)] grid-cols-2 items-end border-t border-[#16130f]/10 pt-2">
+                                  <div className="flex min-w-0 flex-col items-start justify-self-start text-left">
+                                    <div className="font-anton text-[15px] leading-none text-accent">{abilityDisplay}</div>
+                                    <div className="mt-0.5 font-space-mono text-[6px] font-bold uppercase text-text-secondary">Ability</div>
+                                  </div>
+                                  <div className="flex min-w-0 flex-col items-end justify-self-end text-right">
+                                    <div className="font-anton text-[15px] leading-none text-accent">{potentialDisplay}</div>
+                                    <div className="mt-0.5 font-space-mono text-[6px] font-bold uppercase text-text-secondary">Potential</div>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                          {shortlist.length === 0 && (
+                            <div className="flex h-full items-center font-space-mono text-[9px] font-bold uppercase text-text-secondary">No players shortlisted</div>
+                          )}
+                        </div>
+                      </div>
                     </div>
 
                   </div>
@@ -8335,8 +8434,8 @@ This record has been officially verified and added to the IPL Minor Records arch
                       ) : (
                         shortlist.map(id => players[id]).filter(Boolean).map(p => {
                           const scoutingConfidence = getPlayerScoutingConfidence(scoutingReports, p.id);
-                          const isFullyScouted = scoutingConfidence >= 100;
                           const scoutingReport = getBestPlayerScoutingReport(scoutingReports, p.id);
+                          const isFullyScouted = !scoutingReport || scoutingConfidence >= 100;
                           return (
                           <div key={p.id} className="py-2 flex items-center justify-between text-xs">
                             <div className="min-w-0">
@@ -9257,7 +9356,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                           </span>
                         </span>
 
-                        <span className="relative flex items-center justify-between border-t border-border pt-3 font-space-mono text-[8px] font-bold uppercase tracking-[0.16em] text-text-secondary">
+                        <span className={`relative flex items-center justify-between border-t border-border pt-3 font-space-mono text-[8px] font-bold uppercase tracking-[0.16em] text-text-secondary ${featured ? "" : "mt-3"}`}>
                           <span>Open archive</span>
                           <span className="transition-colors" style={{ color: "var(--history-tile-accent)" }}>View</span>
                         </span>
