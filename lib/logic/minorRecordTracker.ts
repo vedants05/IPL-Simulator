@@ -57,6 +57,85 @@ interface Match {
   date?: string;
 }
 
+interface BattingSeasonStat {
+  id: string;
+  name: string;
+  teamId: string;
+  runs: number;
+}
+
+export function updateAllTimeBattingSeasonRecords(
+  currentRecords: MinorRecord[],
+  seasonStats: Record<string, BattingSeasonStat>,
+  teams: Record<string, { shortName?: string }>,
+  currentSeason: number,
+): MinorRecord[] {
+  const leaderboardRecords = currentRecords.filter((record) => record.id.startsWith("all-time-season-runs-"));
+  if (leaderboardRecords.length === 0) return currentRecords;
+
+  const candidates = [
+    ...leaderboardRecords.map((record) => ({
+      holder: record.holder,
+      runs: Number.parseInt(record.value, 10),
+      season: record.season ?? "",
+      notes: record.notes ?? "",
+      source: record.source,
+      verified: record.verified,
+    })),
+    ...Object.values(seasonStats)
+      .filter((stat) => stat.runs > 0)
+      .map((stat) => ({
+        holder: stat.name,
+        runs: stat.runs,
+        season: String(currentSeason),
+        notes: teams[stat.teamId]?.shortName ?? stat.teamId,
+        source: "Career simulation",
+        verified: true,
+      })),
+  ].filter((candidate) => Number.isFinite(candidate.runs));
+
+  const bestByPlayerSeason = new Map<string, (typeof candidates)[number]>();
+  candidates.forEach((candidate) => {
+    const key = `${candidate.holder.toLocaleLowerCase("en-GB")}:${candidate.season}`;
+    const existing = bestByPlayerSeason.get(key);
+    if (!existing || candidate.runs > existing.runs) bestByPlayerSeason.set(key, candidate);
+  });
+  const leaders = Array.from(bestByPlayerSeason.values())
+    .sort((left, right) => right.runs - left.runs || left.holder.localeCompare(right.holder))
+    .slice(0, leaderboardRecords.length);
+
+  const slots = [...leaderboardRecords].sort((left, right) => (
+    Number.parseInt(left.id.split("-").pop() ?? "0", 10)
+    - Number.parseInt(right.id.split("-").pop() ?? "0", 10)
+  ));
+  const replacements = new Map<string, MinorRecord>();
+  let changed = false;
+  slots.forEach((slot, index) => {
+    const leader = leaders[index];
+    if (!leader) return;
+    const replacement: MinorRecord = {
+      ...slot,
+      value: `${leader.runs} runs`,
+      holder: leader.holder,
+      season: leader.season,
+      notes: leader.notes,
+      source: leader.source,
+      verified: leader.verified,
+    };
+    replacements.set(slot.id, replacement);
+    if (
+      replacement.value !== slot.value
+      || replacement.holder !== slot.holder
+      || replacement.season !== slot.season
+      || replacement.notes !== slot.notes
+    ) changed = true;
+  });
+
+  return changed
+    ? currentRecords.map((record) => replacements.get(record.id) ?? record)
+    : currentRecords;
+}
+
 export function trackMinorRecordsOnMatchComplete(
   match: any,
   currentRecords: MinorRecord[],

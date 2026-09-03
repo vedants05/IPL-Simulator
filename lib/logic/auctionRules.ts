@@ -1,5 +1,6 @@
 import { Player, Team, AuctionSet } from "@/lib/types";
 import { getAuctionBowlingRating, getAuctionRating } from "./auctionMarket";
+import { getPlayerSeasonHistory } from "./playerHistory";
 
 export const TOTAL_PURSE_LAKHS = 12000; // ₹120 crore in lakhs
 export const MAX_AUCTION_TARGETS = 5;
@@ -416,13 +417,18 @@ export function findRTMEligibleTeam(
   player: Player,
   teams: Record<string, Team>,
   winnerTeamId: string,
-  requiredPurse?: number
+  requiredPurse?: number,
+  auctionSeason?: number,
 ): string | null {
-  const h2026 = player.iplHistory.find(
-    (h) => h.season === "2026" && h.teamId !== winnerTeamId
+  const latestRecordedSeason = Math.max(
+    ...player.iplHistory
+      .map((entry) => Number(entry.season))
+      .filter(Number.isFinite),
   );
-  if (!h2026) return null;
-  const team = teams[h2026.teamId];
+  const resolvedAuctionSeason = auctionSeason ?? latestRecordedSeason + 1;
+  const previousSeason = getPlayerSeasonHistory(player.iplHistory, String(resolvedAuctionSeason - 1));
+  if (!previousSeason || previousSeason.teamId === "UNSOLD" || previousSeason.teamId === winnerTeamId) return null;
+  const team = teams[previousSeason.teamId];
   if (!team) return null;
   if (team.rtmCardsUsed >= team.rtmCardsTotal) return null;
   if (player.nationality === "Overseas" && team.overseasPlayersCurrent >= team.overseasPlayersMax) return null;
@@ -432,5 +438,5 @@ export function findRTMEligibleTeam(
     const reserve = Math.max(0, team.minSquadSize - team.squad.length - 1) * 30;
     if (team.remainingPurse - requiredPurse < reserve) return null;
   }
-  return h2026.teamId;
+  return previousSeason.teamId;
 }

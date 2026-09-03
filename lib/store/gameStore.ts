@@ -2653,7 +2653,7 @@ export const useGameStore = create<Store>()(
             let finalPrice = currentBid;
             let usedRtm = false;
 
-            const rtmTeamId = findRTMEligibleTeam(player, newTeams, highBidderTeamId, currentBid);
+            const rtmTeamId = findRTMEligibleTeam(player, newTeams, highBidderTeamId, currentBid, auction.season);
 
             if (rtmTeamId) {
               const rtmTeam = newTeams[rtmTeamId];
@@ -2961,7 +2961,7 @@ export const useGameStore = create<Store>()(
             let finalPrice = currentBid;
             let usedRtm = false;
 
-            const rtmTeamId = findRTMEligibleTeam(player, newTeams, highBidderTeamId, currentBid);
+            const rtmTeamId = findRTMEligibleTeam(player, newTeams, highBidderTeamId, currentBid, auction.season);
 
             if (rtmTeamId) {
               const rtmTeam = newTeams[rtmTeamId];
@@ -3322,7 +3322,7 @@ export const useGameStore = create<Store>()(
             let finalPrice = currentBid;
             let usedRtm = false;
 
-            const rtmTeamId = findRTMEligibleTeam(player, newTeams, highBidderTeamId, currentBid);
+            const rtmTeamId = findRTMEligibleTeam(player, newTeams, highBidderTeamId, currentBid, auction.season);
 
             if (rtmTeamId) {
               const rtmTeam = newTeams[rtmTeamId];
@@ -5777,7 +5777,7 @@ function hammerFall() {
 
   // Find RTM-eligible team (any team, not just user)
   const currentState = useGameStore.getState();
-  const rtmTeamId = findRTMEligibleTeam(player, currentState.teams, highBidder, soldAmount);
+  const rtmTeamId = findRTMEligibleTeam(player, currentState.teams, highBidder, soldAmount, auction.season);
 
   if (!rtmTeamId) {
     // No RTM: flash and advance

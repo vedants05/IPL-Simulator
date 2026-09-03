@@ -34,6 +34,7 @@ export interface ResolvedClubFigure {
   playerId: string | null;
   currentTeamId: string | null;
   isLinked: boolean;
+  isRetired: boolean;
   legacyPoints?: number;
   clubSeasons?: number;
 }
@@ -157,9 +158,14 @@ export function getClubFigures(
   players: Record<string, Player>,
   tierOverrides: ClubFigureTierOverrides = {},
   progression: ClubFigureProgression = {},
+  retiredPlayers: Record<string, Pick<Player, "id" | "name">> = {},
 ): ResolvedClubFigure[] {
-  const playerByName = new Map<string, Player>();
+  const playerByName = new Map<string, Pick<Player, "id" | "name">>();
+  Object.values(retiredPlayers).forEach((player) => {
+    playerByName.set(normalizeClubFigureName(player.name), player);
+  });
   Object.values(players).forEach((player) => {
+    // Prefer the live player if a save happens to contain both records.
     playerByName.set(normalizeClubFigureName(player.name), player);
   });
 
@@ -167,8 +173,10 @@ export function getClubFigures(
     const possibleNames = [figure.name, ...(PLAYER_NAME_ALIASES[figure.name] ?? [])];
     const linkedPlayer = possibleNames
       .map((name) => playerByName.get(normalizeClubFigureName(name)))
-      .find((player): player is Player => Boolean(player));
+      .find((player): player is Pick<Player, "id" | "name"> => Boolean(player));
     const playerId = linkedPlayer?.id ?? null;
+    const activePlayer = playerId ? players[playerId] : undefined;
+    const isRetired = Boolean(playerId && retiredPlayers[playerId] && !activePlayer);
     const legacyOverrideKey = getLegacyClubFigureOverrideKey(teamId, playerId, figure.name);
     const progress = Object.values(progression).find((record) => (
       record.teamId === teamId
@@ -183,8 +191,9 @@ export function getClubFigures(
       baseTier: figure.tier,
       tier: higherClubFigureTier(progressedTier, overriddenTier) ?? progressedTier,
       playerId,
-      currentTeamId: linkedPlayer?.currentTeamId ?? null,
+      currentTeamId: activePlayer?.currentTeamId ?? null,
       isLinked: playerId !== null,
+      isRetired,
       legacyPoints: progress?.points ?? clubFigureTierFloor(figure.tier),
       clubSeasons: progress?.seasonKeys.length,
     };
@@ -198,7 +207,8 @@ export function getClubFigures(
         || normalizeClubFigureName(figure.name) === normalizeClubFigureName(record.playerName)
       ));
       if (existing) return;
-      const linkedPlayer = players[record.playerId];
+      const linkedPlayer = players[record.playerId] ?? retiredPlayers[record.playerId];
+      const activePlayer = players[record.playerId];
       const overriddenTier = tierOverrides[record.id] ?? null;
       resolved.push({
         id: record.id,
@@ -206,8 +216,9 @@ export function getClubFigures(
         baseTier: record.tier!,
         tier: higherClubFigureTier(record.tier, overriddenTier) ?? record.tier!,
         playerId: linkedPlayer?.id ?? null,
-        currentTeamId: linkedPlayer?.currentTeamId ?? null,
+        currentTeamId: activePlayer?.currentTeamId ?? null,
         isLinked: Boolean(linkedPlayer),
+        isRetired: Boolean(retiredPlayers[record.playerId] && !activePlayer),
         legacyPoints: record.points,
         clubSeasons: record.seasonKeys.length,
       });

@@ -109,7 +109,7 @@ const LeagueHallOfFame = dynamic(() => import("@/components/history/LeagueHallOf
 const LeagueRecords = dynamic(() => import("@/components/history/LeagueRecords"), { ssr: false });
 const MinorRecords = dynamic(() => import("@/components/history/MinorRecords"), { ssr: false });
 import { applyMinorRecordBaselineUpdates, MINOR_RECORDS, type MinorRecord } from "@/lib/data/minorRecords";
-import { trackMinorRecordsOnMatchComplete } from "@/lib/logic/minorRecordTracker";
+import { trackMinorRecordsOnMatchComplete, updateAllTimeBattingSeasonRecords } from "@/lib/logic/minorRecordTracker";
 const CaptaincyPage = dynamic(() => import("@/components/squad/CaptaincyPage"), { ssr: false });
 const SquadAnalysisPage = dynamic(() => import("@/components/squad/SquadAnalysisPage"), { ssr: false });
 const InjuryHubPage = dynamic(() => import("@/components/squad/InjuryHubPage"), { ssr: false });
@@ -3467,13 +3467,18 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}${replacementEligible
     processCompletedMatchInjuries(simulatedMatch);
 
     const recordCheck = trackMinorRecordsOnMatchComplete(simulatedMatch, minorRecordsRef.current, teams, currentSeason);
-    let nextMinorRecords = minorRecordsRef.current;
+    const nextMinorRecords = updateAllTimeBattingSeasonRecords(
+      recordCheck.updatedRecords,
+      nextPlayerStats,
+      teams,
+      currentSeason,
+    );
     let nextInbox = inbox;
-    if (recordCheck.brokenRecordNotices.length > 0) {
-      nextMinorRecords = recordCheck.updatedRecords;
+    if (recordCheck.brokenRecordNotices.length > 0 || nextMinorRecords !== recordCheck.updatedRecords) {
       minorRecordsRef.current = nextMinorRecords;
       setMinorRecords(nextMinorRecords);
-      
+    }
+    if (recordCheck.brokenRecordNotices.length > 0) {
       const newEmails = recordCheck.brokenRecordNotices.map((notice, idx) => {
         const recordTitle = notice.split('"')[1] ?? "IPL Record";
         const emailId = `record_broken_${recordTitle.replace(/\s+/g, "_")}_${Date.now()}_${idx}`;
@@ -3737,7 +3742,8 @@ This record has been officially verified and added to the IPL Minor Records arch
       && match.teamB !== userTeamId
     ));
     const careerUpdates: IplCareerMatchUpdate[] = [];
-    let nextMinorRecords = minorRecordsRef.current;
+    const startingMinorRecords = minorRecordsRef.current;
+    let nextMinorRecords = startingMinorRecords;
     const allNotices: string[] = [];
 
     matches.forEach((match) => {
@@ -3766,8 +3772,13 @@ This record has been officially verified and added to the IPL Minor Records arch
       processCompletedMatchInjuries(simulatedMatch);
 
       const recordCheck = trackMinorRecordsOnMatchComplete(simulatedMatch, nextMinorRecords, teams, currentSeason);
+      nextMinorRecords = updateAllTimeBattingSeasonRecords(
+        recordCheck.updatedRecords,
+        nextPlayerStats,
+        teams,
+        currentSeason,
+      );
       if (recordCheck.brokenRecordNotices.length > 0) {
-        nextMinorRecords = recordCheck.updatedRecords;
         allNotices.push(...recordCheck.brokenRecordNotices);
       }
     });
@@ -3775,9 +3786,11 @@ This record has been officially verified and added to the IPL Minor Records arch
     if (matches.length > 0) {
       recordIplMatchStats(careerUpdates);
       let nextInbox = inbox;
-      if (allNotices.length > 0) {
+      if (allNotices.length > 0 || nextMinorRecords !== startingMinorRecords) {
         minorRecordsRef.current = nextMinorRecords;
         setMinorRecords(nextMinorRecords);
+      }
+      if (allNotices.length > 0) {
         const newEmails = allNotices.map((notice, idx) => {
           const recordTitle = notice.split('"')[1] ?? "IPL Record";
           const emailId = `record_broken_${recordTitle.replace(/\s+/g, "_")}_${Date.now()}_${idx}`;
@@ -5728,7 +5741,13 @@ This record has been officially verified and added to the IPL Minor Records arch
   const clubTitles = clubSeasonHistory.filter((season) => season.outcome === "Champions");
   const clubRunnerUpFinishes = clubSeasonHistory.filter((season) => season.outcome === "Runners-up");
   const clubSeasonsPlayed = clubSeasonHistory.filter((season) => season.outcome !== "Did not participate").length;
-  const clubFigures = getClubFigures(userTeamId, players, clubFigureTierOverrides, clubFigureProgression);
+  const clubFigures = getClubFigures(
+    userTeamId,
+    players,
+    clubFigureTierOverrides,
+    clubFigureProgression,
+    retiredPlayerSnapshots,
+  );
   const clubFigureSections: Array<{ tier: ClubFigureTier; title: string; description: string }> = [
     { tier: "legend", title: "Legends", description: "The defining names in club history" },
     { tier: "icon", title: "Icons", description: "Major figures closely associated with the club" },
@@ -9244,12 +9263,22 @@ This record has been officially verified and added to the IPL Minor Records arch
                       {featuredRecords.length > 0 ? (
                         <div className="relative mt-1.5 grid min-h-0 flex-1 grid-cols-3 grid-rows-3 gap-1.5 overflow-hidden">
                           {featuredRecords.map((record) => (
-                            <div key={record.id} className="flex min-h-0 min-w-0 flex-col rounded-md bg-bg/70 px-2 py-1.5">
-                              <p className="text-[8px] font-semibold leading-[9px] text-text-primary">{record.title}</p>
-                              <p className="mt-auto font-anton text-sm leading-none text-warning">{record.value}</p>
-                              <p className="mt-0.5 break-words font-space-mono text-[6px] font-bold uppercase leading-[7px] text-text-secondary">{record.holder}</p>
-                              <p className="break-words font-space-mono text-[6px] uppercase leading-[7px] text-text-secondary">
-                                {hasCareerRecordBreaks ? `Broken ${record.lastBrokenOn}` : `Record year ${record.season}`}{record.notes ? ` · ${record.notes}` : ""}
+                            <div
+                              key={record.id}
+                              className="flex min-h-0 min-w-0 flex-col rounded-md border border-border/70 bg-bg/80 px-2.5 py-2 shadow-sm"
+                            >
+                              <p className="break-words text-[7px] font-semibold leading-[9px] text-text-primary">
+                                {record.title}
+                              </p>
+                              <div className="mt-1.5 border-t border-border/50 pt-1.5">
+                                <p className="font-anton text-sm leading-none text-warning">{record.value}</p>
+                                <p className="mt-1 break-words font-space-mono text-[6px] font-bold uppercase leading-[8px] text-text-primary">
+                                  {record.holder}
+                                </p>
+                              </div>
+                              <p className="mt-1.5 break-words border-t border-border/40 pt-1 font-space-mono text-[6px] uppercase leading-[8px] text-text-secondary">
+                                {hasCareerRecordBreaks ? `Broken ${record.lastBrokenOn}` : `Record year ${record.season}`}
+                                {record.notes ? ` · ${record.notes}` : ""}
                               </p>
                             </div>
                           ))}
@@ -9502,8 +9531,8 @@ This record has been officially verified and added to the IPL Minor Records arch
                               <span className="w-6 shrink-0 text-center font-anton text-lg text-text-secondary">{index + 1}</span>
                               <span className="min-w-0 flex-1">
                                 <span className="block truncate text-sm font-bold text-text-primary">{figure.name}</span>
-                                <span className={`mt-0.5 block font-space-mono text-[9px] font-bold uppercase tracking-wider ${figure.isLinked ? "text-success" : "text-text-secondary"}`}>
-                                  {!figure.isLinked
+                                <span className={`mt-0.5 block font-space-mono text-[9px] font-bold uppercase tracking-wider ${figure.isLinked && !figure.isRetired ? "text-success" : "text-text-secondary"}`}>
+                                  {figure.isRetired || !figure.isLinked
                                     ? "Retired"
                                     : figure.currentTeamId
                                       ? `Current Club: ${teams[figure.currentTeamId]?.shortName ?? figure.currentTeamId}`

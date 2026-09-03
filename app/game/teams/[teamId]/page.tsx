@@ -501,6 +501,7 @@ function MountedTeamProfilePage() {
   const careerStaff = useGameStore((state) => state.careerStaff);
   const clubFigureTierOverrides = useGameStore((state) => state.clubFigureTierOverrides);
   const clubFigureProgression = useGameStore((state) => state.clubFigureProgression);
+  const retiredPlayerSnapshots = useGameStore((state) => state.retiredPlayerSnapshots);
   const [hasLoadedCareer, setHasLoadedCareer] = useState(() => Boolean(
     getCachedTeamProfileCareer<TeamProfileCareer>(userTeamId),
   ));
@@ -527,8 +528,14 @@ function MountedTeamProfilePage() {
   const team = teams[teamId];
   const homeStadium = getHomeStadium(teamId);
   const clubFigures = useMemo(
-    () => getClubFigures(teamId, players, clubFigureTierOverrides, clubFigureProgression),
-    [clubFigureProgression, clubFigureTierOverrides, players, teamId],
+    () => getClubFigures(
+      teamId,
+      players,
+      clubFigureTierOverrides,
+      clubFigureProgression,
+      retiredPlayerSnapshots,
+    ),
+    [clubFigureProgression, clubFigureTierOverrides, players, retiredPlayerSnapshots, teamId],
   );
 
   const teamContracts = useMemo(() => {
@@ -1622,8 +1629,8 @@ function MountedTeamProfilePage() {
                         <span className="w-6 shrink-0 text-center font-anton text-lg text-text-secondary">{index + 1}</span>
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-sm font-bold text-text-primary">{figure.name}</span>
-                          <span className={`mt-0.5 block font-space-mono text-[9px] font-bold uppercase tracking-wider ${figure.isLinked ? "text-success" : "text-text-secondary"}`}>
-                            {!figure.isLinked
+                          <span className={`mt-0.5 block font-space-mono text-[9px] font-bold uppercase tracking-wider ${figure.isLinked && !figure.isRetired ? "text-success" : "text-text-secondary"}`}>
+                            {figure.isRetired || !figure.isLinked
                               ? "Retired"
                               : figure.currentTeamId
                                 ? `Current club: ${teams[figure.currentTeamId]?.shortName ?? figure.currentTeamId}`
