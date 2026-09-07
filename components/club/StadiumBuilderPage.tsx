@@ -5,7 +5,7 @@ import { Building2, CalendarClock, Hammer, Layers3, Save, Trash2 } from "lucide-
 import dynamic from "next/dynamic";
 import { edenExistingBoxes } from './stadiumVisualDesigns';
 
-const EdenGardensViewer3D = dynamic(() => import("./EdenGardensViewer3D"), {
+const StadiumViewer3D = dynamic(() => import("./StadiumViewer3D"), {
   ssr: false,
   loading: () => <div className="flex h-full items-center justify-center bg-[#17241c] font-space-mono text-[8px] font-bold uppercase tracking-widest text-white/70">Loading stadium viewer…</div>,
 });
@@ -88,7 +88,7 @@ const TEMPLATES: StandTemplate[] = [
   { id: "compact-two", name: "Compact two tier", tiers: 2, capacityMultiplier: .88, priceCrorePerModule: 78, constructionDays: 240, hospitality: false, supportsTierExpansion: true, color: "#5e347c" },
   { id: "standard-two", name: "Standard two tier", tiers: 2, capacityMultiplier: 1, priceCrorePerModule: 92, constructionDays: 285, hospitality: false, supportsTierExpansion: true, color: "#4a225f" },
   { id: "large-three", name: "Large three tier", tiers: 3, capacityMultiplier: 1.18, priceCrorePerModule: 132, constructionDays: 390, hospitality: false, supportsTierExpansion: true, color: "#351646" },
-  { id: "four-grandstand", name: "Four-tier grandstand", tiers: 4, capacityMultiplier: 1.28, priceCrorePerModule: 188, constructionDays: 540, hospitality: false, supportsTierExpansion: false, color: "#25102f" },
+  { id: "four-grandstand", name: "Four-tier grandstand", tiers: 4, capacityMultiplier: 1.60, priceCrorePerModule: 188, constructionDays: 540, hospitality: false, supportsTierExpansion: false, color: "#25102f" },
   { id: "pavilion", name: "Pavilion stand", tiers: 2, capacityMultiplier: .78, priceCrorePerModule: 118, constructionDays: 330, hospitality: true, supportsTierExpansion: true, color: "#7a5b35" },
   { id: "heritage", name: "Heritage members' stand", tiers: 2, capacityMultiplier: .62, priceCrorePerModule: 136, constructionDays: 360, hospitality: true, supportsTierExpansion: false, color: "#8a6b3f" },
   { id: "hospitality-two", name: "Two-tier hospitality", tiers: 2, capacityMultiplier: .58, priceCrorePerModule: 154, constructionDays: 375, hospitality: true, supportsTierExpansion: true, color: "#8d2455" },
@@ -102,6 +102,8 @@ const TEMPLATES: StandTemplate[] = [
 const QUALITY_MULTIPLIER: Record<Quality, number> = { Basic: 0.82, Standard: 1, Modern: 1.18, Premium: 1.43, Elite: 1.72 };
 const ROOF_PRICE: Record<Roof, number> = { None: 0, "Partial canopy": 8, "Full roof": 17, Cantilever: 28, "Landmark roof": 48 };
 const QUALITY_CAPACITY: Record<Quality, number> = { Basic: 0.96, Standard: 1, Modern: 1, Premium: 1.02, Elite: 1.04 };
+// Stadium projects use their normal dated demolition and construction phases.
+const STADIUM_PROJECT_TIMING_ENABLED = true;
 
 const template = (id: string) => TEMPLATES.find((entry) => entry.id === id) ?? TEMPLATES[3];
 const addDays = (dateKey: string, days: number) => {
@@ -111,6 +113,9 @@ const addDays = (dateKey: string, days: number) => {
 };
 const money = (value: number) => `₹${value.toFixed(1)} Cr`;
 const integer = (value: number) => new Intl.NumberFormat("en-GB").format(Math.round(value));
+
+const capacityForTemplate = (baseCapacity: number, templateId: string, quality: Quality) =>
+  Math.round(baseCapacity * template(templateId).capacityMultiplier * QUALITY_CAPACITY[quality]);
 
 const EDEN_GROUPS: Array<{ name: string; count: number; templateId: string; year: number; refurbished: number; condition: number; fan: number; maxTiers: number; capacity: number; roof: Roof }> = [
   { name: "B.C. Roy Club House", count: 2, templateId: "pavilion", year: 1970, refurbished: 2011, condition: 74, fan: 94, maxTiers: 3, capacity: 2500, roof: "Full roof" },
@@ -196,6 +201,21 @@ function createTeamModules(teamId: string): StadiumModule[] {
   return modules;
 }
 
+function applyCompletedProject(
+  current: StadiumModule[],
+  project: StadiumProject,
+  completionYear: number,
+): StadiumModule[] {
+  return current.map((entry) => {
+    if (!project.moduleIds.includes(entry.id)) return entry;
+    if (project.action === "demolish") return { ...entry, empty: true, capacity: 0 };
+    const chosen = template(project.templateId);
+    if (project.action === "refurbish") return { ...entry, quality: project.quality, roof: project.roof, condition: 100, lastRefurbishedYear: completionYear };
+    if (project.action === "add-tier") return { ...entry, templateId: project.templateId, quality: project.quality, roof: project.roof, capacity: capacityForTemplate(entry.baseCapacity, chosen.id, project.quality), condition: 100, lastRefurbishedYear: completionYear, empty: false };
+    return { ...entry, standName: project.name, templateId: chosen.id, quality: project.quality, roof: project.roof, capacity: capacityForTemplate(entry.baseCapacity, chosen.id, project.quality), constructionYear: completionYear, lastRefurbishedYear: completionYear, condition: 100, maxTiers: Math.max(chosen.tiers, chosen.tiers + Number(chosen.supportsTierExpansion)), hospitalityBoxes: undefined, empty: false };
+  });
+}
+
 function annularSegment(index: number, count: number, inner = 116, outer = 172) {
   const gap = 1.4;
   const start = index / count * 360 - 90 + gap;
@@ -248,7 +268,11 @@ function isContiguous(ids: number[], count: number) {
   return direct || wrapped;
 }
 
-export default function StadiumBuilderPage({ teamId, currentDate, saveId, pitchCount }: StadiumBuilderPageProps) {
+export default function StadiumBuilderPage(props: StadiumBuilderPageProps) {
+  return <StadiumBuilderState key={`${props.saveId}:${props.teamId}`} {...props} />;
+}
+
+function StadiumBuilderState({ teamId, currentDate, saveId, pitchCount }: StadiumBuilderPageProps) {
   const stadiumProfile = teamId.toUpperCase() === "KKR" ? { name: "Eden Gardens", ends: ["High Court End", "Pavilion End"] as [string, string], capacity: 67_551, association: "Cricket Association of Bengal", opened: 1864 } : (TEAM_STADIUMS[teamId.toUpperCase()] ?? TEAM_STADIUMS.CSK);
   // v2 deliberately replaces the original generic non-KKR placeholder plans.
   const storageKey = `ipl-stadium-builder:${saveId || "career"}:${teamId}:v2`;
@@ -270,7 +294,16 @@ export default function StadiumBuilderPage({ teamId, currentDate, saveId, pitchC
   useEffect(() => {
     try {
       const parsed = JSON.parse(localStorage.getItem(storageKey) ?? "null") as StoredBuilderState | null;
-      if (parsed?.modules?.length === createTeamModules(teamId).length) setModules(parsed.modules.map((entry) => ({ ...entry, hospitalityBoxes: teamId.toUpperCase() === 'KKR' ? edenExistingBoxes(entry) : entry.hospitalityBoxes, baseCapacity: entry.baseCapacity ?? Math.round(entry.capacity / template(entry.templateId).capacityMultiplier) })));
+      if (parsed?.modules?.length === createTeamModules(teamId).length) setModules(parsed.modules.map((entry) => {
+        const baseCapacity = entry.baseCapacity ?? Math.round(entry.capacity / template(entry.templateId).capacityMultiplier);
+        // Eden's original layout contains no four-tier modules, so any saved one
+        // is a completed user build. Recalculate old saves after the capacity-model
+        // correction without altering real-world four-tier baseline venues such as GT.
+        const capacity = teamId.toUpperCase() === "KKR" && entry.templateId === "four-grandstand" && !entry.empty
+          ? capacityForTemplate(baseCapacity, entry.templateId, entry.quality)
+          : entry.capacity;
+        return { ...entry, capacity, hospitalityBoxes: teamId.toUpperCase() === 'KKR' ? edenExistingBoxes(entry) : entry.hospitalityBoxes, baseCapacity };
+      }));
       if (Array.isArray(parsed?.plans)) setPlans(parsed!.plans);
       if (parsed?.activeProject) setActiveProject(parsed.activeProject);
       if (Array.isArray(parsed?.projectHistory)) setProjectHistory(parsed!.projectHistory);
@@ -292,14 +325,7 @@ export default function StadiumBuilderPage({ teamId, currentDate, saveId, pitchC
     if (phase === activeProject.phase) return;
     if (phase === "cleared") setModules((current) => current.map((entry) => activeProject.moduleIds.includes(entry.id) ? { ...entry, empty: true, capacity: 0 } : entry));
     if (phase === "completed") {
-      setModules((current) => current.map((entry) => {
-        if (!activeProject.moduleIds.includes(entry.id)) return entry;
-        if (activeProject.action === "demolish") return { ...entry, empty: true, capacity: 0 };
-        const chosen = template(activeProject.templateId);
-        if (activeProject.action === "refurbish") return { ...entry, quality: activeProject.quality, roof: activeProject.roof, condition: 100, lastRefurbishedYear: Number(currentDate.slice(0, 4)) };
-        if (activeProject.action === "add-tier") return { ...entry, templateId: activeProject.templateId, quality: activeProject.quality, roof: activeProject.roof, capacity: Math.round(entry.baseCapacity * chosen.capacityMultiplier * QUALITY_CAPACITY[activeProject.quality]), condition: 100, lastRefurbishedYear: Number(currentDate.slice(0, 4)) };
-        return { ...entry, standName: activeProject.name, templateId: chosen.id, quality: activeProject.quality, roof: activeProject.roof, capacity: Math.round(entry.baseCapacity * chosen.capacityMultiplier * QUALITY_CAPACITY[activeProject.quality]), constructionYear: Number(currentDate.slice(0, 4)), lastRefurbishedYear: Number(currentDate.slice(0, 4)), condition: 100, maxTiers: Math.max(chosen.tiers, chosen.tiers + Number(chosen.supportsTierExpansion)), empty: false };
-      }));
+      setModules((current) => applyCompletedProject(current, activeProject, Number(currentDate.slice(0, 4))));
       setProjectHistory((current) => current.some((entry) => entry.id === activeProject.id) ? current : [{ ...activeProject, phase: "completed" }, ...current]);
     }
     setActiveProject((current) => current ? { ...current, phase } : current);
@@ -309,8 +335,8 @@ export default function StadiumBuilderPage({ teamId, currentDate, saveId, pitchC
   const chosenTemplate = template(templateId);
   const oldCapacity = selectedModules.reduce((sum, entry) => sum + entry.capacity, 0);
   const newCapacity = action === "demolish" ? 0 : action === "refurbish" ? oldCapacity : action === "add-tier"
-    ? selectedModules.reduce((sum, entry) => sum + Math.round(entry.baseCapacity * chosenTemplate.capacityMultiplier * QUALITY_CAPACITY[quality]), 0)
-    : selectedModules.reduce((sum, entry) => sum + Math.round(entry.baseCapacity * chosenTemplate.capacityMultiplier * QUALITY_CAPACITY[quality]), 0);
+    ? selectedModules.reduce((sum, entry) => sum + capacityForTemplate(entry.baseCapacity, chosenTemplate.id, quality), 0)
+    : selectedModules.reduce((sum, entry) => sum + capacityForTemplate(entry.baseCapacity, chosenTemplate.id, quality), 0);
   const priceCrore = selected.length * (action === "demolish" ? 16 : action === "refurbish" ? 24 * QUALITY_MULTIPLIER[quality] : chosenTemplate.priceCrorePerModule * QUALITY_MULTIPLIER[quality] + ROOF_PRICE[roof]);
   const constructionDays = action === "demolish" ? 0 : action === "refurbish" ? 120 : action === "add-tier" ? 300 : chosenTemplate.constructionDays;
   const demolitionDays = action === "replace" || action === "demolish" ? 60 + selected.length * 15 : 0;
@@ -361,7 +387,16 @@ export default function StadiumBuilderPage({ teamId, currentDate, saveId, pitchC
     const demolitionCompletesOn = plan.demolitionDays ? addDays(currentDate, plan.demolitionDays) : undefined;
     const constructionStartsOn = plan.action === "demolish" ? undefined : addDays(demolitionCompletesOn ?? currentDate, plan.demolitionDays ? 7 : 0);
     const constructionCompletesOn = plan.action === "demolish" ? demolitionCompletesOn! : addDays(constructionStartsOn!, plan.constructionDays);
-    setActiveProject({ ...plan, startedOn: currentDate, demolitionCompletesOn, constructionStartsOn, constructionCompletesOn, phase: plan.demolitionDays ? "demolition" : "construction" });
+    const scheduledProject: StadiumProject = { ...plan, startedOn: currentDate, demolitionCompletesOn, constructionStartsOn, constructionCompletesOn, phase: plan.demolitionDays ? "demolition" : "construction" };
+    if (!STADIUM_PROJECT_TIMING_ENABLED) {
+      const completedProject: StadiumProject = { ...scheduledProject, demolitionCompletesOn: plan.demolitionDays ? currentDate : undefined, constructionStartsOn: plan.action === "demolish" ? undefined : currentDate, constructionCompletesOn: currentDate, phase: "completed" };
+      setModules((current) => applyCompletedProject(current, completedProject, Number(currentDate.slice(0, 4))));
+      setActiveProject(completedProject);
+      setProjectHistory((current) => current.some((entry) => entry.id === completedProject.id) ? current : [completedProject, ...current]);
+      setMessage("Project completed instantly. Its nominal cost is recorded but has not been charged.");
+      return;
+    }
+    setActiveProject(scheduledProject);
     setMessage("Project started. Its nominal cost is recorded but has not been charged.");
   };
 
@@ -376,14 +411,14 @@ export default function StadiumBuilderPage({ teamId, currentDate, saveId, pitchC
   return (
     <div className="flex h-full min-h-[620px] flex-col overflow-hidden rounded-lg border-2 border-border bg-bg">
       <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border bg-surface px-4 py-2">
-        <div><p className="font-space-mono text-[7px] font-bold uppercase tracking-[.2em] text-accent">{teamId.toUpperCase()} · {stadiumProfile.name}</p><h2 className="font-anton text-[22px] uppercase leading-none text-text-primary">Stadium Builder</h2><p className="mt-1 text-[8px] text-text-secondary">{stadiumProfile.association} · {integer(stadiumProfile.capacity)} seats · opened {stadiumProfile.opened}</p></div>
+        <div><p className="font-space-mono text-[7px] font-bold uppercase tracking-[.2em] text-accent">{teamId.toUpperCase()} · {stadiumProfile.name}</p><h2 className="font-anton text-[22px] uppercase leading-none text-text-primary">Stadium Builder</h2><p className="mt-1 text-[8px] text-text-secondary">{stadiumProfile.association} · {integer(totalCapacity)} seats · opened {stadiumProfile.opened}</p></div>
         <button type="button" onClick={() => setShowPlans(true)} className="shrink-0 rounded border border-accent/50 px-2.5 py-1.5 font-space-mono text-[7px] font-bold uppercase text-accent hover:bg-accent/10">Plans ({plans.length})</button>
       </div>
 
       <div className="grid min-h-0 flex-1 grid-cols-1 overflow-y-auto xl:grid-cols-[minmax(440px,1.2fr)_minmax(310px,.8fr)] xl:overflow-hidden">
         <section className="flex min-h-[520px] flex-col border-b border-border p-4 xl:min-h-0 xl:border-b-0 xl:border-r [&>div:nth-child(3)]:hidden">
-          <div className="mb-2 flex items-center justify-between gap-2"><div><h3 className="font-anton text-base uppercase text-text-primary">{viewMode === "plan" ? `${stadiumProfile.name} plan` : `${stadiumProfile.name} viewer`}</h3><p className="text-[9px] text-text-secondary">Choose up to four adjacent sections.</p></div><div className="flex items-center gap-2">{teamId.toUpperCase() === "KKR" && <button type="button" onClick={() => setViewMode((mode) => mode === "plan" ? "viewer" : "plan")} className="rounded border border-accent/60 px-2 py-1 font-space-mono text-[7px] font-bold uppercase text-accent">{viewMode === "plan" ? "Stadium viewer" : "Plan view"}</button>}<button type="button" onClick={() => setSelected([])} className="font-space-mono text-[7px] font-bold uppercase text-text-secondary hover:text-accent">Clear selection</button></div></div>
-          <div className="relative min-h-0 flex-1 overflow-hidden rounded-xl border border-white/10 bg-[#17241c]">
+          <div className="mb-2 flex items-center justify-between gap-2"><div><h3 className="font-anton text-base uppercase text-text-primary">{viewMode === "plan" ? `${stadiumProfile.name} plan` : `${stadiumProfile.name} viewer`}</h3><p className="text-[9px] text-text-secondary">Choose up to four adjacent sections.</p></div><div className="flex items-center gap-2"><button type="button" onClick={() => setViewMode((mode) => mode === "plan" ? "viewer" : "plan")} className="rounded border border-accent/60 px-2 py-1 font-space-mono text-[7px] font-bold uppercase text-accent">{viewMode === "plan" ? "Stadium viewer" : "Plan view"}</button><button type="button" onClick={() => setSelected([])} className="font-space-mono text-[7px] font-bold uppercase text-text-secondary hover:text-accent">Clear selection</button></div></div>
+          <div className="stadium-map relative min-h-0 flex-1 overflow-hidden rounded-xl border border-white/10 bg-[#17241c]">
             <svg viewBox="0 0 400 400" className={`h-full w-full ${viewMode === "viewer" ? "hidden" : ""}`} role="img" aria-label={`Interactive top-down plan of ${stadiumProfile.name}`}>
               <defs><radialGradient id="eden-grass"><stop offset="0" stopColor="#4c9a5b"/><stop offset="1" stopColor="#24663d"/></radialGradient></defs>
               <circle cx="200" cy="200" r="110" fill="url(#eden-grass)" stroke="#d9d394" strokeWidth="2"/>
@@ -401,9 +436,9 @@ export default function StadiumBuilderPage({ teamId, currentDate, saveId, pitchC
               {modules.map((entry) => { const tiers = entry.empty ? 0 : Math.max(1, template(entry.templateId).tiers); return <g key={`detail-${entry.id}`} pointerEvents="none">{Array.from({ length: tiers }, (_, tier) => <path key={tier} d={standArc(entry.id, modules.length, 126 + tier * 11)} fill="none" stroke="rgba(255,255,255,.45)" strokeWidth="1.2"/>)}{!entry.empty && entry.roof !== "None" && <path d={standArc(entry.id, modules.length, 176)} fill="none" stroke="rgba(236,214,138,.8)" strokeWidth={entry.roof === "Landmark roof" ? 4 : 2.5}/>}</g>; })}
               {standLabels.map((label) => <text key={label.name} x={label.x} y={label.y} textAnchor="middle" dominantBaseline="middle" fill="white" fontSize="5.5" fontWeight="700" pointerEvents="none">{shortStandName(label.name)}</text>)}
             </svg>
-            {viewMode === "viewer" && teamId.toUpperCase() === "KKR" && <div className="absolute inset-0 z-20"><EdenGardensViewer3D project={activeProject} modules={modules} selected={selected} activeModuleIds={activeProject && !["completed", "cancelled"].includes(activeProject.phase) ? activeProject.moduleIds : undefined} onToggleModule={toggleModule}/></div>}
+            {viewMode === "viewer" && <div className="absolute inset-0 z-20"><StadiumViewer3D teamId={teamId} project={activeProject} modules={modules} selected={selected} activeModuleIds={activeProject && !["completed", "cancelled"].includes(activeProject.phase) ? activeProject.moduleIds : undefined} onToggleModule={toggleModule}/></div>}
             {viewMode === "viewer" && <div className="absolute inset-0 bg-[#17241c]"><svg viewBox="0 0 400 400" className="h-full w-full" role="img" aria-label={`In-ground view of ${stadiumProfile.name}`}><defs><linearGradient id="viewer-sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#243a5d"/><stop offset=".6" stopColor="#8aa8b8"/><stop offset=".61" stopColor="#315c3c"/><stop offset="1" stopColor="#172a1d"/></linearGradient></defs><rect width="400" height="400" fill="url(#viewer-sky)"/><ellipse cx="200" cy="325" rx="175" ry="34" fill="#23452d"/><path d="M25 280 Q200 225 375 280 L365 330 Q200 285 35 330 Z" fill="#4d7b51"/><path d="M35 235 Q200 165 365 235 L355 285 Q200 225 45 285 Z" fill="#4b2860" stroke="#d9b94e" strokeWidth="2"/><path d="M55 190 Q200 125 345 190 L335 235 Q200 180 65 235 Z" fill="#663678" stroke="#d9b94e" strokeWidth="2"/><path d="M85 146 Q200 92 315 146 L305 190 Q200 145 95 190 Z" fill="#82458f" stroke="#d9b94e" strokeWidth="2"/>{modules.slice(0, 12).map((entry, index) => { const chosen = selected.includes(entry.id); const x = 42 + index * 28; const h = 36 + template(entry.templateId).tiers * 7; return <g key={`viewer-${entry.id}`} onClick={() => toggleModule(entry.id)} className="cursor-pointer"><path d={`M ${x} ${250 - h} L ${x + 23} ${250 - h} L ${x + 27} 285 L ${x - 4} 285 Z`} fill={entry.empty ? "#292929" : template(entry.templateId).color} stroke={chosen ? "#f6c744" : "rgba(255,255,255,.45)"} strokeWidth={chosen ? 3 : 1}/><text x={x + 11} y={246 - h} textAnchor="middle" fill="white" fontSize="5" fontWeight="700" pointerEvents="none">{shortStandName(entry.standName)}</text><title>{entry.standName} · Module {entry.id + 1}</title></g>; })}<path d="M 110 305 Q200 290 290 305 L280 353 Q200 365 120 353 Z" fill="#4b914f" stroke="#d9d394" strokeWidth="2"/><text x="200" y="336" textAnchor="middle" fill="white" fontSize="8" fontWeight="700">PITCH</text></svg></div>}
-            <p className="pointer-events-none absolute inset-x-0 top-1 text-center font-space-mono text-[8px] font-bold uppercase tracking-wider text-white/80">{stadiumProfile.ends[0]}</p><p className="pointer-events-none absolute inset-x-0 bottom-1 text-center font-space-mono text-[8px] font-bold uppercase tracking-wider text-white/80">{stadiumProfile.ends[1]}</p>
+            {viewMode === "plan" && <><p className="pointer-events-none absolute inset-x-0 top-1 text-center font-space-mono text-[8px] font-bold uppercase tracking-wider text-white/80">{stadiumProfile.ends[0]}</p><p className="pointer-events-none absolute inset-x-0 bottom-1 text-center font-space-mono text-[8px] font-bold uppercase tracking-wider text-white/80">{stadiumProfile.ends[1]}</p></>}
             {selectedModules.length > 0 && <div className="absolute bottom-2 left-2 max-h-40 w-[min(250px,calc(100%-1rem))] overflow-y-auto rounded-lg border border-accent/60 bg-[#101713]/95 p-2 shadow-xl backdrop-blur-sm"><div className="sticky top-0 z-10 flex items-center justify-between bg-[#101713]/95 pb-1"><div><p className="font-space-mono text-[6px] font-bold uppercase tracking-widest text-accent">Selected stand{selectedModules.length > 1 ? "s" : ""}</p><p className="text-[7px] text-text-secondary">Scroll for all selected sections</p></div><button type="button" onClick={() => setSelected([])} className="rounded border border-white/20 px-1.5 py-0.5 font-space-mono text-[6px] uppercase text-white/70 hover:text-accent">Close</button></div><div className="mt-1 space-y-1">{selectedModules.map((entry) => <div key={entry.id} className="rounded border border-white/15 bg-white/5 px-1.5 py-1"><div className="flex items-center justify-between gap-1"><p className="truncate text-[8px] font-bold text-white">{entry.standName} · M{entry.id + 1}</p><p className="font-anton text-xs text-accent">{integer(entry.capacity)}</p></div><p className="text-[6px] text-white/65">Fans {entry.fanOpinion}/100 · Condition {Math.round(entry.condition)}/100 · {template(entry.templateId).name}</p></div>)}</div></div>}
           </div>
           <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">{selectedModules.map((entry) => <article key={entry.id} className="rounded border border-accent/30 bg-surface p-2"><p className="truncate text-[9px] font-bold text-text-primary">{entry.standName}</p><p className="font-space-mono text-[6px] uppercase text-text-secondary">Module {entry.id + 1} · {template(entry.templateId).tiers} tiers</p><p className="mt-1 font-anton text-sm text-accent">{integer(entry.capacity)}</p></article>)}</div>
@@ -415,7 +450,7 @@ export default function StadiumBuilderPage({ teamId, currentDate, saveId, pitchC
           <label className="block"><span className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Concept name</span><input value={planName} onChange={(event) => setPlanName(event.target.value)} placeholder="e.g. New Pavilion End" className="mt-1 w-full rounded border border-border bg-surface px-2 py-2 text-xs text-text-primary outline-none focus:border-accent"/></label>
           <div className="mt-3 grid grid-cols-2 gap-2">{(["replace", "add-tier", "refurbish", "demolish"] as Action[]).map((value) => <button type="button" key={value} onClick={() => setAction(value)} className={`rounded border px-2 py-2 font-space-mono text-[7px] font-bold uppercase ${action === value ? "border-accent bg-accent/10 text-accent" : "border-border bg-surface text-text-secondary"}`}>{value.replace("-", " ")}</button>)}</div>
           {action !== "demolish" && <><label className="mt-3 block"><span className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Stand template</span><select value={templateId} onChange={(event) => setTemplateId(event.target.value)} className="mt-1 w-full rounded border border-border bg-surface px-2 py-2 text-xs text-text-primary">{TEMPLATES.map((entry) => <option key={entry.id} value={entry.id}>{entry.name} · {entry.tiers} tier{entry.tiers === 1 ? "" : "s"}</option>)}</select></label><div className="mt-3 grid grid-cols-2 gap-2"><label><span className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Quality</span><select value={quality} onChange={(event) => setQuality(event.target.value as Quality)} className="mt-1 w-full rounded border border-border bg-surface px-2 py-2 text-xs text-text-primary">{Object.keys(QUALITY_MULTIPLIER).map((entry) => <option key={entry}>{entry}</option>)}</select></label><label><span className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Roof</span><select value={roof} onChange={(event) => setRoof(event.target.value as Roof)} className="mt-1 w-full rounded border border-border bg-surface px-2 py-2 text-xs text-text-primary">{Object.keys(ROOF_PRICE).map((entry) => <option key={entry}>{entry}</option>)}</select></label></div></>}
-          <div className="mt-4 grid grid-cols-2 gap-2">{[["Nominal price", money(priceCrore)], ["Capacity change", `${newCapacity - oldCapacity >= 0 ? "+" : ""}${integer(newCapacity - oldCapacity)}`], ["Demolition", `${demolitionDays} days`], ["Construction", `${constructionDays} days`], ["Fan preview", `${fanReaction > 0 ? "+" : ""}${fanReaction}`], ["Modules", String(selected.length)]].map(([label, value]) => <div key={label} className="rounded border border-border bg-surface p-2"><p className="font-space-mono text-[6px] uppercase text-text-secondary">{label}</p><p className="mt-1 font-anton text-sm text-text-primary">{value}</p></div>)}</div>
+          <div className="mt-4 grid grid-cols-2 gap-2">{[["Nominal price", money(priceCrore)], ["Capacity change", `${newCapacity - oldCapacity >= 0 ? "+" : ""}${integer(newCapacity - oldCapacity)}`], ["Demolition", STADIUM_PROJECT_TIMING_ENABLED ? `${demolitionDays} days` : "Instant"], ["Construction", STADIUM_PROJECT_TIMING_ENABLED ? `${constructionDays} days` : "Instant"], ["Fan preview", `${fanReaction > 0 ? "+" : ""}${fanReaction}`], ["Modules", String(selected.length)]].map(([label, value]) => <div key={label} className="rounded border border-border bg-surface p-2"><p className="font-space-mono text-[6px] uppercase text-text-secondary">{label}</p><p className="mt-1 font-anton text-sm text-text-primary">{value}</p></div>)}</div>
           {message && <p className="mt-3 rounded border border-accent/25 bg-accent/5 p-2 text-[9px] text-text-secondary">{message}</p>}
           <div className="mt-3 grid grid-cols-2 gap-2"><button type="button" onClick={createPlan} className="flex items-center justify-center gap-2 rounded border border-accent px-3 py-2.5 font-space-mono text-[8px] font-bold uppercase text-accent hover:bg-accent/10"><Save size={13}/>Save plan</button><button type="button" onClick={putIntoConstruction} className="flex items-center justify-center gap-2 rounded bg-accent px-3 py-2.5 font-space-mono text-[8px] font-bold uppercase text-black"><Building2 size={13}/>Build now</button></div>
           {activeProject && <div className="mt-4 rounded border border-accent/40 bg-accent/5 p-3"><p className="font-space-mono text-[7px] font-bold uppercase text-accent">Current project · {activeProject.phase}</p><p className="font-anton text-base uppercase text-text-primary">{activeProject.name}</p><p className="mt-1 text-[8px] text-text-secondary">Completes {activeProject.constructionCompletesOn}</p>{!["completed", "cancelled"].includes(activeProject.phase) && <button type="button" onClick={cancelProject} className="mt-2 w-full rounded border border-danger/40 py-1 font-space-mono text-[7px] font-bold uppercase text-danger">Cancel project</button>}</div>}

@@ -2,6 +2,12 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Stadium labels and the selected-section card sit above the WebGL canvas. */
+.stadium-map > p,
+.stadium-map > .max-h-40 {
+  z-index: 30;
+}
+
 /* trigger-css-reload */
 
 :root {
