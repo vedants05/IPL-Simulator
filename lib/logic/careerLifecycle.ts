@@ -174,6 +174,8 @@ export interface HistoricalPlayerSnapshot {
   isWicketkeeper?: boolean;
   reputation?: number;
   captaincy?: number;
+  battingAggression?: number;
+  aggression?: number;
   retirementAge: number;
   retirementSeason: number;
   finalRating: number;
@@ -256,6 +258,49 @@ function normalRandom(random: () => number, centre: number, standardDeviation: n
   return centre + normal * standardDeviation;
 }
 
+function reflectIntoRange(value: number, minimum: number, maximum: number): number {
+  const width = maximum - minimum;
+  if (width <= 0) return minimum;
+  const period = width * 2;
+  const offset = ((value - minimum) % period + period) % period;
+  return offset <= width ? minimum + offset : maximum - (offset - width);
+}
+
+/**
+ * Draw one bounded normal residual without creating hard-clamp piles. Shared
+ * factors are supplied separately so correlated ratings retain their common
+ * player-level influence when an extreme residual needs to be redrawn.
+ */
+function boundedCompositeRating(
+  random: () => number,
+  conditionalMean: number,
+  residualStandardDeviation: number,
+  minimum: number,
+  maximum: number,
+): number {
+  let sampled = conditionalMean;
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    sampled = normalRandom(random, conditionalMean, residualStandardDeviation);
+    if (sampled >= minimum && sampled <= maximum) return Math.round(sampled);
+  }
+  return Math.round(reflectIntoRange(sampled, minimum, maximum));
+}
+
+function boundedNormalValue(
+  random: () => number,
+  centre: number,
+  standardDeviation: number,
+  minimum: number,
+  maximum: number,
+): number {
+  let sampled = centre;
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    sampled = normalRandom(random, centre, standardDeviation);
+    if (sampled >= minimum && sampled <= maximum) return sampled;
+  }
+  return reflectIntoRange(sampled, minimum, maximum);
+}
+
 function potentialLabel(player: Pick<Player, "age" | "currentBatting" | "currentBowling" | "potentialBatting" | "potentialBowling">): Potential {
   const current = Math.max(player.currentBatting, player.currentBowling);
   const potential = Math.max(player.potentialBatting, player.potentialBowling);
@@ -284,6 +329,13 @@ export function initializePlayerCareerState(player: Player, baselineSeason: numb
       potentialBowlingBank: existing.potentialBowlingBank ?? 0,
       captaincyDevelopmentBank: existing.captaincyDevelopmentBank ?? 0,
       reputationDevelopmentBank: existing.reputationDevelopmentBank ?? 0,
+      wicketkeepingDevelopmentBank: existing.wicketkeepingDevelopmentBank ?? 0,
+      fieldingDevelopmentBank: existing.fieldingDevelopmentBank ?? 0,
+      battingConsistencyDevelopmentBank: existing.battingConsistencyDevelopmentBank ?? 0,
+      bowlingConsistencyDevelopmentBank: existing.bowlingConsistencyDevelopmentBank ?? 0,
+      injuryPronenessDevelopmentBank: existing.injuryPronenessDevelopmentBank ?? 0,
+      pressureDevelopmentBank: existing.pressureDevelopmentBank ?? 0,
+      bigMatchDevelopmentBank: existing.bigMatchDevelopmentBank ?? 0,
       unrealizedPotentialBattingLoss: existing.unrealizedPotentialBattingLoss ?? 0,
       unrealizedPotentialBowlingLoss: existing.unrealizedPotentialBowlingLoss ?? 0,
       consecutivePoorBattingSeasons: existing.consecutivePoorBattingSeasons ?? 0,
@@ -323,6 +375,13 @@ export function initializePlayerCareerState(player: Player, baselineSeason: numb
     potentialBowlingBank: 0,
     captaincyDevelopmentBank: 0,
     reputationDevelopmentBank: 0,
+    wicketkeepingDevelopmentBank: 0,
+    fieldingDevelopmentBank: 0,
+    battingConsistencyDevelopmentBank: 0,
+    bowlingConsistencyDevelopmentBank: 0,
+    injuryPronenessDevelopmentBank: 0,
+    pressureDevelopmentBank: 0,
+    bigMatchDevelopmentBank: 0,
     unrealizedPotentialBattingLoss: 0,
     unrealizedPotentialBowlingLoss: 0,
     consecutivePoorBattingSeasons: 0,
@@ -730,6 +789,202 @@ export function calculateReputationDevelopment(input: ReputationDevelopmentInput
     consecutivePoorSeasons,
     eliteReputationSeasons,
     majorReputationAchievements,
+  };
+}
+
+export interface WicketkeepingDevelopmentInput {
+  currentRating: number;
+  age: number;
+  role: Player["role"];
+  isPartTimeWk: boolean;
+  matches: number;
+  catches: number;
+  stumpings: number;
+  random: () => number;
+}
+
+export function calculateWicketkeepingDevelopment(input: WicketkeepingDevelopmentInput): number {
+  const { currentRating, age, role, isPartTimeWk, matches, catches, stumpings, random } = input;
+  const isDedicatedKeeper = role === "WK-Batsman";
+  if (!isDedicatedKeeper && !isPartTimeWk) {
+    return 0;
+  }
+
+  const dismissals = catches + stumpings;
+  const hasKeptInMatches = matches >= 4 && (isDedicatedKeeper || dismissals >= 1);
+
+  // 1. Youth Growth Phase (Age <= 25)
+  if (age <= 25 && hasKeptInMatches) {
+    const experienceBonus = matches >= 10 ? 0.8 : matches >= 6 ? 0.5 : 0.25;
+    const dismissalBonus = Math.min(0.4, dismissals * 0.04);
+    const ceilingDampening = currentRating >= 88 ? 0.15 : currentRating >= 80 ? 0.35 : currentRating >= 72 ? 0.65 : 1.0;
+    const variation = 0.85 + random() * 0.3;
+    return (experienceBonus + dismissalBonus) * ceilingDampening * variation;
+  }
+
+  // 2. Part-Time Conversion (Age 24-29)
+  if (isPartTimeWk && hasKeptInMatches && currentRating < 75) {
+    const conversionGrowth = (matches >= 8 ? 0.65 : 0.35) * (0.9 + random() * 0.2);
+    return conversionGrowth;
+  }
+
+  // 3. Dedicated Keeper Bench Rust (Age > 23, 0 matches)
+  if (isDedicatedKeeper && matches === 0 && age > 23) {
+    return -0.35;
+  }
+
+  // 4. Veteran Decline (Age >= 33)
+  if (age >= 33) {
+    const ageFactor = Math.min(1.6, 0.35 * (age - 32));
+    const variation = 0.9 + random() * 0.2;
+    return -ageFactor * variation;
+  }
+
+  return 0;
+}
+
+export interface FieldingDevelopmentInput {
+  currentRating: number;
+  age: number;
+  matches: number;
+  injuryAbsenceShare: number;
+  random: () => number;
+}
+
+export function calculateFieldingDevelopment(input: FieldingDevelopmentInput): number {
+  const { currentRating, age, matches, injuryAbsenceShare, random } = input;
+  const variation = 0.9 + random() * 0.2;
+
+  // 1. Youth Athletic Prime (Age <= 24)
+  if (age <= 24 && matches >= 8 && currentRating < 86) {
+    const youthGrowth = (currentRating < 70 ? 0.5 : 0.3) * variation;
+    return youthGrowth;
+  }
+
+  // 2. Prime (Age 25-30): Stable
+  if (age >= 25 && age <= 30) {
+    return 0;
+  }
+
+  // 3. Early Athletic Loss (Age 31-33)
+  if (age >= 31 && age <= 33) {
+    const earlyLoss = (0.35 + 0.15 * (age - 30)) * variation;
+    const injuryPenalty = injuryAbsenceShare >= 0.4 ? 0.3 : 0;
+    return -(earlyLoss + injuryPenalty);
+  }
+
+  // 4. Veteran Agility Decline (Age >= 34)
+  if (age >= 34) {
+    const veteranLoss = (0.75 + 0.25 * (age - 33)) * variation;
+    const injuryPenalty = injuryAbsenceShare >= 0.3 ? 0.4 : 0;
+    return -(veteranLoss + injuryPenalty);
+  }
+
+  return 0;
+}
+
+export interface InjuryPronenessProgressionInput {
+  currentRating: number;
+  age: number;
+  isPacer: boolean;
+  oversBowled: number;
+  injuryAbsenceShare: number;
+  random: () => number;
+}
+
+export function calculateInjuryPronenessProgression(input: InjuryPronenessProgressionInput): number {
+  const { currentRating, age, isPacer, oversBowled, injuryAbsenceShare, random } = input;
+  const variation = 0.9 + random() * 0.2;
+
+  let delta = 0;
+
+  // 1. Fast Bowler Accumulated Mileage (Age >= 29)
+  if (isPacer && age >= 29) {
+    const ageWear = (0.35 + 0.2 * (age - 28)) * variation;
+    const workloadWear = oversBowled >= 45 ? 0.35 : oversBowled >= 30 ? 0.2 : 0;
+    delta += ageWear + workloadWear;
+  } else if (!isPacer && age >= 33) {
+    delta += 0.25 * (age - 32) * variation;
+  }
+
+  // 2. Severe Injury Scar Tissue
+  if (injuryAbsenceShare >= 0.5) {
+    delta += 0.7 * variation;
+  }
+
+  // Dampen as it approaches ceiling 88
+  if (currentRating >= 80) {
+    delta *= 0.35;
+  }
+
+  return Math.max(0, delta);
+}
+
+export interface ConsistencyProgressionInput {
+  currentRating: number;
+  age: number;
+  matches: number;
+  hasMeaningfulSample: boolean;
+  random: () => number;
+}
+
+export function calculateConsistencyProgression(input: ConsistencyProgressionInput): number {
+  const { currentRating, age, matches, hasMeaningfulSample, random } = input;
+  const variation = 0.85 + random() * 0.3;
+
+  // 1. Youth Maturation (Age <= 26): Minimal, subtle positive drift
+  if (age <= 26 && matches >= 8 && hasMeaningfulSample && currentRating < 75) {
+    return 0.35 * variation;
+  }
+
+  // 2. Late Career Drift (Age >= 35): Minimal fatigue drift
+  if (age >= 35) {
+    return -0.25 * variation;
+  }
+
+  return 0;
+}
+
+export interface MentalProgressionInput {
+  pressureRating: number;
+  bigMatchRating: number;
+  age: number;
+  stats: CareerSeasonPerformance;
+  random: () => number;
+}
+
+export function calculatePressureAndBigMatchProgression(input: MentalProgressionInput): {
+  pressureDelta: number;
+  bigMatchDelta: number;
+} {
+  const { pressureRating, bigMatchRating, age, stats, random } = input;
+  const variation = 0.9 + random() * 0.2;
+
+  let pressureDelta = 0;
+  if (stats.matches >= 10 && pressureRating < 80) {
+    pressureDelta = 0.35 * variation;
+  } else if (age >= 32 && pressureRating < 70) {
+    pressureDelta = 0.2 * variation;
+  }
+
+  let bigMatchDelta = 0;
+  const playoffPotm = stats.playoffPlayerOfMatchAwards ?? 0;
+  if (playoffPotm > 0) {
+    bigMatchDelta += playoffPotm * 1.5 * variation;
+  }
+  if (stats.playedInChampionshipFinal) {
+    bigMatchDelta += 0.8 * variation;
+  }
+  if (stats.championshipCaptain) {
+    bigMatchDelta += 1.0 * variation;
+  }
+
+  if (bigMatchRating >= 85) bigMatchDelta *= 0.25;
+  if (pressureRating >= 85) pressureDelta *= 0.25;
+
+  return {
+    pressureDelta,
+    bigMatchDelta,
   };
 }
 
@@ -1376,6 +1631,78 @@ export function developPlayerAfterSeason(
     majorReputationAchievements: state.majorReputationAchievements,
   });
 
+  const secondaryRandom = seededRandom(`${seed}:${season}:${player.id}:secondary-development`);
+
+  // 1. Wicketkeeping Rating Lifecycle
+  const currentWk = player.wicketkeepingRating ?? (player.role === "WK-Batsman" ? 75 : 20);
+  const wkDelta = calculateWicketkeepingDevelopment({
+    currentRating: currentWk,
+    age: player.age,
+    role: player.role,
+    isPartTimeWk: Boolean(player.isPartTimeWk),
+    matches: stats.matches,
+    catches: stats.catches ?? 0,
+    stumpings: stats.stumpings ?? 0,
+    random: secondaryRandom,
+  });
+  const wicketkeeping = applyBank(currentWk, state.wicketkeepingDevelopmentBank ?? 0, wkDelta, 10, 96);
+
+  // 2. Fielding Rating Lifecycle (Athletic decay past 31)
+  const currentFielding = player.fieldingRating ?? 60;
+  const fieldingDelta = calculateFieldingDevelopment({
+    currentRating: currentFielding,
+    age: player.age,
+    matches: stats.matches,
+    injuryAbsenceShare,
+    random: secondaryRandom,
+  });
+  const fielding = applyBank(currentFielding, state.fieldingDevelopmentBank ?? 0, fieldingDelta, 20, 95);
+
+  // 3. Injury Proneness Lifecycle (Pacer mileage wear past 29)
+  const currentInjury = player.injuryProneness ?? 43;
+  const injuryDelta = calculateInjuryPronenessProgression({
+    currentRating: currentInjury,
+    age: player.age,
+    isPacer: player.role === "Pace Bowler" || player.bowlingStyle === "Pacer",
+    oversBowled: stats.oversBowled ?? 0,
+    injuryAbsenceShare,
+    random: secondaryRandom,
+  });
+  const injury = applyBank(currentInjury, state.injuryPronenessDevelopmentBank ?? 0, injuryDelta, 10, 90);
+
+  // 4. Batting & Bowling Consistency Lifecycle (Minimal shifts)
+  const currentBattingConsistency = player.battingConsistency ?? player.stamina ?? 50;
+  const currentBowlingConsistency = player.bowlingConsistency ?? player.consistency ?? 50;
+  const battingConsistencyDelta = calculateConsistencyProgression({
+    currentRating: currentBattingConsistency,
+    age: player.age,
+    matches: stats.matches,
+    hasMeaningfulSample: meaningfulBattingSample,
+    random: secondaryRandom,
+  });
+  const bowlingConsistencyDelta = calculateConsistencyProgression({
+    currentRating: currentBowlingConsistency,
+    age: player.age,
+    matches: stats.matches,
+    hasMeaningfulSample: meaningfulBowlingSample,
+    random: secondaryRandom,
+  });
+  const battingConsistency = applyBank(currentBattingConsistency, state.battingConsistencyDevelopmentBank ?? 0, battingConsistencyDelta, 10, 90);
+  const bowlingConsistency = applyBank(currentBowlingConsistency, state.bowlingConsistencyDevelopmentBank ?? 0, bowlingConsistencyDelta, 10, 90);
+
+  // 5. Mental Ratings: Pressure & Big Match Lifecycle
+  const currentPressure = player.pressureRating ?? 50;
+  const currentBigMatch = player.bigMatchRating ?? 50;
+  const mentalDeltas = calculatePressureAndBigMatchProgression({
+    pressureRating: currentPressure,
+    bigMatchRating: currentBigMatch,
+    age: player.age,
+    stats,
+    random: secondaryRandom,
+  });
+  const pressure = applyBank(currentPressure, state.pressureDevelopmentBank ?? 0, mentalDeltas.pressureDelta, 15, 90);
+  const bigMatch = applyBank(currentBigMatch, state.bigMatchDevelopmentBank ?? 0, mentalDeltas.bigMatchDelta, 15, 90);
+
   const updated: Player = {
     ...player,
     currentBatting: batting.value,
@@ -1384,6 +1711,23 @@ export function developPlayerAfterSeason(
     potentialBowling: potentialBowling.potential,
     captaincy: captaincy.value,
     reputation: reputation.reputation,
+    stamina: battingConsistency.value,
+    battingConsistency: battingConsistency.value,
+    consistency: bowlingConsistency.value,
+    bowlingConsistency: bowlingConsistency.value,
+    fieldingRating: fielding.value,
+    wicketkeepingRating: wicketkeeping.value,
+    injuryProneness: injury.value,
+    pressureRating: pressure.value,
+    bigMatchRating: bigMatch.value,
+    powerplayBatting: player.powerplayBatting,
+    middleOversBatting: player.middleOversBatting,
+    deathBatting: player.deathBatting,
+    powerplayBowling: player.powerplayBowling,
+    middleOversBowling: player.middleOversBowling,
+    deathBowling: player.deathBowling,
+    paceRating: player.paceRating,
+    spinRating: player.spinRating,
     careerState: {
       ...state,
       // Keep the legacy field synchronized so older saves/builds can migrate
@@ -1397,6 +1741,13 @@ export function developPlayerAfterSeason(
       potentialBowlingBank: potentialBowling.bank,
       captaincyDevelopmentBank: captaincy.bank,
       reputationDevelopmentBank: reputation.bank,
+      wicketkeepingDevelopmentBank: wicketkeeping.bank,
+      fieldingDevelopmentBank: fielding.bank,
+      battingConsistencyDevelopmentBank: battingConsistency.bank,
+      bowlingConsistencyDevelopmentBank: bowlingConsistency.bank,
+      injuryPronenessDevelopmentBank: injury.bank,
+      pressureDevelopmentBank: pressure.bank,
+      bigMatchDevelopmentBank: bigMatch.bank,
       unrealizedPotentialBattingLoss: potentialBatting.loss,
       unrealizedPotentialBowlingLoss: potentialBowling.loss,
       consecutivePoorBattingSeasons,
@@ -1420,6 +1771,13 @@ export function developPlayerAfterSeason(
           potentialBowling: potentialBowling.potential,
           captaincy: captaincy.value,
           reputation: reputation.reputation,
+          fieldingRating: fielding.value,
+          wicketkeepingRating: wicketkeeping.value,
+          injuryProneness: injury.value,
+          battingConsistency: battingConsistency.value,
+          bowlingConsistency: bowlingConsistency.value,
+          pressureRating: pressure.value,
+          bigMatchRating: bigMatch.value,
         },
       ].sort((left, right) => left.season - right.season).slice(-4),
     },
@@ -2387,7 +2745,12 @@ function generatedBattingProfile(
   } else {
     hasBattedAt7 = currentBatting >= 50;
     hasBattedAt6 = currentBatting >= 54 && random() < 0.35;
-    battingAggression = integerBetween(random, 50, 70);
+    const tailenderStyleRoll = random();
+    battingAggression = tailenderStyleRoll < 0.12
+      ? integerBetween(random, 35, 49)
+      : tailenderStyleRoll < 0.28
+        ? integerBetween(random, 71, 85)
+        : integerBetween(random, 50, 70);
   }
 
   // Defensive batting identities remain possible, but are deliberately rare
@@ -2417,6 +2780,204 @@ function generatedCaptaincy(age: number, rating: number, reputation: number, ran
   const abilityStanding = clamp((rating - 70) * 0.8, 0, 16);
   const variation = integerBetween(random, -8, 8);
   return Math.round(clamp(30 + ageMaturity + abilityStanding + reputation * 1.5 + variation, 25, 90));
+}
+
+function generatedBowlingTypeBattingRatings(
+  currentBatting: number,
+  random: () => number,
+): Pick<Player, "paceRating" | "spinRating"> {
+  // Matchup ratings are relative to core batting ability: 50 is neutral. A
+  // shared level permits broad strength/weakness, while the opposed gap creates
+  // pace or spin preferences without imposing a fixed total skill budget.
+  const battingLevel = clamp((currentBatting - 70) / 20, -1, 1);
+  const sharedMatchup = 3 * battingLevel + normalRandom(random, 0, 5.5);
+  const paceSpinDifference = normalRandom(random, 0, 8);
+  return {
+    paceRating: boundedCompositeRating(
+      random,
+      50 + sharedMatchup + paceSpinDifference / 2,
+      3.5,
+      15,
+      85,
+    ),
+    spinRating: boundedCompositeRating(
+      random,
+      50 + sharedMatchup - paceSpinDifference / 2,
+      3.5,
+      15,
+      85,
+    ),
+  };
+}
+
+function generatedFieldingAndKeepingRatings(
+  roleGroup: AuctionRoleGroup,
+  age: number,
+  isPartTimeWk: boolean,
+  fieldingRandom: () => number,
+  keepingRandom: () => number,
+): Pick<Player, "fieldingRating" | "wicketkeepingRating"> {
+  const athleticism = normalRandom(fieldingRandom, 0, 1);
+  const fieldingAgeAdjustment = -Math.min(3, 0.75 * Math.max(age - 28, 0));
+  const fieldingRating = boundedCompositeRating(
+    fieldingRandom,
+    60 + fieldingAgeAdjustment + 12 * 0.65 * athleticism,
+    12 * Math.sqrt(1 - 0.65 ** 2),
+    20,
+    95,
+  );
+
+  type KeepingBackground = "untrained" | "emergency" | "occasional" | "formerSecondary" | "battingFirst" | "regular" | "specialist";
+  let background: KeepingBackground;
+  if (roleGroup === "WK") {
+    const roll = keepingRandom();
+    background = roll < 0.20 ? "battingFirst" : roll < 0.80 ? "regular" : "specialist";
+  } else if (isPartTimeWk) {
+    const roll = keepingRandom();
+    background = roll < 0.55 ? "emergency" : roll < 0.90 ? "occasional" : "formerSecondary";
+  } else {
+    background = "untrained";
+  }
+  const keepingParameters: Record<KeepingBackground, {
+    mean: number;
+    standardDeviation: number;
+    minimum: number;
+    maximum: number;
+  }> = {
+    untrained: { mean: 20, standardDeviation: 6, minimum: 5, maximum: 38 },
+    emergency: { mean: 40, standardDeviation: 6, minimum: 25, maximum: 55 },
+    occasional: { mean: 52, standardDeviation: 7, minimum: 35, maximum: 69 },
+    formerSecondary: { mean: 64, standardDeviation: 7, minimum: 45, maximum: 81 },
+    battingFirst: { mean: 69, standardDeviation: 7, minimum: 50, maximum: 85 },
+    regular: { mean: 77, standardDeviation: 7, minimum: 55, maximum: 93 },
+    specialist: { mean: 85, standardDeviation: 5, minimum: 68, maximum: 96 },
+  };
+  const keeping = keepingParameters[background];
+  const wicketkeepingRating = boundedCompositeRating(
+    keepingRandom,
+    keeping.mean + keeping.standardDeviation * 0.20 * athleticism,
+    keeping.standardDeviation * Math.sqrt(1 - 0.20 ** 2),
+    keeping.minimum,
+    keeping.maximum,
+  );
+  return { fieldingRating, wicketkeepingRating };
+}
+
+function generatedMentalRatings(
+  random: () => number,
+): Pick<Player, "pressureRating" | "bigMatchRating"> {
+  const composure = normalRandom(random, 0, 1);
+  const sharedComposure = 12 * 0.65 * composure;
+  const specificSpread = 12 * Math.sqrt(1 - 0.65 ** 2);
+  return {
+    pressureRating: boundedCompositeRating(random, 50 + sharedComposure, specificSpread, 15, 90),
+    bigMatchRating: boundedCompositeRating(random, 50 + sharedComposure, specificSpread, 15, 90),
+  };
+}
+
+function generatedConsistencyAndDurability(
+  age: number,
+  consistencyRandom: () => number,
+  injuryRandom: () => number,
+): Pick<Player,
+  | "stamina" | "battingConsistency"
+  | "consistency" | "bowlingConsistency"
+  | "injuryProneness"
+> {
+  const repeatability = normalRandom(consistencyRandom, 0, 1);
+  const sharedRepeatability = 13 * 0.45 * repeatability;
+  const disciplineSpread = 13 * Math.sqrt(1 - 0.45 ** 2);
+  const battingConsistency = boundedCompositeRating(
+    consistencyRandom,
+    50 + sharedRepeatability,
+    disciplineSpread,
+    10,
+    90,
+  );
+  const bowlingConsistency = boundedCompositeRating(
+    consistencyRandom,
+    50 + sharedRepeatability,
+    disciplineSpread,
+    10,
+    90,
+  );
+  const ageAdjustment = Math.min(3, 0.75 * Math.max(age - 29, 0));
+  const injuryProneness = boundedCompositeRating(injuryRandom, 43 + ageAdjustment, 14, 10, 90);
+  return {
+    stamina: battingConsistency,
+    battingConsistency,
+    consistency: bowlingConsistency,
+    bowlingConsistency,
+    injuryProneness,
+  };
+}
+
+function generatedPhaseRatings(
+  profile: Pick<Player,
+    | "isOpener" | "isFinisher"
+    | "hasBattedAt3" | "hasBattedAt4" | "hasBattedAt5"
+  >,
+  bowlingStyle: Player["bowlingStyle"],
+  battingRandom: () => number,
+  bowlingRandom: () => number,
+): Pick<Player,
+  | "powerplayBatting" | "middleOversBatting" | "deathBatting"
+  | "powerplayBowling" | "middleOversBowling" | "deathBowling"
+> {
+  // Position influences phase familiarity, not absolute batting ability. The
+  // strength of that influence varies continuously so two openers or finishers
+  // do not inherit the same template.
+  const openerExposure = profile.isOpener ? 1 : 0;
+  const middlePositionCount = [profile.hasBattedAt3, profile.hasBattedAt4, profile.hasBattedAt5]
+    .filter(Boolean).length;
+  const middleExposure = Math.min(1, middlePositionCount / 2);
+  const finisherExposure = profile.isFinisher ? 1 : 0;
+  const battingSpecialisationStrength = boundedNormalValue(battingRandom, 0.80, 0.20, 0.40, 1.20);
+  const positionPrior = [
+    10 * openerExposure + middleExposure - 3 * finisherExposure,
+    2 * openerExposure + 8 * middleExposure + 2 * finisherExposure,
+    -2 * openerExposure + 2 * middleExposure + 11 * finisherExposure,
+  ].map((value) => clamp(value * battingSpecialisationStrength, -8, 12));
+  const battingBreadth = normalRandom(battingRandom, 0, 4);
+  const batting = positionPrior.map((prior) => boundedCompositeRating(
+    battingRandom,
+    50 + prior + battingBreadth,
+    7,
+    20,
+    90,
+  ));
+
+  // Style shifts likely practice emphasis but never fixes a bowler's best
+  // phase. Only this emphasis component is centred; total phase skill remains
+  // free to move together through breadth and phase-specific execution.
+  const styleVector = bowlingStyle === "Pacer"
+    ? [0.7, -0.4, 0.4]
+    : bowlingStyle === "Spinner"
+      ? [-0.2, 0.9, -0.3]
+      : [0, 0, 0];
+  const styleStrength = boundedNormalValue(bowlingRandom, 0.85, 0.25, 0.35, 1.35);
+  const focus = styleVector.map((stylePrior) => (
+    styleStrength * stylePrior + normalRandom(bowlingRandom, 0, 0.75)
+  ));
+  const focusMean = focus.reduce((sum, value) => sum + value, 0) / focus.length;
+  const practiceDeviation = focus.map((value) => 7 * (value - focusMean));
+  const bowlingBreadth = normalRandom(bowlingRandom, 0, 4);
+  const bowling = practiceDeviation.map((deviation) => boundedCompositeRating(
+    bowlingRandom,
+    50 + deviation + bowlingBreadth,
+    5,
+    20,
+    90,
+  ));
+
+  return {
+    powerplayBatting: batting[0],
+    middleOversBatting: batting[1],
+    deathBatting: batting[2],
+    powerplayBowling: bowling[0],
+    middleOversBowling: bowling[1],
+    deathBowling: bowling[2],
+  };
 }
 
 function createGeneratedPlayer(input: {
@@ -2569,6 +3130,45 @@ function createGeneratedPlayer(input: {
   const generatedName = input.forcedName
     ?? generateRegenName(country, seededRandom(`${input.seed}:${input.season}:regen:${input.index}:name`));
   const name = `${generatedName} (R)`;
+  const bowlingTypeBattingRatings = generatedBowlingTypeBattingRatings(
+    skills.currentBatting,
+    seededRandom(`${input.seed}:${input.season}:regen:${input.index}:bowling-type-batting`),
+  );
+  const fieldingAndKeepingRatings = generatedFieldingAndKeepingRatings(
+    roleGroup,
+    age,
+    Boolean(battingProfile.isPartTimeWk),
+    seededRandom(`${input.seed}:${input.season}:regen:${input.index}:fielding-rating`),
+    seededRandom(`${input.seed}:${input.season}:regen:${input.index}:wicketkeeping-rating`),
+  );
+  const mentalRatings = generatedMentalRatings(
+    seededRandom(`${input.seed}:${input.season}:regen:${input.index}:mental-ratings`),
+  );
+  const consistencyAndDurability = generatedConsistencyAndDurability(
+    age,
+    seededRandom(`${input.seed}:${input.season}:regen:${input.index}:consistency-ratings`),
+    seededRandom(`${input.seed}:${input.season}:regen:${input.index}:injury-proneness`),
+  );
+  // Resolve these in their historical RNG order so adding secondary ratings
+  // does not reshuffle the established regen stream.
+  const battingStyle: Player["battingStyle"] = random() < 0.3 ? "Left-hand" : "Right-hand";
+  const bowlingStyle: Player["bowlingStyle"] = roleGroup === "PACE"
+    ? "Pacer"
+    : roleGroup === "SPIN"
+      ? "Spinner"
+      : roleGroup === "AR"
+        ? (random() < CAREER_POLICY.paceBowlingAllRounderChance ? "Pacer" : "Spinner")
+        : null;
+  const bowlingHand: Player["bowlingHand"] = roleGroup === "BAT" || roleGroup === "WK"
+    ? null
+    : random() < 0.24 ? "Left-hand" : "Right-hand";
+  const phaseRatings = generatedPhaseRatings(
+    battingProfile,
+    bowlingStyle,
+    seededRandom(`${input.seed}:${input.season}:regen:${input.index}:batting-phase-ratings`),
+    seededRandom(`${input.seed}:${input.season}:regen:${input.index}:bowling-phase-ratings`),
+  );
+  const captaincy = generatedCaptaincy(age, generatedAbility, reputation, random);
   const player: Player = {
     id,
     name,
@@ -2576,15 +3176,9 @@ function createGeneratedPlayer(input: {
     nationality,
     country,
     role,
-    battingStyle: random() < 0.3 ? "Left-hand" : "Right-hand",
-    bowlingStyle: roleGroup === "PACE"
-      ? "Pacer"
-      : roleGroup === "SPIN"
-        ? "Spinner"
-        : roleGroup === "AR"
-          ? (random() < CAREER_POLICY.paceBowlingAllRounderChance ? "Pacer" : "Spinner")
-          : null,
-    bowlingHand: roleGroup === "BAT" || roleGroup === "WK" ? null : random() < 0.24 ? "Left-hand" : "Right-hand",
+    battingStyle,
+    bowlingStyle,
+    bowlingHand,
     careerStats: {
       batting: { matches: 0, innings: 0, runs: 0, average: 0, strikeRate: 0, fifties: 0, hundreds: 0 },
       bowling: { matches: 0, wickets: 0, economy: 0, average: 0, bestFigures: "0/0" },
@@ -2601,8 +3195,14 @@ function createGeneratedPlayer(input: {
     potential: "Established",
     ...skills,
     reputation,
-    captaincy: generatedCaptaincy(age, generatedAbility, reputation, random),
+    captaincy,
     ...battingProfile,
+    aggression: battingProfile.battingAggression,
+    ...bowlingTypeBattingRatings,
+    ...fieldingAndKeepingRatings,
+    ...mentalRatings,
+    ...consistencyAndDurability,
+    ...phaseRatings,
     isWicketkeeper: roleGroup === "WK",
   };
   player.potential = potentialLabel(player);

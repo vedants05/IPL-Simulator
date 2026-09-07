@@ -312,13 +312,12 @@ export default function ScoutingAssignmentsPage({ shortlist, onToggleShortlist }
 
       <div className="col-span-8 row-span-2 grid min-h-0 grid-cols-[minmax(0,1.25fr)_minmax(320px,0.9fr)] gap-3 overflow-hidden">
         <section className="flex min-h-0 flex-col rounded-lg border-2 border-border bg-surface p-4">
-          <div className="flex min-w-0 items-center gap-2 border-b border-[#16130f]/10 pb-4">
-            <div className="inline-flex shrink-0 rounded border border-border bg-[#16130f]/5 p-1">
-              <button type="button" onClick={() => setMarket("india")} className={`flex items-center gap-1 whitespace-nowrap rounded px-2 py-2 font-space-mono text-[7px] font-bold uppercase transition-colors ${market === "india" ? "bg-[var(--ink)] text-bg" : "text-text-secondary hover:text-text-primary"}`}><Map size={12} /> Scout India</button>
-              <button type="button" onClick={() => setMarket("international")} className={`flex items-center gap-1 whitespace-nowrap rounded px-2 py-2 font-space-mono text-[7px] font-bold uppercase transition-colors ${market === "international" ? "bg-[var(--ink)] text-bg" : "text-text-secondary hover:text-text-primary"}`}><Globe2 size={12} /> Scout internationally</button>
-            </div>
-            <div className="ml-auto flex min-w-0 items-center justify-end gap-2">
-              <div className="shrink-0 whitespace-nowrap font-space-mono text-[7px] font-bold uppercase text-text-secondary">{hoveredName ? `Viewing: ${hoveredName}` : `${visibleRegions.length} selectable regions`}</div>
+          <div className="flex min-w-0 flex-col gap-1.5 border-b border-[#16130f]/10 pb-3">
+            <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+              <div className="inline-flex shrink-0 rounded border border-border bg-[#16130f]/5 p-1">
+                <button type="button" onClick={() => setMarket("india")} className={`flex items-center gap-1 whitespace-nowrap rounded px-2 py-2 font-space-mono text-[7px] font-bold uppercase transition-colors ${market === "india" ? "bg-[var(--ink)] text-bg" : "text-text-secondary hover:text-text-primary"}`}><Map size={12} /> Scout India</button>
+                <button type="button" onClick={() => setMarket("international")} className={`flex items-center gap-1 whitespace-nowrap rounded px-2 py-2 font-space-mono text-[7px] font-bold uppercase transition-colors ${market === "international" ? "bg-[var(--ink)] text-bg" : "text-text-secondary hover:text-text-primary"}`}><Globe2 size={12} /> Scout internationally</button>
+              </div>
               <select
                 value={selectedId}
                 onChange={(event) => selectRegion(event.target.value)}
@@ -327,6 +326,12 @@ export default function ScoutingAssignmentsPage({ shortlist, onToggleShortlist }
               >
                 {visibleRegions.map((region) => <option key={region.id} value={region.id}>{region.name}</option>)}
               </select>
+            </div>
+            <div
+              className="min-w-0 truncate text-right font-space-mono text-[7px] font-bold uppercase text-text-secondary"
+              title={hoveredName ? `Viewing: ${hoveredName}` : `${visibleRegions.length} selectable regions`}
+            >
+              {hoveredName ? `Viewing: ${hoveredName}` : `${visibleRegions.length} selectable regions`}
             </div>
           </div>
           <div className="relative min-h-0 flex-1 overflow-hidden rounded bg-[#16130f]/[0.025] p-3">

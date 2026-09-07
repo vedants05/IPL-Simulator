@@ -45,10 +45,28 @@ export interface IPLStats {
   bowlingInnings: number;
   bowlingAverage: number;
   wickets: number;
+  innings?: number;
+  notOuts?: number;
+  ballsFaced?: number;
+  highScore?: number;
+  fifties?: number;
+  hundreds?: number;
+  fours?: number;
+  sixes?: number;
+  bowlingBalls?: number;
+  runsConceded?: number;
+  economy?: number;
+  bestBowlingWickets?: number;
+  bestBowlingRuns?: number;
+  bestBowlingFigures?: string;
+  fourWickets?: number;
+  fiveWickets?: number;
+  catches?: number;
+  stumpings?: number;
+  runOuts?: number;
   /** Persisted denominators used to keep simulated-career rates exact. */
   battingBalls?: number;
   battingDismissals?: number;
-  bowlingBalls?: number;
   bowlingRunsConceded?: number;
 }
 
@@ -83,6 +101,13 @@ export interface PlayerCareerRatingHistoryEntry {
   potentialBowling: number;
   captaincy?: number;
   reputation?: number;
+  fieldingRating?: number;
+  wicketkeepingRating?: number;
+  injuryProneness?: number;
+  battingConsistency?: number;
+  bowlingConsistency?: number;
+  pressureRating?: number;
+  bigMatchRating?: number;
 }
 
 export interface PlayerCareerState {
@@ -104,6 +129,13 @@ export interface PlayerCareerState {
   potentialBowlingBank: number;
   captaincyDevelopmentBank: number;
   reputationDevelopmentBank: number;
+  wicketkeepingDevelopmentBank?: number;
+  fieldingDevelopmentBank?: number;
+  battingConsistencyDevelopmentBank?: number;
+  bowlingConsistencyDevelopmentBank?: number;
+  injuryPronenessDevelopmentBank?: number;
+  pressureDevelopmentBank?: number;
+  bigMatchDevelopmentBank?: number;
   unrealizedPotentialBattingLoss: number;
   unrealizedPotentialBowlingLoss: number;
   consecutivePoorBattingSeasons?: number;
@@ -134,6 +166,10 @@ export interface Player {
   careerStats: CareerStats;
   iplStats: IPLStats;
   iplHistory: IPLHistoryEntry[];
+  /** Current contract loaded for the opening mini auction; kept separate from historical season prices. */
+  openingContractPrice?: number;
+  /** Career season in which openingContractPrice applies. */
+  openingContractSeason?: number;
   basePrice: number;
   isCapped: boolean;
   /** First season in which this player became internationally capped in the career save. */
@@ -175,6 +211,24 @@ export interface Player {
   hasBattedAt6?: boolean;
   hasBattedAt7?: boolean;
   onlyOpensOrBenched?: boolean;
+  powerplayBatting?: number;
+  middleOversBatting?: number;
+  deathBatting?: number;
+  powerplayBowling?: number;
+  middleOversBowling?: number;
+  deathBowling?: number;
+  stamina?: number;
+  consistency?: number;
+  battingConsistency?: number;
+  bowlingConsistency?: number;
+  bigMatchRating?: number;
+  pressureRating?: number;
+  aggression?: number;
+  fieldingRating?: number;
+  wicketkeepingRating?: number;
+  injuryProneness?: number;
+  paceRating?: number;
+  spinRating?: number;
 }
 
 // Segment focus — from teamLogic.csv: how strongly a franchise targets each

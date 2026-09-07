@@ -1,5 +1,5 @@
 import { supabase } from "./client";
-import { Player, Nationality, Role, Potential, BowlingType } from "../types";
+import { Player, Nationality, Role, Potential, BowlingType, IPLStats } from "../types";
 import { calculateBasePrice } from "../logic/playerBasePrice";
 import { enforceBattingPositionEligibility } from "../logic/playerBattingPositions";
 
@@ -52,6 +52,12 @@ export function genPotential(curBat: number, potBat: number, curBowl: number, po
   return "Established";
 }
 
+function readOptionalRating(value: unknown): number | undefined {
+  if (value == null || value === "") return undefined;
+  const rating = Number(value);
+  return Number.isFinite(rating) ? Math.max(0, Math.min(100, rating)) : undefined;
+}
+
 export function mapRowsToPlayers(data: any[]): Player[] {
   const seenIds = new Set<string>();
 
@@ -62,7 +68,7 @@ export function mapRowsToPlayers(data: any[]): Player[] {
     const teamId = TEAM_MAP[rawTeam] || null;
     const name = row.name;
     const age = parseInt(row.age) || 0;
-    const salary = parseFloat(row.ipl_2026_salary) || 0;
+    const openingContractPrice = Math.round((parseFloat(row.ipl_2026_salary) || 0) * 100);
     const nat = row.overseas_status === "Overseas" ? "Overseas" : "Indian";
     const isCapped = row.status === "Capped" || name === "Yash Thakur";
     const role = (ROLE_MAP[row.primary_role] ?? "Batsman") as Role;
@@ -92,7 +98,9 @@ export function mapRowsToPlayers(data: any[]): Player[] {
     // player must not be offered IPL captaincy. Dhoni is explicitly unavailable.
     const isIplCaptaincyUnavailable = name === "MS Dhoni" || row.ipl_captain_desire === false;
     const setForRelease = row.set_for_release === true;
-    const battingAggression = parseInt(row.batting_aggression) || 50;
+    const battingAggression = name === "Vaibhav Suryavanshi"
+      ? 99
+      : parseInt(row.batting_aggression) || 50;
     
     const isPhillips = name === "Glenn Phillips";
     const isTripathi = name === "Rahul Tripathi";
@@ -111,18 +119,16 @@ export function mapRowsToPlayers(data: any[]): Player[] {
     }
     seenIds.add(id);
 
-    // Parse History from columns team_YYYY and salary_YYYY
+    // Historical rows come only from the paired team_YYYY / salary_YYYY
+    // columns. The live 2026 contract is intentionally stored separately so
+    // it can seed the opening 2027 mini auction without rewriting history.
     const iplHistory: { teamId: string; season: string; price: number }[] = [];
     const seasons = [
       "2026", "2025", "2024", "2023", "2022", "2021", "2020", "2019", "2018", "2017", "2016", "2015", "2014", "2013", "2012", "2011", "2010", "2009", "2008"
     ];
     for (const season of seasons) {
-      // The opening mini auction carries the canonical current contract. A
-      // player's historical 2026 franchise can differ after a real-world
-      // transfer (for example Kuldeep's history says DC while his current
-      // contract is LSG), so current team/salary must win for this one season.
-      const teamVal = season === "2026" && teamId ? teamId : row[`team_${season}`];
-      const salaryVal = season === "2026" && salary > 0 ? salary : row[`salary_${season}`];
+      const teamVal = row[`team_${season}`];
+      const salaryVal = row[`salary_${season}`];
       if (teamVal) {
         iplHistory.push({
           teamId: teamVal,
@@ -143,14 +149,41 @@ export function mapRowsToPlayers(data: any[]): Player[] {
     const t20Runs = parseInt(row.t20_runs) || 0;
     const t20Wickets = parseInt(row.t20_wickets) || 0;
     const t20BowlInns = parseInt(row.t20_bowling_innings) || 0;
-    const iplStats = {
+    const iplBowlBalls = parseInt(row.ipl_bowling_balls) || 0;
+    const iplRunsConceded = parseInt(row.ipl_runs_conceded) || 0;
+    const iplBestWkts = parseInt(row.ipl_best_bowling_wickets) || 0;
+    const iplBestRuns = parseInt(row.ipl_best_bowling_runs) || 0;
+
+    const iplStats: IPLStats = {
       matches: parseInt(row.ipl_games) || 0,
+      innings: parseInt(row.ipl_batting_innings) || 0,
+      notOuts: parseInt(row.ipl_not_outs) || 0,
       runs: parseInt(row.ipl_runs) || 0,
+      ballsFaced: parseInt(row.ipl_balls_faced) || 0,
       battingAverage: parseFloat(row.ipl_average) || 0,
       strikeRate: parseFloat(row.ipl_strike_rate) || 0,
+      highScore: parseInt(row.ipl_high_score) || 0,
+      fifties: parseInt(row.ipl_fifties) || 0,
+      hundreds: parseInt(row.ipl_hundreds) || 0,
+      fours: parseInt(row.ipl_fours) || 0,
+      sixes: parseInt(row.ipl_sixes) || 0,
       bowlingInnings: parseInt(row.ipl_bowling_innings) || 0,
-      bowlingAverage: parseFloat(row.ipl_bowling_average) || 0,
+      bowlingBalls: iplBowlBalls,
+      runsConceded: iplRunsConceded,
       wickets: parseInt(row.ipl_wickets) || 0,
+      bowlingAverage: parseFloat(row.ipl_bowling_average) || 0,
+      economy: iplBowlBalls > 0 ? Math.round((iplRunsConceded / (iplBowlBalls / 6)) * 100) / 100 : 0,
+      bestBowlingWickets: iplBestWkts,
+      bestBowlingRuns: iplBestRuns,
+      bestBowlingFigures: iplBestWkts > 0 ? `${iplBestWkts}/${iplBestRuns}` : "-",
+      fourWickets: parseInt(row.ipl_four_wicket_hauls) || 0,
+      fiveWickets: parseInt(row.ipl_five_wicket_hauls) || 0,
+      catches: parseInt(row.ipl_catches) || 0,
+      stumpings: parseInt(row.ipl_stumpings) || 0,
+      runOuts: parseInt(row.ipl_run_outs) || 0,
+      battingBalls: parseInt(row.ipl_balls_faced) || 0,
+      battingDismissals: (parseInt(row.ipl_batting_innings) || 0) - (parseInt(row.ipl_not_outs) || 0),
+      bowlingRunsConceded: iplRunsConceded,
     };
 
     const batting = {
@@ -199,6 +232,8 @@ export function mapRowsToPlayers(data: any[]): Player[] {
         },
         iplStats,
         iplHistory,
+        openingContractPrice,
+        openingContractSeason: 2027,
         reputation,
         captaincy,
         isIplCaptaincyUnavailable,
@@ -215,6 +250,24 @@ export function mapRowsToPlayers(data: any[]): Player[] {
         hasBattedAt5,
         hasBattedAt6,
         hasBattedAt7,
+        powerplayBatting: row.powerplay_batting != null ? parseInt(row.powerplay_batting) : undefined,
+        middleOversBatting: row.middle_overs_batting != null ? parseInt(row.middle_overs_batting) : undefined,
+        deathBatting: row.death_batting != null ? parseInt(row.death_batting) : undefined,
+        powerplayBowling: row.powerplay_bowling != null ? parseInt(row.powerplay_bowling) : undefined,
+        middleOversBowling: row.middle_overs_bowling != null ? parseInt(row.middle_overs_bowling) : undefined,
+        deathBowling: row.death_bowling != null ? parseInt(row.death_bowling) : undefined,
+        stamina: row.stamina != null ? parseInt(row.stamina) : undefined,
+        consistency: row.consistency != null ? parseInt(row.consistency) : undefined,
+        battingConsistency: row.stamina != null ? parseInt(row.stamina) : undefined,
+        bowlingConsistency: row.consistency != null ? parseInt(row.consistency) : undefined,
+        bigMatchRating: row.big_match_rating != null ? parseInt(row.big_match_rating) : undefined,
+        pressureRating: row.pressure_rating != null ? parseInt(row.pressure_rating) : undefined,
+        aggression: battingAggression,
+        fieldingRating: readOptionalRating(row.fielding_rating),
+        wicketkeepingRating: readOptionalRating(row.wicketkeeping_rating),
+        injuryProneness: readOptionalRating(row.injury_proneness),
+        paceRating: readOptionalRating(row.pace_rating),
+        spinRating: readOptionalRating(row.spin_rating),
       });
     });
 }

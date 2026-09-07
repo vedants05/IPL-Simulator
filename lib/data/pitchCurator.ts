@@ -150,7 +150,7 @@ export const HOME_STADIUMS: readonly HomeStadium[] = [
     teamId: "RCB",
     name: "M. Chinnaswamy Stadium",
     location: "Bengaluru",
-    capacity: 33_677,
+    capacity: 33_800,
     defaultBoundaryDimensions: { straightMetres: 65, wideMetres: 60 },
     outfield: {
       speed: "Very fast",
@@ -194,7 +194,7 @@ export const HOME_STADIUMS: readonly HomeStadium[] = [
     teamId: "MI",
     name: "Wankhede Stadium",
     location: "Mumbai",
-    capacity: 33_210,
+    capacity: 33_100,
     defaultBoundaryDimensions: { straightMetres: 72, wideMetres: 66 },
     outfield: {
       speed: "Very fast",
@@ -238,7 +238,7 @@ export const HOME_STADIUMS: readonly HomeStadium[] = [
     teamId: "CSK",
     name: "M. A. Chidambaram Stadium",
     location: "Chennai",
-    capacity: 37_505,
+    capacity: 38_200,
     defaultBoundaryDimensions: { straightMetres: 65, wideMetres: 68 },
     outfield: {
       speed: "Balanced",
@@ -282,7 +282,7 @@ export const HOME_STADIUMS: readonly HomeStadium[] = [
     teamId: "DC",
     name: "Arun Jaitley Stadium",
     location: "Delhi",
-    capacity: 37_306,
+    capacity: 35_200,
     defaultBoundaryDimensions: { straightMetres: 70, wideMetres: 65 },
     outfield: {
       speed: "Fast",
@@ -326,7 +326,7 @@ export const HOME_STADIUMS: readonly HomeStadium[] = [
     teamId: "LSG",
     name: "BRSABV Ekana Cricket Stadium",
     location: "Lucknow",
-    capacity: 47_165,
+    capacity: 50_100,
     defaultBoundaryDimensions: { straightMetres: 70, wideMetres: 65 },
     outfield: {
       speed: "Measured",
@@ -370,7 +370,7 @@ export const HOME_STADIUMS: readonly HomeStadium[] = [
     teamId: "SRH",
     name: "Rajiv Gandhi International Cricket Stadium",
     location: "Hyderabad",
-    capacity: 39_952,
+    capacity: 39_200,
     defaultBoundaryDimensions: { straightMetres: 70, wideMetres: 67 },
     outfield: {
       speed: "Fast",
@@ -414,7 +414,7 @@ export const HOME_STADIUMS: readonly HomeStadium[] = [
     teamId: "GT",
     name: "Narendra Modi Stadium",
     location: "Ahmedabad",
-    capacity: 135_000,
+    capacity: 132_000,
     defaultBoundaryDimensions: { straightMetres: 75, wideMetres: 65 },
     outfield: {
       speed: "Fast",
@@ -471,7 +471,7 @@ export const HOME_STADIUMS: readonly HomeStadium[] = [
     teamId: "RR",
     name: "Sawai Mansingh Stadium",
     location: "Jaipur",
-    capacity: 23_400,
+    capacity: 30_000,
     defaultBoundaryDimensions: { straightMetres: 68, wideMetres: 68 },
     outfield: {
       speed: "Balanced",
@@ -515,7 +515,7 @@ export const HOME_STADIUMS: readonly HomeStadium[] = [
     teamId: "PBKS",
     name: "Maharaja Yadavindra Singh Stadium",
     location: "Mullanpur",
-    capacity: 31_150,
+    capacity: 38_000,
     defaultBoundaryDimensions: { straightMetres: 72, wideMetres: 73 },
     outfield: {
       speed: "Fast",

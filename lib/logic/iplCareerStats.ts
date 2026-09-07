@@ -1,5 +1,6 @@
 import type { MatchSimulationRecord } from "@/lib/logic/matchSimulation";
 import type { CareerStats, IPLStats, Player } from "@/lib/types";
+import { extractMvpEventStats } from "@/lib/logic/seasonAwards";
 
 export interface IplCareerMatchUpdate {
   key: string;
@@ -14,12 +15,18 @@ interface MatchContribution {
   battingInnings: number;
   fifties: number;
   hundreds: number;
+  fours: number;
+  sixes: number;
+  highScore: number;
   bowlingInnings: number;
   bowlingBalls: number;
   bowlingRunsConceded: number;
   wickets: number;
   bestBowlingWickets: number;
   bestBowlingRuns: number;
+  catches: number;
+  stumpings: number;
+  runOuts: number;
 }
 
 function emptyContribution(): MatchContribution {
@@ -31,12 +38,18 @@ function emptyContribution(): MatchContribution {
     battingInnings: 0,
     fifties: 0,
     hundreds: 0,
+    fours: 0,
+    sixes: 0,
+    highScore: 0,
     bowlingInnings: 0,
     bowlingBalls: 0,
     bowlingRunsConceded: 0,
     wickets: 0,
     bestBowlingWickets: 0,
     bestBowlingRuns: Number.POSITIVE_INFINITY,
+    catches: 0,
+    stumpings: 0,
+    runOuts: 0,
   };
 }
 
@@ -69,18 +82,50 @@ function applyContribution(stats: IPLStats, contribution: MatchContribution): IP
   const bowlingRunsConceded = historicalBowlingRuns(stats) + contribution.bowlingRunsConceded;
   const bowlingBalls = (stats.bowlingBalls ?? 0) + contribution.bowlingBalls;
 
+  const currentBestWkts = stats.bestBowlingWickets ?? 0;
+  const currentBestRuns = stats.bestBowlingRuns ?? Number.POSITIVE_INFINITY;
+  const hasNewBest = isBetterBowlingFigures(
+    contribution.bestBowlingWickets,
+    contribution.bestBowlingRuns,
+    currentBestWkts,
+    currentBestRuns,
+  );
+  const bestBowlingWickets = hasNewBest ? contribution.bestBowlingWickets : currentBestWkts;
+  const bestBowlingRuns = hasNewBest ? contribution.bestBowlingRuns : currentBestRuns;
+  const bestBowlingFigures = hasNewBest
+    ? `${contribution.bestBowlingWickets}/${contribution.bestBowlingRuns}`
+    : (stats.bestBowlingFigures ?? (bestBowlingWickets > 0 ? `${bestBowlingWickets}/${bestBowlingRuns}` : "-"));
+
   return {
     ...stats,
     matches: stats.matches + contribution.matches,
+    innings: (stats.innings ?? 0) + contribution.battingInnings,
+    notOuts: (stats.notOuts ?? 0) + Math.max(0, contribution.battingInnings - contribution.dismissals),
     runs,
+    ballsFaced: battingBalls,
     battingAverage: battingDismissals > 0 ? runs / battingDismissals : runs,
-    strikeRate: battingBalls > 0 ? runs * 100 / battingBalls : 0,
+    strikeRate: battingBalls > 0 ? (runs * 100) / battingBalls : 0,
+    fifties: (stats.fifties ?? 0) + contribution.fifties,
+    hundreds: (stats.hundreds ?? 0) + contribution.hundreds,
+    fours: (stats.fours ?? 0) + contribution.fours,
+    sixes: (stats.sixes ?? 0) + contribution.sixes,
+    highScore: Math.max(stats.highScore ?? 0, contribution.highScore),
     bowlingInnings: stats.bowlingInnings + contribution.bowlingInnings,
-    bowlingAverage: wickets > 0 ? bowlingRunsConceded / wickets : 0,
+    bowlingBalls,
+    runsConceded: bowlingRunsConceded,
     wickets,
+    bowlingAverage: wickets > 0 ? bowlingRunsConceded / wickets : 0,
+    economy: bowlingBalls > 0 ? bowlingRunsConceded / (bowlingBalls / 6) : 0,
+    bestBowlingWickets,
+    bestBowlingRuns,
+    bestBowlingFigures,
+    fourWickets: (stats.fourWickets ?? 0) + Number(contribution.bestBowlingWickets === 4),
+    fiveWickets: (stats.fiveWickets ?? 0) + Number(contribution.bestBowlingWickets >= 5),
+    catches: (stats.catches ?? 0) + contribution.catches,
+    stumpings: (stats.stumpings ?? 0) + contribution.stumpings,
+    runOuts: (stats.runOuts ?? 0) + contribution.runOuts,
     battingBalls,
     battingDismissals,
-    bowlingBalls,
     bowlingRunsConceded,
   };
 }
@@ -196,6 +241,9 @@ function collectMatchContributions(simulation: MatchSimulationRecord): Map<strin
       contribution.battingInnings += 1;
       contribution.runs += entry.runs;
       contribution.balls += entry.balls;
+      contribution.fours += entry.fours ?? 0;
+      contribution.sixes += entry.sixes ?? 0;
+      contribution.highScore = Math.max(contribution.highScore, entry.runs);
       contribution.dismissals += Number(!entry.notOut);
       contribution.hundreds += Number(entry.runs >= 100);
       contribution.fifties += Number(entry.runs >= 50 && entry.runs < 100);
@@ -217,6 +265,16 @@ function collectMatchContributions(simulation: MatchSimulationRecord): Map<strin
         contribution.bestBowlingRuns = entry.runsConceded;
       }
     });
+  });
+
+  // Fielding dismissals are recorded at delivery level with the responsible
+  // fielder ID. Reuse the canonical event extractor so catches, stumpings and
+  // run-outs update the same career totals shown on the player profile.
+  Object.entries(extractMvpEventStats(simulation)).forEach(([playerId, events]) => {
+    const contribution = contributionFor(playerId);
+    contribution.catches += events.catches;
+    contribution.stumpings += events.stumpings;
+    contribution.runOuts += events.runOuts;
   });
   return contributions;
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo } from "react";
+import React, { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { useGameStore } from "@/lib/store/gameStore";
 import { formatPrice } from "@/lib/logic/auctionRules";
@@ -51,6 +51,8 @@ function retiredSnapshotPlayer(snapshot: HistoricalPlayerSnapshot): Player {
     isFinisher: snapshot.isFinisher,
     reputation: snapshot.reputation,
     captaincy: snapshot.captaincy,
+    battingAggression: snapshot.battingAggression ?? snapshot.aggression,
+    aggression: snapshot.aggression ?? snapshot.battingAggression,
   };
 }
 
@@ -112,6 +114,9 @@ export function PlayerProfileModal({
   const auction = useGameStore((state) => state.auction);
   const retiredPlayerSnapshots = useGameStore((state) => state.retiredPlayerSnapshots);
   const tradeRecords = useGameStore((state) => state.tradeRecords);
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const profileRef = useRef<HTMLDivElement>(null);
+  const [profileScale, setProfileScale] = useState(1);
 
   const activePlayer = playerId ? players[playerId] ?? null : null;
   const retiredSnapshot = playerId && !activePlayer
@@ -120,6 +125,41 @@ export function PlayerProfileModal({
   const detailedPlayer: Player | null = playerId
     ? activePlayer ?? (retiredSnapshot ? retiredSnapshotPlayer(retiredSnapshot) : null)
     : null;
+
+  useLayoutEffect(() => {
+    if (!detailedPlayer) return;
+
+    let animationFrame = 0;
+    const fitProfile = () => {
+      window.cancelAnimationFrame(animationFrame);
+      animationFrame = window.requestAnimationFrame(() => {
+        const viewport = viewportRef.current;
+        const profile = profileRef.current;
+        if (!viewport || !profile) return;
+
+        const availableWidth = Math.max(1, viewport.clientWidth - 16);
+        const availableHeight = Math.max(1, viewport.clientHeight - 16);
+        const nextScale = Math.min(
+          1,
+          availableWidth / Math.max(1, profile.scrollWidth),
+          availableHeight / Math.max(1, profile.scrollHeight),
+        );
+        setProfileScale((current) => Math.abs(current - nextScale) < 0.001 ? current : nextScale);
+      });
+    };
+
+    fitProfile();
+    const resizeObserver = new ResizeObserver(fitProfile);
+    if (viewportRef.current) resizeObserver.observe(viewportRef.current);
+    if (profileRef.current) resizeObserver.observe(profileRef.current);
+    window.addEventListener("resize", fitProfile);
+
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+      window.removeEventListener("resize", fitProfile);
+      resizeObserver.disconnect();
+    };
+  }, [detailedPlayer]);
 
   const rosterSeason = String(auction?.season ?? currentSeason);
 
@@ -301,15 +341,18 @@ export function PlayerProfileModal({
 
   return (
     <div
-      className="fixed inset-0 z-[120] flex items-center justify-center bg-black/70 p-4 sm:p-12 backdrop-blur-sm animate-in fade-in duration-200"
+      ref={viewportRef}
+      className="fixed inset-0 z-[120] flex items-center justify-center overflow-hidden bg-black/70 p-2 backdrop-blur-sm animate-in fade-in duration-200"
       onMouseDown={onClose}
     >
       <div
-        className={`flex max-h-[calc(100vh-3rem)] w-full flex-col overflow-hidden rounded-lg border-2 border-border bg-surface text-text-primary shadow-2xl animate-in zoom-in-95 duration-200 ${isRetired ? "max-w-7xl" : "max-w-4xl"}`}
+        ref={profileRef}
+        className="flex w-[calc(100%-1rem)] max-w-[1560px] shrink-0 flex-col overflow-hidden rounded-lg border-2 border-border bg-surface text-text-primary shadow-2xl animate-in zoom-in-95 duration-200"
+        style={{ transform: `scale(${profileScale})`, transformOrigin: "center" }}
         onMouseDown={(event) => event.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex shrink-0 items-start justify-between border-b-2 border-border bg-surface px-6 py-4">
+        <div className="flex shrink-0 items-start justify-between border-b-2 border-border bg-surface px-4 py-3">
           <div className="min-w-0">
             <div className="mb-1 flex items-center gap-2">
               <span className="font-space-mono text-[9px] font-bold uppercase tracking-widest text-text-secondary">Player Profile</span>
@@ -322,8 +365,8 @@ export function PlayerProfileModal({
                 </span>
               )}
             </div>
-            <h3 className={`${isRetired ? "whitespace-normal" : "truncate"} font-anton text-[28px] uppercase leading-none text-text-primary`}>{detailedPlayer.name}</h3>
-            <p className="mt-2 font-space-mono text-[10px] uppercase text-text-secondary">
+            <h3 className={`${isRetired ? "whitespace-normal" : "truncate"} font-anton text-[25px] uppercase leading-none text-text-primary`}>{detailedPlayer.name}</h3>
+            <p className="mt-1.5 font-space-mono text-[9px] uppercase text-text-secondary">
               {detailedPlayer.role} · Age {detailedPlayer.age} · {currentTeam?.name
                 ?? (retiredSnapshot ? `Retired ${retiredSnapshot.retirementSeason}` : "No current club")}
             </p>
@@ -338,14 +381,15 @@ export function PlayerProfileModal({
         </div>
 
         {/* Content Body */}
-        <div className="min-h-0 overflow-y-auto bg-surface p-6">
-          <div className={`grid grid-cols-1 ${isRetired ? "relative gap-x-5 gap-y-2 lg:grid-cols-[minmax(0,1.65fr)_minmax(340px,0.85fr)]" : "gap-5 lg:grid-cols-3"}`}>
+        <div className="bg-surface p-3">
+          <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.8fr)_minmax(300px,0.95fr)] gap-2.5">
             {/* Player Details */}
-            <section className={`rounded border border-border bg-bg p-4 ${isRetired ? "lg:col-start-1 lg:row-start-1" : "lg:col-span-1"}`}>
-              <h4 className="mb-3 border-b border-border pb-2 font-anton text-[13px] uppercase text-text-primary">Player Details</h4>
-              <div className={`${isRetired ? "grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3" : "space-y-2.5"} font-space-mono text-[10px]`}>
+            <section className={`col-start-1 row-start-1 rounded border border-border bg-bg p-3 ${isRetired ? "col-span-2" : ""}`}>
+              <h4 className="mb-2 border-b border-border pb-1.5 font-anton text-[12px] uppercase text-text-primary">Player Details</h4>
+              <div className={`${isRetired ? "grid grid-cols-5 gap-2" : "space-y-1.5"} font-space-mono text-[9px]`}>
                 {[
                   ["Nationality", nationalityLabel],
+                  ["Status", detailedPlayer.isCapped ? "Capped" : "Uncapped"],
                   ["Batting", detailedPlayer.battingStyle],
                   ["Bats at", formatTopSevenBattingPositions(detailedPlayer)],
                   ["Bowling", (() => {
@@ -355,9 +399,8 @@ export function PlayerProfileModal({
                     const type = detailedPlayer.bowlingStyle === "Spinner" ? "spinner" : "pacer";
                     return `${hand} ${type}`;
                   })()],
-                  ["Status", detailedPlayer.isCapped ? "Capped" : "Uncapped"],
                 ].map(([label, value]) => (
-                  <div key={label} className={`flex gap-3 border-b border-border/60 pb-2 ${isRetired ? "min-w-0 flex-col items-start justify-start" : "items-center justify-between"}`}>
+                  <div key={label} className={`flex gap-2 border-b border-border/60 pb-1 ${isRetired ? "min-w-0 flex-col items-start justify-start" : "items-center justify-between"}`}>
                     <span className="shrink-0 whitespace-nowrap uppercase text-text-secondary">{label}</span>
                     <span className={`${isRetired ? "whitespace-normal text-left" : "whitespace-nowrap text-right"} font-bold text-text-primary`}>{value}</span>
                   </div>
@@ -366,79 +409,239 @@ export function PlayerProfileModal({
             </section>
 
             {/* Ability */}
-            {!isRetired && <section className="rounded border border-border bg-bg p-4 lg:col-span-2">
-              <h4 className="mb-3 border-b border-border pb-2 font-anton text-[13px] uppercase text-text-primary">Ability</h4>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {!isRetired && <section className="col-start-2 row-start-1 rounded border border-border bg-bg p-3">
+              <h4 className="mb-2 border-b border-border pb-1.5 font-anton text-[12px] uppercase text-text-primary">Ability & Phase Ratings</h4>
+              <div className="grid grid-cols-4 gap-2">
                 {[
                   ["Batting CA", detailedPlayer.currentBatting],
                   ["Batting PA", detailedPlayer.potentialBatting],
                   ["Bowling CA", detailedPlayer.currentBowling],
                   ["Bowling PA", detailedPlayer.potentialBowling],
                 ].map(([label, value]) => (
-                  <div key={label} className="rounded border border-border bg-surface p-3 text-center">
-                    <div className="font-space-mono text-[8px] font-bold uppercase text-text-secondary">{label}</div>
-                    <div className="mt-1 font-anton text-[24px] text-text-primary">{value}</div>
+                  <div key={label} className="rounded border border-border bg-surface p-2 text-center">
+                    <div className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">{label}</div>
+                    <div className="mt-0.5 font-anton text-[21px] text-text-primary">{value}</div>
                   </div>
                 ))}
               </div>
+
+              {/* Phase Breakdown */}
+              {(detailedPlayer.powerplayBatting != null || detailedPlayer.powerplayBowling != null) && (
+                <div className="mt-2.5 grid grid-cols-2 gap-2">
+                  <div className="rounded border border-border/70 bg-surface/60 p-2">
+                    <div className="mb-1 text-center font-space-mono text-[7.5px] font-bold uppercase tracking-wider text-text-secondary">Batting Phases</div>
+                    <div className="grid grid-cols-3 gap-1 text-center">
+                      <div className="rounded bg-bg p-1">
+                        <div className="font-space-mono text-[6.5px] uppercase text-text-secondary">PP (1-6)</div>
+                        <div className="font-anton text-[14px] text-text-primary">{detailedPlayer.powerplayBatting ?? "-"}</div>
+                      </div>
+                      <div className="rounded bg-bg p-1">
+                        <div className="font-space-mono text-[6.5px] uppercase text-text-secondary">MID (7-15)</div>
+                        <div className="font-anton text-[14px] text-text-primary">{detailedPlayer.middleOversBatting ?? "-"}</div>
+                      </div>
+                      <div className="rounded bg-bg p-1">
+                        <div className="font-space-mono text-[6.5px] uppercase text-text-secondary">DTH (16-20)</div>
+                        <div className="font-anton text-[14px] text-text-primary">{detailedPlayer.deathBatting ?? "-"}</div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="rounded border border-border/70 bg-surface/60 p-2">
+                    <div className="mb-1 text-center font-space-mono text-[7.5px] font-bold uppercase tracking-wider text-text-secondary">Bowling Phases</div>
+                    <div className="grid grid-cols-3 gap-1 text-center">
+                      <div className="rounded bg-bg p-1">
+                        <div className="font-space-mono text-[6.5px] uppercase text-text-secondary">PP (1-6)</div>
+                        <div className="font-anton text-[14px] text-text-primary">{detailedPlayer.powerplayBowling ?? "-"}</div>
+                      </div>
+                      <div className="rounded bg-bg p-1">
+                        <div className="font-space-mono text-[6.5px] uppercase text-text-secondary">MID (7-15)</div>
+                        <div className="font-anton text-[14px] text-text-primary">{detailedPlayer.middleOversBowling ?? "-"}</div>
+                      </div>
+                      <div className="rounded bg-bg p-1">
+                        <div className="font-space-mono text-[6.5px] uppercase text-text-secondary">DTH (16-20)</div>
+                        <div className="font-anton text-[14px] text-text-primary">{detailedPlayer.deathBowling ?? "-"}</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Match Traits */}
+              {(detailedPlayer.stamina != null || detailedPlayer.consistency != null || detailedPlayer.bigMatchRating != null || detailedPlayer.pressureRating != null || detailedPlayer.battingAggression != null || detailedPlayer.aggression != null || detailedPlayer.fieldingRating != null || detailedPlayer.wicketkeepingRating != null || detailedPlayer.injuryProneness != null || detailedPlayer.paceRating != null || detailedPlayer.spinRating != null) && (
+                <div className="mt-2.5 grid grid-cols-5 gap-1.5 lg:gap-2">
+                  <div className="rounded border border-border/70 bg-surface/60 p-1.5 text-center">
+                    <div className="whitespace-nowrap font-space-mono text-[6px] font-bold uppercase text-text-secondary lg:text-[6.5px]">Bat Cons</div>
+                    <div className="mt-0.5 font-anton text-[15px] text-text-primary">{detailedPlayer.battingConsistency ?? detailedPlayer.stamina ?? "-"}</div>
+                  </div>
+                  <div className="rounded border border-border/70 bg-surface/60 p-1.5 text-center">
+                    <div className="whitespace-nowrap font-space-mono text-[6px] font-bold uppercase text-text-secondary lg:text-[6.5px]">Bowl Cons</div>
+                    <div className="mt-0.5 font-anton text-[15px] text-text-primary">{detailedPlayer.bowlingConsistency ?? detailedPlayer.consistency ?? "-"}</div>
+                  </div>
+                  <div className="rounded border border-border/70 bg-surface/60 p-1.5 text-center">
+                    <div className="whitespace-nowrap font-space-mono text-[6px] font-bold uppercase text-text-secondary lg:text-[6.5px]">Aggression</div>
+                    <div className="mt-0.5 font-anton text-[15px] text-text-primary">{detailedPlayer.battingAggression ?? detailedPlayer.aggression ?? "-"}</div>
+                  </div>
+                  <div className="rounded border border-border/70 bg-surface/60 p-1.5 text-center">
+                    <div className="whitespace-nowrap font-space-mono text-[6px] font-bold uppercase text-text-secondary lg:text-[6.5px]">Big Match</div>
+                    <div className="mt-0.5 font-anton text-[15px] text-text-primary">{detailedPlayer.bigMatchRating ?? "-"}</div>
+                  </div>
+                  <div className="rounded border border-border/70 bg-surface/60 p-1.5 text-center">
+                    <div className="whitespace-nowrap font-space-mono text-[6px] font-bold uppercase text-text-secondary lg:text-[6.5px]">Pressure</div>
+                    <div className="mt-0.5 font-anton text-[15px] text-text-primary">{detailedPlayer.pressureRating ?? "-"}</div>
+                  </div>
+                  <div className="rounded border border-border/70 bg-surface/60 p-1.5 text-center">
+                    <div className="whitespace-nowrap font-space-mono text-[6px] font-bold uppercase text-text-secondary lg:text-[6.5px]">Fielding</div>
+                    <div className="mt-0.5 font-anton text-[15px] text-text-primary">{detailedPlayer.fieldingRating ?? "-"}</div>
+                  </div>
+                  <div className="rounded border border-border/70 bg-surface/60 p-1.5 text-center">
+                    <div className="whitespace-nowrap font-space-mono text-[6px] font-bold uppercase text-text-secondary lg:text-[6.5px]">Keeping</div>
+                    <div className="mt-0.5 font-anton text-[15px] text-text-primary">{detailedPlayer.wicketkeepingRating ?? "-"}</div>
+                  </div>
+                  <div className="rounded border border-border/70 bg-surface/60 p-1.5 text-center">
+                    <div className="whitespace-nowrap font-space-mono text-[6px] font-bold uppercase text-text-secondary lg:text-[6.5px]">Injury Risk</div>
+                    <div className="mt-0.5 font-anton text-[15px] text-text-primary">{detailedPlayer.injuryProneness ?? "-"}</div>
+                  </div>
+                  <div className="rounded border border-border/70 bg-surface/60 p-1.5 text-center">
+                    <div className="whitespace-nowrap font-space-mono text-[6px] font-bold uppercase text-text-secondary lg:text-[6.5px]">Vs Pace</div>
+                    <div className="mt-0.5 font-anton text-[15px] text-text-primary">{detailedPlayer.paceRating ?? "-"}</div>
+                  </div>
+                  <div className="rounded border border-border/70 bg-surface/60 p-1.5 text-center">
+                    <div className="whitespace-nowrap font-space-mono text-[6px] font-bold uppercase text-text-secondary lg:text-[6.5px]">Vs Spin</div>
+                    <div className="mt-0.5 font-anton text-[15px] text-text-primary">{detailedPlayer.spinRating ?? "-"}</div>
+                  </div>
+                </div>
+              )}
             </section>}
 
             {/* Career T20 Stats */}
-            <section className={`self-start rounded border border-border bg-bg p-4 ${isRetired ? "lg:col-start-1 lg:row-start-2" : "lg:col-span-3"}`}>
-              <h4 className="mb-3 border-b border-border pb-2 font-anton text-[13px] uppercase text-text-primary">Career T20 Stats</h4>
-              <div className={`grid gap-3 ${isRetired ? "grid-cols-8" : "grid-cols-2 sm:grid-cols-4 lg:grid-cols-8"}`}>
+            <section className="col-span-2 col-start-1 row-start-2 self-start rounded border border-border bg-bg p-3">
+              <h4 className="mb-2 border-b border-border pb-1.5 font-anton text-[12px] uppercase text-text-primary">Career T20 Stats</h4>
+              <div className="grid grid-cols-8 gap-2">
                 {[
                   ["Matches", detailedPlayer.careerStats?.batting.matches ?? 0],
                   ["Bat Inns", detailedPlayer.careerStats?.batting.innings ?? 0],
                   ["Runs", detailedPlayer.careerStats?.batting.runs ?? 0],
-                  ["Bat Avg", detailedPlayer.careerStats?.batting.average ?? 0],
-                  ["SR", detailedPlayer.careerStats?.batting.strikeRate ?? 0],
+                  ["Bat Avg", (detailedPlayer.careerStats?.batting.average ?? 0) > 0 ? formatStatValue(Number(detailedPlayer.careerStats?.batting.average)) : "-"],
+                  ["SR", (detailedPlayer.careerStats?.batting.strikeRate ?? 0) > 0 ? formatStatValue(Number(detailedPlayer.careerStats?.batting.strikeRate)) : "-"],
                   ["Bowl Inns", detailedPlayer.careerStats?.bowling.matches ?? 0],
                   ["Wickets", detailedPlayer.careerStats?.bowling.wickets ?? 0],
-                  ["Bowl Avg", detailedPlayer.careerStats?.bowling.average ?? 0],
+                  ["Bowl Avg", (detailedPlayer.careerStats?.bowling.wickets ?? 0) > 0 && (detailedPlayer.careerStats?.bowling.average ?? 0) > 0 ? formatStatValue(Number(detailedPlayer.careerStats?.bowling.average)) : "-"],
                 ].map(([label, value]) => (
-                  <div key={label} className={`rounded border border-border bg-surface px-2 text-center ${isRetired ? "py-2" : "py-3"}`}>
-                    <div className={`font-space-mono text-[8px] font-bold uppercase text-text-secondary ${isRetired ? "leading-none" : ""}`}>{label}</div>
-                    <div className={`font-anton text-[18px] text-text-primary ${isRetired ? "leading-tight" : "mt-1"}`}>{formatStatValue(Number(value))}</div>
+                  <div key={label} className="rounded border border-border bg-surface px-1 py-2 text-center">
+                    <div className="whitespace-nowrap font-space-mono text-[7px] font-bold uppercase leading-none text-text-secondary">{label}</div>
+                    <div className="mt-1 font-anton text-[17px] leading-tight text-text-primary">{value}</div>
                   </div>
                 ))}
               </div>
             </section>
 
             {/* All-Time IPL Stats */}
-            <section className={`self-start rounded border border-border bg-bg p-4 ${isRetired ? "lg:col-start-1 lg:row-start-3" : "lg:col-span-3"}`}>
-              <h4 className="mb-3 border-b border-border pb-2 font-anton text-[13px] uppercase text-text-primary">IPL All-Time Stats</h4>
-              <div className={`grid gap-3 ${isRetired ? "grid-cols-7" : "grid-cols-2 sm:grid-cols-4 lg:grid-cols-7"}`}>
-                {[
-                  ["Matches", detailedPlayer.iplStats?.matches ?? 0],
-                  ["Runs", detailedPlayer.iplStats?.runs ?? 0],
-                  ["Bat Avg", detailedPlayer.iplStats?.battingAverage ?? 0],
-                  ["SR", detailedPlayer.iplStats?.strikeRate ?? 0],
-                  ["Bowl Inns", detailedPlayer.iplStats?.bowlingInnings ?? 0],
-                  ["Wickets", detailedPlayer.iplStats?.wickets ?? 0],
-                  ["Bowl Avg", detailedPlayer.iplStats?.bowlingAverage ?? 0],
-                ].map(([label, value]) => (
-                  <div key={label} className={`rounded border border-border bg-surface px-2 text-center ${isRetired ? "py-2" : "py-3"}`}>
-                    <div className={`font-space-mono text-[8px] font-bold uppercase text-text-secondary ${isRetired ? "leading-none" : ""}`}>{label}</div>
-                    <div className={`font-anton text-[18px] text-text-primary ${isRetired ? "leading-tight" : "mt-1"}`}>{formatStatValue(Number(value))}</div>
+            <section className="col-span-2 col-start-1 row-start-3 self-start rounded border border-border bg-bg p-3">
+              <h4 className="mb-2 border-b border-border pb-1.5 font-anton text-[12px] uppercase text-text-primary">IPL All-Time Stats</h4>
+              <div className="space-y-2">
+                <div>
+                  <div className="mb-1 font-space-mono text-[7px] font-bold uppercase tracking-wider text-accent">Batting</div>
+                  <div className="grid grid-cols-[0.8fr_0.7fr_0.75fr_0.85fr_0.85fr_1fr_1fr_0.6fr_0.65fr_0.7fr_0.7fr_0.9fr] gap-1.5 lg:gap-2">
+                    {[
+                      ["Matches", detailedPlayer.iplStats?.matches ?? 0],
+                      ["Innings", detailedPlayer.iplStats?.innings ?? 0],
+                      ["Not Outs", detailedPlayer.iplStats?.notOuts ?? 0],
+                      ["Runs", detailedPlayer.iplStats?.runs ?? 0],
+                      ["Balls", detailedPlayer.iplStats?.ballsFaced ?? detailedPlayer.iplStats?.battingBalls ?? 0],
+                      ["Average", (detailedPlayer.iplStats?.battingAverage ?? 0) > 0 ? formatStatValue(Number(detailedPlayer.iplStats?.battingAverage)) : "-"],
+                      ["Bat SR", (detailedPlayer.iplStats?.strikeRate ?? 0) > 0 ? formatStatValue(Number(detailedPlayer.iplStats?.strikeRate)) : "-"],
+                      ["50s", detailedPlayer.iplStats?.fifties ?? 0],
+                      ["100s", detailedPlayer.iplStats?.hundreds ?? 0],
+                      ["Fours", detailedPlayer.iplStats?.fours ?? 0],
+                      ["Sixes", detailedPlayer.iplStats?.sixes ?? 0],
+                      ["H. Score", detailedPlayer.iplStats?.highScore || "-"],
+                    ].map(([label, value]) => (
+                      <div key={label} className="flex min-w-0 flex-col rounded border border-border bg-surface px-1 py-1.5 text-center">
+                        <div className="flex h-5 items-center justify-center whitespace-nowrap font-space-mono text-[6px] font-bold uppercase leading-none text-text-secondary lg:text-[7px]">{label}</div>
+                        <div className="mt-0.5 font-anton text-[16px] leading-tight text-text-primary">{value}</div>
+                      </div>
+                    ))}
                   </div>
-                ))}
+                </div>
+
+                <div>
+                  <div className="mb-1 font-space-mono text-[7px] font-bold uppercase tracking-wider text-accent">Bowling</div>
+                  <div className="grid grid-cols-[0.72fr_0.7fr_1.15fr_0.82fr_0.9fr_0.9fr_1fr_0.8fr_0.8fr] gap-1.5 lg:gap-2">
+                    {[
+                      ["Innings", detailedPlayer.iplStats?.bowlingInnings ?? 0],
+                      ["Overs", (() => {
+                        const balls = detailedPlayer.iplStats?.bowlingBalls ?? 0;
+                        if (balls === 0) return "-";
+                        return `${Math.floor(balls / 6)}.${balls % 6}`;
+                      })()],
+                      ["Runs Conceded", (() => {
+                        const balls = detailedPlayer.iplStats?.bowlingBalls ?? 0;
+                        const runs = detailedPlayer.iplStats?.runsConceded ?? detailedPlayer.iplStats?.bowlingRunsConceded ?? 0;
+                        return balls > 0 ? runs : "-";
+                      })()],
+                      ["Wickets", detailedPlayer.iplStats?.wickets ?? 0],
+                      ["Average", (() => {
+                        const wkts = detailedPlayer.iplStats?.wickets ?? 0;
+                        const runs = detailedPlayer.iplStats?.runsConceded ?? detailedPlayer.iplStats?.bowlingRunsConceded ?? 0;
+                        const avg = Number(detailedPlayer.iplStats?.bowlingAverage ?? 0);
+                        if (wkts > 0) {
+                          return formatStatValue(avg > 0 ? avg : runs / wkts);
+                        }
+                        return "-";
+                      })()],
+                      ["Economy", (() => {
+                        const balls = detailedPlayer.iplStats?.bowlingBalls ?? 0;
+                        const runs = detailedPlayer.iplStats?.runsConceded ?? detailedPlayer.iplStats?.bowlingRunsConceded ?? 0;
+                        if (balls > 0) {
+                          const eco = (detailedPlayer.iplStats?.economy ?? 0) > 0
+                            ? Number(detailedPlayer.iplStats?.economy)
+                            : (runs / (balls / 6));
+                          return formatStatValue(eco);
+                        }
+                        return "-";
+                      })()],
+                      ["Best Figures", detailedPlayer.iplStats?.bestBowlingFigures && detailedPlayer.iplStats.bestBowlingFigures !== "0/0" ? detailedPlayer.iplStats.bestBowlingFigures : "-"],
+                      ["4W Hauls", detailedPlayer.iplStats?.fourWickets ?? 0],
+                      ["5W Hauls", detailedPlayer.iplStats?.fiveWickets ?? 0],
+                    ].map(([label, value]) => (
+                      <div key={label} className="flex min-w-0 flex-col rounded border border-border bg-surface px-1 py-1.5 text-center">
+                        <div className="flex h-5 items-center justify-center whitespace-nowrap font-space-mono text-[6px] font-bold uppercase leading-none text-text-secondary lg:text-[7px]">{label}</div>
+                        <div className="mt-0.5 font-anton text-[16px] leading-tight text-text-primary">{value}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <div className="mb-1 font-space-mono text-[7px] font-bold uppercase tracking-wider text-accent">Fielding</div>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      ["Catches", detailedPlayer.iplStats?.catches ?? 0],
+                      ["Stumpings", detailedPlayer.iplStats?.stumpings ?? 0],
+                      ["Run Outs", detailedPlayer.iplStats?.runOuts ?? 0],
+                    ].map(([label, value]) => (
+                      <div key={label} className="rounded border border-border bg-surface px-1 py-1.5 text-center">
+                        <div className="font-space-mono text-[7px] font-bold uppercase leading-none text-text-secondary">{label}</div>
+                        <div className="mt-0.5 font-anton text-[16px] leading-tight text-text-primary">{value}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
             </section>
 
             {/* Current Season Stats */}
             {!isRetired && seasonStats && (
-              <section className="rounded border border-border bg-bg p-4 lg:col-span-3">
-                <div className="flex items-center justify-between border-b border-border pb-2 mb-3">
-                  <h4 className="font-anton text-[13px] uppercase text-text-primary">Current Season Stats ('{rosterSeason.slice(-2)})</h4>
+              <section className="col-span-2 col-start-1 row-start-4 self-start rounded border border-border bg-bg p-3">
+                <div className="mb-2 flex items-center justify-between border-b border-border pb-1.5">
+                  <h4 className="font-anton text-[12px] uppercase text-text-primary">Current Season Stats ('{rosterSeason.slice(-2)})</h4>
                   <span className="font-space-mono text-[9px] font-bold text-accent uppercase">{seasonStats.matches} Matches Played</span>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 gap-2">
                   {/* Batting Season Stats */}
-                  <div className="rounded border border-border/80 bg-surface p-3 space-y-2">
+                  <div className="space-y-1 rounded border border-border/80 bg-surface p-2">
                     <div className="font-anton text-[11px] uppercase text-accent border-b border-border/40 pb-1">Batting Figures</div>
-                    <div className="grid grid-cols-4 sm:grid-cols-7 gap-2 text-center">
+                    <div className="grid grid-cols-7 gap-2 text-center">
                       <div>
                         <div className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Matches</div>
                         <div className="font-anton text-[16px] text-text-primary mt-0.5">{seasonStats.matches}</div>
@@ -471,9 +674,9 @@ export function PlayerProfileModal({
                   </div>
 
                   {/* Bowling Season Stats */}
-                  <div className="rounded border border-border/80 bg-surface p-3 space-y-2">
+                  <div className="space-y-1 rounded border border-border/80 bg-surface p-2">
                     <div className="font-anton text-[11px] uppercase text-accent border-b border-border/40 pb-1">Bowling Figures</div>
-                    <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 text-center">
+                    <div className="grid grid-cols-6 gap-2 text-center">
                       <div>
                         <div className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Matches</div>
                         <div className="font-anton text-[16px] text-text-primary mt-0.5">{seasonStats.bowlMatches}</div>
@@ -505,15 +708,15 @@ export function PlayerProfileModal({
             )}
 
             {/* Team History */}
-            <section className={`rounded border border-border bg-bg p-4 ${isRetired ? "lg:absolute lg:bottom-0 lg:right-0 lg:top-0 lg:w-[34%] lg:overflow-y-auto" : "lg:col-span-3"}`}>
-              <h4 className="mb-3 border-b border-border pb-2 font-anton text-[13px] uppercase text-text-primary">Team History</h4>
-              <div className={`grid gap-3 border-b border-border pb-2 font-space-mono text-[8px] font-bold uppercase text-text-secondary ${isRetired ? "grid-cols-[3rem_minmax(0,1fr)_auto_auto]" : "grid-cols-[4rem_minmax(0,1fr)_5rem_4rem]"}`}>
+            <section className="col-start-3 row-span-4 row-start-1 min-h-0 self-start overflow-hidden rounded border border-border bg-bg p-3">
+              <h4 className="mb-2 border-b border-border pb-1.5 font-anton text-[12px] uppercase text-text-primary">Team History</h4>
+              <div className="grid grid-cols-[3rem_minmax(0,1fr)_auto_auto] gap-2 border-b border-border pb-1.5 font-space-mono text-[7px] font-bold uppercase text-text-secondary">
                 <span>Season</span>
                 <span>Team</span>
                 <span className="text-right">Price</span>
                 <span className="text-right">Method</span>
               </div>
-              <div>
+              <div className="min-h-0">
                 {[...detailedPlayerHistory]
                   .filter((entry) => entry.teamId && entry.teamId !== "UNSOLD")
                   .sort((a, b) => Number(b.season) - Number(a.season))
@@ -524,16 +727,16 @@ export function PlayerProfileModal({
                     const exchangeIds = trade?.outgoingPlayerIds.includes(detailedPlayer.id) ? trade.incomingPlayerIds : trade?.outgoingPlayerIds;
                     return (
                     <React.Fragment key={`${entry.season}-${entry.teamId}`}>
-                    {trade && <div className="my-2 border-y border-accent/40 bg-accent/10 px-3 py-2 font-space-mono text-[8px] font-bold uppercase text-text-primary">{detailedPlayer.name} was traded from {teams[movedFromId ?? ""]?.shortName ?? movedFromId} to {teams[movedToId ?? ""]?.shortName ?? movedToId} in exchange for {(exchangeIds ?? []).map((id) => players[id]?.name ?? id).join(" + ")}</div>}
+                    {trade && <div className="my-1 border-y border-accent/40 bg-accent/10 px-2 py-1 font-space-mono text-[7px] font-bold uppercase leading-tight text-text-primary">{detailedPlayer.name} was traded from {teams[movedFromId ?? ""]?.shortName ?? movedFromId} to {teams[movedToId ?? ""]?.shortName ?? movedToId} in exchange for {(exchangeIds ?? []).map((id) => players[id]?.name ?? id).join(" + ")}</div>}
                     <div
-                      className={`grid min-h-9 items-center gap-3 border-b border-border/60 py-1 text-[10px] ${isRetired ? "grid-cols-[3rem_minmax(0,1fr)_auto_auto]" : "grid-cols-[4rem_minmax(0,1fr)_5rem_4rem]"}`}
+                      className="grid min-h-7 grid-cols-[3rem_minmax(0,1fr)_auto_auto] items-center gap-2 border-b border-border/60 py-0.5 text-[9px]"
                     >
                       <span className="font-space-mono text-text-secondary">{entry.season}</span>
-                      <span className={`min-w-0 font-semibold text-text-primary ${isRetired ? "whitespace-normal" : "truncate"}`}>
-                        {teams[entry.teamId]?.name ?? entry.teamId}
+                      <span className="min-w-0 font-semibold text-text-primary">
+                        <span className="block truncate">{teams[entry.teamId]?.name ?? entry.teamId}</span>
                         {entry.seasonStats && (
-                          <span className={`${isRetired ? "block" : "ml-2"} font-space-mono text-[8px] font-normal text-text-secondary`}>
-                            {entry.seasonStats.runs} runs · {entry.seasonStats.wickets} wkts
+                          <span className="mt-0.5 block whitespace-nowrap font-space-mono text-[7px] font-bold text-accent">
+                            Runs {entry.seasonStats.runs} · Wkts {entry.seasonStats.wickets}
                           </span>
                         )}
                       </span>

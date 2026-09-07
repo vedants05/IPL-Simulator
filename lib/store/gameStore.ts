@@ -1551,6 +1551,20 @@ export const useGameStore = create<Store>()(
             });
           }
 
+          const savedIplStats = savedPlayer.iplStats;
+          const freshIplStats = freshPlayer.iplStats;
+          const bowlingBalls = Math.max(savedIplStats?.bowlingBalls ?? 0, freshIplStats.bowlingBalls ?? 0);
+          const runsConceded = Math.max(savedIplStats?.runsConceded ?? 0, freshIplStats.runsConceded ?? 0);
+          const wickets = Math.max(savedIplStats?.wickets ?? 0, freshIplStats.wickets ?? 0);
+          const savedBestWickets = savedIplStats?.bestBowlingWickets ?? 0;
+          const savedBestRuns = savedIplStats?.bestBowlingRuns ?? Number.POSITIVE_INFINITY;
+          const freshBestWickets = freshIplStats.bestBowlingWickets ?? 0;
+          const freshBestRuns = freshIplStats.bestBowlingRuns ?? Number.POSITIVE_INFINITY;
+          const freshBestIsBetter = freshBestWickets > savedBestWickets
+            || (freshBestWickets === savedBestWickets && freshBestWickets > 0 && freshBestRuns < savedBestRuns);
+          const bestBowlingWickets = freshBestIsBetter ? freshBestWickets : savedBestWickets;
+          const bestBowlingRuns = freshBestIsBetter ? freshBestRuns : savedBestRuns;
+
           refreshedPlayers[freshPlayer.id] = {
             ...freshPlayer,
             age: savedPlayer.age,
@@ -1565,10 +1579,83 @@ export const useGameStore = create<Store>()(
             careerState: savedPlayer.careerState,
             currentTeamId: savedPlayer.currentTeamId,
             isRetained: savedPlayer.isRetained,
-            retainedByTeamId: savedPlayer.retainedByTeamId,
-            iplStats: savedPlayer.iplStats ?? freshPlayer.iplStats,
-            careerStats: savedPlayer.careerStats ?? freshPlayer.careerStats,
+            iplStats: {
+              ...freshPlayer.iplStats,
+              ...(savedPlayer.iplStats ?? {}),
+              // These are cumulative career figures. Older saves may contain
+              // zeros written before the database columns were populated, so
+              // never let a smaller persisted value hide a newer DB baseline.
+              matches: Math.max(savedPlayer.iplStats?.matches ?? 0, freshPlayer.iplStats?.matches ?? 0),
+              innings: Math.max(savedPlayer.iplStats?.innings ?? 0, freshPlayer.iplStats?.innings ?? 0),
+              notOuts: Math.max(savedPlayer.iplStats?.notOuts ?? 0, freshPlayer.iplStats?.notOuts ?? 0),
+              runs: Math.max(savedPlayer.iplStats?.runs ?? 0, freshPlayer.iplStats?.runs ?? 0),
+              ballsFaced: Math.max(savedPlayer.iplStats?.ballsFaced ?? 0, freshPlayer.iplStats?.ballsFaced ?? 0),
+              battingAverage: (Math.max(savedPlayer.iplStats?.innings ?? 0, freshPlayer.iplStats?.innings ?? 0) - Math.max(savedPlayer.iplStats?.notOuts ?? 0, freshPlayer.iplStats?.notOuts ?? 0)) > 0
+                ? Math.round((Math.max(savedPlayer.iplStats?.runs ?? 0, freshPlayer.iplStats?.runs ?? 0) / (Math.max(savedPlayer.iplStats?.innings ?? 0, freshPlayer.iplStats?.innings ?? 0) - Math.max(savedPlayer.iplStats?.notOuts ?? 0, freshPlayer.iplStats?.notOuts ?? 0))) * 100) / 100
+                : (freshPlayer.iplStats.battingAverage || 0),
+              strikeRate: Math.max(savedPlayer.iplStats?.ballsFaced ?? 0, freshPlayer.iplStats?.ballsFaced ?? 0) > 0
+                ? Math.round((Math.max(savedPlayer.iplStats?.runs ?? 0, freshPlayer.iplStats?.runs ?? 0) / Math.max(savedPlayer.iplStats?.ballsFaced ?? 0, freshPlayer.iplStats?.ballsFaced ?? 0)) * 1000) / 10
+                : (freshPlayer.iplStats.strikeRate || 0),
+              highScore: Math.max(savedPlayer.iplStats?.highScore ?? 0, freshPlayer.iplStats?.highScore ?? 0),
+              fifties: Math.max(savedPlayer.iplStats?.fifties ?? 0, freshPlayer.iplStats?.fifties ?? 0),
+              hundreds: Math.max(savedPlayer.iplStats?.hundreds ?? 0, freshPlayer.iplStats?.hundreds ?? 0),
+              fours: Math.max(savedPlayer.iplStats?.fours ?? 0, freshPlayer.iplStats?.fours ?? 0),
+              sixes: Math.max(savedPlayer.iplStats?.sixes ?? 0, freshPlayer.iplStats?.sixes ?? 0),
+              bowlingInnings: Math.max(savedIplStats?.bowlingInnings ?? 0, freshIplStats.bowlingInnings ?? 0),
+              bowlingBalls,
+              runsConceded,
+              wickets,
+              bowlingAverage: wickets > 0 ? Math.round((runsConceded / wickets) * 100) / 100 : 0,
+              economy: bowlingBalls > 0 ? Math.round((runsConceded / (bowlingBalls / 6)) * 100) / 100 : 0,
+              bestBowlingWickets,
+              bestBowlingRuns: Number.isFinite(bestBowlingRuns) ? bestBowlingRuns : 0,
+              bestBowlingFigures: bestBowlingWickets > 0 && Number.isFinite(bestBowlingRuns)
+                ? `${bestBowlingWickets}/${bestBowlingRuns}`
+                : (freshIplStats.bestBowlingFigures || "-"),
+              fourWickets: Math.max(savedIplStats?.fourWickets ?? 0, freshIplStats.fourWickets ?? 0),
+              fiveWickets: Math.max(savedIplStats?.fiveWickets ?? 0, freshIplStats.fiveWickets ?? 0),
+              catches: Math.max(savedIplStats?.catches ?? 0, freshIplStats.catches ?? 0),
+              stumpings: Math.max(savedIplStats?.stumpings ?? 0, freshIplStats.stumpings ?? 0),
+              runOuts: Math.max(savedIplStats?.runOuts ?? 0, freshIplStats.runOuts ?? 0),
+            },
+            careerStats: {
+              batting: {
+                matches: Math.max(savedPlayer.careerStats?.batting.matches ?? 0, freshPlayer.careerStats?.batting.matches ?? 0),
+                innings: Math.max(savedPlayer.careerStats?.batting.innings ?? 0, freshPlayer.careerStats?.batting.innings ?? 0),
+                runs: Math.max(savedPlayer.careerStats?.batting.runs ?? 0, freshPlayer.careerStats?.batting.runs ?? 0),
+                average: freshPlayer.careerStats?.batting.average || savedPlayer.careerStats?.batting.average || 0,
+                strikeRate: freshPlayer.careerStats?.batting.strikeRate || savedPlayer.careerStats?.batting.strikeRate || 0,
+                fifties: Math.max(savedPlayer.careerStats?.batting.fifties ?? 0, freshPlayer.careerStats?.batting.fifties ?? 0),
+                hundreds: Math.max(savedPlayer.careerStats?.batting.hundreds ?? 0, freshPlayer.careerStats?.batting.hundreds ?? 0),
+              },
+              bowling: {
+                matches: Math.max(savedPlayer.careerStats?.bowling.matches ?? 0, freshPlayer.careerStats?.bowling.matches ?? 0),
+                wickets: Math.max(savedPlayer.careerStats?.bowling.wickets ?? 0, freshPlayer.careerStats?.bowling.wickets ?? 0),
+                economy: freshPlayer.careerStats?.bowling.economy || savedPlayer.careerStats?.bowling.economy || 0,
+                average: freshPlayer.careerStats?.bowling.average || savedPlayer.careerStats?.bowling.average || 0,
+                bestFigures: freshPlayer.careerStats?.bowling.bestFigures || savedPlayer.careerStats?.bowling.bestFigures || "-",
+              },
+            },
             iplHistory,
+            powerplayBatting: freshPlayer.powerplayBatting,
+            middleOversBatting: freshPlayer.middleOversBatting,
+            deathBatting: freshPlayer.deathBatting,
+            powerplayBowling: freshPlayer.powerplayBowling,
+            middleOversBowling: freshPlayer.middleOversBowling,
+            deathBowling: freshPlayer.deathBowling,
+            stamina: freshPlayer.stamina,
+            consistency: freshPlayer.consistency,
+            battingConsistency: freshPlayer.battingConsistency,
+            bowlingConsistency: freshPlayer.bowlingConsistency,
+            bigMatchRating: freshPlayer.bigMatchRating,
+            pressureRating: freshPlayer.pressureRating,
+            battingAggression: freshPlayer.battingAggression ?? freshPlayer.aggression,
+            aggression: freshPlayer.aggression ?? freshPlayer.battingAggression,
+            fieldingRating: freshPlayer.fieldingRating,
+            wicketkeepingRating: freshPlayer.wicketkeepingRating,
+            injuryProneness: freshPlayer.injuryProneness,
+            paceRating: freshPlayer.paceRating,
+            spinRating: freshPlayer.spinRating,
           };
         });
         const currentPlayerId = state.auction?.currentPlayer?.id;

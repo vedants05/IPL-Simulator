@@ -10,6 +10,7 @@ import {
   getPlayableBowlingOptions,
   simulatePlayableMatch,
   type MatchDelivery,
+  type BowlerSelectionReason,
   type MatchSimulationInput,
   type MatchSimulationRecord,
   type PlayableBattingApproach,
@@ -24,6 +25,19 @@ import {
 } from "@/lib/logic/matchSimulation";
 import type { Player, Team } from "@/lib/types";
 import styles from "./PlayableMatchEngine.module.css";
+
+function bowlerSelectionReasonLabel(reason: BowlerSelectionReason | undefined): string {
+  switch (reason) {
+    case "phase-specialist": return "phase specialist";
+    case "death-reserved": return "reserved death bowler";
+    case "target-at-risk": return "planned over moved forward — target at risk";
+    case "pitch-matchup": return "pitch matchup";
+    case "batter-matchup": return "targets batter weakness";
+    case "rotation-required": return "rotation required";
+    case "user-selected": return "user selected";
+    default: return "smart selection";
+  }
+}
 
 export interface PlayableMatchSession {
   version: 1;
@@ -485,7 +499,9 @@ export default function PlayableMatchEngine({ input, userTeamId, session, onSess
     delete automaticDecisions.bowlerByOver[bowlerSelectionKey];
     return simulatePlayableMatch(input, userTeamId, automaticDecisions, session.revealedDeliveries);
   }, [bowlerSelectionKey, input, progress, selectedNextOverBowler, session.decisions, session.revealedDeliveries, userTeamId]);
-  const automaticBowlerLabel = automaticBowlerProgress.nextOverBowler?.bowlerName ?? "Smart selection";
+  const automaticBowlerLabel = automaticBowlerProgress.nextOverBowler
+    ? `${automaticBowlerProgress.nextOverBowler.bowlerName} — ${bowlerSelectionReasonLabel(automaticBowlerProgress.nextOverBowler.selectionReason)}`
+    : "Smart selection";
   const automaticBatterProgress = useMemo(() => {
     if (!wicketBatterDecisionKey) return progress;
     const automaticDecisions = cloneDecisions(session.decisions);

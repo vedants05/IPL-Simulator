@@ -23,6 +23,7 @@ import { createDayTicker, type DayTickerController } from "@/lib/logic/dayTicker
 import {
   buildAiMatchLineups,
   findOptimalImpactBattingPosition,
+  reconcileBowlingFirstImpactPlan,
   selectBattingFirstImpactBowler,
 } from "@/lib/logic/aiLineupSelector";
 import { type LineupPlan, validateLineup } from "@/lib/logic/lineupPlanner";
@@ -70,6 +71,7 @@ import { appendRainAffectedResultLabel, isRainAffectedMatch } from "@/lib/logic/
 import type { IplCareerMatchUpdate } from "@/lib/logic/iplCareerStats";
 import type { CareerReputationAchievements } from "@/lib/logic/careerLifecycle";
 import { formatStatValue } from "@/lib/logic/statFormatting";
+import { qualificationImportanceForFixture } from "@/lib/logic/qualificationImportance";
 import {
   DEEP_SCOUTING_DAYS,
   getBestPlayerScoutingReport,
@@ -109,7 +111,7 @@ const LeagueHallOfFame = dynamic(() => import("@/components/history/LeagueHallOf
 const LeagueRecords = dynamic(() => import("@/components/history/LeagueRecords"), { ssr: false });
 const MinorRecords = dynamic(() => import("@/components/history/MinorRecords"), { ssr: false });
 import { applyMinorRecordBaselineUpdates, MINOR_RECORDS, type MinorRecord } from "@/lib/data/minorRecords";
-import { trackMinorRecordsOnMatchComplete, updateAllTimeBattingSeasonRecords } from "@/lib/logic/minorRecordTracker";
+import { reconcileCumulativeMinorRecords, reconcileFastestSeasonRunInningsRecords, trackMinorRecordsOnMatchComplete, updateAllTimeBattingSeasonRecords } from "@/lib/logic/minorRecordTracker";
 const CaptaincyPage = dynamic(() => import("@/components/squad/CaptaincyPage"), { ssr: false });
 const SquadAnalysisPage = dynamic(() => import("@/components/squad/SquadAnalysisPage"), { ssr: false });
 const InjuryHubPage = dynamic(() => import("@/components/squad/InjuryHubPage"), { ssr: false });
@@ -121,6 +123,7 @@ import TacticsLineupBuilder from "@/components/squad/TacticsLineupBuilder";
 const TeamTacticsPage = dynamic(() => import("@/components/squad/TeamTacticsPage"), { ssr: false });
 const PitchCuratorPage = dynamic(() => import("@/components/club/PitchCuratorPage"), { ssr: false });
 const StadiumManagementPage = dynamic(() => import("@/components/club/StadiumManagementPage"), { ssr: false });
+const StadiumBuilderPage = dynamic(() => import("@/components/club/StadiumBuilderPage"), { ssr: false });
 const StaffManagementPage = dynamic(() => import("@/components/club/StaffManagementPage"), { ssr: false });
 const BoardOverviewPage = dynamic(() => import("@/components/club/BoardOverviewPage"), { ssr: false });
 const SupportersPage = dynamic(() => import("@/components/club/SupportersPage"), { ssr: false });
@@ -232,6 +235,7 @@ interface PlayerStats {
   runsConceded: number;
   oversBowled: number;
   matches: number;
+  battingInnings?: number;
   dismissals?: number;
   highestScore: number;
   bestBowling: string;
@@ -242,6 +246,7 @@ interface PlayerStats {
   stumpings?: number;
   runOuts?: number;
   maidens?: number;
+  powerplayWickets?: number;
   battingPerformanceBonus?: number;
   bowlingPerformanceBonus?: number;
   mvpPoints?: number;
@@ -265,6 +270,7 @@ interface LeagueStandings {
 interface ScorecardPlayer {
   name: string;
   id: string;
+  battingPosition?: number;
   runs?: number;
   balls?: number;
   fours?: number;
@@ -917,12 +923,45 @@ function OverviewPageContent() {
   const [seasonStartBowlingAbilities, setSeasonStartBowlingAbilities] = useState<Record<string, number>>({});
   const [minorRecords, setMinorRecords] = useState<MinorRecord[]>(MINOR_RECORDS);
   const minorRecordsRef = useRef<MinorRecord[]>(MINOR_RECORDS);
+  const minorRecordsPreviewRef = useRef<HTMLDivElement>(null);
+  const [minorRecordsPreviewCapacity, setMinorRecordsPreviewCapacity] = useState(1);
   const [inbox, setInbox] = useState<CareerEmail[]>([]);
   const [isCareerLoaded, setIsCareerLoaded] = useState(false);
 
   useEffect(() => {
     minorRecordsRef.current = minorRecords;
   }, [minorRecords]);
+
+  useEffect(() => {
+    if (!isCareerLoaded || fixtures.length === 0) return;
+    setMinorRecords((currentRecords) => reconcileCumulativeMinorRecords(
+      reconcileFastestSeasonRunInningsRecords(currentRecords, fixtures, teams, currentSeason),
+      fixtures,
+      playerStats,
+      players,
+      teams,
+      currentSeason,
+      auction?.saleHistory ?? [],
+    ));
+  }, [auction?.saleHistory, currentSeason, fixtures, isCareerLoaded, playerStats, players, teams]);
+
+  useEffect(() => {
+    const preview = minorRecordsPreviewRef.current;
+    if (!preview || typeof ResizeObserver === "undefined") return;
+    const tileMinWidth = 128;
+    const tileMinHeight = 108;
+    const gap = 8;
+    const updateCapacity = () => {
+      const { width, height } = preview.getBoundingClientRect();
+      const columns = Math.max(1, Math.floor((width + gap) / (tileMinWidth + gap)));
+      const rows = Math.max(1, Math.floor((height + gap) / (tileMinHeight + gap)));
+      setMinorRecordsPreviewCapacity(Math.max(1, columns * rows));
+    };
+    const observer = new ResizeObserver(updateCapacity);
+    observer.observe(preview);
+    updateCapacity();
+    return () => observer.disconnect();
+  }, [activeTab, activeSubTab]);
   const careerStaffNeedsProfileSync = !careerStaff.initialized
     || careerStaff.salaryModelVersion < STAFF_SALARY_MODEL_VERSION
     || Object.values(careerStaff.contracts).some((contract) => (
@@ -1534,11 +1573,12 @@ function OverviewPageContent() {
           parsed.seasonStartBowlingAbilities = loadedSeasonStartBowlingAbilities;
           localStorage.setItem(`ipl_career_${userTeamId}`, JSON.stringify(parsed));
         }
-        const loadedRecords = applyMinorRecordBaselineUpdates(
+        const loadedRecords = reconcileFastestSeasonRunInningsRecords(applyMinorRecordBaselineUpdates(
           Array.isArray(parsed.minorRecords) && parsed.minorRecords.length > 0
             ? parsed.minorRecords
             : MINOR_RECORDS,
-        );
+        ), parsed.fixtures ?? [], teams, currentSeason);
+        parsed.minorRecords = loadedRecords;
         setMinorRecords(loadedRecords);
         // Historical views use compact league/knockout summaries; full
         // scorecards and delivery archives are only needed for the active
@@ -2893,6 +2933,12 @@ function OverviewPageContent() {
           pitch,
           protectedIds,
         );
+    const reconciledBowlingImpact = reconcileBowlingFirstImpactPlan(
+      squad,
+      tunedBowlingFirst.startingXI,
+      tunedBowlingFirst.impactSubs,
+      protectedIds,
+    );
     return {
       teamId,
       isUserControlled,
@@ -2915,13 +2961,9 @@ function OverviewPageContent() {
       bowlingFirst: toMatchLineupPlan(
         tunedBowlingFirst.startingXI,
         tunedBowlingFirst.impactSubs,
-        tunedBowlingFirst.impactSubs.includes(recommended.bowlingFirst.impactPlayerId ?? "")
-          ? recommended.bowlingFirst.impactPlayerId
-          : null,
-        tunedBowlingFirst.startingXI.includes(recommended.bowlingFirst.likelyOutgoingPlayerId ?? "")
-          ? recommended.bowlingFirst.likelyOutgoingPlayerId
-          : null,
-        recommended.bowlingFirst.impactBattingPosition,
+        reconciledBowlingImpact.impactPlayerId,
+        reconciledBowlingImpact.outgoingPlayerId,
+        reconciledBowlingImpact.battingPosition,
         recommended.bowlingFirst.captainId,
         recommended.bowlingFirst.viceCaptainId,
       ),
@@ -3008,6 +3050,7 @@ function OverviewPageContent() {
       batting: innings.batting.map((entry) => ({
         id: entry.id,
         name: entry.name,
+        battingPosition: entry.battingPosition,
         runs: entry.runs,
         balls: entry.balls,
         fours: entry.fours,
@@ -3333,6 +3376,7 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}${replacementEligible
       seasonBattingStats: playerStats,
       stage: match.stage,
       isKnockout: Boolean(match.stage),
+      bigMatchIntensityByTeam: qualificationImportanceForFixture(match, fixtures, standings),
     };
   };
 
@@ -3398,6 +3442,7 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}${replacementEligible
       seasonBattingStats: playerStats,
       stage: match.stage,
       isKnockout: Boolean(match.stage),
+      bigMatchIntensityByTeam: qualificationImportanceForFixture(match, fixtures, standings),
     });
     if (match.stage && !simulation.winnerId) {
       const superOverHash = Array.from(`${fixtureSeed}:${match.id}`).reduce(
@@ -3466,13 +3511,17 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}${replacementEligible
     if (careerUpdate) recordIplMatchStats([careerUpdate]);
     processCompletedMatchInjuries(simulatedMatch);
 
-    const recordCheck = trackMinorRecordsOnMatchComplete(simulatedMatch, minorRecordsRef.current, teams, currentSeason);
-    const nextMinorRecords = updateAllTimeBattingSeasonRecords(
+    const recordCheck = trackMinorRecordsOnMatchComplete(simulatedMatch, minorRecordsRef.current, teams, currentSeason, nextPlayerStats, {
+      players,
+      fixtures: nextFixtures,
+      auctionSales: auction?.saleHistory ?? [],
+    });
+    const nextMinorRecords = reconcileCumulativeMinorRecords(updateAllTimeBattingSeasonRecords(
       recordCheck.updatedRecords,
       nextPlayerStats,
       teams,
       currentSeason,
-    );
+    ), nextFixtures, nextPlayerStats, players, teams, currentSeason, auction?.saleHistory ?? []);
     let nextInbox = inbox;
     if (recordCheck.brokenRecordNotices.length > 0 || nextMinorRecords !== recordCheck.updatedRecords) {
       minorRecordsRef.current = nextMinorRecords;
@@ -3771,13 +3820,17 @@ This record has been officially verified and added to the IPL Minor Records arch
       if (careerUpdate) careerUpdates.push(careerUpdate);
       processCompletedMatchInjuries(simulatedMatch);
 
-      const recordCheck = trackMinorRecordsOnMatchComplete(simulatedMatch, nextMinorRecords, teams, currentSeason);
-      nextMinorRecords = updateAllTimeBattingSeasonRecords(
+      const recordCheck = trackMinorRecordsOnMatchComplete(simulatedMatch, nextMinorRecords, teams, currentSeason, nextPlayerStats, {
+        players,
+        fixtures: nextFixtures,
+        auctionSales: auction?.saleHistory ?? [],
+      });
+      nextMinorRecords = reconcileCumulativeMinorRecords(updateAllTimeBattingSeasonRecords(
         recordCheck.updatedRecords,
         nextPlayerStats,
         teams,
         currentSeason,
-      );
+      ), nextFixtures, nextPlayerStats, players, teams, currentSeason, auction?.saleHistory ?? []);
       if (recordCheck.brokenRecordNotices.length > 0) {
         allNotices.push(...recordCheck.brokenRecordNotices);
       }
@@ -4700,6 +4753,12 @@ This record has been officially verified and added to the IPL Minor Records arch
       if (!simulation) pStat.matches++;
       pStat.runs += bat.runs ?? 0;
       pStat.balls += bat.balls ?? 0;
+      if (bat.dismissal !== "did not bat" && ((bat.balls ?? 0) > 0 || (bat.runs ?? 0) > 0 || Boolean(bat.dismissal))) {
+        // Older saves do not contain battingInnings. Their existing match
+        // count is a conservative fallback until this dedicated counter has
+        // been populated by subsequent scorecards.
+        pStat.battingInnings = (pStat.battingInnings ?? pStat.matches) + 1;
+      }
       pStat.battingPerformanceBonus = (pStat.battingPerformanceBonus ?? 0)
         + calculateBattingPerformanceBonus(bat.runs ?? 0);
       if (!simulation) {
@@ -4827,6 +4886,16 @@ This record has been officially verified and added to the IPL Minor Records arch
         stats.catches = (stats.catches ?? 0) + events.catches;
         stats.stumpings = (stats.stumpings ?? 0) + events.stumpings;
         stats.runOuts = (stats.runOuts ?? 0) + events.runOuts;
+      });
+      simulation.innings.forEach((innings) => {
+        innings.oversDetail
+          .filter((over) => over.number <= 6)
+          .flatMap((over) => over.deliveries)
+          .forEach((delivery) => {
+            if (!delivery.wicket?.bowlerCredited) return;
+            const stats = newStats[delivery.bowlerId];
+            if (stats) stats.powerplayWickets = (stats.powerplayWickets ?? 0) + 1;
+          });
       });
     }
   };
@@ -5165,7 +5234,7 @@ This record has been officially verified and added to the IPL Minor Records arch
     club: {
       label: "Club",
       icon: ShieldCheck,
-      subtabs: ["overview", "supporters", "board", "office", "staffmanagement", "pitchcurator", "stadiummanagement"]
+      subtabs: ["overview", "supporters", "board", "office", "staffmanagement", "pitchcurator", "stadiummanagement", "stadiumbuilder"]
     },
     scouting: {
       label: "Scouting",
@@ -5215,6 +5284,7 @@ This record has been officially verified and added to the IPL Minor Records arch
     if (subtab === "staff") return "Staff";
     if (subtab === "pitchcurator") return "Pitch Curator";
     if (subtab === "stadiummanagement") return "Stadium Management";
+    if (subtab === "stadiumbuilder") return "Stadium Builder";
     if (subtab === "calendar") return "Season Calendar";
     if (subtab === "social") return "Social Media";
     if (subtab === "news") return "News";
@@ -7296,6 +7366,13 @@ This record has been officially verified and added to the IPL Minor Records arch
                       onOpen={() => setActiveSubTab("stadiummanagement")}
                     />
                   )}
+                  {userHomeStadium && (
+                    <button type="button" onClick={() => setActiveSubTab("stadiumbuilder")} className="cursor-pointer overflow-hidden rounded-lg border-2 border-border bg-surface p-5 text-left transition-colors hover:border-accent">
+                      <div className="font-anton text-[14px] uppercase text-text-primary">Stadium Builder</div>
+                      <div className="mt-1 font-space-mono text-[7px] font-bold uppercase text-text-secondary">Eden Gardens · 24-section prototype</div>
+                      <div className="mt-4 flex items-end justify-between"><span className="font-anton text-[18px] text-accent">Design & redevelop</span><span className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Open builder →</span></div>
+                    </button>
+                  )}
                 </div>
               )}
 
@@ -7507,6 +7584,14 @@ This record has been officially verified and added to the IPL Minor Records arch
                   onStartOutfieldPreparation={(settings) => (
                     startOutfieldPreparation(userTeamId, settings)
                   )}
+                />
+              )}
+              {activeSubTab === "stadiumbuilder" && userHomeStadium && (
+                <StadiumBuilderPage
+                  teamId={userTeamId}
+                  currentDate={currentDate}
+                  saveId={fixtureSeed}
+                  pitchCount={userHomeStadium.pitches.length + userCustomPitches.length}
                 />
               )}
             </>
@@ -9136,11 +9221,11 @@ This record has been officially verified and added to the IPL Minor Records arch
                     .slice(0, 9);
 
                 return (
-                  <div className="grid h-[calc(100vh-200px)] min-h-[560px] grid-cols-12 grid-rows-2 gap-4 overflow-visible">
+                  <div className="grid min-h-[560px] grid-cols-1 gap-4 overflow-visible xl:grid-cols-12">
                     <button
                       type="button"
                       onClick={() => setActiveSubTab("staff")}
-                      className="group relative col-span-4 flex min-h-0 flex-col overflow-hidden rounded-xl border-2 border-border bg-surface p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-accent hover:shadow-md"
+                      className="group relative col-span-1 flex min-h-[18rem] flex-col overflow-hidden rounded-xl border-2 border-border bg-surface p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-accent hover:shadow-md xl:col-span-4 xl:min-h-0"
                     >
                       <div className="pointer-events-none absolute -right-12 -top-14 size-36 rounded-full bg-sky-500/10 blur-3xl" />
                       <div className="relative flex items-start justify-between border-b border-border pb-3">
@@ -9168,7 +9253,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                     <button
                       type="button"
                       onClick={() => setActiveSubTab("injuries")}
-                      className="group relative col-span-4 flex min-h-0 flex-col overflow-hidden rounded-xl border-2 border-border bg-surface p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-accent hover:shadow-md"
+                      className="group relative col-span-1 flex min-h-[18rem] flex-col overflow-hidden rounded-xl border-2 border-border bg-surface p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-accent hover:shadow-md xl:col-span-4 xl:min-h-0"
                     >
                       <div className="pointer-events-none absolute -right-12 -top-14 size-36 rounded-full bg-red-500/10 blur-3xl" />
                       <div className="relative flex items-start justify-between border-b border-border pb-3">
@@ -9196,7 +9281,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                     <button
                       type="button"
                       onClick={() => setActiveSubTab("trades")}
-                      className={`group relative col-span-4 flex min-h-0 flex-col overflow-hidden rounded-xl border-2 bg-surface p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md ${tradeWindowOpen ? "border-success/50 hover:border-success" : "border-border hover:border-accent"}`}
+                      className={`group relative col-span-1 flex min-h-[18rem] flex-col overflow-hidden rounded-xl border-2 bg-surface p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md xl:col-span-4 xl:min-h-0 ${tradeWindowOpen ? "border-success/50 hover:border-success" : "border-border hover:border-accent"}`}
                     >
                       <div className={`pointer-events-none absolute -right-12 -top-14 size-36 rounded-full blur-3xl ${tradeWindowOpen ? "bg-emerald-500/15" : "bg-slate-500/10"}`} />
                       <div className="relative flex items-start justify-between border-b border-border pb-3">
@@ -9233,7 +9318,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                     <button
                       type="button"
                       onClick={() => setActiveSubTab("seasonanalysis")}
-                      className="group relative col-span-7 flex min-h-0 overflow-hidden rounded-xl border-2 border-border bg-surface p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-accent hover:shadow-md"
+                      className="group relative col-span-1 flex min-h-[18rem] overflow-hidden rounded-xl border-2 border-border bg-surface p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-accent hover:shadow-md xl:col-span-7 xl:min-h-0"
                     >
                       <div className="pointer-events-none absolute -bottom-20 -right-10 size-48 rounded-full bg-violet-500/10 blur-3xl" />
                       <div className="relative flex w-[42%] shrink-0 flex-col border-r border-border pr-5">
@@ -9252,31 +9337,36 @@ This record has been officially verified and added to the IPL Minor Records arch
                     <button
                       type="button"
                       onClick={() => setActiveSubTab("minorrecords")}
-                      className="group relative col-span-5 flex min-h-0 flex-col overflow-hidden rounded-xl border-2 border-border bg-surface p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-accent hover:shadow-md"
+                      className="group relative col-span-1 flex min-h-[24rem] flex-col overflow-hidden rounded-xl border-2 border-border bg-surface p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-accent hover:shadow-md xl:col-span-5 xl:min-h-0"
                     >
                       <div className="pointer-events-none absolute -bottom-16 -right-8 size-40 rounded-full bg-amber-500/10 blur-3xl" />
                       <div className="relative flex items-start justify-between border-b border-border pb-2">
                         <div className="flex items-center gap-3"><span className="flex size-9 items-center justify-center rounded-lg bg-warning/10 text-warning"><Trophy size={18} aria-hidden="true" /></span><div><p className="font-space-mono text-[8px] font-bold uppercase tracking-[0.18em] text-text-secondary">Competition archive</p><h3 className="mt-1 font-anton text-lg uppercase leading-none text-text-primary">Minor Records</h3></div></div>
                         <ArrowUpRight size={15} className="text-accent transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
                       </div>
-                      <p className="relative mt-2 font-space-mono text-[8px] font-bold uppercase tracking-[0.16em] text-text-secondary">{hasCareerRecordBreaks ? "Most recently broken" : "Most recent records"}</p>
+                      <div className="relative mt-2 flex items-center justify-between gap-3 font-space-mono text-[8px] font-bold uppercase tracking-[0.16em] text-text-secondary">
+                        <p>{hasCareerRecordBreaks ? "Most recently broken" : "Most recent records"}</p>
+                        {featuredRecords.length > minorRecordsPreviewCapacity && (
+                          <p className="shrink-0 tracking-normal">Showing {minorRecordsPreviewCapacity} of {featuredRecords.length}</p>
+                        )}
+                      </div>
                       {featuredRecords.length > 0 ? (
-                        <div className="relative mt-1.5 grid min-h-0 flex-1 grid-cols-3 grid-rows-3 gap-1.5 overflow-hidden">
-                          {featuredRecords.map((record) => (
+                        <div ref={minorRecordsPreviewRef} className="relative mt-2 grid h-0 min-h-0 flex-1 auto-rows-fr grid-cols-[repeat(auto-fit,minmax(min(100%,8rem),1fr))] gap-2 overflow-hidden">
+                          {featuredRecords.slice(0, minorRecordsPreviewCapacity).map((record) => (
                             <div
                               key={record.id}
-                              className="flex min-h-0 min-w-0 flex-col rounded-md border border-border/70 bg-bg/80 px-2.5 py-2 shadow-sm"
+                              className="flex min-h-[6.75rem] min-w-0 flex-col overflow-hidden rounded-md border border-border/70 bg-bg/80 px-2.5 py-2 shadow-sm"
                             >
-                              <p className="break-words text-[7px] font-semibold leading-[9px] text-text-primary">
+                              <p className="line-clamp-2 min-w-0 [overflow-wrap:anywhere] text-[8px] font-semibold leading-[11px] text-text-primary">
                                 {record.title}
                               </p>
-                              <div className="mt-1.5 border-t border-border/50 pt-1.5">
-                                <p className="font-anton text-sm leading-none text-warning">{record.value}</p>
-                                <p className="mt-1 break-words font-space-mono text-[6px] font-bold uppercase leading-[8px] text-text-primary">
+                              <div className="mt-1.5 min-w-0 border-t border-border/50 pt-1.5">
+                                <p className="truncate font-anton text-base leading-none text-warning">{record.value}</p>
+                                <p className="mt-1 line-clamp-2 min-w-0 [overflow-wrap:anywhere] font-space-mono text-[7px] font-bold uppercase leading-[9px] text-text-primary">
                                   {record.holder}
                                 </p>
                               </div>
-                              <p className="mt-1.5 break-words border-t border-border/40 pt-1 font-space-mono text-[6px] uppercase leading-[8px] text-text-secondary">
+                              <p className="mt-auto line-clamp-2 min-w-0 [overflow-wrap:anywhere] border-t border-border/40 pt-1 font-space-mono text-[7px] uppercase leading-[9px] text-text-secondary">
                                 {hasCareerRecordBreaks ? `Broken ${record.lastBrokenOn}` : `Record year ${record.season}`}
                                 {record.notes ? ` · ${record.notes}` : ""}
                               </p>

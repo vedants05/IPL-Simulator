@@ -22,7 +22,22 @@ export interface FixtureRecordSource {
   };
   simulation?: {
     battingFirstTeamId?: string;
-    partnerships?: Array<{ runs: number; batterA: string; batterB: string }>;
+    innings?: Array<{
+      battingTeamId: string;
+      partnerships: Array<{
+        runs: number;
+        batterIds?: string[];
+        batterNames?: string[];
+      }>;
+    }>;
+    // Compatibility for any save created with the original flat shape.
+    partnerships?: Array<{
+      runs: number;
+      batterA?: string;
+      batterB?: string;
+      batterIds?: string[];
+      batterNames?: string[];
+    }>;
   };
 }
 
@@ -210,18 +225,28 @@ export function computeDynamicLeagueRecords(
     });
 
     // 4. Partnerships
-    if (fixture.simulation?.partnerships) {
-      fixture.simulation.partnerships.forEach((p) => {
-        if (p.runs > highestPartnership.runs) {
+    const inningsPartnerships = (fixture.simulation?.innings ?? []).flatMap((innings) => (
+      innings.partnerships.map((partnership) => ({ partnership, battingTeamId: innings.battingTeamId }))
+    ));
+    const legacyPartnerships = (fixture.simulation?.partnerships ?? []).map((partnership) => ({
+      partnership,
+      battingTeamId: undefined,
+    }));
+    [...inningsPartnerships, ...legacyPartnerships].forEach(({ partnership: p, battingTeamId }) => {
+      const batterNames = p.batterNames?.filter(Boolean)
+        ?? p.batterIds?.map((playerId) => players[playerId]?.name ?? playerId).filter(Boolean)
+        ?? ("batterA" in p && "batterB" in p
+          ? [p.batterA, p.batterB].filter(Boolean) as string[]
+          : []);
+      if (batterNames.length >= 2 && p.runs > highestPartnership.runs) {
           highestPartnership = {
             runs: p.runs,
-            holder: `${p.batterA} & ${p.batterB}`,
+            holder: `${batterNames[0]} & ${batterNames[1]}`,
             detail: `${teamAShort} vs ${teamBShort} · ${matchYear}`,
-            playerNames: [p.batterA, p.batterB],
+            playerNames: [batterNames[0], batterNames[1]],
           };
-        }
-      });
-    }
+      }
+    });
   });
 
   // 5. Evaluate Season Records

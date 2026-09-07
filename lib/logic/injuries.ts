@@ -388,8 +388,10 @@ export function processMatchInjuries(
       return;
     }
 
+    const playerProneness = player.injuryProneness ?? 45;
+    const pronenessFactor = Math.max(0.35, Math.min(2.2, playerProneness / 45));
     const occurrenceRoll = injuryRandom(`${input.seed}:${input.matchId}:${player.id}:occurrence`);
-    if (occurrenceRoll >= POST_MATCH_INJURY_CHANCE * modifiers.occurrenceChanceMultiplier) return;
+    if (occurrenceRoll >= POST_MATCH_INJURY_CHANCE * modifiers.occurrenceChanceMultiplier * pronenessFactor) return;
     const category: InjuryCategory = injuryRandom(`${input.seed}:${input.matchId}:${player.id}:category`)
       < POST_MATCH_MAJOR_INJURY_SHARE
       ? "major"
@@ -482,10 +484,13 @@ export function processBackgroundInjuries(
       ));
       const eligible = input.squadPlayers
         .filter(({ player }) => !activeInjuries[player.id])
-        .sort((left, right) => (
-          injuryRandom(`${input.seed}:${input.season}:preseason-player:${index}:${left.player.id}`)
-          - injuryRandom(`${input.seed}:${input.season}:preseason-player:${index}:${right.player.id}`)
-        ));
+        .sort((left, right) => {
+          const leftWeight = Math.max(0.35, Math.min(2.2, (left.player.injuryProneness ?? 45) / 45));
+          const rightWeight = Math.max(0.35, Math.min(2.2, (right.player.injuryProneness ?? 45) / 45));
+          const leftRoll = injuryRandom(`${input.seed}:${input.season}:preseason-player:${index}:${left.player.id}`) / leftWeight;
+          const rightRoll = injuryRandom(`${input.seed}:${input.season}:preseason-player:${index}:${right.player.id}`) / rightWeight;
+          return leftRoll - rightRoll;
+        });
       const selected = eligible[0];
       const definitionIndex = Math.floor(
         injuryRandom(`${input.seed}:${input.season}:preseason-condition:${index}`)
@@ -516,8 +521,10 @@ export function processBackgroundInjuries(
   if (!processedKeys.includes(dateKey)) {
     input.squadPlayers.forEach(({ player, teamId }) => {
       if (activeInjuries[player.id]) return;
+      const playerProneness = player.injuryProneness ?? 45;
+      const pronenessFactor = Math.max(0.35, Math.min(2.2, playerProneness / 45));
       const occurs = injuryRandom(`${input.seed}:${dateKey}:${player.id}:background`)
-        < DAILY_BACKGROUND_INJURY_CHANCE * modifiers.occurrenceChanceMultiplier;
+        < DAILY_BACKGROUND_INJURY_CHANCE * modifiers.occurrenceChanceMultiplier * pronenessFactor;
       if (!occurs) return;
       // The dedicated preseason batch supplies exactly 1-2 major cases.
       // Other background conditions before the first fixture remain minor.

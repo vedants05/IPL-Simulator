@@ -1,4 +1,8 @@
 import type { Player } from "@/lib/types";
+import {
+  aggressionAdjustedWicketProbability,
+  battingAggressionScoringProfile,
+} from "@/lib/logic/matchSimulation";
 
 export type OffseasonCompetitionLevel = "International" | "Domestic" | "International + Domestic";
 
@@ -157,7 +161,9 @@ function generatePlayerStats(input: {
     if (bats) {
       innings += 1;
       const meanBalls = averageBallsByPosition[position - 1];
-      const dismissalProbability = clamp((1 / meanBalls) * difficulty * (1 - (player.currentBatting - 70) * 0.008 - form), 0.012, 0.42);
+      const aggression = clamp(player.battingAggression ?? (player.isFinisher ? 78 : 62), 25, 95);
+      const baseDismissalProbability = clamp((1 / meanBalls) * difficulty * (1 - (player.currentBatting - 70) * 0.008 - form), 0.012, 0.42);
+      const dismissalProbability = aggressionAdjustedWicketProbability(baseDismissalProbability, aggression);
       const availableBalls = integerAround(random, meanBalls * 1.8, meanBalls * 1.5, 1, 75);
       let faced = 0;
       let dismissed = false;
@@ -165,8 +171,15 @@ function generatePlayerStats(input: {
         faced += 1;
         if (random() < dismissalProbability) { dismissed = true; break; }
       }
-      const aggression = clamp(player.battingAggression ?? (player.isFinisher ? 78 : 62), 25, 95);
-      const expectedStrikeRate = clamp(82 + player.currentBatting * 0.62 + aggression * 0.22 + form * 100 - internationalShare * 7, 75, 205);
+      const aggressionProfile = battingAggressionScoringProfile(aggression);
+      const expectedStrikeRate = clamp(
+        aggressionProfile.indicativeStrikeRate
+          + (player.currentBatting - 75) * 0.35
+          + form * 100
+          - internationalShare * 7,
+        75,
+        215,
+      );
       const inningsNoise = clamp(0.58 + random() * 0.84, 0.45, 1.5);
       const scored = Math.max(0, Math.round(faced * expectedStrikeRate / 100 * inningsNoise - (faced <= 2 ? random() * 2 : 0)));
       balls += faced;

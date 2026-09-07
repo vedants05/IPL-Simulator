@@ -60,6 +60,16 @@ const ROLE_CATEGORIES: RoleCategory[] = [
 const clamp = (value: number, minimum: number, maximum: number): number => Math.min(maximum, Math.max(minimum, value));
 
 export function getMiniAuctionContractPrice(player: Player, teamId: string, season: number): number {
+  // The first playable mini auction uses the live contract imported from
+  // ipl_2026_salary, which may intentionally differ from salary_2026 history.
+  if (
+    player.currentTeamId === teamId
+    && player.openingContractSeason === season
+    && (player.openingContractPrice ?? 0) > 0
+  ) {
+    return Math.round(player.openingContractPrice!);
+  }
+
   const previousContract = [...(player.iplHistory ?? [])]
     .filter((entry) => entry.teamId === teamId && entry.price > 0 && Number(entry.season) < season)
     .sort((left, right) => Number(right.season) - Number(left.season))[0];

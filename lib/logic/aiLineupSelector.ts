@@ -1434,6 +1434,77 @@ export function findOptimalImpactBattingPosition(
   return 7;
 }
 
+export interface BowlingFirstImpactPlan {
+  impactPlayerId: string | null;
+  outgoingPlayerId: string | null;
+  battingPosition: number | null;
+}
+
+/**
+ * Rebuild the batting-impact decision against the final bowling-first XI.
+ * Pitch tuning may replace starters after the original recommendation was
+ * made, so incoming player, outgoing bowler and entry position must be scored
+ * as one combination rather than inherited independently from the old plan.
+ */
+export function reconcileBowlingFirstImpactPlan(
+  squad: readonly Player[],
+  startingXIIds: readonly string[],
+  impactSubIds: readonly string[],
+  protectedIds: ReadonlySet<string> = new Set(),
+): BowlingFirstImpactPlan {
+  const playerById = new Map(squad.map((player) => [player.id, player]));
+  const startingXI = startingXIIds
+    .map((playerId) => playerById.get(playerId))
+    .filter((player): player is Player => Boolean(player));
+  if (startingXI.length !== 11) {
+    return { impactPlayerId: null, outgoingPlayerId: null, battingPosition: null };
+  }
+
+  const keepers = startingXI.filter(isKeeper);
+  const incomingCandidates = impactSubIds
+    .map((playerId) => playerById.get(playerId))
+    .filter((player): player is Player => Boolean(
+      player
+      && !startingXIIds.includes(player.id)
+      && isBattingOption(player)
+      && isImpactPlayerWithinOverseasLimit(startingXI, player),
+    ));
+
+  const combinations = incomingCandidates.flatMap((incoming) => startingXI
+    .filter((outgoing) => (
+      !protectedIds.has(outgoing.id)
+      && !(isKeeper(outgoing) && keepers.length <= 1)
+      && isAiBowlingOption(outgoing)
+    ))
+    .map((outgoing) => {
+      const battingPosition = findOptimalImpactBattingPosition(
+        startingXI,
+        incoming,
+        outgoing,
+        true,
+      );
+      const roleFit = canPlayerBatAtPosition(incoming, battingPosition) ? 1 : 0;
+      const topEight = battingPosition <= 8 ? 1 : 0;
+      return { incoming, outgoing, battingPosition, roleFit, topEight };
+    }));
+
+  const best = combinations.sort((left, right) => (
+    right.topEight - left.topEight
+    || right.roleFit - left.roleFit
+    || (right.incoming.currentBatting ?? 0) - (left.incoming.currentBatting ?? 0)
+    || (left.outgoing.currentBatting ?? 0) - (right.outgoing.currentBatting ?? 0)
+    || (right.outgoing.currentBowling ?? 0) - (left.outgoing.currentBowling ?? 0)
+  ))[0];
+
+  return best
+    ? {
+        impactPlayerId: best.incoming.id,
+        outgoingPlayerId: best.outgoing.id,
+        battingPosition: best.battingPosition,
+      }
+    : { impactPlayerId: null, outgoingPlayerId: null, battingPosition: null };
+}
+
 interface BowlFirstImpactStructure {
   startingXI: Player[];
   impactPlayer: Player;
