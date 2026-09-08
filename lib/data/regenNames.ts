@@ -1,5 +1,3 @@
-import { INDIAN_STATE_REGEN_NAME_POOLS } from "./indianStateRegenNames";
-
 /**
  * Common-name pools for generated players.  These intentionally contain
  * broadly familiar given names and surnames rather than real-player records,
@@ -11,18 +9,7 @@ export type RegenNamePool = {
   lastNames: readonly string[];
 };
 
-const INDIAN_FIRST_NAMES = Array.from(new Set(
-  Object.values(INDIAN_STATE_REGEN_NAME_POOLS).flatMap((pool) => pool.firstNames),
-));
-const INDIAN_LAST_NAMES = Array.from(new Set(
-  Object.values(INDIAN_STATE_REGEN_NAME_POOLS).flatMap((pool) => pool.lastNames),
-));
-
 export const REGEN_NAME_DATABASE: Record<string, RegenNamePool> = {
-  India: {
-    firstNames: INDIAN_FIRST_NAMES,
-    lastNames: INDIAN_LAST_NAMES,
-  },
   Australia: {
     firstNames: ["Aaron", "Adam", "Alex", "Andrew", "Anthony", "Ben", "Blake", "Brad", "Brendan", "Callum", "Cameron", "Chris", "Connor", "Daniel", "David", "Dylan", "Ethan", "Grant", "Hayden", "Jack", "Jacob", "Jake", "James", "Jason", "Josh", "Lachlan", "Liam", "Luke", "Marcus", "Mark", "Matthew", "Max", "Mitchell", "Nathan", "Nick", "Oliver", "Patrick", "Peter", "Rhys", "Ryan", "Sam", "Scott", "Sean", "Simon", "Tim", "Tom", "Travis", "Tyler", "William", "Zach", "Jordan"],
     lastNames: ["Adams", "Anderson", "Bailey", "Baker", "Bell", "Brown", "Campbell", "Carter", "Clarke", "Collins", "Cook", "Cooper", "Cox", "Davis", "Edwards", "Evans", "Fisher", "Foster", "Green", "Hall", "Harris", "Hill", "Howard", "Hughes", "Jackson", "Johnson", "King", "Lee", "Lewis", "Martin", "Mitchell", "Morgan", "Morris", "Murphy", "Nelson", "Parker", "Phillips", "Reid", "Richardson", "Roberts", "Robinson", "Scott", "Smith", "Stewart", "Taylor", "Thompson", "Turner", "Walker", "White", "Wilson", "Wright"],
@@ -70,6 +57,9 @@ export const REGEN_NAME_DATABASE: Record<string, RegenNamePool> = {
 };
 
 function poolForCountry(country: string): RegenNamePool {
+  if (country === "India") {
+    throw new Error("Indian regen names must be generated from a state-specific pool");
+  }
   return REGEN_NAME_DATABASE[country] ?? REGEN_NAME_DATABASE.Associate;
 }
 

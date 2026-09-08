@@ -6,7 +6,7 @@ import type { RegenNamePool } from "@/lib/data/regenNames";
  * states intentionally retain some cultural overlap, while every selection is
  * made from the chosen state's own pool rather than the generic India pool.
  */
-export const INDIAN_STATE_REGEN_NAME_POOLS: Record<string, RegenNamePool> = {
+const BASE_INDIAN_STATE_REGEN_NAME_POOLS: Record<string, RegenNamePool> = {
   "jammu-kashmir": {
     firstNames: ["Aabid", "Aadil", "Aamir", "Aaqib", "Adil", "Adnan", "Ahsan", "Aijaz", "Amaan", "Arif", "Danish", "Faisal", "Farhan", "Furqan", "Haroon", "Irfan", "Junaid", "Kamran", "Mansoor", "Mehraan", "Mubashir", "Nadeem", "Owais", "Parvez", "Rayees", "Sahil", "Shahid", "Shakir", "Tariq", "Yawar"],
     lastNames: ["Ahanger", "Bhat", "Dar", "Ganai", "Ganie", "Gul", "Handwara", "Jan", "Kachroo", "Kaul", "Khan", "Khanday", "Lone", "Malik", "Mantoo", "Mir", "Naqash", "Pandit", "Parray", "Qadri", "Raina", "Rather", "Reshi", "Ronga", "Shah", "Sheikh", "Sofi", "Wani", "Yatoo", "Zargar"],
@@ -128,6 +128,114 @@ export const INDIAN_STATE_REGEN_NAME_POOLS: Record<string, RegenNamePool> = {
     lastNames: ["Arumugam", "Balasubramanian", "Chandrasekar", "Ganesan", "Iyer", "Iyengar", "Kannan", "Krishnamurthy", "Kumar", "Mahadevan", "Manoharan", "Murugan", "Natarajan", "Palanisamy", "Parthasarathy", "Raghavan", "Rajan", "Rajendran", "Ramakrishnan", "Ramasamy", "Ravichandran", "Sekar", "Selvaraj", "Shankar", "Sivakumar", "Srinivasan", "Subramanian", "Sundaram", "Venkatesan", "Viswanathan"],
   },
 };
+
+const TOP_STATE_NAME_SUPPLEMENTS: Record<string, RegenNamePool> = {
+  maharashtra: {
+    firstNames: ["Abhay", "Advait", "Akash", "Amit", "Anish", "Anuj", "Ashwin", "Chetan", "Dhananjay", "Ganesh", "Hrishikesh", "Jay", "Mihir", "Neel", "Niranjan", "Parth", "Pranav", "Rahul", "Sameer", "Tushar"],
+    lastNames: ["Apte", "Bapat", "Bendre", "Bhonsle", "Damle", "Dandekar", "Date", "Deo", "Ghadge", "Ghorpade", "Inamdar", "Kanitkar", "Khot", "Limaye", "Mhatre", "Nerurkar", "Pansare", "Rajwade", "Sathe", "Tendulkar"],
+  },
+  karnataka: {
+    firstNames: ["Abhishek", "Ajay", "Akshay", "Anand", "Aravind", "Dhanush", "Gagan", "Gaurav", "Krishna", "Manoj", "Nandan", "Naveen", "Nischal", "Pavan", "Raghu", "Rahul", "Rakesh", "Sharath", "Shishir", "Vinay"],
+    lastNames: ["Achar", "Ballal", "Bharadwaj", "Bopanna", "Devaiah", "Ganapathy", "Gopal", "Gururaj", "Kaverappa", "Kini", "Krishnamurthy", "Manjunath", "Nagaraj", "Prabhu", "Raj", "Ramesh", "Srinivas", "Swamy", "Urs", "Venkatesh"],
+  },
+  "tamil-nadu": {
+    firstNames: ["Abishek", "Adithya", "Akshay", "Anand", "Balaji", "Deepak", "Gokul", "Jagan", "Kavin", "Mithun", "Mohan", "Mukund", "Narayan", "Nishanth", "Pradosh", "Ramakrishnan", "Ranjan", "Saravanan", "Shahrukh", "Washington"],
+    lastNames: ["Ashok", "Badrinath", "Baskaran", "Chakravarthy", "Devarajan", "Dharma", "Elangovan", "Govind", "Jagadeesan", "Kousik", "Lakshman", "Muralidharan", "Prabhu", "Ramalingam", "Rangarajan", "Sairam", "Sathish", "Shanmugam", "Thiagarajan", "Vijayaraghavan"],
+  },
+  "uttar-pradesh": {
+    firstNames: ["Aarav", "Abhinav", "Aditya", "Akshay", "Anshuman", "Arjun", "Dhruv", "Divyansh", "Karan", "Lakshya", "Mukul", "Nadeem", "Prashant", "Priyam", "Sameer", "Saurabh", "Shivang", "Siddharth", "Tanmay", "Vaibhav"],
+    lastNames: ["Agarwal", "Bisen", "Chaudhary", "Choudhary", "Garg", "Kapoor", "Khan", "Kushwaha", "Maurya", "Pal", "Rastogi", "Rawat", "Rizvi", "Sengar", "Sharma", "Siddiqui", "Tomar", "Tyagi", "Vajpayee", "Vats"],
+  },
+  delhi: {
+    firstNames: ["Aakash", "Abhishek", "Advik", "Ahan", "Akashdeep", "Anmol", "Daksh", "Dev", "Ishant", "Jatin", "Kartikeya", "Krish", "Mayank", "Mohit", "Navdeep", "Nitish", "Pulkit", "Sarthak", "Siddhant", "Vansh"],
+    lastNames: ["Ahuja", "Bhasin", "Bhati", "Chadha", "Dhawan", "Gulati", "Jaitley", "Juneja", "Kakkar", "Kathuria", "Khurana", "Madan", "Manchanda", "Marwah", "Mathur", "Sehrawat", "Singhal", "Talwar", "Vohra", "Yadav"],
+  },
+  punjab: {
+    firstNames: ["Abhijeet", "Akashdeep", "Amolpreet", "Anmolpreet", "Armaan", "Baltej", "Gurnoor", "Gursharan", "Harmeet", "Harpreet", "Jasinder", "Kamalpreet", "Karanveer", "Mandeep", "Manpreet", "Mayank", "Naman", "Prabhsimran", "Sanvir", "Shubman"],
+    lastNames: ["Bawa", "Bedi", "Buttar", "Chandhok", "Gony", "Gosain", "Gujjar", "Kalsi", "Kharoud", "Lamba", "Mahil", "Markan", "Nijjar", "Saini", "Saran", "Sharma", "Sran", "Wadhera", "Warraich", "Yuvraj"],
+  },
+  gujarat: {
+    firstNames: ["Abhinav", "Aditya", "Akshar", "Amit", "Anuj", "Axar", "Chirag", "Het", "Jignesh", "Karan", "Kshitij", "Manan", "Manav", "Mitesh", "Priyank", "Rahul", "Ripal", "Rujul", "Urvil", "Vishal"],
+    lastNames: ["Bhavsar", "Chawla", "Daxini", "Dodia", "Gandhi", "Garasia", "Hingrajia", "Kalaria", "Karia", "Kothari", "Merai", "Nagwaswalla", "Parmar", "Prajapati", "Pujara", "Rawal", "Sarvaiya", "Thakor", "Vora", "Zala"],
+  },
+  haryana: {
+    firstNames: ["Aman", "Ansh", "Arun", "Chaitanya", "Dhruv", "Himanshu", "Jayant", "Joginder", "Kunal", "Nishant", "Piyush", "Pramod", "Rajat", "Rohit", "Sahil", "Shubham", "Sumeet", "Tanishq", "Uday", "Yashu"],
+    lastNames: ["Bhardwaj", "Bhutan", "Chaudhary", "Dagar", "Godara", "Jangra", "Kamboj", "Khatkar", "Kundu", "Lohan", "Mahal", "Mavi", "Mehla", "Mishra", "Redhu", "Shokeen", "Sindhu", "Tokas", "Vashist", "Yadav"],
+  },
+  "west-bengal": {
+    firstNames: ["Abhimanyu", "Akash", "Amit", "Anustup", "Arka", "Avishek", "Debabrata", "Ishan", "Kazi", "Koushik", "Manoj", "Mukesh", "Pankaj", "Pradipta", "Ravi", "Rishav", "Shahbaz", "Shakir", "Sudip", "Wriddhiman"],
+    lastNames: ["Adhikari", "Ahmed", "Bagchi", "Baidya", "Barman", "Bhowmick", "Chanda", "Chattopadhyay", "Debnath", "Halder", "Hazra", "Kundu", "Mandal", "Mondal", "Pramanik", "Roy", "Samanta", "Sanyal", "Sil", "Sur"],
+  },
+  rajasthan: {
+    firstNames: ["Abhijeet", "Aman", "Aniket", "Ankit", "Arjit", "Ashok", "Deepak", "Kamlesh", "Kunal", "Mahipal", "Manender", "Mohit", "Nakul", "Rahul", "Rajesh", "Ravi", "Salman", "Shubham", "Tanveer", "Yash"],
+    lastNames: ["Ahuja", "Beniwal", "Bishnoi", "Chahar", "Dadhich", "Dudi", "Gahlot", "Garhwal", "Gehlot", "Jangid", "Joshi", "Khan", "Kothari", "Lomror", "Nagarkoti", "Sharma", "Singh", "Suthar", "Ul-Haq", "Yagnik"],
+  },
+};
+
+export const INDIAN_STATE_REGEN_NAME_POOLS: Record<string, RegenNamePool> = Object.fromEntries(
+  Object.entries(BASE_INDIAN_STATE_REGEN_NAME_POOLS).map(([stateId, pool]) => {
+    const supplement = TOP_STATE_NAME_SUPPLEMENTS[stateId];
+    return [stateId, supplement ? {
+      firstNames: Array.from(new Set([...pool.firstNames, ...supplement.firstNames])),
+      lastNames: Array.from(new Set([...pool.lastNames, ...supplement.lastNames])),
+    } : pool];
+  }),
+);
+
+export interface IndianRegenStateAllocation {
+  id: string;
+  name: string;
+  /** Relative share of IPL-level regen production; this is not population share. */
+  weight: number;
+}
+
+/**
+ * Provisional domestic-talent weights. They favour the deepest established
+ * professional pathways while retaining a credible long tail of players from
+ * smaller state systems. The values are relative weights and need not sum to 100.
+ */
+export const INDIAN_REGEN_STATE_DISTRIBUTION: readonly IndianRegenStateAllocation[] = [
+  { id: "maharashtra", name: "Maharashtra", weight: 14 },
+  { id: "karnataka", name: "Karnataka", weight: 9 },
+  { id: "tamil-nadu", name: "Tamil Nadu", weight: 8 },
+  { id: "uttar-pradesh", name: "Uttar Pradesh", weight: 8 },
+  { id: "delhi", name: "Delhi", weight: 7 },
+  { id: "punjab", name: "Punjab", weight: 6 },
+  { id: "gujarat", name: "Gujarat", weight: 6 },
+  { id: "haryana", name: "Haryana", weight: 5.5 },
+  { id: "west-bengal", name: "West Bengal", weight: 5 },
+  { id: "rajasthan", name: "Rajasthan", weight: 4.5 },
+  { id: "madhya-pradesh", name: "Madhya Pradesh", weight: 4.5 },
+  { id: "telangana", name: "Telangana", weight: 4 },
+  { id: "andhra-pradesh", name: "Andhra Pradesh", weight: 3.5 },
+  { id: "kerala", name: "Kerala", weight: 3.5 },
+  { id: "jharkhand", name: "Jharkhand", weight: 3 },
+  { id: "assam", name: "Assam", weight: 2 },
+  { id: "odisha", name: "Odisha", weight: 1.5 },
+  { id: "himachal-pradesh", name: "Himachal Pradesh", weight: 1.5 },
+  { id: "jammu-kashmir", name: "Jammu & Kashmir", weight: 1.2 },
+  { id: "uttarakhand", name: "Uttarakhand", weight: 1.2 },
+  { id: "chhattisgarh", name: "Chhattisgarh", weight: 1.2 },
+  { id: "goa", name: "Goa", weight: 1 },
+  { id: "bihar", name: "Bihar", weight: 1 },
+  { id: "tripura", name: "Tripura", weight: 0.8 },
+  { id: "meghalaya", name: "Meghalaya", weight: 0.35 },
+  { id: "nagaland", name: "Nagaland", weight: 0.35 },
+  { id: "manipur", name: "Manipur", weight: 0.35 },
+  { id: "mizoram", name: "Mizoram", weight: 0.3 },
+  { id: "sikkim", name: "Sikkim", weight: 0.25 },
+  { id: "arunachal-pradesh", name: "Arunachal Pradesh", weight: 0.2 },
+] as const;
+
+export function selectIndianRegenState(random: () => number): IndianRegenStateAllocation {
+  const totalWeight = INDIAN_REGEN_STATE_DISTRIBUTION.reduce((sum, state) => sum + state.weight, 0);
+  let roll = random() * totalWeight;
+  for (const state of INDIAN_REGEN_STATE_DISTRIBUTION) {
+    roll -= state.weight;
+    if (roll < 0) return state;
+  }
+  return INDIAN_REGEN_STATE_DISTRIBUTION[INDIAN_REGEN_STATE_DISTRIBUTION.length - 1];
+}
 
 function normalizedName(value: string): string {
   return value.replace(/\s*\(R\)\s*$/i, "").trim().toLocaleLowerCase("en-GB");

@@ -1,6 +1,18 @@
 import assert from "node:assert/strict";
 import { createScoutingGeneratedPlayer, initializeCareerPlayers } from "../lib/logic/careerLifecycle";
+import { generateRegenName, REGEN_NAME_DATABASE } from "../lib/data/regenNames";
+import { INDIAN_REGEN_STATE_DISTRIBUTION, INDIAN_STATE_REGEN_NAME_POOLS } from "../lib/data/indianStateRegenNames";
 import type { Player } from "../lib/types";
+
+assert.equal(REGEN_NAME_DATABASE.India, undefined, "the obsolete all-India name pool still exists");
+assert.throws(() => generateRegenName("India", () => 0.5), /state-specific pool/);
+for (const state of INDIAN_REGEN_STATE_DISTRIBUTION.slice(0, 10)) {
+  const pool = INDIAN_STATE_REGEN_NAME_POOLS[state.id];
+  assert.ok(pool, `${state.name} is missing its name pool`);
+  assert.ok(new Set(pool.firstNames).size >= 48, `${state.name} needs a larger first-name pool`);
+  assert.ok(new Set(pool.lastNames).size >= 48, `${state.name} needs a larger surname pool`);
+  assert.ok(new Set(pool.firstNames).size * new Set(pool.lastNames).size >= 2_400, `${state.name} has too few name combinations`);
+}
 
 const secondaryRatings: Array<keyof Player> = [
   "battingAggression", "aggression",
@@ -112,6 +124,14 @@ for (const { roleGroup, player } of generated) {
 }
 
 const allPlayers = generated.map(({ player }) => player);
+const indianPlayers = allPlayers.filter((player) => player.nationality === "Indian");
+const overseasPlayers = allPlayers.filter((player) => player.nationality === "Overseas");
+assert.ok(indianPlayers.every((player) => Boolean(player.state?.trim())), "an ordinary Indian regen is missing a state");
+assert.ok(overseasPlayers.every((player) => player.state === undefined), "an overseas regen received an Indian state");
+const stateCount = (state: string) => indianPlayers.filter((player) => player.state === state).length;
+assert.ok(stateCount("Maharashtra") > stateCount("Odisha") * 5, "state allocation does not favour deep pathways enough");
+assert.ok(stateCount("Maharashtra") / indianPlayers.length >= 0.10, "too few Maharashtra regens");
+assert.ok(stateCount("Odisha") / indianPlayers.length <= 0.025, "too many Odisha regens");
 const byRole = Object.fromEntries(roles.map((role) => [
   role,
   generated.filter((entry) => entry.roleGroup === role).map((entry) => entry.player),
@@ -260,6 +280,12 @@ const reproducibilityInput = {
 const first = createScoutingGeneratedPlayer(reproducibilityInput);
 const second = createScoutingGeneratedPlayer(reproducibilityInput);
 for (const rating of secondaryRatings) assert.equal(first[rating], second[rating], `${String(rating)} is not seeded`);
+const stateScouted = createScoutingGeneratedPlayer({
+  ...reproducibilityInput,
+  index: 44_445,
+  state: "Odisha",
+});
+assert.equal(stateScouted.state, "Odisha", "state scouting did not override the general allocation");
 
 // Saves created before consistency generation existed stored regens without
 // either alias. Loading such a save must produce stable, varied values instead
@@ -291,7 +317,31 @@ for (const [id, player] of Object.entries(migratedLegacy)) {
   assert.equal(player.stamina, player.battingConsistency);
   assert.equal(player.consistency, player.bowlingConsistency);
   assert.equal(player.stamina, repeatedMigration[id].stamina, "legacy consistency migration is not deterministic");
+  assert.ok(player.state, "legacy Indian regen state was not backfilled");
+  assert.equal(player.state, repeatedMigration[id].state, "legacy state migration is not deterministic");
 }
+const legacyNeutralRegens = Object.fromEntries(Object.entries(legacyRegens).map(([id, player]) => [id, {
+  ...player,
+  stamina: 50,
+  battingConsistency: 50,
+  consistency: 50,
+  bowlingConsistency: 50,
+  careerState: {
+    ...player.careerState!,
+    secondaryAttributesGenerationVersion: undefined,
+  },
+}]));
+const migratedNeutralRegens = Object.values(initializeCareerPlayers(legacyNeutralRegens, 2028));
+assert.ok(
+  new Set(migratedNeutralRegens.map((player) => player.battingConsistency)).size >= 30,
+  "persisted legacy batting defaults were not replaced with varied values",
+);
+assert.ok(
+  new Set(migratedNeutralRegens.map((player) => player.bowlingConsistency)).size >= 30,
+  "persisted legacy bowling defaults were not replaced with varied values",
+);
+assert.ok(migratedNeutralRegens.some((player) => player.battingConsistency !== 50));
+assert.ok(migratedNeutralRegens.every((player) => player.careerState?.secondaryAttributesGenerationVersion === 1));
 const explicitFifty = { ...first, stamina: 50, battingConsistency: 50, consistency: 63, bowlingConsistency: 63 };
 const preservedExplicit = initializeCareerPlayers({ [explicitFifty.id]: explicitFifty }, 2031)[explicitFifty.id];
 assert.equal(preservedExplicit.stamina, 50, "a genuine batting consistency rating was overwritten");

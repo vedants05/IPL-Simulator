@@ -113,6 +113,8 @@ export interface PlayerCareerRatingHistoryEntry {
 export interface PlayerCareerState {
   origin: "database" | "generated";
   generatedSeason?: number;
+  /** Version of the secondary-attribute generator/migration applied to this regen. */
+  secondaryAttributesGenerationVersion?: number;
   unsoldAuctionStreak: number;
   belowAuctionStandardSeasons: number;
   lastRetirementEvaluationSeason?: number;

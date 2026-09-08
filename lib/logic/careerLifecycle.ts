@@ -19,6 +19,11 @@ import {
   type AuctionRoleGroup,
 } from "./auctionMarket";
 import { generateRegenName } from "../data/regenNames";
+import {
+  generateIndianStateRegenName,
+  INDIAN_REGEN_STATE_DISTRIBUTION,
+  selectIndianRegenState,
+} from "../data/indianStateRegenNames";
 import { calculateBasePrice } from "./playerBasePrice";
 import { enforceBattingPositionEligibility } from "./playerBattingPositions";
 import { getEmergingPlayerEligibility, rankMvpCandidates } from "./seasonAwards";
@@ -413,28 +418,48 @@ export function initializeCareerPlayers(
   baselineSeason: number,
 ): Record<string, Player> {
   return Object.fromEntries(Object.entries(players).map(([id, player]) => {
-    // Regens created before secondary attributes were introduced have neither
-    // consistency field. Leaving them absent makes every match silently use the
-    // neutral fallback of 50. Backfill only missing regen values, deterministically,
-    // while preserving any genuine rating already stored by the save.
+    // Older regens either have no consistency fields or have the old match-engine
+    // fallback of 50 persisted as though it were a generated rating. Migrate that
+    // legacy placeholder once; versioned modern regens may legitimately rate 50.
     const existingBattingConsistency = player.battingConsistency ?? player.stamina;
     const existingBowlingConsistency = player.bowlingConsistency ?? player.consistency;
     let playerWithConsistency = player;
     if (player.careerState?.origin === "generated") {
+      const needsLegacySecondaryMigration = (player.careerState.secondaryAttributesGenerationVersion ?? 0) < 1;
       const generated = generatedConsistencyAndDurability(
         player.age,
         seededRandom(`regen-consistency-backfill:${player.id}:${player.careerState.generatedSeason ?? baselineSeason}`),
         seededRandom(`regen-injury-backfill:${player.id}:${player.careerState.generatedSeason ?? baselineSeason}`),
       );
-      const battingConsistency = existingBattingConsistency ?? generated.battingConsistency;
-      const bowlingConsistency = existingBowlingConsistency ?? generated.bowlingConsistency;
+      const battingConsistency = (
+        needsLegacySecondaryMigration && existingBattingConsistency === 50
+          ? undefined
+          : existingBattingConsistency
+      ) ?? generated.battingConsistency;
+      const bowlingConsistency = (
+        needsLegacySecondaryMigration && existingBowlingConsistency === 50
+          ? undefined
+          : existingBowlingConsistency
+      ) ?? generated.bowlingConsistency;
       playerWithConsistency = {
         ...player,
         stamina: battingConsistency,
         battingConsistency,
         consistency: bowlingConsistency,
         bowlingConsistency,
+        careerState: {
+          ...player.careerState,
+          secondaryAttributesGenerationVersion: 1,
+        },
       };
+      if (playerWithConsistency.nationality === "Indian" && !playerWithConsistency.state?.trim()) {
+        playerWithConsistency = {
+          ...playerWithConsistency,
+          state: selectIndianRegenState(seededRandom(
+            `regen-state-backfill:${player.id}:${player.careerState.generatedSeason ?? baselineSeason}`,
+          )).name,
+        };
+      }
     }
     const ability = Math.max(playerWithConsistency.currentBatting ?? 0, playerWithConsistency.currentBowling ?? 0);
     const startingReputation = playerWithConsistency.reputation ?? 5;
@@ -3147,13 +3172,28 @@ function createGeneratedPlayer(input: {
   );
   const country = permittedForcedRegenCountry(input.forcedCountry)
     ?? (nationality === "Indian" ? "India" : chooseOverseasCountry(input.players, generatedAbility, random));
+  const stateRandom = seededRandom(`${input.seed}:${input.season}:regen:${input.index}:state`);
+  const generatedStateAllocation = nationality === "Indian"
+    ? (input.forcedState
+      ? INDIAN_REGEN_STATE_DISTRIBUTION.find((state) => state.name === input.forcedState)
+      : selectIndianRegenState(stateRandom))
+    : undefined;
+  const generatedState = nationality === "Indian"
+    ? input.forcedState ?? generatedStateAllocation?.name
+    : undefined;
   const isCapped = generatedAbility >= 86 || (mature && (ratings.current >= 82 || nationality === "Overseas"));
   const serial = String(input.index + 1).padStart(3, "0");
   const id = `regen-${input.season}-${serial}-${hashSeed(`${input.seed}:${serial}`).toString(36)}`;
   // Use a separate seed so changing the name list never changes player
   // ratings, role, country selection, or any other simulation outcome.
   const generatedName = input.forcedName
-    ?? generateRegenName(country, seededRandom(`${input.seed}:${input.season}:regen:${input.index}:name`));
+    ?? (nationality === "Indian" && generatedStateAllocation
+      ? generateIndianStateRegenName(
+        generatedStateAllocation.id,
+        seededRandom(`${input.seed}:${input.season}:regen:${input.index}:name`),
+        Object.values(input.players).map((player) => player.name),
+      )
+      : generateRegenName(country, seededRandom(`${input.seed}:${input.season}:regen:${input.index}:name`)));
   const name = `${generatedName} (R)`;
   const bowlingTypeBattingRatings = generatedBowlingTypeBattingRatings(
     skills.currentBatting,
@@ -3200,7 +3240,7 @@ function createGeneratedPlayer(input: {
     age,
     nationality,
     country,
-    state: input.forcedState,
+    state: generatedState,
     role,
     battingStyle,
     bowlingStyle,
@@ -3236,6 +3276,7 @@ function createGeneratedPlayer(input: {
     ...initializePlayerCareerState(player, input.season),
     origin: "generated",
     generatedSeason: input.season,
+    secondaryAttributesGenerationVersion: 1,
     lastAgedSeason: input.season,
   };
   return enforceBattingPositionEligibility(player);
