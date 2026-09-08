@@ -154,6 +154,7 @@ export interface HistoricalPlayerSnapshot {
   role: Player["role"];
   nationality: Player["nationality"];
   country?: string;
+  state?: string;
   battingStyle?: Player["battingStyle"];
   bowlingStyle?: Player["bowlingStyle"];
   bowlingHand?: Player["bowlingHand"];
@@ -412,20 +413,43 @@ export function initializeCareerPlayers(
   baselineSeason: number,
 ): Record<string, Player> {
   return Object.fromEntries(Object.entries(players).map(([id, player]) => {
-    const ability = Math.max(player.currentBatting ?? 0, player.currentBowling ?? 0);
-    const startingReputation = player.reputation ?? 5;
+    // Regens created before secondary attributes were introduced have neither
+    // consistency field. Leaving them absent makes every match silently use the
+    // neutral fallback of 50. Backfill only missing regen values, deterministically,
+    // while preserving any genuine rating already stored by the save.
+    const existingBattingConsistency = player.battingConsistency ?? player.stamina;
+    const existingBowlingConsistency = player.bowlingConsistency ?? player.consistency;
+    let playerWithConsistency = player;
+    if (player.careerState?.origin === "generated") {
+      const generated = generatedConsistencyAndDurability(
+        player.age,
+        seededRandom(`regen-consistency-backfill:${player.id}:${player.careerState.generatedSeason ?? baselineSeason}`),
+        seededRandom(`regen-injury-backfill:${player.id}:${player.careerState.generatedSeason ?? baselineSeason}`),
+      );
+      const battingConsistency = existingBattingConsistency ?? generated.battingConsistency;
+      const bowlingConsistency = existingBowlingConsistency ?? generated.bowlingConsistency;
+      playerWithConsistency = {
+        ...player,
+        stamina: battingConsistency,
+        battingConsistency,
+        consistency: bowlingConsistency,
+        bowlingConsistency,
+      };
+    }
+    const ability = Math.max(playerWithConsistency.currentBatting ?? 0, playerWithConsistency.currentBowling ?? 0);
+    const startingReputation = playerWithConsistency.reputation ?? 5;
     const reputation = Math.max(startingReputation, ability >= 87 ? 9 : 0);
-    const newlyAutoCapped = !player.isCapped && ability >= 86;
+    const newlyAutoCapped = !playerWithConsistency.isCapped && ability >= 86;
     const normalizedPlayer = {
-      ...player,
-      country: player.country ?? (player.nationality === "Indian" ? "India" : "Overseas"),
+      ...playerWithConsistency,
+      country: playerWithConsistency.country ?? (playerWithConsistency.nationality === "Indian" ? "India" : "Overseas"),
       reputation,
-      isCapped: player.isCapped || ability >= 86,
-      internationalDebutSeason: player.internationalDebutSeason
+      isCapped: playerWithConsistency.isCapped || ability >= 86,
+      internationalDebutSeason: playerWithConsistency.internationalDebutSeason
         ?? (newlyAutoCapped ? baselineSeason + 1 : undefined),
-      internationalDebutCountry: player.internationalDebutCountry
-        ?? (player.isCapped || ability >= 86
-          ? (player.country ?? (player.nationality === "Indian" ? "India" : "Overseas"))
+      internationalDebutCountry: playerWithConsistency.internationalDebutCountry
+        ?? (playerWithConsistency.isCapped || ability >= 86
+          ? (playerWithConsistency.country ?? (playerWithConsistency.nationality === "Indian" ? "India" : "Overseas"))
           : undefined),
     };
     const careerState = initializePlayerCareerState(normalizedPlayer, baselineSeason);
@@ -2991,6 +3015,7 @@ function createGeneratedPlayer(input: {
   minimumPotential?: number;
   forcedNationality?: Player["nationality"];
   forcedCountry?: string;
+  forcedState?: string;
   forcedName?: string;
   preferredRole?: AuctionRoleGroup;
 }): Player {
@@ -3175,6 +3200,7 @@ function createGeneratedPlayer(input: {
     age,
     nationality,
     country,
+    state: input.forcedState,
     role,
     battingStyle,
     bowlingStyle,
@@ -3228,6 +3254,7 @@ export function createScoutingGeneratedPlayer(input: {
   players: Record<string, Player>;
   nationality: Player["nationality"];
   country: string;
+  state?: string;
   forcedName?: string;
   preferredRole?: AuctionRoleGroup;
   targetCurrentRange?: readonly [number, number];
@@ -3245,6 +3272,7 @@ export function createScoutingGeneratedPlayer(input: {
     minimumPotential: input.minimumPotential,
     forcedNationality: input.nationality,
     forcedCountry: input.country,
+    forcedState: input.state,
     forcedName: input.forcedName,
     preferredRole: input.preferredRole,
   });
@@ -3606,6 +3634,7 @@ export function createHistoricalPlayerSnapshot(
     role: player.role,
     nationality: player.nationality,
     country: player.country,
+    state: player.state,
     battingStyle: player.battingStyle,
     bowlingStyle: player.bowlingStyle,
     bowlingHand: player.bowlingHand,

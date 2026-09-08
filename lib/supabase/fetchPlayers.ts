@@ -212,6 +212,7 @@ export function mapRowsToPlayers(data: any[]): Player[] {
         age,
         nationality: nat as Nationality,
         country: row.nationality || (nat === "Indian" ? "India" : "Overseas"),
+        state: typeof row.state === "string" && row.state.trim() ? row.state.trim() : undefined,
         role,
         battingStyle: batHand as any,
         bowlingStyle: bowlStyle(bowlType),

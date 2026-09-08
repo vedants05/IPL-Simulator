@@ -22,6 +22,7 @@ export function retiredSnapshotPlayer(snapshot: HistoricalPlayerSnapshot): Playe
     age: snapshot.retirementAge,
     nationality: snapshot.nationality,
     country: snapshot.country,
+    state: snapshot.state,
     role: snapshot.role,
     battingStyle: snapshot.battingStyle ?? "Right-hand",
     bowlingStyle: snapshot.bowlingStyle ?? null,
@@ -486,6 +487,7 @@ export function PlayerProfileModal({
               <div className={`${isRetired ? "grid grid-cols-5 gap-2" : "space-y-1.5"} font-space-mono text-[9px]`}>
                 {[
                   ["Nationality", nationalityLabel],
+                  ["State", detailedPlayer.state?.trim() || "Not available"],
                   ["Status", detailedPlayer.isCapped ? "Capped" : "Uncapped"],
                   ["Batting", detailedPlayer.battingStyle],
                   ["Bats at", formatTopSevenBattingPositions(detailedPlayer)],

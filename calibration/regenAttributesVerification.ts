@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createScoutingGeneratedPlayer } from "../lib/logic/careerLifecycle";
+import { createScoutingGeneratedPlayer, initializeCareerPlayers } from "../lib/logic/careerLifecycle";
 import type { Player } from "../lib/types";
 
 const secondaryRatings: Array<keyof Player> = [
@@ -212,6 +212,11 @@ assert.ok(mean(values(byRole.SPIN, "middleOversBowling")) > mean(values(byRole.S
 
 const activeBatters = [...byRole.BAT, ...byRole.WK, ...byRole.AR];
 const activeBowlers = [...byRole.PACE, ...byRole.SPIN, ...byRole.AR];
+for (const role of ["BAT", "WK", "AR"] as const) {
+  const roleConsistency = values(byRole[role], "battingConsistency");
+  assert.ok(new Set(roleConsistency).size >= 60, `${role} batting consistency lacks variation`);
+  assert.ok(proportion(roleConsistency, (rating) => rating === 50) < 0.05, `${role} batting consistency piles up at 50`);
+}
 const phaseSpread = (player: Player, discipline: "batting" | "bowling") => {
   const ratings = discipline === "batting"
     ? [player.powerplayBatting!, player.middleOversBatting!, player.deathBatting!]
@@ -255,6 +260,42 @@ const reproducibilityInput = {
 const first = createScoutingGeneratedPlayer(reproducibilityInput);
 const second = createScoutingGeneratedPlayer(reproducibilityInput);
 for (const rating of secondaryRatings) assert.equal(first[rating], second[rating], `${String(rating)} is not seeded`);
+
+// Saves created before consistency generation existed stored regens without
+// either alias. Loading such a save must produce stable, varied values instead
+// of allowing the match engine to fall back to 50 for every player.
+const legacyRegens = Object.fromEntries(Array.from({ length: 100 }, (_, index) => {
+  const generated = createScoutingGeneratedPlayer({
+    index,
+    season: 2029,
+    seed: "legacy-regen-consistency",
+    players: {},
+    nationality: "Indian",
+    country: "India",
+    preferredRole: "BAT",
+  });
+  const legacy = { ...generated };
+  delete legacy.stamina;
+  delete legacy.battingConsistency;
+  delete legacy.consistency;
+  delete legacy.bowlingConsistency;
+  return [legacy.id, legacy];
+}));
+const migratedLegacy = initializeCareerPlayers(legacyRegens, 2028);
+const repeatedMigration = initializeCareerPlayers(legacyRegens, 2028);
+const migratedBattingValues = Object.values(migratedLegacy).map((player) => player.stamina!);
+assert.ok(new Set(migratedBattingValues).size >= 30, "legacy regen batting consistency collapsed to the neutral fallback");
+assert.ok(migratedBattingValues.some((rating) => rating < 40));
+assert.ok(migratedBattingValues.some((rating) => rating > 60));
+for (const [id, player] of Object.entries(migratedLegacy)) {
+  assert.equal(player.stamina, player.battingConsistency);
+  assert.equal(player.consistency, player.bowlingConsistency);
+  assert.equal(player.stamina, repeatedMigration[id].stamina, "legacy consistency migration is not deterministic");
+}
+const explicitFifty = { ...first, stamina: 50, battingConsistency: 50, consistency: 63, bowlingConsistency: 63 };
+const preservedExplicit = initializeCareerPlayers({ [explicitFifty.id]: explicitFifty }, 2031)[explicitFifty.id];
+assert.equal(preservedExplicit.stamina, 50, "a genuine batting consistency rating was overwritten");
+assert.equal(preservedExplicit.consistency, 63, "a genuine bowling consistency rating was overwritten");
 
 console.log("Regen secondary-attribute population verification passed", {
   playersChecked: generated.length,

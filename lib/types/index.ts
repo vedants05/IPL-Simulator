@@ -159,6 +159,8 @@ export interface Player {
   nationality: Nationality;
   /** Specific cricket nation. `nationality` remains the IPL Indian/overseas eligibility flag. */
   country?: string;
+  /** Domestic state or regional cricket origin, where known. */
+  state?: string;
   role: Role;
   battingStyle: BattingStyle;
   bowlingStyle: BowlingType | null;

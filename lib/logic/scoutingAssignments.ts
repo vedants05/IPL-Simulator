@@ -443,6 +443,7 @@ export function reconcileCompletedScoutingAssignments(input: {
         players,
         nationality: region.market === "india" ? "Indian" : "Overseas",
         country: region.country,
+        state: region.market === "india" ? region.name : undefined,
         forcedName,
         preferredRole,
         targetCurrentRange: abilityBand(region.market, random),
