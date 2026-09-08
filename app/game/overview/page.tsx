@@ -139,7 +139,7 @@ import {
   getStaffJobSecurityState,
 } from "@/lib/logic/staffJobSecurity";
 import { calculateStaffExpectedRanks } from "@/lib/logic/staffPerformanceReview";
-import { PlayerProfileModal } from "@/components/player/PlayerProfileModal";
+import { PlayerProfileModal, retiredSnapshotPlayer } from "@/components/player/PlayerProfileModal";
 import { PlayoffDiagramContent, ScheduleTileContent } from "@/components/season/ScheduleTileContent";
 import TournamentStatsDashboard from "@/components/season/TournamentStatsDashboard";
 import { getCuratorPitch, getDefaultCuratorPitch, getHomeStadium, HOME_STADIUMS } from "@/lib/data/pitchCurator";
@@ -932,6 +932,7 @@ function OverviewPageContent() {
   // Simulation & Career States (Saved in LocalStorage)
   // --------------------------------------------------------------------------
   const [fixtures, setFixtures] = useState<Match[]>([]);
+  const [fixturesTeamFilter, setFixturesTeamFilter] = useState<string>("all");
   const [detailedFixtureSimulations, setDetailedFixtureSimulations] = useState<Record<string, MatchSimulationRecord>>({});
   const [standings, setStandings] = useState<LeagueStandings[]>([]);
   const [standingsView, setStandingsView] = useState<"league" | "playoffs">("league");
@@ -1022,6 +1023,38 @@ function OverviewPageContent() {
   const [pendingMatchPreparation, setPendingMatchPreparation] = useState<PendingMatchPreparation | null>(null);
   const [activePlayedMatch, setActivePlayedMatch] = useState<PlayableMatchSession | null>(null);
   const [shortlist, setShortlist] = useState<string[]>([]);
+
+  useEffect(() => {
+    const handleShortlistUpdate = (e: Event) => {
+      const customEvent = e as CustomEvent<{ shortlist: string[] }>;
+      if (Array.isArray(customEvent.detail?.shortlist)) {
+        setShortlist(customEvent.detail.shortlist);
+      }
+    };
+    window.addEventListener("ipl_shortlist_updated", handleShortlistUpdate);
+    return () => window.removeEventListener("ipl_shortlist_updated", handleShortlistUpdate);
+  }, []);
+
+  // Re-sync shortlist whenever user navigates to scouting or auction planner
+  useEffect(() => {
+    if (!userTeamId || typeof window === "undefined") return;
+    if (activeTab === "scouting" || activeSubTab === "planner" || activeSubTab === "assignments" || activeSubTab === "search") {
+      try {
+        const saved = localStorage.getItem(`ipl_career_${userTeamId}`);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed.shortlist)) {
+            setShortlist((prev) => {
+              if (JSON.stringify(prev) !== JSON.stringify(parsed.shortlist)) {
+                return parsed.shortlist;
+              }
+              return prev;
+            });
+          }
+        }
+      } catch {}
+    }
+  }, [activeTab, activeSubTab, userTeamId]);
 
   // Club profiles are reached from this page, so keep their read-only career
   // projection in memory. This avoids synchronously reading and parsing the
@@ -1336,7 +1369,7 @@ function OverviewPageContent() {
 
   const mostRecentPlayedFixtureId = useMemo(() => {
     const playedFixtures = fixtures
-      .filter((match) => match.played)
+      .filter((match) => match.played && (fixturesTeamFilter === "all" || match.teamA === fixturesTeamFilter || match.teamB === fixturesTeamFilter))
       .sort((left, right) => (
         (left.date ?? "").localeCompare(right.date ?? "")
         || (left.time ?? "").localeCompare(right.time ?? "")
@@ -1344,7 +1377,7 @@ function OverviewPageContent() {
         || left.matchNumber - right.matchNumber
       ));
     return playedFixtures[playedFixtures.length - 1]?.id ?? null;
-  }, [fixtures]);
+  }, [fixtures, fixturesTeamFilter]);
 
   const scrollToMostRecentFixture = useCallback(() => {
     if (!mostRecentPlayedFixtureId) return;
@@ -1831,9 +1864,10 @@ function OverviewPageContent() {
       retentionDeadline,
     };
     const currentState = {
-      ...fallbackState,
       ...latestSavedState,
+      ...fallbackState,
       ...updatedData,
+      shortlist: updatedData.shortlist ?? fallbackState.shortlist ?? latestSavedState.shortlist ?? [],
       season: currentSeason,
       scheduleVersion: LEAGUE_FIXTURE_SCHEDULE_VERSION,
       // Keep the legacy XI synchronized only when the batting-first XI changes.
@@ -2527,16 +2561,28 @@ function OverviewPageContent() {
 
   // Toggle shortlist helper
   const toggleShortlist = (pid: string) => {
+    const storageKey = `ipl_career_${userTeamId}`;
+    let currentList = shortlist;
+    try {
+      const saved = localStorage.getItem(storageKey);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed.shortlist)) currentList = parsed.shortlist;
+      }
+    } catch {}
     let next: string[];
-    if (shortlist.includes(pid)) {
-      next = shortlist.filter(id => id !== pid);
+    if (currentList.includes(pid)) {
+      next = currentList.filter(id => id !== pid);
       showToast("Removed from Auction Shortlist");
     } else {
-      next = [...shortlist, pid];
+      next = [...currentList, pid];
       showToast("Added to Auction Shortlist");
     }
     setShortlist(next);
     saveCareerState({ shortlist: next });
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("ipl_shortlist_updated", { detail: { shortlist: next } }));
+    }
   };
 
   // Play and simulate match logic
@@ -8438,7 +8484,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                           </div>
                         </div>
                         <div className="flex min-w-0 flex-1 items-stretch justify-start gap-2 overflow-x-auto overflow-y-hidden border-l border-[#16130f]/10 py-1 pl-4">
-                          {shortlist.map((playerId) => players[playerId]).filter((player): player is Player => Boolean(player)).map((player) => {
+                          {shortlist.map((playerId) => players[playerId] ?? (retiredPlayerSnapshots[playerId] ? retiredSnapshotPlayer(retiredPlayerSnapshots[playerId]) : null) ?? Object.values(players).find((c) => String(c.id) === String(playerId))).filter((player): player is Player => Boolean(player)).map((player) => {
                             const ability = player.role === "Pace Bowler" || player.role === "Spin Bowler"
                               ? player.currentBowling
                               : player.role === "All-Rounder"
@@ -8628,18 +8674,47 @@ This record has been officially verified and added to the IPL Minor Records arch
                   <div className="bg-surface border-2 border-border p-5 flex flex-col h-full overflow-hidden">
                     <h3 className="font-anton text-[16px] text-text-primary uppercase border-b border-[#16130f]/10 pb-2 mb-4 font-bold shrink-0">SHORTLIST TARGETS</h3>
                     <div className="space-y-3 flex-1 overflow-y-auto pr-2 divide-y divide-[#16130f]/5">
-                      {shortlist.length === 0 ? (
-                        <div className="text-xs font-barlow text-text-secondary p-4 text-center">Shortlist is empty. Add players from player search.</div>
-                      ) : (
-                        shortlist.map(id => players[id]).filter(Boolean).map(p => {
+                      {(() => {
+                        const shortlistedPlayers = shortlist.map((id) => {
+                          const p = players[id]
+                            ?? (retiredPlayerSnapshots[id] ? retiredSnapshotPlayer(retiredPlayerSnapshots[id]) : null)
+                            ?? Object.values(players).find((candidate) => String(candidate.id) === String(id));
+                          return p ?? null;
+                        }).filter((p): p is Player => Boolean(p));
+
+                        if (shortlist.length === 0 || shortlistedPlayers.length === 0) {
+                          return (
+                            <div className="text-xs font-barlow text-text-secondary p-4 text-center">
+                              {shortlist.length === 0
+                                ? "Shortlist is empty. Add players from player search or player profiles."
+                                : "Shortlisted players are no longer available in the active database."}
+                              {shortlist.length > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setShortlist([]);
+                                    saveCareerState({ shortlist: [] });
+                                    if (typeof window !== "undefined") {
+                                      window.dispatchEvent(new CustomEvent("ipl_shortlist_updated", { detail: { shortlist: [] } }));
+                                    }
+                                  }}
+                                  className="mt-2 block mx-auto text-xs text-danger underline hover:text-danger/80"
+                                >
+                                  Clear Shortlist
+                                </button>
+                              )}
+                            </div>
+                          );
+                        }
+
+                        return shortlistedPlayers.map((p) => {
                           const scoutingConfidence = getPlayerScoutingConfidence(scoutingReports, p.id);
                           const scoutingReport = getBestPlayerScoutingReport(scoutingReports, p.id);
                           const isFullyScouted = !scoutingReport || scoutingConfidence >= 100;
                           return (
-                          <div key={p.id} className="py-2 flex items-center justify-between text-xs">
-                            <div className="min-w-0">
-                              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                                {isFullyScouted ? (
+                            <div key={p.id} className="py-2 flex items-center justify-between text-xs">
+                              <div className="min-w-0">
+                                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                                   <button
                                     type="button"
                                     onClick={() => setDetailedPlayerId(p.id)}
@@ -8648,30 +8723,27 @@ This record has been officially verified and added to the IPL Minor Records arch
                                   >
                                     {p.name}
                                   </button>
-                                ) : (
-                                  <span className="font-bold text-text-primary">{p.name}</span>
-                                )}
-                                {!isFullyScouted && (
-                                  <span className="font-space-mono text-[8px] font-bold uppercase text-warning">
-                                    Player not fully scouted{scoutingConfidence > 0 ? ` (${scoutingConfidence}%)` : ""}
-                                  </span>
-                                )}
+                                  {!isFullyScouted && (
+                                    <span className="font-space-mono text-[8px] font-bold uppercase text-warning">
+                                      Player not fully scouted{scoutingConfidence > 0 ? ` (${scoutingConfidence}%)` : ""}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="font-space-mono text-[9px] text-text-secondary mt-0.5">
+                                  RTG: {isFullyScouted
+                                    ? getPlayerRating(p)
+                                    : scoutingReport
+                                      ? `${scoutingReport.currentAbilityRange[0]}–${scoutingReport.currentAbilityRange[1]}`
+                                      : "Unknown"} · {p.role.toUpperCase()}
+                                </div>
                               </div>
-                              <div className="font-space-mono text-[9px] text-text-secondary mt-0.5">
-                                RTG: {isFullyScouted
-                                  ? getPlayerRating(p)
-                                  : scoutingReport
-                                    ? `${scoutingReport.currentAbilityRange[0]}–${scoutingReport.currentAbilityRange[1]}`
-                                    : "Unknown"} · {p.role.toUpperCase()}
-                              </div>
+                              <button onClick={() => toggleShortlist(p.id)} className="text-danger font-space-mono text-[9px] font-bold border border-danger/20 rounded px-2.5 py-1 hover:bg-danger/5">
+                                Remove
+                              </button>
                             </div>
-                            <button onClick={() => toggleShortlist(p.id)} className="text-danger font-space-mono text-[9px] font-bold border border-danger/20 rounded px-2.5 py-1 hover:bg-danger/5">
-                              Remove
-                            </button>
-                          </div>
                           );
-                        })
-                      )}
+                        });
+                      })()}
                     </div>
                   </div>
                 </div>
@@ -8901,213 +8973,285 @@ This record has been officially verified and added to the IPL Minor Records arch
               )}
 
               {/* Fixtures & Results page */}
-              {activeSubTab === "fixtures" && (
-                <div className="flex h-full flex-1 min-h-0 flex-col overflow-hidden border-2 border-border bg-surface">
-                  <div
-                    className="relative flex shrink-0 items-center justify-between overflow-hidden border-b-2 border-border px-6 py-4"
-                    style={{ background: `linear-gradient(105deg, ${userTeam.primaryColor}28 0%, transparent 58%)` }}
-                  >
-                    <div className="relative">
-                      <p className="font-space-mono text-[9px] font-bold uppercase tracking-[0.18em] text-text-secondary">{currentSeason} season · Match centre</p>
-                      <h3 className="mt-1 font-anton text-[24px] uppercase leading-none text-text-primary">Fixtures &amp; Results</h3>
-                    </div>
-                    {isFixturesAnnounced && (
-                      <div className="relative flex items-center gap-3">
-                        <button
-                          type="button"
-                          onClick={scrollToMostRecentFixture}
-                          disabled={!mostRecentPlayedFixtureId}
-                          className="flex shrink-0 items-center gap-2 border border-border bg-surface/80 px-3 py-2 font-space-mono text-[8px] font-bold uppercase tracking-wider text-text-primary transition-colors hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-border disabled:hover:text-text-primary"
-                        >
-                          <HistoryIcon size={13} />
-                          Most recent fixture
-                        </button>
-                        <div className="grid grid-cols-4 divide-x divide-[#16130f]/15 border border-border bg-surface/80">
-                          {[
-                            ["Played", fixtures.filter((match) => match.played).length],
-                            ["Upcoming", fixtures.filter((match) => !match.played).length],
-                            ["Your club", fixtures.filter((match) => match.teamA === userTeamId || match.teamB === userTeamId).length],
-                            ["Rain affected", fixtures.filter((match) => match.played && isRainAffectedMatch(match)).length],
-                          ].map(([label, value]) => (
-                            <div key={label} className="min-w-24 px-4 py-2 text-center">
-                              <div className="font-anton text-xl leading-none text-text-primary">{value}</div>
-                              <div className="mt-1 font-space-mono text-[7px] font-bold uppercase tracking-wider text-text-secondary">{label}</div>
-                            </div>
-                          ))}
-                        </div>
+              {activeSubTab === "fixtures" && (() => {
+                const activeFilterTeam = fixturesTeamFilter !== "all" ? teams[fixturesTeamFilter] ?? null : null;
+                const headerGradientColor = activeFilterTeam ? activeFilterTeam.primaryColor : userTeam.primaryColor;
+
+                return (
+                  <div className="flex h-full flex-1 min-h-0 flex-col overflow-hidden border-2 border-border bg-surface">
+                    <div
+                      className="relative flex shrink-0 items-center justify-between overflow-hidden border-b-2 border-border px-6 py-4"
+                      style={{ background: `linear-gradient(105deg, ${headerGradientColor}28 0%, transparent 58%)` }}
+                    >
+                      <div className="relative">
+                        <p className="font-space-mono text-[9px] font-bold uppercase tracking-[0.18em] text-text-secondary">
+                          {currentSeason} season · {activeFilterTeam ? `${activeFilterTeam.shortName} match centre` : "Match centre"}
+                        </p>
+                        <h3 className="mt-1 font-anton text-[24px] uppercase leading-none text-text-primary">Fixtures &amp; Results</h3>
                       </div>
-                    )}
-                  </div>
+                      {isFixturesAnnounced && (
+                        <div className="relative flex flex-wrap items-center gap-3">
+                          {/* Small team selector */}
+                          <div className="flex shrink-0 items-center gap-1.5 border border-border bg-surface/80 px-2.5 py-1.5 shadow-sm">
+                            <span className="font-space-mono text-[8px] font-bold uppercase tracking-wider text-text-secondary">Team</span>
+                            <select
+                              value={fixturesTeamFilter}
+                              onChange={(event) => setFixturesTeamFilter(event.target.value)}
+                              aria-label="Filter fixtures by team"
+                              className="cursor-pointer bg-transparent font-space-mono text-[9px] font-bold uppercase text-text-primary focus:outline-none"
+                            >
+                              <option value="all" className="bg-surface text-text-primary">All Teams ({fixtures.length})</option>
+                              <option value={userTeamId} className="bg-surface font-bold text-accent">★ {userTeam.shortName} (Your Club)</option>
+                              {Object.values(teams)
+                                .filter((team) => team.id !== userTeamId)
+                                .sort((a, b) => a.name.localeCompare(b.name))
+                                .map((team) => (
+                                  <option key={team.id} value={team.id} className="bg-surface text-text-primary">
+                                    {team.shortName} — {team.name}
+                                  </option>
+                                ))}
+                            </select>
+                            {fixturesTeamFilter !== "all" && (
+                              <button
+                                type="button"
+                                onClick={() => setFixturesTeamFilter("all")}
+                                title="Show all teams"
+                                className="ml-0.5 rounded p-0.5 text-text-secondary transition-colors hover:bg-black/5 hover:text-text-primary dark:hover:bg-white/10"
+                              >
+                                <X size={11} />
+                              </button>
+                            )}
+                          </div>
 
-                  {!isFixturesAnnounced ? (
-                    <div className="flex flex-1 flex-col items-center justify-center bg-bg/40 p-8 text-center">
-                      <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-full border-2 border-border bg-surface text-[24px] shadow-sm">
-                        <Lock size={24} />
-                      </div>
-                      <h4 className="font-anton text-[22px] uppercase tracking-wide text-text-primary">Schedule under wraps</h4>
-                      <p className="mt-2 max-w-sm text-sm text-text-secondary">
-                        The league is finalising all 70 fixtures. The complete match calendar will be released on:
-                      </p>
-                      <span className="mt-4 border border-accent/30 bg-accent/10 px-4 py-2 font-space-mono text-xs font-bold uppercase text-accent">
-                        {userFriendlyAnnouncementDate}
-                      </span>
-                    </div>
-                  ) : (
-                    (() => {
-                      const sortedFixtures = [...fixtures].sort((left, right) =>
-                        (left.date ?? "").localeCompare(right.date ?? "")
-                        || (left.time ?? "").localeCompare(right.time ?? "")
-                        || left.round - right.round
-                      );
-                      const nextFixtureId = sortedFixtures.find((match) => !match.played)?.id;
-                      const fixturesByDay = new Map<string, Match[]>();
-                      sortedFixtures.forEach((match) => {
-                        const date = match.date ?? "Date TBD";
-                        fixturesByDay.set(date, [...(fixturesByDay.get(date) ?? []), match]);
-                      });
+                          <button
+                            type="button"
+                            onClick={scrollToMostRecentFixture}
+                            disabled={!mostRecentPlayedFixtureId}
+                            className="flex shrink-0 items-center gap-2 border border-border bg-surface/80 px-3 py-2 font-space-mono text-[8px] font-bold uppercase tracking-wider text-text-primary transition-colors hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-border disabled:hover:text-text-primary"
+                          >
+                            <HistoryIcon size={13} />
+                            Most recent fixture
+                          </button>
+                          <div className="grid grid-cols-4 divide-x divide-[#16130f]/15 border border-border bg-surface/80">
+                            {(() => {
+                              const targetFixtures = activeFilterTeam
+                                ? fixtures.filter((match) => match.teamA === fixturesTeamFilter || match.teamB === fixturesTeamFilter)
+                                : fixtures;
+                              const thirdStat = activeFilterTeam
+                                ? ["Won", targetFixtures.filter((match) => match.played && match.winner === fixturesTeamFilter).length]
+                                : ["Your club", fixtures.filter((match) => match.teamA === userTeamId || match.teamB === userTeamId).length];
 
-                      return (
-                        <div className="min-h-0 flex-1 overflow-y-auto bg-bg/40 p-5">
-                          <div className="space-y-6">
-                            {Array.from(fixturesByDay.entries()).map(([date, dayFixtures]) => {
-                              const dateLabel = date === "Date TBD"
-                                ? date
-                                : dateKeyToLocalDate(date).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
-                              return (
-                                <section key={date}>
-                                  <div className="mb-2 flex items-center gap-3">
-                                    <h4 className="shrink-0 font-anton text-[15px] uppercase text-text-primary">{dateLabel}</h4>
-                                    <div className="h-px flex-1 bg-[#16130f]/15" />
-                                    <span className="font-space-mono text-[8px] font-bold uppercase text-text-secondary">
-                                      {dayFixtures.length} match{dayFixtures.length === 1 ? "" : "es"}
-                                    </span>
-                                  </div>
-
-                                  <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
-                                    {dayFixtures.map((match) => {
-                                      const teamA = teams[match.teamA];
-                                      const teamB = teams[match.teamB];
-                                      const isUserMatch = match.teamA === userTeamId || match.teamB === userTeamId;
-                                      const isNextFixture = match.id === nextFixtureId;
-                                      const winner = match.winner ? teams[match.winner] : null;
-                                      const statusLabel = match.played ? "Final" : isNextFixture ? "Next up" : "Upcoming";
-
-                                      const canSimulateUserMatch = (
-                                        FIXTURE_SIMULATION_ENABLED
-                                        &&
-                                        isUserMatch
-                                        && !match.played
-                                        && Boolean(match.date)
-                                        && (match.date ?? "") <= currentDate
-                                      );
-
-                                      return (
-                                        <article
-                                          key={match.id}
-                                          id={`fixture-card-${match.id}`}
-                                          onClick={() => {
-                                            if (!match.played) return;
-                                            setActiveMatchResultView("scorecard");
-                                            setActiveCommentary(null);
-                                            setActiveScorecard(match);
-                                          }}
-                                          className={`group relative overflow-hidden border bg-surface p-4 text-left shadow-sm transition-all ${match.played ? "cursor-pointer hover:-translate-y-0.5 hover:shadow-md" : "cursor-default"}`}
-                                          style={isUserMatch ? {
-                                            borderColor: userTeam.primaryColor,
-                                            background: `linear-gradient(110deg, ${userTeam.primaryColor}24 0%, var(--surface) 60%)`,
-                                          } : { borderColor: "var(--border)" }}
-                                        >
-                                          <div className="absolute inset-x-0 top-0 flex h-1">
-                                            <span className="flex-1" style={{ backgroundColor: teamA?.primaryColor ?? "#777" }} />
-                                            <span className="flex-1" style={{ backgroundColor: teamB?.primaryColor ?? "#777" }} />
-                                          </div>
-
-                                          <div className="mb-3 flex items-center justify-between pt-1 font-space-mono text-[8px] font-bold uppercase tracking-wider text-text-secondary">
-                                            <span>{match.label ?? `Match ${match.matchNumber}`} · {match.time ?? "Time TBD"}</span>
-                                            <span className={`border px-2 py-0.5 ${match.played ? "border-success/30 bg-success/10 text-success" : isNextFixture ? "border-accent/30 bg-accent/10 text-accent" : "border-border bg-black/[0.03]"}`}>
-                                              {statusLabel}
-                                            </span>
-                                          </div>
-
-                                          <div className="grid grid-cols-[minmax(0,1fr)_3rem_minmax(0,1fr)] items-center gap-3">
-                                            <div className="min-w-0 text-center">
-                                              <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-full font-space-mono text-[10px] font-bold" style={{ backgroundColor: teamA?.primaryColor ?? "#777", color: teamA?.secondaryColor ?? "#fff" }}>
-                                                {teamA?.shortName.slice(0, 3) ?? "TBD"}
-                                              </div>
-                                              <div className="truncate text-sm font-bold text-text-primary">{teamA?.name ?? "To be decided"}</div>
-                                              {match.played && match.scoreA && <div className="mt-1 font-anton text-xl text-text-primary">{match.scoreA.runs}/{match.scoreA.wickets}</div>}
-                                            </div>
-
-                                            <div className="text-center">
-                                              <div className="font-space-mono text-[9px] font-bold uppercase text-text-secondary">VS</div>
-                                            </div>
-
-                                            <div className="min-w-0 text-center">
-                                              <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-full font-space-mono text-[10px] font-bold" style={{ backgroundColor: teamB?.primaryColor ?? "#777", color: teamB?.secondaryColor ?? "#fff" }}>
-                                                {teamB?.shortName.slice(0, 3) ?? "TBD"}
-                                              </div>
-                                              <div className="truncate text-sm font-bold text-text-primary">{teamB?.name ?? "To be decided"}</div>
-                                              {match.played && match.scoreB && <div className="mt-1 font-anton text-xl text-text-primary">{match.scoreB.runs}/{match.scoreB.wickets}</div>}
-                                            </div>
-                                          </div>
-
-                                          <div className="mt-3 flex items-center justify-between gap-3 border-t border-[#16130f]/10 pt-2">
-                                            <span className="truncate font-space-mono text-[8px] uppercase text-text-secondary">
-                                              {match.simulation?.conditions?.stadiumName
-                                                ?? (match.stage ? getMatchConditions(match)?.stadiumName : undefined)
-                                                ?? teamA?.homeGround
-                                                ?? "Venue TBD"}
-                                            </span>
-                                            {canSimulateUserMatch ? (
-                                              <div className="flex shrink-0 gap-2">
-                                                <button
-                                                  type="button"
-                                                  onClick={(event) => {
-                                                    event.stopPropagation();
-                                                    startPlayableMatch(match);
-                                                  }}
-                                                  className="rounded border border-[#16130f]/30 bg-surface px-3 py-1.5 font-space-mono text-[8px] font-bold uppercase text-text-primary transition-colors hover:border-accent hover:text-accent"
-                                                >
-                                                  Play match
-                                                </button>
-                                                <button
-                                                  type="button"
-                                                  onClick={(event) => {
-                                                    event.stopPropagation();
-                                                    prepareUserFixtureSimulation(match);
-                                                  }}
-                                                  className="rounded border border-accent bg-accent px-3 py-1.5 font-space-mono text-[8px] font-bold uppercase text-white transition-colors hover:bg-accent/85"
-                                                >
-                                                  Simulate match
-                                                </button>
-                                              </div>
-                                            ) : match.played || !FIXTURE_SIMULATION_ENABLED || isUserMatch ? (
-                                              <span className={`shrink-0 text-right font-space-mono text-[8px] font-bold uppercase ${match.played ? "text-success" : "text-text-secondary"}`}>
-                                                {match.played
-                                                  ? appendRainAffectedResultLabel(
-                                                    match.simulation?.resultText ?? `${winner?.shortName ?? "Match"} won`,
-                                                    isRainAffectedMatch(match),
-                                                  )
-                                                  : !FIXTURE_SIMULATION_ENABLED
-                                                    ? "Simulation locked"
-                                                    : (match.date ?? "") > currentDate ? "Your fixture" : "Awaiting match"}
-                                              </span>
-                                            ) : null}
-                                          </div>
-                                        </article>
-                                      );
-                                    })}
-                                  </div>
-                                </section>
-                              );
-                            })}
+                              return [
+                                ["Played", targetFixtures.filter((match) => match.played).length],
+                                ["Upcoming", targetFixtures.filter((match) => !match.played).length],
+                                thirdStat,
+                                ["Rain affected", targetFixtures.filter((match) => match.played && isRainAffectedMatch(match)).length],
+                              ].map(([label, value]) => (
+                                <div key={label} className="min-w-24 px-4 py-2 text-center">
+                                  <div className="font-anton text-xl leading-none text-text-primary">{value}</div>
+                                  <div className="mt-1 font-space-mono text-[7px] font-bold uppercase tracking-wider text-text-secondary">{label}</div>
+                                </div>
+                              ));
+                            })()}
                           </div>
                         </div>
-                      );
-                    })()
-                  )}
-                </div>
-              )}
+                      )}
+                    </div>
+
+                    {!isFixturesAnnounced ? (
+                      <div className="flex flex-1 flex-col items-center justify-center bg-bg/40 p-8 text-center">
+                        <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-full border-2 border-border bg-surface text-[24px] shadow-sm">
+                          <Lock size={24} />
+                        </div>
+                        <h4 className="font-anton text-[22px] uppercase tracking-wide text-text-primary">Schedule under wraps</h4>
+                        <p className="mt-2 max-w-sm text-sm text-text-secondary">
+                          The league is finalising all 70 fixtures. The complete match calendar will be released on:
+                        </p>
+                        <span className="mt-4 border border-accent/30 bg-accent/10 px-4 py-2 font-space-mono text-xs font-bold uppercase text-accent">
+                          {userFriendlyAnnouncementDate}
+                        </span>
+                      </div>
+                    ) : (
+                      (() => {
+                        const sortedFixtures = [...fixtures].sort((left, right) =>
+                          (left.date ?? "").localeCompare(right.date ?? "")
+                          || (left.time ?? "").localeCompare(right.time ?? "")
+                          || left.round - right.round
+                        );
+                        const displayFixtures = activeFilterTeam
+                          ? sortedFixtures.filter((match) => match.teamA === fixturesTeamFilter || match.teamB === fixturesTeamFilter)
+                          : sortedFixtures;
+
+                        if (displayFixtures.length === 0) {
+                          return (
+                            <div className="flex flex-1 flex-col items-center justify-center bg-bg/40 p-12 text-center">
+                              <h4 className="font-anton text-[20px] uppercase text-text-primary">No fixtures found</h4>
+                              <p className="mt-1 text-xs text-text-secondary">
+                                No scheduled matches found for {activeFilterTeam?.name ?? "the selected team"}.
+                              </p>
+                              <button
+                                type="button"
+                                onClick={() => setFixturesTeamFilter("all")}
+                                className="mt-4 border border-border bg-surface px-4 py-2 font-space-mono text-[8px] font-bold uppercase tracking-wider text-text-primary hover:border-accent hover:text-accent"
+                              >
+                                View all fixtures
+                              </button>
+                            </div>
+                          );
+                        }
+
+                        const nextFixtureId = displayFixtures.find((match) => !match.played)?.id;
+                        const fixturesByDay = new Map<string, Match[]>();
+                        displayFixtures.forEach((match) => {
+                          const date = match.date ?? "Date TBD";
+                          fixturesByDay.set(date, [...(fixturesByDay.get(date) ?? []), match]);
+                        });
+
+                        return (
+                          <div className="min-h-0 flex-1 overflow-y-auto bg-bg/40 p-5">
+                            <div className="space-y-6">
+                              {Array.from(fixturesByDay.entries()).map(([date, dayFixtures]) => {
+                                const dateLabel = date === "Date TBD"
+                                  ? date
+                                  : dateKeyToLocalDate(date).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+                                return (
+                                  <section key={date}>
+                                    <div className="mb-2 flex items-center gap-3">
+                                      <h4 className="shrink-0 font-anton text-[15px] uppercase text-text-primary">{dateLabel}</h4>
+                                      <div className="h-px flex-1 bg-[#16130f]/15" />
+                                      <span className="font-space-mono text-[8px] font-bold uppercase text-text-secondary">
+                                        {dayFixtures.length} match{dayFixtures.length === 1 ? "" : "es"}
+                                      </span>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+                                      {dayFixtures.map((match) => {
+                                        const teamA = teams[match.teamA];
+                                        const teamB = teams[match.teamB];
+                                        const isUserMatch = match.teamA === userTeamId || match.teamB === userTeamId;
+                                        const isFilterMatch = Boolean(activeFilterTeam && (match.teamA === fixturesTeamFilter || match.teamB === fixturesTeamFilter));
+                                        const highlightColor = isUserMatch ? userTeam.primaryColor : (isFilterMatch ? activeFilterTeam?.primaryColor : null);
+                                        const isNextFixture = match.id === nextFixtureId;
+                                        const winner = match.winner ? teams[match.winner] : null;
+                                        const statusLabel = match.played ? "Final" : isNextFixture ? "Next up" : "Upcoming";
+
+                                        const canSimulateUserMatch = (
+                                          FIXTURE_SIMULATION_ENABLED
+                                          &&
+                                          isUserMatch
+                                          && !match.played
+                                          && Boolean(match.date)
+                                          && (match.date ?? "") <= currentDate
+                                        );
+
+                                        return (
+                                          <article
+                                            key={match.id}
+                                            id={`fixture-card-${match.id}`}
+                                            onClick={() => {
+                                              if (!match.played) return;
+                                              setActiveMatchResultView("scorecard");
+                                              setActiveCommentary(null);
+                                              setActiveScorecard(match);
+                                            }}
+                                            className={`group relative overflow-hidden border bg-surface p-4 text-left shadow-sm transition-all ${match.played ? "cursor-pointer hover:-translate-y-0.5 hover:shadow-md" : "cursor-default"}`}
+                                            style={highlightColor ? {
+                                              borderColor: highlightColor,
+                                              background: `linear-gradient(110deg, ${highlightColor}24 0%, var(--surface) 60%)`,
+                                            } : { borderColor: "var(--border)" }}
+                                          >
+                                            <div className="absolute inset-x-0 top-0 flex h-1">
+                                              <span className="flex-1" style={{ backgroundColor: teamA?.primaryColor ?? "#777" }} />
+                                              <span className="flex-1" style={{ backgroundColor: teamB?.primaryColor ?? "#777" }} />
+                                            </div>
+
+                                            <div className="mb-3 flex items-center justify-between pt-1 font-space-mono text-[8px] font-bold uppercase tracking-wider text-text-secondary">
+                                              <span>{match.label ?? `Match ${match.matchNumber}`} · {match.time ?? "Time TBD"}</span>
+                                              <span className={`border px-2 py-0.5 ${match.played ? "border-success/30 bg-success/10 text-success" : isNextFixture ? "border-accent/30 bg-accent/10 text-accent" : "border-border bg-black/[0.03]"}`}>
+                                                {statusLabel}
+                                              </span>
+                                            </div>
+
+                                            <div className="grid grid-cols-[minmax(0,1fr)_3rem_minmax(0,1fr)] items-center gap-3">
+                                              <div className="min-w-0 text-center">
+                                                <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-full font-space-mono text-[10px] font-bold" style={{ backgroundColor: teamA?.primaryColor ?? "#777", color: teamA?.secondaryColor ?? "#fff" }}>
+                                                  {teamA?.shortName.slice(0, 3) ?? "TBD"}
+                                                </div>
+                                                <div className="truncate text-sm font-bold text-text-primary">{teamA?.name ?? "To be decided"}</div>
+                                                {match.played && match.scoreA && <div className="mt-1 font-anton text-xl text-text-primary">{match.scoreA.runs}/{match.scoreA.wickets}</div>}
+                                              </div>
+
+                                              <div className="text-center">
+                                                <div className="font-space-mono text-[9px] font-bold uppercase text-text-secondary">VS</div>
+                                              </div>
+
+                                              <div className="min-w-0 text-center">
+                                                <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-full font-space-mono text-[10px] font-bold" style={{ backgroundColor: teamB?.primaryColor ?? "#777", color: teamB?.secondaryColor ?? "#fff" }}>
+                                                  {teamB?.shortName.slice(0, 3) ?? "TBD"}
+                                                </div>
+                                                <div className="truncate text-sm font-bold text-text-primary">{teamB?.name ?? "To be decided"}</div>
+                                                {match.played && match.scoreB && <div className="mt-1 font-anton text-xl text-text-primary">{match.scoreB.runs}/{match.scoreB.wickets}</div>}
+                                              </div>
+                                            </div>
+
+                                            <div className="mt-3 flex items-center justify-between gap-3 border-t border-[#16130f]/10 pt-2">
+                                              <span className="truncate font-space-mono text-[8px] uppercase text-text-secondary">
+                                                {match.simulation?.conditions?.stadiumName
+                                                  ?? (match.stage ? getMatchConditions(match)?.stadiumName : undefined)
+                                                  ?? teamA?.homeGround
+                                                  ?? "Venue TBD"}
+                                              </span>
+                                              {canSimulateUserMatch ? (
+                                                <div className="flex shrink-0 gap-2">
+                                                  <button
+                                                    type="button"
+                                                    onClick={(event) => {
+                                                      event.stopPropagation();
+                                                      startPlayableMatch(match);
+                                                    }}
+                                                    className="rounded border border-[#16130f]/30 bg-surface px-3 py-1.5 font-space-mono text-[8px] font-bold uppercase text-text-primary transition-colors hover:border-accent hover:text-accent"
+                                                  >
+                                                    Play match
+                                                  </button>
+                                                  <button
+                                                    type="button"
+                                                    onClick={(event) => {
+                                                      event.stopPropagation();
+                                                      prepareUserFixtureSimulation(match);
+                                                    }}
+                                                    className="rounded border border-accent bg-accent px-3 py-1.5 font-space-mono text-[8px] font-bold uppercase text-white transition-colors hover:bg-accent/85"
+                                                  >
+                                                    Simulate match
+                                                  </button>
+                                                </div>
+                                              ) : match.played || !FIXTURE_SIMULATION_ENABLED || isUserMatch ? (
+                                                <span className={`shrink-0 text-right font-space-mono text-[8px] font-bold uppercase ${match.played ? "text-success" : "text-text-secondary"}`}>
+                                                  {match.played
+                                                    ? appendRainAffectedResultLabel(
+                                                      match.simulation?.resultText ?? `${winner?.shortName ?? "Match"} won`,
+                                                      isRainAffectedMatch(match),
+                                                    )
+                                                    : !FIXTURE_SIMULATION_ENABLED
+                                                      ? "Simulation locked"
+                                                      : (match.date ?? "") > currentDate ? (isUserMatch ? "Your fixture" : "Scheduled match") : "Awaiting match"}
+                                                </span>
+                                              ) : null}
+                                            </div>
+                                          </article>
+                                        );
+                                      })}
+                                    </div>
+                                  </section>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })()
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* Standings page */}
               {activeSubTab === "standings" && (
@@ -10030,6 +10174,8 @@ This record has been officially verified and added to the IPL Minor Records arch
         playerId={detailedPlayerId}
         onClose={() => setDetailedPlayerId(null)}
         customFixtures={fixtures}
+        isShortlisted={detailedPlayerId ? shortlist.includes(detailedPlayerId) : false}
+        onToggleShortlist={toggleShortlist}
       />
       {(false as boolean) && detailedPlayer && (
         <div

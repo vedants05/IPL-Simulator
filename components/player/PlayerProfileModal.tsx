@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useLayoutEffect, useMemo, useRef, useState } from "react";
-import { X } from "lucide-react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Bookmark, X } from "lucide-react";
 import { useGameStore } from "@/lib/store/gameStore";
 import { formatPrice } from "@/lib/logic/auctionRules";
 import { formatStatValue } from "@/lib/logic/statFormatting";
@@ -15,7 +15,7 @@ import {
 import type { HistoricalPlayerSnapshot } from "@/lib/logic/careerLifecycle";
 import type { Player, IPLHistoryEntry } from "@/lib/types";
 
-function retiredSnapshotPlayer(snapshot: HistoricalPlayerSnapshot): Player {
+export function retiredSnapshotPlayer(snapshot: HistoricalPlayerSnapshot): Player {
   return {
     id: snapshot.id,
     name: snapshot.name,
@@ -101,12 +101,16 @@ interface PlayerProfileModalProps {
   playerId: string | null;
   onClose: () => void;
   customFixtures?: ProfileModalMatch[];
+  isShortlisted?: boolean;
+  onToggleShortlist?: (playerId: string) => void;
 }
 
 export function PlayerProfileModal({
   playerId,
   onClose,
   customFixtures,
+  isShortlisted: propsIsShortlisted,
+  onToggleShortlist,
 }: PlayerProfileModalProps) {
   const players = useGameStore((state) => state.players);
   const teams = useGameStore((state) => state.teams);
@@ -114,9 +118,49 @@ export function PlayerProfileModal({
   const auction = useGameStore((state) => state.auction);
   const retiredPlayerSnapshots = useGameStore((state) => state.retiredPlayerSnapshots);
   const tradeRecords = useGameStore((state) => state.tradeRecords);
+  const userTeamId = useGameStore((state) => state.userTeamId);
   const viewportRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
   const [profileScale, setProfileScale] = useState(1);
+
+  const [internalShortlist, setInternalShortlist] = useState<string[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const saved = localStorage.getItem(`ipl_career_${userTeamId}`);
+      if (!saved) return [];
+      const parsed = JSON.parse(saved) as { shortlist?: unknown };
+      return Array.isArray(parsed.shortlist)
+        ? parsed.shortlist.filter((id): id is string => typeof id === "string")
+        : [];
+    } catch {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    if (!playerId || typeof window === "undefined") return;
+    try {
+      const saved = localStorage.getItem(`ipl_career_${userTeamId}`);
+      if (!saved) return;
+      const parsed = JSON.parse(saved) as { shortlist?: unknown };
+      if (Array.isArray(parsed.shortlist)) {
+        setInternalShortlist(parsed.shortlist.filter((id): id is string => typeof id === "string"));
+      }
+    } catch {
+      // ignore
+    }
+  }, [playerId, userTeamId]);
+
+  useEffect(() => {
+    const handleShortlistUpdate = (e: Event) => {
+      const customEvent = e as CustomEvent<{ shortlist: string[] }>;
+      if (Array.isArray(customEvent.detail?.shortlist)) {
+        setInternalShortlist(customEvent.detail.shortlist);
+      }
+    };
+    window.addEventListener("ipl_shortlist_updated", handleShortlistUpdate);
+    return () => window.removeEventListener("ipl_shortlist_updated", handleShortlistUpdate);
+  }, []);
 
   const activePlayer = playerId ? players[playerId] ?? null : null;
   const retiredSnapshot = playerId && !activePlayer
@@ -125,6 +169,42 @@ export function PlayerProfileModal({
   const detailedPlayer: Player | null = playerId
     ? activePlayer ?? (retiredSnapshot ? retiredSnapshotPlayer(retiredSnapshot) : null)
     : null;
+
+  const isPlayerShortlisted = propsIsShortlisted !== undefined
+    ? propsIsShortlisted
+    : Boolean(detailedPlayer && internalShortlist.includes(detailedPlayer.id));
+
+  const handleToggleShortlist = () => {
+    if (!detailedPlayer) return;
+    if (onToggleShortlist) {
+      onToggleShortlist(detailedPlayer.id);
+      setInternalShortlist((prev) =>
+        prev.includes(detailedPlayer.id)
+          ? prev.filter((id) => id !== detailedPlayer.id)
+          : [...prev, detailedPlayer.id]
+      );
+      return;
+    }
+    try {
+      const storageKey = `ipl_career_${userTeamId}`;
+      const saved = localStorage.getItem(storageKey);
+      const parsed = saved ? JSON.parse(saved) : {};
+      const currentList: string[] = Array.isArray(parsed.shortlist)
+        ? parsed.shortlist.filter((id: unknown): id is string => typeof id === "string")
+        : [];
+      const nextList = currentList.includes(detailedPlayer.id)
+        ? currentList.filter((id) => id !== detailedPlayer.id)
+        : [...currentList, detailedPlayer.id];
+      parsed.shortlist = nextList;
+      localStorage.setItem(storageKey, JSON.stringify(parsed));
+      setInternalShortlist(nextList);
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("ipl_shortlist_updated", { detail: { shortlist: nextList } }));
+      }
+    } catch (e) {
+      console.warn("Unable to toggle shortlist in local storage:", e);
+    }
+  };
 
   useLayoutEffect(() => {
     if (!detailedPlayer) return;
@@ -371,13 +451,30 @@ export function PlayerProfileModal({
                 ?? (retiredSnapshot ? `Retired ${retiredSnapshot.retirementSeason}` : "No current club")}
             </p>
           </div>
-          <button
-            onClick={onClose}
-            className="ml-4 flex h-9 w-9 shrink-0 items-center justify-center rounded border border-border bg-surface text-text-primary transition-colors hover:bg-black/5 dark:hover:bg-white/10"
-            aria-label="Close player profile"
-          >
-            <X size={17} />
-          </button>
+          <div className="ml-4 flex shrink-0 items-center gap-2">
+            {!isRetired && (
+              <button
+                type="button"
+                onClick={handleToggleShortlist}
+                className={`flex h-9 items-center gap-1.5 rounded border px-3 font-space-mono text-[9px] font-bold uppercase tracking-wider transition-all ${
+                  isPlayerShortlisted
+                    ? "border-amber-500/60 bg-amber-500/15 text-amber-600 dark:text-amber-400 hover:bg-amber-500/25"
+                    : "border-border bg-surface text-text-primary hover:border-accent hover:text-accent hover:bg-accent/5"
+                }`}
+                title={isPlayerShortlisted ? "Remove from auction shortlist" : "Add to auction shortlist"}
+              >
+                <Bookmark size={13} className={isPlayerShortlisted ? "fill-current" : ""} />
+                <span>{isPlayerShortlisted ? "Shortlisted" : "Add to Shortlist"}</span>
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded border border-border bg-surface text-text-primary transition-colors hover:bg-black/5 dark:hover:bg-white/10"
+              aria-label="Close player profile"
+            >
+              <X size={17} />
+            </button>
+          </div>
         </div>
 
         {/* Content Body */}
