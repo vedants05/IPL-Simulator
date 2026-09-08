@@ -68,6 +68,7 @@ export interface HomeStadium {
   teamId: IplTeamId;
   name: string;
   location: string;
+  opened: number;
   /** Fixed published seating capacity for this stadium. */
   capacity: number;
   /**
@@ -93,6 +94,7 @@ export const HOME_STADIUMS: readonly HomeStadium[] = [
     teamId: "KKR",
     name: "Eden Gardens",
     location: "Kolkata",
+    opened: 1864,
     capacity: 67_551,
     defaultBoundaryDimensions: { straightMetres: 71, wideMetres: 69 },
     outfield: {
@@ -150,6 +152,7 @@ export const HOME_STADIUMS: readonly HomeStadium[] = [
     teamId: "RCB",
     name: "M. Chinnaswamy Stadium",
     location: "Bengaluru",
+    opened: 1969,
     capacity: 33_800,
     defaultBoundaryDimensions: { straightMetres: 65, wideMetres: 60 },
     outfield: {
@@ -194,6 +197,7 @@ export const HOME_STADIUMS: readonly HomeStadium[] = [
     teamId: "MI",
     name: "Wankhede Stadium",
     location: "Mumbai",
+    opened: 1974,
     capacity: 33_100,
     defaultBoundaryDimensions: { straightMetres: 72, wideMetres: 66 },
     outfield: {
@@ -238,6 +242,7 @@ export const HOME_STADIUMS: readonly HomeStadium[] = [
     teamId: "CSK",
     name: "M. A. Chidambaram Stadium",
     location: "Chennai",
+    opened: 1916,
     capacity: 38_200,
     defaultBoundaryDimensions: { straightMetres: 65, wideMetres: 68 },
     outfield: {
@@ -282,6 +287,7 @@ export const HOME_STADIUMS: readonly HomeStadium[] = [
     teamId: "DC",
     name: "Arun Jaitley Stadium",
     location: "Delhi",
+    opened: 1883,
     capacity: 35_200,
     defaultBoundaryDimensions: { straightMetres: 70, wideMetres: 65 },
     outfield: {
@@ -326,6 +332,7 @@ export const HOME_STADIUMS: readonly HomeStadium[] = [
     teamId: "LSG",
     name: "BRSABV Ekana Cricket Stadium",
     location: "Lucknow",
+    opened: 2017,
     capacity: 50_100,
     defaultBoundaryDimensions: { straightMetres: 70, wideMetres: 65 },
     outfield: {
@@ -370,6 +377,7 @@ export const HOME_STADIUMS: readonly HomeStadium[] = [
     teamId: "SRH",
     name: "Rajiv Gandhi International Cricket Stadium",
     location: "Hyderabad",
+    opened: 2003,
     capacity: 39_200,
     defaultBoundaryDimensions: { straightMetres: 70, wideMetres: 67 },
     outfield: {
@@ -414,6 +422,7 @@ export const HOME_STADIUMS: readonly HomeStadium[] = [
     teamId: "GT",
     name: "Narendra Modi Stadium",
     location: "Ahmedabad",
+    opened: 2020,
     capacity: 132_000,
     defaultBoundaryDimensions: { straightMetres: 75, wideMetres: 65 },
     outfield: {
@@ -471,6 +480,7 @@ export const HOME_STADIUMS: readonly HomeStadium[] = [
     teamId: "RR",
     name: "Sawai Mansingh Stadium",
     location: "Jaipur",
+    opened: 1969,
     capacity: 30_000,
     defaultBoundaryDimensions: { straightMetres: 68, wideMetres: 68 },
     outfield: {
@@ -515,6 +525,7 @@ export const HOME_STADIUMS: readonly HomeStadium[] = [
     teamId: "PBKS",
     name: "Maharaja Yadavindra Singh Stadium",
     location: "Mullanpur",
+    opened: 2021,
     capacity: 38_000,
     defaultBoundaryDimensions: { straightMetres: 72, wideMetres: 73 },
     outfield: {

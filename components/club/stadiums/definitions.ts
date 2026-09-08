@@ -5,6 +5,8 @@ export interface StadiumDefinition {
   teamId: TeamId;
   name: string;
   footprint: { x: number; z: number; exponent: number };
+  // Internal section-local mapping into the measured stadium envelope.
+  sectionReferenceDepth?: number;
   seats: readonly string[];
   fascia: string;
   roofColor: string;
@@ -38,7 +40,8 @@ export const STADIUMS: Record<TeamId, StadiumDefinition> = {
   PBKS: venue('PBKS', 'Maharaja Yadavindra Singh Stadium', { footprint: { x: 1.11, z: 1.08, exponent: 2.2 }, seats: ['#bc4b45', '#8caabf', '#e0b57f'], fascia: '#af3038', roofProfile: 'petal', templates: ['pavilion', 'standard-two', 'covered-tier', 'standard-two', 'covered-tier', 'standard-two', 'corporate', 'media'], roofs: ['Full roof', 'Landmark roof', 'Partial canopy', 'Landmark roof', 'Partial canopy', 'Landmark roof', 'Full roof', 'Full roof'], mastHeight: 36 }),
 };
 export function getStadiumDefinition(teamId = 'KKR'): StadiumDefinition {
-  return STADIUMS[teamId.toUpperCase() as TeamId] ?? STADIUMS.KKR;
+  const id=teamId.toUpperCase();
+  return STADIUMS[(id==='PBK'?'PBKS':id) as TeamId] ?? STADIUMS.KKR;
 }
 export function getInitialStandAppearance(teamId: string, groupIndex: number) {
   const definition = getStadiumDefinition(teamId);

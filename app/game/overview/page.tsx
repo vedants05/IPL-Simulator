@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useLayoutEffect, useMemo, useRef, Suspense, Fragment, useCallback, type CSSProperties } from "react";
+import { useState, useEffect, useLayoutEffect, useMemo, useRef, Suspense, Fragment, useCallback, type CSSProperties, type ReactNode } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -127,9 +127,11 @@ const StadiumBuilderPage = dynamic(() => import("@/components/club/StadiumBuilde
 const StaffManagementPage = dynamic(() => import("@/components/club/StaffManagementPage"), { ssr: false });
 const BoardOverviewPage = dynamic(() => import("@/components/club/BoardOverviewPage"), { ssr: false });
 const SupportersPage = dynamic(() => import("@/components/club/SupportersPage"), { ssr: false });
+const CommercialMainPage = dynamic(() => import("@/components/commercial/CommercialMainPage"), { ssr: false });
 const SocialMediaPage = dynamic(() => import("@/components/social/SocialMediaPage"), { ssr: false });
 const NewsPage = dynamic(() => import("@/components/news/NewsPage"), { ssr: false });
 import { getClubOwnership } from "@/lib/data/clubOwnership";
+import { buildTeamSupporterView } from "@/lib/logic/supporters";
 import { checkEmergencyBudgetExtensionApproval, STAFF_SALARY_MODEL_VERSION } from "@/lib/logic/staffContracts";
 import {
   calculateSeasonUnderperformancePressure,
@@ -520,7 +522,7 @@ function ClubProfileSummaryTile({
   return (
     <Link
       href={`/game/teams/${team.id}`}
-      className="group relative flex min-h-0 flex-col overflow-hidden rounded-lg border-2 border-border bg-surface p-6 text-left transition-colors hover:border-accent lg:col-span-2 lg:row-span-3"
+      className="group relative flex h-full min-h-0 flex-col overflow-hidden rounded-lg border-2 border-border bg-surface p-6 text-left transition-colors hover:border-accent"
       style={{
         backgroundImage: `linear-gradient(135deg, ${team.primaryColor}24 0%, transparent 52%)`,
       }}
@@ -642,6 +644,10 @@ function ManagerOfficeSummaryTile({
       </div>
     </button>
   );
+}
+
+function ClubSectionSummaryTile({ title, onOpen, children }: { title: string; onOpen: () => void; children: ReactNode }) {
+  return <button type="button" onClick={onOpen} className="group flex h-full min-h-0 cursor-pointer flex-col overflow-hidden rounded-lg border-2 border-border bg-surface p-3 text-left transition-colors hover:border-accent"><div className="flex shrink-0 items-start justify-between gap-3 border-b border-[#16130f]/10 pb-2"><div className="font-anton text-[14px] uppercase text-text-primary">{title}</div><ArrowUpRight size={13} className="shrink-0 text-text-secondary group-hover:text-accent" /></div><div className="flex min-h-0 flex-1 flex-col justify-center py-2">{children}</div></button>;
 }
 
 function PitchCuratorSummaryTile({
@@ -866,8 +872,19 @@ function OverviewPageContent() {
   // --------------------------------------------------------------------------
   // Core UI Tabs State
   // --------------------------------------------------------------------------
-  const [activeTab, setActiveTab] = useState<"home" | "club" | "squad" | "scouting" | "season" | "league" | "history">("home");
+  const [activeTab, setActiveTab] = useState<"home" | "club" | "commercial" | "squad" | "scouting" | "season" | "league" | "history">("home");
   const [activeSubTab, _setActiveSubTab] = useState<string>("overview");
+  const [stadiumBuilderCapacity, setStadiumBuilderCapacity] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!userHomeStadium) return;
+    try {
+      const key = `ipl-stadium-builder:${fixtureSeed || "career"}:${userHomeStadium.teamId}:v2`;
+      const stored = JSON.parse(localStorage.getItem(key) ?? "null") as { modules?: Array<{ capacity?: number }> } | null;
+      const capacities = stored?.modules?.map((module) => module.capacity).filter((capacity): capacity is number => Number.isFinite(capacity));
+      setStadiumBuilderCapacity(capacities?.length ? capacities.reduce((sum, capacity) => sum + capacity, 0) : userHomeStadium.capacity);
+    } catch { setStadiumBuilderCapacity(userHomeStadium.capacity); }
+  }, [activeSubTab, fixtureSeed, userHomeStadium]);
   const [expandedLeagueHistorySeason, setExpandedLeagueHistorySeason] = useState<number | null>(null);
 
   const searchParams = useSearchParams();
@@ -888,7 +905,7 @@ function OverviewPageContent() {
       router.replace("/game/overview?tab=league&subtab=overview", { scroll: false });
       return;
     }
-    if (tabParam === "home" || tabParam === "club" || tabParam === "squad" || tabParam === "scouting" || tabParam === "season" || tabParam === "league" || tabParam === "history") {
+    if (tabParam === "home" || tabParam === "club" || tabParam === "commercial" || tabParam === "squad" || tabParam === "scouting" || tabParam === "season" || tabParam === "league" || tabParam === "history") {
       setActiveTab(tabParam as any);
       _setActiveSubTab(subtabParam || "overview");
     }
@@ -5236,6 +5253,11 @@ This record has been officially verified and added to the IPL Minor Records arch
       icon: ShieldCheck,
       subtabs: ["overview", "supporters", "board", "office", "staffmanagement", "pitchcurator", "stadiummanagement", "stadiumbuilder"]
     },
+    commercial: {
+      label: "Commercial",
+      icon: DollarSign,
+      subtabs: ["overview", "ticketing", "matchdayops", "hospitality", "sponsorships", "merchandising", "marketing", "facilities", "broadcast", "operatingcosts", "finance"]
+    },
     scouting: {
       label: "Scouting",
       icon: Search,
@@ -5285,6 +5307,16 @@ This record has been officially verified and added to the IPL Minor Records arch
     if (subtab === "pitchcurator") return "Pitch Curator";
     if (subtab === "stadiummanagement") return "Stadium Management";
     if (subtab === "stadiumbuilder") return "Stadium Builder";
+    if (subtab === "ticketing") return "Ticketing";
+    if (subtab === "matchdayops") return "Matchday Ops";
+    if (subtab === "hospitality") return "Hospitality";
+    if (subtab === "sponsorships") return "Sponsors";
+    if (subtab === "merchandising") return "Retail";
+    if (subtab === "marketing") return "Marketing";
+    if (subtab === "facilities") return "Facilities";
+    if (subtab === "broadcast") return "Broadcast";
+    if (subtab === "operatingcosts") return "Costs";
+    if (subtab === "finance") return "Finance";
     if (subtab === "calendar") return "Season Calendar";
     if (subtab === "social") return "Social Media";
     if (subtab === "news") return "News";
@@ -5575,6 +5607,44 @@ This record has been officially verified and added to the IPL Minor Records arch
     });
     return [...tradeEvents, ...staffEvents, ...injuries, ...recruitmentEvents];
   }, [activeInjuries, careerStaff.contracts, careerStaff.employmentHistory, careerStaff.generatedProfiles, injuryHistory, players, tradeRecords, userTeam?.squad, userTeamId]);
+
+  const supporterPlayerStats = useMemo(() => Object.fromEntries(Object.entries(playerStats).map(([playerId, stats]) => [playerId, {
+    matches: stats.matches,
+    runs: stats.runs,
+    wickets: stats.wickets,
+    strikeRate: stats.balls > 0 ? stats.runs / stats.balls * 100 : undefined,
+    economy: stats.oversBowled > 0 ? stats.runsConceded / stats.oversBowled : undefined,
+    runsConceded: stats.runsConceded,
+    oversBowled: stats.oversBowled,
+    catches: stats.catches,
+    stumpings: stats.stumpings,
+    runOuts: stats.runOuts,
+  }])), [playerStats]);
+  const supporterDepartmentReviews = useMemo(() => careerStaff.performanceReviews
+    .filter((review) => review.teamId === userTeamId)
+    .map((review) => ({ season: review.season, expectedPosition: review.expectedPosition, finalPosition: review.finalPosition, wonTitle: review.wonTitle, batting: review.departments.batting, bowling: review.departments.bowling, fielding: review.departments.fielding })), [careerStaff.performanceReviews, userTeamId]);
+  const supporterBoardContext = useMemo(() => ({
+    annualStaffBudget: careerStaff.financesByTeam[userTeamId]?.annualBudget,
+    committedStaffSalary: careerStaff.financesByTeam[userTeamId]?.committedSalary,
+    compensationPaid: careerStaff.financesByTeam[userTeamId]?.compensationPaid,
+    activeProjects: Number(Boolean(userPitchProject)) + Number(Boolean(userOutfieldProject)),
+  }), [careerStaff.financesByTeam, userOutfieldProject, userPitchProject, userTeamId]);
+  const supporterPreview = useMemo(() => userTeam ? buildTeamSupporterView({
+    team: userTeam,
+    fixtures: supporterFixtures,
+    standingPosition: Math.max(0, standings.findIndex((standing) => standing.teamId === userTeamId)) + 1,
+    squadPlayers: userTeam.squad.map((playerId) => players[playerId]).filter((player): player is Player => Boolean(player)),
+    playerStats: supporterPlayerStats,
+    staff: userSupporterStaff,
+    ownership: getClubOwnership(userTeamId),
+    captainId: teamLeadership.captainId,
+    viceCaptainId: teamLeadership.viceCaptainId,
+    activeInjuryCount: userTeam.squad.filter((playerId) => Boolean(activeInjuries[playerId])).length,
+    clubEvents: supporterClubEvents,
+    departmentReviews: supporterDepartmentReviews,
+    boardContext: supporterBoardContext,
+    currentSeason,
+  }) : null, [activeInjuries, currentSeason, players, standings, supporterBoardContext, supporterClubEvents, supporterDepartmentReviews, supporterFixtures, supporterPlayerStats, teamLeadership.captainId, teamLeadership.viceCaptainId, userSupporterStaff, userTeam, userTeamId]);
 
   const userHeadCoach = useMemo(() => {
     if (!careerStaff || !careerStaff.contracts || !userTeamId) return null;
@@ -6114,7 +6184,8 @@ This record has been officially verified and added to the IPL Minor Records arch
       <section className="app-theme-background flex-grow flex flex-col overflow-hidden bg-bg">
         {/* Top Sub-navigation Bar */}
         <header className="border-b-2 border-hairline bg-surface shrink-0 px-8 py-3 flex items-center justify-between">
-          <div className="flex gap-1 overflow-x-auto py-1">
+          <div className="min-w-0 flex-1 overflow-x-auto py-1">
+            <div className="flex w-max min-w-full gap-1">
             {activeSubTabs.map((subtab) => {
               const isActive = activeSubTab === subtab;
               return (
@@ -6137,6 +6208,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                 </button>
               );
             })}
+            </div>
           </div>
 
           <div className="flex shrink-0 items-center gap-2">
@@ -7333,7 +7405,8 @@ This record has been officially verified and added to the IPL Minor Records arch
           {activeTab === "club" && (
             <>
               {activeSubTab === "overview" && (
-                <div className="grid min-h-[500px] grid-cols-1 gap-4 lg:h-[calc(100vh-200px)] lg:grid-cols-[minmax(0,1.7fr)_minmax(0,1.1fr)_minmax(280px,.8fr)] lg:grid-rows-3 lg:overflow-hidden">
+                <div className="grid min-h-[720px] grid-cols-1 gap-4 lg:h-[calc(100vh-200px)] lg:min-h-[560px] lg:grid-cols-[minmax(0,2fr)_minmax(280px,.78fr)] lg:overflow-hidden">
+                  <div className="grid min-h-0 gap-4 lg:grid-rows-[minmax(0,1fr)_auto]">
                   <ClubProfileSummaryTile
                     team={userTeam}
                     season={currentSeason}
@@ -7343,36 +7416,31 @@ This record has been officially verified and added to the IPL Minor Records arch
                     viceCaptain={teamLeadership.viceCaptainId ? players[teamLeadership.viceCaptainId] ?? null : null}
                     featuredPlayers={clubFeaturedPlayers}
                   />
-                  <ManagerOfficeSummaryTile
-                    boardConfidence={managerBoardConfidence}
-                    onOpen={() => setActiveSubTab("office")}
-                  />
-                  {userHomeStadium && userSelectedPitch && (
-                    <PitchCuratorSummaryTile
-                      stadiumName={userHomeStadium.name}
-                      pitchName={userSelectedPitch.name}
-                      pitchCount={userHomeStadium.pitches.length + userCustomPitches.length}
-                      scoreRange={`${userSelectedPitch.expectedFirstInningsScore.min}–${userSelectedPitch.expectedFirstInningsScore.max}`}
-                      onOpen={() => setActiveSubTab("pitchcurator")}
-                    />
+                  <div className="grid gap-4 md:grid-cols-3">
+                  {userHomeStadium && (
+                    <button type="button" onClick={() => setActiveSubTab("stadiumbuilder")} className="cursor-pointer overflow-hidden rounded-lg border-2 border-border bg-surface p-5 text-left transition-colors hover:border-accent"><div className="font-anton text-[14px] uppercase text-text-primary">Stadium Builder</div><div className="mt-1 truncate font-space-mono text-[7px] font-bold uppercase text-text-secondary">{userHomeStadium.name} · {userHomeStadium.location}</div><div className="mt-4 grid grid-cols-3 gap-3"><div><div className="font-space-mono text-[6px] font-bold uppercase text-text-secondary">Capacity</div><div className="mt-1 font-anton text-[16px] leading-none text-accent">{new Intl.NumberFormat("en-GB").format(stadiumBuilderCapacity ?? userHomeStadium.capacity)}</div></div><div><div className="font-space-mono text-[6px] font-bold uppercase text-text-secondary">Opened</div><div className="mt-1 font-anton text-[16px] leading-none text-text-primary">{userHomeStadium.opened}</div></div><div><div className="font-space-mono text-[6px] font-bold uppercase text-text-secondary">Pitches</div><div className="mt-1 font-anton text-[16px] leading-none text-text-primary">{userHomeStadium.pitches.length + userCustomPitches.length}</div></div></div></button>
                   )}
                   {userHomeStadium && (
                     <StadiumManagementSummaryTile
                       stadiumName={userHomeStadium.name}
-                      capacity={userHomeStadium.capacity}
+                      capacity={stadiumBuilderCapacity ?? userHomeStadium.capacity}
                       straightMetres={userBoundaryDimensions.straightMetres}
                       wideMetres={userBoundaryDimensions.wideMetres}
                       outfieldSpeed={userOutfieldImpact?.label ?? userHomeStadium.outfield.speed}
                       onOpen={() => setActiveSubTab("stadiummanagement")}
                     />
                   )}
-                  {userHomeStadium && (
-                    <button type="button" onClick={() => setActiveSubTab("stadiumbuilder")} className="cursor-pointer overflow-hidden rounded-lg border-2 border-border bg-surface p-5 text-left transition-colors hover:border-accent">
-                      <div className="font-anton text-[14px] uppercase text-text-primary">Stadium Builder</div>
-                      <div className="mt-1 font-space-mono text-[7px] font-bold uppercase text-text-secondary">Eden Gardens · 24-section prototype</div>
-                      <div className="mt-4 flex items-end justify-between"><span className="font-anton text-[18px] text-accent">Design & redevelop</span><span className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Open builder →</span></div>
-                    </button>
+                  {userHomeStadium && userSelectedPitch && (
+                    <PitchCuratorSummaryTile stadiumName={userHomeStadium.name} pitchName={userSelectedPitch.name} pitchCount={userHomeStadium.pitches.length + userCustomPitches.length} scoreRange={`${userSelectedPitch.expectedFirstInningsScore.min}–${userSelectedPitch.expectedFirstInningsScore.max}`} onOpen={() => setActiveSubTab("pitchcurator")} />
                   )}
+                  </div>
+                  </div>
+                  <div className="grid min-h-0 gap-4 sm:grid-cols-2 lg:grid-cols-1 lg:grid-rows-4">
+                    <ClubSectionSummaryTile title="Board & Ownership" onOpen={() => setActiveSubTab("board")}><div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1.5"><div><div className="font-space-mono text-[6px] font-bold uppercase text-text-secondary">Ownership group</div><div className="mt-0.5 text-[9px] font-bold leading-tight text-text-primary">{getClubOwnership(userTeamId).consortium_name}</div></div><div className="text-right"><div className="font-space-mono text-[6px] font-bold uppercase text-text-secondary">Ambition</div><div className="font-anton text-[18px] text-accent">{getClubOwnership(userTeamId).ceo_ambition}/20</div></div><div className="border-t border-border/60 pt-1.5"><span className="font-space-mono text-[6px] uppercase text-text-secondary">CEO </span><span className="text-[9px] font-semibold">{getClubOwnership(userTeamId).ceo_name}</span></div><div className="border-t border-border/60 pt-1.5 text-right font-space-mono text-[7px] font-bold uppercase text-accent">{getClubOwnership(userTeamId).ownership_archetype.replaceAll("_", " ")}</div></div></ClubSectionSummaryTile>
+                    <ClubSectionSummaryTile title="Supporters" onOpen={() => setActiveSubTab("supporters")}><div className="grid grid-cols-3 gap-2 text-center"><div className="rounded border border-border/70 bg-background/40 p-2"><div className="font-anton text-[18px] leading-none text-text-primary">{supporterPreview?.overallHappiness ?? "–"}</div><div className="mt-1 font-space-mono text-[6px] font-bold uppercase text-text-secondary">Happiness</div></div><div className="rounded border border-border/70 bg-background/40 p-2"><div className="font-anton text-[18px] leading-none text-text-primary">{supporterPreview?.fanbaseIndex ?? "–"}</div><div className="mt-1 font-space-mono text-[6px] font-bold uppercase text-text-secondary">Fanbase</div></div><div className="rounded border border-border/70 bg-background/40 p-2"><div className="font-anton text-[18px] leading-none text-text-primary">{supporterPreview?.homeAtmosphere ?? "–"}</div><div className="mt-1 font-space-mono text-[6px] font-bold uppercase text-text-secondary">Atmosphere</div></div></div><div className="mt-2 flex items-center justify-between border-t border-border/60 pt-2"><span className="font-space-mono text-[6px] font-bold uppercase text-text-secondary">Overall mood</span><span className="font-anton text-[14px] uppercase text-accent">{supporterPreview?.mood ?? "Assessing"}</span></div></ClubSectionSummaryTile>
+                    <ClubSectionSummaryTile title="Manager's Office" onOpen={() => setActiveSubTab("office")}><div className="flex items-end justify-between"><div><div className="font-space-mono text-[6px] font-bold uppercase text-text-secondary">Board confidence</div><div className="mt-1 font-anton text-[22px] text-accent">{managerBoardConfidence}%</div></div><div className="rounded-full border border-border px-2 py-1 font-space-mono text-[7px] font-bold uppercase">{managerBoardConfidence >= 70 ? "Strong" : managerBoardConfidence >= 50 ? "Stable" : managerBoardConfidence >= 35 ? "Under scrutiny" : "Under pressure"}</div></div><div className="mt-2 h-2 overflow-hidden rounded-full bg-border/60"><div className="h-full bg-accent" style={{ width: `${managerBoardConfidence}%` }} /></div></ClubSectionSummaryTile>
+                    <ClubSectionSummaryTile title="Staff Management" onOpen={() => setActiveSubTab("staffmanagement")}><div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-1"><div className="row-span-2 border-r border-border pr-3 text-center"><div className="font-anton text-[24px] text-accent">{userSupporterStaff.length}</div><div className="font-space-mono text-[6px] uppercase text-text-secondary">Contracted</div></div><div><span className="font-space-mono text-[6px] uppercase text-text-secondary">Head coach </span><span className="text-[9px] font-bold">{userHeadCoach?.fullName ?? "Vacant"}</span></div><div className="border-t border-border/60 pt-1"><span className="font-space-mono text-[6px] uppercase text-text-secondary">Mentor </span><span className="text-[9px] font-bold">{userMentor?.fullName ?? "Vacant"}</span></div></div></ClubSectionSummaryTile>
+                  </div>
                 </div>
               )}
 
@@ -7595,6 +7663,21 @@ This record has been officially verified and added to the IPL Minor Records arch
                 />
               )}
             </>
+          )}
+
+          {/* ==================================================================
+              MAIN TAB: COMMERCIAL
+              ================================================================== */}
+          {activeTab === "commercial" && userTeam && (
+            <CommercialMainPage
+              teamId={userTeamId}
+              season={currentSeason}
+              stadiumCapacity={stadiumBuilderCapacity ?? userHomeStadium?.capacity ?? 45000}
+              stadiumName={userHomeStadium?.name ?? "Home Stadium"}
+              squadPlayers={userTeam.squad.map((playerId) => players[playerId]).filter((player): player is Player => Boolean(player))}
+              activeSubTab={activeSubTab}
+              onSelectSubTab={setActiveSubTab}
+            />
           )}
 
           {/* ==================================================================

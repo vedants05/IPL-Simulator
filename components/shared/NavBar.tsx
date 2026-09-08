@@ -35,6 +35,7 @@ const NAV_ITEMS = [
   { label: "Home", href: "/game/overview?tab=home" },
   { label: "Squad", href: "/game/overview?tab=squad" },
   { label: "Club", href: "/game/overview?tab=club" },
+  { label: "Commercial", href: "/game/overview?tab=commercial" },
   { label: "Scouting", href: "/game/overview?tab=scouting" },
   { label: "Season", href: "/game/overview?tab=season" },
   { label: "League", href: "/game/overview?tab=league" },

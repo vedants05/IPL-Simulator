@@ -58,6 +58,8 @@ simulation_*_report.json
 *.test.tsx
 *.test.js
 *.test.jsx
+!/calibration/stadiumGeometry.test.ts
+!/calibration/stadiums.test.ts
 *.spec.ts
 *.spec.tsx
 *.spec.js
@@ -68,6 +70,8 @@ simulation_*_report.json
 /playwright-report/
 /scripts/*
 !/scripts/populatePlayerDatesOfBirth.mjs
+!/scripts/import-stadium-maps.mjs
+!/scripts/derive-stadium-layouts.mjs
 /.tmp/
 
 # Local scratch work and design handoff exports are not part of the game build

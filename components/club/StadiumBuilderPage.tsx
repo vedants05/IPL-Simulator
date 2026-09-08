@@ -4,11 +4,15 @@ import { useEffect, useMemo, useState } from "react";
 import { Building2, CalendarClock, Hammer, Layers3, Save, Trash2 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { edenExistingBoxes } from './stadiumVisualDesigns';
+import { getStadiumDefinition } from './stadiums/definitions';
+import { createStadiumPlan } from './stadiums/planGeometry';
+import { PITCH_LENGTH, PITCH_WIDTH } from './stadiums/siteGeometry';
 
 const StadiumViewer3D = dynamic(() => import("./StadiumViewer3D"), {
   ssr: false,
   loading: () => <div className="flex h-full items-center justify-center bg-[#17241c] font-space-mono text-[8px] font-bold uppercase tracking-widest text-white/70">Loading stadium viewer…</div>,
 });
+const StadiumGallery = dynamic(() => import('./StadiumGallery'), { ssr:false });
 
 type Quality = "Basic" | "Standard" | "Modern" | "Premium" | "Elite";
 type Roof = "None" | "Partial canopy" | "Full roof" | "Cantilever" | "Landmark roof";
@@ -29,6 +33,7 @@ interface StandTemplate {
 
 interface StadiumModule {
   hospitalityBoxes?: number;
+  visualTemplateId?: string;
   id: number;
   standName: string;
   templateId: string;
@@ -91,6 +96,14 @@ const TEMPLATES: StandTemplate[] = [
   { id: "four-grandstand", name: "Four-tier grandstand", tiers: 4, capacityMultiplier: 1.60, priceCrorePerModule: 188, constructionDays: 540, hospitality: false, supportsTierExpansion: false, color: "#25102f" },
   { id: "pavilion", name: "Pavilion stand", tiers: 2, capacityMultiplier: .78, priceCrorePerModule: 118, constructionDays: 330, hospitality: true, supportsTierExpansion: true, color: "#7a5b35" },
   { id: "heritage", name: "Heritage members' stand", tiers: 2, capacityMultiplier: .62, priceCrorePerModule: 136, constructionDays: 360, hospitality: true, supportsTierExpansion: false, color: "#8a6b3f" },
+  { id: "classical-pavilion", name: "Classical colonnaded pavilion", tiers: 2, capacityMultiplier: .64, priceCrorePerModule: 162, constructionDays: 420, hospitality: true, supportsTierExpansion: false, color: "#c4ad80" },
+  { id: "art-deco-pavilion", name: "Art Deco grand pavilion", tiers: 3, capacityMultiplier: .86, priceCrorePerModule: 232, constructionDays: 540, hospitality: true, supportsTierExpansion: false, color: "#4f7d7e" },
+  { id: "garden-pavilion", name: "Garden terrace pavilion", tiers: 2, capacityMultiplier: .60, priceCrorePerModule: 184, constructionDays: 450, hospitality: true, supportsTierExpansion: false, color: "#52795d" },
+  { id: "sandstone-arcade", name: "Sandstone arcade pavilion", tiers: 2, capacityMultiplier: .65, priceCrorePerModule: 174, constructionDays: 435, hospitality: true, supportsTierExpansion: false, color: "#bb936b" },
+  { id: "victorian-pavilion", name: "Victorian brick pavilion", tiers: 2, capacityMultiplier: .66, priceCrorePerModule: 172, constructionDays: 430, hospitality: true, supportsTierExpansion: false, color: "#994e3c" },
+  { id: "glass-sky-lounge", name: "Glass sky lounge", tiers: 3, capacityMultiplier: .79, priceCrorePerModule: 256, constructionDays: 570, hospitality: true, supportsTierExpansion: false, color: "#4c8a9f" },
+  { id: "tensile-terrace", name: "Tensile canopy terrace", tiers: 1, capacityMultiplier: .68, priceCrorePerModule: 88, constructionDays: 240, hospitality: false, supportsTierExpansion: false, color: "#a4a999" },
+  { id: "asymmetric-grandstand", name: "Asymmetric cantilever grandstand", tiers: 3, capacityMultiplier: 1.12, priceCrorePerModule: 248, constructionDays: 555, hospitality: true, supportsTierExpansion: false, color: "#637883" },
   { id: "hospitality-two", name: "Two-tier hospitality", tiers: 2, capacityMultiplier: .58, priceCrorePerModule: 154, constructionDays: 375, hospitality: true, supportsTierExpansion: true, color: "#8d2455" },
   { id: "hospitality-three", name: "Three-tier hospitality", tiers: 3, capacityMultiplier: .82, priceCrorePerModule: 205, constructionDays: 480, hospitality: true, supportsTierExpansion: false, color: "#68193d" },
   { id: "corporate", name: "Corporate-box stand", tiers: 2, capacityMultiplier: .48, priceCrorePerModule: 176, constructionDays: 420, hospitality: true, supportsTierExpansion: false, color: "#244b70" },
@@ -182,6 +195,7 @@ const TEAM_STADIUMS: Record<string, TeamStadium> = {
 };
 
 function createTeamModules(teamId: string): StadiumModule[] {
+  teamId=getStadiumDefinition(teamId).teamId;
   if (teamId.toUpperCase() === "KKR") return createEdenModules();
   const stadium = TEAM_STADIUMS[teamId.toUpperCase()] ?? TEAM_STADIUMS.CSK;
   const unitWeight = stadium.stands.reduce((sum, stand) => sum + stand.modules * stand.weight, 0);
@@ -211,45 +225,9 @@ function applyCompletedProject(
     if (project.action === "demolish") return { ...entry, empty: true, capacity: 0 };
     const chosen = template(project.templateId);
     if (project.action === "refurbish") return { ...entry, quality: project.quality, roof: project.roof, condition: 100, lastRefurbishedYear: completionYear };
-    if (project.action === "add-tier") return { ...entry, templateId: project.templateId, quality: project.quality, roof: project.roof, capacity: capacityForTemplate(entry.baseCapacity, chosen.id, project.quality), condition: 100, lastRefurbishedYear: completionYear, empty: false };
-    return { ...entry, standName: project.name, templateId: chosen.id, quality: project.quality, roof: project.roof, capacity: capacityForTemplate(entry.baseCapacity, chosen.id, project.quality), constructionYear: completionYear, lastRefurbishedYear: completionYear, condition: 100, maxTiers: Math.max(chosen.tiers, chosen.tiers + Number(chosen.supportsTierExpansion)), hospitalityBoxes: undefined, empty: false };
+    if (project.action === "add-tier") return { ...entry, templateId: project.templateId, visualTemplateId: project.templateId, quality: project.quality, roof: project.roof, capacity: capacityForTemplate(entry.baseCapacity, chosen.id, project.quality), condition: 100, lastRefurbishedYear: completionYear, empty: false };
+    return { ...entry, standName: project.name, templateId: chosen.id, visualTemplateId: chosen.id, quality: project.quality, roof: project.roof, capacity: capacityForTemplate(entry.baseCapacity, chosen.id, project.quality), constructionYear: completionYear, lastRefurbishedYear: completionYear, condition: 100, maxTiers: Math.max(chosen.tiers, chosen.tiers + Number(chosen.supportsTierExpansion)), hospitalityBoxes: undefined, empty: false };
   });
-}
-
-function annularSegment(index: number, count: number, inner = 116, outer = 172) {
-  const gap = 1.4;
-  const start = index / count * 360 - 90 + gap;
-  const end = (index + 1) / count * 360 - 90 - gap;
-  const point = (radius: number, degrees: number) => {
-    const radians = degrees * Math.PI / 180;
-    return [200 + Math.cos(radians) * radius, 200 + Math.sin(radians) * radius];
-  };
-  const [a, b, c, d] = [point(outer, start), point(outer, end), point(inner, end), point(inner, start)];
-  return `M ${a[0]} ${a[1]} A ${outer} ${outer} 0 0 1 ${b[0]} ${b[1]} L ${c[0]} ${c[1]} A ${inner} ${inner} 0 0 0 ${d[0]} ${d[1]} Z`;
-}
-
-function standArc(index: number, count: number, radius: number) {
-  const gap = 1.8;
-  const start = index / count * 360 - 90 + gap;
-  const end = (index + 1) / count * 360 - 90 - gap;
-  const point = (degrees: number) => {
-    const radians = degrees * Math.PI / 180;
-    return [200 + Math.cos(radians) * radius, 200 + Math.sin(radians) * radius];
-  };
-  const [a, b] = [point(start), point(end)];
-  return `M ${a[0]} ${a[1]} A ${radius} ${radius} 0 0 1 ${b[0]} ${b[1]}`;
-}
-
-function standConnector(index: number, count: number, inner = 116, outer = 172) {
-  const boundary = (index + 1) / count * 360 - 90;
-  const start = boundary - 2.8;
-  const end = boundary + 2.8;
-  const point = (radius: number, degrees: number) => {
-    const radians = degrees * Math.PI / 180;
-    return [200 + Math.cos(radians) * radius, 200 + Math.sin(radians) * radius];
-  };
-  const [a, b, c, d] = [point(outer, start), point(outer, end), point(inner, end), point(inner, start)];
-  return `M ${a[0]} ${a[1]} A ${outer} ${outer} 0 0 1 ${b[0]} ${b[1]} L ${c[0]} ${c[1]} A ${inner} ${inner} 0 0 0 ${d[0]} ${d[1]} Z`;
 }
 
 const shortStandName = (name: string) => name
@@ -272,10 +250,11 @@ export default function StadiumBuilderPage(props: StadiumBuilderPageProps) {
   return <StadiumBuilderState key={`${props.saveId}:${props.teamId}`} {...props} />;
 }
 
-function StadiumBuilderState({ teamId, currentDate, saveId, pitchCount }: StadiumBuilderPageProps) {
+function StadiumBuilderState({ teamId: savedTeamId, currentDate, saveId, pitchCount }: StadiumBuilderPageProps) {
+  const teamId=getStadiumDefinition(savedTeamId).teamId;
   const stadiumProfile = teamId.toUpperCase() === "KKR" ? { name: "Eden Gardens", ends: ["High Court End", "Pavilion End"] as [string, string], capacity: 67_551, association: "Cricket Association of Bengal", opened: 1864 } : (TEAM_STADIUMS[teamId.toUpperCase()] ?? TEAM_STADIUMS.CSK);
   // v2 deliberately replaces the original generic non-KKR placeholder plans.
-  const storageKey = `ipl-stadium-builder:${saveId || "career"}:${teamId}:v2`;
+  const storageKey = `ipl-stadium-builder:${saveId || "career"}:${savedTeamId}:v2`;
   const [modules, setModules] = useState<StadiumModule[]>(() => createTeamModules(teamId));
   const [plans, setPlans] = useState<StadiumPlan[]>([]);
   const [activeProject, setActiveProject] = useState<StadiumProject | null>(null);
@@ -288,6 +267,7 @@ function StadiumBuilderState({ teamId, currentDate, saveId, pitchCount }: Stadiu
   const [planName, setPlanName] = useState("");
   const [message, setMessage] = useState("");
   const [showPlans, setShowPlans] = useState(false);
+  const [showGallery, setShowGallery] = useState(false);
   const [viewMode, setViewMode] = useState<"plan" | "viewer">("plan");
   const [loaded, setLoaded] = useState(false);
 
@@ -345,13 +325,14 @@ function StadiumBuilderState({ teamId, currentDate, saveId, pitchCount }: Stadiu
   const selectedCapacity = selectedModules.reduce((sum, entry) => sum + entry.capacity, 0);
   const projectedCapacity = totalCapacity - selectedCapacity + newCapacity;
   const changeReason = action === "replace" ? `Replacement with ${chosenTemplate.name} at ${quality} quality${roof === "None" ? "" : ` and ${roof.toLowerCase()}`}.` : action === "add-tier" ? `Adds one tier to each eligible selected section.` : action === "refurbish" ? `Capacity is unchanged; ${quality} refurbishment improves the existing stand.` : "Selected sections are demolished and become unavailable.";
+  const metricPlan=useMemo(()=>createStadiumPlan(getStadiumDefinition(teamId),modules),[teamId,modules]);
+  const annularSegment=(index:number,_count:number)=>metricPlan.section(index);
+  const standArc=(index:number,_count:number,radius:number)=>metricPlan.detail(index,radius);
+  const standConnector=(index:number,_count:number)=>metricPlan.connector(index);
   const standLabels = useMemo(() => Array.from(new Set(modules.map((entry) => entry.standName))).map((name) => {
-    const ids = modules.filter((entry) => entry.standName === name).map((entry) => entry.id);
-    const midpoint = (ids[0] + ids[ids.length - 1] + 1) / 2;
-    const angle = midpoint / modules.length * 360 - 90;
-    const radians = angle * Math.PI / 180;
-    return { name, x: 200 + Math.cos(radians) * 145, y: 200 + Math.sin(radians) * 145 };
-  }), [modules]);
+    const indices=modules.flatMap((entry,index)=>entry.standName===name?[index]:[]);
+    return {name,...metricPlan.label(indices)};
+  }), [modules,metricPlan]);
 
   const toggleModule = (id: number) => {
     const next = selected.includes(id) ? selected.filter((entry) => entry !== id) : [...selected, id];
@@ -412,20 +393,25 @@ function StadiumBuilderState({ teamId, currentDate, saveId, pitchCount }: Stadiu
     <div className="flex h-full min-h-[620px] flex-col overflow-hidden rounded-lg border-2 border-border bg-bg">
       <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border bg-surface px-4 py-2">
         <div><p className="font-space-mono text-[7px] font-bold uppercase tracking-[.2em] text-accent">{teamId.toUpperCase()} · {stadiumProfile.name}</p><h2 className="font-anton text-[22px] uppercase leading-none text-text-primary">Stadium Builder</h2><p className="mt-1 text-[8px] text-text-secondary">{stadiumProfile.association} · {integer(totalCapacity)} seats · opened {stadiumProfile.opened}</p></div>
-        <button type="button" onClick={() => setShowPlans(true)} className="shrink-0 rounded border border-accent/50 px-2.5 py-1.5 font-space-mono text-[7px] font-bold uppercase text-accent hover:bg-accent/10">Plans ({plans.length})</button>
+        <div className="flex shrink-0 flex-wrap justify-end gap-2">
+          <button type="button" onClick={() => setShowGallery(true)} className="rounded border border-accent bg-accent/10 px-3 py-2 font-space-mono text-[9px] font-bold uppercase text-accent hover:bg-accent/20">Browse all stadiums</button>
+          <button type="button" onClick={() => setShowPlans(true)} className="rounded border border-accent/50 px-2.5 py-1.5 font-space-mono text-[7px] font-bold uppercase text-accent hover:bg-accent/10">Plans ({plans.length})</button>
+        </div>
       </div>
 
+      {showGallery && <StadiumGallery teamId={savedTeamId} saveId={saveId} currentDate={currentDate} modules={modules} project={activeProject} createModules={createTeamModules} onClose={()=>setShowGallery(false)}/>}
       <div className="grid min-h-0 flex-1 grid-cols-1 overflow-y-auto xl:grid-cols-[minmax(440px,1.2fr)_minmax(310px,.8fr)] xl:overflow-hidden">
         <section className="flex min-h-[520px] flex-col border-b border-border p-4 xl:min-h-0 xl:border-b-0 xl:border-r [&>div:nth-child(3)]:hidden">
           <div className="mb-2 flex items-center justify-between gap-2"><div><h3 className="font-anton text-base uppercase text-text-primary">{viewMode === "plan" ? `${stadiumProfile.name} plan` : `${stadiumProfile.name} viewer`}</h3><p className="text-[9px] text-text-secondary">Choose up to four adjacent sections.</p></div><div className="flex items-center gap-2"><button type="button" onClick={() => setViewMode((mode) => mode === "plan" ? "viewer" : "plan")} className="rounded border border-accent/60 px-2 py-1 font-space-mono text-[7px] font-bold uppercase text-accent">{viewMode === "plan" ? "Stadium viewer" : "Plan view"}</button><button type="button" onClick={() => setSelected([])} className="font-space-mono text-[7px] font-bold uppercase text-text-secondary hover:text-accent">Clear selection</button></div></div>
           <div className="stadium-map relative min-h-0 flex-1 overflow-hidden rounded-xl border border-white/10 bg-[#17241c]">
             <svg viewBox="0 0 400 400" className={`h-full w-full ${viewMode === "viewer" ? "hidden" : ""}`} role="img" aria-label={`Interactive top-down plan of ${stadiumProfile.name}`}>
               <defs><radialGradient id="eden-grass"><stop offset="0" stopColor="#4c9a5b"/><stop offset="1" stopColor="#24663d"/></radialGradient></defs>
-              <circle cx="200" cy="200" r="110" fill="url(#eden-grass)" stroke="#d9d394" strokeWidth="2"/>
-              <circle cx="200" cy="200" r="104" fill="none" stroke="rgba(255,255,255,.25)" strokeDasharray="4 4"/>
+              <path d={metricPlan.field} fill="url(#eden-grass)" stroke="#d9d394" strokeWidth="1"/>
+              <path d={metricPlan.boundary} fill="none" stroke="rgba(255,255,255,.4)" strokeDasharray="4 4"/>
               {Array.from({ length: Math.max(1, Math.min(5, pitchCount)) }, (_, index) => {
-                const spacing = 9; const x = 200 + (index - (Math.min(5, pitchCount) - 1) / 2) * spacing;
-                return <rect key={index} x={x - 3} y="169" width="6" height="62" rx="1" fill={index % 2 ? "#b9a36b" : "#c8b47b"} stroke="rgba(30,25,15,.35)"/>;
+                const width=PITCH_WIDTH*metricPlan.scale, length=PITCH_LENGTH*metricPlan.scale;
+                const x = 200 + (index - (Math.min(5, pitchCount) - 1) / 2) * width;
+                return <rect key={index} x={x-width/2} y={200-length/2} width={width} height={length} rx=".4" fill={index % 2 ? "#b9a36b" : "#c8b47b"} stroke="rgba(30,25,15,.35)"/>;
               })}
               {Array.from(new Set(modules.map((entry) => entry.standName))).flatMap((name) => { const ids = modules.filter((entry) => entry.standName === name).map((entry) => entry.id); const linked = modules.find((entry) => entry.standName === name && !entry.empty); return ids.slice(0, -1).map((id) => <g key={`link-${name}-${id}`} pointerEvents="none"><path d={standConnector(id, modules.length)} fill={linked ? template(linked.templateId).color : "#292929"} stroke="rgba(255,255,255,.45)" strokeWidth="1"/><path d={standArc(id, modules.length, 128)} fill="none" stroke="rgba(255,255,255,.5)" strokeWidth="1"/><path d={standArc(id, modules.length, 139)} fill="none" stroke="rgba(255,255,255,.5)" strokeWidth="1"/></g>); })}
               {modules.map((entry) => {
@@ -436,7 +422,7 @@ function StadiumBuilderState({ teamId, currentDate, saveId, pitchCount }: Stadiu
               {modules.map((entry) => { const tiers = entry.empty ? 0 : Math.max(1, template(entry.templateId).tiers); return <g key={`detail-${entry.id}`} pointerEvents="none">{Array.from({ length: tiers }, (_, tier) => <path key={tier} d={standArc(entry.id, modules.length, 126 + tier * 11)} fill="none" stroke="rgba(255,255,255,.45)" strokeWidth="1.2"/>)}{!entry.empty && entry.roof !== "None" && <path d={standArc(entry.id, modules.length, 176)} fill="none" stroke="rgba(236,214,138,.8)" strokeWidth={entry.roof === "Landmark roof" ? 4 : 2.5}/>}</g>; })}
               {standLabels.map((label) => <text key={label.name} x={label.x} y={label.y} textAnchor="middle" dominantBaseline="middle" fill="white" fontSize="5.5" fontWeight="700" pointerEvents="none">{shortStandName(label.name)}</text>)}
             </svg>
-            {viewMode === "viewer" && <div className="absolute inset-0 z-20"><StadiumViewer3D teamId={teamId} project={activeProject} modules={modules} selected={selected} activeModuleIds={activeProject && !["completed", "cancelled"].includes(activeProject.phase) ? activeProject.moduleIds : undefined} onToggleModule={toggleModule}/></div>}
+            {viewMode === "viewer" && !showGallery && <div className="absolute inset-0 z-20"><StadiumViewer3D teamId={teamId} currentDate={currentDate} project={activeProject} modules={modules} selected={selected} activeModuleIds={activeProject && !["completed", "cancelled"].includes(activeProject.phase) ? activeProject.moduleIds : undefined} onToggleModule={toggleModule}/></div>}
             {viewMode === "viewer" && <div className="absolute inset-0 bg-[#17241c]"><svg viewBox="0 0 400 400" className="h-full w-full" role="img" aria-label={`In-ground view of ${stadiumProfile.name}`}><defs><linearGradient id="viewer-sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#243a5d"/><stop offset=".6" stopColor="#8aa8b8"/><stop offset=".61" stopColor="#315c3c"/><stop offset="1" stopColor="#172a1d"/></linearGradient></defs><rect width="400" height="400" fill="url(#viewer-sky)"/><ellipse cx="200" cy="325" rx="175" ry="34" fill="#23452d"/><path d="M25 280 Q200 225 375 280 L365 330 Q200 285 35 330 Z" fill="#4d7b51"/><path d="M35 235 Q200 165 365 235 L355 285 Q200 225 45 285 Z" fill="#4b2860" stroke="#d9b94e" strokeWidth="2"/><path d="M55 190 Q200 125 345 190 L335 235 Q200 180 65 235 Z" fill="#663678" stroke="#d9b94e" strokeWidth="2"/><path d="M85 146 Q200 92 315 146 L305 190 Q200 145 95 190 Z" fill="#82458f" stroke="#d9b94e" strokeWidth="2"/>{modules.slice(0, 12).map((entry, index) => { const chosen = selected.includes(entry.id); const x = 42 + index * 28; const h = 36 + template(entry.templateId).tiers * 7; return <g key={`viewer-${entry.id}`} onClick={() => toggleModule(entry.id)} className="cursor-pointer"><path d={`M ${x} ${250 - h} L ${x + 23} ${250 - h} L ${x + 27} 285 L ${x - 4} 285 Z`} fill={entry.empty ? "#292929" : template(entry.templateId).color} stroke={chosen ? "#f6c744" : "rgba(255,255,255,.45)"} strokeWidth={chosen ? 3 : 1}/><text x={x + 11} y={246 - h} textAnchor="middle" fill="white" fontSize="5" fontWeight="700" pointerEvents="none">{shortStandName(entry.standName)}</text><title>{entry.standName} · Module {entry.id + 1}</title></g>; })}<path d="M 110 305 Q200 290 290 305 L280 353 Q200 365 120 353 Z" fill="#4b914f" stroke="#d9d394" strokeWidth="2"/><text x="200" y="336" textAnchor="middle" fill="white" fontSize="8" fontWeight="700">PITCH</text></svg></div>}
             {viewMode === "plan" && <><p className="pointer-events-none absolute inset-x-0 top-1 text-center font-space-mono text-[8px] font-bold uppercase tracking-wider text-white/80">{stadiumProfile.ends[0]}</p><p className="pointer-events-none absolute inset-x-0 bottom-1 text-center font-space-mono text-[8px] font-bold uppercase tracking-wider text-white/80">{stadiumProfile.ends[1]}</p></>}
             {selectedModules.length > 0 && <div className="absolute bottom-2 left-2 max-h-40 w-[min(250px,calc(100%-1rem))] overflow-y-auto rounded-lg border border-accent/60 bg-[#101713]/95 p-2 shadow-xl backdrop-blur-sm"><div className="sticky top-0 z-10 flex items-center justify-between bg-[#101713]/95 pb-1"><div><p className="font-space-mono text-[6px] font-bold uppercase tracking-widest text-accent">Selected stand{selectedModules.length > 1 ? "s" : ""}</p><p className="text-[7px] text-text-secondary">Scroll for all selected sections</p></div><button type="button" onClick={() => setSelected([])} className="rounded border border-white/20 px-1.5 py-0.5 font-space-mono text-[6px] uppercase text-white/70 hover:text-accent">Close</button></div><div className="mt-1 space-y-1">{selectedModules.map((entry) => <div key={entry.id} className="rounded border border-white/15 bg-white/5 px-1.5 py-1"><div className="flex items-center justify-between gap-1"><p className="truncate text-[8px] font-bold text-white">{entry.standName} · M{entry.id + 1}</p><p className="font-anton text-xs text-accent">{integer(entry.capacity)}</p></div><p className="text-[6px] text-white/65">Fans {entry.fanOpinion}/100 · Condition {Math.round(entry.condition)}/100 · {template(entry.templateId).name}</p></div>)}</div></div>}
