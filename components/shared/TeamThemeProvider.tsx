@@ -117,7 +117,7 @@ export function switchColorMode(mode: AppearanceTheme, teamCode?: string) {
 
   // Activate the shared transition before changing any theme values.
   void root.offsetWidth;
-  root.classList.toggle("dark", mode === "dark");
+  root.classList.toggle("dark", mode === "dark" || mode === "team");
   root.classList.toggle("retro", mode === "retro");
   root.classList.toggle("team", mode === "team");
   root.setAttribute("data-theme", mode);

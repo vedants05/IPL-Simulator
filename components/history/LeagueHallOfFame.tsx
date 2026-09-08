@@ -7,7 +7,50 @@ import { LEAGUE_HALL_OF_FAME, type HallOfFameRole, type LeagueHallOfFameMember }
 import { LEAGUE_HISTORY_TEAMS } from "@/lib/data/leagueHistory";
 import { evaluateCareerHallOfFame } from "@/lib/logic/hallOfFame";
 import { useGameStore } from "@/lib/store/gameStore";
+import { readableOn } from "@/lib/theme/teams";
 import type { Player, Team } from "@/lib/types";
+
+export const isValidTeamId = (teamId?: string | null): teamId is string => {
+  if (!teamId) return false;
+  const clean = teamId.trim().toUpperCase();
+  return (
+    clean !== "" &&
+    clean !== "UNSOLD" &&
+    clean !== "FREE AGENT" &&
+    clean !== "NONE" &&
+    clean !== "NULL" &&
+    clean !== "UNDEFINED"
+  );
+};
+
+const DARK_MODE_TEAM_COLORS: Record<string, string> = {
+  GT: "#2d6bc4",
+  KKR: "#552c87",
+};
+
+const safeReadableOn = (hexStr?: string): string => {
+  if (!hexStr) return "#ffffff";
+  try {
+    let clean = hexStr.trim().replace(/^#/, "");
+    if (clean.length === 3) {
+      clean = clean.split("").map((c) => c + c).join("");
+    }
+    if (clean.length === 6) {
+      return readableOn(`#${clean}`);
+    }
+    return "#ffffff";
+  } catch {
+    return "#ffffff";
+  }
+};
+
+const getBadgeColors = (team: { id?: string; primaryColor?: string }) => {
+  const lightBg = (team.primaryColor || "#555555").trim();
+  const darkBg = (team.id && DARK_MODE_TEAM_COLORS[team.id]) ? DARK_MODE_TEAM_COLORS[team.id] : lightBg;
+  const lightFg = safeReadableOn(lightBg);
+  const darkFg = safeReadableOn(darkBg);
+  return { lightBg, darkBg, lightFg, darkFg };
+};
 
 interface LeagueHallOfFameProps {
   players: Record<string, Player>;
@@ -79,15 +122,31 @@ export default function LeagueHallOfFame({ players, teams, onOpenPlayer }: Leagu
 
       const teamSeasonsCount: Record<string, number> = {};
       iplHistory.forEach((entry) => {
-        if (entry.teamId) {
-          teamSeasonsCount[entry.teamId] = (teamSeasonsCount[entry.teamId] || 0) + 1;
+        if (isValidTeamId(entry.teamId)) {
+          const tid = entry.teamId.trim().toUpperCase();
+          teamSeasonsCount[tid] = (teamSeasonsCount[tid] || 0) + 1;
         }
       });
-      if (playerOrSnapshot && "currentTeamId" in playerOrSnapshot && playerOrSnapshot.currentTeamId) {
-        teamSeasonsCount[playerOrSnapshot.currentTeamId] = (teamSeasonsCount[playerOrSnapshot.currentTeamId] || 0) + 1;
+      if (playerOrSnapshot && "currentTeamId" in playerOrSnapshot && isValidTeamId(playerOrSnapshot.currentTeamId)) {
+        const ctid = playerOrSnapshot.currentTeamId.trim().toUpperCase();
+        teamSeasonsCount[ctid] = (teamSeasonsCount[ctid] || 0) + 1;
       }
+
+      // If a player has both KXIP and PBKS, merge KXIP into PBKS and remove KXIP
+      if (teamSeasonsCount["KXIP"] && teamSeasonsCount["PBKS"]) {
+        teamSeasonsCount["PBKS"] += teamSeasonsCount["KXIP"];
+        delete teamSeasonsCount["KXIP"];
+      }
+
       const teamIds = Object.keys(teamSeasonsCount).sort((a, b) => teamSeasonsCount[b] - teamSeasonsCount[a]);
-      const primaryTeamId = teamIds[0] ?? (playerOrSnapshot && "currentTeamId" in playerOrSnapshot && playerOrSnapshot.currentTeamId ? playerOrSnapshot.currentTeamId : "IND");
+      const validCurrentTeamId =
+        playerOrSnapshot && "currentTeamId" in playerOrSnapshot && isValidTeamId(playerOrSnapshot.currentTeamId)
+          ? playerOrSnapshot.currentTeamId.trim().toUpperCase()
+          : null;
+      let primaryTeamId = teamIds[0] ?? validCurrentTeamId ?? "IPL";
+      if (primaryTeamId === "KXIP" && (teamSeasonsCount["PBKS"] || validCurrentTeamId === "PBKS")) {
+        primaryTeamId = "PBKS";
+      }
 
       const seasons = iplHistory.map((h) => parseInt(h.season, 10)).filter((s) => !isNaN(s));
       const startSeason = seasons.length > 0 ? Math.min(...seasons) : 2024;
@@ -131,7 +190,7 @@ export default function LeagueHallOfFame({ players, teams, onOpenPlayer }: Leagu
         role,
         nationality,
         primaryTeamId,
-        teamIds: teamIds.length > 0 ? teamIds : [primaryTeamId],
+        teamIds: teamIds.length > 0 ? teamIds : (isValidTeamId(primaryTeamId) && primaryTeamId !== "IPL" ? [primaryTeamId] : []),
         era,
         legacy,
         score: candidate.score,
@@ -168,38 +227,61 @@ export default function LeagueHallOfFame({ players, teams, onOpenPlayer }: Leagu
   }, [activeFilter, foundingGalleryMembers]);
 
   const getTeam = (teamId: string) => {
-    const liveTeam = teams[teamId];
+    const cleanId = (teamId || "").trim().toUpperCase();
+    const liveTeam = teams[cleanId];
     if (liveTeam) return liveTeam;
-    return LEAGUE_HISTORY_TEAMS[teamId] ?? {
-      id: teamId,
-      name: teamId,
-      shortName: teamId,
+    return LEAGUE_HISTORY_TEAMS[cleanId] ?? {
+      id: cleanId,
+      name: cleanId,
+      shortName: cleanId,
       primaryColor: "#68616f",
       secondaryColor: "#ffffff",
     };
   };
 
-  const renderTeamMarks = (member: LeagueHallOfFameMember) => (
-    <span className="flex flex-wrap gap-1.5">
-      {member.teamIds.map((teamId) => {
-        const team = getTeam(teamId);
-        return (
-          <span
-            key={teamId}
-            className="border px-1.5 py-0.5 font-space-mono text-[7px] font-bold uppercase tracking-wider"
-            style={{ borderColor: `${team.primaryColor}80`, color: team.primaryColor }}
-            title={team.name}
-          >
-            {team.shortName}
-          </span>
-        );
-      })}
-    </span>
-  );
+  const renderTeamMarks = (member: LeagueHallOfFameMember) => {
+    let validTeamIds = member.teamIds.filter(isValidTeamId);
+    if (validTeamIds.includes("KXIP") && validTeamIds.includes("PBKS")) {
+      validTeamIds = validTeamIds.filter((id) => id !== "KXIP");
+    }
+    if (validTeamIds.length === 0 && isValidTeamId(member.primaryTeamId) && member.primaryTeamId !== "IPL") {
+      const fallbackId = member.primaryTeamId === "KXIP" && member.teamIds.includes("PBKS") ? "PBKS" : member.primaryTeamId;
+      validTeamIds.push(fallbackId);
+    }
+    if (validTeamIds.length === 0) return null;
+
+    return (
+      <span className="flex flex-wrap items-center gap-1.5">
+        {validTeamIds.map((teamId) => {
+          const team = getTeam(teamId);
+          const { lightBg, darkBg, lightFg, darkFg } = getBadgeColors(team);
+
+          return (
+            <span
+              key={teamId}
+              className="inline-flex items-center rounded-[3px] px-1.5 py-0.5 font-space-mono text-[7.5px] font-bold uppercase tracking-wider bg-[var(--badge-bg)] text-[var(--badge-fg)] dark:bg-[var(--badge-bg-dark)] dark:text-[var(--badge-fg-dark)] shadow-xs ring-1 ring-black/15 dark:ring-white/25 border border-black/10 dark:border-white/10"
+              style={{
+                "--badge-bg": lightBg,
+                "--badge-fg": lightFg,
+                "--badge-bg-dark": darkBg,
+                "--badge-fg-dark": darkFg,
+              } as React.CSSProperties}
+              title={team.name}
+            >
+              {team.shortName}
+            </span>
+          );
+        })}
+      </span>
+    );
+  };
 
   const renderMemberCard = (member: DynamicHallOfFameMember) => {
-    const team = getTeam(member.primaryTeamId);
+    const effectivePrimaryTeamId =
+      member.primaryTeamId === "KXIP" && member.teamIds.includes("PBKS") ? "PBKS" : member.primaryTeamId;
+    const team = getTeam(effectivePrimaryTeamId);
     const linkedPlayerId = member.id ?? candidatePlayersByName.get(normalizeName(member.name));
+    const { lightBg, darkBg, lightFg, darkFg } = getBadgeColors(team);
 
     return (
       <button
@@ -210,10 +292,21 @@ export default function LeagueHallOfFame({ players, teams, onOpenPlayer }: Leagu
         className="group relative flex min-h-36 overflow-hidden border border-border bg-surface p-4 text-left shadow-sm transition-all enabled:hover:-translate-y-0.5 enabled:hover:border-[#b68a32] enabled:hover:shadow-md disabled:cursor-default"
         title={linkedPlayerId ? `Open ${member.name}'s player profile` : `${member.name} is not in the current player database`}
       >
-        <span className="absolute inset-y-0 left-0 w-1" style={{ backgroundColor: team.primaryColor }} />
         <span
-          className="mr-3 flex h-10 w-10 shrink-0 items-center justify-center rounded-full border font-anton text-base"
-          style={{ borderColor: `${team.primaryColor}80`, color: team.primaryColor, backgroundColor: `${team.primaryColor}12` }}
+          className="absolute inset-y-0 left-0 w-1 bg-[var(--accent-bar-light)] dark:bg-[var(--accent-bar-dark)]"
+          style={{
+            "--accent-bar-light": lightBg,
+            "--accent-bar-dark": darkBg,
+          } as React.CSSProperties}
+        />
+        <span
+          className="mr-3 flex h-10 w-10 shrink-0 items-center justify-center rounded-full font-anton text-base shadow-xs ring-1 ring-black/15 dark:ring-white/25 bg-[var(--avatar-bg)] text-[var(--avatar-fg)] dark:bg-[var(--avatar-bg-dark)] dark:text-[var(--avatar-fg-dark)]"
+          style={{
+            "--avatar-bg": lightBg,
+            "--avatar-fg": lightFg,
+            "--avatar-bg-dark": darkBg,
+            "--avatar-fg-dark": darkFg,
+          } as React.CSSProperties}
         >
           {getInitials(member.name)}
         </span>
@@ -328,6 +421,7 @@ export default function LeagueHallOfFame({ players, teams, onOpenPlayer }: Leagu
                 {cornerstoneMembers.map((member) => {
                   const team = getTeam(member.primaryTeamId);
                   const linkedPlayerId = candidatePlayersByName.get(normalizeName(member.name));
+                  const { lightBg, darkBg, lightFg, darkFg } = getBadgeColors(team);
                   return (
                     <button
                       key={member.name}
@@ -338,19 +432,39 @@ export default function LeagueHallOfFame({ players, teams, onOpenPlayer }: Leagu
                       style={{ background: "linear-gradient(145deg, color-mix(in srgb, var(--surface2) 94%, #d6ad55 6%), var(--surface))" }}
                       title={linkedPlayerId ? `Open ${member.name}'s player profile` : `${member.name} is not in the current player database`}
                     >
-                      <div className="absolute inset-y-0 left-0 w-1" style={{ backgroundColor: team.primaryColor }} />
+                      <div
+                        className="absolute inset-y-0 left-0 w-1 bg-[var(--accent-bar-light)] dark:bg-[var(--accent-bar-dark)]"
+                        style={{
+                          "--accent-bar-light": lightBg,
+                          "--accent-bar-dark": darkBg,
+                        } as React.CSSProperties}
+                      />
                       <div className="pointer-events-none absolute -right-9 -top-9 h-28 w-28 rounded-full opacity-20 blur-2xl" style={{ backgroundColor: team.primaryColor }} />
                       <div className="relative flex h-full flex-col">
                         <div className="flex items-start justify-between gap-3">
-                          <span className="flex h-11 w-11 items-center justify-center rounded-full border border-[#a9781e]/40 bg-white/55 font-anton text-lg text-[#8d6218] dark:border-[#d6ad55]/40 dark:bg-[#d6ad55]/10 dark:text-[#e7c576]">
+                          <span
+                            className="flex h-11 w-11 items-center justify-center rounded-full font-anton text-lg shadow-sm ring-2 ring-[#d6ad55] bg-[var(--avatar-bg)] text-[var(--avatar-fg)] dark:bg-[var(--avatar-bg-dark)] dark:text-[var(--avatar-fg-dark)]"
+                            style={{
+                              "--avatar-bg": lightBg,
+                              "--avatar-fg": lightFg,
+                              "--avatar-bg-dark": darkBg,
+                              "--avatar-fg-dark": darkFg,
+                            } as React.CSSProperties}
+                          >
                             {getInitials(member.name)}
                           </span>
                           <Trophy size={15} className="text-[#946514]/75 dark:text-[#d6ad55]/70" />
                         </div>
                         <div className="mt-auto pt-4">
-                          <p className="font-space-mono text-[7px] font-bold uppercase tracking-[0.18em] text-[#8d6218] dark:text-[#d6ad55]/80">{member.role} · {getMemberEra(member)}</p>
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="font-space-mono text-[7px] font-bold uppercase tracking-[0.18em] text-[#8d6218] dark:text-[#d6ad55]/80">{member.role}</p>
+                            <span className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">{getMemberEra(member)}</span>
+                          </div>
                           <h5 className="mt-1 font-anton text-[21px] uppercase leading-none">{member.name}</h5>
                           <p className="mt-2 line-clamp-2 text-[10px] leading-relaxed text-text-secondary">{member.legacy}</p>
+                          <div className="mt-3">
+                            {renderTeamMarks(member)}
+                          </div>
                         </div>
                       </div>
                     </button>
