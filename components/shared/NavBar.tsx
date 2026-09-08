@@ -74,6 +74,7 @@ export default function NavBar() {
 
   const [showConfirmAccel, setShowConfirmAccel] = useState(false);
   const [wasPausedBeforeConfirmAccel, setWasPausedBeforeConfirmAccel] = useState(false);
+  const [preservePurseForAccelerated, setPreservePurseForAccelerated] = useState(false);
 
   const [showConfirmAll, setShowConfirmAll] = useState(false);
   const [wasPausedBeforeConfirmAll, setWasPausedBeforeConfirmAll] = useState(false);
@@ -191,13 +192,14 @@ export default function NavBar() {
 
   const handleSkipAccelPress = () => {
     setWasPausedBeforeConfirmAccel(isPaused);
+    setPreservePurseForAccelerated(false);
     setPaused(true);
     setShowConfirmAccel(true);
   };
 
   const handleConfirmAccel = () => {
     setShowConfirmAccel(false);
-    skipToAcceleratedAuction();
+    skipToAcceleratedAuction(preservePurseForAccelerated);
   };
 
   const handleCancelAccel = () => {
@@ -462,6 +464,21 @@ export default function NavBar() {
                           This will instantly simulate the remaining regular lots and take you straight to the start of the Accelerated phase.
                         </p>
                       </div>
+
+                      <label className="flex cursor-pointer items-start gap-2 rounded border border-[var(--ink)]/25 bg-black/[0.03] p-2 text-[9px] leading-normal">
+                        <input
+                          type="checkbox"
+                          checked={preservePurseForAccelerated}
+                          onChange={(event) => setPreservePurseForAccelerated(event.target.checked)}
+                          className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-[var(--accent)]"
+                        />
+                        <span>
+                          <span className="block font-bold">Preserve my purse</span>
+                          <span className="mt-0.5 block opacity-75">
+                            The computer will make no new bids, RTMs or automatic signings for your team before the accelerated auction. Any current leading bid remains binding.
+                          </span>
+                        </span>
+                      </label>
 
                       <div className="flex gap-2">
                         <button

@@ -253,6 +253,8 @@ interface GameStateAdditions {
   skipSetSummary: SkipSetSummary | null;
   auctionTargets: Record<string, number>;
   auctionTargetPriorities: Record<string, AuctionTargetPriority>;
+  /** User scouting/auction shortlist. Unlike season UI state, this persists across seasons. */
+  playerShortlist: string[];
   acceleratedPlanningState: 'nominating' | 'results' | null;
   userAcceleratedTargets: string[];
   aiAcceleratedTargets: Record<string, string[]>;
@@ -386,10 +388,11 @@ interface GameActions {
   decreaseSpeed: () => void;
   skipCurrentSet: () => void;
   skipAllAuction: () => Promise<void>;
-  skipToAcceleratedAuction: () => void;
+  skipToAcceleratedAuction: (preserveUserPurse?: boolean) => void;
   dismissSkipSetSummary: () => void;
   setAuctionTarget: (playerId: string, maxBidLakhs: number, priority?: AuctionTargetPriority) => void;
   removeAuctionTarget: (playerId: string) => void;
+  setPlayerShortlist: (playerIds: string[]) => void;
   confirmUserAcceleratedTargets: (targets: string[]) => void;
   startAcceleratedAuctionFromPlanning: () => void;
   setClubFigureTierOverride: (figureId: string, tier: ClubFigureTier) => void;
@@ -1240,6 +1243,7 @@ export const useGameStore = create<Store>()(
       skipSetSummary: null,
       auctionTargets: {},
       auctionTargetPriorities: {},
+      playerShortlist: [],
       acceleratedPlanningState: null,
       userAcceleratedTargets: [],
       aiAcceleratedTargets: {},
@@ -3313,7 +3317,11 @@ export const useGameStore = create<Store>()(
         get().processCompletedAuctionCareer();
       },
 
-      skipToAcceleratedAuction: () => {
+      setPlayerShortlist: (playerIds) => set((state) => ({
+        playerShortlist: Array.from(new Set(playerIds)).filter((playerId) => Boolean(state.players[playerId])),
+      })),
+
+      skipToAcceleratedAuction: (preserveUserPurse = false) => {
         const state = get();
         const { auction, players, teams, userTeamId, auctionTargets, auctionTargetPriorities } = state;
         if (!auction || auction.phase !== "live") return;
@@ -3386,6 +3394,7 @@ export const useGameStore = create<Store>()(
 
             const interested: Team[] = Object.values(newTeams).filter((t: Team): boolean => {
               if (t.id === highBidderTeamId) return false;
+              if (preserveUserPurse && t.id === userTeamId) return false;
               return canTeamBidDuringSkip(t, player, nextBid, player.id, newPlayers, ctx, userTeamId, targetMaxBid, protectedTargetReserve);
             });
 
@@ -3410,7 +3419,10 @@ export const useGameStore = create<Store>()(
             let finalPrice = currentBid;
             let usedRtm = false;
 
-            const rtmTeamId = findRTMEligibleTeam(player, newTeams, highBidderTeamId, currentBid, auction.season);
+            const eligibleRtmTeamId = findRTMEligibleTeam(player, newTeams, highBidderTeamId, currentBid, auction.season);
+            const rtmTeamId = preserveUserPurse && eligibleRtmTeamId === userTeamId
+              ? null
+              : eligibleRtmTeamId;
 
             if (rtmTeamId) {
               const rtmTeam = newTeams[rtmTeamId];
@@ -3498,7 +3510,7 @@ export const useGameStore = create<Store>()(
         // squad. Prefer the cheapest unsold legal backups and preserve ₹2 Cr
         // whenever the available purse makes that possible.
         const userTeam = newTeams[userTeamId];
-        if (userTeam && userTeam.squad.length < (userTeam.minSquadSize ?? 18)) {
+        if (!preserveUserPurse && userTeam && userTeam.squad.length < (userTeam.minSquadSize ?? 18)) {
           const minimum = userTeam.minSquadSize ?? 18;
           const required = minimum - userTeam.squad.length;
           const candidates = Array.from(new Set(newUnsoldIds))
@@ -4402,6 +4414,7 @@ export const useGameStore = create<Store>()(
             skipSetSummary: null,
             auctionTargets: {},
             auctionTargetPriorities: {},
+            playerShortlist: state.playerShortlist.filter((playerId) => Boolean(resetPlayers[playerId])),
             acceleratedPlanningState: null,
             userAcceleratedTargets: [],
             aiAcceleratedTargets: {},
@@ -5231,6 +5244,7 @@ export const useGameStore = create<Store>()(
           skipSetSummary: null,
           auctionTargets: {},
           auctionTargetPriorities: {},
+          playerShortlist: [],
           acceleratedPlanningState: null,
           userAcceleratedTargets: [],
           aiAcceleratedTargets: {},
@@ -5301,6 +5315,7 @@ export const useGameStore = create<Store>()(
         speed: state.speed,
         auctionTargets: state.auctionTargets,
         auctionTargetPriorities: state.auctionTargetPriorities,
+        playerShortlist: state.playerShortlist,
         clubFigureTierOverrides: state.clubFigureTierOverrides,
         clubFigureProgression: state.clubFigureProgression,
         offseasonStats: state.offseasonStats,
@@ -5533,6 +5548,7 @@ export const useGameStore = create<Store>()(
           players: migratedCyclePlayers,
           auctionTargets: removeResolvedAuctionTargets(p.auctionTargets ?? {}, persistedRetiredPlayerIds),
           auctionTargetPriorities: removeResolvedAuctionTargets(p.auctionTargetPriorities ?? {}, persistedRetiredPlayerIds),
+          playerShortlist: Array.from(new Set(p.playerShortlist ?? [])).filter((playerId) => Boolean(migratedCyclePlayers[playerId])),
           clubFigureTierOverrides: p.clubFigureTierOverrides ?? {},
           clubFigureProgression: p.clubFigureProgression ?? {},
           offseasonStats: migratedOffseasonStats,

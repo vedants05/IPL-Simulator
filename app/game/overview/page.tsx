@@ -807,6 +807,8 @@ function OverviewPageContent() {
     reconcileAIStaffRecruitment,
     careerStaff,
     initializeCareerStaff,
+    playerShortlist: shortlist,
+    setPlayerShortlist: setShortlist,
   } = useGameStore();
   const matchArchiveCareerId = `${userTeamId}:${currentSeason}:${fixtureSeed}`;
   const userTeam = teams[userTeamId];
@@ -1022,40 +1024,6 @@ function OverviewPageContent() {
   const [activeScorecardInningsTeam, setActiveScorecardInningsTeam] = useState<"teamA" | "teamB">("teamA");
   const [pendingMatchPreparation, setPendingMatchPreparation] = useState<PendingMatchPreparation | null>(null);
   const [activePlayedMatch, setActivePlayedMatch] = useState<PlayableMatchSession | null>(null);
-  const [shortlist, setShortlist] = useState<string[]>([]);
-
-  useEffect(() => {
-    const handleShortlistUpdate = (e: Event) => {
-      const customEvent = e as CustomEvent<{ shortlist: string[] }>;
-      if (Array.isArray(customEvent.detail?.shortlist)) {
-        setShortlist(customEvent.detail.shortlist);
-      }
-    };
-    window.addEventListener("ipl_shortlist_updated", handleShortlistUpdate);
-    return () => window.removeEventListener("ipl_shortlist_updated", handleShortlistUpdate);
-  }, []);
-
-  // Re-sync shortlist whenever user navigates to scouting or auction planner
-  useEffect(() => {
-    if (!userTeamId || typeof window === "undefined") return;
-    if (activeTab === "scouting" || activeSubTab === "planner" || activeSubTab === "assignments" || activeSubTab === "search") {
-      try {
-        const saved = localStorage.getItem(`ipl_career_${userTeamId}`);
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed.shortlist)) {
-            setShortlist((prev) => {
-              if (JSON.stringify(prev) !== JSON.stringify(parsed.shortlist)) {
-                return parsed.shortlist;
-              }
-              return prev;
-            });
-          }
-        }
-      } catch {}
-    }
-  }, [activeTab, activeSubTab, userTeamId]);
-
   // Club profiles are reached from this page, so keep their read-only career
   // projection in memory. This avoids synchronously reading and parsing the
   // complete localStorage career save during navigation.
@@ -1495,6 +1463,15 @@ function OverviewPageContent() {
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
+        const legacyShortlist = Array.isArray(parsed.shortlist)
+          ? parsed.shortlist.filter((id: unknown): id is string => typeof id === "string")
+          : [];
+        // Migrate old saves before the season-specific career payload can be
+        // discarded. The canonical shortlist now lives in the main career
+        // store and therefore survives auctions and season rollover.
+        if (shortlist.length === 0 && legacyShortlist.length > 0) {
+          setShortlist(legacyShortlist);
+        }
         const savedSeason = Number.isFinite(Number(parsed.season))
           ? Number(parsed.season)
           : Number(String(parsed.fixtures?.[0]?.date ?? "").slice(0, 4));
@@ -1803,7 +1780,6 @@ function OverviewPageContent() {
           parsed.aiTeamLeadership = loadedAiTeamLeadership;
           localStorage.setItem(`ipl_career_${userTeamId}`, JSON.stringify(parsed));
         }
-        if (parsed.shortlist) setShortlist(parsed.shortlist);
         const savedDeadline = parsed.retentionDeadline as RetentionDeadline | undefined;
         const nextDeadline = savedDeadline ?? generateNextRetentionDeadline(currentSeason);
         setRetentionDeadline(nextDeadline);
@@ -2561,21 +2537,12 @@ function OverviewPageContent() {
 
   // Toggle shortlist helper
   const toggleShortlist = (pid: string) => {
-    const storageKey = `ipl_career_${userTeamId}`;
-    let currentList = shortlist;
-    try {
-      const saved = localStorage.getItem(storageKey);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed.shortlist)) currentList = parsed.shortlist;
-      }
-    } catch {}
     let next: string[];
-    if (currentList.includes(pid)) {
-      next = currentList.filter(id => id !== pid);
+    if (shortlist.includes(pid)) {
+      next = shortlist.filter(id => id !== pid);
       showToast("Removed from Auction Shortlist");
     } else {
-      next = [...currentList, pid];
+      next = [...shortlist, pid];
       showToast("Added to Auction Shortlist");
     }
     setShortlist(next);

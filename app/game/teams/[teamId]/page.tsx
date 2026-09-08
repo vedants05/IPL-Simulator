@@ -502,6 +502,8 @@ function MountedTeamProfilePage() {
   const clubFigureTierOverrides = useGameStore((state) => state.clubFigureTierOverrides);
   const clubFigureProgression = useGameStore((state) => state.clubFigureProgression);
   const retiredPlayerSnapshots = useGameStore((state) => state.retiredPlayerSnapshots);
+  const shortlist = useGameStore((state) => state.playerShortlist);
+  const setShortlist = useGameStore((state) => state.setPlayerShortlist);
   const [hasLoadedCareer, setHasLoadedCareer] = useState(() => Boolean(
     getCachedTeamProfileCareer<TeamProfileCareer>(userTeamId),
   ));
@@ -522,42 +524,11 @@ function MountedTeamProfilePage() {
   });
   const nextFixturesListRef = useRef<HTMLDivElement>(null);
 
-  const [shortlist, setShortlist] = useState<string[]>(() => {
-    if (typeof window === "undefined" || !userTeamId) return [];
-    try {
-      const saved = localStorage.getItem(`ipl_career_${userTeamId}`);
-      if (!saved) return [];
-      const parsed = JSON.parse(saved);
-      return Array.isArray(parsed.shortlist) ? parsed.shortlist : [];
-    } catch {
-      return [];
-    }
-  });
-
-  useEffect(() => {
-    const handleShortlistUpdate = (e: Event) => {
-      const customEvent = e as CustomEvent<{ shortlist: string[] }>;
-      if (Array.isArray(customEvent.detail?.shortlist)) {
-        setShortlist(customEvent.detail.shortlist);
-      }
-    };
-    window.addEventListener("ipl_shortlist_updated", handleShortlistUpdate);
-    return () => window.removeEventListener("ipl_shortlist_updated", handleShortlistUpdate);
-  }, []);
-
   const toggleShortlist = (pid: string) => {
     const storageKey = `ipl_career_${userTeamId}`;
-    let currentList = shortlist;
-    try {
-      const saved = localStorage.getItem(storageKey);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed.shortlist)) currentList = parsed.shortlist;
-      }
-    } catch {}
-    const next = currentList.includes(pid)
-      ? currentList.filter((id) => id !== pid)
-      : [...currentList, pid];
+    const next = shortlist.includes(pid)
+      ? shortlist.filter((id) => id !== pid)
+      : [...shortlist, pid];
     try {
       const saved = localStorage.getItem(storageKey);
       const parsed = saved ? JSON.parse(saved) : {};

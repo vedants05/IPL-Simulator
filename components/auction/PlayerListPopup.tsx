@@ -291,28 +291,12 @@ export default function PlayerListPopup({
   type: PopupType;
   onClose: () => void;
 }) {
-  const { auction, players, teams, userTeamId, auctionTargets, auctionTargetPriorities, setAuctionTarget, removeAuctionTarget } = useGameStore();
+  const { auction, players, teams, userTeamId, playerShortlist, auctionTargets, auctionTargetPriorities, setAuctionTarget, removeAuctionTarget } = useGameStore();
   const [plannerShortlist, setPlannerShortlist] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
-    try {
-      const savedCareer = localStorage.getItem(`ipl_career_${userTeamId}`);
-      if (!savedCareer) {
-        setPlannerShortlist(new Set());
-        return;
-      }
-
-      const parsed = JSON.parse(savedCareer) as { shortlist?: unknown };
-      setPlannerShortlist(new Set(
-        Array.isArray(parsed.shortlist)
-          ? parsed.shortlist.filter((id): id is string => typeof id === "string")
-          : []
-      ));
-    } catch (error) {
-      console.warn("Unable to load auction planner shortlist:", error);
-      setPlannerShortlist(new Set());
-    }
-  }, [userTeamId]);
+    setPlannerShortlist(new Set(playerShortlist.filter((id) => Boolean(players[id]))));
+  }, [playerShortlist, players]);
 
   if (!auction) return null;
 

@@ -120,48 +120,11 @@ export function PlayerProfileModal({
   const retiredPlayerSnapshots = useGameStore((state) => state.retiredPlayerSnapshots);
   const tradeRecords = useGameStore((state) => state.tradeRecords);
   const userTeamId = useGameStore((state) => state.userTeamId);
+  const internalShortlist = useGameStore((state) => state.playerShortlist);
+  const setInternalShortlist = useGameStore((state) => state.setPlayerShortlist);
   const viewportRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
   const [profileScale, setProfileScale] = useState(1);
-
-  const [internalShortlist, setInternalShortlist] = useState<string[]>(() => {
-    if (typeof window === "undefined") return [];
-    try {
-      const saved = localStorage.getItem(`ipl_career_${userTeamId}`);
-      if (!saved) return [];
-      const parsed = JSON.parse(saved) as { shortlist?: unknown };
-      return Array.isArray(parsed.shortlist)
-        ? parsed.shortlist.filter((id): id is string => typeof id === "string")
-        : [];
-    } catch {
-      return [];
-    }
-  });
-
-  useEffect(() => {
-    if (!playerId || typeof window === "undefined") return;
-    try {
-      const saved = localStorage.getItem(`ipl_career_${userTeamId}`);
-      if (!saved) return;
-      const parsed = JSON.parse(saved) as { shortlist?: unknown };
-      if (Array.isArray(parsed.shortlist)) {
-        setInternalShortlist(parsed.shortlist.filter((id): id is string => typeof id === "string"));
-      }
-    } catch {
-      // ignore
-    }
-  }, [playerId, userTeamId]);
-
-  useEffect(() => {
-    const handleShortlistUpdate = (e: Event) => {
-      const customEvent = e as CustomEvent<{ shortlist: string[] }>;
-      if (Array.isArray(customEvent.detail?.shortlist)) {
-        setInternalShortlist(customEvent.detail.shortlist);
-      }
-    };
-    window.addEventListener("ipl_shortlist_updated", handleShortlistUpdate);
-    return () => window.removeEventListener("ipl_shortlist_updated", handleShortlistUpdate);
-  }, []);
 
   const activePlayer = playerId ? players[playerId] ?? null : null;
   const retiredSnapshot = playerId && !activePlayer
@@ -179,31 +142,23 @@ export function PlayerProfileModal({
     if (!detailedPlayer) return;
     if (onToggleShortlist) {
       onToggleShortlist(detailedPlayer.id);
-      setInternalShortlist((prev) =>
-        prev.includes(detailedPlayer.id)
-          ? prev.filter((id) => id !== detailedPlayer.id)
-          : [...prev, detailedPlayer.id]
-      );
       return;
     }
+    const nextList = internalShortlist.includes(detailedPlayer.id)
+      ? internalShortlist.filter((id) => id !== detailedPlayer.id)
+      : [...internalShortlist, detailedPlayer.id];
+    setInternalShortlist(nextList);
     try {
       const storageKey = `ipl_career_${userTeamId}`;
       const saved = localStorage.getItem(storageKey);
       const parsed = saved ? JSON.parse(saved) : {};
-      const currentList: string[] = Array.isArray(parsed.shortlist)
-        ? parsed.shortlist.filter((id: unknown): id is string => typeof id === "string")
-        : [];
-      const nextList = currentList.includes(detailedPlayer.id)
-        ? currentList.filter((id) => id !== detailedPlayer.id)
-        : [...currentList, detailedPlayer.id];
       parsed.shortlist = nextList;
       localStorage.setItem(storageKey, JSON.stringify(parsed));
-      setInternalShortlist(nextList);
-      if (typeof window !== "undefined") {
-        window.dispatchEvent(new CustomEvent("ipl_shortlist_updated", { detail: { shortlist: nextList } }));
-      }
     } catch (e) {
-      console.warn("Unable to toggle shortlist in local storage:", e);
+      console.warn("Unable to mirror shortlist to the legacy season save:", e);
+    }
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("ipl_shortlist_updated", { detail: { shortlist: nextList } }));
     }
   };
 
