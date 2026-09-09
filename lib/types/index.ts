@@ -90,6 +90,18 @@ export interface IPLHistoryEntry {
     wickets: number;
     runsConceded: number;
     oversBowled: number;
+    battingInnings?: number;
+    dismissals?: number;
+    highestScore?: number;
+    bestBowling?: string;
+    fours?: number;
+    sixes?: number;
+    dotBalls?: number;
+    catches?: number;
+    stumpings?: number;
+    runOuts?: number;
+    maidens?: number;
+    powerplayWickets?: number;
   };
 }
 

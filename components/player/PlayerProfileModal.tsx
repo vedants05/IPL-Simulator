@@ -790,7 +790,7 @@ export function PlayerProfileModal({
                         <span className="block truncate">{teams[entry.teamId]?.name ?? entry.teamId}</span>
                         {entry.seasonStats && (
                           <span className="mt-0.5 block whitespace-nowrap font-space-mono text-[7px] font-bold text-accent">
-                            Runs {entry.seasonStats.runs} · Wkts {entry.seasonStats.wickets}
+                            {entry.seasonStats.matches} Mts&nbsp;&nbsp;&nbsp;{entry.seasonStats.runs} Rs&nbsp;&nbsp;&nbsp;{entry.seasonStats.wickets} Ws
                           </span>
                         )}
                       </span>

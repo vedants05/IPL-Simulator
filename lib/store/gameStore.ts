@@ -270,6 +270,7 @@ interface GameStateAdditions {
     fixtures: unknown[];
     standings: unknown[];
     playerStats: Record<string, unknown>;
+    playerMatchLogs?: Record<string, unknown[]>;
     leagueRecords?: OtherLeagueRecord[];
   }>;
   careerIplProcessedMatchKeys: string[];
@@ -409,6 +410,7 @@ interface GameActions {
     fixtures: unknown[];
     standings: unknown[];
     playerStats: Record<string, unknown>;
+    playerMatchLogs?: Record<string, unknown[]>;
     leagueRecords?: OtherLeagueRecord[];
     reputationAchievements?: CareerReputationAchievements;
   }, onStage?: (stage: string) => void) => Promise<void>;
@@ -4463,34 +4465,35 @@ export const useGameStore = create<Store>()(
           const historyEntryCount = Object.values(state.players).reduce((total, player) => total + player.iplHistory.length, 0);
           await stage(`Archive 1/14 · Normalizing ${playerCount} players and ${historyEntryCount} history rows...`);
           const normalizedPlayers = Object.fromEntries(Object.entries(state.players).map(([id, player]) => {
-            const historyBySeason = new Map<string, Player["iplHistory"][number]>();
-            player.iplHistory.forEach((entry) => historyBySeason.set(String(entry.season), entry));
+            const historyBySeasonAndTeam = new Map<string, Player["iplHistory"][number]>();
+            player.iplHistory.forEach((entry) => historyBySeasonAndTeam.set(`${String(entry.season)}:${entry.teamId}`, entry));
             return [id, {
               ...player,
-              iplHistory: Array.from(historyBySeason.values()).sort((left, right) => (
+              iplHistory: Array.from(historyBySeasonAndTeam.values()).sort((left, right) => (
                 Number(left.season) - Number(right.season)
               )),
             }];
           }));
           await stage(`Archive 2/14 · Building compact archive from ${archive.fixtures.length} playoff fixtures...`);
           const { reputationAchievements, ...archiveForHistory } = archive;
-          const compactArchive = { ...archiveForHistory, playerStats: {} };
+          const previousArchive = state.careerSeasonArchives.find((record) => record.season === archive.season);
+          // Aggregated season totals are tiny compared with delivery archives
+          // and are the authoritative repair source for player profile history.
+          const archivedStats = {
+            ...((previousArchive?.playerStats ?? {}) as Record<string, unknown>),
+            ...((archive.playerStats ?? {}) as Record<string, unknown>),
+          };
+          const compactArchive = { ...archiveForHistory, playerStats: archivedStats };
           const careerSeasonArchives = [
             compactArchive,
             ...state.careerSeasonArchives.filter((record) => record.season !== archive.season),
           ].sort((left, right) => right.season - left.season);
-          if (state.lastCareerPostseasonSeason === archive.season) {
-            await stage(`Archive 14/14 · Persisting previously processed season ${archive.season}...`);
-            set({ careerSeasonArchives });
-            return;
-          }
-
           // Keep a compact per-season contribution on the player's history.
           // The full fixture archive is intentionally compacted for storage,
           // but profiles must still be able to show a player's 2027/2028/etc.
           // output after the live fixtures have rolled over.
           const archivedSeason = String(archive.season);
-          const archivedStats = archive.playerStats as Record<string, {
+          const typedArchivedStats = archivedStats as Record<string, {
             teamId?: string;
             matches?: number;
             runs?: number;
@@ -4498,10 +4501,22 @@ export const useGameStore = create<Store>()(
             wickets?: number;
             runsConceded?: number;
             oversBowled?: number;
+            battingInnings?: number;
+            dismissals?: number;
+            highestScore?: number;
+            bestBowling?: string;
+            fours?: number;
+            sixes?: number;
+            dotBalls?: number;
+            catches?: number;
+            stumpings?: number;
+            runOuts?: number;
+            maidens?: number;
+            powerplayWickets?: number;
           }>;
-          await stage(`Archive 3/14 · Attaching season totals to ${Object.keys(archivedStats).length} player records...`);
+          await stage(`Archive 3/14 · Attaching season totals to ${Object.keys(typedArchivedStats).length} player records...`);
           const playersWithSeasonStats = Object.fromEntries(Object.entries(normalizedPlayers).map(([id, player]) => {
-            const stats = archivedStats[id];
+            const stats = typedArchivedStats[id];
             if (!stats) return [id, player];
             const seasonStats = {
               matches: stats.matches ?? 0,
@@ -4510,20 +4525,48 @@ export const useGameStore = create<Store>()(
               wickets: stats.wickets ?? 0,
               runsConceded: stats.runsConceded ?? 0,
               oversBowled: stats.oversBowled ?? 0,
+              battingInnings: stats.battingInnings,
+              dismissals: stats.dismissals,
+              highestScore: stats.highestScore,
+              bestBowling: stats.bestBowling,
+              fours: stats.fours,
+              sixes: stats.sixes,
+              dotBalls: stats.dotBalls,
+              catches: stats.catches,
+              stumpings: stats.stumpings,
+              runOuts: stats.runOuts,
+              maidens: stats.maidens,
+              powerplayWickets: stats.powerplayWickets,
             };
-            return [id, {
-              ...player,
-              iplHistory: player.iplHistory.map((entry) => (
-                entry.season === archivedSeason ? { ...entry, seasonStats } : entry
-              )),
-            }];
+            const exactEntryIndex = player.iplHistory.findIndex((entry) => (
+              String(entry.season) === archivedSeason
+              && (!stats.teamId || entry.teamId === stats.teamId)
+            ));
+            const seasonEntryIndex = player.iplHistory.findIndex((entry) => String(entry.season) === archivedSeason);
+            const targetEntryIndex = exactEntryIndex >= 0 ? exactEntryIndex : seasonEntryIndex;
+            const iplHistory = targetEntryIndex >= 0
+              ? player.iplHistory.map((entry, index) => (
+                  index === targetEntryIndex ? { ...entry, seasonStats } : entry
+                ))
+              : upsertPlayerIplHistory(player.iplHistory, {
+                  teamId: stats.teamId ?? player.currentTeamId ?? "UNSOLD",
+                  season: archivedSeason,
+                  price: 0,
+                  seasonStats,
+                });
+            return [id, { ...player, iplHistory }];
           }));
+          if (state.lastCareerPostseasonSeason === archive.season) {
+            await stage(`Archive 14/14 · Repairing previously processed season ${archive.season}...`);
+            set({ careerSeasonArchives, players: playersWithSeasonStats });
+            return;
+          }
           await stage(`Archive 4/14 · Updating club-figure progression for season ${archive.season}...`);
           const clubFigureProgression = processClubFigureSeason({
             progression: state.clubFigureProgression,
             players: normalizedPlayers,
             season: archive.season,
-            playerStats: archivedStats,
+            playerStats: typedArchivedStats,
             achievements: reputationAchievements,
           });
 
@@ -4549,8 +4592,8 @@ export const useGameStore = create<Store>()(
                 fixtureDates[fixtureDates.length - 1],
               )
             : new Map<string, number>();
-          await stage(`Archive 6/14 · Normalizing ${Object.keys(archive.playerStats).length} performance records...`);
-          const performance = normalizeCareerSeasonPerformance(archive.playerStats);
+          await stage(`Archive 6/14 · Normalizing ${Object.keys(typedArchivedStats).length} performance records...`);
+          const performance = normalizeCareerSeasonPerformance(typedArchivedStats);
           const previousEmergingWinners = [
             ...HISTORICAL_LEAGUE_HISTORY,
             ...state.simulatedLeagueHistory,
@@ -4565,7 +4608,7 @@ export const useGameStore = create<Store>()(
               name: stats.name ?? normalizedPlayers[id]?.name ?? id,
               teamId: stats.teamId ?? normalizedPlayers[id]?.currentTeamId ?? "",
             })),
-            players: normalizedPlayers,
+            players: playersWithSeasonStats,
             season: archive.season,
             initialSeason: INITIAL_ACTIVE_SEASON,
             previousWinnerNames: previousEmergingWinners,
@@ -4621,7 +4664,7 @@ export const useGameStore = create<Store>()(
             delegateUserTeam: state.delegateStaffToCeo,
             completedSeason: archive.season,
             standings: archive.standings as Array<{ teamId: string; played?: number }>,
-            playerStats: archivedStats,
+            playerStats: typedArchivedStats,
             leagueHistory: [...HISTORICAL_LEAGUE_HISTORY, ...state.simulatedLeagueHistory],
             seed: state.saveId || state.fixtureSeed,
           });

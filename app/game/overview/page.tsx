@@ -119,6 +119,8 @@ import { InjuryStatusMarker } from "@/components/squad/InjuryStatusMarker";
 const TradeHubPage = dynamic(() => import("@/components/scouting/TradeHubPage"), { ssr: false });
 const SeasonDataAnalysisPage = dynamic(() => import("@/components/scouting/SeasonDataAnalysisPage"), { ssr: false });
 const ScoutingAssignmentsPage = dynamic(() => import("@/components/scouting/ScoutingAssignmentsPage"), { ssr: false });
+const PlayerAnalysisPage = dynamic(() => import("@/components/scouting/PlayerAnalysisPage"), { ssr: false });
+const LeagueScoutingPage = dynamic(() => import("@/components/scouting/LeagueScoutingPage"), { ssr: false });
 import TacticsLineupBuilder from "@/components/squad/TacticsLineupBuilder";
 const TeamTacticsPage = dynamic(() => import("@/components/squad/TeamTacticsPage"), { ssr: false });
 const PitchCuratorPage = dynamic(() => import("@/components/club/PitchCuratorPage"), { ssr: false });
@@ -417,6 +419,37 @@ function fixturesForCareerHistory(fixtures: Match[]) {
       label: fixture.label,
       archivedResultText: fixture.simulation?.resultText ?? fixture.archivedResultText,
     }));
+}
+
+function buildPlayerSeasonMatchLogs(fixtures: Match[]) {
+  const logs: Record<string, Array<{ id: string; date: string; opponentId: string; batting: string; bowling: string }>> = {};
+  fixtures.forEach((fixture) => {
+    if (!fixture.played || !fixture.scorecard) return;
+    const innings = [fixture.scorecard.inningsA, fixture.scorecard.inningsB];
+    const participantIds = new Set<string>();
+    innings.forEach((entry) => {
+      entry.batting.forEach((row) => participantIds.add(row.id));
+      entry.bowling.forEach((row) => participantIds.add(row.id));
+    });
+    participantIds.forEach((playerId) => {
+      const battingInnings = innings.find((entry) => entry.batting.some((row) => row.id === playerId));
+      const batting = battingInnings?.batting.find((row) => row.id === playerId);
+      const bowlingInnings = innings.find((entry) => entry.bowling.some((row) => row.id === playerId));
+      const bowling = bowlingInnings?.bowling.find((row) => row.id === playerId);
+      const battingInningsIndex = battingInnings ? innings.indexOf(battingInnings) : -1;
+      const bowlingInningsIndex = bowlingInnings ? innings.indexOf(bowlingInnings) : -1;
+      const playerTeamId = battingInningsIndex === 0 || bowlingInningsIndex === 1 ? fixture.teamA : fixture.teamB;
+      const opponentId = playerTeamId === fixture.teamA ? fixture.teamB : fixture.teamA;
+      (logs[playerId] ??= []).push({
+        id: fixture.id,
+        date: fixture.date ?? "—",
+        opponentId,
+        batting: batting ? `${batting.runs ?? 0} (${batting.balls ?? 0})` : "DNB",
+        bowling: bowling ? `${bowling.wickets ?? 0}/${bowling.runsConceded ?? 0} (${bowling.overs ?? 0})` : "—",
+      });
+    });
+  });
+  return logs;
 }
 
 function getArchivedPartnershipContribution(
@@ -812,6 +845,13 @@ function OverviewPageContent() {
   } = useGameStore();
   const matchArchiveCareerId = `${userTeamId}:${currentSeason}:${fixtureSeed}`;
   const userTeam = teams[userTeamId];
+  const scoutingPlayerPool = useMemo(() => ({
+    ...Object.fromEntries(Object.values(retiredPlayerSnapshots).map((snapshot) => {
+      const player = retiredSnapshotPlayer(snapshot);
+      return [player.id, player];
+    })),
+    ...players,
+  }), [players, retiredPlayerSnapshots]);
   const injuryReplacementPoolIds = useMemo(
     () => getInjuryReplacementPoolIds(players, auction),
     [auction, players],
@@ -876,6 +916,7 @@ function OverviewPageContent() {
   // --------------------------------------------------------------------------
   const [activeTab, setActiveTab] = useState<"home" | "club" | "commercial" | "squad" | "scouting" | "season" | "league" | "history">("home");
   const [activeSubTab, _setActiveSubTab] = useState<string>("overview");
+  const [analysisPlayerId, setAnalysisPlayerId] = useState<string | null>(null);
   const [stadiumBuilderCapacity, setStadiumBuilderCapacity] = useState<number | null>(null);
 
   useEffect(() => {
@@ -2000,6 +2041,7 @@ function OverviewPageContent() {
       fixtures: fixturesForCareerHistory(fixtures),
       standings,
       playerStats,
+      playerMatchLogs: buildPlayerSeasonMatchLogs(fixtures),
       reputationAchievements: buildCareerReputationAchievements(fixtures, playerStats, seasonAwards, players),
       leagueRecords: computeDynamicLeagueRecords(
         fixtures as any[],
@@ -4183,6 +4225,7 @@ This record has been officially verified and added to the IPL Minor Records arch
         fixtures: fixturesForCareerHistory(fixturesRef.current),
         standings,
         playerStats: statsRecord,
+        playerMatchLogs: buildPlayerSeasonMatchLogs(fixturesRef.current),
         reputationAchievements: buildCareerReputationAchievements(fixturesRef.current, statsRecord, seasonAwards, players),
         leagueRecords: computeDynamicLeagueRecords(
           fixturesRef.current as any[],
@@ -5274,7 +5317,7 @@ This record has been officially verified and added to the IPL Minor Records arch
     scouting: {
       label: "Scouting",
       icon: Search,
-      subtabs: ["overview", "assignments", "search", "planner"]
+      subtabs: ["overview", "assignments", "search", "playeranalysis", "leaguescouting", "planner"]
     },
     season: {
       label: "Season",
@@ -5306,6 +5349,8 @@ This record has been officially verified and added to the IPL Minor Records arch
     if (subtab === "injuryhub") return "Injury Hub";
     if (subtab === "search") return "Player Search";
     if (subtab === "assignments") return "Scouting Assignments";
+    if (subtab === "playeranalysis") return "Player Analysis";
+    if (subtab === "leaguescouting") return "League Scouting";
     if (subtab === "seasonanalysis") return "Season Data Analysis";
     if (subtab === "reports") return "Scout Reports";
     if (subtab === "planner") return "Auction Planner";
@@ -8341,7 +8386,7 @@ This record has been officially verified and added to the IPL Minor Records arch
               )}
               {/* Scouting Overview tab */}
               {activeSubTab === "overview" && (
-                <div className="grid h-[calc(100vh-200px)] min-h-[500px] grid-cols-12 grid-rows-[minmax(0,1.55fr)_minmax(0,0.75fr)] gap-4 overflow-hidden">
+                <div className="grid h-[calc(100vh-200px)] min-h-[500px] grid-cols-12 grid-rows-[minmax(0,1.35fr)_minmax(0,0.8fr)_minmax(0,0.7fr)] gap-4 overflow-hidden">
                   {/* Database search */}
                   <div onClick={() => setActiveSubTab("search")} className="col-span-7 flex min-h-0 cursor-pointer flex-col overflow-hidden rounded-lg border-2 border-border bg-surface p-5 transition-colors hover:border-accent">
                     <h4 className="font-anton text-[14px] uppercase border-b border-[#16130f]/10 pb-2 mb-3 shrink-0">GLOBAL SEARCH</h4>
@@ -8438,6 +8483,19 @@ This record has been officially verified and added to the IPL Minor Records arch
                         </div>
                       </div>
                       <div className="mt-2 flex items-center justify-between font-space-mono text-[9px] font-bold uppercase text-accent"><span>Open interactive maps</span><span>→</span></div>
+                    </div>
+
+                    <div onClick={() => setActiveSubTab("playeranalysis")} className="col-span-6 flex min-h-0 cursor-pointer flex-col overflow-hidden rounded-lg border-2 border-border bg-surface p-4 transition-colors hover:border-accent">
+                      <div className="flex items-center justify-between border-b border-[#16130f]/10 pb-2"><h4 className="font-anton text-[14px] uppercase">Player analysis</h4><span className="font-space-mono text-[8px] font-bold uppercase text-accent">Compare</span></div>
+                      <div className="mt-3 grid min-h-0 flex-1 grid-cols-2 gap-3">
+                        {bestScoutingPlayers.slice(0, 2).map((player) => <div key={player.id} className="rounded border border-border bg-bg/40 p-3"><div className="truncate font-barlow text-[12px] font-bold text-text-primary">{player.name}</div><div className="mt-1 font-space-mono text-[7px] font-bold uppercase text-text-secondary">{player.role} · {teams[player.currentTeamId ?? ""]?.shortName ?? "Former"}</div><div className="mt-3 flex justify-between font-space-mono text-[8px] uppercase"><span>IPL {player.iplStats.matches} matches</span><span className="font-bold text-accent">{player.iplStats.runs} runs</span></div></div>)}
+                      </div>
+                    </div>
+
+                    <div onClick={() => setActiveSubTab("leaguescouting")} className="col-span-6 flex min-h-0 cursor-pointer flex-col overflow-hidden rounded-lg border-2 border-border bg-surface p-4 transition-colors hover:border-accent">
+                      <div className="flex items-center justify-between border-b border-[#16130f]/10 pb-2"><h4 className="font-anton text-[14px] uppercase">League scouting</h4><span className="font-space-mono text-[8px] font-bold uppercase text-accent">IPL database</span></div>
+                      <div className="mt-3 grid grid-cols-3 gap-2 text-center"><div className="rounded border border-border bg-bg/40 p-2"><div className="font-anton text-[18px] text-text-primary">{Object.values(players).filter((player) => player.iplHistory.some((entry) => entry.teamId !== "UNSOLD")).length}</div><div className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">IPL players</div></div><div className="rounded border border-border bg-bg/40 p-2"><div className="font-anton text-[18px] text-text-primary">{scoutingReports.length}</div><div className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Reports</div></div><div className="rounded border border-border bg-bg/40 p-2"><div className="font-anton text-[18px] text-text-primary">{shortlist.length}</div><div className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Shortlisted</div></div></div>
+                      <div className="mt-auto flex items-center justify-between font-space-mono text-[8px] font-bold uppercase text-text-secondary"><span>Search attributes and performance</span><span className="text-accent">→</span></div>
                     </div>
 
                     {/* Auction planner */}
@@ -8613,6 +8671,36 @@ This record has been officially verified and added to the IPL Minor Records arch
                     </table>
                   </div>
                 </div>
+              )}
+
+              {activeSubTab === "playeranalysis" && (
+                <PlayerAnalysisPage
+                  players={scoutingPlayerPool}
+                  teams={teams}
+                  userTeamId={userTeamId}
+                  currentSeason={currentSeason}
+                  fixtures={fixtures}
+                  seasonArchives={careerSeasonArchives}
+                  scoutingReports={scoutingReports}
+                  shortlist={shortlist}
+                  onToggleShortlist={toggleShortlist}
+                  onOpenProfile={setDetailedPlayerId}
+                  initialPlayerId={analysisPlayerId}
+                />
+              )}
+
+              {activeSubTab === "leaguescouting" && (
+                <LeagueScoutingPage
+                  players={scoutingPlayerPool}
+                  teams={teams}
+                  userTeamId={userTeamId}
+                  currentSeason={currentSeason}
+                  currentSeasonStats={playerStats}
+                  scoutingReports={scoutingReports}
+                  shortlist={shortlist}
+                  onToggleShortlist={toggleShortlist}
+                  onAnalyse={(playerId) => { setAnalysisPlayerId(playerId); setActiveSubTab("playeranalysis"); }}
+                />
               )}
 
               {/* Auction Planner page */}
