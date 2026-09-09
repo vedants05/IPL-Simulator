@@ -8696,6 +8696,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                   userTeamId={userTeamId}
                   currentSeason={currentSeason}
                   currentSeasonStats={playerStats}
+                  seasonArchives={careerSeasonArchives}
                   scoutingReports={scoutingReports}
                   shortlist={shortlist}
                   onToggleShortlist={toggleShortlist}
