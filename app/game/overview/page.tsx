@@ -121,15 +121,23 @@ const SeasonDataAnalysisPage = dynamic(() => import("@/components/scouting/Seaso
 const ScoutingAssignmentsPage = dynamic(() => import("@/components/scouting/ScoutingAssignmentsPage"), { ssr: false });
 const PlayerAnalysisPage = dynamic(() => import("@/components/scouting/PlayerAnalysisPage"), { ssr: false });
 const LeagueScoutingPage = dynamic(() => import("@/components/scouting/LeagueScoutingPage"), { ssr: false });
+const LeagueLegacyPage = dynamic(() => import("@/components/league/LeagueLegacyPage"), { ssr: false });
 import TacticsLineupBuilder from "@/components/squad/TacticsLineupBuilder";
 const TeamTacticsPage = dynamic(() => import("@/components/squad/TeamTacticsPage"), { ssr: false });
 const PitchCuratorPage = dynamic(() => import("@/components/club/PitchCuratorPage"), { ssr: false });
 const StadiumManagementPage = dynamic(() => import("@/components/club/StadiumManagementPage"), { ssr: false });
 const StadiumBuilderPage = dynamic(() => import("@/components/club/StadiumBuilderPage"), { ssr: false });
+import { reconcileStoredStadiumProject } from "@/components/club/StadiumBuilderPage";
 const StaffManagementPage = dynamic(() => import("@/components/club/StaffManagementPage"), { ssr: false });
 const BoardOverviewPage = dynamic(() => import("@/components/club/BoardOverviewPage"), { ssr: false });
 const SupportersPage = dynamic(() => import("@/components/club/SupportersPage"), { ssr: false });
 const CommercialMainPage = dynamic(() => import("@/components/commercial/CommercialMainPage"), { ssr: false });
+import {
+  processHomeMatchCommercialSettlement,
+  checkAndReleaseBcciTranches,
+  processSeasonEndCommercialSettlement,
+  getInjurySystemModifiersFromCommercial,
+} from "@/lib/logic/commercialSystem";
 const SocialMediaPage = dynamic(() => import("@/components/social/SocialMediaPage"), { ssr: false });
 const NewsPage = dynamic(() => import("@/components/news/NewsPage"), { ssr: false });
 import { getClubOwnership } from "@/lib/data/clubOwnership";
@@ -788,6 +796,7 @@ function OverviewPageContent() {
     players,
     currentDate,
     currentSeason,
+    saveId,
     fixtureSeed,
     auction,
     clubFigureTierOverrides,
@@ -922,12 +931,23 @@ function OverviewPageContent() {
   useEffect(() => {
     if (!userHomeStadium) return;
     try {
-      const key = `ipl-stadium-builder:${fixtureSeed || "career"}:${userHomeStadium.teamId}:v2`;
-      const stored = JSON.parse(localStorage.getItem(key) ?? "null") as { modules?: Array<{ capacity?: number }> } | null;
+      const reconciledCapacity = reconcileStoredStadiumProject({
+        teamId: userHomeStadium.teamId,
+        currentDate,
+        saveId: saveId || fixtureSeed || "career",
+        legacySaveId: fixtureSeed,
+      });
+      if (reconciledCapacity !== null) {
+        setStadiumBuilderCapacity(reconciledCapacity);
+        return;
+      }
+      const key = `ipl-stadium-builder:${saveId || fixtureSeed || "career"}:${userHomeStadium.teamId}:v2`;
+      const legacyKey = `ipl-stadium-builder:${fixtureSeed || "career"}:${userHomeStadium.teamId}:v2`;
+      const stored = JSON.parse(localStorage.getItem(key) ?? localStorage.getItem(legacyKey) ?? "null") as { modules?: Array<{ capacity?: number }> } | null;
       const capacities = stored?.modules?.map((module) => module.capacity).filter((capacity): capacity is number => Number.isFinite(capacity));
       setStadiumBuilderCapacity(capacities?.length ? capacities.reduce((sum, capacity) => sum + capacity, 0) : userHomeStadium.capacity);
     } catch { setStadiumBuilderCapacity(userHomeStadium.capacity); }
-  }, [activeSubTab, fixtureSeed, userHomeStadium]);
+  }, [activeSubTab, currentDate, fixtureSeed, saveId, userHomeStadium]);
   const [expandedLeagueHistorySeason, setExpandedLeagueHistorySeason] = useState<number | null>(null);
 
   const searchParams = useSearchParams();
@@ -2036,6 +2056,26 @@ function OverviewPageContent() {
         nrr: standing.nrr,
       })),
     });
+
+    if (userTeamId) {
+      let finishRank = 5;
+      if (final.winner === userTeamId) {
+        finishRank = 1;
+      } else if (final.teamA === userTeamId || final.teamB === userTeamId) {
+        finishRank = 2;
+      } else {
+        const userStandingIdx = standings.findIndex((s) => s.teamId === userTeamId);
+        finishRank = userStandingIdx >= 0 ? userStandingIdx + 1 : 5;
+      }
+      processSeasonEndCommercialSettlement(
+        userTeamId,
+        currentSeason,
+        finishRank,
+        userHomeStadium?.capacity ?? 45000,
+        userTeam ? userTeam.squad.map((id) => players[id]).filter((p): p is Player => Boolean(p)) : undefined,
+      );
+    }
+
     archiveCareerSeason({
       season: currentSeason,
       fixtures: fixturesForCareerHistory(fixtures),
@@ -3260,6 +3300,11 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}${replacementEligible
       });
     });
     const date = match.date ?? currentDate;
+    const userTeamParticipating = Boolean(userTeamId && (match.teamA === userTeamId || match.teamB === userTeamId));
+    const commercialModifiers = userTeamParticipating && userTeamId
+      ? getInjurySystemModifiersFromCommercial(userTeamId, currentSeason, userHomeStadium?.capacity ?? 45000)
+      : undefined;
+
     const result = processMatchInjuries({
       matchId: match.id,
       date,
@@ -3267,6 +3312,7 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}${replacementEligible
       seed: `${fixtureSeed}:${match.id}`,
       teamIds: [match.teamA, match.teamB],
       participants: Array.from(participantsById.values()),
+      modifiersByTeam: commercialModifiers && userTeamId ? { [userTeamId]: commercialModifiers } : undefined,
     });
     processAIReplacementSignings(date);
     publishUserInjuryUpdates(result, date);
@@ -3288,6 +3334,9 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}${replacementEligible
       preseasonStartDate: auctionDateString,
       firstFixtureDate,
       seasonFinalDate: finalDate,
+      modifiersByTeam: userTeamId ? {
+        [userTeamId]: getInjurySystemModifiersFromCommercial(userTeamId, currentSeason, userHomeStadium?.capacity ?? 45000),
+      } : undefined,
       generationEnabled: Boolean(
         liveAuction?.phase === "completed"
         && finalDate
@@ -3582,6 +3631,49 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}${replacementEligible
     const careerUpdate = toIplCareerMatchUpdate(simulatedMatch, currentSeason);
     if (careerUpdate) recordIplMatchStats([careerUpdate]);
     processCompletedMatchInjuries(simulatedMatch);
+
+    // Commercial settlements for user home matches
+    if (userTeamId && simulatedMatch.teamA === userTeamId) {
+      const oppTeam = teams[simulatedMatch.teamB];
+      const matchDate = simulatedMatch.date ?? currentDate;
+      const squadPlayersList = userTeam ? userTeam.squad.map((id) => players[id]).filter((p): p is Player => Boolean(p)) : undefined;
+      const userStadiumCap = userHomeStadium?.capacity ?? 45000;
+      const settlement = processHomeMatchCommercialSettlement(
+        userTeamId,
+        currentSeason,
+        simulatedMatch.id,
+        matchDate,
+        simulatedMatch.teamB,
+        oppTeam?.name ?? simulatedMatch.teamB,
+        userStadiumCap,
+        squadPlayersList,
+        supporterPreview ? {
+          supporterHappiness: supporterPreview.overallHappiness,
+          squadApproval: supporterPreview.categoryApproval.squad,
+          homeAtmosphere: supporterPreview.homeAtmosphere,
+          topPlayerApproval: supporterPreview.popularPlayers?.[0]?.approval,
+          topPlayerName: supporterPreview.popularPlayers?.[0]?.name,
+        } : undefined,
+      );
+      if (settlement) {
+        showToast(`Home Matchday Settled: +₹${settlement.gateReceiptCr} Cr gate (${settlement.occupancyPercent}% attendance vs ${oppTeam?.shortName ?? simulatedMatch.teamB})`);
+      }
+    }
+
+    // Release mid-season BCCI broadcast tranche (Tranche 2) upon reaching 7 played matches
+    if (userTeamId && (simulatedMatch.teamA === userTeamId || simulatedMatch.teamB === userTeamId)) {
+      const userMatchesPlayed = nextFixtures.filter((f) => Boolean(f.winner || f.played) && (f.teamA === userTeamId || f.teamB === userTeamId)).length;
+      const squadPlayersList = userTeam ? userTeam.squad.map((id) => players[id]).filter((p): p is Player => Boolean(p)) : undefined;
+      const userStadiumCap = userHomeStadium?.capacity ?? 45000;
+      checkAndReleaseBcciTranches(
+        userTeamId,
+        currentSeason,
+        userMatchesPlayed,
+        simulatedMatch.date ?? currentDate,
+        userStadiumCap,
+        squadPlayersList,
+      );
+    }
 
     const recordCheck = trackMinorRecordsOnMatchComplete(simulatedMatch, minorRecordsRef.current, teams, currentSeason, nextPlayerStats, {
       players,
@@ -3891,6 +3983,45 @@ This record has been officially verified and added to the IPL Minor Records arch
       const careerUpdate = toIplCareerMatchUpdate(simulatedMatch, currentSeason);
       if (careerUpdate) careerUpdates.push(careerUpdate);
       processCompletedMatchInjuries(simulatedMatch);
+
+      // Commercial settlements for user home matches in batch simulation
+      if (userTeamId && simulatedMatch.teamA === userTeamId) {
+        const oppTeam = teams[simulatedMatch.teamB];
+        const matchDate = simulatedMatch.date ?? currentDate;
+        const squadPlayersList = userTeam ? userTeam.squad.map((id) => players[id]).filter((p): p is Player => Boolean(p)) : undefined;
+        const userStadiumCap = userHomeStadium?.capacity ?? 45000;
+        processHomeMatchCommercialSettlement(
+          userTeamId,
+          currentSeason,
+          simulatedMatch.id,
+          matchDate,
+          simulatedMatch.teamB,
+          oppTeam?.name ?? simulatedMatch.teamB,
+          userStadiumCap,
+          squadPlayersList,
+          supporterPreview ? {
+            supporterHappiness: supporterPreview.overallHappiness,
+            squadApproval: supporterPreview.categoryApproval.squad,
+            homeAtmosphere: supporterPreview.homeAtmosphere,
+            topPlayerApproval: supporterPreview.popularPlayers?.[0]?.approval,
+            topPlayerName: supporterPreview.popularPlayers?.[0]?.name,
+          } : undefined,
+        );
+      }
+
+      if (userTeamId && (simulatedMatch.teamA === userTeamId || simulatedMatch.teamB === userTeamId)) {
+        const userMatchesPlayed = nextFixtures.filter((f) => Boolean(f.winner || f.played) && (f.teamA === userTeamId || f.teamB === userTeamId)).length;
+        const squadPlayersList = userTeam ? userTeam.squad.map((id) => players[id]).filter((p): p is Player => Boolean(p)) : undefined;
+        const userStadiumCap = userHomeStadium?.capacity ?? 45000;
+        checkAndReleaseBcciTranches(
+          userTeamId,
+          currentSeason,
+          userMatchesPlayed,
+          simulatedMatch.date ?? currentDate,
+          userStadiumCap,
+          squadPlayersList,
+        );
+      }
 
       const recordCheck = trackMinorRecordsOnMatchComplete(simulatedMatch, nextMinorRecords, teams, currentSeason, nextPlayerStats, {
         players,
@@ -4216,6 +4347,23 @@ This record has been officially verified and added to the IPL Minor Records arch
           nrr: standing.nrr,
         })),
       });
+    }
+
+    if (userTeamId) {
+      const userStandingIndex = standings.findIndex((s) => s.teamId === userTeamId);
+      const finishPosition = userStandingIndex >= 0 ? userStandingIndex + 1 : 8;
+      const isChamp = final.winner === userTeamId;
+      const isRunnerUp = runnerUpTeamId === userTeamId;
+      const finishRank = isChamp ? 1 : isRunnerUp ? 2 : finishPosition;
+      const userStadiumCap = userHomeStadium?.capacity ?? 45000;
+      const squadPlayersList = userTeam ? userTeam.squad.map((id) => players[id]).filter((p): p is Player => Boolean(p)) : undefined;
+      processSeasonEndCommercialSettlement(
+        userTeamId,
+        currentSeason,
+        finishRank,
+        userStadiumCap,
+        squadPlayersList,
+      );
     }
     setSeasonTransitionStage(`Transition 5/8 · Preparing detailed postseason archive for season ${currentSeason}...`);
     await yieldToBrowser();
@@ -5312,7 +5460,7 @@ This record has been officially verified and added to the IPL Minor Records arch
     commercial: {
       label: "Commercial",
       icon: DollarSign,
-      subtabs: ["overview", "ticketing", "matchdayops", "hospitality", "sponsorships", "merchandising", "marketing", "facilities", "broadcast", "operatingcosts", "finance"]
+      subtabs: ["overview", "matchday", "partnerships", "retail", "operations", "finance"]
     },
     scouting: {
       label: "Scouting",
@@ -5327,7 +5475,7 @@ This record has been officially verified and added to the IPL Minor Records arch
     league: {
       label: "League",
       icon: Table,
-      subtabs: ["overview", "staff", "trades", "injuries", "seasonanalysis", "minorrecords"]
+      subtabs: ["overview", "legacy", "staff", "trades", "injuries", "seasonanalysis", "minorrecords"]
     },
     history: {
       label: "History",
@@ -5352,6 +5500,7 @@ This record has been officially verified and added to the IPL Minor Records arch
     if (subtab === "playeranalysis") return "Player Analysis";
     if (subtab === "leaguescouting") return "League Scouting";
     if (subtab === "seasonanalysis") return "Season Data Analysis";
+    if (subtab === "legacy") return "Legacy";
     if (subtab === "reports") return "Scout Reports";
     if (subtab === "planner") return "Auction Planner";
     if (subtab === "trades") return "Trade Hub";
@@ -5371,10 +5520,14 @@ This record has been officially verified and added to the IPL Minor Records arch
     if (subtab === "sponsorships") return "Sponsors";
     if (subtab === "merchandising") return "Retail";
     if (subtab === "marketing") return "Marketing";
-    if (subtab === "facilities") return "Facilities";
+    if (subtab === "facilities") return "High-Performance";
     if (subtab === "broadcast") return "Broadcast";
     if (subtab === "operatingcosts") return "Costs";
     if (subtab === "finance") return "Finance";
+    if (subtab === "matchday") return "Matchday Revenue";
+    if (subtab === "partnerships") return "Partnerships";
+    if (subtab === "retail") return "Retail & Marketing";
+    if (subtab === "operations") return "Club Operations";
     if (subtab === "calendar") return "Season Calendar";
     if (subtab === "social") return "Social Media";
     if (subtab === "news") return "News";
@@ -7716,7 +7869,8 @@ This record has been officially verified and added to the IPL Minor Records arch
                 <StadiumBuilderPage
                   teamId={userTeamId}
                   currentDate={currentDate}
-                  saveId={fixtureSeed}
+                  saveId={saveId || fixtureSeed}
+                  legacySaveId={fixtureSeed}
                   pitchCount={userHomeStadium.pitches.length + userCustomPitches.length}
                 />
               )}
@@ -7733,6 +7887,11 @@ This record has been officially verified and added to the IPL Minor Records arch
               stadiumCapacity={stadiumBuilderCapacity ?? userHomeStadium?.capacity ?? 45000}
               stadiumName={userHomeStadium?.name ?? "Home Stadium"}
               squadPlayers={userTeam.squad.map((playerId) => players[playerId]).filter((player): player is Player => Boolean(player))}
+              supporterView={supporterPreview ?? undefined}
+              onNavigateToSupporters={() => {
+                setActiveTab("club");
+                setActiveSubTab("supporters");
+              }}
               activeSubTab={activeSubTab}
               onSelectSubTab={setActiveSubTab}
             />
@@ -9601,7 +9760,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                     <button
                       type="button"
                       onClick={() => setActiveSubTab("seasonanalysis")}
-                      className="group relative col-span-1 flex min-h-[18rem] overflow-hidden rounded-xl border-2 border-border bg-surface p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-accent hover:shadow-md xl:col-span-7 xl:min-h-0"
+                      className="group relative col-span-1 flex min-h-[18rem] overflow-hidden rounded-xl border-2 border-border bg-surface p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-accent hover:shadow-md xl:col-span-4 xl:min-h-0"
                     >
                       <div className="pointer-events-none absolute -bottom-20 -right-10 size-48 rounded-full bg-violet-500/10 blur-3xl" />
                       <div className="relative flex w-[42%] shrink-0 flex-col border-r border-border pr-5">
@@ -9620,7 +9779,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                     <button
                       type="button"
                       onClick={() => setActiveSubTab("minorrecords")}
-                      className="group relative col-span-1 flex min-h-[24rem] flex-col overflow-hidden rounded-xl border-2 border-border bg-surface p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-accent hover:shadow-md xl:col-span-5 xl:min-h-0"
+                      className="group relative col-span-1 flex min-h-[18rem] flex-col overflow-hidden rounded-xl border-2 border-border bg-surface p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-accent hover:shadow-md xl:col-span-4 xl:min-h-0"
                     >
                       <div className="pointer-events-none absolute -bottom-16 -right-8 size-40 rounded-full bg-amber-500/10 blur-3xl" />
                       <div className="relative flex items-start justify-between border-b border-border pb-2">
@@ -9661,6 +9820,25 @@ This record has been officially verified and added to the IPL Minor Records arch
                       )}
                       <span className="relative mt-1 inline-flex items-center gap-1 font-space-mono text-[8px] font-bold uppercase tracking-wider text-accent">Browse the archive <ChevronRight size={12} /></span>
                     </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setActiveSubTab("legacy")}
+                      className="group relative col-span-1 flex min-h-[18rem] flex-col overflow-hidden rounded-xl border-2 border-border bg-surface p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-warning hover:shadow-md xl:col-span-4 xl:min-h-0"
+                    >
+                      <div className="pointer-events-none absolute -bottom-16 -right-10 size-44 rounded-full bg-amber-500/15 blur-3xl" />
+                      <div className="relative flex items-start justify-between border-b border-border pb-3">
+                        <div className="flex items-center gap-3"><span className="flex size-9 items-center justify-center rounded-lg bg-warning/10 text-warning"><Crown size={18} aria-hidden="true" /></span><div><p className="font-space-mono text-[8px] font-bold uppercase tracking-[0.18em] text-text-secondary">Franchise honours</p><h3 className="mt-1 font-anton text-lg uppercase leading-none text-text-primary">League Legacy</h3></div></div>
+                        <ArrowUpRight size={15} className="text-warning transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
+                      </div>
+                      <p className="relative mt-4 font-anton text-4xl leading-none text-text-primary">{leagueHistorySeasons.length}</p>
+                      <p className="relative mt-1 font-space-mono text-[8px] font-bold uppercase text-text-secondary">Seasons fully recorded</p>
+                      <div className="relative mt-4 grid grid-cols-2 gap-2">
+                        <div className="rounded-lg bg-bg/70 p-3"><p className="font-anton text-2xl text-warning">{new Set(leagueHistorySeasons.map((season) => season.championTeamId === "DD" ? "DC" : season.championTeamId === "KXIP" ? "PBKS" : season.championTeamId)).size}</p><p className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Champion teams</p></div>
+                        <div className="rounded-lg bg-bg/70 p-3"><p className="font-anton text-2xl text-text-primary">6</p><p className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Honour columns</p></div>
+                      </div>
+                      <span className="relative mt-auto inline-flex items-center gap-1 font-space-mono text-[8px] font-bold uppercase tracking-wider text-warning">Open legacy table <ChevronRight size={12} /></span>
+                    </button>
                   </div>
                 );
               })()}
@@ -9687,6 +9865,21 @@ This record has been officially verified and added to the IPL Minor Records arch
               )}
               {activeSubTab === "minorrecords" && (
                 <MinorRecords minorRecords={minorRecords} />
+              )}
+              {activeSubTab === "legacy" && (
+                <LeagueLegacyPage
+                  seasons={leagueHistorySeasons}
+                  teams={{
+                    ...LEAGUE_HISTORY_TEAMS,
+                    ...Object.fromEntries(Object.values(teams).map((team) => [team.id, {
+                      id: team.id,
+                      name: team.name,
+                      shortName: team.shortName,
+                      primaryColor: team.primaryColor,
+                      secondaryColor: team.secondaryColor,
+                    }]))
+                  }}
+                />
               )}
             </>
           )}

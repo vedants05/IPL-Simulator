@@ -13,6 +13,7 @@ import {
   Percent,
   Plus,
   Minus,
+  ChevronRight,
 } from "lucide-react";
 import type {
   CommercialState,
@@ -20,11 +21,14 @@ import type {
   LoungeSuite,
   PremiumExperiencePackage,
 } from "@/lib/logic/commercialSystem";
+import type { TeamSupporterView } from "@/lib/logic/supporters";
 
 interface HospitalitySubpageProps {
   state: CommercialState;
   stadiumCapacity: number;
   stadiumName: string;
+  supporterView?: TeamSupporterView;
+  onNavigateToSupporters?: () => void;
   onUpdateState: (nextState: CommercialState) => void;
 }
 
@@ -32,6 +36,8 @@ export default function HospitalitySubpage({
   state,
   stadiumCapacity,
   stadiumName,
+  supporterView,
+  onNavigateToSupporters,
   onUpdateState,
 }: HospitalitySubpageProps) {
   const { hospitality } = state;
@@ -124,6 +130,15 @@ export default function HospitalitySubpage({
     .filter((b) => b.leasedSeasonally)
     .reduce((sum, b) => sum + b.leaseAmountSeasonCr, 0);
 
+  const corporateGroup = supporterView?.groups.find((g) => g.id === "corporate");
+  const corporateHappiness = corporateGroup?.happiness ?? 65;
+  const corporateRenewalUplift =
+    corporateHappiness >= 75
+      ? "+15% High Renewal Demand"
+      : corporateHappiness >= 55
+      ? "Stable Renewal Demand"
+      : "-18% Renewal Attrition Risk";
+
   return (
     <div className="space-y-6">
       {/* KPI Cards */}
@@ -182,6 +197,66 @@ export default function HospitalitySubpage({
           <p className="mt-1 text-xs text-text-secondary">At {stadiumName}</p>
         </div>
       </div>
+
+      {/* Corporate & High-Net-Worth Supporter Sentiment */}
+      {supporterView && (
+        <div className="rounded-lg border border-border/80 bg-surface p-4 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/50 pb-2.5">
+            <div className="flex items-center gap-2">
+              <span className="flex size-7 items-center justify-center rounded bg-amber-500/10 text-amber-400">
+                <Crown className="size-4" />
+              </span>
+              <div>
+                <h3 className="text-xs font-bold uppercase tracking-wider text-text-primary">
+                  Corporate Fanbase & VIP Suite Synergy
+                </h3>
+                <p className="text-[10px] text-text-secondary">
+                  Corporate and high-net-worth fan satisfaction dictates luxury box lease renewals and premium lounge pricing power.
+                </p>
+              </div>
+            </div>
+            {onNavigateToSupporters && (
+              <button
+                type="button"
+                onClick={onNavigateToSupporters}
+                className="flex items-center gap-1 rounded border border-accent/40 bg-accent/10 px-2.5 py-1 font-space-mono text-[8px] font-bold uppercase text-accent hover:bg-accent/20 transition-colors"
+              >
+                View Supporters Page <ChevronRight className="size-3" />
+              </button>
+            )}
+          </div>
+
+          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="rounded border border-border/60 bg-surface-secondary/30 p-2.5">
+              <span className="font-space-mono text-[7px] uppercase text-text-secondary">Corporate Supporter Sentiment</span>
+              <div className="mt-1 text-xs font-bold text-text-primary">
+                {corporateGroup ? `${corporateGroup.happiness}% Approval` : "65% Approval"}
+              </div>
+              <p className="mt-0.5 text-[9px] text-text-secondary">
+                {corporateGroup ? `Represents ${corporateGroup.share}% of overall club supporter share` : "Key corporate sponsor network"}
+              </p>
+            </div>
+            <div className="rounded border border-border/60 bg-surface-secondary/30 p-2.5">
+              <span className="font-space-mono text-[7px] uppercase text-text-secondary">Luxury Box Lease Demand</span>
+              <div className={`mt-1 text-xs font-bold ${corporateHappiness >= 55 ? "text-emerald-400" : "text-rose-400"}`}>
+                {corporateRenewalUplift}
+              </div>
+              <p className="mt-0.5 text-[9px] text-text-secondary">
+                {corporateHappiness >= 75 ? "High executive hospitality demand" : corporateHappiness >= 50 ? "Healthy enterprise renewal rate" : "Sponsor dissatisfaction risking lease dropouts"}
+              </p>
+            </div>
+            <div className="rounded border border-border/60 bg-surface-secondary/30 p-2.5">
+              <span className="font-space-mono text-[7px] uppercase text-text-secondary">Club Matchday Atmosphere</span>
+              <div className="mt-1 text-xs font-bold text-cyan-400">
+                {supporterView.homeAtmosphere} / 100 Stadium Energy
+              </div>
+              <p className="mt-0.5 text-[9px] text-text-secondary">
+                Premium lounge guests value vibrant stadium atmosphere
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="flex gap-2 border-b border-border pb-3">

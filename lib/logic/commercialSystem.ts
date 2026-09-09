@@ -1,6 +1,7 @@
 import { getHomeStadium, type IplTeamId } from "@/lib/data/pitchCurator";
 import { getClubOwnership } from "@/lib/data/clubOwnership";
 import type { Team, Player } from "@/lib/types";
+import { type InjurySystemModifiers, DEFAULT_INJURY_SYSTEM_MODIFIERS } from "@/lib/logic/injuries";
 
 // ============================================================================
 // 1. TICKETING & ATTENDANCE TYPES
@@ -57,6 +58,20 @@ export interface TicketingState {
   seasonTickets: SeasonTicketPackage;
   matchCategories: Record<MatchCategory, MatchCategoryConfig>;
   gateReceiptsSeasonTotalCr: number;
+  /** Forecast for the full home schedule. Kept separate from receipts already earned. */
+  projectedGateReceiptsCr?: number;
+  actualGateReceiptsCr?: number;
+  settledMatchIds?: string[];
+}
+
+export interface SupporterCommercialContext {
+  overallHappiness?: number;
+  supporterHappiness?: number;
+  homeAtmosphere?: number;
+  squadApproval?: number;
+  topPlayerApproval?: number;
+  topPlayerName?: string;
+  mood?: string;
 }
 
 export interface TicketingProjection {
@@ -66,18 +81,21 @@ export interface TicketingProjection {
   averageGatePerHomeMatchCr: number;
   gateReceiptsSeasonTotalCr: number;
   totalTicketingRevenueCr: number;
+  supporterDemandModifierPercent?: number;
 }
 
 /**
- * Single generation/UI projection boundary for ticketing. Later match, supporter,
- * stadium and finance systems can supply their own demand inputs without each
- * consumer inventing a different gate-receipt formula.
+ * Single generation/UI projection boundary for ticketing. Integrates supporter
+ * sentiment, player popularity, and venue capacity into realistic demand elasticity.
  */
 export function calculateTicketingProjection(
   ticketing: Pick<TicketingState, "tiers" | "seasonTickets" | "matchCategories">,
   stadiumCapacity: number,
-  homeMatches = 7,
+  homeMatchesOrContext?: number | SupporterCommercialContext,
+  supporterImpactArg?: SupporterCommercialContext,
 ): TicketingProjection {
+  const homeMatches = typeof homeMatchesOrContext === "number" ? homeMatchesOrContext : 7;
+  const supporterImpact = typeof homeMatchesOrContext === "object" ? homeMatchesOrContext : supporterImpactArg;
   const capacity = Math.max(0, Math.round(stadiumCapacity));
   const regularMatchdaySeats = Math.max(0, capacity - ticketing.seasonTickets.allocatedSeats);
   const weightedBasePriceInr = ticketing.tiers.reduce((sum, tier) => sum + tier.currentPriceInr * tier.capacityShare, 0);
@@ -93,7 +111,20 @@ export function calculateTicketingProjection(
   );
   const priceRatio = weightedBasePriceInr / baselineWeightedPrice;
   const priceEffect = priceRatio >= 1 ? -(priceRatio - 1) * 0.48 : (1 - priceRatio) * 0.18;
-  const occupancy = Math.max(0.62, Math.min(0.99, 0.84 + categoryDemandBonus / 100 * 0.32 + priceEffect));
+
+  // Supporter happiness & squad/player morale influence on ticket willingness-to-pay
+  const happiness = supporterImpact?.overallHappiness ?? supporterImpact?.supporterHappiness ?? 65;
+  const squadApproval = supporterImpact?.squadApproval ?? 65;
+  const starApproval = supporterImpact?.topPlayerApproval ?? 65;
+  const atmosphere = supporterImpact?.homeAtmosphere ?? 60;
+
+  const happinessEffect = ((happiness - 65) / 100) * 0.14;
+  const squadEffect = ((squadApproval - 65) / 100) * 0.08;
+  const starEffect = ((starApproval - 65) / 100) * 0.06;
+  const atmosphereEffect = ((atmosphere - 65) / 100) * 0.05;
+  const supporterTotalEffect = happinessEffect + squadEffect + starEffect + atmosphereEffect;
+
+  const occupancy = Math.max(0.55, Math.min(0.99, 0.84 + categoryDemandBonus / 100 * 0.32 + priceEffect + supporterTotalEffect));
   const averageGatePerHomeMatchCr = regularMatchdaySeats * weightedBasePriceInr * categoryPriceMultiplier * occupancy / 10_000_000;
   const gateReceiptsSeasonTotalCr = averageGatePerHomeMatchCr * Math.max(0, homeMatches);
   return {
@@ -103,6 +134,7 @@ export function calculateTicketingProjection(
     averageGatePerHomeMatchCr: Number(averageGatePerHomeMatchCr.toFixed(2)),
     gateReceiptsSeasonTotalCr: Number(gateReceiptsSeasonTotalCr.toFixed(2)),
     totalTicketingRevenueCr: Number((gateReceiptsSeasonTotalCr + ticketing.seasonTickets.totalRevenueCr).toFixed(2)),
+    supporterDemandModifierPercent: Number((supporterTotalEffect * 100).toFixed(1)),
   };
 }
 
@@ -260,34 +292,32 @@ export interface MarketingState {
 }
 
 // ============================================================================
-// 7. UPGRADEABLE FACILITIES TYPES (No training facilities)
+// 7. HIGH-PERFORMANCE, SCOUTING & CLUB OPERATIONS
 // ============================================================================
 
-export type FacilityType = "medical" | "admin" | "scouting" | "commercial";
+export type OperationCategory = "sports_science" | "scouting_network" | "prep_camps" | "logistics_travel";
 
-export interface FacilityLevel {
-  level: number;
+export interface OperationTierOption {
+  id: string;
   name: string;
-  upgradeCostCr: number;
-  constructionDays: number;
-  annualMaintenanceCr: number;
+  providerOrPartner: string;
+  annualCostCr: number;
+  setupCostCr: number;
   benefits: string[];
+  impactSummary: string;
+  reputationRequired: number; // minimum club brand prestige
 }
 
-export interface ClubFacility {
-  type: FacilityType;
+export interface ClubOperationProgramme {
+  category: OperationCategory;
   name: string;
-  currentLevel: number;
-  maxLevel: number;
-  levels: FacilityLevel[];
-  isUpgrading: boolean;
-  upgradeTargetLevel?: number;
-  upgradeDaysRemaining?: number;
+  activeTierId: string;
+  tierOptions: OperationTierOption[];
 }
 
-export interface FacilitiesState {
-  facilities: Record<FacilityType, ClubFacility>;
-  totalAnnualMaintenanceCr: number;
+export interface OperationsState {
+  programmes: Record<OperationCategory, ClubOperationProgramme>;
+  totalAnnualOperatingInvestmentCr: number;
 }
 
 // ============================================================================
@@ -353,194 +383,190 @@ export interface CommercialState {
   sponsorships: SponsorshipState;
   merchandising: MerchandisingState;
   marketing: MarketingState;
-  facilities: FacilitiesState;
+  operations: OperationsState;
   broadcast: BroadcastIncomeState;
   operatingCosts: OperatingCostsState;
   finance: FinanceDashboardState;
 }
 
 // ============================================================================
-// FACILITY DEFINITIONS (Levels 1 to 5)
+// HIGH-PERFORMANCE & OPERATIONAL PROGRAMME DEFINITIONS
+// Realistic franchise partnerships and operational tiers
 // ============================================================================
 
-export const FACILITY_DEFINITIONS: Record<FacilityType, { name: string; levels: FacilityLevel[] }> = {
-  medical: {
-    name: "Medical & Sports Science Centre",
-    levels: [
+export const OPERATION_PROGRAMME_DEFINITIONS: Record<
+  OperationCategory,
+  { name: string; tierOptions: OperationTierOption[] }
+> = {
+  sports_science: {
+    name: "Sports Science, Medical & Recovery Network",
+    tierOptions: [
       {
-        level: 1,
-        name: "Standard Clinic",
-        upgradeCostCr: 0,
-        constructionDays: 0,
-        annualMaintenanceCr: 0.8,
-        benefits: ["Basic first-aid & physiotherapy", "Standard recovery timelines"],
+        id: "clinic_basic",
+        name: "Standard Medical & Physio Retainer",
+        providerOrPartner: "Local Municipal Sports Clinic",
+        annualCostCr: 1.2,
+        setupCostCr: 0,
+        benefits: [
+          "BCCI standard injury triage & first-aid",
+          "Standard recovery timelines across squad",
+          "Local physiotherapy consulting during match weeks",
+        ],
+        impactSummary: "Baseline care for minor strains; standard rehabilitation times.",
+        reputationRequired: 0,
       },
       {
-        level: 2,
-        name: "Specialized Physio Hub",
-        upgradeCostCr: 4.5,
-        constructionDays: 45,
-        annualMaintenanceCr: 1.5,
-        benefits: ["5% faster injury recovery times", "Ultrasound and soft-tissue diagnostics"],
+        id: "institute_partnership",
+        name: "Super-Specialty Orthopaedic Partnership",
+        providerOrPartner: "Apollo / Kokilaben Sports Medicine Network",
+        annualCostCr: 3.5,
+        setupCostCr: 1.5,
+        benefits: [
+          "15% faster recovery from soft-tissue and groin strains",
+          "Dedicated squad biomechanist and cryotherapy access",
+          "Continuous biometric load monitoring and early stress detection",
+        ],
+        impactSummary: "Significantly cuts down minor injury durations and detects fatigue early.",
+        reputationRequired: 65,
       },
       {
-        level: 3,
-        name: "Sports Biomechanics Lab",
-        upgradeCostCr: 9.0,
-        constructionDays: 70,
-        annualMaintenanceCr: 2.4,
-        benefits: ["10% faster injury recovery times", "Reduces fast-bowler micro-trauma wear", "Cryotherapy recovery baths"],
-      },
-      {
-        level: 4,
-        name: "High-Performance Medical Institute",
-        upgradeCostCr: 16.0,
-        constructionDays: 100,
-        annualMaintenanceCr: 3.8,
-        benefits: ["15% faster injury recovery times", "Early detection of stress fractures", "Lowers severe injury chance by 20%"],
-      },
-      {
-        level: 5,
-        name: "World-Class Sports Science Complex",
-        upgradeCostCr: 25.0,
-        constructionDays: 140,
-        annualMaintenanceCr: 5.5,
-        benefits: ["22% faster recovery times across squad", "Maximum injury protection for elite pace attack", "Hyperbaric recovery suites"],
-      },
-    ],
-  },
-  admin: {
-    name: "Administrative HQ & Executive Campus",
-    levels: [
-      {
-        level: 1,
-        name: "Leased City Office",
-        upgradeCostCr: 0,
-        constructionDays: 0,
-        annualMaintenanceCr: 1.0,
-        benefits: ["Basic club operations", "Standard administrative handling"],
-      },
-      {
-        level: 2,
-        name: "Dedicated Club Headquarters",
-        upgradeCostCr: 3.5,
-        constructionDays: 40,
-        annualMaintenanceCr: 1.8,
-        benefits: ["Improves executive communication", "+5% board confidence buffer"],
-      },
-      {
-        level: 3,
-        name: "Franchise Operations Center",
-        upgradeCostCr: 7.5,
-        constructionDays: 60,
-        annualMaintenanceCr: 2.8,
-        benefits: ["5% reduction in administrative friction costs", "Attracts tier-1 executive talent", "Streamlined player contract filings"],
-      },
-      {
-        level: 4,
-        name: "Modern Corporate Campus",
-        upgradeCostCr: 14.0,
-        constructionDays: 90,
-        annualMaintenanceCr: 4.0,
-        benefits: ["10% reduction in departmental overheads", "Global media conference auditorium", "+10% board patience cushion"],
-      },
-      {
-        level: 5,
-        name: "Global Sports Enterprise HQ",
-        upgradeCostCr: 22.0,
-        constructionDays: 130,
-        annualMaintenanceCr: 5.8,
-        benefits: ["State-of-the-art franchise landmark", "Unlocks prestigious global corporate partnerships", "Maximum club stature"],
+        id: "global_high_performance",
+        name: "Elite Global Sports Science Consortium",
+        providerOrPartner: "Red Bull Athlete Performance Center & London Orthopaedic",
+        annualCostCr: 7.8,
+        setupCostCr: 3.2,
+        benefits: [
+          "28% faster recovery times across all injury categories",
+          "Maximum protection against bowler stress fractures and tendon tears",
+          "Immediate air-evacuation & consultation with world-leading specialists",
+          "Customized circadian sleep & post-match recovery pods",
+        ],
+        impactSummary: "World-class care ensuring premier pace bowlers and key batters stay match-ready.",
+        reputationRequired: 80,
       },
     ],
   },
-  scouting: {
-    name: "Global Scouting & Analytics Lab",
-    levels: [
+  scouting_network: {
+    name: "Domestic & Global Talent Identification",
+    tierOptions: [
       {
-        level: 1,
-        name: "Regional Scouting Desk",
-        upgradeCostCr: 0,
-        constructionDays: 0,
-        annualMaintenanceCr: 0.6,
-        benefits: ["Basic state & domestic tournament scouting", "Standard scouting reports"],
+        id: "regional_domestic",
+        name: "Regional State Trophy Scouts",
+        providerOrPartner: "Zonal BCCI Talent Scouts",
+        annualCostCr: 0.8,
+        setupCostCr: 0,
+        benefits: [
+          "Ranji Trophy and Syed Mushtaq Ali Trophy coverage",
+          "Standard scouting reports on prominent domestic prospects",
+        ],
+        impactSummary: "Covers mainstream domestic cricket and standard auction names.",
+        reputationRequired: 0,
       },
       {
-        level: 2,
-        name: "Domestic Video & Data Room",
-        upgradeCostCr: 3.0,
-        constructionDays: 35,
-        annualMaintenanceCr: 1.2,
-        benefits: ["5% faster scouting report completion", "Reveals second-tier prospect attributes accurately"],
+        id: "national_analytics",
+        name: "Nationwide Video & Ball-Tracking Analytics Bureau",
+        providerOrPartner: "CricViz & Specialized Video Scouting Bureau",
+        annualCostCr: 2.8,
+        setupCostCr: 1.0,
+        benefits: [
+          "Accurate ratings and release of hidden potential bands for all domestic players",
+          "Pinpoints clutch temperament and strike rate vs high pace/spin",
+          "Discovers high-ceiling uncapped domestic talents before the auction",
+        ],
+        impactSummary: "Uncovers undervalued domestic talents and clarifies true skill potential.",
+        reputationRequired: 65,
       },
       {
-        level: 3,
-        name: "Overseas Talent Tracking Network",
-        upgradeCostCr: 6.5,
-        constructionDays: 55,
-        annualMaintenanceCr: 2.0,
-        benefits: ["10% faster scouting assignments", "Tracks emerging talent across all major T20 leagues", "Pinpoints clutch temperament early"],
-      },
-      {
-        level: 4,
-        name: "AI Analytics & Ball-Tracking Lab",
-        upgradeCostCr: 12.0,
-        constructionDays: 85,
-        annualMaintenanceCr: 3.2,
-        benefits: ["15% faster scouting assignments", "Complete release of hidden potential bands", "Uncovers bargain gems in auction"],
-      },
-      {
-        level: 5,
-        name: "Global Predictive Intelligence Hub",
-        upgradeCostCr: 18.5,
-        constructionDays: 120,
-        annualMaintenanceCr: 4.6,
-        benefits: ["25% faster scouting assignments", "Instant complete scouting data on all international prospects", "Flawless talent projections"],
+        id: "global_academy_network",
+        name: "Global Franchise Scouting & Emerging Leagues Network",
+        providerOrPartner: "Worldwide Talent Bureau (Caribbean, SA20, BBL & Associate)",
+        annualCostCr: 5.5,
+        setupCostCr: 2.0,
+        benefits: [
+          "Year-round observation across CPL, SA20, BBL, PSL, and global T20s",
+          "Instant scouting access to elite international overseas breakout stars",
+          "Exclusive data on hidden overseas spinners and 145kph+ raw pace talents",
+        ],
+        impactSummary: "Ensures franchise dominates mini-auctions with proprietary overseas intelligence.",
+        reputationRequired: 80,
       },
     ],
   },
-  commercial: {
-    name: "Commercial & Fan Retail Complex",
-    levels: [
+  prep_camps: {
+    name: "Pre-Season Conditioning & Tactical Camps",
+    tierOptions: [
       {
-        level: 1,
-        name: "Matchday Pop-Up Kiosks",
-        upgradeCostCr: 0,
-        constructionDays: 0,
-        annualMaintenanceCr: 0.5,
-        benefits: ["Basic stadium matchday merchandise sales", "Standard concession royalties"],
+        id: "camp_local",
+        name: "Local Pre-Tournament Camp (7 Days)",
+        providerOrPartner: "Home Franchise Stadium Facilities",
+        annualCostCr: 0.9,
+        setupCostCr: 0,
+        benefits: [
+          "Brief 1-week warm-up squad assembling before tournament opener",
+          "Standard match simulation against local state bowlers",
+        ],
+        impactSummary: "Standard pre-season routine; players find form gradually in opening games.",
+        reputationRequired: 0,
       },
       {
-        level: 2,
-        name: "Official Stadium Megastore",
-        upgradeCostCr: 4.0,
-        constructionDays: 45,
-        annualMaintenanceCr: 1.4,
-        benefits: ["+5% merchandise profit margins", "Dedicated matchday retail lines"],
+        id: "camp_specialized",
+        name: "Dedicated High-Performance Centre Camp (14 Days)",
+        providerOrPartner: "Alur / Centre of Excellence Intensive Camp",
+        annualCostCr: 2.6,
+        setupCostCr: 0.8,
+        benefits: [
+          "Intensive 2-week match-situation scenarios and scenario simulation",
+          "+5% opening fixture team synergy & sharp match fitness",
+          "Personalized batting aggression and death-overs execution drills",
+        ],
+        impactSummary: "Squad hits the ground running with sharp fielding and tactical clarity from match 1.",
+        reputationRequired: 65,
       },
       {
-        level: 3,
-        name: "Interactive Fan Experience Zone",
-        upgradeCostCr: 8.5,
-        constructionDays: 70,
-        annualMaintenanceCr: 2.6,
-        benefits: ["+8% merchandise profit margins", "+10% hospitality and concession footfall", "E-sports and batting simulator booths"],
+        id: "camp_overseas_tour",
+        name: "International Warm-Up & High-Altitude Conditioning (21 Days)",
+        providerOrPartner: "Dubai ICC Academy / UK Summer Base",
+        annualCostCr: 6.2,
+        setupCostCr: 2.5,
+        benefits: [
+          "3-week elite training under varied pitch and climate conditions",
+          "+10% squad confidence and maximum tactical cohesion",
+          "Full squad cohesion bonding, leadership seminars, and match scenarios",
+        ],
+        impactSummary: "Peak athletic conditioning that carries the team deep into playoff pressure moments.",
+        reputationRequired: 80,
+      },
+    ],
+  },
+  logistics_travel: {
+    name: "Franchise Transit, Hotel & Matchday Logistics",
+    tierOptions: [
+      {
+        id: "travel_commercial",
+        name: "Commercial Domestic Aviation & 5-Star Group Bookings",
+        providerOrPartner: "Commercial Scheduled Airlines",
+        annualCostCr: 6.5,
+        setupCostCr: 0,
+        benefits: [
+          "Premium airline group bookings between tournament venues",
+          "5-star hotel accommodations with private squad dining halls",
+        ],
+        impactSummary: "Standard IPL logistical arrangements with typical airport transit fatigue.",
+        reputationRequired: 0,
       },
       {
-        level: 4,
-        name: "Commercial Flagship Boulevard",
-        upgradeCostCr: 15.0,
-        constructionDays: 100,
-        annualMaintenanceCr: 4.2,
-        benefits: ["+12% merchandise profit margins", "Year-round tourist footfall and sales", "Premier event hosting space"],
-      },
-      {
-        level: 5,
-        name: "Franchise Megaplex & Entertainment City",
-        upgradeCostCr: 24.0,
-        constructionDays: 140,
-        annualMaintenanceCr: 6.0,
-        benefits: ["+18% merchandise profit margins", "+20% matchday ancillary revenue", "Year-round dining, museum & shopping destination"],
+        id: "travel_private_charter",
+        name: "Dedicated Private Jet Charters & Luxury Team Motorcoaches",
+        providerOrPartner: "Private Aviation Charter Fleet",
+        annualCostCr: 12.5,
+        setupCostCr: 1.5,
+        benefits: [
+          "Direct charter flights between city matches without commercial airport transit delays",
+          "Luxury custom air-conditioned sleeper coaches for city transfers",
+          "Significantly reduces travel fatigue and preserves bowler recovery between back-to-back games",
+        ],
+        impactSummary: "Minimizes travel fatigue during brutal 3-games-in-5-days road trips.",
+        reputationRequired: 70,
       },
     ],
   },
@@ -847,46 +873,52 @@ export function createDefaultCommercialState(
     },
   ] : [];
 
-  // 7. Facilities
-  const facilities: Record<FacilityType, ClubFacility> = {
-    medical: {
-      type: "medical",
-      name: FACILITY_DEFINITIONS.medical.name,
-      currentLevel: 2,
-      maxLevel: 5,
-      levels: FACILITY_DEFINITIONS.medical.levels,
-      isUpgrading: false,
+  // 7. Operations & High-Performance Programmes
+  const initialTierSelection: Record<OperationCategory, string> = {
+    sports_science: sponsorPreset.brandPrestige >= 85 ? "institute_partnership" : "clinic_basic",
+    scouting_network: sponsorPreset.brandPrestige >= 85 ? "national_analytics" : "regional_domestic",
+    prep_camps: sponsorPreset.brandPrestige >= 85 ? "camp_specialized" : "camp_local",
+    logistics_travel: sponsorPreset.brandPrestige >= 85 ? "travel_private_charter" : "travel_commercial",
+  };
+
+  const programmes: Record<OperationCategory, ClubOperationProgramme> = {
+    sports_science: {
+      category: "sports_science",
+      name: OPERATION_PROGRAMME_DEFINITIONS.sports_science.name,
+      activeTierId: initialTierSelection.sports_science,
+      tierOptions: OPERATION_PROGRAMME_DEFINITIONS.sports_science.tierOptions,
     },
-    admin: {
-      type: "admin",
-      name: FACILITY_DEFINITIONS.admin.name,
-      currentLevel: 2,
-      maxLevel: 5,
-      levels: FACILITY_DEFINITIONS.admin.levels,
-      isUpgrading: false,
+    scouting_network: {
+      category: "scouting_network",
+      name: OPERATION_PROGRAMME_DEFINITIONS.scouting_network.name,
+      activeTierId: initialTierSelection.scouting_network,
+      tierOptions: OPERATION_PROGRAMME_DEFINITIONS.scouting_network.tierOptions,
     },
-    scouting: {
-      type: "scouting",
-      name: FACILITY_DEFINITIONS.scouting.name,
-      currentLevel: 2,
-      maxLevel: 5,
-      levels: FACILITY_DEFINITIONS.scouting.levels,
-      isUpgrading: false,
+    prep_camps: {
+      category: "prep_camps",
+      name: OPERATION_PROGRAMME_DEFINITIONS.prep_camps.name,
+      activeTierId: initialTierSelection.prep_camps,
+      tierOptions: OPERATION_PROGRAMME_DEFINITIONS.prep_camps.tierOptions,
     },
-    commercial: {
-      type: "commercial",
-      name: FACILITY_DEFINITIONS.commercial.name,
-      currentLevel: 2,
-      maxLevel: 5,
-      levels: FACILITY_DEFINITIONS.commercial.levels,
-      isUpgrading: false,
+    logistics_travel: {
+      category: "logistics_travel",
+      name: OPERATION_PROGRAMME_DEFINITIONS.logistics_travel.name,
+      activeTierId: initialTierSelection.logistics_travel,
+      tierOptions: OPERATION_PROGRAMME_DEFINITIONS.logistics_travel.tierOptions,
     },
   };
 
-  const totalAnnualMaintenanceCr = Number(Object.values(facilities).reduce((sum, f) => {
-    const activeLevel = f.levels.find((l) => l.level === f.currentLevel);
-    return sum + (activeLevel?.annualMaintenanceCr ?? 1.0);
-  }, 0).toFixed(2));
+  const totalAnnualOperatingInvestmentCr = Number(
+    Object.values(programmes).reduce((sum, p) => {
+      const active = p.tierOptions.find((t) => t.id === p.activeTierId);
+      return sum + (active?.annualCostCr ?? 1.0);
+    }, 0).toFixed(2)
+  );
+
+  const operations: OperationsState = {
+    programmes,
+    totalAnnualOperatingInvestmentCr,
+  };
 
   // 8. Broadcast
   const broadcast: BroadcastIncomeState = {
@@ -927,7 +959,7 @@ export function createDefaultCommercialState(
     + matchdayOps.seasonalOperationalSpendCr
     + totalMerchCostCr
     + campaigns.reduce((sum, c) => sum + c.budgetCr, 0)
-    + totalAnnualMaintenanceCr
+    + totalAnnualOperatingInvestmentCr
   ).toFixed(2));
 
   const startingCash = 78.5;
@@ -961,6 +993,9 @@ export function createDefaultCommercialState(
       seasonTickets,
       matchCategories,
       gateReceiptsSeasonTotalCr: initialTicketingProjection.gateReceiptsSeasonTotalCr,
+      projectedGateReceiptsCr: initialTicketingProjection.gateReceiptsSeasonTotalCr,
+      actualGateReceiptsCr: 0,
+      settledMatchIds: [],
     },
     matchdayOps,
     hospitality: {
@@ -989,10 +1024,7 @@ export function createDefaultCommercialState(
       brandEquityScore: sponsorPreset.brandPrestige,
       globalFollowersMillions: Number((sponsorPreset.brandPrestige * 0.38).toFixed(1)),
     },
-    facilities: {
-      facilities,
-      totalAnnualMaintenanceCr,
-    },
+    operations,
     broadcast,
     operatingCosts,
     finance,
@@ -1042,7 +1074,7 @@ export function loadCommercialState(
     const raw = localStorage.getItem(getCommercialStorageKey(teamId, season));
     if (raw) {
       const parsed = JSON.parse(raw) as Partial<CommercialState>;
-      if (parsed.teamId === teamId && parsed.season === season && parsed.ticketing && parsed.facilities) {
+      if (parsed.teamId === teamId && parsed.season === season && parsed.ticketing && (parsed.operations || (parsed as any).facilities)) {
         const defaults = createDefaultCommercialState(teamId, season, customCapacity, squadPlayers);
         const hydrated = mergeCommercialStateDefaults(defaults, parsed);
         localStorage.setItem(getCommercialStorageKey(teamId, season), JSON.stringify(hydrated));
@@ -1062,11 +1094,396 @@ export function loadCommercialState(
   return defaultState;
 }
 
+export function syncCommercialFinance(state: CommercialState): CommercialState {
+  const { broadcast, sponsorships, ticketing, hospitality, merchandising, operatingCosts, matchdayOps, marketing, operations, finance } = state;
+
+  const totalGateAndSeasonCr = Number(
+    (ticketing.seasonTickets.totalRevenueCr + (ticketing.projectedGateReceiptsCr ?? ticketing.gateReceiptsSeasonTotalCr)).toFixed(2)
+  );
+
+  const totalIncomeCr = Number(
+    (
+      broadcast.totalBroadcastIncomeCr +
+      sponsorships.totalAnnualSponsorshipCr +
+      totalGateAndSeasonCr +
+      hospitality.totalHospitalityRevenueCr +
+      merchandising.totalMerchRevenueCr
+    ).toFixed(2)
+  );
+
+  const operationsOtherCr = Number(
+    (
+      operatingCosts.coachingStaffSalariesCr +
+      operatingCosts.travelAndHotelsCr +
+      operatingCosts.administrativeCorporateCr +
+      operatingCosts.stadiumAndTurfUpkeepCr
+    ).toFixed(2)
+  );
+
+  const totalExpenditureCr = Number(
+    (
+      operatingCosts.squadSalariesCr +
+      operationsOtherCr +
+      matchdayOps.seasonalOperationalSpendCr +
+      merchandising.totalMerchCostCr +
+      marketing.annualMarketingBudgetCr +
+      operations.totalAnnualOperatingInvestmentCr
+    ).toFixed(2)
+  );
+
+  const netOperatingProfitCr = Number((totalIncomeCr - totalExpenditureCr).toFixed(2));
+  const profitMarginPercent = Number(((netOperatingProfitCr / Math.max(1, totalIncomeCr)) * 100).toFixed(1));
+  const projectedEndSeasonCashCr = Number((finance.startingCashBalanceCr + netOperatingProfitCr).toFixed(2));
+
+  return {
+    ...state,
+    finance: {
+      ...finance,
+      totalIncomeCr,
+      totalExpenditureCr,
+      netOperatingProfitCr,
+      profitMarginPercent,
+      projectedEndSeasonCashCr,
+    },
+  };
+}
+
 export function saveCommercialState(state: CommercialState): void {
   if (typeof window === "undefined") return;
   try {
-    localStorage.setItem(getCommercialStorageKey(state.teamId, state.season), JSON.stringify(state));
+    const synchronized = syncCommercialFinance(state);
+    localStorage.setItem(getCommercialStorageKey(synchronized.teamId, synchronized.season), JSON.stringify(synchronized));
   } catch (error) {
     console.error("Unable to persist commercial state:", error);
   }
+}
+
+/** Posts a real cash movement and its matching audit entry as one atomic update. */
+export function postCommercialTransaction(
+  state: CommercialState,
+  transaction: LedgerTransaction,
+): CommercialState {
+  if (state.finance.transactions.some((entry) => entry.id === transaction.id)) return state;
+  const cashDelta = transaction.type === "credit" ? transaction.amountCr : -transaction.amountCr;
+  return syncCommercialFinance({
+    ...state,
+    finance: {
+      ...state.finance,
+      currentCashBalanceCr: Number((state.finance.currentCashBalanceCr + cashDelta).toFixed(2)),
+      transactions: [transaction, ...state.finance.transactions],
+    },
+  });
+}
+
+export interface MatchdaySettlementResult {
+  gateReceiptCr: number;
+  hospitalityTakeCr: number;
+  matchdayCostCr: number;
+  netMatchdayCashCr: number;
+  attendance: number;
+  occupancyPercent: number;
+}
+
+/**
+ * Settles dynamic gate receipts, F&B concessions, and matchday operations expenses
+ * when a user's home match is completed. Credits the cash ledger and updates season metrics.
+ */
+export function processHomeMatchCommercialSettlement(
+  teamId: string,
+  season: number,
+  matchId: string,
+  matchDate: string,
+  opponentTeamId: string,
+  opponentTeamName: string,
+  stadiumCapacity: number,
+  squadPlayers?: Player[],
+  supporterContext?: SupporterCommercialContext,
+): MatchdaySettlementResult | null {
+  const state = loadCommercialState(teamId, season, stadiumCapacity, squadPlayers);
+  if (state.ticketing.settledMatchIds?.includes(matchId)) {
+    return null;
+  }
+
+  // 1. Determine demand category based on opponent stature
+  const marqueeTeams = new Set(["MI", "CSK", "RCB", "KKR"]);
+  const tier2Teams = new Set(["RR", "SRH", "DC", "GT"]);
+  let category: MatchCategory = "silver";
+  const opp = opponentTeamId.toUpperCase();
+  if (marqueeTeams.has(opp)) {
+    category = "platinum";
+  } else if (tier2Teams.has(opp)) {
+    category = "gold";
+  }
+
+  const catConfig = state.ticketing.matchCategories[category] ?? state.ticketing.matchCategories.gold;
+  const regularSeats = Math.max(0, stadiumCapacity - state.ticketing.seasonTickets.allocatedSeats);
+  const weightedPrice = state.ticketing.tiers.reduce(
+    (sum, tier) => sum + tier.currentPriceInr * tier.capacityShare,
+    0
+  );
+
+  // Price sensitivity & demand calculation
+  const baselineWeighted = Math.max(1, state.ticketing.tiers.reduce((s, t) => s + t.basePriceInr * t.capacityShare, 0));
+  const priceRatio = weightedPrice / baselineWeighted;
+  const priceElasticity = priceRatio >= 1 ? -(priceRatio - 1) * 0.45 : (1 - priceRatio) * 0.15;
+
+  // Supporter happiness & star player demand influence
+  const happiness = supporterContext?.overallHappiness ?? supporterContext?.supporterHappiness ?? 65;
+  const squadApproval = supporterContext?.squadApproval ?? 65;
+  const starApproval = supporterContext?.topPlayerApproval ?? 65;
+  const atmosphere = supporterContext?.homeAtmosphere ?? 65;
+
+  const happinessEffect = ((happiness - 65) / 100) * 0.14;
+  const squadEffect = ((squadApproval - 65) / 100) * 0.08;
+  const starEffect = ((starApproval - 65) / 100) * 0.06;
+  const atmosphereEffect = ((atmosphere - 65) / 100) * 0.05;
+  const supporterTotalEffect = happinessEffect + squadEffect + starEffect + atmosphereEffect;
+
+  const occupancy = Math.max(0.55, Math.min(0.99, 0.85 + (catConfig.demandBonus / 100) * 0.3 + priceElasticity + supporterTotalEffect));
+
+  const attendance = Math.round(regularSeats * occupancy + state.ticketing.seasonTickets.soldCount);
+  const gateReceiptCr = Number(
+    ((regularSeats * weightedPrice * catConfig.priceMultiplier * occupancy) / 10_000_000).toFixed(2)
+  );
+
+  // 2. Hospitality & Catering take with fan atmosphere multiplier
+  const fnbSpendMultiplier = Math.max(0.85, Math.min(1.25, 0.85 + (happiness / 100) * 0.20 + (atmosphere / 100) * 0.15));
+  const avgFnbSpend = Math.round(state.matchdayOps.catering.averageSpendPerFanInr * fnbSpendMultiplier);
+  const fnbMargin = state.matchdayOps.catering.franchiseMarginPercent / 100;
+  const fnbTakeCr = (attendance * avgFnbSpend * fnbMargin) / 10_000_000;
+
+  const loungesDayPassCr = state.hospitality.lounges.reduce((sum, l) => {
+    return sum + (l.capacity * (l.averageOccupancyPercent / 100) * l.dayPassPriceInr) / 10_000_000;
+  }, 0);
+
+  const hospitalityTakeCr = Number((fnbTakeCr + loungesDayPassCr).toFixed(2));
+
+  // 3. Matchday Operational Costs
+  const matchdayCostCr = Number(state.matchdayOps.totalCostPerMatchCr.toFixed(2));
+
+  // 4. Net Cash
+  const netMatchdayCashCr = Number((gateReceiptCr + hospitalityTakeCr - matchdayCostCr).toFixed(2));
+
+  // 5. Build Ledger Transactions with dynamic supporter atmosphere narrative
+  const fanContextNarrative = supporterContext?.topPlayerName && starApproval >= 75
+    ? `Star Pull: ${supporterContext.topPlayerName}`
+    : happiness >= 75
+    ? "Buzzing Atmosphere"
+    : happiness <= 45
+    ? "Subdued Demand"
+    : null;
+
+  const gateDescription = fanContextNarrative
+    ? `Home Match vs ${opponentTeamName} - Gate Receipts (${Math.round(occupancy * 100)}% attendance · ${fanContextNarrative})`
+    : `Home Match vs ${opponentTeamName} - Gate Receipts (${Math.round(occupancy * 100)}% attendance)`;
+
+  const newTransactions: LedgerTransaction[] = [
+    {
+      id: `tx-gate-${matchId}`,
+      date: matchDate,
+      type: "credit",
+      category: "ticketing",
+      description: gateDescription,
+      amountCr: gateReceiptCr,
+    },
+    {
+      id: `tx-hosp-${matchId}`,
+      date: matchDate,
+      type: "credit",
+      category: "hospitality",
+      description: `Home Match vs ${opponentTeamName} - Concessions & VIP Lounges Take`,
+      amountCr: hospitalityTakeCr,
+    },
+    {
+      id: `tx-ops-${matchId}`,
+      date: matchDate,
+      type: "debit",
+      category: "operations",
+      description: `Home Match vs ${opponentTeamName} - Matchday Stewards & Stadium Production`,
+      amountCr: matchdayCostCr,
+    },
+  ];
+
+  const updatedSettledIds = [...(state.ticketing.settledMatchIds ?? []), matchId];
+  const currentActual = state.ticketing.actualGateReceiptsCr ?? 0;
+  const updatedActual = Number((currentActual + gateReceiptCr).toFixed(2));
+  const updatedCash = Number((state.finance.currentCashBalanceCr + netMatchdayCashCr).toFixed(2));
+
+  const nextState: CommercialState = {
+    ...state,
+    ticketing: {
+      ...state.ticketing,
+      actualGateReceiptsCr: updatedActual,
+      settledMatchIds: updatedSettledIds,
+    },
+    finance: {
+      ...state.finance,
+      currentCashBalanceCr: updatedCash,
+      transactions: [newTransactions[0], newTransactions[1], newTransactions[2], ...state.finance.transactions],
+    },
+  };
+
+  saveCommercialState(nextState);
+
+  return {
+    gateReceiptCr,
+    hospitalityTakeCr,
+    matchdayCostCr,
+    netMatchdayCashCr,
+    attendance,
+    occupancyPercent: Math.round(occupancy * 100),
+  };
+}
+
+/**
+ * Releases scheduled BCCI central media pool tranches as league milestones are reached.
+ */
+export function checkAndReleaseBcciTranches(
+  teamId: string,
+  season: number,
+  playedMatchCount: number,
+  matchDate: string,
+  stadiumCapacity: number,
+  squadPlayers?: Player[],
+): void {
+  const state = loadCommercialState(teamId, season, stadiumCapacity, squadPlayers);
+  const existingTx = state.finance.transactions;
+
+  // Mid-season tranche: after 7 matches played
+  if (playedMatchCount >= 7 && !existingTx.some((t) => t.id === `tx-bcci-tranche2-${season}`)) {
+    const tranche2AmountCr = 132.0; // 30% of central media pool
+    const newTx: LedgerTransaction = {
+      id: `tx-bcci-tranche2-${season}`,
+      date: matchDate,
+      type: "credit",
+      category: "broadcast",
+      description: "BCCI Media Rights Central Distribution - Tranche 2 (Mid-Season Milestone)",
+      amountCr: tranche2AmountCr,
+    };
+    const nextState: CommercialState = {
+      ...state,
+      finance: {
+        ...state.finance,
+        currentCashBalanceCr: Number((state.finance.currentCashBalanceCr + tranche2AmountCr).toFixed(2)),
+        transactions: [newTx, ...state.finance.transactions],
+      },
+    };
+    saveCommercialState(nextState);
+  }
+}
+
+/**
+ * Awards post-season BCCI media rights final tranche and official tournament prize purse.
+ */
+export function processSeasonEndCommercialSettlement(
+  teamId: string,
+  season: number,
+  finishRank: number,
+  stadiumCapacity: number,
+  squadPlayers?: Player[],
+): void {
+  const state = loadCommercialState(teamId, season, stadiumCapacity, squadPlayers);
+  const existingTx = state.finance.transactions;
+  if (existingTx.some((t) => t.id === `tx-bcci-final-tranche-${season}`)) {
+    return;
+  }
+
+  const finalTrancheCr = 88.0; // 20% of central pool
+  const prizeByRank: Record<number, { title: string; prizeCr: number }> = {
+    1: { title: "IPL Champions Trophy & Gold Medals Purse", prizeCr: 20.0 },
+    2: { title: "IPL Runners-Up Finalists Purse", prizeCr: 12.5 },
+    3: { title: "IPL 3rd Place (Qualifier 2) Podium Purse", prizeCr: 7.0 },
+    4: { title: "IPL 4th Place (Eliminator) Qualification Purse", prizeCr: 6.5 },
+  };
+
+  const prizeInfo = prizeByRank[finishRank] ?? { title: "IPL League Stage Central Pool Share", prizeCr: 0.0 };
+
+  const finalTx: LedgerTransaction[] = [
+    {
+      id: `tx-bcci-final-tranche-${season}`,
+      date: `${season}-05-28`,
+      type: "credit",
+      category: "broadcast",
+      description: "BCCI Media Rights Central Distribution - Final Post-Season Tranche",
+      amountCr: finalTrancheCr,
+    },
+  ];
+
+  if (prizeInfo.prizeCr > 0) {
+    finalTx.unshift({
+      id: `tx-bcci-prize-${season}`,
+      date: `${season}-05-29`,
+      type: "credit",
+      category: "prize_money",
+      description: `BCCI Official Prize: ${prizeInfo.title}`,
+      amountCr: prizeInfo.prizeCr,
+    });
+  }
+
+  const totalAddedCash = finalTrancheCr + prizeInfo.prizeCr;
+  const activeCampaigns = state.marketing.campaigns.filter((campaign) => campaign.active);
+  const campaignFanGrowthMillions = activeCampaigns.reduce((sum, campaign) => (
+    sum + Math.sqrt(Math.max(0, campaign.budgetCr)) * campaign.fanAcquisitionEstimate / Math.max(1, campaign.budgetCr) / 1_000_000
+  ), 0);
+  const performanceBrandChange = finishRank <= 2 ? 3 : finishRank <= 4 ? 1 : finishRank >= 8 ? -2 : 0;
+  const nextDeals = state.sponsorships.deals.map((deal) => ({
+    ...deal,
+    yearsRemaining: Math.max(0, deal.yearsRemaining - 1),
+    satisfactionPercent: Math.max(35, Math.min(100, deal.satisfactionPercent + (finishRank <= 4 ? 3 : finishRank >= 8 ? -4 : 0))),
+  }));
+  const nextState: CommercialState = {
+    ...state,
+    broadcast: {
+      ...state.broadcast,
+      competitionPrizeMoneyCr: prizeInfo.prizeCr,
+      totalBroadcastIncomeCr: Number((state.broadcast.totalBroadcastIncomeCr + prizeInfo.prizeCr).toFixed(2)),
+    },
+    sponsorships: {
+      ...state.sponsorships,
+      deals: nextDeals,
+    },
+    marketing: {
+      ...state.marketing,
+      brandEquityScore: Math.max(0, Math.min(100, state.marketing.brandEquityScore + performanceBrandChange)),
+      globalFollowersMillions: Number((state.marketing.globalFollowersMillions + campaignFanGrowthMillions).toFixed(2)),
+    },
+    finance: {
+      ...state.finance,
+      currentCashBalanceCr: Number((state.finance.currentCashBalanceCr + totalAddedCash).toFixed(2)),
+      transactions: [...finalTx, ...state.finance.transactions],
+    },
+  };
+
+  saveCommercialState(nextState);
+}
+
+/**
+ * Returns dynamic injury system modifiers based on the club's active High-Performance Sports Science contract.
+ */
+export function getInjurySystemModifiersFromCommercial(
+  teamId: string,
+  season: number,
+  stadiumCapacity = 45000,
+): InjurySystemModifiers {
+  try {
+    const state = loadCommercialState(teamId, season, stadiumCapacity);
+    const sportsScienceTier = state.operations?.programmes?.sports_science?.activeTierId;
+    if (sportsScienceTier === "global_high_performance") {
+      return {
+        occurrenceChanceMultiplier: 0.60,
+        recoveryDurationMultiplier: 0.65,
+        worseningChanceMultiplier: 0.45,
+      };
+    }
+    if (sportsScienceTier === "institute_partnership") {
+      return {
+        occurrenceChanceMultiplier: 0.80,
+        recoveryDurationMultiplier: 0.82,
+        worseningChanceMultiplier: 0.70,
+      };
+    }
+  } catch (e) {
+    // fallback
+  }
+  return DEFAULT_INJURY_SYSTEM_MODIFIERS;
 }

@@ -123,6 +123,7 @@ import {
   type InjurySystemState,
   type MatchInjuryParticipant,
   type PlayerInjury,
+  type InjurySystemModifiers,
 } from "@/lib/logic/injuries";
 import {
   MAX_INJURY_REPLACEMENTS_PER_TEAM,
@@ -444,6 +445,8 @@ interface GameActions {
     seed: string;
     teamIds: [string, string];
     participants: MatchInjuryParticipant[];
+    modifiers?: InjurySystemModifiers;
+    modifiersByTeam?: Record<string, InjurySystemModifiers>;
   }) => InjuryProcessingResult;
   processBackgroundInjuries: (input: {
     date: string;
@@ -454,6 +457,7 @@ interface GameActions {
     preseasonStartDate?: string;
     firstFixtureDate?: string;
     seasonFinalDate?: string;
+    modifiersByTeam?: Record<string, InjurySystemModifiers>;
   }) => InjuryProcessingResult;
   reconcileInjuries: (date: string) => PlayerInjury[];
   signInjuryReplacement: (input: {

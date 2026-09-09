@@ -31,7 +31,7 @@ export default function FinanceDashboardSubpage({
   stadiumName,
   onUpdateState,
 }: FinanceDashboardSubpageProps) {
-  const { finance, broadcast, sponsorships, ticketing, hospitality, merchandising, operatingCosts, matchdayOps, marketing, facilities } = state;
+  const { finance, broadcast, sponsorships, ticketing, hospitality, merchandising, operatingCosts, matchdayOps, marketing, operations } = state;
   const [filterType, setFilterType] = useState<"all" | "credit" | "debit">("all");
 
   // Dynamic Income Breakdown
@@ -66,7 +66,7 @@ export default function FinanceDashboardSubpage({
       matchdayOps.seasonalOperationalSpendCr +
       merchandising.totalMerchCostCr +
       marketing.annualMarketingBudgetCr +
-      facilities.totalAnnualMaintenanceCr
+      operations.totalAnnualOperatingInvestmentCr
     ).toFixed(2)
   );
 
@@ -276,11 +276,11 @@ export default function FinanceDashboardSubpage({
 
             <div className="flex justify-between items-center p-2.5 rounded bg-surface-secondary/40">
               <div>
-                <p className="font-semibold text-text-primary">Marketing Campaigns & Facility Upkeep</p>
-                <p className="text-[10px] text-text-secondary">Brand advertising & stadium department upkeep</p>
+                <p className="font-semibold text-text-primary">High-Performance & Marketing</p>
+                <p className="text-[10px] text-text-secondary">Sports science, scouting programmes & brand campaigns</p>
               </div>
               <span className="font-mono font-bold text-text-primary">
-                ₹{(marketing.annualMarketingBudgetCr + facilities.totalAnnualMaintenanceCr).toFixed(2)} Cr
+                ₹{(marketing.annualMarketingBudgetCr + operations.totalAnnualOperatingInvestmentCr).toFixed(2)} Cr
               </span>
             </div>
           </div>

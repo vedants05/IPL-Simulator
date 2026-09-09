@@ -84,6 +84,7 @@ interface StadiumBuilderPageProps {
   teamId: string;
   currentDate: string;
   saveId: string;
+  legacySaveId?: string;
   pitchCount: number;
 }
 
@@ -230,6 +231,43 @@ function applyCompletedProject(
   });
 }
 
+/** Advances a persisted stadium project from the career clock even when the builder UI is closed. */
+export function reconcileStoredStadiumProject(input: {
+  teamId: string;
+  currentDate: string;
+  saveId: string;
+  legacySaveId?: string;
+}): number | null {
+  if (typeof window === "undefined") return null;
+  const storageKey = `ipl-stadium-builder:${input.saveId || "career"}:${input.teamId}:v2`;
+  const legacyKey = input.legacySaveId ? `ipl-stadium-builder:${input.legacySaveId}:${input.teamId}:v2` : null;
+  try {
+    const source = localStorage.getItem(storageKey) ?? (legacyKey ? localStorage.getItem(legacyKey) : null);
+    if (!source) return null;
+    const stored = JSON.parse(source) as StoredBuilderState;
+    const project = stored.activeProject;
+    if (!Array.isArray(stored.modules) || !project || ["completed", "cancelled"].includes(project.phase)) {
+      if (source && !localStorage.getItem(storageKey)) localStorage.setItem(storageKey, source);
+      return Array.isArray(stored.modules) ? stored.modules.reduce((sum, entry) => sum + (entry.capacity ?? 0), 0) : null;
+    }
+    let phase: ProjectPhase = project.phase;
+    if (project.demolitionCompletesOn && input.currentDate >= project.demolitionCompletesOn && (!project.constructionStartsOn || input.currentDate < project.constructionStartsOn)) phase = "cleared";
+    if (project.constructionStartsOn && input.currentDate >= project.constructionStartsOn && input.currentDate < project.constructionCompletesOn) phase = "construction";
+    if (input.currentDate >= project.constructionCompletesOn) phase = "completed";
+    let modules = stored.modules;
+    if (phase === "cleared" && project.phase !== "cleared") modules = modules.map((entry) => project.moduleIds.includes(entry.id) ? { ...entry, empty: true, capacity: 0 } : entry);
+    if (phase === "completed") modules = applyCompletedProject(modules, project, Number(input.currentDate.slice(0, 4)));
+    const completedProject = { ...project, phase };
+    const projectHistory = phase === "completed" && !stored.projectHistory.some((entry) => entry.id === project.id)
+      ? [completedProject, ...stored.projectHistory]
+      : stored.projectHistory;
+    localStorage.setItem(storageKey, JSON.stringify({ ...stored, modules, activeProject: completedProject, projectHistory } satisfies StoredBuilderState));
+    return modules.reduce((sum, entry) => sum + (entry.capacity ?? 0), 0);
+  } catch {
+    return null;
+  }
+}
+
 const shortStandName = (name: string) => name
   .replace("B.C. Roy Club House", "B.C. ROY")
   .replace("High Court Pavilion", "HIGH COURT")
@@ -250,11 +288,12 @@ export default function StadiumBuilderPage(props: StadiumBuilderPageProps) {
   return <StadiumBuilderState key={`${props.saveId}:${props.teamId}`} {...props} />;
 }
 
-function StadiumBuilderState({ teamId: savedTeamId, currentDate, saveId, pitchCount }: StadiumBuilderPageProps) {
+function StadiumBuilderState({ teamId: savedTeamId, currentDate, saveId, legacySaveId, pitchCount }: StadiumBuilderPageProps) {
   const teamId=getStadiumDefinition(savedTeamId).teamId;
   const stadiumProfile = teamId.toUpperCase() === "KKR" ? { name: "Eden Gardens", ends: ["High Court End", "Pavilion End"] as [string, string], capacity: 67_551, association: "Cricket Association of Bengal", opened: 1864 } : (TEAM_STADIUMS[teamId.toUpperCase()] ?? TEAM_STADIUMS.CSK);
   // v2 deliberately replaces the original generic non-KKR placeholder plans.
   const storageKey = `ipl-stadium-builder:${saveId || "career"}:${savedTeamId}:v2`;
+  const legacyStorageKey = legacySaveId ? `ipl-stadium-builder:${legacySaveId}:${savedTeamId}:v2` : null;
   const [modules, setModules] = useState<StadiumModule[]>(() => createTeamModules(teamId));
   const [plans, setPlans] = useState<StadiumPlan[]>([]);
   const [activeProject, setActiveProject] = useState<StadiumProject | null>(null);
@@ -273,7 +312,8 @@ function StadiumBuilderState({ teamId: savedTeamId, currentDate, saveId, pitchCo
 
   useEffect(() => {
     try {
-      const parsed = JSON.parse(localStorage.getItem(storageKey) ?? "null") as StoredBuilderState | null;
+      const persisted = localStorage.getItem(storageKey) ?? (legacyStorageKey ? localStorage.getItem(legacyStorageKey) : null);
+      const parsed = JSON.parse(persisted ?? "null") as StoredBuilderState | null;
       if (parsed?.modules?.length === createTeamModules(teamId).length) setModules(parsed.modules.map((entry) => {
         const baseCapacity = entry.baseCapacity ?? Math.round(entry.capacity / template(entry.templateId).capacityMultiplier);
         // Eden's original layout contains no four-tier modules, so any saved one
@@ -289,7 +329,7 @@ function StadiumBuilderState({ teamId: savedTeamId, currentDate, saveId, pitchCo
       if (Array.isArray(parsed?.projectHistory)) setProjectHistory(parsed!.projectHistory);
     } catch { /* A malformed prototype save falls back to Eden defaults. */ }
     setLoaded(true);
-  }, [storageKey]);
+  }, [legacyStorageKey, storageKey]);
 
   useEffect(() => {
     if (!loaded) return;
@@ -390,7 +430,7 @@ function StadiumBuilderState({ teamId: savedTeamId, currentDate, saveId, pitchCo
   };
 
   return (
-    <div className="flex h-full min-h-[620px] flex-col overflow-hidden rounded-lg border-2 border-border bg-bg">
+    <div className="flex h-[calc(100vh-200px)] min-h-[500px] flex-col overflow-hidden rounded-lg border-2 border-border bg-bg">
       <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border bg-surface px-4 py-2">
         <div><p className="font-space-mono text-[7px] font-bold uppercase tracking-[.2em] text-accent">{teamId.toUpperCase()} · {stadiumProfile.name}</p><h2 className="font-anton text-[22px] uppercase leading-none text-text-primary">Stadium Builder</h2><p className="mt-1 text-[8px] text-text-secondary">{stadiumProfile.association} · {integer(totalCapacity)} seats · opened {stadiumProfile.opened}</p></div>
         <div className="flex shrink-0 flex-wrap justify-end gap-2">

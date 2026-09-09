@@ -320,6 +320,7 @@ export interface ProcessMatchInjuriesInput {
   teamIds: [string, string];
   participants: MatchInjuryParticipant[];
   modifiers?: InjurySystemModifiers;
+  modifiersByTeam?: Record<string, InjurySystemModifiers>;
 }
 
 export interface InjuryProcessingResult {
@@ -336,7 +337,7 @@ export function processMatchInjuries(
   if (reconciled.state.processedInjuryMatchIds.includes(input.matchId)) {
     return { state: reconciled.state, result: { created: [], worsened: [], recovered: reconciled.recovered } };
   }
-  const modifiers = input.modifiers ?? DEFAULT_INJURY_SYSTEM_MODIFIERS;
+  const defaultModifiers = input.modifiers ?? DEFAULT_INJURY_SYSTEM_MODIFIERS;
   const activeInjuries = { ...reconciled.state.activeInjuries };
   const history = [...reconciled.state.injuryHistory];
   const participantsById = new Map(input.participants.map((entry) => [entry.player.id, entry]));
@@ -351,6 +352,7 @@ export function processMatchInjuries(
   });
 
   input.participants.forEach(({ player, teamId }) => {
+    const modifiers = input.modifiersByTeam?.[teamId] ?? defaultModifiers;
     const active = activeInjuries[player.id];
     if (active?.category === "major") return;
     if (active?.category === "minor") {
@@ -433,6 +435,7 @@ export interface ProcessBackgroundInjuriesInput {
   seasonFinalDate?: string;
   squadPlayers: Array<{ player: Player; teamId: string }>;
   modifiers?: InjurySystemModifiers;
+  modifiersByTeam?: Record<string, InjurySystemModifiers>;
 }
 
 export function processBackgroundInjuries(
@@ -444,7 +447,7 @@ export function processBackgroundInjuries(
   if (!input.generationEnabled) {
     return { state: reconciled.state, result: { created: [], worsened: [], recovered: reconciled.recovered } };
   }
-  const modifiers = input.modifiers ?? DEFAULT_INJURY_SYSTEM_MODIFIERS;
+  const defaultModifiers = input.modifiers ?? DEFAULT_INJURY_SYSTEM_MODIFIERS;
   const activeInjuries = { ...reconciled.state.activeInjuries };
   const created: PlayerInjury[] = [];
   const processedKeys = [...reconciled.state.processedInjuryDateKeys];
@@ -501,6 +504,7 @@ export function processBackgroundInjuries(
         processedKeys.push(eventKey);
         continue;
       }
+      const modifiers = input.modifiersByTeam?.[selected.teamId] ?? defaultModifiers;
       const injury = createPlayerInjury({
         player: selected.player,
         teamId: selected.teamId,
@@ -520,6 +524,7 @@ export function processBackgroundInjuries(
 
   if (!processedKeys.includes(dateKey)) {
     input.squadPlayers.forEach(({ player, teamId }) => {
+      const modifiers = input.modifiersByTeam?.[teamId] ?? defaultModifiers;
       if (activeInjuries[player.id]) return;
       const playerProneness = player.injuryProneness ?? 45;
       const pronenessFactor = Math.max(0.35, Math.min(2.2, playerProneness / 45));

@@ -13,13 +13,19 @@ import {
   Sparkles,
   Layers,
   ArrowUpRight,
+  Heart,
+  ChevronRight,
+  Users,
 } from "lucide-react";
 import type { CommercialState, MerchandiseItem } from "@/lib/logic/commercialSystem";
+import type { TeamSupporterView } from "@/lib/logic/supporters";
 
 interface MerchandisingSubpageProps {
   state: CommercialState;
   stadiumCapacity: number;
   stadiumName: string;
+  supporterView?: TeamSupporterView;
+  onNavigateToSupporters?: () => void;
   onUpdateState: (nextState: CommercialState) => void;
 }
 
@@ -27,6 +33,8 @@ export default function MerchandisingSubpage({
   state,
   stadiumCapacity,
   stadiumName,
+  supporterView,
+  onNavigateToSupporters,
   onUpdateState,
 }: MerchandisingSubpageProps) {
   const { merchandising } = state;
@@ -149,6 +157,64 @@ export default function MerchandisingSubpage({
           </p>
         </div>
       </div>
+
+      {/* Star Player Kit Demand & Supporter Synergy */}
+      {supporterView && (
+        <div className="rounded-lg border border-border/80 bg-surface p-4 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/50 pb-2.5">
+            <div className="flex items-center gap-2">
+              <span className="flex size-7 items-center justify-center rounded bg-amber-500/10 text-amber-400">
+                <Sparkles className="size-4" />
+              </span>
+              <div>
+                <h3 className="text-xs font-bold uppercase tracking-wider text-text-primary">
+                  Fan-Favorite Star Kits & Retail Synergy
+                </h3>
+                <p className="text-[10px] text-text-secondary">
+                  Star player popularity and supporter sentiment dynamically boost replica kit sales and official merchandise turnover.
+                </p>
+              </div>
+            </div>
+            {onNavigateToSupporters && (
+              <button
+                type="button"
+                onClick={onNavigateToSupporters}
+                className="flex items-center gap-1 rounded border border-accent/40 bg-accent/10 px-2.5 py-1 font-space-mono text-[8px] font-bold uppercase text-accent hover:bg-accent/20 transition-colors"
+              >
+                View Supporters Page <ChevronRight className="size-3" />
+              </button>
+            )}
+          </div>
+
+          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {(supporterView.popularPlayers && supporterView.popularPlayers.length > 0
+              ? supporterView.popularPlayers.slice(0, 4)
+              : [
+                  { id: "star-1", name: "Marquee Star", approval: 85, trend: 5 },
+                  { id: "star-2", name: "Vice Captain", approval: 78, trend: 2 },
+                  { id: "star-3", name: "Strike Bowler", approval: 74, trend: 0 },
+                  { id: "star-4", name: "Key Finisher", approval: 70, trend: 1 },
+                ]
+            ).map((player, idx) => {
+              const volumeUplift = player.approval >= 85 ? "+35%" : player.approval >= 75 ? "+22%" : player.approval >= 65 ? "+12%" : "+5%";
+              const tierBadge = idx === 0 ? "Top Kit Seller" : idx === 1 ? "Secondary Magnet" : "Squad Favorite";
+              return (
+                <div key={player.id} className="rounded border border-border/60 bg-surface-secondary/30 p-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-space-mono text-[7px] uppercase font-bold text-accent">{tierBadge}</span>
+                    <span className="font-space-mono text-[7px] font-bold text-emerald-400">{volumeUplift} Kit Volume</span>
+                  </div>
+                  <div className="mt-1 text-xs font-bold text-text-primary truncate">{player.name}</div>
+                  <div className="mt-0.5 flex items-center justify-between text-[9px] text-text-secondary">
+                    <span>Approval: <b className="text-text-primary">{player.approval}%</b></span>
+                    <span className="font-space-mono text-[8px] text-text-secondary">Jersey Tier #{idx + 1}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Category Filter Tabs */}
       <div className="flex gap-2 border-b border-border pb-3">
