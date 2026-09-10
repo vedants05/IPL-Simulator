@@ -91,21 +91,13 @@ export default function NavBar() {
   const isTradeHubPage = pathname === "/game/overview"
     && activeTabFromUrl === "league"
     && searchParams.get("subtab") === "trades";
-  const seasonPagesUnlocked = SEASON_ACCESS_ENABLED && continuedToSeason === true;
-  const showSeasonNavigation = seasonPagesUnlocked && (!isAuctionPage || auction?.phase === "completed");
+  const seasonPagesUnlocked = true;
+  const showSeasonNavigation = true;
   const teamProfilePrefetchKey = Object.keys(teams).sort().join("|");
 
   useEffect(() => {
     const syncSeasonAccess = () => {
-      if (!SEASON_ACCESS_ENABLED) {
-        localStorage.removeItem(getSeasonAccessStorageKey(userTeamId));
-        setContinuedToSeason(false);
-        return;
-      }
-
-      setContinuedToSeason(
-        localStorage.getItem(getSeasonAccessStorageKey(userTeamId)) === "true",
-      );
+      setContinuedToSeason(true);
     };
 
     syncSeasonAccess();
@@ -115,17 +107,6 @@ export default function NavBar() {
       window.removeEventListener(SEASON_ACCESS_CHANGED_EVENT, syncSeasonAccess);
     };
   }, [userTeamId, pathname]);
-
-  useEffect(() => {
-    if (continuedToSeason === null || seasonPagesUnlocked || isAuctionPage) return;
-
-    if (localStorage.getItem(getSeasonAccessStorageKey(userTeamId)) === "true") {
-      setContinuedToSeason(true);
-      return;
-    }
-
-    router.replace("/game/auction");
-  }, [continuedToSeason, isAuctionPage, router, seasonPagesUnlocked, userTeamId]);
 
   useEffect(() => {
     if (!seasonPagesUnlocked || !teamProfilePrefetchKey) return;
@@ -261,7 +242,7 @@ export default function NavBar() {
         </button>
       </div>
 
-      {userTeam && (
+      {userTeam ? (
         <div className="flex items-center gap-2.5 mr-5 shrink-0">
           <div
             className="h-7 min-w-[28px] px-2 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 transition-all duration-200 shadow-sm"
@@ -276,13 +257,19 @@ export default function NavBar() {
             {userTeam.name}
           </span>
         </div>
+      ) : (
+        <div className="flex items-center gap-2.5 mr-5 shrink-0">
+          <span
+            className="font-anton text-[18px] uppercase tracking-wider"
+            style={{ color: "var(--chrome-nav-active, var(--ink))" }}
+          >
+            IPL Simulator
+          </span>
+        </div>
       )}
 
       <div className="flex items-center gap-0">
-        {(showSeasonNavigation
-          ? NAV_ITEMS
-          : [{ label: "Auction", href: "/game/auction" }]
-        ).map((item) => {
+        {NAV_ITEMS.map((item) => {
           let active = false;
           if (item.href === "/game/auction") {
             active = pathname.startsWith("/game/auction");

@@ -125,6 +125,17 @@ export function updateAllTimeBattingSeasonRecords(
   teams: Record<string, { shortName?: string }>,
   currentSeason: number,
 ): MinorRecord[] {
+  let records = updateAllTimeRunsRecords(currentRecords, seasonStats, teams, currentSeason);
+  records = updateAllTimeBowlingSeasonRecords(records, seasonStats, teams, currentSeason);
+  return records;
+}
+
+function updateAllTimeRunsRecords(
+  currentRecords: MinorRecord[],
+  seasonStats: Record<string, BattingSeasonStat>,
+  teams: Record<string, { shortName?: string }>,
+  currentSeason: number,
+): MinorRecord[] {
   const leaderboardRecords = currentRecords.filter((record) => record.id.startsWith("all-time-season-runs-"));
   if (leaderboardRecords.length === 0) return currentRecords;
 
@@ -171,6 +182,78 @@ export function updateAllTimeBattingSeasonRecords(
     const replacement: MinorRecord = {
       ...slot,
       value: `${leader.runs} runs`,
+      holder: leader.holder,
+      season: leader.season,
+      notes: leader.notes,
+      source: leader.source,
+      verified: leader.verified,
+    };
+    replacements.set(slot.id, replacement);
+    if (
+      replacement.value !== slot.value
+      || replacement.holder !== slot.holder
+      || replacement.season !== slot.season
+      || replacement.notes !== slot.notes
+    ) changed = true;
+  });
+
+  return changed
+    ? currentRecords.map((record) => replacements.get(record.id) ?? record)
+    : currentRecords;
+}
+
+export function updateAllTimeBowlingSeasonRecords(
+  currentRecords: MinorRecord[],
+  seasonStats: Record<string, BattingSeasonStat>,
+  teams: Record<string, { shortName?: string }>,
+  currentSeason: number,
+): MinorRecord[] {
+  const leaderboardRecords = currentRecords.filter((record) => record.id.startsWith("all-time-season-wickets-"));
+  if (leaderboardRecords.length === 0) return currentRecords;
+
+  const candidates = [
+    ...leaderboardRecords.map((record) => ({
+      holder: record.holder,
+      wickets: Number.parseInt(record.value, 10),
+      season: record.season ?? "",
+      notes: record.notes ?? "",
+      source: record.source,
+      verified: record.verified,
+    })),
+    ...Object.values(seasonStats)
+      .filter((stat) => (stat.wickets ?? 0) > 0)
+      .map((stat) => ({
+        holder: stat.name,
+        wickets: stat.wickets ?? 0,
+        season: String(currentSeason),
+        notes: teams[stat.teamId]?.shortName ?? stat.teamId,
+        source: "Career simulation",
+        verified: true,
+      })),
+  ].filter((candidate) => Number.isFinite(candidate.wickets));
+
+  const bestByPlayerSeason = new Map<string, (typeof candidates)[number]>();
+  candidates.forEach((candidate) => {
+    const key = `${candidate.holder.toLocaleLowerCase("en-GB")}:${candidate.season}`;
+    const existing = bestByPlayerSeason.get(key);
+    if (!existing || candidate.wickets > existing.wickets) bestByPlayerSeason.set(key, candidate);
+  });
+  const leaders = Array.from(bestByPlayerSeason.values())
+    .sort((left, right) => right.wickets - left.wickets || left.holder.localeCompare(right.holder))
+    .slice(0, leaderboardRecords.length);
+
+  const slots = [...leaderboardRecords].sort((left, right) => (
+    Number.parseInt(left.id.split("-").pop() ?? "0", 10)
+    - Number.parseInt(right.id.split("-").pop() ?? "0", 10)
+  ));
+  const replacements = new Map<string, MinorRecord>();
+  let changed = false;
+  slots.forEach((slot, index) => {
+    const leader = leaders[index];
+    if (!leader) return;
+    const replacement: MinorRecord = {
+      ...slot,
+      value: `${leader.wickets} wickets`,
       holder: leader.holder,
       season: leader.season,
       notes: leader.notes,
@@ -291,19 +374,39 @@ export function trackMinorRecordsOnMatchComplete(
     if (idx !== -1) {
       const oldRecord = updatedRecords[idx];
       const isTeamScore = id.startsWith("highest-score-") || id.startsWith("lowest-score-")
-        || id === "highest-team-score-final" || id === "lowest-team-score-final";
-      const recordValue = (value: string) => isTeamScore
-        ? parseFloat(value.split("/")[0].replace(/[^\d.]/g, ""))
-        : parseFloat(value.replace(/[^\d.]/g, ""));
+        || id === "highest-team-score-final" || id === "lowest-team-score-final"
+        || id === "powerplay-highest-team" || id === "powerplay-lowest-team"
+        || id === "death-overs-highest-team";
+      const recordValue = (value: string) => {
+        if (id.startsWith("fastest-team-")) {
+          const match = value.match(/(\d+)(?:\.(\d+))?/);
+          if (match) {
+            const overs = parseInt(match[1], 10);
+            const balls = match[2] ? parseInt(match[2], 10) : 0;
+            return overs * 6 + balls;
+          }
+        }
+        return isTeamScore
+          ? parseFloat(value.split("/")[0].replace(/[^\d.]/g, ""))
+          : parseFloat(value.replace(/[^\d.]/g, ""));
+      };
       const oldVal = recordValue(oldRecord.value);
       const newVal = recordValue(newValue);
       
-      const isLowestScore = id.startsWith("lowest-score-") || id === "lowest-team-score-final";
-      const isLowestDefended = id.startsWith("lowest-defended-");
-      const isFastest = id.startsWith("fastest-");
-      const shouldUpdate = (isLowestScore || isLowestDefended || isFastest)
-        ? newVal < oldVal 
-        : newVal > oldVal;
+      const isBowlingFigures = id === "death-overs-best-bowling" || id === "best-bowling-final" || id === "most-wickets-uncapped-debut";
+      let shouldUpdate = false;
+      if (isBowlingFigures) {
+        const [oldW, oldR] = oldRecord.value.split("/").map((v) => parseInt(v, 10) || 0);
+        const [newW, newR] = newValue.split("/").map((v) => parseInt(v, 10) || 0);
+        shouldUpdate = newW > oldW || (newW === oldW && newR < oldR);
+      } else {
+        const isLowestScore = id.startsWith("lowest-score-") || id === "lowest-team-score-final" || id === "powerplay-lowest-team";
+        const isLowestDefended = id.startsWith("lowest-defended-");
+        const isFastest = id.startsWith("fastest-");
+        shouldUpdate = (isLowestScore || isLowestDefended || isFastest)
+          ? newVal < oldVal 
+          : newVal > oldVal;
+      }
 
       if (shouldUpdate) {
         const breakSequence = updatedRecords.reduce(
@@ -384,6 +487,12 @@ export function trackMinorRecordsOnMatchComplete(
     } else if (winnerId === battingSecondTeamId && battingFirstTeam && battingSecondTeam) {
       const chaseScore = `${battingSecondScore.runs}/${battingSecondScore.wickets}`;
       updateRecord(`highest-runs-chased-${battingSecondTeamId.toLowerCase()}`, chaseScore, battingSecondTeam.shortName, `vs ${battingFirstTeam.shortName}`);
+      const overs = battingSecondScore.overs;
+      const ballsFaced = Math.floor(overs) * 6 + Math.round((overs % 1) * 10);
+      const ballsRemaining = Math.max(0, 120 - ballsFaced);
+      if (ballsRemaining > 0) {
+        updateRecord("largest-victory-balls", `${ballsRemaining} balls`, battingSecondTeam.shortName, `vs ${battingFirstTeam.shortName}`);
+      }
     }
 
     const extrasConceded = [
@@ -412,6 +521,7 @@ export function trackMinorRecordsOnMatchComplete(
   checkBattingInnings(match.scorecard.inningsB.batting, teamB.shortName, teamA.shortName);
 
   const players = context.players ?? {};
+  const matchWinnerId = match.winner ?? match.simulation?.winnerId;
   const matchLabel = `${teamA.shortName} vs ${teamB.shortName}`;
   const inningsWithTeams = [
     { scorecard: match.scorecard.inningsA, battingTeamId: match.teamA, bowlingTeamId: match.teamB },
@@ -442,10 +552,24 @@ export function trackMinorRecordsOnMatchComplete(
       ?? simulatedInnings[inningsIndex];
     const deliveries = detail?.oversDetail?.flatMap((over) => over.deliveries) ?? [];
 
+    if (matchWinnerId === battingTeamId && inningsIndex === 1) {
+      scorecard.batting.forEach((batter) => {
+        const runs = batter.runs ?? 0;
+        if (runs > 0) {
+          const runsStr = `${runs}${batter.dismissal === "not out" || !batter.dismissal ? "*" : ""}`;
+          updateRecord("highest-score-chase", runsStr, batter.name, `${battingTeam?.shortName ?? battingTeamId} vs ${bowlingTeam?.shortName ?? bowlingTeamId}`);
+        }
+      });
+    }
+
     scorecard.batting.forEach((batter) => {
       const runs = batter.runs ?? 0;
       const balls = batter.balls ?? 0;
       const player = players[batter.id];
+      const totalBoundaries = (batter.fours ?? 0) + (batter.sixes ?? 0);
+      if (totalBoundaries > 0) {
+        updateRecord("most-boundaries-innings", `${totalBoundaries} boundaries`, batter.name, matchLabel);
+      }
       if (runs >= 50 && balls > 0) {
         const batterBalls = deliveries.filter((delivery) => delivery.strikerId === batter.id && delivery.isLegal);
         let cumulative = 0;
@@ -486,6 +610,76 @@ export function trackMinorRecordsOnMatchComplete(
         }
       }
     });
+
+    // Powerplay (overs 1–6) team total, individual runs & bowler wickets
+    const ppDeliveries = deliveries.filter((delivery) => (delivery.overNumber ?? 99) <= 6);
+    if (ppDeliveries.length > 0) {
+      const ppRuns = ppDeliveries.reduce((sum, d) => sum + (d.totalRuns ?? d.runsOffBat), 0);
+      const ppWickets = ppDeliveries.filter((d) => Boolean(d.wicket)).length;
+      updateRecord("powerplay-highest-team", `${ppRuns}/${ppWickets}`, battingTeam?.shortName ?? battingTeamId, matchLabel);
+      if ((detail?.oversDetail && detail.oversDetail.length >= 6) || ppWickets === 10) {
+        updateRecord("powerplay-lowest-team", `${ppRuns}/${ppWickets}`, battingTeam?.shortName ?? battingTeamId, matchLabel);
+      }
+
+      const ppRunsByBatter = new Map<string, { name: string; runs: number }>();
+      ppDeliveries.forEach((d) => {
+        const current = ppRunsByBatter.get(d.strikerId) ?? { name: d.strikerName ?? players[d.strikerId]?.name ?? "Unknown", runs: 0 };
+        current.runs += d.runsOffBat;
+        ppRunsByBatter.set(d.strikerId, current);
+      });
+      ppRunsByBatter.forEach(({ name, runs }) => {
+        if (runs > 0) updateRecord("powerplay-highest-individual", `${runs} runs`, name, matchLabel);
+      });
+
+      const ppWicketsByBowler = new Map<string, { name: string; wickets: number }>();
+      ppDeliveries.forEach((d) => {
+        if (!d.bowlerId || !d.wicket?.bowlerCredited) return;
+        const current = ppWicketsByBowler.get(d.bowlerId) ?? { name: d.bowlerName ?? players[d.bowlerId]?.name ?? "Unknown", wickets: 0 };
+        current.wickets += 1;
+        ppWicketsByBowler.set(d.bowlerId, current);
+      });
+      ppWicketsByBowler.forEach(({ name, wickets }) => {
+        if (wickets > 0) updateRecord("powerplay-most-wickets", `${wickets} wickets`, name, matchLabel);
+      });
+    }
+
+    // Death overs (overs 16–20) team score and best bowling figures
+    const deathDeliveries = deliveries.filter((delivery) => (delivery.overNumber ?? 0) >= 16 && (delivery.overNumber ?? 0) <= 20);
+    if (deathDeliveries.length > 0) {
+      const deathRuns = deathDeliveries.reduce((sum, d) => sum + (d.totalRuns ?? d.runsOffBat), 0);
+      const deathWickets = deathDeliveries.filter((d) => Boolean(d.wicket)).length;
+      updateRecord("death-overs-highest-team", `${deathRuns}/${deathWickets}`, battingTeam?.shortName ?? battingTeamId, matchLabel);
+
+      const deathBowlers = new Map<string, { name: string; wickets: number; runs: number }>();
+      deathDeliveries.forEach((d) => {
+        if (!d.bowlerId) return;
+        const current = deathBowlers.get(d.bowlerId) ?? { name: d.bowlerName ?? players[d.bowlerId]?.name ?? "Unknown", wickets: 0, runs: 0 };
+        if (d.wicket?.bowlerCredited) current.wickets += 1;
+        current.runs += (d.totalRuns ?? d.runsOffBat);
+        deathBowlers.set(d.bowlerId, current);
+      });
+      deathBowlers.forEach(({ name, wickets, runs }) => {
+        if (wickets > 0) updateRecord("death-overs-best-bowling", `${wickets}/${runs}`, name, matchLabel);
+      });
+    }
+
+    // Team milestones: fastest to 50, 100, 200 runs by overs
+    let teamRunsCum = 0;
+    let teamLegalBalls = 0;
+    let teamFiftyBall: number | undefined;
+    let teamHundredBall: number | undefined;
+    let teamTwoHundredBall: number | undefined;
+    deliveries.forEach((delivery) => {
+      if (delivery.isLegal) teamLegalBalls += 1;
+      teamRunsCum += (delivery.totalRuns ?? delivery.runsOffBat);
+      if (teamFiftyBall === undefined && teamRunsCum >= 50) teamFiftyBall = teamLegalBalls;
+      if (teamHundredBall === undefined && teamRunsCum >= 100) teamHundredBall = teamLegalBalls;
+      if (teamTwoHundredBall === undefined && teamRunsCum >= 200) teamTwoHundredBall = teamLegalBalls;
+    });
+    const toOversStr = (balls: number) => `${Math.floor(balls / 6)}.${balls % 6} overs`;
+    if (teamFiftyBall !== undefined) updateRecord("fastest-team-fifty", toOversStr(teamFiftyBall), battingTeam?.shortName ?? battingTeamId, matchLabel);
+    if (teamHundredBall !== undefined) updateRecord("fastest-team-hundred", toOversStr(teamHundredBall), battingTeam?.shortName ?? battingTeamId, matchLabel);
+    if (teamTwoHundredBall !== undefined) updateRecord("fastest-team-two-hundred", toOversStr(teamTwoHundredBall), battingTeam?.shortName ?? battingTeamId, matchLabel);
 
     scorecard.bowling.forEach((bowler) => {
       const player = players[bowler.id];
@@ -545,6 +739,10 @@ export function trackMinorRecordsOnMatchComplete(
       const bowler = bowlerId ? players[bowlerId] : undefined;
       const bowlerName = over.bowlerName ?? over.deliveries[0]?.bowlerName ?? bowler?.name ?? "Unknown";
       const scoringBatters = Array.from(new Set(over.deliveries.filter((delivery) => delivery.runsOffBat > 0).map((delivery) => delivery.strikerName).filter(Boolean))).join(" & ");
+      const overWickets = over.deliveries.filter((d) => d.wicket?.bowlerCredited).length;
+      if (overWickets > 0) {
+        updateRecord("most-wickets-in-over", `${overWickets} wickets`, bowlerName, matchLabel);
+      }
       updateRecord("most-runs-in-over", `${overRuns} runs`, scoringBatters || matchLabel, `${bowlerName} bowling, ${matchLabel}`);
       updateRecord("most-runs-conceded-in-over-bowler", `${overRuns} runs`, bowlerName, matchLabel);
       if (bowler?.role === "Spin Bowler" || bowler?.bowlingStyle?.toLowerCase().includes("spin")) updateRecord("most-expensive-over-spinner", `${overRuns} runs`, bowlerName, matchLabel);
@@ -737,6 +935,16 @@ export function reconcileCumulativeMinorRecords(
 
   const positionRuns = new Map<string, { runs: number; name: string; teamId: string; position: number }>();
   const fifties = new Map<string, number>();
+  const centuries = new Map<string, number>();
+  const playerSixes = new Map<string, number>();
+  const playerFours = new Map<string, number>();
+  const playerDucks = new Map<string, number>();
+  const bowlerDots = new Map<string, number>();
+  const bowlerLegalDeliveries = new Map<string, number>();
+  const bowlerRunsConcededTotal = new Map<string, number>();
+  const fiveWicketHauls = new Map<string, number>();
+  const bowlerMatchWickets = new Map<string, Array<{ wickets: number }>>();
+  const batterInningsScores = new Map<string, Array<{ runs: number }>>();
   const playerMatchAwards = new Map<string, number>();
   const teamRuns = new Map<string, number>();
   const powerplayWickets = new Map<string, number>();
@@ -755,19 +963,52 @@ export function reconcileCumulativeMinorRecords(
         const position = batter.battingPosition ?? index + 1;
         const key = `${batter.id}:${position}`;
         const aggregate = positionRuns.get(key) ?? { runs: 0, name: batter.name, teamId, position };
-        aggregate.runs += batter.runs ?? 0;
+        const bRuns = batter.runs ?? 0;
+        aggregate.runs += bRuns;
         positionRuns.set(key, aggregate);
-        const fifty = (batter.runs ?? 0) >= 50;
+        const fifty = bRuns >= 50;
         if (fifty) fifties.set(batter.id, (fifties.get(batter.id) ?? 0) + 1);
+        if (bRuns >= 100) centuries.set(batter.id, (centuries.get(batter.id) ?? 0) + 1);
+        playerSixes.set(batter.id, (playerSixes.get(batter.id) ?? 0) + (batter.sixes ?? 0));
+        playerFours.set(batter.id, (playerFours.get(batter.id) ?? 0) + (batter.fours ?? 0));
+
+        const batted = batter.dismissal !== "did not bat" && ((batter.balls ?? 0) > 0 || bRuns > 0 || Boolean(batter.dismissal));
+        if (batted) {
+          const scores = batterInningsScores.get(batter.id) ?? [];
+          scores.push({ runs: bRuns });
+          batterInningsScores.set(batter.id, scores);
+          if (bRuns === 0 && batter.dismissal && batter.dismissal !== "not out") {
+            playerDucks.set(batter.id, (playerDucks.get(batter.id) ?? 0) + 1);
+          }
+        }
+
         const sequence = matchSequenceByPlayer.get(batter.id) ?? [];
         sequence.push({ opponent, fifty });
         matchSequenceByPlayer.set(batter.id, sequence);
       });
+
+      innings.bowling.forEach((bowler) => {
+        const bw = bowler.wickets ?? 0;
+        if (bw >= 5) fiveWicketHauls.set(bowler.id, (fiveWicketHauls.get(bowler.id) ?? 0) + 1);
+        const bMatches = bowlerMatchWickets.get(bowler.id) ?? [];
+        bMatches.push({ wickets: bw });
+        bowlerMatchWickets.set(bowler.id, bMatches);
+      });
+
       const detail = fixture.simulation?.innings?.find((candidate) => candidate.battingTeamId === teamId) ?? fixture.simulation?.innings?.[inningsIndex];
       const deliveries = detail?.oversDetail?.flatMap((over) => over.deliveries) ?? [];
       const wicketBallsByBowler = new Map<string, number[]>();
       deliveries.forEach((delivery, ballIndex) => {
-        if (!delivery.wicket?.bowlerCredited || !delivery.bowlerId) return;
+        if (!delivery.bowlerId) return;
+        if (delivery.isLegal) {
+          bowlerLegalDeliveries.set(delivery.bowlerId, (bowlerLegalDeliveries.get(delivery.bowlerId) ?? 0) + 1);
+          if ((delivery.totalRuns ?? delivery.runsOffBat) === 0) {
+            bowlerDots.set(delivery.bowlerId, (bowlerDots.get(delivery.bowlerId) ?? 0) + 1);
+          }
+        }
+        bowlerRunsConcededTotal.set(delivery.bowlerId, (bowlerRunsConcededTotal.get(delivery.bowlerId) ?? 0) + (delivery.totalRuns ?? delivery.runsOffBat));
+
+        if (!delivery.wicket?.bowlerCredited) return;
         if ((delivery.overNumber ?? 99) <= 6) powerplayWickets.set(delivery.bowlerId, (powerplayWickets.get(delivery.bowlerId) ?? 0) + 1);
         const wicketBalls = wicketBallsByBowler.get(delivery.bowlerId) ?? [];
         wicketBalls.push(ballIndex);
@@ -790,13 +1031,56 @@ export function reconcileCumulativeMinorRecords(
   });
   powerplayWickets.forEach((wickets, playerId) => replace("most-wickets-powerplay-season", wickets, `${wickets} wickets`, players[playerId]?.name ?? playerId, teamName(seasonStats[playerId]?.teamId ?? "")));
   hatTricks.forEach((count, playerId) => replace("most-hat-tricks", count, `${count} hat-tricks`, players[playerId]?.name ?? playerId, season));
+  centuries.forEach((count, playerId) => replace("season-most-centuries", count, `${count} centuries`, players[playerId]?.name ?? playerId, teamName(seasonStats[playerId]?.teamId ?? "")));
   fifties.forEach((count, playerId) => {
+    replace("season-most-fifties", count, `${count} scores`, players[playerId]?.name ?? playerId, teamName(seasonStats[playerId]?.teamId ?? ""));
     if (!players[playerId]?.isCapped) replace("most-fifties-season-uncapped", count, String(count), players[playerId]?.name ?? playerId, teamName(seasonStats[playerId]?.teamId ?? ""));
   });
+  playerSixes.forEach((count, playerId) => replace("season-most-sixes", count, `${count} sixes`, players[playerId]?.name ?? playerId, teamName(seasonStats[playerId]?.teamId ?? "")));
+  playerFours.forEach((count, playerId) => replace("season-most-fours", count, `${count} fours`, players[playerId]?.name ?? playerId, teamName(seasonStats[playerId]?.teamId ?? "")));
+  playerDucks.forEach((count, playerId) => replace("season-most-ducks", count, `${count} ducks`, players[playerId]?.name ?? playerId, teamName(seasonStats[playerId]?.teamId ?? "")));
+  bowlerDots.forEach((count, playerId) => replace("season-most-dot-balls", count, `${count} dot balls`, players[playerId]?.name ?? playerId, teamName(seasonStats[playerId]?.teamId ?? "")));
+  fiveWicketHauls.forEach((count, playerId) => replace("season-most-multi-wickets", count, `${count} hauls`, players[playerId]?.name ?? playerId, teamName(seasonStats[playerId]?.teamId ?? "")));
 
   stats.forEach((stat) => {
     const total = teamRuns.get(stat.teamId) ?? 0;
     if (total > 0) replace("highest-percentage-team-runs", stat.runs / total * 100, `${(stat.runs / total * 100).toFixed(1)}%`, stat.name, `Scored ${stat.runs} of ${teamName(stat.teamId)}'s ${total} runs`);
+    if (stat.runs >= 250 && (stat.balls ?? 0) > 0) {
+      const sr = (stat.runs / stat.balls!) * 100;
+      replace("season-highest-strike-rate", sr, sr.toFixed(2), stat.name, `${stat.runs} runs off ${stat.balls}b, ${teamName(stat.teamId)}`);
+    }
+  });
+
+  bowlerLegalDeliveries.forEach((balls, bowlerId) => {
+    if (balls >= 240) {
+      const runs = bowlerRunsConcededTotal.get(bowlerId) ?? 0;
+      const econ = runs / (balls / 6);
+      replace("season-best-economy", econ, econ.toFixed(2), players[bowlerId]?.name ?? bowlerId, `${(balls / 6).toFixed(1)} ov, ${runs} runs, ${teamName(seasonStats[bowlerId]?.teamId ?? "")}`, true);
+    }
+  });
+
+  bowlerMatchWickets.forEach((matches, bowlerId) => {
+    let currentStreak = 0;
+    let maxStreak = 0;
+    matches.forEach(({ wickets }) => {
+      currentStreak = wickets > 0 ? currentStreak + 1 : 0;
+      maxStreak = Math.max(maxStreak, currentStreak);
+    });
+    if (maxStreak > 0) {
+      replace("consecutive-matches-wicket", maxStreak, `${maxStreak} matches`, players[bowlerId]?.name ?? bowlerId, season);
+    }
+  });
+
+  batterInningsScores.forEach((scores, batterId) => {
+    let currentStreak = 0;
+    let maxStreak = 0;
+    scores.forEach(({ runs }) => {
+      currentStreak = runs >= 30 ? currentStreak + 1 : 0;
+      maxStreak = Math.max(maxStreak, currentStreak);
+    });
+    if (maxStreak > 0) {
+      replace("consecutive-innings-thirty", maxStreak, `${maxStreak} innings`, players[batterId]?.name ?? batterId, season);
+    }
   });
 
   matchSequenceByPlayer.forEach((sequence, playerId) => {
@@ -826,6 +1110,65 @@ export function reconcileCumulativeMinorRecords(
     winsByTeam.set(teamId, best);
   });
   winsByTeam.forEach((wins, teamId) => replace("most-consecutive-wins", wins, `${wins} wins`, teamName(teamId), season));
+
+  const updateCareerTop5 = (
+    prefix: string,
+    candidates: Array<{ holder: string; value: number; notes: string }>,
+    unit: string,
+  ) => {
+    const slots = next.filter((r) => r.id.startsWith(prefix));
+    if (slots.length === 0) return;
+    const allCandidates = [
+      ...slots.map((r) => ({
+        holder: r.holder,
+        value: numeric(r.value),
+        notes: r.notes ?? "",
+      })),
+      ...candidates,
+    ].filter((c) => Number.isFinite(c.value) && c.value > 0);
+
+    const bestByPlayer = new Map<string, (typeof allCandidates)[number]>();
+    allCandidates.forEach((c) => {
+      const key = c.holder.toLowerCase();
+      const existing = bestByPlayer.get(key);
+      if (!existing || c.value > existing.value) bestByPlayer.set(key, c);
+    });
+
+    const leaders = Array.from(bestByPlayer.values())
+      .sort((a, b) => b.value - a.value || a.holder.localeCompare(b.holder))
+      .slice(0, slots.length);
+
+    const sortedSlots = [...slots].sort((a, b) => {
+      const numA = Number.parseInt(a.id.split("-").pop() ?? "0", 10);
+      const numB = Number.parseInt(b.id.split("-").pop() ?? "0", 10);
+      return numA - numB;
+    });
+
+    sortedSlots.forEach((slot, idx) => {
+      const leader = leaders[idx];
+      if (!leader) return;
+      const valStr = `${leader.value} ${unit}`;
+      const slotIdx = next.findIndex((r) => r.id === slot.id);
+      if (slotIdx >= 0 && (next[slotIdx].value !== valStr || next[slotIdx].holder !== leader.holder)) {
+        next[slotIdx] = {
+          ...next[slotIdx],
+          value: valStr,
+          holder: leader.holder,
+          notes: leader.notes,
+          source: "Career simulation",
+          verified: true,
+          lastBrokenOn: season,
+          breakSequence: next.reduce((max, r) => Math.max(max, r.breakSequence ?? 0), 0) + 1,
+        };
+      }
+    });
+  };
+
+  updateCareerTop5("career-sixes-", Object.values(players).filter((p) => (p.iplStats?.sixes ?? 0) > 0).map((p) => ({ holder: p.name, value: p.iplStats!.sixes!, notes: `${p.iplStats?.matches ?? 0} matches` })), "sixes");
+  updateCareerTop5("career-centuries-", Object.values(players).filter((p) => (p.iplStats?.hundreds ?? 0) > 0).map((p) => ({ holder: p.name, value: p.iplStats!.hundreds!, notes: `${p.iplStats?.innings ?? p.iplStats?.matches ?? 0} innings` })), "centuries");
+  updateCareerTop5("career-fifties-", Object.values(players).filter((p) => (p.iplStats?.fifties ?? 0) > 0 || (p.iplStats?.hundreds ?? 0) > 0).map((p) => ({ holder: p.name, value: (p.iplStats?.fifties ?? 0) + (p.iplStats?.hundreds ?? 0), notes: `${p.iplStats?.fifties ?? 0} fifties + ${p.iplStats?.hundreds ?? 0} centuries` })), "scores");
+  updateCareerTop5("career-stumpings-", Object.values(players).filter((p) => p.isWicketkeeper && (p.iplStats?.stumpings ?? 0) > 0).map((p) => ({ holder: p.name, value: p.iplStats!.stumpings!, notes: `${p.iplStats?.matches ?? 0} matches` })), "stumpings");
+  updateCareerTop5("career-potm-", Array.from(playerMatchAwards.entries()).map(([pid, count]) => ({ holder: players[pid]?.name ?? pid, value: count, notes: `${count} Player of the Match awards` })), "awards");
 
   const wicketThresholds = next.filter((record) => /^fastest-\d+-wickets$/.test(record.id)).map((record) => Number.parseInt(record.id.split("-")[1], 10));
   wicketThresholds.forEach((threshold) => {

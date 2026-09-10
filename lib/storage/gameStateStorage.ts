@@ -173,14 +173,28 @@ export const gameStateStorage: StateStorage = {
       return indexedValue;
     }
 
-    const legacyValue = readLegacyValue(name);
-    if (legacyValue === null) return null;
-    try {
-      if (await writeIndexedValue(name, legacyValue)) removeLegacyValue(name);
-    } catch {
-      // Keep the original localStorage value when migration is unavailable.
+    const legacyKeys = [
+      name,
+      "ipl-simulator-save-v5",
+      "ipl-simulator-save-v4",
+      "ipl-simulator-save-v3",
+      "ipl-simulator-save-v2",
+      "ipl-simulator-save",
+    ];
+    for (const key of legacyKeys) {
+      const legacyValue = readLegacyValue(key);
+      if (legacyValue !== null) {
+        try {
+          if (await writeIndexedValue(name, legacyValue)) {
+            removeLegacyValue(key);
+          }
+        } catch {
+          // Keep the original localStorage value when migration is unavailable.
+        }
+        return legacyValue;
+      }
     }
-    return legacyValue;
+    return null;
   },
 
   setItem: async (name, value) => {

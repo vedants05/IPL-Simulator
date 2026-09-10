@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { MINOR_RECORDS } from "../lib/data/minorRecords";
-import { reconcileCumulativeMinorRecords, trackMinorRecordsOnMatchComplete } from "../lib/logic/minorRecordTracker";
+import { reconcileCumulativeMinorRecords, trackMinorRecordsOnMatchComplete, updateAllTimeBattingSeasonRecords } from "../lib/logic/minorRecordTracker";
 
 const players = {
   batter: { id: "batter", name: "Test Batter", age: 22, nationality: "Indian", role: "Batsman", isCapped: false, isWicketkeeper: false, currentTeamId: "MI", bowlingStyle: null, iplStats: { matches: 0 } },
@@ -40,6 +40,8 @@ assert.equal(value("highest-score-final"), "117*"); // baseline remains intact
 assert.equal(value("most-runs-conceded-spell"), "80 runs");
 assert.equal(value("most-dismissals-keeper-innings"), "6 dismissals");
 assert.equal(value("highest-partnership-pos-11"), "240");
+assert.equal(value("most-boundaries-innings"), "30 boundaries"); // baseline intact because 13 < 30
+assert.equal(value("most-wickets-in-over"), "6 wickets");
 
 const cumulative = reconcileCumulativeMinorRecords(live.updatedRecords, [match], {
   batter: { id: "batter", name: "Test Batter", teamId: "MI", runs: 1000, balls: 400, matches: 1, battingInnings: 1, wickets: 0, catches: 20, stumpings: 0, maidens: 0 },
@@ -51,5 +53,32 @@ assert.equal(cumulativeValue("season-most-runs-pos-11"), "104 runs");
 assert.equal(cumulativeValue("runs-by-age-22"), "1000 runs");
 assert.equal(cumulativeValue("fastest-32-wickets"), "1 matches");
 assert.equal(cumulativeValue("most-expensive-auction-buy"), "₹30.00 Crore");
+
+// Verify 1,000-run and 40-wicket season dynamic promotion into all-time leaderboards
+const seasonStats = {
+  batter: { id: "batter", name: "Test Batter", teamId: "MI", runs: 1000, balls: 400, matches: 14, battingInnings: 14, wickets: 0, catches: 5, stumpings: 0, maidens: 0 },
+  bowler: { id: "bowler", name: "Test Bowler", teamId: "KKR", runs: 20, balls: 15, matches: 14, wickets: 40, catches: 3, stumpings: 0, maidens: 7 },
+};
+const promoted = updateAllTimeBattingSeasonRecords(cumulative, seasonStats, { MI: { shortName: "MI" }, KKR: { shortName: "KKR" } }, 2030);
+
+const runRank1 = promoted.find((r) => r.id === "all-time-season-runs-1");
+assert.equal(runRank1?.value, "1000 runs");
+assert.equal(runRank1?.holder, "Test Batter");
+assert.equal(runRank1?.season, "2030");
+
+const runRank2 = promoted.find((r) => r.id === "all-time-season-runs-2");
+assert.equal(runRank2?.value, "973 runs");
+assert.equal(runRank2?.holder, "Virat Kohli");
+assert.equal(runRank2?.season, "2016");
+
+const wktRank1 = promoted.find((r) => r.id === "all-time-season-wickets-1");
+assert.equal(wktRank1?.value, "40 wickets");
+assert.equal(wktRank1?.holder, "Test Bowler");
+assert.equal(wktRank1?.season, "2030");
+
+const wktRank2 = promoted.find((r) => r.id === "all-time-season-wickets-2");
+assert.equal(wktRank2?.value, "32 wickets");
+assert.equal(wktRank2?.holder, "Dwayne Bravo");
+assert.equal(wktRank2?.season, "2013");
 
 console.log("Comprehensive minor-record evaluator verification passed.");

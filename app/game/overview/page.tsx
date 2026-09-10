@@ -910,15 +910,12 @@ function OverviewPageContent() {
     });
   }, [currentSeason]);
 
-  // Redirect back to auction if not completed or not continued to season
+  // Ensure season access is marked in localStorage when viewing overview
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const continued = localStorage.getItem(`ipl_continued_to_season_${userTeamId}`) === "true";
-      if (!SEASON_ACCESS_ENABLED || !auction || auction.phase !== "completed" || !continued) {
-        router.replace("/game/auction");
-      }
+    if (typeof window !== "undefined" && userTeamId) {
+      localStorage.setItem(`ipl_continued_to_season_${userTeamId}`, "true");
     }
-  }, [auction, router, userTeamId]);
+  }, [userTeamId]);
 
   // --------------------------------------------------------------------------
   // Core UI Tabs State
@@ -6072,9 +6069,8 @@ This record has been officially verified and added to the IPL Minor Records arch
   if (!userTeam) {
     return (
       <div className="flex items-center justify-center h-screen bg-bg">
-        <div className="font-barlow text-text-secondary text-center">
-          No active game.{" "}
-          <a href="/setup" className="text-text-primary underline font-semibold">Start a new game</a>
+        <div className="font-space-mono text-[11px] font-bold text-text-secondary animate-pulse uppercase tracking-widest">
+          Loading IPL Manager...
         </div>
       </div>
     );
@@ -11191,14 +11187,121 @@ This record has been officially verified and added to the IPL Minor Records arch
 }
 
 export default function OverviewPage() {
-  return (
-    <Suspense fallback={
+  const [hydrated, setHydrated] = useState(false);
+  const [bootstrapping, setBootstrapping] = useState(false);
+  const teams = useGameStore((s) => s.teams);
+  const userTeamId = useGameStore((s) => s.userTeamId);
+  const initNewGame = useGameStore((s) => s.initNewGame);
+
+  useEffect(() => {
+    if (useGameStore.persist?.hasHydrated?.()) {
+      setHydrated(true);
+      return;
+    }
+    const unsub = useGameStore.persist?.onFinishHydration?.(() => {
+      setHydrated(true);
+    });
+    return () => {
+      unsub?.();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated || bootstrapping) return;
+
+    const currentStore = useGameStore.getState();
+    const currentTeams = currentStore.teams;
+    const currentTeamId = currentStore.userTeamId;
+
+    if (currentTeamId && currentTeams[currentTeamId]) {
+      return;
+    }
+
+    if (typeof window !== "undefined") {
+      let recoveredTeamId: string | null = null;
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key?.startsWith("ipl_career_")) {
+          const candidate = key.replace("ipl_career_", "");
+          if (candidate) {
+            recoveredTeamId = candidate;
+            break;
+          }
+        } else if (key?.startsWith("ipl_continued_to_season_")) {
+          const candidate = key.replace("ipl_continued_to_season_", "");
+          if (candidate) {
+            recoveredTeamId = candidate;
+            break;
+          }
+        }
+      }
+
+      if (recoveredTeamId && currentTeams[recoveredTeamId]) {
+        useGameStore.setState({ userTeamId: recoveredTeamId });
+        localStorage.setItem(`ipl_continued_to_season_${recoveredTeamId}`, "true");
+        return;
+      }
+    }
+
+    const targetTeamId = "CSK";
+    let active = true;
+    setBootstrapping(true);
+    initNewGame(targetTeamId)
+      .then(() => {
+        if (!active) return;
+        useGameStore.setState((s) => ({
+          auction: s.auction ? { ...s.auction, phase: "completed" } : null,
+        }));
+        if (typeof window !== "undefined") {
+          localStorage.setItem(`ipl_continued_to_season_${targetTeamId}`, "true");
+        }
+      })
+      .catch((err) => {
+        console.error("Auto-bootstrap career failed:", err);
+      })
+      .finally(() => {
+        if (active) setBootstrapping(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  // `bootstrapping` is deliberately not a dependency: setting it to true is
+  // part of this effect. Re-running here would execute the cleanup, mark the
+  // in-flight bootstrap inactive and leave the loading screen up forever.
+  }, [hydrated, initNewGame]);
+
+  if (!hydrated || bootstrapping) {
+    return (
+      <div className="h-screen w-screen flex items-center justify-center bg-bg">
+        <div className="font-space-mono text-[11px] font-bold text-text-secondary animate-pulse uppercase tracking-widest">
+          Loading IPL Manager...
+        </div>
+      </div>
+    );
+  }
+
+  const userTeam = teams[userTeamId];
+  if (!userTeam) {
+    return (
       <div className="h-screen w-screen flex items-center justify-center bg-bg">
         <div className="font-space-mono text-[11px] font-bold text-text-secondary animate-pulse uppercase tracking-widest">
           Loading Career Hub...
         </div>
       </div>
-    }>
+    );
+  }
+
+  return (
+    <Suspense
+      fallback={
+        <div className="h-screen w-screen flex items-center justify-center bg-bg">
+          <div className="font-space-mono text-[11px] font-bold text-text-secondary animate-pulse uppercase tracking-widest">
+            Loading Career Hub...
+          </div>
+        </div>
+      }
+    >
       <OverviewPageContent />
     </Suspense>
   );

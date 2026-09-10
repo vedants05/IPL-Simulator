@@ -87,6 +87,10 @@ simulation_*_report.json
 # Root-level visual references are not application assets
 /Screenshot*.png
 
+# Root-level IPL scorecard exports are local generated data, not source files
+/*.json
+/README.txt
+
 # Local staff research source data
 /Coaches.xlsx
 

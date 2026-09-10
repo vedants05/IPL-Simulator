@@ -67,12 +67,12 @@ export const RETIRED_MAJOR_RECORDS: Record<MajorRecordCategoryId, RetiredRecordE
 };
 
 export const OTHER_LEAGUE_RECORDS: OtherLeagueRecord[] = [
-  { id: "highest-total", label: "Highest team total", value: "287/3", holder: "Sunrisers Hyderabad", detail: "vs RCB · 2024" },
-  { id: "lowest-total", label: "Lowest team total", value: "49", holder: "Royal Challengers Bengaluru", detail: "vs KKR · 2017" },
-  { id: "highest-chase", label: "Highest successful chase", value: "265/4", holder: "Punjab Kings", detail: "vs DC · 2026" },
-  { id: "individual-score", label: "Highest individual score", value: "175*", holder: "Chris Gayle", detail: "RCB vs PWI · 2013", playerNames: ["Chris Gayle"] },
-  { id: "bowling-figures", label: "Best bowling figures", value: "6/12", holder: "Alzarri Joseph", detail: "MI vs SRH · 2019", playerNames: ["Alzarri Joseph"] },
-  { id: "batting-season", label: "Best batting season", value: "973 runs", holder: "Virat Kohli", detail: "RCB · 2016", playerNames: ["Virat Kohli"] },
-  { id: "bowling-season", label: "Most wickets in a season", value: "32", holder: "D. Bravo / H. Patel", detail: "2013 / 2021", playerNames: ["Dwayne Bravo", "Harshal Patel"] },
-  { id: "partnership", label: "Highest partnership", value: "229", holder: "Kohli & de Villiers", detail: "RCB vs GL · 2016", playerNames: ["Virat Kohli", "AB de Villiers"] },
+  { id: "highest-total", label: "Highest team total", value: "287/3", holder: "Sunrisers Hyderabad", detail: "vs RCB (262/7) · 15 Apr 2024 · M Chinnaswamy Stadium, Bengaluru (20.0 ov, 22x6)" },
+  { id: "lowest-total", label: "Lowest team total", value: "49", holder: "Royal Challengers Bengaluru", detail: "vs KKR (131) · 23 Apr 2017 · Eden Gardens, Kolkata (9.4 ov, target 132)" },
+  { id: "highest-chase", label: "Highest successful chase", value: "265/4", holder: "Punjab Kings", detail: "vs DC (264/2) · 25 Apr 2026 · Arun Jaitley Stadium, Delhi (18.5 ov, target 265)" },
+  { id: "individual-score", label: "Highest individual score", value: "175*", holder: "Chris Gayle", detail: "175* off 66b (13x4, 17x6, SR 265.15) · RCB vs PWI · 23 Apr 2013 · Bengaluru", playerNames: ["Chris Gayle"] },
+  { id: "bowling-figures", label: "Best bowling figures", value: "6/12", holder: "Alzarri Joseph", detail: "6/12 in 3.4 ov (econ 3.27, 14 dots) · MI vs SRH · 6 Apr 2019 · Hyderabad", playerNames: ["Alzarri Joseph"] },
+  { id: "batting-season", label: "Best batting season", value: "973 runs", holder: "Virat Kohli", detail: "973 runs in 16 inngs (avg 81.08, SR 152.03, 4x100, 7x50) · RCB · 2016", playerNames: ["Virat Kohli"] },
+  { id: "bowling-season", label: "Most wickets in a season", value: "32", holder: "Bravo / Patel", detail: "32 wkts: Bravo (CSK 2013, 18m) / Patel (RCB 2021, 15m). Rabada took 30 for DC in 2020.", playerNames: ["Dwayne Bravo", "Harshal Patel"] },
+  { id: "partnership", label: "Highest partnership", value: "229", holder: "Kohli & de Villiers", detail: "229 runs off 96b (2nd wkt) · Kohli 109 & de Villiers 129* · RCB vs GL · 14 May 2016", playerNames: ["Virat Kohli", "AB de Villiers"] },
 ];

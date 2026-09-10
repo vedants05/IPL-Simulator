@@ -29,6 +29,7 @@ import { AcceleratedNominationsScreen, AcceleratedPlanningResultsScreen } from "
 type PopupTab = "sold" | "unsold" | "left" | null;
 
 export default function AuctionPage() {
+  const router = useRouter();
   const { auction, teams, userTeamId, auctionTargets, acceleratedPlanningState } = useGameStore();
   const startAuction = useGameStore((s) => s.startAuction);
   const [activePopup, setActivePopup] = useState<PopupTab>(null);
@@ -66,12 +67,35 @@ export default function AuctionPage() {
 
   const userTeam = teams[userTeamId];
 
+  useEffect(() => {
+    if (!userTeam) {
+      if (typeof window !== "undefined") {
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key?.startsWith("ipl_career_") || key?.startsWith("ipl_continued_to_season_")) {
+            const candidate = key.replace("ipl_career_", "").replace("ipl_continued_to_season_", "");
+            if (candidate && teams[candidate]) {
+              useGameStore.setState({ userTeamId: candidate });
+              return;
+            }
+          }
+        }
+      }
+      const timer = setTimeout(() => {
+        const s = useGameStore.getState();
+        if (!s.teams[s.userTeamId]) {
+          router.replace("/setup");
+        }
+      }, 600);
+      return () => clearTimeout(timer);
+    }
+  }, [userTeam, teams, router]);
+
   if (!userTeam) {
     return (
       <div className="flex-1 flex items-center justify-center min-h-[400px]">
-        <div className="font-barlow text-text-secondary text-center">
-          No active game.{" "}
-          <a href="/setup" className="text-text-primary underline font-semibold">Start a new game</a>
+        <div className="font-space-mono text-[11px] font-bold text-text-secondary animate-pulse uppercase tracking-widest">
+          Loading IPL Manager...
         </div>
       </div>
     );
