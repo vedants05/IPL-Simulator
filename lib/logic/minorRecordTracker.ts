@@ -290,14 +290,15 @@ export function trackMinorRecordsOnMatchComplete(
     const idx = updatedRecords.findIndex(r => r.id === id);
     if (idx !== -1) {
       const oldRecord = updatedRecords[idx];
-      const isTeamScore = id.startsWith("highest-score-") || id.startsWith("lowest-score-");
+      const isTeamScore = id.startsWith("highest-score-") || id.startsWith("lowest-score-")
+        || id === "highest-team-score-final" || id === "lowest-team-score-final";
       const recordValue = (value: string) => isTeamScore
         ? parseFloat(value.split("/")[0].replace(/[^\d.]/g, ""))
         : parseFloat(value.replace(/[^\d.]/g, ""));
       const oldVal = recordValue(oldRecord.value);
       const newVal = recordValue(newValue);
       
-      const isLowestScore = id.startsWith("lowest-score-");
+      const isLowestScore = id.startsWith("lowest-score-") || id === "lowest-team-score-final";
       const isLowestDefended = id.startsWith("lowest-defended-");
       const isFastest = id.startsWith("fastest-");
       const shouldUpdate = (isLowestScore || isLowestDefended || isFastest)
@@ -614,7 +615,10 @@ export function trackMinorRecordsOnMatchComplete(
             crossingBall = inningsBall;
             return true;
           });
-          const ballsToMilestone = priorBalls + (crossingBall ?? (batter.balls ?? 0));
+          // A scorecard only gives the final innings total. Without deliveries
+          // the exact milestone ball is unknowable, so do not invent a record.
+          if (crossingBall === null) return;
+          const ballsToMilestone = priorBalls + crossingBall;
           updateRecord(`fastest-${threshold}-balls`, `${ballsToMilestone} balls`, batter.name, `${teamShort} - reached ${threshold} runs`);
         });
 

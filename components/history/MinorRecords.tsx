@@ -648,17 +648,17 @@ export default function MinorRecords({ minorRecords = MINOR_RECORDS }: MinorReco
               </div>
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                 {teamGameRecords.map((record) => (
-                  <article key={record.id} className="rounded border border-border bg-bg p-4">
-                    <p className="font-space-mono text-[9px] font-bold uppercase tracking-wide text-text-secondary">
+                  <article key={record.id} className="flex min-h-[13rem] flex-col overflow-hidden rounded-xl border border-border bg-surface p-4 shadow-sm transition-colors hover:border-accent/60">
+                    <p className="order-1 font-space-mono text-[8px] font-bold uppercase tracking-[0.16em] text-text-secondary">
                       {labels[record.category]}
                     </p>
-                    <h2 className="mt-2 text-sm font-bold text-text-primary">{record.title}</h2>
-                    <p className="mt-3 font-space-mono text-xl font-bold text-accent">{record.value}</p>
-                    <p className="mt-1 text-xs text-text-secondary">
+                    <h2 className="order-3 mt-3 text-[13px] font-semibold leading-5 text-text-primary">{record.title}</h2>
+                    <p className="order-2 mt-3 font-anton text-3xl leading-none text-accent [overflow-wrap:anywhere]">{record.value}</p>
+                    <p className="order-4 mt-auto border-t border-border/60 pt-3 text-xs text-text-secondary">
                       {record.holder}{record.season ? ` · ${record.season}` : ""}
                       {record.notes ? ` (${record.notes})` : ""}
                     </p>
-                    <p className={`mt-3 text-[10px] ${record.verified ? "text-success" : "text-warning"}`}>
+                    <p className={`order-5 mt-2 text-[9px] ${record.verified ? "text-success" : "text-warning"}`}>
                       {record.verified ? "Verified record" : "Requires source verification"}
                       {record.source ? ` · ${record.source}` : ""}
                     </p>
@@ -676,17 +676,17 @@ export default function MinorRecords({ minorRecords = MINOR_RECORDS }: MinorReco
               </div>
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                 {teamSeasonalRecords.map((record) => (
-                  <article key={record.id} className="rounded border border-border bg-bg p-4">
-                    <p className="font-space-mono text-[9px] font-bold uppercase tracking-wide text-text-secondary">
+                  <article key={record.id} className="flex min-h-[13rem] flex-col overflow-hidden rounded-xl border border-border bg-surface p-4 shadow-sm transition-colors hover:border-accent/60">
+                    <p className="order-1 font-space-mono text-[8px] font-bold uppercase tracking-[0.16em] text-text-secondary">
                       {labels[record.category]}
                     </p>
-                    <h2 className="mt-2 text-sm font-bold text-text-primary">{record.title}</h2>
-                    <p className="mt-3 font-space-mono text-xl font-bold text-accent">{record.value}</p>
-                    <p className="mt-1 text-xs text-text-secondary">
+                    <h2 className="order-3 mt-3 text-[13px] font-semibold leading-5 text-text-primary">{record.title}</h2>
+                    <p className="order-2 mt-3 font-anton text-3xl leading-none text-accent [overflow-wrap:anywhere]">{record.value}</p>
+                    <p className="order-4 mt-auto border-t border-border/60 pt-3 text-xs text-text-secondary">
                       {record.holder}{record.season ? ` · ${record.season}` : ""}
                       {record.notes ? ` (${record.notes})` : ""}
                     </p>
-                    <p className={`mt-3 text-[10px] ${record.verified ? "text-success" : "text-warning"}`}>
+                    <p className={`order-5 mt-2 text-[9px] ${record.verified ? "text-success" : "text-warning"}`}>
                       {record.verified ? "Verified record" : "Requires source verification"}
                       {record.source ? ` · ${record.source}` : ""}
                     </p>
@@ -709,17 +709,17 @@ export default function MinorRecords({ minorRecords = MINOR_RECORDS }: MinorReco
           )}
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {nonTeamRecords.map((record) => (
-              <article key={record.id} className="rounded border border-border bg-bg p-4">
-                <p className="font-space-mono text-[9px] font-bold uppercase tracking-wide text-text-secondary">
+              <article key={record.id} className="flex min-h-[13rem] flex-col overflow-hidden rounded-xl border border-border bg-surface p-4 shadow-sm transition-colors hover:border-accent/60">
+                <p className="order-1 font-space-mono text-[8px] font-bold uppercase tracking-[0.16em] text-text-secondary">
                   {labels[record.category]}
                 </p>
-                <h2 className="mt-2 text-sm font-bold text-text-primary">{record.title}</h2>
-                <p className="mt-3 font-space-mono text-xl font-bold text-accent">{record.value}</p>
-                <p className="mt-1 text-xs text-text-secondary">
+                <h2 className="order-3 mt-3 text-[13px] font-semibold leading-5 text-text-primary">{record.title}</h2>
+                <p className="order-2 mt-3 font-anton text-3xl leading-none text-accent [overflow-wrap:anywhere]">{record.value}</p>
+                <p className="order-4 mt-auto border-t border-border/60 pt-3 text-xs text-text-secondary">
                   {record.holder}{record.season ? ` · ${record.season}` : ""}
                   {record.notes ? ` (${record.notes})` : ""}
                 </p>
-                <p className={`mt-3 text-[10px] ${record.verified ? "text-success" : "text-warning"}`}>
+                <p className={`order-5 mt-2 text-[9px] ${record.verified ? "text-success" : "text-warning"}`}>
                   {record.verified ? "Verified record" : "Requires source verification"}
                   {record.source ? ` · ${record.source}` : ""}
                 </p>

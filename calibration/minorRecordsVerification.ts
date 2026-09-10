@@ -34,6 +34,8 @@ const live = trackMinorRecordsOnMatchComplete(match, MINOR_RECORDS, { MI: { shor
 
 const value = (id: string) => live.updatedRecords.find((record) => record.id === id)?.value;
 assert.equal(value("fastest-fifty-ipl"), "13 balls");
+assert.equal(value("lowest-team-score-final"), "100/10");
+assert.equal(value("fastest-900-balls"), "383 balls");
 assert.equal(value("highest-score-final"), "117*"); // baseline remains intact
 assert.equal(value("most-runs-conceded-spell"), "80 runs");
 assert.equal(value("most-dismissals-keeper-innings"), "6 dismissals");

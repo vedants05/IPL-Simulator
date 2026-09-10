@@ -42,6 +42,7 @@ interface StaffResponse {
 interface StaffManagementPageProps {
   teams: Team[];
   mode?: "club" | "league";
+  initialStaffSlug?: string | null;
 }
 
 type StaffMarketSortKey = "staff_member" | "role_fit" | "ca" | "pa" | "interest" | "demand" | "club_link" | "budget" | "status";
@@ -826,7 +827,7 @@ function StaffProfileModal({
   );
 }
 
-export default function StaffManagementPage({ teams, mode = "club" }: StaffManagementPageProps) {
+export default function StaffManagementPage({ teams, mode = "club", initialStaffSlug = null }: StaffManagementPageProps) {
   const [data, setData] = useState<StaffResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
@@ -922,6 +923,12 @@ export default function StaffManagementPage({ teams, mode = "club" }: StaffManag
   const memberById = useMemo(() => new Map(
     (displayData?.members ?? []).map((member) => [member.id, member]),
   ), [displayData?.members]);
+
+  useEffect(() => {
+    if (!initialStaffSlug || !displayData) return;
+    const linkedMember = displayData.members.find((member) => member.slug === initialStaffSlug);
+    if (linkedMember) setSelectedStaffId(linkedMember.id);
+  }, [displayData, initialStaffSlug]);
 
   const orderedTeams = useMemo(() => [...teams].sort((left, right) => {
     const leftIndex = TEAM_ORDER.indexOf(left.id);

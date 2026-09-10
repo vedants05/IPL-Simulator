@@ -925,6 +925,7 @@ function OverviewPageContent() {
   // --------------------------------------------------------------------------
   const [activeTab, setActiveTab] = useState<"home" | "club" | "commercial" | "squad" | "scouting" | "season" | "league" | "history">("home");
   const [activeSubTab, _setActiveSubTab] = useState<string>("overview");
+  const [legacyStaffSlug, setLegacyStaffSlug] = useState<string | null>(null);
   const [analysisPlayerId, setAnalysisPlayerId] = useState<string | null>(null);
   const [stadiumBuilderCapacity, setStadiumBuilderCapacity] = useState<number | null>(null);
 
@@ -1029,14 +1030,20 @@ function OverviewPageContent() {
   useEffect(() => {
     const preview = minorRecordsPreviewRef.current;
     if (!preview || typeof ResizeObserver === "undefined") return;
-    const tileMinWidth = 128;
-    const tileMinHeight = 108;
+    // At the minimum card width, the longest archive title (62 characters),
+    // holder (45) and value (18) fit within this compact worst-case height.
+    const tileMinWidth = 185;
+    const tileMinHeight = 132;
     const gap = 8;
     const updateCapacity = () => {
       const { width, height } = preview.getBoundingClientRect();
-      const columns = Math.max(1, Math.floor((width + gap) / (tileMinWidth + gap)));
-      const rows = Math.max(1, Math.floor((height + gap) / (tileMinHeight + gap)));
-      setMinorRecordsPreviewCapacity(Math.max(1, columns * rows));
+      const columns = Math.max(1, Math.min(3, Math.floor((width + gap) / (tileMinWidth + gap))));
+      // One row is allowed to flex with the tile. Additional rows are only
+      // introduced when every row can retain the full readable card height.
+      const rows = height >= (tileMinHeight * 2) + gap
+        ? Math.floor((height + gap) / (tileMinHeight + gap))
+        : 1;
+      setMinorRecordsPreviewCapacity(Math.min(6, columns * rows));
     };
     const observer = new ResizeObserver(updateCapacity);
     observer.observe(preview);
@@ -9661,13 +9668,27 @@ This record has been officially verified and added to the IPL Minor Records arch
                       return latestYear(right.season) - latestYear(left.season);
                     })
                     .slice(0, 9);
+                const canonicalLegacyTeamId = (teamId: string) => teamId === "DD" ? "DC" : teamId === "KXIP" ? "PBKS" : teamId;
+                const latestLegacySeason = leagueHistorySeasons[0];
+                const latestChampion = latestLegacySeason
+                  ? getLeagueHistoryTeam(canonicalLegacyTeamId(latestLegacySeason.championTeamId))
+                  : undefined;
+                const legacyTitleCounts = leagueHistorySeasons.reduce<Record<string, number>>((counts, season) => {
+                  const teamId = canonicalLegacyTeamId(season.championTeamId);
+                  counts[teamId] = (counts[teamId] ?? 0) + 1;
+                  return counts;
+                }, {});
+                const leadingLegacyTeams = Object.entries(legacyTitleCounts)
+                  .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+                  .slice(0, 3)
+                  .map(([teamId, titles]) => ({ team: getLeagueHistoryTeam(teamId), titles }));
 
                 return (
-                  <div className="grid min-h-[560px] grid-cols-1 gap-4 overflow-visible xl:grid-cols-12">
+                  <div className="grid min-h-[560px] grid-cols-1 gap-4 overflow-visible xl:h-[calc(100vh-200px)] xl:min-h-0 xl:grid-cols-12 xl:grid-rows-[repeat(18,minmax(0,1fr))] xl:overflow-hidden">
                     <button
                       type="button"
                       onClick={() => setActiveSubTab("staff")}
-                      className="group relative col-span-1 flex min-h-[18rem] flex-col overflow-hidden rounded-xl border-2 border-border bg-surface p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-accent hover:shadow-md xl:col-span-4 xl:min-h-0"
+                      className="group relative col-span-1 flex min-h-[18rem] flex-col overflow-hidden rounded-xl border-2 border-border bg-surface p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-accent hover:shadow-md xl:col-span-5 xl:col-start-8 xl:row-span-5 xl:row-start-1 xl:min-h-0"
                     >
                       <div className="pointer-events-none absolute -right-12 -top-14 size-36 rounded-full bg-sky-500/10 blur-3xl" />
                       <div className="relative flex items-start justify-between border-b border-border pb-3">
@@ -9695,7 +9716,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                     <button
                       type="button"
                       onClick={() => setActiveSubTab("injuries")}
-                      className="group relative col-span-1 flex min-h-[18rem] flex-col overflow-hidden rounded-xl border-2 border-border bg-surface p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-accent hover:shadow-md xl:col-span-4 xl:min-h-0"
+                      className="group relative col-span-1 flex min-h-[18rem] flex-col overflow-hidden rounded-xl border-2 border-border bg-surface p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-accent hover:shadow-md xl:col-span-5 xl:col-start-8 xl:row-span-5 xl:row-start-6 xl:min-h-0"
                     >
                       <div className="pointer-events-none absolute -right-12 -top-14 size-36 rounded-full bg-red-500/10 blur-3xl" />
                       <div className="relative flex items-start justify-between border-b border-border pb-3">
@@ -9723,7 +9744,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                     <button
                       type="button"
                       onClick={() => setActiveSubTab("trades")}
-                      className={`group relative col-span-1 flex min-h-[18rem] flex-col overflow-hidden rounded-xl border-2 bg-surface p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md xl:col-span-4 xl:min-h-0 ${tradeWindowOpen ? "border-success/50 hover:border-success" : "border-border hover:border-accent"}`}
+                      className={`group relative col-span-1 flex min-h-[18rem] flex-col overflow-hidden rounded-xl border-2 bg-surface p-6 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md xl:col-span-7 xl:col-start-1 xl:row-span-10 xl:row-start-1 xl:min-h-0 ${tradeWindowOpen ? "border-success/50 hover:border-success" : "border-border hover:border-accent"}`}
                     >
                       <div className={`pointer-events-none absolute -right-12 -top-14 size-36 rounded-full blur-3xl ${tradeWindowOpen ? "bg-emerald-500/15" : "bg-slate-500/10"}`} />
                       <div className="relative flex items-start justify-between border-b border-border pb-3">
@@ -9760,7 +9781,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                     <button
                       type="button"
                       onClick={() => setActiveSubTab("seasonanalysis")}
-                      className="group relative col-span-1 flex min-h-[18rem] overflow-hidden rounded-xl border-2 border-border bg-surface p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-accent hover:shadow-md xl:col-span-4 xl:min-h-0"
+                      className="group relative col-span-1 flex min-h-[18rem] overflow-hidden rounded-xl border-2 border-border bg-surface p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-accent hover:shadow-md xl:col-span-4 xl:col-start-1 xl:row-span-8 xl:row-start-11 xl:min-h-0"
                     >
                       <div className="pointer-events-none absolute -bottom-20 -right-10 size-48 rounded-full bg-violet-500/10 blur-3xl" />
                       <div className="relative flex w-[42%] shrink-0 flex-col border-r border-border pr-5">
@@ -9779,7 +9800,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                     <button
                       type="button"
                       onClick={() => setActiveSubTab("minorrecords")}
-                      className="group relative col-span-1 flex min-h-[18rem] flex-col overflow-hidden rounded-xl border-2 border-border bg-surface p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-accent hover:shadow-md xl:col-span-4 xl:min-h-0"
+                      className="group relative col-span-1 flex min-h-[18rem] flex-col overflow-hidden rounded-xl border-2 border-border bg-surface p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-accent hover:shadow-md xl:col-span-5 xl:col-start-5 xl:row-span-8 xl:row-start-11 xl:min-h-0"
                     >
                       <div className="pointer-events-none absolute -bottom-16 -right-8 size-40 rounded-full bg-amber-500/10 blur-3xl" />
                       <div className="relative flex items-start justify-between border-b border-border pb-2">
@@ -9793,25 +9814,18 @@ This record has been officially verified and added to the IPL Minor Records arch
                         )}
                       </div>
                       {featuredRecords.length > 0 ? (
-                        <div ref={minorRecordsPreviewRef} className="relative mt-2 grid h-0 min-h-0 flex-1 auto-rows-fr grid-cols-[repeat(auto-fit,minmax(min(100%,8rem),1fr))] gap-2 overflow-hidden">
-                          {featuredRecords.slice(0, minorRecordsPreviewCapacity).map((record) => (
+                        <div ref={minorRecordsPreviewRef} className="relative mt-2 grid h-0 min-h-0 flex-1 auto-rows-fr grid-cols-[repeat(auto-fit,minmax(min(100%,11.5625rem),1fr))] gap-2 overflow-hidden [&>*:only-child]:col-span-full">
+                          {featuredRecords.slice(0, Math.min(6, minorRecordsPreviewCapacity)).map((record) => (
                             <div
                               key={record.id}
-                              className="flex min-h-[6.75rem] min-w-0 flex-col overflow-hidden rounded-md border border-border/70 bg-bg/80 px-2.5 py-2 shadow-sm"
+                              className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border border-border/70 bg-bg/80 p-2 shadow-sm only:grid only:grid-cols-[auto_minmax(0,1fr)] only:grid-rows-[auto_1fr] only:gap-x-3"
                             >
-                              <p className="line-clamp-2 min-w-0 [overflow-wrap:anywhere] text-[8px] font-semibold leading-[11px] text-text-primary">
-                                {record.title}
-                              </p>
-                              <div className="mt-1.5 min-w-0 border-t border-border/50 pt-1.5">
-                                <p className="truncate font-anton text-base leading-none text-warning">{record.value}</p>
-                                <p className="mt-1 line-clamp-2 min-w-0 [overflow-wrap:anywhere] font-space-mono text-[7px] font-bold uppercase leading-[9px] text-text-primary">
-                                  {record.holder}
-                                </p>
+                              <p className="font-anton text-2xl leading-none text-warning [overflow-wrap:anywhere] only:row-span-2 only:self-center only:text-3xl">{record.value}</p>
+                              <p className="mt-1 min-w-0 [overflow-wrap:anywhere] text-[9px] font-semibold leading-3 text-text-primary only:mt-0">{record.title}</p>
+                              <div className="mt-auto border-t border-border/40 pt-1 only:mt-1">
+                                <p className="min-w-0 whitespace-normal text-[9px] font-semibold leading-3 text-text-primary [overflow-wrap:anywhere]">{record.holder}</p>
+                                <p className="mt-0.5 font-space-mono text-[7px] font-bold uppercase text-text-secondary">{hasCareerRecordBreaks ? `Broken ${record.lastBrokenOn}` : `Record year ${record.season}`}</p>
                               </div>
-                              <p className="mt-auto line-clamp-2 min-w-0 [overflow-wrap:anywhere] border-t border-border/40 pt-1 font-space-mono text-[7px] uppercase leading-[9px] text-text-secondary">
-                                {hasCareerRecordBreaks ? `Broken ${record.lastBrokenOn}` : `Record year ${record.season}`}
-                                {record.notes ? ` · ${record.notes}` : ""}
-                              </p>
                             </div>
                           ))}
                         </div>
@@ -9824,20 +9838,26 @@ This record has been officially verified and added to the IPL Minor Records arch
                     <button
                       type="button"
                       onClick={() => setActiveSubTab("legacy")}
-                      className="group relative col-span-1 flex min-h-[18rem] flex-col overflow-hidden rounded-xl border-2 border-border bg-surface p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-warning hover:shadow-md xl:col-span-4 xl:min-h-0"
+                      className="group relative col-span-1 flex min-h-[18rem] flex-col overflow-hidden rounded-xl border-2 border-border bg-surface p-3 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-warning hover:shadow-md xl:col-span-3 xl:col-start-10 xl:row-span-8 xl:row-start-11 xl:min-h-0"
                     >
-                      <div className="pointer-events-none absolute -bottom-16 -right-10 size-44 rounded-full bg-amber-500/15 blur-3xl" />
-                      <div className="relative flex items-start justify-between border-b border-border pb-3">
-                        <div className="flex items-center gap-3"><span className="flex size-9 items-center justify-center rounded-lg bg-warning/10 text-warning"><Crown size={18} aria-hidden="true" /></span><div><p className="font-space-mono text-[8px] font-bold uppercase tracking-[0.18em] text-text-secondary">Franchise honours</p><h3 className="mt-1 font-anton text-lg uppercase leading-none text-text-primary">League Legacy</h3></div></div>
+                      <div className="pointer-events-none absolute -right-12 -top-16 size-44 rounded-full bg-amber-500/20 blur-3xl" />
+                      <div className="pointer-events-none absolute -bottom-20 -left-16 size-40 rounded-full bg-orange-500/10 blur-3xl" />
+                      <div className="relative flex items-start justify-between border-b border-border pb-2">
+                        <div className="flex items-center gap-2.5"><span className="flex size-8 items-center justify-center rounded-lg bg-warning/10 text-warning"><Crown size={16} aria-hidden="true" /></span><div><p className="font-space-mono text-[7px] font-bold uppercase tracking-[0.18em] text-text-secondary">Franchise honours</p><h3 className="mt-0.5 font-anton text-base uppercase leading-none text-text-primary">League Legacy</h3></div></div>
                         <ArrowUpRight size={15} className="text-warning transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
                       </div>
-                      <p className="relative mt-4 font-anton text-4xl leading-none text-text-primary">{leagueHistorySeasons.length}</p>
-                      <p className="relative mt-1 font-space-mono text-[8px] font-bold uppercase text-text-secondary">Seasons fully recorded</p>
-                      <div className="relative mt-4 grid grid-cols-2 gap-2">
-                        <div className="rounded-lg bg-bg/70 p-3"><p className="font-anton text-2xl text-warning">{new Set(leagueHistorySeasons.map((season) => season.championTeamId === "DD" ? "DC" : season.championTeamId === "KXIP" ? "PBKS" : season.championTeamId)).size}</p><p className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Champion teams</p></div>
-                        <div className="rounded-lg bg-bg/70 p-3"><p className="font-anton text-2xl text-text-primary">6</p><p className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Honour columns</p></div>
+                      <div className="relative mt-2 flex min-h-0 flex-1 flex-col gap-1.5">
+                        <div className="flex h-7 shrink-0 items-center gap-2 rounded-md border border-warning/20 bg-warning/[0.06] px-2">
+                          <span className="flex size-5 shrink-0 items-center justify-center rounded font-anton text-[7px]" style={{ backgroundColor: latestChampion?.primaryColor ?? "#b7791f", color: latestChampion?.secondaryColor ?? "#fff" }}>{latestChampion?.shortName ?? "—"}</span>
+                          <span className="min-w-0 flex-1 truncate text-[9px] font-semibold text-text-primary">{latestChampion?.name ?? "Awaiting result"}</span>
+                          <span className="shrink-0 font-space-mono text-[6px] font-bold uppercase text-warning">Champion · {latestLegacySeason?.season ?? "—"}</span>
+                        </div>
+                        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-bg/65">
+                          <div className="flex h-6 shrink-0 items-center justify-between border-b border-border/70 px-2.5"><span className="font-space-mono text-[7px] font-bold uppercase tracking-[0.16em] text-text-secondary">Top dynasties</span><span className="font-space-mono text-[6px] font-bold uppercase text-warning">All-time</span></div>
+                          {leadingLegacyTeams.map(({ team, titles }, index) => <div key={team.id} className="grid min-h-0 flex-1 grid-cols-[20px_24px_minmax(0,1fr)_auto] items-center gap-2 border-b border-border/50 px-2 last:border-b-0"><span className={`font-anton text-xs ${index === 0 ? "text-warning" : "text-text-secondary"}`}>0{index + 1}</span><span className="flex size-6 items-center justify-center rounded font-anton text-[7px]" style={{ backgroundColor: team.primaryColor, color: team.secondaryColor }}>{team.shortName}</span><span className="truncate text-[9px] font-semibold text-text-primary">{team.name}</span><span className="flex items-baseline gap-1"><b className="font-anton text-lg leading-none text-warning">{titles}</b><small className="font-space-mono text-[5px] font-bold uppercase text-text-secondary">titles</small></span></div>)}
+                        </div>
                       </div>
-                      <span className="relative mt-auto inline-flex items-center gap-1 font-space-mono text-[8px] font-bold uppercase tracking-wider text-warning">Open legacy table <ChevronRight size={12} /></span>
+                      <div className="relative mt-1.5 flex shrink-0 items-center justify-between border-t border-border pt-1.5"><span className="font-space-mono text-[6px] font-bold uppercase text-text-secondary">Teams · Players · Coaches</span><span className="inline-flex items-center gap-1 font-space-mono text-[7px] font-bold uppercase tracking-wider text-warning">Explore <ChevronRight size={11} /></span></div>
                     </button>
                   </div>
                 );
@@ -9858,7 +9878,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                 />
               )}
               {activeSubTab === "staff" && (
-                <StaffManagementPage teams={Object.values(teams)} mode="league" />
+                <StaffManagementPage teams={Object.values(teams)} mode="league" initialStaffSlug={legacyStaffSlug} />
               )}
               {activeSubTab === "seasonanalysis" && (
                 <SeasonDataAnalysisPage fixtures={detailedFixtures} teams={teams} players={players} seasonStartBattingAbilities={seasonStartBattingAbilities} seasonStartBowlingAbilities={seasonStartBowlingAbilities} userTeamId={userTeamId} />
@@ -9869,6 +9889,12 @@ This record has been officially verified and added to the IPL Minor Records arch
               {activeSubTab === "legacy" && (
                 <LeagueLegacyPage
                   seasons={leagueHistorySeasons}
+                  players={Object.values(scoutingPlayerPool)}
+                  careerStaff={careerStaff}
+                  onOpenStaff={(staffSlug) => {
+                    setLegacyStaffSlug(staffSlug);
+                    setActiveSubTab("staff");
+                  }}
                   teams={{
                     ...LEAGUE_HISTORY_TEAMS,
                     ...Object.fromEntries(Object.values(teams).map((team) => [team.id, {
