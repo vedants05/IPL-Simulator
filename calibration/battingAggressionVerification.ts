@@ -28,15 +28,15 @@ assert.ok(lowComposure.wicketRiskMultiplier > 1);
 assert.ok(highComposure.effectiveAggression < neutralComposure.effectiveAggression);
 assert.ok(highComposure.wicketRiskMultiplier < 1);
 
-// Aggression raises tempo and dismissal odds together. Approximate runs per
-// wicket should remain close enough that aggression is a style, not free CA.
+// Aggression raises tempo and dismissal probability by the same multiplier.
+// Expected runs per wicket should therefore remain essentially unchanged.
 const production = (aggression: number) => (
   expectedRuns(applyBattingAggressionOutcomeWeights(base, aggression))
   / aggressionAdjustedWicketProbability(0.05, aggression)
 );
 const lowProduction = production(45);
 const highProduction = production(90);
-assert.ok(Math.abs(highProduction / lowProduction - 1) < 0.08);
+assert.ok(Math.abs(highProduction / lowProduction - 1) < 0.005);
 
 console.log("Batting aggression verification passed", {
   boundaryShare: { controlled: boundaryShare(controlled), neutral: boundaryShare(neutral), attacking: boundaryShare(attacking) },

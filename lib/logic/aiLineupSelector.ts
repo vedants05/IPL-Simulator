@@ -1132,6 +1132,16 @@ function selectImpactPlayer(
   const openingPair = getOpeningPair(squad);
 
   const evaluateCandidate = (candidate: Player) => {
+    const bowlingPlaceholderPriority = (player: Player) => {
+      const position = startingXI.indexOf(player) + 1;
+      return Number(
+        mode === "bowlingFirst"
+        && isAiBowlingOption(player)
+        && (player.currentBatting ?? 0) < 65
+        && position >= 3
+        && position <= 7
+      );
+    };
     if (
       mode === "bowlingFirst"
       && candidate.role === "All-Rounder"
@@ -1194,7 +1204,8 @@ function selectImpactPlayer(
             || currentAbility(left) - currentAbility(right);
         }
         if (isBattingOption(candidate)) {
-          return (left.currentBatting ?? 0) - (right.currentBatting ?? 0)
+          return bowlingPlaceholderPriority(right) - bowlingPlaceholderPriority(left)
+            || (left.currentBatting ?? 0) - (right.currentBatting ?? 0)
             || currentAbility(left) - currentAbility(right);
         }
         return (left.currentBatting ?? 0) - (right.currentBatting ?? 0)
@@ -1211,7 +1222,8 @@ function selectImpactPlayer(
         const rightPosition = findOptimalImpactBattingPosition(startingXI, candidate, right, true);
         const leftComfortable = Number(canPlayerBatAtPosition(candidate, leftPosition));
         const rightComfortable = Number(canPlayerBatAtPosition(candidate, rightPosition));
-        return rightComfortable - leftComfortable
+        return bowlingPlaceholderPriority(right) - bowlingPlaceholderPriority(left)
+          || rightComfortable - leftComfortable
           || Number(rightPosition <= 8) - Number(leftPosition <= 8)
           || (left.currentBatting ?? 0) - (right.currentBatting ?? 0)
           || currentAbility(left) - currentAbility(right);
@@ -1485,11 +1497,19 @@ export function reconcileBowlingFirstImpactPlan(
       );
       const roleFit = canPlayerBatAtPosition(incoming, battingPosition) ? 1 : 0;
       const topEight = battingPosition <= 8 ? 1 : 0;
-      return { incoming, outgoing, battingPosition, roleFit, topEight };
+      const outgoingPosition = startingXI.indexOf(outgoing) + 1;
+      const topSevenBowlingPlaceholder = Number(
+        outgoingPosition >= 3
+        && outgoingPosition <= 7
+        && isAiBowlingOption(outgoing)
+        && (outgoing.currentBatting ?? 0) < 65
+      );
+      return { incoming, outgoing, battingPosition, roleFit, topEight, topSevenBowlingPlaceholder };
     }));
 
   const best = combinations.sort((left, right) => (
-    right.topEight - left.topEight
+    right.topSevenBowlingPlaceholder - left.topSevenBowlingPlaceholder
+    || right.topEight - left.topEight
     || right.roleFit - left.roleFit
     || (right.incoming.currentBatting ?? 0) - (left.incoming.currentBatting ?? 0)
     || (left.outgoing.currentBatting ?? 0) - (right.outgoing.currentBatting ?? 0)

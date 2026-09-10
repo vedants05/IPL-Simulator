@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import {
   advanceBattingConsistencyMomentum,
   battingConsistencyProfile,
+  consistencyAdjustedBattingForm,
+  consistencyAdjustedBattingLuck,
+  derivePlayerDisciplineFormAdjustments,
   getBattingTypeOutcomeModifiers,
 } from "../lib/logic/matchSimulation";
 
@@ -34,5 +37,28 @@ const samples = { volatile: sample(20), neutral: sample(50), reliable: sample(95
 assert.ok(Object.values(samples).every(({ mean }) => Math.abs(mean) < 0.03));
 assert.ok(samples.volatile.standardDeviation > samples.neutral.standardDeviation);
 assert.ok(samples.neutral.standardDeviation > samples.reliable.standardDeviation);
+
+// Inconsistency may still produce one-off brilliance, but must not turn wider
+// variance into a season-long advantage. Good form fades faster and bad form
+// bites harder; reliable players recover from the same slump more effectively.
+assert.ok(consistencyAdjustedBattingForm(3, 20) < consistencyAdjustedBattingForm(3, 50));
+assert.ok(consistencyAdjustedBattingForm(-3, 20) < consistencyAdjustedBattingForm(-3, 50));
+assert.ok(consistencyAdjustedBattingForm(-3, 95) > consistencyAdjustedBattingForm(-3, 50));
+assert.ok(consistencyAdjustedBattingLuck(3, 20) < consistencyAdjustedBattingLuck(3, 50));
+assert.ok(consistencyAdjustedBattingLuck(-3, 20) < consistencyAdjustedBattingLuck(-3, 50));
+
+const scorecards = (runs: number, balls: number) => [0, 1].map(() => ({
+  inningsA: { batting: [{ id: "batter", runs, balls }], bowling: [] },
+  inningsB: { batting: [], bowling: [] },
+}));
+assert.equal(
+  derivePlayerDisciplineFormAdjustments(scorecards(35, 20)).batting.batter,
+  0,
+  "high strike rate alone must not create positive batting form",
+);
+assert.ok(
+  derivePlayerDisciplineFormAdjustments(scorecards(40, 30)).batting.batter > 0,
+  "repeated substantial scores should create positive batting form",
+);
 
 console.log("Batting consistency neutrality verification passed", samples);

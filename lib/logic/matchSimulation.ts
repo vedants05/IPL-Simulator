@@ -2395,7 +2395,12 @@ export function battingAggressionScoringProfile(
   };
 }
 
-/** Scale wicket odds, rather than raw probability, by aggression tempo. */
+/**
+ * Scale dismissal probability by the same factor as scoring tempo. Applying
+ * the multiplier to odds made attacking batters slightly more productive per
+ * dismissal, especially in finite 120-ball innings. Direct probability
+ * scaling keeps aggression a tempo choice rather than a source of free runs.
+ */
 export function aggressionAdjustedWicketProbability(
   wicketProbability: number,
   battingAggression: number,
@@ -2404,8 +2409,7 @@ export function aggressionAdjustedWicketProbability(
   const probability = clamp(wicketProbability, 0.0001, 0.9999);
   const { tempoMultiplier } = battingAggressionScoringProfile(battingAggression);
   return clamp(
-    (probability * tempoMultiplier * pressureRiskMultiplier)
-      / (1 - probability + probability * tempoMultiplier * pressureRiskMultiplier),
+    probability * tempoMultiplier * pressureRiskMultiplier,
     0.0001,
     0.9999,
   );
@@ -2975,7 +2979,12 @@ function createPlayerLuck(
         : player.age <= 40
           ? 0.86
           : 0.78;
-    const sustainedForm = seasonalForm + recentForm;
+    const consistency = discipline === "batting"
+      ? player.battingConsistency ?? player.stamina ?? 50
+      : player.bowlingConsistency ?? player.consistency ?? 50;
+    const sustainedForm = discipline === "batting"
+      ? consistencyAdjustedBattingForm(seasonalForm + recentForm, consistency)
+      : seasonalForm + recentForm;
     const cappedSustainedForm = sustainedForm > 0
       ? Math.min(sustainedForm * positivePersistence, sustainedPositiveFormCap(baseRating))
       : Math.max(-6, sustainedForm);
@@ -2983,15 +2992,42 @@ function createPlayerLuck(
       ? seasonBattingRegressionAdjustment(baseRating, seasonBattingStats?.[playerId])
       : 0;
 
-    const baseStandardDeviation = clamp(2.8 * ageConsistency, 1.6, 3.8);
+    // Ratings should remain the strongest match-level signal. Luck supplies
+    // believable variation without routinely erasing several rating points.
+    const baseStandardDeviation = clamp(2.2 * ageConsistency, 1.35, 3.1);
     const consistencyMultiplier = discipline === "batting"
       ? battingConsistencyProfile(player.battingConsistency ?? player.stamina ?? 50).matchVarianceMultiplier
       : bowlingConsistencyProfile(player.bowlingConsistency ?? player.consistency ?? 50).matchVarianceMultiplier;
     const standardDeviation = baseStandardDeviation * consistencyMultiplier;
-    const matchLuck = rng.gaussian() * standardDeviation;
-    const totalLuck = clamp(matchLuck + cappedSustainedForm + seasonRegression, -8, 8);
+    const rawMatchLuck = rng.gaussian() * standardDeviation;
+    const matchLuck = discipline === "batting"
+      ? consistencyAdjustedBattingLuck(rawMatchLuck, consistency)
+      : rawMatchLuck;
+    const totalLuck = clamp(matchLuck + cappedSustainedForm + seasonRegression, -6, 6);
     return [playerId, totalLuck];
   }));
+}
+
+/**
+ * Low consistency must not gain season-long value from a wider symmetric
+ * distribution. It shortens good runs and deepens poor runs; high consistency
+ * cushions a slump while leaving the player's underlying ceiling unchanged.
+ */
+export function consistencyAdjustedBattingForm(form: number, consistencyValue: number | undefined): number {
+  const consistency = clamp(consistencyValue ?? 50, 1, 99);
+  const unreliability = Math.max(0, (50 - consistency) / 49);
+  const reliability = Math.max(0, (consistency - 50) / 49);
+  if (form > 0) return form * (1 - unreliability * 0.45);
+  if (form < 0) return form * (1 + unreliability * 0.35) * (1 - reliability * 0.25);
+  return 0;
+}
+
+export function consistencyAdjustedBattingLuck(luck: number, consistencyValue: number | undefined): number {
+  const consistency = clamp(consistencyValue ?? 50, 1, 99);
+  const unreliability = Math.max(0, (50 - consistency) / 49);
+  if (luck > 0) return luck * (1 - unreliability * 0.22);
+  if (luck < 0) return luck * (1 + unreliability * 0.14);
+  return 0;
 }
 
 export interface DisciplineFormAdjustments {
@@ -3039,7 +3075,7 @@ export function derivePlayerDisciplineFormAdjustments(
     let coldCount = 0;
 
     recent.forEach((p) => {
-      if (p.runs >= 40 || (p.runs >= 25 && p.balls > 0 && (p.runs / p.balls) >= 1.6)) {
+      if (p.runs >= 40) {
         hotCount += 1;
       } else if (p.balls >= 5 && p.runs < 10) {
         coldCount += 1;
@@ -3276,18 +3312,26 @@ function activateBowlFirstImpact(
 ): void {
   if (teamState.impactUsed) return;
   const startingSet = new Set(teamState.startingXI);
-  const candidates = teamState.plan.impactSubs
+  const allBenchCandidates = teamState.plan.impactSubs
     .map((playerId) => players[playerId])
     .filter((player): player is Player => Boolean(
       player
       && !startingSet.has(player.id)
-      && player.currentBatting >= 55,
     ))
     .sort((left, right) => (
       right.currentBatting - left.currentBatting
       || right.currentBowling - left.currentBowling
     ));
-  const planned = candidates.find((player) => player.id === teamState.plan.plannedImpactPlayerId);
+  // A user/AI plan is authoritative even when the selected batter is rated
+  // below the generic fallback threshold. The threshold is only a guard for
+  // choosing an unplanned substitute automatically.
+  const planned = allBenchCandidates.find((player) => player.id === teamState.plan.plannedImpactPlayerId);
+  const candidates = [
+    ...(planned ? [planned] : []),
+    ...allBenchCandidates.filter((player) => (
+      player.id !== planned?.id && player.currentBatting >= 55
+    )),
+  ];
   const best = candidates[0];
   if (!best) return;
   const centre = (
@@ -3295,33 +3339,42 @@ function activateBowlFirstImpact(
     + conditions.adjustedExpectedScore.max
   ) / 2;
   const highTarget = target >= centre + 18 || target / 20 >= 10;
-  const preferredIncoming = (
-    highTarget
-    && planned
-    && best.currentBatting >= planned.currentBatting + 3
-  ) ? best : planned ?? best;
+  // Never silently replace a configured Impact Player because of the target.
+  // Target adaptation is only appropriate when no explicit plan exists.
+  const preferredIncoming = planned ?? best;
 
   const keepers = teamState.finalXI
     .map((playerId) => players[playerId])
     .filter(isKeeper);
-  const eligibleOutgoing = teamState.finalXI
+  const allLegalOutgoing = teamState.finalXI
     .map((playerId) => players[playerId])
     .filter((player): player is Player => Boolean(
       player
-      && player.id !== teamState.plan.captainId
-      && player.id !== teamState.plan.viceCaptainId
       && !(isKeeper(player) && keepers.length <= 1),
     ));
-  const plannedOutgoing = eligibleOutgoing.find((player) => (
+  // A specifically nominated outgoing player may be the captain or vice
+  // captain; those protections only apply when the engine has to improvise.
+  const plannedOutgoing = allLegalOutgoing.find((player) => (
     player.id === teamState.plan.plannedOutgoingPlayerId
+  ));
+  const eligibleOutgoing = allLegalOutgoing.filter((player) => (
+    player.id !== teamState.plan.captainId
+    && player.id !== teamState.plan.viceCaptainId
   ));
   const rankedOutgoing = [
     ...(plannedOutgoing ? [plannedOutgoing] : []),
     ...[...eligibleOutgoing]
       .filter((player) => player.id !== plannedOutgoing?.id)
       .sort((left, right) => (
-    left.currentBatting - right.currentBatting
-    || right.currentBowling - left.currentBowling
+        // A specialist bowler deliberately placed in the batting top seven is
+        // an Impact placeholder. Remove that player before sacrificing a
+        // lower-order bowler and leaving the placeholder to bat in the chase.
+        Number(isBowlingOption(right) && right.currentBatting < 65
+          && teamState.battingOrder.indexOf(right.id) < 7)
+        - Number(isBowlingOption(left) && left.currentBatting < 65
+          && teamState.battingOrder.indexOf(left.id) < 7)
+        || left.currentBatting - right.currentBatting
+        || right.currentBowling - left.currentBowling
       )),
   ];
   const rankedIncoming = [

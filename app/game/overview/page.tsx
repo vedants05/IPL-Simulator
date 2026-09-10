@@ -32,6 +32,13 @@ import {
   playerToLineupCandidate,
   type AutomaticLineupSelection,
 } from "@/lib/logic/automaticLineupBuilder";
+
+type MatchSelectionInput = Pick<
+  AutomaticLineupSelection,
+  "battingFirstXI" | "bowlingFirstXI" | "battingFirstImpactSubs" | "bowlingFirstImpactSubs"
+> & Partial<Omit<AutomaticLineupSelection,
+  "battingFirstXI" | "bowlingFirstXI" | "battingFirstImpactSubs" | "bowlingFirstImpactSubs"
+>>;
 import { findSpecialOpenerPair } from "@/lib/logic/openerPairs";
 import {
   generateBalancedLeagueFixtures,
@@ -2920,12 +2927,7 @@ function OverviewPageContent() {
 
   const buildTeamMatchPlans = (
     teamId: string,
-    userSelection?: {
-      battingFirstXI: string[];
-      bowlingFirstXI: string[];
-      battingFirstImpactSubs: string[];
-      bowlingFirstImpactSubs: string[];
-    },
+    userSelection?: MatchSelectionInput,
     conditions?: MatchGroundConditions,
     match?: Match,
     assistantManageUser = true,
@@ -2937,6 +2939,12 @@ function OverviewPageContent() {
         bowlingFirstXI,
         battingFirstImpactSubs,
         bowlingFirstImpactSubs,
+        battingFirstImpactPlayerId,
+        battingFirstOutgoingPlayerId,
+        battingFirstImpactBattingPosition,
+        bowlingFirstImpactPlayerId,
+        bowlingFirstOutgoingPlayerId,
+        bowlingFirstImpactBattingPosition,
       };
       const currentSquad = getTeamSquad(teamId);
       const liveInjuries = useGameStore.getState().activeInjuries;
@@ -2979,18 +2987,30 @@ function OverviewPageContent() {
         battingFirst: toMatchLineupPlan(
           playableSelection.battingFirstXI,
           playableSelection.battingFirstImpactSubs,
-          requestedPlanIsCurrent && !userSelection ? battingFirstImpactPlayerId : null,
-          requestedPlanIsCurrent && !userSelection ? battingFirstOutgoingPlayerId : null,
-          requestedPlanIsCurrent && !userSelection ? battingFirstImpactBattingPosition : null,
+          requestedPlanIsCurrent
+            ? requestedSelection.battingFirstImpactPlayerId ?? battingFirstImpactPlayerId
+            : null,
+          requestedPlanIsCurrent
+            ? requestedSelection.battingFirstOutgoingPlayerId ?? battingFirstOutgoingPlayerId
+            : null,
+          requestedPlanIsCurrent
+            ? requestedSelection.battingFirstImpactBattingPosition ?? battingFirstImpactBattingPosition
+            : null,
           teamLeadership.captainId,
           teamLeadership.viceCaptainId,
         ),
         bowlingFirst: toMatchLineupPlan(
           playableSelection.bowlingFirstXI,
           playableSelection.bowlingFirstImpactSubs,
-          requestedPlanIsCurrent && !userSelection ? bowlingFirstImpactPlayerId : null,
-          requestedPlanIsCurrent && !userSelection ? bowlingFirstOutgoingPlayerId : null,
-          requestedPlanIsCurrent && !userSelection ? bowlingFirstImpactBattingPosition : null,
+          requestedPlanIsCurrent
+            ? requestedSelection.bowlingFirstImpactPlayerId ?? bowlingFirstImpactPlayerId
+            : null,
+          requestedPlanIsCurrent
+            ? requestedSelection.bowlingFirstOutgoingPlayerId ?? bowlingFirstOutgoingPlayerId
+            : null,
+          requestedPlanIsCurrent
+            ? requestedSelection.bowlingFirstImpactBattingPosition ?? bowlingFirstImpactBattingPosition
+            : null,
           teamLeadership.captainId,
           teamLeadership.viceCaptainId,
         ),
@@ -3103,10 +3123,9 @@ function OverviewPageContent() {
       fixture.simulation?.innings.forEach((innings) => {
         innings.batting.forEach((entry) => {
           if (entry.didNotBat) return;
-          const strikeRate = entry.balls > 0 ? entry.runs * 100 / entry.balls : 0;
           const battingForm = entry.runs >= 50
             ? Math.min(2, 1 + (entry.runs - 50) / 50)
-            : entry.runs >= 35 && strikeRate >= 150
+            : entry.runs >= 40
               ? 0.8
               : entry.balls >= 5 && entry.runs < 10
                 ? -1.2
@@ -3507,12 +3526,7 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}${replacementEligible
 
   const buildSimulatedMatch = (
     match: Match,
-    userSelection?: {
-      battingFirstXI: string[];
-      bowlingFirstXI: string[];
-      battingFirstImpactSubs: string[];
-      bowlingFirstImpactSubs: string[];
-    },
+    userSelection?: MatchSelectionInput,
     // A user simulation must use the saved match plan by default. Assistant
     // management is opt-in for explicit recovery/auto-management flows.
     assistantManageUser = false,
@@ -3845,12 +3859,7 @@ This record has been officially verified and added to the IPL Minor Records arch
 
   const runFixtureSimulation = (
     matchId: string,
-    userSelection?: {
-      battingFirstXI: string[];
-      bowlingFirstXI: string[];
-      battingFirstImpactSubs: string[];
-      bowlingFirstImpactSubs: string[];
-    },
+    userSelection?: MatchSelectionInput,
   ) => {
     const match = fixturesRef.current.find((fixture) => fixture.id === matchId);
     if (!match || match.played) return;
@@ -4113,20 +4122,14 @@ This record has been officially verified and added to the IPL Minor Records arch
     setBowlingFirstXI(selection.bowlingFirstXI);
     setBattingFirstImpactSubs(selection.battingFirstImpactSubs);
     setBowlingFirstImpactSubs(selection.bowlingFirstImpactSubs);
-    setBattingFirstImpactPlayerId(null);
-    setBattingFirstOutgoingPlayerId(null);
-    setBattingFirstImpactBattingPosition(null);
-    setBowlingFirstImpactPlayerId(null);
-    setBowlingFirstOutgoingPlayerId(null);
-    setBowlingFirstImpactBattingPosition(null);
+    setBattingFirstImpactPlayerId(selection.battingFirstImpactPlayerId);
+    setBattingFirstOutgoingPlayerId(selection.battingFirstOutgoingPlayerId);
+    setBattingFirstImpactBattingPosition(selection.battingFirstImpactBattingPosition);
+    setBowlingFirstImpactPlayerId(selection.bowlingFirstImpactPlayerId);
+    setBowlingFirstOutgoingPlayerId(selection.bowlingFirstOutgoingPlayerId);
+    setBowlingFirstImpactBattingPosition(selection.bowlingFirstImpactBattingPosition);
     saveCareerState({
       ...selection,
-      battingFirstImpactPlayerId: null,
-      battingFirstOutgoingPlayerId: null,
-      battingFirstImpactBattingPosition: null,
-      bowlingFirstImpactPlayerId: null,
-      bowlingFirstOutgoingPlayerId: null,
-      bowlingFirstImpactBattingPosition: null,
     });
     runFixtureSimulation(pendingMatchPreparation.matchId, selection);
   };
