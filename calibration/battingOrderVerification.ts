@@ -45,6 +45,44 @@ assert.ok(
   "the batting substitute should replace the bowling placeholder occupying number five",
 );
 
+// A reciprocal bowl-first plan temporarily puts the extra bowler in the
+// displaced batter's exact slot. Reconciliation must reverse that same pair,
+// including at #1/#2, instead of removing a weaker lower-order bowler and
+// leaving the placeholder to open the chase.
+const head = player("travis-head", "Batsman", 89, 60, { isOpener: true, onlyOpensOrBenched: true });
+const abhishek = player("abhishek-sharma", "Batsman", 90, 69, { isOpener: true, hasBattedAt3: true });
+const tushar = player("tushar-deshpande", "Pace Bowler", 50, 80);
+const weakerLowerOrderBowler = player("lower-order-bowler", "Pace Bowler", 35, 78);
+const openingPlaceholderXI = [
+  head,
+  tushar,
+  core1,
+  core2,
+  incumbentFinisher,
+  lowerBatter,
+  bowlers[0],
+  weakerLowerOrderBowler,
+  bowlers[2],
+  bowlers[3],
+  bowlers[4],
+];
+const openingPairRepair = reconcileBowlingFirstImpactPlan(
+  [...openingPlaceholderXI, abhishek],
+  openingPlaceholderXI.map((candidate) => candidate.id),
+  [abhishek.id],
+  new Set(),
+  {
+    impactPlayerId: abhishek.id,
+    outgoingPlayerId: tushar.id,
+    battingPosition: 2,
+  },
+);
+assert.deepEqual(
+  openingPairRepair,
+  { impactPlayerId: abhishek.id, outgoingPlayerId: tushar.id, battingPosition: 2 },
+  "the returning opener must replace the exact bowler occupying their opening slot",
+);
+
 const simulationSquad = (prefix: string) => {
   const cloned = [...bowlFirstXI, ashutosh].map((candidate) => ({
     ...candidate,

@@ -1215,6 +1215,9 @@ function OverviewPageContent() {
   const playerStatsRef = useRef<Record<string, PlayerStats>>({});
   const advanceOneDayRef = useRef<() => void>(() => undefined);
   const dayTickerRef = useRef<DayTickerController | null>(null);
+  const careerFastForwardActiveRef = useRef(false);
+  const careerFastForwardCancelledRef = useRef(false);
+  const careerFastForwardRecoveryCheckedRef = useRef(false);
   const calendarAnimationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const skipStartDateRef = useRef<string | null>(null);
   const skipTargetDateRef = useRef<string | null>(null);
@@ -1264,6 +1267,8 @@ function OverviewPageContent() {
       },
       onError: (error) => {
         console.error("Day-by-day simulation stopped unexpectedly:", error);
+        careerFastForwardActiveRef.current = false;
+        careerFastForwardCancelledRef.current = true;
         skipStartDateRef.current = null;
         skipTargetDateRef.current = null;
         autoSimUserFixturesRef.current = false;
@@ -3074,6 +3079,11 @@ function OverviewPageContent() {
       tunedBowlingFirst.startingXI,
       tunedBowlingFirst.impactSubs,
       protectedIds,
+      {
+        impactPlayerId: recommended.bowlingFirst.impactPlayerId,
+        outgoingPlayerId: recommended.bowlingFirst.likelyOutgoingPlayerId,
+        battingPosition: recommended.bowlingFirst.impactBattingPosition,
+      },
     );
     return {
       teamId,
@@ -4149,6 +4159,11 @@ This record has been officially verified and added to the IPL Minor Records arch
   }, []);
 
   const cancelCareerFastForward = useCallback((message = "Fast-forward stopped. Your career is safe at the last completed date.") => {
+    // Mark the run cancelled before changing React/Zustand state. Otherwise
+    // the recovery effects can observe the old target during the same render
+    // and immediately restart the ticker after the user presses Stop.
+    careerFastForwardActiveRef.current = false;
+    careerFastForwardCancelledRef.current = true;
     stopSimulating();
     useGameStore.getState().setCareerFastForwardTarget(null);
     sessionStorage.removeItem(CAREER_FAST_FORWARD_RECOVERY_KEY);
@@ -4552,17 +4567,37 @@ This record has been officially verified and added to the IPL Minor Records arch
       });
     } else {
       let injuryDate = addDaysToDateKey(currentDateString, 1);
+      const seasonFinalDate = getSeasonFinalDate();
+      let deferredPostseasonRecoveryCheck = false;
       while (injuryDate <= nextDateString) {
-        processCalendarInjuries(injuryDate);
+        if (!seasonFinalDate || injuryDate <= seasonFinalDate) {
+          processCalendarInjuries(injuryDate);
+        } else {
+          // Background injuries are disabled after the final. Calling the
+          // Zustand action for every empty offseason day still persisted the
+          // entire career store each time, producing hundreds of large JSON
+          // serializations in one fast-forward tick and exhausting the tab's
+          // memory. Recoveries are deterministic by return date, so reconcile
+          // the whole idle span once at its destination instead.
+          deferredPostseasonRecoveryCheck = true;
+        }
         // Fast-forward must run the same daily trade pass as manual calendar
         // progression; jumping directly to Retention Day previously skipped
         // every eligible post-final trade date.
         processAITrades({
           date: injuryDate,
-          finalDate: getSeasonFinalDate(),
+          finalDate: seasonFinalDate,
           standingsTeamIds: standings.map((standing) => standing.teamId),
         });
         injuryDate = addDaysToDateKey(injuryDate, 1);
+      }
+      if (deferredPostseasonRecoveryCheck) {
+        const recovered = reconcileInjuries(nextDateString);
+        processAIReplacementSignings(nextDateString);
+        publishUserInjuryUpdates(
+          { created: [], worsened: [], recovered },
+          nextDateString,
+        );
       }
     }
 
@@ -4702,6 +4737,8 @@ This record has been officially verified and added to the IPL Minor Records arch
   useEffect(() => {
     const startFastForward = (targetDate: string) => {
       if (targetDate <= useGameStore.getState().currentDate) return;
+      careerFastForwardCancelledRef.current = false;
+      careerFastForwardActiveRef.current = true;
       sessionStorage.setItem(CAREER_FAST_FORWARD_RECOVERY_KEY, targetDate);
       setCareerFastForwardTarget(targetDate);
       skipToCalendarDate(targetDate, true);
@@ -4761,19 +4798,51 @@ This record has been officially verified and added to the IPL Minor Records arch
     return () => window.removeEventListener("ipl-career-fast-forward", handler);
   }, [currentSeason, retentionDateString, rolloverToNextSeason, setCareerFastForwardTarget, showToast, skipToCalendarDate, startSimulating]);
 
-  // Restore an in-progress multi-season job only after initCareer has created
-  // the new season's fixtures. This prevents an empty fixture list from making
-  // the calendar jump directly past every match.
+  // A season rollover deliberately puts the target in the URL. Treat that URL
+  // as a one-shot recovery token: persisted Zustand/session values alone must
+  // never auto-start work after an ordinary reload or browser crash.
   useEffect(() => {
-    if (!isCareerLoaded || fixturesRef.current.length < TOTAL_FIXTURE_COUNT) return;
-    const recoveryTarget = searchParams.get("fastForwardTarget")
-      ?? sessionStorage.getItem(CAREER_FAST_FORWARD_RECOVERY_KEY);
-    if (!recoveryTarget) return;
-    const liveDate = useGameStore.getState().currentDate;
-    if (recoveryTarget <= liveDate) {
+    if (
+      careerFastForwardRecoveryCheckedRef.current
+      || !isCareerLoaded
+      || fixturesRef.current.length < TOTAL_FIXTURE_COUNT
+    ) return;
+    careerFastForwardRecoveryCheckedRef.current = true;
+
+    const recoveryTarget = searchParams.get("fastForwardTarget");
+    if (!recoveryTarget) {
+      careerFastForwardActiveRef.current = false;
+      careerFastForwardCancelledRef.current = true;
+      dayTickerRef.current?.stop();
+      skipStartDateRef.current = null;
+      skipTargetDateRef.current = null;
+      autoSimUserFixturesRef.current = false;
       sessionStorage.removeItem(CAREER_FAST_FORWARD_RECOVERY_KEY);
+      if (useGameStore.getState().careerFastForwardTargetDate) {
+        setCareerFastForwardTarget(null);
+      }
+      setIsSimulatingDays(false);
+      setIsCalendarClosing(false);
       return;
     }
+
+    // Remove the token before starting. If the tab crashes during this run,
+    // reloading lands safely on the saved date instead of entering a crash loop.
+    const recoveryUrl = new URL(window.location.href);
+    recoveryUrl.searchParams.delete("fastForwardTarget");
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `${recoveryUrl.pathname}${recoveryUrl.search}${recoveryUrl.hash}`,
+    );
+    sessionStorage.removeItem(CAREER_FAST_FORWARD_RECOVERY_KEY);
+    const liveDate = useGameStore.getState().currentDate;
+    if (recoveryTarget <= liveDate) {
+      setCareerFastForwardTarget(null);
+      return;
+    }
+    careerFastForwardCancelledRef.current = false;
+    careerFastForwardActiveRef.current = true;
     if (useGameStore.getState().careerFastForwardTargetDate !== recoveryTarget) {
       setCareerFastForwardTarget(recoveryTarget);
     }
@@ -4789,18 +4858,23 @@ This record has been officially verified and added to the IPL Minor Records arch
       || fixturesRef.current.length < TOTAL_FIXTURE_COUNT
     ) return;
     if (currentDate >= careerFastForwardTargetDate) {
+      careerFastForwardActiveRef.current = false;
+      careerFastForwardCancelledRef.current = false;
       setCareerFastForwardTarget(null);
       sessionStorage.removeItem(CAREER_FAST_FORWARD_RECOVERY_KEY);
       stopSimulating();
       showToast("Career fast-forward complete.");
       return;
     }
-    if (!dayTickerRef.current?.isRunning()) skipToCalendarDate(careerFastForwardTargetDate, true);
+    if (
+      careerFastForwardActiveRef.current
+      && !careerFastForwardCancelledRef.current
+      && !dayTickerRef.current?.isRunning()
+    ) skipToCalendarDate(careerFastForwardTargetDate, true);
   }, [careerFastForwardTargetDate, currentDate, fixtures.length, isCareerLoaded, setCareerFastForwardTarget, skipToCalendarDate, stopSimulating]);
 
-  // A season rollover reloads the page. If hydration or a long synchronous
-  // match calculation leaves the ticker stopped, resume the persisted job
-  // without requiring the user to press the button again.
+  // Only supervise a fast-forward that was explicitly started in this mounted
+  // page (or admitted through the one-shot rollover token above).
   useEffect(() => {
     if (
       !isCareerLoaded
@@ -4810,7 +4884,9 @@ This record has been officially verified and added to the IPL Minor Records arch
     const watchdogId = window.setInterval(() => {
       const liveDate = useGameStore.getState().currentDate;
       if (
-        liveDate < careerFastForwardTargetDate
+        careerFastForwardActiveRef.current
+        && !careerFastForwardCancelledRef.current
+        && liveDate < careerFastForwardTargetDate
         && !dayTickerRef.current?.isRunning()
       ) {
         skipToCalendarDate(careerFastForwardTargetDate, true);

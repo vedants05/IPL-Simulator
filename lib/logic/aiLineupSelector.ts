@@ -1452,6 +1452,12 @@ export interface BowlingFirstImpactPlan {
   battingPosition: number | null;
 }
 
+interface PreferredBowlingFirstImpactPlan {
+  impactPlayerId?: string | null;
+  outgoingPlayerId?: string | null;
+  battingPosition?: number | null;
+}
+
 /**
  * Rebuild the batting-impact decision against the final bowling-first XI.
  * Pitch tuning may replace starters after the original recommendation was
@@ -1463,6 +1469,7 @@ export function reconcileBowlingFirstImpactPlan(
   startingXIIds: readonly string[],
   impactSubIds: readonly string[],
   protectedIds: ReadonlySet<string> = new Set(),
+  preferredPlan: PreferredBowlingFirstImpactPlan = {},
 ): BowlingFirstImpactPlan {
   const playerById = new Map(squad.map((player) => [player.id, player]));
   const startingXI = startingXIIds
@@ -1499,16 +1506,35 @@ export function reconcileBowlingFirstImpactPlan(
       const topEight = battingPosition <= 8 ? 1 : 0;
       const outgoingPosition = startingXI.indexOf(outgoing) + 1;
       const topSevenBowlingPlaceholder = Number(
-        outgoingPosition >= 3
+        outgoingPosition >= 1
         && outgoingPosition <= 7
         && isAiBowlingOption(outgoing)
         && (outgoing.currentBatting ?? 0) < 65
       );
-      return { incoming, outgoing, battingPosition, roleFit, topEight, topSevenBowlingPlaceholder };
+      const preservesPlannedPair = Number(
+        incoming.id === preferredPlan.impactPlayerId
+        && outgoing.id === preferredPlan.outgoingPlayerId
+      );
+      const preservesPlannedPosition = Number(
+        preservesPlannedPair
+        && preferredPlan.battingPosition === battingPosition
+      );
+      return {
+        incoming,
+        outgoing,
+        battingPosition,
+        roleFit,
+        topEight,
+        topSevenBowlingPlaceholder,
+        preservesPlannedPair,
+        preservesPlannedPosition,
+      };
     }));
 
   const best = combinations.sort((left, right) => (
-    right.topSevenBowlingPlaceholder - left.topSevenBowlingPlaceholder
+    right.preservesPlannedPair - left.preservesPlannedPair
+    || right.preservesPlannedPosition - left.preservesPlannedPosition
+    || right.topSevenBowlingPlaceholder - left.topSevenBowlingPlaceholder
     || right.topEight - left.topEight
     || right.roleFit - left.roleFit
     || (right.incoming.currentBatting ?? 0) - (left.incoming.currentBatting ?? 0)
