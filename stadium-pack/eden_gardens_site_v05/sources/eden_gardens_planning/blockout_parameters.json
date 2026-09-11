@@ -1,0 +1,430 @@
+{
+  "version": "0.1-review-only",
+  "units": "metres",
+  "status": "PROVISIONAL DIMENSIONED PLAN; NOT SURVEYED; NOT CAMERA-FITTED",
+  "axes": {
+    "origin": "centre of chosen match pitch at surface",
+    "x": "right when looking from Club House toward High Court End",
+    "y": "from Club House toward opposite pitch end",
+    "z": "up",
+    "north_azimuth_deg": null,
+    "gltf_mapping": "(x,y,z)_Blender -> (x,z,-y)_glTF"
+  },
+  "pitch": {
+    "length_m": 20.1168,
+    "width_m": 3.048,
+    "source": "MCC Law 6; exact conversion of 22 yd and 10 ft",
+    "status": "D: standard, not site survey"
+  },
+  "square": {
+    "width_m": 24,
+    "length_m": 28,
+    "status": "E",
+    "tolerance_m": 5
+  },
+  "boundary_rope": {
+    "semi_x_m": 68,
+    "semi_y_m": 74,
+    "status": "E: adjustable match setup; not an official Eden dimension",
+    "search_range_semi_x_m": [
+      62,
+      76
+    ],
+    "search_range_semi_y_m": [
+      64,
+      80
+    ]
+  },
+  "grass_edge": {
+    "semi_x_m": 74,
+    "semi_y_m": 80,
+    "status": "E",
+    "tolerance_m": 8
+  },
+  "front_seating_guide": {
+    "semi_x_m": 76,
+    "semi_y_m": 82,
+    "status": "E: initial ellipse only; replace with piecewise survey/photo fit",
+    "tolerance_m": 8
+  },
+  "club_house": {
+    "center_xy_m": [
+      0,
+      -97
+    ],
+    "width_m": 56,
+    "depth_m": 30,
+    "roof_peak_m": 28,
+    "status": "E",
+    "width_depth_tolerance_m": 8,
+    "height_tolerance_m": 5,
+    "references": [
+      "R019",
+      "R021",
+      "R022",
+      "R034",
+      "R039"
+    ]
+  },
+  "sectors": [
+    {
+      "id": "H",
+      "angle_start_deg": -77,
+      "angle_end_deg": -49,
+      "front_centerline_radius_m": 77.13,
+      "rear_radius_m": 119,
+      "front_z_m": 1.2,
+      "top_seating_z_m": 24,
+      "roof_type": "open",
+      "roof_z_m": null,
+      "status": "E: initial modelling estimate, not measured",
+      "plan_position_tolerance_m": 10,
+      "height_tolerance_m": 5,
+      "references": [
+        "R028",
+        "R029",
+        "R033",
+        "R038"
+      ]
+    },
+    {
+      "id": "G",
+      "angle_start_deg": -49,
+      "angle_end_deg": -21,
+      "front_centerline_radius_m": 79.87,
+      "rear_radius_m": 121,
+      "front_z_m": 1.2,
+      "top_seating_z_m": 24,
+      "roof_type": "open",
+      "roof_z_m": null,
+      "status": "E: initial modelling estimate, not measured",
+      "plan_position_tolerance_m": 10,
+      "height_tolerance_m": 5,
+      "references": [
+        "R028",
+        "R029",
+        "R033",
+        "R038"
+      ]
+    },
+    {
+      "id": "F",
+      "angle_start_deg": -21,
+      "angle_end_deg": 8,
+      "front_centerline_radius_m": 81.91,
+      "rear_radius_m": 119,
+      "front_z_m": 1.2,
+      "top_seating_z_m": 24,
+      "roof_type": "open",
+      "roof_z_m": null,
+      "status": "E: initial modelling estimate, not measured",
+      "plan_position_tolerance_m": 10,
+      "height_tolerance_m": 5,
+      "references": [
+        "R028",
+        "R029",
+        "R033",
+        "R038"
+      ]
+    },
+    {
+      "id": "E",
+      "angle_start_deg": 8,
+      "angle_end_deg": 26,
+      "front_centerline_radius_m": 81.43,
+      "rear_radius_m": 114,
+      "front_z_m": 1.2,
+      "top_seating_z_m": 14,
+      "roof_type": "screen",
+      "roof_z_m": null,
+      "status": "E: initial modelling estimate, not measured",
+      "plan_position_tolerance_m": 10,
+      "height_tolerance_m": 5,
+      "references": [
+        "R028",
+        "R029",
+        "R033",
+        "R038"
+      ]
+    },
+    {
+      "id": "D",
+      "angle_start_deg": 30,
+      "angle_end_deg": 86,
+      "front_centerline_radius_m": 77.55,
+      "rear_radius_m": 118,
+      "front_z_m": 1.2,
+      "top_seating_z_m": 23,
+      "roof_type": "open",
+      "roof_z_m": null,
+      "status": "E: initial modelling estimate, not measured",
+      "plan_position_tolerance_m": 10,
+      "height_tolerance_m": 5,
+      "references": [
+        "R028",
+        "R029",
+        "R033",
+        "R038"
+      ]
+    },
+    {
+      "id": "C",
+      "angle_start_deg": 90,
+      "angle_end_deg": 126,
+      "front_centerline_radius_m": 76.52,
+      "rear_radius_m": 130,
+      "front_z_m": 1.2,
+      "top_seating_z_m": 31,
+      "roof_type": "curved",
+      "roof_z_m": 35,
+      "status": "E: initial modelling estimate, not measured",
+      "plan_position_tolerance_m": 10,
+      "height_tolerance_m": 5,
+      "references": [
+        "R028",
+        "R019",
+        "R031"
+      ]
+    },
+    {
+      "id": "B",
+      "angle_start_deg": 126,
+      "angle_end_deg": 162,
+      "front_centerline_radius_m": 79.77,
+      "rear_radius_m": 130,
+      "front_z_m": 1.2,
+      "top_seating_z_m": 31,
+      "roof_type": "curved",
+      "roof_z_m": 35,
+      "status": "E: initial modelling estimate, not measured",
+      "plan_position_tolerance_m": 10,
+      "height_tolerance_m": 5,
+      "references": [
+        "R028",
+        "R019",
+        "R031"
+      ]
+    },
+    {
+      "id": "L",
+      "angle_start_deg": -162,
+      "angle_end_deg": -130,
+      "front_centerline_radius_m": 79.97,
+      "rear_radius_m": 128,
+      "front_z_m": 1.2,
+      "top_seating_z_m": 30,
+      "roof_type": "curved",
+      "roof_z_m": 34,
+      "status": "E: initial modelling estimate, not measured",
+      "plan_position_tolerance_m": 10,
+      "height_tolerance_m": 5,
+      "references": [
+        "R028",
+        "R019",
+        "R031"
+      ]
+    },
+    {
+      "id": "K",
+      "angle_start_deg": -130,
+      "angle_end_deg": -100,
+      "front_centerline_radius_m": 76.98,
+      "rear_radius_m": 128,
+      "front_z_m": 1.2,
+      "top_seating_z_m": 30,
+      "roof_type": "curved",
+      "roof_z_m": 34,
+      "status": "E: initial modelling estimate, not measured",
+      "plan_position_tolerance_m": 10,
+      "height_tolerance_m": 5,
+      "references": [
+        "R028",
+        "R019",
+        "R031"
+      ]
+    },
+    {
+      "id": "J",
+      "angle_start_deg": -100,
+      "angle_end_deg": -77,
+      "front_centerline_radius_m": 76.0,
+      "rear_radius_m": 113,
+      "front_z_m": 1.2,
+      "top_seating_z_m": 15,
+      "roof_type": "open",
+      "roof_z_m": null,
+      "status": "E: initial modelling estimate, not measured",
+      "plan_position_tolerance_m": 10,
+      "height_tolerance_m": 5,
+      "references": [
+        "R028",
+        "R029",
+        "R033",
+        "R038"
+      ]
+    }
+  ],
+  "towers": [
+    {
+      "id": "T1",
+      "xy_m": [
+        -78,
+        106
+      ],
+      "top_z_m": 75,
+      "status": "I for nominal total height from CAB height zones; E for plan location",
+      "xy_tolerance_m": 12,
+      "top_search_range_m": [
+        70,
+        78
+      ]
+    },
+    {
+      "id": "T2",
+      "xy_m": [
+        37,
+        116
+      ],
+      "top_z_m": 75,
+      "status": "I for nominal total height from CAB height zones; E for plan location",
+      "xy_tolerance_m": 12,
+      "top_search_range_m": [
+        70,
+        78
+      ]
+    },
+    {
+      "id": "T3",
+      "xy_m": [
+        85,
+        -103
+      ],
+      "top_z_m": 75,
+      "status": "I for nominal total height from CAB height zones; E for plan location",
+      "xy_tolerance_m": 12,
+      "top_search_range_m": [
+        70,
+        78
+      ]
+    },
+    {
+      "id": "T4",
+      "xy_m": [
+        -86,
+        -99
+      ],
+      "top_z_m": 75,
+      "status": "I for nominal total height from CAB height zones; E for plan location",
+      "xy_tolerance_m": 12,
+      "top_search_range_m": [
+        70,
+        78
+      ]
+    }
+  ],
+  "screens": [
+    {
+      "id": "video_E",
+      "xy_m": [
+        34,
+        103
+      ],
+      "width_m": 24,
+      "depth_m": 4,
+      "base_z_m": 9,
+      "top_z_m": 33,
+      "active_panel_wh_m": [
+        19,
+        10.7
+      ],
+      "status": "E dimensions; D block from CAB index; R033 panel is period specific"
+    },
+    {
+      "id": "traditional_D",
+      "xy_m": [
+        83,
+        78
+      ],
+      "width_m": 14,
+      "depth_m": 4,
+      "base_z_m": 20,
+      "top_z_m": 36,
+      "status": "E dimensions; D block directly visible R032"
+    },
+    {
+      "id": "sight_HC",
+      "xy_m": [
+        0,
+        80
+      ],
+      "width_m": 24,
+      "depth_m": 1,
+      "base_z_m": 0.4,
+      "top_z_m": 6.4,
+      "status": "E, R026/R038; optional black/white surface"
+    },
+    {
+      "id": "sight_CH",
+      "xy_m": [
+        0,
+        -80
+      ],
+      "width_m": 28,
+      "depth_m": 1,
+      "base_z_m": 0.4,
+      "top_z_m": 6.4,
+      "status": "E, R021; omit commercial graphic"
+    }
+  ],
+  "seat_module": {
+    "centre_spacing_m": 0.5,
+    "shell_width_m": 0.44,
+    "shell_depth_m": 0.45,
+    "seat_height_m": 0.43,
+    "back_top_above_tread_m": 0.82,
+    "status": "E human-scale starter, R031 shape"
+  },
+  "profile_families": {
+    "BC": {
+      "first_row_z_m": 1.2,
+      "lower_run_m": 29.5,
+      "lower_rise_m": 13,
+      "upper_start_offset_m": 30,
+      "upper_start_z_m": 18,
+      "upper_run_m": 24,
+      "upper_rise_m": 13,
+      "roof_front_offset_m": 22,
+      "roof_rear_offset_m": 58,
+      "roof_front_z_m": 33,
+      "roof_rear_z_m": 35
+    },
+    "KL": {
+      "first_row_z_m": 1.2,
+      "lower_run_m": 28,
+      "lower_rise_m": 12.5,
+      "upper_start_offset_m": 29,
+      "upper_start_z_m": 17,
+      "upper_run_m": 24,
+      "upper_rise_m": 13,
+      "roof_front_offset_m": 21,
+      "roof_rear_offset_m": 56,
+      "roof_front_z_m": 32,
+      "roof_rear_z_m": 34
+    },
+    "FGH_D": {
+      "first_row_z_m": 1.2,
+      "lower_run_m": 24,
+      "lower_rise_m": 10.8,
+      "upper_start_offset_m": 26,
+      "upper_start_z_m": 15,
+      "upper_run_m": 16,
+      "upper_rise_m": 9,
+      "roof_front_offset_m": null,
+      "roof_rear_offset_m": null,
+      "roof_front_z_m": null,
+      "roof_rear_z_m": null
+    }
+  },
+  "profile_status": "E. Per-sector runs must be clamped to its rear envelope; profile families are centreline templates, not copied around full stadium. For D, reduce FGH_D upper rise to 8 m to reach Z=23 m.",
+  "review_gate": "Approval of scale, sector order, stand heights, roof state and screen positions before detailed modelling"
+}

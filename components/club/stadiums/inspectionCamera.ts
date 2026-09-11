@@ -2,10 +2,23 @@ import { footprintPoint, moduleAngle, sectionDefinition, sectionDefinitions, sur
 import { STAND_DESIGNS } from '../stadiumVisualDesigns';
 import type { StadiumDefinition } from './definitions';
 import type { ViewerModule } from './types';
+import { edenSlot } from './edenPlan';
 
-export type CameraMode='overview'|'ground'|'seat'|'concourse'|'balcony'|'entrance';
+export type CameraMode='overview'|'ground'|'seat'|'concourse'|'balcony'|'entrance'|'broadcast'|'pavilionRoad'|'maidan'|'river'|'construction';
 export function inspectionPosition(venue:StadiumDefinition,modules:readonly ViewerModule[],selected:readonly number[],mode:CameraMode) {
   const index=Math.max(0,modules.findIndex(module=>module.id===selected[selected.length-1]));
+  if (venue.teamId==='KKR') {
+    const slot=edenSlot(modules[index]?.id??0);
+    if(slot) {
+      const a=(slot.start+slot.end)/2;
+      const r=mode==='entrance'?137:mode==='concourse'?126:mode==='balcony'?103:88;
+      const x=slot.axis==='x'?a:r*Math.sin(a);
+      const z=slot.axis==='x'?(slot.name==='ClubHouse'?mode==='entrance'?124:85:-91):-r*Math.cos(a);
+      const y=mode==='concourse'?26:mode==='balcony'?17:mode==='entrance'?2:4;
+      const angle=Math.atan2(x,z);
+      return {position:[x,y,z] as [number,number,number],angle,facingAngle:angle+Math.PI};
+    }
+  }
   const def=sectionDefinitions(venue,modules.map(entry=>venueVisualModule(venue,entry)))[index]??sectionDefinition(venue,index,modules.length);
   const module=modules[index]?venueVisualModule(venue,modules[index]):undefined;
   const tiers=(STAND_DESIGNS[module?.templateId??'']??STAND_DESIGNS['standard-two']).tiers;

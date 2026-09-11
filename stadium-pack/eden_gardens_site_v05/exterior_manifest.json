@@ -1,0 +1,7138 @@
+{
+  "units": "metres",
+  "origin_lon_lat": [
+    88.34329,
+    22.5646
+  ],
+  "local_positive_y_azimuth_deg": -30,
+  "azimuth_status": "inferred from satellite pitch/pavilion alignment; approximately 330 degrees",
+  "extent_east_north_m": [
+    -1100,
+    -2300,
+    1050,
+    800
+  ],
+  "river_nearest_distance_from_pitch_m": 391.5,
+  "triangles": 282504,
+  "tree_count": 450,
+  "source": "OpenStreetMap contributors, ODbL 1.0, downloaded 2026-09-11",
+  "source_url": "https://www.openstreetmap.org/copyright",
+  "limitations": [
+    "Road centre-lines, Maidan outline, four floodlight positions and four roadside gates use OSM coordinates.",
+    "Stadium north bearing is inferred from satellite imagery, not surveyed.",
+    "Road widths, wall trace, untagged building heights, tree positions and other gate openings remain estimated.",
+    "Unchanged interior geometry retains its prior proportional limitations."
+  ],
+  "objects": [
+    {
+      "name": "BC_recessed_outer_bays",
+      "group": "Exterior_BC",
+      "triangles": 360
+    },
+    {
+      "name": "BC_diagonal_facade_structure",
+      "group": "Exterior_BC",
+      "triangles": 1232
+    },
+    {
+      "name": "BC_outer_floor_bands",
+      "group": "Exterior_BC",
+      "triangles": 480
+    },
+    {
+      "name": "BC_blank_panel_1.571",
+      "group": "Exterior_BC",
+      "triangles": 1
+    },
+    {
+      "name": "BC_blank_panel_1.661",
+      "group": "Exterior_BC",
+      "triangles": 1
+    },
+    {
+      "name": "BC_blank_panel_1.75",
+      "group": "Exterior_BC",
+      "triangles": 1
+    },
+    {
+      "name": "BC_blank_panel_1.84",
+      "group": "Exterior_BC",
+      "triangles": 1
+    },
+    {
+      "name": "BC_blank_panel_1.93",
+      "group": "Exterior_BC",
+      "triangles": 1
+    },
+    {
+      "name": "BC_blank_panel_2.02",
+      "group": "Exterior_BC",
+      "triangles": 1
+    },
+    {
+      "name": "BC_blank_panel_2.109",
+      "group": "Exterior_BC",
+      "triangles": 1
+    },
+    {
+      "name": "BC_blank_panel_2.199",
+      "group": "Exterior_BC",
+      "triangles": 1
+    },
+    {
+      "name": "BC_blank_panel_2.289",
+      "group": "Exterior_BC",
+      "triangles": 1
+    },
+    {
+      "name": "BC_blank_panel_2.379",
+      "group": "Exterior_BC",
+      "triangles": 1
+    },
+    {
+      "name": "BC_blank_panel_2.468",
+      "group": "Exterior_BC",
+      "triangles": 1
+    },
+    {
+      "name": "BC_blank_panel_2.558",
+      "group": "Exterior_BC",
+      "triangles": 1
+    },
+    {
+      "name": "BC_blank_panel_2.648",
+      "group": "Exterior_BC",
+      "triangles": 1
+    },
+    {
+      "name": "BC_blank_panel_2.738",
+      "group": "Exterior_BC",
+      "triangles": 1
+    },
+    {
+      "name": "BC_external_gallery_railings",
+      "group": "Exterior_BC",
+      "triangles": 2760
+    },
+    {
+      "name": "KL_recessed_outer_bays",
+      "group": "Exterior_KL",
+      "triangles": 360
+    },
+    {
+      "name": "KL_diagonal_facade_structure",
+      "group": "Exterior_KL",
+      "triangles": 1232
+    },
+    {
+      "name": "KL_outer_floor_bands",
+      "group": "Exterior_KL",
+      "triangles": 480
+    },
+    {
+      "name": "KL_blank_panel_-2.827",
+      "group": "Exterior_KL",
+      "triangles": 1
+    },
+    {
+      "name": "KL_blank_panel_-2.75",
+      "group": "Exterior_KL",
+      "triangles": 1
+    },
+    {
+      "name": "KL_blank_panel_-2.673",
+      "group": "Exterior_KL",
+      "triangles": 1
+    },
+    {
+      "name": "KL_blank_panel_-2.596",
+      "group": "Exterior_KL",
+      "triangles": 1
+    },
+    {
+      "name": "KL_blank_panel_-2.518",
+      "group": "Exterior_KL",
+      "triangles": 1
+    },
+    {
+      "name": "KL_blank_panel_-2.441",
+      "group": "Exterior_KL",
+      "triangles": 1
+    },
+    {
+      "name": "KL_blank_panel_-2.364",
+      "group": "Exterior_KL",
+      "triangles": 1
+    },
+    {
+      "name": "KL_blank_panel_-2.286",
+      "group": "Exterior_KL",
+      "triangles": 1
+    },
+    {
+      "name": "KL_blank_panel_-2.209",
+      "group": "Exterior_KL",
+      "triangles": 1
+    },
+    {
+      "name": "KL_blank_panel_-2.132",
+      "group": "Exterior_KL",
+      "triangles": 1
+    },
+    {
+      "name": "KL_blank_panel_-2.055",
+      "group": "Exterior_KL",
+      "triangles": 1
+    },
+    {
+      "name": "KL_blank_panel_-1.977",
+      "group": "Exterior_KL",
+      "triangles": 1
+    },
+    {
+      "name": "KL_blank_panel_-1.9",
+      "group": "Exterior_KL",
+      "triangles": 1
+    },
+    {
+      "name": "KL_blank_panel_-1.823",
+      "group": "Exterior_KL",
+      "triangles": 1
+    },
+    {
+      "name": "KL_external_gallery_railings",
+      "group": "Exterior_KL",
+      "triangles": 2760
+    },
+    {
+      "name": "Pavilion_major_frame",
+      "group": "Exterior_ClubHouse",
+      "triangles": 660
+    },
+    {
+      "name": "Pavilion_ground_columns",
+      "group": "Exterior_ClubHouse",
+      "triangles": 132
+    },
+    {
+      "name": "Pavilion_upper_blue_glass",
+      "group": "Exterior_ClubHouse",
+      "triangles": 20
+    },
+    {
+      "name": "Pavilion_upper_blue_glass_variation",
+      "group": "Exterior_ClubHouse",
+      "triangles": 20
+    },
+    {
+      "name": "Pavilion_blank_mural_panels",
+      "group": "Exterior_ClubHouse",
+      "triangles": 16
+    },
+    {
+      "name": "Pavilion_recessed_ground_glazing",
+      "group": "Exterior_ClubHouse",
+      "triangles": 20
+    },
+    {
+      "name": "Pavilion_floor_bands",
+      "group": "Exterior_ClubHouse",
+      "triangles": 72
+    },
+    {
+      "name": "Pavilion_glass_mullions",
+      "group": "Exterior_ClubHouse",
+      "triangles": 2112
+    },
+    {
+      "name": "CAB_sign_fascia",
+      "group": "Exterior_ClubHouse",
+      "triangles": 12
+    },
+    {
+      "name": "Pavilion_frontage_railings",
+      "group": "Exterior_ClubHouse",
+      "triangles": 3576
+    },
+    {
+      "name": "Pavilion_front_planters",
+      "group": "Exterior_ClubHouse",
+      "triangles": 96
+    },
+    {
+      "name": "Pavilion_front_shrubs",
+      "group": "Exterior_ClubHouse",
+      "triangles": 96
+    },
+    {
+      "name": "Mapped_site_terrain",
+      "group": "Context_Terrain",
+      "triangles": 62
+    },
+    {
+      "name": "Hooghly_River_OSM_shoreline",
+      "group": "Context_River",
+      "triangles": 60
+    },
+    {
+      "name": "Hooghly_bank_edge",
+      "group": "Context_River",
+      "triangles": 454
+    },
+    {
+      "name": "Maidan_mapped_park_boundary",
+      "group": "Context_Maidan",
+      "triangles": 122
+    },
+    {
+      "name": "Mapped_public_roads",
+      "group": "Context_Roads",
+      "triangles": 2220
+    },
+    {
+      "name": "Mapped_paths_and_services",
+      "group": "Context_Paths",
+      "triangles": 3840
+    },
+    {
+      "name": "Mapped_road_verges",
+      "group": "Context_Roads",
+      "triangles": 2219
+    },
+    {
+      "name": "Road_centre_markings",
+      "group": "Context_Roads",
+      "triangles": 188096
+    },
+    {
+      "name": "Water_36311853",
+      "group": "Context_Parks",
+      "triangles": 23
+    },
+    {
+      "name": "Water_52097620",
+      "group": "Context_Parks",
+      "triangles": 2
+    },
+    {
+      "name": "Green_area_52097771",
+      "group": "Context_Parks",
+      "triangles": 14
+    },
+    {
+      "name": "Green_area_52097785",
+      "group": "Context_Parks",
+      "triangles": 28
+    },
+    {
+      "name": "Green_area_101966419",
+      "group": "Context_Parks",
+      "triangles": 6
+    },
+    {
+      "name": "Assembly House",
+      "group": "Context_Buildings",
+      "triangles": 58
+    },
+    {
+      "name": "Assembly House_roof",
+      "group": "Context_Buildings",
+      "triangles": 18
+    },
+    {
+      "name": "High Court",
+      "group": "Context_Buildings",
+      "triangles": 34
+    },
+    {
+      "name": "High Court_roof",
+      "group": "Context_Buildings",
+      "triangles": 10
+    },
+    {
+      "name": "Green_area_101966456",
+      "group": "Context_Parks",
+      "triangles": 3
+    },
+    {
+      "name": "Green_area_101966466",
+      "group": "Context_Parks",
+      "triangles": 6
+    },
+    {
+      "name": "Water_102784447",
+      "group": "Context_Parks",
+      "triangles": 2
+    },
+    {
+      "name": "Netaji Indoor Stadium",
+      "group": "Context_Buildings",
+      "triangles": 52
+    },
+    {
+      "name": "Netaji Indoor Stadium_roof",
+      "group": "Context_Buildings",
+      "triangles": 16
+    },
+    {
+      "name": "Green_area_102784453",
+      "group": "Context_Maidan",
+      "triangles": 2
+    },
+    {
+      "name": "Green_area_102784455",
+      "group": "Context_Maidan",
+      "triangles": 2
+    },
+    {
+      "name": "Water_102784458",
+      "group": "Context_Parks",
+      "triangles": 6
+    },
+    {
+      "name": "Water_111508761",
+      "group": "Context_Parks",
+      "triangles": 11
+    },
+    {
+      "name": "Water_111527674",
+      "group": "Context_Parks",
+      "triangles": 10
+    },
+    {
+      "name": "Water_111527699",
+      "group": "Context_Parks",
+      "triangles": 7
+    },
+    {
+      "name": "Green_area_112025082",
+      "group": "Context_Parks",
+      "triangles": 3
+    },
+    {
+      "name": "Water_112025084",
+      "group": "Context_Parks",
+      "triangles": 8
+    },
+    {
+      "name": "Water_112025095",
+      "group": "Context_Parks",
+      "triangles": 16
+    },
+    {
+      "name": "Green_area_112025101",
+      "group": "Context_Parks",
+      "triangles": 3
+    },
+    {
+      "name": "Water_112025105",
+      "group": "Context_Parks",
+      "triangles": 1
+    },
+    {
+      "name": "Water_112389442",
+      "group": "Context_Parks",
+      "triangles": 2
+    },
+    {
+      "name": "Green_area_175483222",
+      "group": "Context_Maidan",
+      "triangles": 3
+    },
+    {
+      "name": "Green_area_175484376",
+      "group": "Context_Parks",
+      "triangles": 2
+    },
+    {
+      "name": "Indian Ordnance Factory Board Head Office",
+      "group": "Context_Buildings",
+      "triangles": 10
+    },
+    {
+      "name": "Indian Ordnance Factory Board Head Office_roof",
+      "group": "Context_Buildings",
+      "triangles": 2
+    },
+    {
+      "name": "Water_325694239",
+      "group": "Context_Parks",
+      "triangles": 36
+    },
+    {
+      "name": "Water_325694240",
+      "group": "Context_Parks",
+      "triangles": 32
+    },
+    {
+      "name": "Building_359469608",
+      "group": "Context_Buildings",
+      "triangles": 28
+    },
+    {
+      "name": "Building_359469608_roof",
+      "group": "Context_Buildings",
+      "triangles": 8
+    },
+    {
+      "name": "Building_359469611",
+      "group": "Context_Buildings",
+      "triangles": 34
+    },
+    {
+      "name": "Building_359469611_roof",
+      "group": "Context_Buildings",
+      "triangles": 10
+    },
+    {
+      "name": "Building_359498933",
+      "group": "Context_Buildings",
+      "triangles": 106
+    },
+    {
+      "name": "Building_359498933_roof",
+      "group": "Context_Buildings",
+      "triangles": 34
+    },
+    {
+      "name": "Building_359499031",
+      "group": "Context_Buildings",
+      "triangles": 10
+    },
+    {
+      "name": "Building_359499031_roof",
+      "group": "Context_Buildings",
+      "triangles": 2
+    },
+    {
+      "name": "Building_359499819",
+      "group": "Context_Buildings",
+      "triangles": 10
+    },
+    {
+      "name": "Building_359499819_roof",
+      "group": "Context_Buildings",
+      "triangles": 2
+    },
+    {
+      "name": "Building_362879548",
+      "group": "Context_Buildings",
+      "triangles": 40
+    },
+    {
+      "name": "Building_362879548_roof",
+      "group": "Context_Buildings",
+      "triangles": 12
+    },
+    {
+      "name": "Building_362879552",
+      "group": "Context_Buildings",
+      "triangles": 70
+    },
+    {
+      "name": "Building_362879552_roof",
+      "group": "Context_Buildings",
+      "triangles": 22
+    },
+    {
+      "name": "Building_362879574",
+      "group": "Context_Buildings",
+      "triangles": 10
+    },
+    {
+      "name": "Building_362879574_roof",
+      "group": "Context_Buildings",
+      "triangles": 2
+    },
+    {
+      "name": "Building_362879657",
+      "group": "Context_Buildings",
+      "triangles": 10
+    },
+    {
+      "name": "Building_362879657_roof",
+      "group": "Context_Buildings",
+      "triangles": 2
+    },
+    {
+      "name": "Building_362879722",
+      "group": "Context_Buildings",
+      "triangles": 10
+    },
+    {
+      "name": "Building_362879722_roof",
+      "group": "Context_Buildings",
+      "triangles": 2
+    },
+    {
+      "name": "Raj Bhavan",
+      "group": "Context_Buildings",
+      "triangles": 238
+    },
+    {
+      "name": "Raj Bhavan_roof",
+      "group": "Context_Buildings",
+      "triangles": 78
+    },
+    {
+      "name": "Building_421239198",
+      "group": "Context_Buildings",
+      "triangles": 37
+    },
+    {
+      "name": "Building_421239198_roof",
+      "group": "Context_Buildings",
+      "triangles": 11
+    },
+    {
+      "name": "Building_421239204",
+      "group": "Context_Buildings",
+      "triangles": 10
+    },
+    {
+      "name": "Building_421239204_roof",
+      "group": "Context_Buildings",
+      "triangles": 2
+    },
+    {
+      "name": "Building_421239206",
+      "group": "Context_Buildings",
+      "triangles": 10
+    },
+    {
+      "name": "Building_421239206_roof",
+      "group": "Context_Buildings",
+      "triangles": 2
+    },
+    {
+      "name": "Building_421239207",
+      "group": "Context_Buildings",
+      "triangles": 10
+    },
+    {
+      "name": "Building_421239207_roof",
+      "group": "Context_Buildings",
+      "triangles": 2
+    },
+    {
+      "name": "Building_421239208",
+      "group": "Context_Buildings",
+      "triangles": 10
+    },
+    {
+      "name": "Building_421239208_roof",
+      "group": "Context_Buildings",
+      "triangles": 2
+    },
+    {
+      "name": "Building_421239209",
+      "group": "Context_Buildings",
+      "triangles": 10
+    },
+    {
+      "name": "Building_421239209_roof",
+      "group": "Context_Buildings",
+      "triangles": 2
+    },
+    {
+      "name": "Building_421239211",
+      "group": "Context_Buildings",
+      "triangles": 10
+    },
+    {
+      "name": "Building_421239211_roof",
+      "group": "Context_Buildings",
+      "triangles": 2
+    },
+    {
+      "name": "Building_421239213",
+      "group": "Context_Buildings",
+      "triangles": 10
+    },
+    {
+      "name": "Building_421239213_roof",
+      "group": "Context_Buildings",
+      "triangles": 2
+    },
+    {
+      "name": "Building_421239214",
+      "group": "Context_Buildings",
+      "triangles": 10
+    },
+    {
+      "name": "Building_421239214_roof",
+      "group": "Context_Buildings",
+      "triangles": 2
+    },
+    {
+      "name": "Building_421239216",
+      "group": "Context_Buildings",
+      "triangles": 10
+    },
+    {
+      "name": "Building_421239216_roof",
+      "group": "Context_Buildings",
+      "triangles": 2
+    },
+    {
+      "name": "Building_421239217",
+      "group": "Context_Buildings",
+      "triangles": 10
+    },
+    {
+      "name": "Building_421239217_roof",
+      "group": "Context_Buildings",
+      "triangles": 2
+    },
+    {
+      "name": "Building_421239219",
+      "group": "Context_Buildings",
+      "triangles": 10
+    },
+    {
+      "name": "Building_421239219_roof",
+      "group": "Context_Buildings",
+      "triangles": 2
+    },
+    {
+      "name": "Building_421239220",
+      "group": "Context_Buildings",
+      "triangles": 16
+    },
+    {
+      "name": "Building_421239220_roof",
+      "group": "Context_Buildings",
+      "triangles": 4
+    },
+    {
+      "name": "Green_area_469883540",
+      "group": "Context_Maidan",
+      "triangles": 5
+    },
+    {
+      "name": "Green_area_469886608",
+      "group": "Context_Maidan",
+      "triangles": 10
+    },
+    {
+      "name": "Green_area_647925186",
+      "group": "Context_Parks",
+      "triangles": 26
+    },
+    {
+      "name": "Green_area_647925189",
+      "group": "Context_Parks",
+      "triangles": 26
+    },
+    {
+      "name": "Green_area_654581236",
+      "group": "Context_Parks",
+      "triangles": 2
+    },
+    {
+      "name": "Water_654652029",
+      "group": "Context_Parks",
+      "triangles": 5
+    },
+    {
+      "name": "Building_654657668",
+      "group": "Context_Buildings",
+      "triangles": 28
+    },
+    {
+      "name": "Building_654657668_roof",
+      "group": "Context_Buildings",
+      "triangles": 8
+    },
+    {
+      "name": "Building_654657669",
+      "group": "Context_Buildings",
+      "triangles": 19
+    },
+    {
+      "name": "Building_654657669_roof",
+      "group": "Context_Buildings",
+      "triangles": 5
+    },
+    {
+      "name": "Green_area_654683335",
+      "group": "Context_Parks",
+      "triangles": 2
+    },
+    {
+      "name": "Green_area_654688138",
+      "group": "Context_Maidan",
+      "triangles": 2
+    },
+    {
+      "name": "Building_654688140",
+      "group": "Context_Buildings",
+      "triangles": 10
+    },
+    {
+      "name": "Building_654688140_roof",
+      "group": "Context_Buildings",
+      "triangles": 2
+    },
+    {
+      "name": "Building_654688142",
+      "group": "Context_Buildings",
+      "triangles": 10
+    },
+    {
+      "name": "Building_654688142_roof",
+      "group": "Context_Buildings",
+      "triangles": 2
+    },
+    {
+      "name": "Building_654688144",
+      "group": "Context_Buildings",
+      "triangles": 10
+    },
+    {
+      "name": "Building_654688144_roof",
+      "group": "Context_Buildings",
+      "triangles": 2
+    },
+    {
+      "name": "Green_area_654688173",
+      "group": "Context_Maidan",
+      "triangles": 25
+    },
+    {
+      "name": "Green_area_654688176",
+      "group": "Context_Maidan",
+      "triangles": 8
+    },
+    {
+      "name": "Green_area_654688178",
+      "group": "Context_Maidan",
+      "triangles": 3
+    },
+    {
+      "name": "Green_area_654688180",
+      "group": "Context_Maidan",
+      "triangles": 2
+    },
+    {
+      "name": "Green_area_654688182",
+      "group": "Context_Maidan",
+      "triangles": 2
+    },
+    {
+      "name": "Green_area_654688184",
+      "group": "Context_Maidan",
+      "triangles": 2
+    },
+    {
+      "name": "Green_area_654688186",
+      "group": "Context_Maidan",
+      "triangles": 2
+    },
+    {
+      "name": "Green_area_654688188",
+      "group": "Context_Maidan",
+      "triangles": 2
+    },
+    {
+      "name": "Green_area_654688190",
+      "group": "Context_Maidan",
+      "triangles": 4
+    },
+    {
+      "name": "Building_657521029",
+      "group": "Context_Buildings",
+      "triangles": 28
+    },
+    {
+      "name": "Building_657521029_roof",
+      "group": "Context_Buildings",
+      "triangles": 8
+    },
+    {
+      "name": "Building_657521030",
+      "group": "Context_Buildings",
+      "triangles": 28
+    },
+    {
+      "name": "Building_657521030_roof",
+      "group": "Context_Buildings",
+      "triangles": 8
+    },
+    {
+      "name": "Building_657521032",
+      "group": "Context_Buildings",
+      "triangles": 34
+    },
+    {
+      "name": "Building_657521032_roof",
+      "group": "Context_Buildings",
+      "triangles": 10
+    },
+    {
+      "name": "Green_area_728977814",
+      "group": "Context_Maidan",
+      "triangles": 16
+    },
+    {
+      "name": "Green_area_839000312",
+      "group": "Context_Maidan",
+      "triangles": 9
+    },
+    {
+      "name": "Green_area_907616331",
+      "group": "Context_Maidan",
+      "triangles": 2
+    },
+    {
+      "name": "Water_943967722",
+      "group": "Context_Parks",
+      "triangles": 39
+    },
+    {
+      "name": "Green_area_1131229987",
+      "group": "Context_Parks",
+      "triangles": 2
+    },
+    {
+      "name": "Green_area_1311916513",
+      "group": "Context_Parks",
+      "triangles": 2
+    },
+    {
+      "name": "Green_area_1340032894",
+      "group": "Context_Parks",
+      "triangles": 4
+    },
+    {
+      "name": "Green_area_1413528495",
+      "group": "Context_Maidan",
+      "triangles": 10
+    },
+    {
+      "name": "Green_area_1413528496",
+      "group": "Context_Maidan",
+      "triangles": 9
+    },
+    {
+      "name": "Green_area_1448538031",
+      "group": "Context_Parks",
+      "triangles": 2
+    },
+    {
+      "name": "Green_area_1448538055",
+      "group": "Context_Parks",
+      "triangles": 2
+    },
+    {
+      "name": "Stadium_site_apron",
+      "group": "Exterior_Boundary",
+      "triangles": 16
+    },
+    {
+      "name": "Site_boundary_masonry",
+      "group": "Exterior_Boundary",
+      "triangles": 7860
+    },
+    {
+      "name": "Site_boundary_coping",
+      "group": "Exterior_Boundary",
+      "triangles": 6258
+    },
+    {
+      "name": "Site_boundary_piers",
+      "group": "Exterior_Boundary",
+      "triangles": 2328
+    },
+    {
+      "name": "Roadside_boundary_grilles",
+      "group": "Exterior_Boundary",
+      "triangles": 16944
+    },
+    {
+      "name": "Gate_Road_gate_W1",
+      "group": "Exterior_Gates",
+      "triangles": 464
+    },
+    {
+      "name": "Gate_Road_gate_W2",
+      "group": "Exterior_Gates",
+      "triangles": 536
+    },
+    {
+      "name": "Gate_Road_gate_E1",
+      "group": "Exterior_Gates",
+      "triangles": 608
+    },
+    {
+      "name": "Gate_Road_gate_E2",
+      "group": "Exterior_Gates",
+      "triangles": 536
+    },
+    {
+      "name": "Gate_West_access",
+      "group": "Exterior_Gates",
+      "triangles": 536
+    },
+    {
+      "name": "Gate_Northwest_access",
+      "group": "Exterior_Gates",
+      "triangles": 536
+    },
+    {
+      "name": "Gate_North_access",
+      "group": "Exterior_Gates",
+      "triangles": 608
+    },
+    {
+      "name": "Gate_Northeast_access",
+      "group": "Exterior_Gates",
+      "triangles": 536
+    },
+    {
+      "name": "Gate_East_access",
+      "group": "Exterior_Gates",
+      "triangles": 536
+    },
+    {
+      "name": "Park_tree_trunks",
+      "group": "Context_Trees",
+      "triangles": 7200
+    },
+    {
+      "name": "Park_tree_crowns_0",
+      "group": "Context_Trees",
+      "triangles": 7776
+    },
+    {
+      "name": "Park_tree_crowns_1",
+      "group": "Context_Trees",
+      "triangles": 6864
+    },
+    {
+      "name": "Park_tree_crowns_2",
+      "group": "Context_Trees",
+      "triangles": 6960
+    }
+  ],
+  "mapped_features": [
+    {
+      "osm_way": "27553135",
+      "type": "road",
+      "name": "Chowringhee Road",
+      "width_m": 12,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "27553181",
+      "type": "road",
+      "name": "Lord Sinha Road",
+      "width_m": 6,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "27553216",
+      "type": "road",
+      "name": "Sir William Jones Sarani",
+      "width_m": 6,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "27553217",
+      "type": "road",
+      "name": "Anandi Lal Poddar Sarani",
+      "width_m": 7,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "27553223",
+      "type": "road",
+      "name": "Mirza Ghalib Street",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "27553232",
+      "type": "road",
+      "name": "Royd Street",
+      "width_m": 7,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "27553236",
+      "type": "road",
+      "name": "Surendra Nath Banerjee Road",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "27553246",
+      "type": "road",
+      "name": "Esplanade Row East",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "27553386",
+      "type": "road",
+      "name": "Cathedral Road",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "36165827",
+      "type": "road",
+      "name": "Shakespeare Sarani",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "36165828",
+      "type": "road",
+      "name": "Queensway",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "36920280",
+      "type": "road",
+      "name": "secondary",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "36920281",
+      "type": "road",
+      "name": "Park Street",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "36920282",
+      "type": "road",
+      "name": "Dufferin Road",
+      "width_m": 7,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "52085869",
+      "type": "road",
+      "name": "Hare Street",
+      "width_m": 7,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "52087346",
+      "type": "road",
+      "name": "secondary",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "52097263",
+      "type": "road",
+      "name": "Bertram Street",
+      "width_m": 7,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "52097653",
+      "type": "road",
+      "name": "Kiran Shanker (KS) Roy Road",
+      "width_m": 7,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "52097687",
+      "type": "road",
+      "name": "Mayo Road",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "52097691",
+      "type": "road",
+      "name": "track",
+      "width_m": 2.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "52097752",
+      "type": "road",
+      "name": "Rani Rashmoni Avenue",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "52097804",
+      "type": "road",
+      "name": "Indira Gandhi Sarani",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "52097811",
+      "type": "road",
+      "name": "secondary",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "52097812",
+      "type": "road",
+      "name": "Sahid Khudiram Bose Road",
+      "width_m": 7,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "52097813",
+      "type": "road",
+      "name": "secondary",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "52097821",
+      "type": "road",
+      "name": "secondary",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "52097823",
+      "type": "road",
+      "name": "secondary",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "52152311",
+      "type": "road",
+      "name": "Bankshall Street",
+      "width_m": 6,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "52152313",
+      "type": "road",
+      "name": "Church Lane",
+      "width_m": 6,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "52152314",
+      "type": "road",
+      "name": "Old Post Office Street",
+      "width_m": 6,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "52152323",
+      "type": "road",
+      "name": "Esplanade Row West",
+      "width_m": 7,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "52155529",
+      "type": "road",
+      "name": "Nellie Sengupta Sarani",
+      "width_m": 7,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "52155571",
+      "type": "road",
+      "name": "Chowringhee Place",
+      "width_m": 7,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "52155574",
+      "type": "road",
+      "name": "Corporation Pl",
+      "width_m": 7,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "52155575",
+      "type": "road",
+      "name": "Market St",
+      "width_m": 7,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "52155735",
+      "type": "road",
+      "name": "Princep Street",
+      "width_m": 7,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "52155743",
+      "type": "road",
+      "name": "tertiary",
+      "width_m": 7,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "52155744",
+      "type": "road",
+      "name": "Red Cross Place",
+      "width_m": 6,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "52155745",
+      "type": "road",
+      "name": "Rajendra N Mukherjee Road",
+      "width_m": 7,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "52155752",
+      "type": "road",
+      "name": "Weston Street",
+      "width_m": 6,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "79808866",
+      "type": "road",
+      "name": "Sudder Street",
+      "width_m": 7,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "101757243",
+      "type": "road",
+      "name": "residential",
+      "width_m": 6,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "101757312",
+      "type": "road",
+      "name": "residential",
+      "width_m": 6,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "101966385",
+      "type": "road",
+      "name": "Dacres Lane",
+      "width_m": 6,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "101966393",
+      "type": "road",
+      "name": "Mangoe Lane",
+      "width_m": 6,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "101966397",
+      "type": "road",
+      "name": "residential",
+      "width_m": 6,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "101966410",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "101966417",
+      "type": "road",
+      "name": "Crooked Lane",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "101966427",
+      "type": "road",
+      "name": "Baretto Lane",
+      "width_m": 6,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "101966462",
+      "type": "road",
+      "name": "residential",
+      "width_m": 6,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "101966494",
+      "type": "road",
+      "name": "Mangoe Lane",
+      "width_m": 6,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "101966510",
+      "type": "road",
+      "name": "Abdul Hamid (British Ind.) Street",
+      "width_m": 7,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "101972917",
+      "type": "road",
+      "name": "living_street",
+      "width_m": 5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "102688627",
+      "type": "road",
+      "name": "Ganesh Chandra Road",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "102688631",
+      "type": "road",
+      "name": "BBD Bag South",
+      "width_m": 7,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "102690982",
+      "type": "road",
+      "name": "Waterloo Street",
+      "width_m": 7,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "102690983",
+      "type": "road",
+      "name": "Sooterkin Street",
+      "width_m": 7,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "102690985",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "102690992",
+      "type": "road",
+      "name": "Government Place",
+      "width_m": 7,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "102784452",
+      "type": "road",
+      "name": "Bentinck Street",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "102784457",
+      "type": "road",
+      "name": "Draper Road",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "102784461",
+      "type": "road",
+      "name": "Eden Garden Road",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "102961747",
+      "type": "road",
+      "name": "Old Court House Street",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "103050326",
+      "type": "road",
+      "name": "residential",
+      "width_m": 6,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "103050339",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "103079231",
+      "type": "road",
+      "name": "Gibson Lane",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "103079233",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "103079235",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "103079237",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "103079239",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "103079241",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "103079242",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "103079246",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "103079247",
+      "type": "road",
+      "name": "residential",
+      "width_m": 6,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "103079249",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "103079250",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "103079251",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "103079255",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "103079257",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "103079258",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "103079260",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "103079261",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "103079262",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "103079263",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "103079266",
+      "type": "road",
+      "name": "CH Street",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "103079267",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "103079268",
+      "type": "road",
+      "name": "Crooked Lane",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "103079269",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "103079270",
+      "type": "road",
+      "name": "residential",
+      "width_m": 6,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "103079272",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "103079273",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "103079274",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "103079275",
+      "type": "road",
+      "name": "Crooked Lane",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "103079276",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "103079277",
+      "type": "road",
+      "name": "residential",
+      "width_m": 6,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "103079278",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "103079279",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "103079280",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "103079281",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "103079282",
+      "type": "road",
+      "name": "Pannalal Banerjee Lane",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "103079283",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "103079284",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "103079289",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "103079292",
+      "type": "road",
+      "name": "residential",
+      "width_m": 6,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "103079293",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "103079294",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "103079295",
+      "type": "road",
+      "name": "Larkin Lane",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "103082289",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "103082292",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "103082298",
+      "type": "road",
+      "name": "tertiary",
+      "width_m": 7,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "103082302",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "103082312",
+      "type": "road",
+      "name": "tertiary",
+      "width_m": 7,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111507843",
+      "type": "road",
+      "name": "Grant St",
+      "width_m": 6,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111507848",
+      "type": "road",
+      "name": "residential",
+      "width_m": 6,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111507856",
+      "type": "road",
+      "name": "residential",
+      "width_m": 6,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111508749",
+      "type": "road",
+      "name": "Madge Lane",
+      "width_m": 6,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111508751",
+      "type": "road",
+      "name": "Hartford Lane",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111508754",
+      "type": "road",
+      "name": "Humayun Place",
+      "width_m": 7,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111508755",
+      "type": "road",
+      "name": "Hogg St",
+      "width_m": 7,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111508757",
+      "type": "road",
+      "name": "tertiary",
+      "width_m": 7,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111508758",
+      "type": "road",
+      "name": "Moti Sil Street",
+      "width_m": 7,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111508759",
+      "type": "road",
+      "name": "Chowringhee Lane",
+      "width_m": 7,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111508762",
+      "type": "road",
+      "name": "Hogg St",
+      "width_m": 7,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111508763",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111508766",
+      "type": "road",
+      "name": "KYD Street (previously Doctor Mohammad Ishaque Road)",
+      "width_m": 7,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111509180",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111509181",
+      "type": "road",
+      "name": "Tottie Lane",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111509184",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111509185",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111509188",
+      "type": "road",
+      "name": "Marquis Street",
+      "width_m": 7,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111509189",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111509190",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111527656",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111527657",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111527658",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111527659",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111527660",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111527661",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111527662",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111527663",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111527664",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111527665",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111527666",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111527667",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111527668",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111527669",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111527670",
+      "type": "road",
+      "name": "secondary",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111527671",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111527672",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111527673",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111527675",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111527676",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111527677",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111527678",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111527679",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111527680",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111527681",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111527682",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111527683",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111527685",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111527687",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111527688",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111527689",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111527690",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111527691",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111527692",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111527693",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111527694",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111527695",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111527696",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111527697",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111527698",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111527700",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111527701",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111527702",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111527703",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111527704",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111527705",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111527706",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111527707",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111639743",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111639755",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "111639757",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "112025081",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "112025085",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "112025086",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "112025087",
+      "type": "road",
+      "name": "Hospital Road",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "112025088",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "112025093",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "112025098",
+      "type": "road",
+      "name": "Victoria Circus",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "112025099",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "112025106",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "112044483",
+      "type": "road",
+      "name": "Lovers Lane",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "112044499",
+      "type": "road",
+      "name": "Queensway",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "112044503",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "112044532",
+      "type": "road",
+      "name": "Casurina Avenue",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "112389444",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "112389446",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "112389449",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "112389451",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "135461188",
+      "type": "road",
+      "name": "Old Court House Street",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "135461199",
+      "type": "road",
+      "name": "secondary",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "135461205",
+      "type": "road",
+      "name": "Indira Gandhi Sarani",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "135461207",
+      "type": "road",
+      "name": "secondary",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "135461212",
+      "type": "road",
+      "name": "secondary",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "135461215",
+      "type": "road",
+      "name": "secondary",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "135461216",
+      "type": "road",
+      "name": "secondary",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "135461217",
+      "type": "road",
+      "name": "Mayo Road",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "177706424",
+      "type": "road",
+      "name": "Little Russel Street",
+      "width_m": 7,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "177706425",
+      "type": "road",
+      "name": "Camac Street",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "177706426",
+      "type": "road",
+      "name": "Prafulla Chandra Sen Sarani",
+      "width_m": 6,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "177706433",
+      "type": "road",
+      "name": "Nandalal Bose Sarani",
+      "width_m": 7,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "177706438",
+      "type": "road",
+      "name": "Ho Chi Minh Sarani",
+      "width_m": 6,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "213866823",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "213866824",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "213866825",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "213866826",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "213866828",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "213866829",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "213866830",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "213866831",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "213866832",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "213866833",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "213866835",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "213866838",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "213866839",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "213866840",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "213866841",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "213866843",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "213866844",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "213866845",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "213866846",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "213866847",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "213866849",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "213866850",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "213866851",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "213866852",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "213866853",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "213866854",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "219065258",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "219065259",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "219065260",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "219065261",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "219065262",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "219065263",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "219065264",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "219065265",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "219065266",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "219065267",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "219065268",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "219065269",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "219177859",
+      "type": "road",
+      "name": "Park Street Flyover",
+      "width_m": 12,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "219177860",
+      "type": "road",
+      "name": "secondary",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "219177861",
+      "type": "road",
+      "name": "secondary",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "219177863",
+      "type": "road",
+      "name": "Chowringhee Road",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "219177864",
+      "type": "road",
+      "name": "Chowringhee Road",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "219177865",
+      "type": "road",
+      "name": "Park Street Flyover",
+      "width_m": 12,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "219243636",
+      "type": "road",
+      "name": "Dufferin Road",
+      "width_m": 7,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "219243639",
+      "type": "road",
+      "name": "Rani Rashmoni Avenue",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "219243642",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "219243644",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "219246281",
+      "type": "road",
+      "name": "Eden Garden Road",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "219246282",
+      "type": "road",
+      "name": "Strand Road",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "219246283",
+      "type": "road",
+      "name": "Strand Road",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "219246284",
+      "type": "road",
+      "name": "secondary",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "219246285",
+      "type": "road",
+      "name": "secondary",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "219246286",
+      "type": "road",
+      "name": "secondary",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "219246287",
+      "type": "road",
+      "name": "secondary",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "219246288",
+      "type": "road",
+      "name": "secondary",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "276766004",
+      "type": "road",
+      "name": "path",
+      "width_m": 1.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "276767253",
+      "type": "road",
+      "name": "living_street",
+      "width_m": 5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "276781287",
+      "type": "road",
+      "name": "Eat Street",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "276814662",
+      "type": "road",
+      "name": "tertiary",
+      "width_m": 7,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "276814663",
+      "type": "road",
+      "name": "Bertram Street",
+      "width_m": 7,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "276876857",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "309962087",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "325694242",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "325694243",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "325694244",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "325694245",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "467489596",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "469886609",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "469886610",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "469886611",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "469886612",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "469886613",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "469886614",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "469886615",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "469886616",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "469886617",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "469886618",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "473542136",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "473542499",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "486751958",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "486751960",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "486751961",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "486752914",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "549086614",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "562638721",
+      "type": "road",
+      "name": "Camac Street",
+      "width_m": 7,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "562645425",
+      "type": "road",
+      "name": "Cathedral Road",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "562645426",
+      "type": "road",
+      "name": "Queensway",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "562645427",
+      "type": "road",
+      "name": "Queensway",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "562645428",
+      "type": "road",
+      "name": "Victoria Circus",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "562645429",
+      "type": "road",
+      "name": "Queensway",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "562652473",
+      "type": "road",
+      "name": "Pretoria Strret",
+      "width_m": 6,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "562677712",
+      "type": "road",
+      "name": "Shakespeare Sarani",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "562677713",
+      "type": "road",
+      "name": "Wood Street",
+      "width_m": 6,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "562677714",
+      "type": "road",
+      "name": "Nalini Guha Sarani",
+      "width_m": 7,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "562709374",
+      "type": "road",
+      "name": "secondary",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "562968523",
+      "type": "road",
+      "name": "Chowringhee Road",
+      "width_m": 12,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "563186187",
+      "type": "road",
+      "name": "Khidderpur Road",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "563186188",
+      "type": "road",
+      "name": "Kidderpore Road",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "563186189",
+      "type": "road",
+      "name": "Kidderporre Road",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "563186190",
+      "type": "road",
+      "name": "Kidderpore Road",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "563186191",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "563186192",
+      "type": "road",
+      "name": "Khidderpur Road",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "563207521",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "563515054",
+      "type": "road",
+      "name": "Park Street Flyover",
+      "width_m": 12,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "563518385",
+      "type": "road",
+      "name": "Strand Road",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "573335970",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "638590047",
+      "type": "road",
+      "name": "Strand Road",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "638593290",
+      "type": "road",
+      "name": "Vidyasagar Flyover Ramp",
+      "width_m": 5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "647925179",
+      "type": "road",
+      "name": "secondary",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "647925184",
+      "type": "road",
+      "name": "Mayo Road",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "647925191",
+      "type": "road",
+      "name": "secondary",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "647934894",
+      "type": "road",
+      "name": "path",
+      "width_m": 1.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "647934895",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "647934896",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "647934898",
+      "type": "road",
+      "name": "Dufferin Road",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "647934899",
+      "type": "road",
+      "name": "secondary",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "647944439",
+      "type": "road",
+      "name": "Chowringhee Road",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "647944440",
+      "type": "road",
+      "name": "Chowringhee Road",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "647944441",
+      "type": "road",
+      "name": "Chowringhee Road",
+      "width_m": 12,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "647944442",
+      "type": "road",
+      "name": "tertiary",
+      "width_m": 7,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "647944443",
+      "type": "road",
+      "name": "Chowringhee Road",
+      "width_m": 12,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "647951896",
+      "type": "road",
+      "name": "Jawaharlal Nehru Road",
+      "width_m": 12,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "647951898",
+      "type": "road",
+      "name": "Jawaharlal Nehru Road",
+      "width_m": 12,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "647951899",
+      "type": "road",
+      "name": "Jawaharlal Nehru Road",
+      "width_m": 12,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "654652023",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "654652025",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "654652026",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "654652036",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "654652037",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "654652038",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "654652039",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "654652040",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "654652041",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "654652044",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "654652045",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "654652046",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "654652047",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "654683332",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "655018174",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "655503088",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "655503090",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "656173019",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "656173021",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "656173022",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "656173035",
+      "type": "road",
+      "name": "Park Street",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "656173039",
+      "type": "road",
+      "name": "Park Street",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "656173043",
+      "type": "road",
+      "name": "Park Street",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "656646350",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "656898093",
+      "type": "road",
+      "name": "secondary_link",
+      "width_m": 7,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "659403192",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "659403193",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "659403195",
+      "type": "road",
+      "name": "path",
+      "width_m": 1.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "659403196",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "659403198",
+      "type": "road",
+      "name": "residential",
+      "width_m": 6,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "673964117",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "689094981",
+      "type": "road",
+      "name": "residential",
+      "width_m": 6,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "689103659",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "689148378",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "689177512",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "689198100",
+      "type": "road",
+      "name": "busway",
+      "width_m": 5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "689559312",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "689656208",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "689669925",
+      "type": "road",
+      "name": "residential",
+      "width_m": 6,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "693285000",
+      "type": "road",
+      "name": "residential",
+      "width_m": 6,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "693288390",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "693293746",
+      "type": "road",
+      "name": "residential",
+      "width_m": 6,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "693293747",
+      "type": "road",
+      "name": "residential",
+      "width_m": 6,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "693311310",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "693379262",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "697048000",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "697048001",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "697057261",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "697057262",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "697057263",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "697060764",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "697060765",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "697064388",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "697064989",
+      "type": "road",
+      "name": "Lord Sinha Road",
+      "width_m": 6,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "697064990",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "697066529",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "697066530",
+      "type": "road",
+      "name": "residential",
+      "width_m": 6,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "697066531",
+      "type": "road",
+      "name": "residential",
+      "width_m": 6,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "697066532",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "697066533",
+      "type": "road",
+      "name": "residential",
+      "width_m": 6,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "697070379",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "697082797",
+      "type": "road",
+      "name": "residential",
+      "width_m": 6,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "697105659",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "697109646",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "697109647",
+      "type": "road",
+      "name": "residential",
+      "width_m": 6,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "697662441",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "705408148",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "705714262",
+      "type": "road",
+      "name": "Surendra Nath Banerjee Road",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "706569278",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "706569279",
+      "type": "road",
+      "name": "residential",
+      "width_m": 6,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "706569280",
+      "type": "road",
+      "name": "residential",
+      "width_m": 6,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "718797758",
+      "type": "road",
+      "name": "Strand Road",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "718797759",
+      "type": "road",
+      "name": "Strand Road",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "738138353",
+      "type": "road",
+      "name": "track",
+      "width_m": 2.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "738138354",
+      "type": "road",
+      "name": "track",
+      "width_m": 2.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "738138355",
+      "type": "road",
+      "name": "track",
+      "width_m": 2.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "738394103",
+      "type": "road",
+      "name": "Sahid Khudiram Bose Road",
+      "width_m": 7,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "738394104",
+      "type": "road",
+      "name": "tertiary",
+      "width_m": 7,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "738394105",
+      "type": "road",
+      "name": "residential",
+      "width_m": 6,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "749324796",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "749341589",
+      "type": "road",
+      "name": "Ganesh Chandra Road",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "754521055",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "754611581",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "754830100",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "754830102",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "755068708",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "755068709",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "755072511",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "755072512",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "755072513",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "755072515",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "755072517",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "755072518",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "755072520",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "755072521",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "755357455",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "755357456",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "755357457",
+      "type": "road",
+      "name": "primary_link",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "755357458",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "755358293",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "755358294",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "755358295",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "755358296",
+      "type": "road",
+      "name": "secondary_link",
+      "width_m": 7,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "755358297",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "755386501",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "755832508",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "755834478",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "755834479",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "755834480",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "755834481",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "755834482",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "755834483",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "755834484",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "755842279",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "755842280",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "755842281",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "774659861",
+      "type": "road",
+      "name": "secondary_link",
+      "width_m": 7,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "774659862",
+      "type": "road",
+      "name": "secondary_link",
+      "width_m": 7,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "774663042",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "774894423",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "778057608",
+      "type": "road",
+      "name": "residential",
+      "width_m": 6,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "778258489",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "803551066",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "803555125",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "804154659",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "852698297",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "852698298",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "852698299",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "852698300",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "852698301",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "916075717",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "995135257",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "995135263",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "995135264",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "995135265",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "995135266",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "995139931",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1039136798",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1039136799",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1057059886",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1113596315",
+      "type": "road",
+      "name": "Short Street",
+      "width_m": 6,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1116850061",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1118220666",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1120078558",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1124087351",
+      "type": "road",
+      "name": "secondary",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1124087853",
+      "type": "road",
+      "name": "secondary",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1124087855",
+      "type": "road",
+      "name": "secondary",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1124087856",
+      "type": "road",
+      "name": "secondary",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1124087857",
+      "type": "road",
+      "name": "secondary",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1124089268",
+      "type": "road",
+      "name": "primary",
+      "width_m": 12,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1124089269",
+      "type": "road",
+      "name": "primary",
+      "width_m": 12,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1124089270",
+      "type": "road",
+      "name": "Chittaranjan Avenue",
+      "width_m": 12,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1124089271",
+      "type": "road",
+      "name": "Chittaranjan Avenue",
+      "width_m": 12,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1124102295",
+      "type": "road",
+      "name": "secondary",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1124102296",
+      "type": "road",
+      "name": "secondary",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1124102297",
+      "type": "road",
+      "name": "secondary",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1124102298",
+      "type": "road",
+      "name": "secondary",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1124105437",
+      "type": "road",
+      "name": "secondary",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1124105783",
+      "type": "road",
+      "name": "secondary",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1124379125",
+      "type": "road",
+      "name": "primary",
+      "width_m": 12,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1124379131",
+      "type": "road",
+      "name": "secondary",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1124379132",
+      "type": "road",
+      "name": "secondary",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1124382852",
+      "type": "road",
+      "name": "Council House Street",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1124382853",
+      "type": "road",
+      "name": "Council House Street",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1126475660",
+      "type": "road",
+      "name": "Jawaharlal Nehru Road",
+      "width_m": 12,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1126475662",
+      "type": "road",
+      "name": "Chowringhee Road",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1126475663",
+      "type": "road",
+      "name": "Park Street Flyover",
+      "width_m": 12,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1126518490",
+      "type": "road",
+      "name": "Lenin Sarani",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1126611418",
+      "type": "road",
+      "name": "secondary",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1126613573",
+      "type": "road",
+      "name": "Hare Street",
+      "width_m": 7,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1126613575",
+      "type": "road",
+      "name": "secondary",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1126613576",
+      "type": "road",
+      "name": "secondary",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1126613577",
+      "type": "road",
+      "name": "Old Court House Street",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1126613578",
+      "type": "road",
+      "name": "Old Court House Street",
+      "width_m": 7,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1126613579",
+      "type": "road",
+      "name": "Mayo Road",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1126613580",
+      "type": "road",
+      "name": "secondary",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1126613581",
+      "type": "road",
+      "name": "secondary",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1126613582",
+      "type": "road",
+      "name": "secondary",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1126633510",
+      "type": "road",
+      "name": "Old Court House Street",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1126641021",
+      "type": "road",
+      "name": "secondary",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1126837958",
+      "type": "road",
+      "name": "Chowringhee Road",
+      "width_m": 12,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1126837959",
+      "type": "road",
+      "name": "Jawaharlal Nehru Road",
+      "width_m": 12,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1126840647",
+      "type": "road",
+      "name": "secondary",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1126840648",
+      "type": "road",
+      "name": "secondary",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1126840649",
+      "type": "road",
+      "name": "secondary",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1126840650",
+      "type": "road",
+      "name": "secondary",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1127501763",
+      "type": "road",
+      "name": "Park Street Flyover",
+      "width_m": 12,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1127501764",
+      "type": "road",
+      "name": "Park Street Flyover",
+      "width_m": 12,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1128043713",
+      "type": "road",
+      "name": "Chittaranjan Avenue",
+      "width_m": 12,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1131090546",
+      "type": "road",
+      "name": "secondary_link",
+      "width_m": 7,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1131090547",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1131090548",
+      "type": "road",
+      "name": "secondary",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1131242479",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1132632801",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1132632802",
+      "type": "road",
+      "name": "secondary",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1132632803",
+      "type": "road",
+      "name": "secondary",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1132632804",
+      "type": "road",
+      "name": "track",
+      "width_m": 2.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1133435214",
+      "type": "road",
+      "name": "secondary",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1134691836",
+      "type": "road",
+      "name": "Kidderpore Road",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1135484382",
+      "type": "road",
+      "name": "Kidderpore Road",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1137238824",
+      "type": "road",
+      "name": "Esplanade Row East",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1137238825",
+      "type": "road",
+      "name": "Old Court House Street",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1159884661",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1173269546",
+      "type": "road",
+      "name": "secondary_link",
+      "width_m": 7,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1173594845",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1173656917",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1173669083",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1173669084",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1173943728",
+      "type": "road",
+      "name": "residential",
+      "width_m": 6,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1178012659",
+      "type": "road",
+      "name": "residential",
+      "width_m": 6,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1178013884",
+      "type": "road",
+      "name": "residential",
+      "width_m": 6,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1178014356",
+      "type": "road",
+      "name": "residential",
+      "width_m": 6,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1178016910",
+      "type": "road",
+      "name": "residential",
+      "width_m": 6,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1178019785",
+      "type": "road",
+      "name": "residential",
+      "width_m": 6,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1178024568",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1178026164",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1178041322",
+      "type": "road",
+      "name": "living_street",
+      "width_m": 5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1178043793",
+      "type": "road",
+      "name": "secondary_link",
+      "width_m": 7,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1178254667",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1178255003",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1178258838",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1178262255",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1178265404",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1178277532",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1179979966",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1179981098",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1180144266",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1180145230",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1180193788",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1180193789",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1180193790",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1180193791",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1180193792",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1180590647",
+      "type": "road",
+      "name": "residential",
+      "width_m": 6,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1191219771",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1191978514",
+      "type": "road",
+      "name": "Strand Road",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1191978515",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1192027777",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1194659612",
+      "type": "road",
+      "name": "Chowringhee Road",
+      "width_m": 12,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1194659613",
+      "type": "road",
+      "name": "Jawaharlal Nehru Road",
+      "width_m": 12,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1194659614",
+      "type": "road",
+      "name": "Humayun Place",
+      "width_m": 7,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1194659615",
+      "type": "road",
+      "name": "Chowringhee Road",
+      "width_m": 12,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1196010276",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1196010277",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1196271501",
+      "type": "road",
+      "name": "Old Court House Street",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1196271502",
+      "type": "road",
+      "name": "Old Court House Street",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1196271503",
+      "type": "road",
+      "name": "Government Place",
+      "width_m": 7,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1196283316",
+      "type": "road",
+      "name": "Rajendra N Mukherjee Road",
+      "width_m": 7,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1196745461",
+      "type": "road",
+      "name": "secondary",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1198952555",
+      "type": "road",
+      "name": "Ganesh Chandra Road",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1203403188",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1217693991",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1217693992",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1217693993",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1217693994",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1217695267",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1217695268",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1217696063",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1217698313",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1217701042",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1217701043",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1217713345",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1217713346",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1217713347",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1217713348",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1217713349",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1217713350",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1220184772",
+      "type": "road",
+      "name": "residential",
+      "width_m": 6,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1221730198",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1226391740",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1226391948",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1226393093",
+      "type": "road",
+      "name": "residential",
+      "width_m": 6,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1227083804",
+      "type": "road",
+      "name": "residential",
+      "width_m": 6,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1227084480",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1227087180",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1227087480",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1227088001",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1229465928",
+      "type": "road",
+      "name": "Shakespeare Sarani",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1229465929",
+      "type": "road",
+      "name": "Jawaharlal Nehru Road",
+      "width_m": 12,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1233257452",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1234239405",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1234854165",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1236842700",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1236842701",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1237995194",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1237997384",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1252338120",
+      "type": "road",
+      "name": "Jawaharlal Nehru Road",
+      "width_m": 12,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1252703141",
+      "type": "road",
+      "name": "tertiary",
+      "width_m": 7,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1252704829",
+      "type": "road",
+      "name": "Chowringhee Road",
+      "width_m": 12,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1252704830",
+      "type": "road",
+      "name": "Chowringhee Road",
+      "width_m": 12,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1253683290",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1273761257",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1273761258",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1275570402",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1277600332",
+      "type": "road",
+      "name": "Bentinck Street",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1287656128",
+      "type": "road",
+      "name": "tertiary",
+      "width_m": 7,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1287656129",
+      "type": "road",
+      "name": "Kiran Shanker (KS) Roy Road",
+      "width_m": 7,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1287674271",
+      "type": "road",
+      "name": "secondary_link",
+      "width_m": 7,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1287674272",
+      "type": "road",
+      "name": "Mayo Road",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1287674273",
+      "type": "road",
+      "name": "secondary",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1288022725",
+      "type": "road",
+      "name": "Dufferin Road",
+      "width_m": 7,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1309207401",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1309208217",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1311463337",
+      "type": "road",
+      "name": "Jawaharlal Nehru Road",
+      "width_m": 12,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1311674655",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1311674656",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1311674657",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1312946260",
+      "type": "road",
+      "name": "Bentinck Street",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1320233836",
+      "type": "road",
+      "name": "Chowringhee Road",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1327839750",
+      "type": "road",
+      "name": "Park Street",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1327845416",
+      "type": "road",
+      "name": "Indira Gandhi Sarani",
+      "width_m": 7,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1340118939",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1348970997",
+      "type": "road",
+      "name": "Crooked Lane",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1348970998",
+      "type": "road",
+      "name": "Crooked Lane",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1362824705",
+      "type": "road",
+      "name": "secondary",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1362824706",
+      "type": "road",
+      "name": "tertiary",
+      "width_m": 7,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1362824707",
+      "type": "road",
+      "name": "Old Court House Street",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1365362682",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1365362683",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1365362684",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1365362685",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1365362686",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1365362687",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1365362688",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1365362689",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1365362690",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1365362691",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1365362692",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1365362693",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1365362694",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1365362695",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1365362696",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1373593284",
+      "type": "road",
+      "name": "Chowringhee Road",
+      "width_m": 12,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1373593668",
+      "type": "road",
+      "name": "Chowringhee Road",
+      "width_m": 12,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1373593669",
+      "type": "road",
+      "name": "Chowringhee Road",
+      "width_m": 12,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1387725160",
+      "type": "road",
+      "name": "secondary",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1387731641",
+      "type": "road",
+      "name": "secondary",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1387731642",
+      "type": "road",
+      "name": "Indira Gandhi Sarani",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1387731643",
+      "type": "road",
+      "name": "secondary",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1387731644",
+      "type": "road",
+      "name": "secondary",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1387822594",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1387822595",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1387822596",
+      "type": "road",
+      "name": "Mayo Road",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1388734342",
+      "type": "road",
+      "name": "secondary",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1393837459",
+      "type": "road",
+      "name": "Mirza Ghalib Street",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1396594855",
+      "type": "road",
+      "name": "Khidderpur Road",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1396594856",
+      "type": "road",
+      "name": "secondary",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1414839277",
+      "type": "road",
+      "name": "pedestrian",
+      "width_m": 3,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1419352711",
+      "type": "road",
+      "name": "Council House Street",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1419352712",
+      "type": "road",
+      "name": "Council House Street",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1419352713",
+      "type": "road",
+      "name": "secondary",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1427088653",
+      "type": "road",
+      "name": "Chowringhee Road",
+      "width_m": 12,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1427088654",
+      "type": "road",
+      "name": "Jawaharlal Nehru Road",
+      "width_m": 12,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1448538035",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1448538038",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1448538039",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1448538040",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1448538041",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1448538046",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1448538048",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1448538052",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1448580446",
+      "type": "road",
+      "name": "footway",
+      "width_m": 1.8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1448635511",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1453839263",
+      "type": "road",
+      "name": "Chowringhee Road",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1453839264",
+      "type": "road",
+      "name": "Chowringhee Road",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1467575441",
+      "type": "road",
+      "name": "Park Street",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1471557450",
+      "type": "road",
+      "name": "Shakespeare Sarani",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1476168010",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1476168011",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1476168012",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1476168013",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1476448641",
+      "type": "road",
+      "name": "tertiary",
+      "width_m": 7,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1476466973",
+      "type": "road",
+      "name": "Chowringhee Road",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1476466974",
+      "type": "road",
+      "name": "Chowringhee Road",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1476468169",
+      "type": "road",
+      "name": "Shakespeare Sarani",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1476468170",
+      "type": "road",
+      "name": "Lord Sinha Road",
+      "width_m": 6,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1480586113",
+      "type": "road",
+      "name": "Chowringhee Road",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1480586114",
+      "type": "road",
+      "name": "Chowringhee Road",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1480586115",
+      "type": "road",
+      "name": "Chowringhee Road",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1480586116",
+      "type": "road",
+      "name": "Chowringhee Road",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1482198239",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1482432046",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1482432047",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1482432048",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1482432049",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1482432050",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1483305514",
+      "type": "road",
+      "name": "Park Street",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1502433795",
+      "type": "road",
+      "name": "Kidderpore Road",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1502433796",
+      "type": "road",
+      "name": "service",
+      "width_m": 3.5,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1502433797",
+      "type": "road",
+      "name": "Kidderpore Road",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1502433798",
+      "type": "road",
+      "name": "Kidderporre Road",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1502433799",
+      "type": "road",
+      "name": "Kidderporre Road",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1502433800",
+      "type": "road",
+      "name": "Kidderpore Road",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1502433801",
+      "type": "road",
+      "name": "Kidderporre Road",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1502779183",
+      "type": "road",
+      "name": "residential",
+      "width_m": 6,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1502779184",
+      "type": "road",
+      "name": "Chittaranjan Avenue",
+      "width_m": 12,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1517331582",
+      "type": "road",
+      "name": "Cathedral Road",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1527486851",
+      "type": "road",
+      "name": "Little Russel Street",
+      "width_m": 7,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1527486852",
+      "type": "road",
+      "name": "Ho Chi Minh Sarani",
+      "width_m": 6,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1527486853",
+      "type": "road",
+      "name": "Ho Chi Minh Sarani",
+      "width_m": 6,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1527486854",
+      "type": "road",
+      "name": "Ho Chi Minh Sarani",
+      "width_m": 6,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1533512445",
+      "type": "road",
+      "name": "tertiary",
+      "width_m": 7,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1537865397",
+      "type": "road",
+      "name": "Kidderpore Road",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1546903355",
+      "type": "road",
+      "name": "Waterloo Street",
+      "width_m": 7,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1546903356",
+      "type": "road",
+      "name": "secondary",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1546904489",
+      "type": "road",
+      "name": "Chowringhee Road",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    },
+    {
+      "osm_way": "1546909990",
+      "type": "road",
+      "name": "Hospital Road",
+      "width_m": 8,
+      "width_status": "estimated",
+      "centerline_status": "mapped without circular exclusion"
+    }
+  ],
+  "version": "v05-map-alignment",
+  "towers": [
+    {
+      "name": "T1",
+      "osm_node": "12143393748",
+      "old_local_xy_m": [
+        -78,
+        106
+      ],
+      "new_local_xy_m": [
+        -92.73803679422095,
+        107.79959801331506
+      ],
+      "height_status": "unchanged; not remeasured",
+      "position_status": "mapped lighting tower node"
+    },
+    {
+      "name": "T2",
+      "osm_node": "12143393749",
+      "old_local_xy_m": [
+        37,
+        116
+      ],
+      "new_local_xy_m": [
+        57.538089374340544,
+        123.24079506991913
+      ],
+      "height_status": "unchanged; not remeasured",
+      "position_status": "mapped lighting tower node"
+    },
+    {
+      "name": "T3",
+      "osm_node": "12143393750",
+      "old_local_xy_m": [
+        85,
+        -103
+      ],
+      "new_local_xy_m": [
+        87.41214414663892,
+        -111.78160784925657
+      ],
+      "height_status": "unchanged; not remeasured",
+      "position_status": "mapped lighting tower node"
+    },
+    {
+      "name": "T4",
+      "osm_node": "12143393747",
+      "old_local_xy_m": [
+        -86,
+        -99
+      ],
+      "new_local_xy_m": [
+        -83.56808945324657,
+        -107.94243086268429
+      ],
+      "height_status": "unchanged; not remeasured",
+      "position_status": "mapped lighting tower node"
+    }
+  ],
+  "gates": [
+    {
+      "name": "Road_gate_W1",
+      "osm_node": "11283009245",
+      "position_local_m": [
+        -63.93501005813384,
+        -122.37543899691232
+      ],
+      "width_m": 5,
+      "position_status": "mapped node",
+      "station": 103.20170265146595
+    },
+    {
+      "name": "Road_gate_W2",
+      "osm_node": "11283009246",
+      "position_local_m": [
+        -45.93504012620279,
+        -124.77245986610788
+      ],
+      "width_m": 6,
+      "position_status": "mapped node",
+      "station": 121.36057449411578
+    },
+    {
+      "name": "Road_gate_E1",
+      "osm_node": "11283009247",
+      "position_local_m": [
+        35.559304202797584,
+        -125.62551124450468
+      ],
+      "width_m": 7,
+      "position_status": "mapped node",
+      "station": 202.85938340730087
+    },
+    {
+      "name": "Road_gate_E2",
+      "osm_node": "11283009248",
+      "position_local_m": [
+        72.49282674653014,
+        -123.88878767773164
+      ],
+      "width_m": 6,
+      "position_status": "mapped node",
+      "station": 239.8337163456486
+    },
+    {
+      "name": "West_access",
+      "position_local_m": [
+        -139.5830279652845,
+        -30.02198649951779
+      ],
+      "width_m": 6,
+      "position_status": "inferred access opening",
+      "station": 898.4162849512643
+    },
+    {
+      "name": "Northwest_access",
+      "position_local_m": [
+        -100.63781001403834,
+        112.79176415535801
+      ],
+      "width_m": 6,
+      "position_status": "inferred access opening",
+      "station": 743.4946140064401
+    },
+    {
+      "name": "North_access",
+      "position_local_m": [
+        20.094482040603804,
+        147.47605413846955
+      ],
+      "width_m": 7,
+      "position_status": "inferred access opening",
+      "station": 615.7166443805586
+    },
+    {
+      "name": "Northeast_access",
+      "position_local_m": [
+        99.5,
+        119.5
+      ],
+      "width_m": 6,
+      "position_status": "inferred access opening",
+      "station": 526.2949179956308
+    },
+    {
+      "name": "East_access",
+      "position_local_m": [
+        141.9289340101523,
+        24.99492385786803
+      ],
+      "width_m": 6,
+      "position_status": "inferred access opening",
+      "station": 418.49623348728517
+    }
+  ],
+  "maidan_area_in_model_m2": 1334587,
+  "boundary_status": "inferred satellite perimeter with four mapped roadside gate anchors",
+  "pavilion_extension_removed_m": 20
+}

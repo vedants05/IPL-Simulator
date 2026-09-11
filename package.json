@@ -23,7 +23,9 @@
     "test:minor-records": "tsx calibration/minorRecordsVerification.ts",
     "test:batting-aggression": "tsx calibration/battingAggressionVerification.ts",
     "test:batting-consistency-neutrality": "tsx calibration/battingConsistencyNeutralityVerification.ts",
-    "test:offseason-stats": "tsx calibration/offseasonStatsCalibration.ts"
+    "test:offseason-stats": "tsx calibration/offseasonStatsCalibration.ts",
+    "test:eden-stadium-asset": "tsx calibration/edenGardensAsset.test.ts",
+    "test:eden-modules": "tsx calibration/edenModules.test.ts && tsx calibration/edenRefurbishment.test.ts"
   },
   "dependencies": {
     "@react-three/fiber": "^8.17.10",

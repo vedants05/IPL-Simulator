@@ -269,7 +269,7 @@ export default function NavBar() {
       )}
 
       <div className="flex items-center gap-0">
-        {NAV_ITEMS.map((item) => {
+        {NAV_ITEMS.filter((item) => !isAuctionPage || item.href === "/game/auction").map((item) => {
           let active = false;
           if (item.href === "/game/auction") {
             active = pathname.startsWith("/game/auction");

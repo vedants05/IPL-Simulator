@@ -1,0 +1,137 @@
+[
+  {
+    "file": "eden_gardens_exterior_LOD3.glb",
+    "bytes": 30877272,
+    "sha256": "2636a99fd609b4fc7f089112e8672e6bf55fc410adda98c4bb6b7a7a59f219f2"
+  },
+  {
+    "file": "eden_gardens_exterior_LOD1.glb",
+    "bytes": 53679836,
+    "sha256": "d65ad9ece17b94f3d73d2727dcf817a90ae19000d6b133f96b7d8e668ec88b5c"
+  },
+  {
+    "file": "eden_gardens_exterior_LOD2.glb",
+    "bytes": 37749272,
+    "sha256": "00bd56d08d0eb5cc80f90ee21b5817743b11d706c6da290d2729388586acfe38"
+  },
+  {
+    "file": "stadium_roads.png",
+    "bytes": 595846,
+    "sha256": "38ac082cbb622ec215bb4545634c5d814ebc745814a9c02cdbb4daf5a4da7476"
+  },
+  {
+    "file": "maidan_surroundings.png",
+    "bytes": 183192,
+    "sha256": "a0d01be170a94ef86fde07711ce56e106afed63c26ea07096713e9e5aeeb7744"
+  },
+  {
+    "file": "validation_summary.json",
+    "bytes": 9720,
+    "sha256": "3d28a5296bc9832f015ca2fee9f3c4a999259b05ed9c00c70ff8d93d38025844"
+  },
+  {
+    "file": "eden_gardens_exterior_LOD0.glb",
+    "bytes": 59396200,
+    "sha256": "e69ade4a6810bb89edf4cab38e326cfa11079a0efa803626e265e2e96bbf8c2b"
+  },
+  {
+    "file": "three_geometry_test.json",
+    "bytes": 2076,
+    "sha256": "da7212b8082a693784f797697559114df3aa9529620f89e185cc5d24862ce583"
+  },
+  {
+    "file": "exterior_manifest.json",
+    "bytes": 184258,
+    "sha256": "a88ef560b8771953e8165b48641a7b0a70dd267dbd03dfab6c952bfe5a969884"
+  },
+  {
+    "file": "river_stadium.png",
+    "bytes": 246236,
+    "sha256": "f6c9459363cc987106a9dac2d4d9f5ff30b69f88ad8a590b147744980675c76b"
+  },
+  {
+    "file": "README.md",
+    "bytes": 6321,
+    "sha256": "8a6d25f55c9963a07adfa2c824d2a715cedcecd7b928701f19f170e7e3c0be98"
+  },
+  {
+    "file": "eden_exterior_context.glb",
+    "bytes": 27267656,
+    "sha256": "76003089a83db3331a3e06a494b19efee5a0ed1de531302bc3de5591a3f79f2f"
+  },
+  {
+    "file": "pavilion_road.png",
+    "bytes": 262221,
+    "sha256": "d074b424b67bc5dc281b6c1f2def1b1c715a47099302d5245811b35288331b78"
+  },
+  {
+    "file": "sources/build_eden_frontage.py",
+    "bytes": 8587,
+    "sha256": "5c64b5bc0f7773b7289a67ab2eb566be33795d7887ec0616d5a5a1a1c8a58805"
+  },
+  {
+    "file": "sources/build_eden_site_v05.py",
+    "bytes": 11045,
+    "sha256": "4c15fce85bc5896ab657a03825e8280035d1f950e258c4fb5aa0390b864f2fba"
+  },
+  {
+    "file": "sources/site_map.osm",
+    "bytes": 3286761,
+    "sha256": "ffbb3bf57f6a4b3aab9aad3dccf14328c9317374cc1f6d5c3a4fb423a21d9b8c"
+  },
+  {
+    "file": "sources/prepare_cpu_scene.py",
+    "bytes": 2399,
+    "sha256": "070de06d2d2b3ac996080945b521155ece456b1961869a57f0ccfcd0faf5be14"
+  },
+  {
+    "file": "sources/assemble_eden_v03.mjs",
+    "bytes": 4163,
+    "sha256": "f80dd6b5434b90f0442e51944bf7da05d037b6ca429bdca32c8da4acc479524c"
+  },
+  {
+    "file": "sources/build_eden_model.py",
+    "bytes": 21614,
+    "sha256": "3acfbd36b925b17b578d9172d19492093ec897c9e49ce6d9f22df21e7992c278"
+  },
+  {
+    "file": "sources/surroundings_map_v05.osm",
+    "bytes": 7542831,
+    "sha256": "b99dc65389e41bc7ca7e93e47007dcc8f5928989d4abf1800e1e805299081e4d"
+  },
+  {
+    "file": "sources/render_cpu_v02.cpp",
+    "bytes": 6785,
+    "sha256": "2c79af5660afdde777e65af740cdff1292d4066b9c55924fd7c3229028e36122"
+  },
+  {
+    "file": "sources/maidan_map.osm",
+    "bytes": 32027,
+    "sha256": "8e021f5bc59d6d51bf98d872fe761335871f9e29211bed9e8ef353895d49e864"
+  },
+  {
+    "file": "sources/river_map.osm",
+    "bytes": 250533,
+    "sha256": "7d6907376aead7e7d45de0faddf2e1bcc741841ef38c41006a8fe6c8a3b97454"
+  },
+  {
+    "file": "sources/test_site_v05.mjs",
+    "bytes": 2133,
+    "sha256": "3501d20e70a34a51461096c523d981d7b06f8752b63c0cf8675ed00f3740676f"
+  },
+  {
+    "file": "sources/prepare_site_previews.py",
+    "bytes": 1413,
+    "sha256": "a0302766badd7f5c841f505745ea45dd3dd205b986fda24ce24b169ed5de14a6"
+  },
+  {
+    "file": "sources/build_eden_exterior.py",
+    "bytes": 13670,
+    "sha256": "4de64402e6aeb742313a5e9d9025546acfea390e00c64990e3a8139c8b7ffd69"
+  },
+  {
+    "file": "sources/eden_gardens_planning/blockout_parameters.json",
+    "bytes": 10130,
+    "sha256": "449e3eef27aa17c9ccf360d1ee9b06a17379f1f1db0e8c6fc3cd68466b946e4d"
+  }
+]

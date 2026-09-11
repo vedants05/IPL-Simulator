@@ -1,0 +1,20 @@
+{
+  "venue": "Eden Gardens",
+  "units": "metres",
+  "rootTransform": "identity",
+  "models": {
+    "detail": {
+      "file": "eden-gardens-lod2.glb",
+      "expandedTriangles": 1983530,
+      "seatInstances": 50498
+    },
+    "overview": {
+      "file": "eden-gardens-lod3.glb",
+      "expandedTriangles": 317592,
+      "seatInstances": 0
+    }
+  },
+  "attribution": "Map data © OpenStreetMap contributors, ODbL 1.0",
+  "sourcePackage": "stadium-pack/eden_gardens_site_v05",
+  "accuracy": "Proportional visual model; not an as-built survey"
+}

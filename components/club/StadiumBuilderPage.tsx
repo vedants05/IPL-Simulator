@@ -6,6 +6,7 @@ import dynamic from "next/dynamic";
 import { edenExistingBoxes } from './stadiumVisualDesigns';
 import { getStadiumDefinition } from './stadiums/definitions';
 import { createStadiumPlan } from './stadiums/planGeometry';
+import { edenSelectionContiguous } from './stadiums/edenPlan';
 import { PITCH_LENGTH, PITCH_WIDTH } from './stadiums/siteGeometry';
 
 const StadiumViewer3D = dynamic(() => import("./StadiumViewer3D"), {
@@ -50,6 +51,7 @@ interface StadiumModule {
 }
 
 interface StadiumPlan {
+  preserveImportedDesign?: boolean;
   id: string;
   name: string;
   moduleIds: number[];
@@ -225,7 +227,7 @@ function applyCompletedProject(
     if (!project.moduleIds.includes(entry.id)) return entry;
     if (project.action === "demolish") return { ...entry, empty: true, capacity: 0 };
     const chosen = template(project.templateId);
-    if (project.action === "refurbish") return { ...entry, quality: project.quality, roof: project.roof, condition: 100, lastRefurbishedYear: completionYear };
+    if (project.action === "refurbish") return { ...entry, quality: project.quality, roof: project.preserveImportedDesign ? entry.roof : project.roof, condition: 100, lastRefurbishedYear: completionYear };
     if (project.action === "add-tier") return { ...entry, templateId: project.templateId, visualTemplateId: project.templateId, quality: project.quality, roof: project.roof, capacity: capacityForTemplate(entry.baseCapacity, chosen.id, project.quality), condition: 100, lastRefurbishedYear: completionYear, empty: false };
     return { ...entry, standName: project.name, templateId: chosen.id, visualTemplateId: chosen.id, quality: project.quality, roof: project.roof, capacity: capacityForTemplate(entry.baseCapacity, chosen.id, project.quality), constructionYear: completionYear, lastRefurbishedYear: completionYear, condition: 100, maxTiers: Math.max(chosen.tiers, chosen.tiers + Number(chosen.supportsTierExpansion)), hospitalityBoxes: undefined, empty: false };
   });
@@ -299,7 +301,7 @@ function StadiumBuilderState({ teamId: savedTeamId, currentDate, saveId, legacyS
   const [activeProject, setActiveProject] = useState<StadiumProject | null>(null);
   const [projectHistory, setProjectHistory] = useState<StadiumProject[]>([]);
   const [selected, setSelected] = useState<number[]>([]);
-  const [action, setAction] = useState<Action>("replace");
+  const [action, setAction] = useState<Action>(teamId === 'KKR' ? 'refurbish' : 'replace');
   const [templateId, setTemplateId] = useState("standard-two");
   const [quality, setQuality] = useState<Quality>("Modern");
   const [roof, setRoof] = useState<Roof>("Full roof");
@@ -377,18 +379,21 @@ function StadiumBuilderState({ teamId: savedTeamId, currentDate, saveId, legacyS
   const toggleModule = (id: number) => {
     const next = selected.includes(id) ? selected.filter((entry) => entry !== id) : [...selected, id];
     if (next.length > 4) return setMessage("A project can cover no more than four modules.");
-    if (!isContiguous(next, modules.length)) return setMessage("Select adjacent modules to create one continuous project.");
+    if (!(teamId === 'KKR' ? edenSelectionContiguous(next) : isContiguous(next, modules.length))) return setMessage("Select adjacent modules to create one continuous project.");
     setMessage("");
     setSelected(next);
   };
 
   const createPlan = (): StadiumPlan | null => {
     if (selected.length === 0) { setMessage("Select at least one stadium module."); return null; }
+    if (teamId === 'KKR' && action !== 'refurbish') { setMessage("The imported Eden model supports design-preserving refurbishment. Structural rebuilding needs compatible replacement meshes first."); return null; }
+    if (teamId === 'KKR' && selectedModules.some(entry => entry.empty)) { setMessage("This saved section is demolished. Its original geometry remains visible as a reference; it cannot be refurbished until a compatible rebuild is available."); return null; }
     if (action === "add-tier" && selectedModules.some((entry) => template(entry.templateId).tiers >= entry.maxTiers || entry.empty)) { setMessage("One or more selected sections cannot support another tier."); return null; }
     if (action === "add-tier" && selectedModules.some((entry) => chosenTemplate.tiers !== template(entry.templateId).tiers + 1 || chosenTemplate.tiers > entry.maxTiers)) { setMessage("Choose a template exactly one tier above every selected section."); return null; }
     const plan: StadiumPlan = {
       id: `eden-plan-${Date.now()}`, name: planName.trim() || `${chosenTemplate.name} concept`, moduleIds: [...selected].sort((a, b) => a - b),
       action, templateId, quality, roof, priceCrore: Math.round(priceCrore * 10) / 10, capacityDelta: newCapacity - oldCapacity,
+      preserveImportedDesign: teamId === 'KKR' || undefined,
       demolitionDays, constructionDays, fanReaction, createdOn: currentDate,
     };
     setPlans((current) => [plan, ...current]);
@@ -405,6 +410,11 @@ function StadiumBuilderState({ teamId: savedTeamId, currentDate, saveId, legacyS
 
   const startProject = (plan: StadiumPlan) => {
     if (activeProject && activeProject.phase !== "completed" && activeProject.phase !== "cancelled") return setMessage("Only one stadium project can run at a time.");
+    if (teamId === 'KKR') {
+      if (plan.action !== 'refurbish') return setMessage("This saved structural plan is retained, but cannot be started on the imported model without compatible replacement meshes.");
+      if (modules.some(entry => plan.moduleIds.includes(entry.id) && entry.empty)) return setMessage("A demolished saved section cannot be refurbished.");
+      plan = { ...plan, preserveImportedDesign: true };
+    }
     const demolitionCompletesOn = plan.demolitionDays ? addDays(currentDate, plan.demolitionDays) : undefined;
     const constructionStartsOn = plan.action === "demolish" ? undefined : addDays(demolitionCompletesOn ?? currentDate, plan.demolitionDays ? 7 : 0);
     const constructionCompletesOn = plan.action === "demolish" ? demolitionCompletesOn! : addDays(constructionStartsOn!, plan.constructionDays);
@@ -423,10 +433,10 @@ function StadiumBuilderState({ teamId: savedTeamId, currentDate, saveId, legacyS
 
   const cancelProject = () => {
     if (!activeProject) return;
-    if (["cleared", "construction"].includes(activeProject.phase)) setModules((current) => current.map((entry) => activeProject.moduleIds.includes(entry.id) ? { ...entry, empty: true, capacity: 0 } : entry));
+    if (!activeProject.preserveImportedDesign && ["cleared", "construction"].includes(activeProject.phase)) setModules((current) => current.map((entry) => activeProject.moduleIds.includes(entry.id) ? { ...entry, empty: true, capacity: 0 } : entry));
     setProjectHistory((current) => current.some((entry) => entry.id === activeProject.id) ? current : [{ ...activeProject, phase: "cancelled" }, ...current]);
     setActiveProject({ ...activeProject, phase: "cancelled" });
-    setMessage("Project cancelled. Any section already demolished remains empty.");
+    setMessage(activeProject.preserveImportedDesign ? "Refurbishment cancelled. The original sections are unchanged." : "Project cancelled. Any section already demolished remains empty.");
   };
 
   return (
@@ -473,9 +483,10 @@ function StadiumBuilderState({ teamId: savedTeamId, currentDate, saveId, legacyS
         <section className="overflow-y-auto border-b border-border p-4 xl:border-b-0 xl:border-r [&>div:first-child]:hidden">
           <div className="mb-4 rounded border border-border bg-surface p-3"><div className="flex items-center justify-between"><h3 className="font-anton text-base uppercase text-text-primary">Stadium stats</h3><span className="font-space-mono text-[7px] uppercase text-text-secondary">{selected.length ? `${selected.length} selected` : "No selection"}</span></div><div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4"><div><p className="font-space-mono text-[6px] uppercase text-text-secondary">Stadium before</p><p className="font-anton text-sm text-text-primary">{integer(totalCapacity)}</p></div><div><p className="font-space-mono text-[6px] uppercase text-text-secondary">Sections before</p><p className="font-anton text-sm text-text-primary">{integer(selectedCapacity)}</p></div><div><p className="font-space-mono text-[6px] uppercase text-text-secondary">Sections after</p><p className={`font-anton text-sm ${newCapacity >= selectedCapacity ? "text-success" : "text-danger"}`}>{integer(newCapacity)}</p></div><div><p className="font-space-mono text-[6px] uppercase text-text-secondary">Stadium after</p><p className={`font-anton text-sm ${projectedCapacity >= totalCapacity ? "text-success" : "text-danger"}`}>{integer(projectedCapacity)}</p></div></div><p className="mt-2 text-[8px] leading-relaxed text-text-secondary">{selected.length ? changeReason : "Select adjacent sections to preview capacity changes and why they occur."}</p>{selected.length > 0 && <p className="mt-1 font-space-mono text-[7px] uppercase text-text-secondary">Selected change: <span className={newCapacity - selectedCapacity >= 0 ? "text-success" : "text-danger"}>{newCapacity - selectedCapacity >= 0 ? "+" : ""}{integer(newCapacity - selectedCapacity)} seats</span></p>}{selectedModules.length > 0 && <div className="mt-3 border-t border-border pt-2"><p className="mb-2 font-space-mono text-[7px] font-bold uppercase text-accent">Selected stand details</p><div className="space-y-2">{selectedModules.map((entry) => <div key={entry.id} className="rounded border border-accent/25 p-2"><div className="flex items-center justify-between gap-2"><p className="truncate text-[10px] font-bold text-text-primary">{entry.standName} · Module {entry.id + 1}</p><p className="font-anton text-sm text-accent">{integer(entry.capacity)} seats</p></div><div className="mt-1 grid grid-cols-2 gap-x-3 gap-y-1 text-[7px] text-text-secondary sm:grid-cols-4"><span>Fan favouritism <b className="text-text-primary">{entry.fanOpinion}/100</b></span><span>Condition <b className="text-text-primary">{Math.round(entry.condition)}/100</b></span><span>Type <b className="text-text-primary">{template(entry.templateId).name}</b></span><span>Built/refurbished <b className="text-text-primary">{entry.constructionYear}/{entry.lastRefurbishedYear}</b></span></div></div>)}</div></div>}</div>
           <div className="mb-3 flex items-center gap-2"><Hammer size={15} className="text-accent"/><h3 className="font-anton text-base uppercase text-text-primary">Design a project</h3></div>
+          {teamId === 'KKR' && <p className="mb-2 text-[9px] text-text-secondary" role="note">Imported-model editing: click sections in 3D or Plan view. Refurbishment preserves the existing stands, roof and capacity. Replacement, extra tiers and demolition require compatible replacement meshes and are not available yet. Legacy High Court slots select the north sight-screen recess, not a separate pavilion.</p>}
           <label className="block"><span className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Concept name</span><input value={planName} onChange={(event) => setPlanName(event.target.value)} placeholder="e.g. New Pavilion End" className="mt-1 w-full rounded border border-border bg-surface px-2 py-2 text-xs text-text-primary outline-none focus:border-accent"/></label>
-          <div className="mt-3 grid grid-cols-2 gap-2">{(["replace", "add-tier", "refurbish", "demolish"] as Action[]).map((value) => <button type="button" key={value} onClick={() => setAction(value)} className={`rounded border px-2 py-2 font-space-mono text-[7px] font-bold uppercase ${action === value ? "border-accent bg-accent/10 text-accent" : "border-border bg-surface text-text-secondary"}`}>{value.replace("-", " ")}</button>)}</div>
-          {action !== "demolish" && <><label className="mt-3 block"><span className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Stand template</span><select value={templateId} onChange={(event) => setTemplateId(event.target.value)} className="mt-1 w-full rounded border border-border bg-surface px-2 py-2 text-xs text-text-primary">{TEMPLATES.map((entry) => <option key={entry.id} value={entry.id}>{entry.name} · {entry.tiers} tier{entry.tiers === 1 ? "" : "s"}</option>)}</select></label><div className="mt-3 grid grid-cols-2 gap-2"><label><span className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Quality</span><select value={quality} onChange={(event) => setQuality(event.target.value as Quality)} className="mt-1 w-full rounded border border-border bg-surface px-2 py-2 text-xs text-text-primary">{Object.keys(QUALITY_MULTIPLIER).map((entry) => <option key={entry}>{entry}</option>)}</select></label><label><span className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Roof</span><select value={roof} onChange={(event) => setRoof(event.target.value as Roof)} className="mt-1 w-full rounded border border-border bg-surface px-2 py-2 text-xs text-text-primary">{Object.keys(ROOF_PRICE).map((entry) => <option key={entry}>{entry}</option>)}</select></label></div></>}
+          <div className="mt-3 grid grid-cols-2 gap-2">{(["replace", "add-tier", "refurbish", "demolish"] as Action[]).map((value) => <button type="button" key={value} disabled={teamId === 'KKR' && value !== 'refurbish'} title={teamId === 'KKR' && value !== 'refurbish' ? 'Needs compatible replacement meshes for the imported model' : undefined} onClick={() => setAction(value)} className={`rounded border px-2 py-2 font-space-mono text-[7px] font-bold uppercase disabled:opacity-30 ${action === value ? "border-accent bg-accent/10 text-accent" : "border-border bg-surface text-text-secondary"}`}>{value.replace("-", " ")}</button>)}</div>
+          {teamId === 'KKR' ? <label className="mt-3 block"><span className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Refurbishment quality · existing roof retained</span><select value={quality} onChange={event => setQuality(event.target.value as Quality)} className="mt-1 w-full rounded border border-border bg-surface px-2 py-2 text-xs text-text-primary">{Object.keys(QUALITY_MULTIPLIER).map(entry => <option key={entry}>{entry}</option>)}</select></label> : action !== "demolish" && <><label className="mt-3 block"><span className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Stand template</span><select value={templateId} onChange={(event) => setTemplateId(event.target.value)} className="mt-1 w-full rounded border border-border bg-surface px-2 py-2 text-xs text-text-primary">{TEMPLATES.map((entry) => <option key={entry.id} value={entry.id}>{entry.name} · {entry.tiers} tier{entry.tiers === 1 ? "" : "s"}</option>)}</select></label><div className="mt-3 grid grid-cols-2 gap-2"><label><span className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Quality</span><select value={quality} onChange={(event) => setQuality(event.target.value as Quality)} className="mt-1 w-full rounded border border-border bg-surface px-2 py-2 text-xs text-text-primary">{Object.keys(QUALITY_MULTIPLIER).map((entry) => <option key={entry}>{entry}</option>)}</select></label><label><span className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Roof</span><select value={roof} onChange={(event) => setRoof(event.target.value as Roof)} className="mt-1 w-full rounded border border-border bg-surface px-2 py-2 text-xs text-text-primary">{Object.keys(ROOF_PRICE).map((entry) => <option key={entry}>{entry}</option>)}</select></label></div></>}
           <div className="mt-4 grid grid-cols-2 gap-2">{[["Nominal price", money(priceCrore)], ["Capacity change", `${newCapacity - oldCapacity >= 0 ? "+" : ""}${integer(newCapacity - oldCapacity)}`], ["Demolition", STADIUM_PROJECT_TIMING_ENABLED ? `${demolitionDays} days` : "Instant"], ["Construction", STADIUM_PROJECT_TIMING_ENABLED ? `${constructionDays} days` : "Instant"], ["Fan preview", `${fanReaction > 0 ? "+" : ""}${fanReaction}`], ["Modules", String(selected.length)]].map(([label, value]) => <div key={label} className="rounded border border-border bg-surface p-2"><p className="font-space-mono text-[6px] uppercase text-text-secondary">{label}</p><p className="mt-1 font-anton text-sm text-text-primary">{value}</p></div>)}</div>
           {message && <p className="mt-3 rounded border border-accent/25 bg-accent/5 p-2 text-[9px] text-text-secondary">{message}</p>}
           <div className="mt-3 grid grid-cols-2 gap-2"><button type="button" onClick={createPlan} className="flex items-center justify-center gap-2 rounded border border-accent px-3 py-2.5 font-space-mono text-[8px] font-bold uppercase text-accent hover:bg-accent/10"><Save size={13}/>Save plan</button><button type="button" onClick={putIntoConstruction} className="flex items-center justify-center gap-2 rounded bg-accent px-3 py-2.5 font-space-mono text-[8px] font-bold uppercase text-black"><Building2 size={13}/>Build now</button></div>

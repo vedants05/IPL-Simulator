@@ -1,10 +1,12 @@
 import type { StadiumDefinition } from './definitions';
 import type { ViewerModule } from './types';
+import { createEdenPlan } from './edenPlan';
 import { STAND_DESIGNS } from '../stadiumVisualDesigns';
 import { footprintPoint, moduleAngle, sectionDefinitions, stadiumExtent, templateRear, venueVisualModule, TAU } from './siteGeometry';
 
 /** Same immutable slots as the 3D renderer; south-up matches the legacy plan. */
 export function createStadiumPlan(def:StadiumDefinition, modules:readonly ViewerModule[]) {
+  if(def.teamId==='KKR') return createEdenPlan(modules);
   const scale=176/stadiumExtent(def,modules),count=Math.max(1,modules.length),step=TAU/count;
   const frames=sectionDefinitions(def,modules.map(entry=>venueVisualModule(def,entry)));
   const tiers=(i:number)=>(STAND_DESIGNS[venueVisualModule(def,modules[i]).templateId]??STAND_DESIGNS['standard-two']).tiers;

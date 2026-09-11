@@ -124,3 +124,35 @@ adaptive resolution reduced to .85. These are 180-frame fixed-camera previews,
 not full-game benchmarks or a guaranteed frame rate. All four static camera
 checks reported no browser errors. Full real-life accuracy for every stadium
 was not established by this time-limited pass.
+
+## Eden Gardens imported model
+
+Eden uses the supplied v05 metre-scale GLB as its unchanged visual baseline.
+LOD2 retains 50,498 instanced seats for normal and inspection views; LOD3 is
+available as an asset but is not currently selected at runtime. LOD0 and LOD1
+are intentionally not shipped in the game because their 10.59m and 5.78m
+expanded-triangle costs do not justify making them normal runtime assets.
+
+The uploaded LOD2 scene is rendered as Eden's sole 3D stadium. It is not sliced,
+clipped, rescaled or combined with the procedural bowl. The opposite-end sight
+screen has a local one-metre lift; the source GLB remains byte-identical.
+
+`edenModules.ts` maps authored stand/seat/roof nodes to the 24 existing saved
+module IDs. Ray picking and a colour-only shader use the same logical regions;
+shared roofs remain whole, and seat instancing remains intact. Selection is
+gold, active projects amber; clearing state restores the original appearance.
+Plan view and inspection cameras use the imported model's coordinates. Legacy
+High Court Pavilion slots map to the north screen recess, not an invented stand.
+
+Design-preserving refurbishment is connected to existing plans, dated projects,
+completion and cancellation. It retains individual roofs, capacity and geometry.
+Structural replacement, demolition and tier expansion are guarded until compatible
+replacement meshes exist; saved structural plans/data are retained, not rendered
+as an overlapping procedural stadium. This is not full structural-editing parity
+with procedural venues. Map attribution remains visible.
+
+The checked-in asset manifest records triangle/seat totals, source package and
+accuracy wording. `npm run test:eden-stadium-asset` verifies camera presets and
+binary glTF headers.
+`npm run test:eden-modules` checks selection mapping, geometry/instance/transform
+integrity, material restoration and saved refurbishment completion.

@@ -1,0 +1,103 @@
+{
+  "status": "passed",
+  "threeRevision": "180",
+  "results": [
+    {
+      "level": 0,
+      "seats": 50498,
+      "expandedTriangles": 10590700,
+      "towerChecks": [
+        {
+          "tower": "T1",
+          "error_m": 7.499644584909089e-7
+        },
+        {
+          "tower": "T2",
+          "error_m": 0.000003898630394383467
+        },
+        {
+          "tower": "T3",
+          "error_m": 8.53981075822697e-7
+        },
+        {
+          "tower": "T4",
+          "error_m": 0.000003679588840248772
+        }
+      ]
+    },
+    {
+      "level": 1,
+      "seats": 50498,
+      "expandedTriangles": 5784680,
+      "towerChecks": [
+        {
+          "tower": "T1",
+          "error_m": 7.499644584909089e-7
+        },
+        {
+          "tower": "T2",
+          "error_m": 0.000003898630394383467
+        },
+        {
+          "tower": "T3",
+          "error_m": 8.53981075822697e-7
+        },
+        {
+          "tower": "T4",
+          "error_m": 0.000003679588840248772
+        }
+      ]
+    },
+    {
+      "level": 2,
+      "seats": 50498,
+      "expandedTriangles": 1983530,
+      "towerChecks": [
+        {
+          "tower": "T1",
+          "error_m": 7.499644584909089e-7
+        },
+        {
+          "tower": "T2",
+          "error_m": 0.000003898630394383467
+        },
+        {
+          "tower": "T3",
+          "error_m": 8.53981075822697e-7
+        },
+        {
+          "tower": "T4",
+          "error_m": 0.000003679588840248772
+        }
+      ]
+    },
+    {
+      "level": 3,
+      "seats": 0,
+      "expandedTriangles": 317592,
+      "towerChecks": [
+        {
+          "tower": "T1",
+          "error_m": 7.499644584909089e-7
+        },
+        {
+          "tower": "T2",
+          "error_m": 0.000003898630394383467
+        },
+        {
+          "tower": "T3",
+          "error_m": 8.53981075822697e-7
+        },
+        {
+          "tower": "T4",
+          "error_m": 0.000003679588840248772
+        }
+      ]
+    }
+  ],
+  "notTested": [
+    "WebGL rendering",
+    "browser frame rate",
+    "image decode (mocked in Node)"
+  ]
+}

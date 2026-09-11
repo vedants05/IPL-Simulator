@@ -1,7 +1,7 @@
 "use client";
 
 import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber';
-import { Component, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Component, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { buildStadium } from './stadiums/buildStadium';
@@ -11,6 +11,8 @@ import { inspectionPosition, type CameraMode } from './stadiums/inspectionCamera
 import type { StadiumMap } from './stadiums/mappedSurroundings';
 import { AdaptiveStadiumQuality, createStadiumPostprocessing, initialStadiumScale } from './stadiums/renderQuality';
 import { stadiumExtent } from './stadiums/siteGeometry';
+import ImportedEdenStadium from './stadiums/ImportedEdenStadium';
+import { EDEN_CAMERA_PRESETS, EDEN_MODEL_URLS } from './stadiums/edenGardensAsset';
 
 interface ViewOptions { yaw: number; zoom: number; mode: CameraMode; night: boolean; cutaway: boolean; detail: DetailLevel; crowd: boolean; focusId?: number }
 const buttonStyle = { border: '1px solid #ffffff50', background: '#10232be8', color: '#f4f0dc', borderRadius: 6, padding: '6px 9px', fontSize: 12, cursor: 'pointer' } as const;
@@ -25,24 +27,29 @@ class ViewerErrorBoundary extends Component<{ children: ReactNode }, { failed: b
   }
 }
 
-function Model({ teamId, modules, selected, activeModuleIds, project, currentDate, onToggleModule, night, detail, cutaway, crowd }: StadiumViewerProps & Pick<ViewOptions, 'night' | 'detail' | 'cutaway' | 'crowd'>) {
+function Model({ teamId, modules, selected, activeModuleIds, project, currentDate, onToggleModule, night, detail, cutaway, crowd, mode }: StadiumViewerProps & Pick<ViewOptions, 'night' | 'detail' | 'cutaway' | 'crowd' | 'mode'>) {
   const root = useRef<THREE.Group>(null);
   const model = useRef<ReturnType<typeof buildStadium> | null>(null);
   const [map,setMap]=useState<StadiumMap>();
+  const eden=getStadiumDefinition(teamId).teamId==='KKR';
   useEffect(()=>{
     const controller=new AbortController();setMap(undefined);
+    if(eden) return ()=>controller.abort();
     const id=getStadiumDefinition(teamId).teamId;
     fetch(`/stadiums/maps/${id}.json`,{signal:controller.signal})
       .then(response=>{if(!response.ok) throw new Error('Map unavailable');return response.json();})
       .then((data:StadiumMap)=>{if(!controller.signal.aborted && data.team===id && Array.isArray(data.features)) setMap(data);})
       .catch(error=>{if(error.name!=='AbortError') console.warn('Stadium map unavailable',error);});
     return ()=>controller.abort();
-  },[teamId]);
+  },[teamId,eden]);
   const invalidate = useThree(state => state.invalidate);
   const cutawayRef = useRef(cutaway); cutawayRef.current = cutaway;
   const selectionRef=useRef(selected);selectionRef.current=selected;
   const gl=useThree(state=>state.gl);
   useEffect(() => {
+    // Eden uses the uploaded GLB exclusively. Do not layer the procedural bowl,
+    // roofs, field or surroundings over the authored model.
+    if(eden) { model.current=null; invalidate(); return; }
     // Allocate GPU resources in an effect, not during render. This safely
     // handles React 18 StrictMode setup/cleanup/re-setup and suspended renders.
     const built = buildStadium(getStadiumDefinition(teamId), modules, { selected:selectionRef.current, activeModuleIds, project, currentDate, night, detail, crowd, map:map?.team===getStadiumDefinition(teamId).teamId?map:undefined });
@@ -50,7 +57,7 @@ function Model({ teamId, modules, selected, activeModuleIds, project, currentDat
     built.roofs.forEach(roof => { roof.visible = !cutawayRef.current; });
     const parent = root.current; parent?.add(built.group); gl.shadowMap.needsUpdate=true; invalidate();
     return () => { parent?.remove(built.group); built.dispose(); model.current = null; };
-  }, [teamId, modules, activeModuleIds, project, currentDate, night, detail, crowd, map, invalidate,gl]);
+  }, [teamId, modules, activeModuleIds, project, currentDate, night, detail, crowd, map, invalidate,gl,eden]);
   useEffect(()=>{model.current?.setSelection(selected);invalidate();},[selected,invalidate]);
   const reducedMotion=useRef(false);
   useEffect(()=>{
@@ -67,7 +74,10 @@ function Model({ teamId, modules, selected, activeModuleIds, project, currentDat
     const id = event.instanceId !== undefined ? ids?.[event.instanceId] : event.object.userData.moduleId;
     if (typeof id === 'number') onToggleModule(id);
   };
-  return <group ref={root} dispose={null} onClick={select}/>;
+  return <group dispose={null} onClick={select}>
+    {eden&&<Suspense fallback={null}><ImportedEdenStadium url={EDEN_MODEL_URLS.detail} selected={selected} activeModuleIds={activeModuleIds} onToggleModule={onToggleModule}/></Suspense>}
+    <group ref={root}/>
+  </group>;
 }
 
 function CameraRig({ yaw, zoom, mode, teamId, modules, selected }: Pick<ViewOptions, 'yaw' | 'zoom' | 'mode'> & StadiumViewerProps) {
@@ -79,10 +89,11 @@ function CameraRig({ yaw, zoom, mode, teamId, modules, selected }: Pick<ViewOpti
   const definition = getStadiumDefinition(teamId);
   const extent=useMemo(()=>stadiumExtent(definition,modules),[definition,modules]);
   const inspection=useMemo(()=>mode==='overview'||mode==='ground'?null:inspectionPosition(definition,modules,selected,mode),[definition,modules,selected,mode]);
+  const edenPreset=definition.teamId==='KKR'?EDEN_CAMERA_PRESETS[mode]:undefined;
   useEffect(() => { invalidate(); }, [yaw, zoom, mode, teamId, modules, selected, invalidate]);
   useFrame((_, delta) => {
     const state = current.current, dt = Math.min(delta, .05);
-    const elevation = mode === 'overview' ? 1 : 0;
+    const elevation = mode === 'overview' || edenPreset ? 1 : 0;
     state.yaw = THREE.MathUtils.damp(state.yaw, yaw, 9, dt);
     state.zoom = THREE.MathUtils.damp(state.zoom, zoom, 9, dt);
     state.elevation = THREE.MathUtils.damp(state.elevation, elevation, 9, dt);
@@ -98,10 +109,14 @@ function CameraRig({ yaw, zoom, mode, teamId, modules, selected }: Pick<ViewOpti
       const facing=view.facingAngle+(state.yaw-.65);
       targetLook.current.copy(targetPosition.current).add(new THREE.Vector3(Math.sin(facing)*25,mode==='seat'||mode==='balcony'?-5:0,Math.cos(facing)*25));
     }
+    if(edenPreset) {
+      targetPosition.current.set(...edenPreset.position);
+      targetLook.current.set(...edenPreset.target);
+    }
     const blend=1-Math.exp(-8*dt);
     camera.position.lerp(targetPosition.current,blend); point.current.lerp(targetLook.current,blend);
     if(camera instanceof THREE.PerspectiveCamera) {
-      const fov=mode==='overview'||mode==='ground'?52:52*state.zoom;
+      const fov=edenPreset?.fov??(mode==='overview'||mode==='ground'?52:52*state.zoom);
       if(Math.abs(camera.fov-fov)>.001) {camera.fov=fov;camera.updateProjectionMatrix();}
     }
     camera.lookAt(point.current);
@@ -192,7 +207,7 @@ export default function StadiumViewer3D(props: StadiumViewerProps) {
     }}
   >
     <ViewerErrorBoundary key={props.teamId ?? 'KKR'}>
-      <Canvas shadows frameloop="demand" dpr={[1,1.75]} camera={{ position: [120,120,150], fov: 52, near: .1, far: 1200 }} gl={{ antialias: true, powerPreference:'high-performance' }} fallback={<div style={{ padding: 24, color: 'white' }}>WebGL is unavailable. Use Plan view instead.</div>}>
+      <Canvas shadows frameloop="demand" dpr={[1,1.75]} camera={{ position: [120,120,150], fov: 52, near: .1, far: 6000 }} gl={{ antialias: true, powerPreference:'high-performance' }} fallback={<div style={{ padding: 24, color: 'white' }}>WebGL is unavailable. Use Plan view instead.</div>}>
         <Scene {...props} yaw={yaw} zoom={zoom} mode={mode} night={FIXED_NIGHT} cutaway={cutaway} detail={FIXED_DETAIL} crowd={crowd} focusId={focusId}/>
       </Canvas>
     </ViewerErrorBoundary>
@@ -205,18 +220,19 @@ export default function StadiumViewer3D(props: StadiumViewerProps) {
         <option value="overview">Overview</option><option value="ground">Ground view</option>
         <option value="seat">Selected stand: seat</option><option value="concourse">Selected stand: concourse</option>
         <option value="balcony">Selected stand: balcony</option><option value="entrance">Selected stand: entrance</option>
+        {definition.teamId==='KKR'&&<><option value="broadcast">Eden: broadcast aerial</option><option value="pavilionRoad">Eden: pavilion road</option><option value="maidan">Eden: Maidan</option><option value="river">Eden: river panorama</option><option value="construction">Eden: construction overview</option></>}
       </select>
       {mode!=='overview'&&mode!=='ground'&&<select aria-label="Stand to inspect" style={{...buttonStyle,maxWidth:210}} value={focusId??props.selected[props.selected.length-1]??props.modules[0]?.id??''} onChange={event=>setFocusId(Number(event.target.value))}>
         {props.modules.map(module=><option key={module.id} value={module.id}>{module.standName} · {module.id+1}</option>)}
       </select>}
-      <button type="button" style={buttonStyle} aria-pressed={cutaway} onClick={()=>setCutaway(value=>!value)}>{cutaway?'Show roofs':'Hide roofs'}</button>
-      <button type="button" style={buttonStyle} aria-pressed={crowd} onClick={()=>setCrowd(value=>!value)} title="Decorative crowd preview; does not represent match attendance">{crowd?'Hide crowd':'Preview crowd'}</button>
+      {definition.teamId!=='KKR'&&<button type="button" style={buttonStyle} aria-pressed={cutaway} onClick={()=>setCutaway(value=>!value)}>{cutaway?'Show roofs':'Hide roofs'}</button>}
+      {definition.teamId!=='KKR'&&<button type="button" style={buttonStyle} aria-pressed={crowd} onClick={()=>setCrowd(value=>!value)} title="Decorative crowd preview; does not represent match attendance">{crowd?'Hide crowd':'Preview crowd'}</button>}
       <button type="button" style={buttonStyle} aria-label="Zoom in" disabled={mode==='ground'} onClick={()=>setZoom(value=>clampZoom(value-.1))}>+</button>
       <button type="button" style={buttonStyle} aria-label="Zoom out" disabled={mode==='ground'} onClick={()=>setZoom(value=>clampZoom(value+.1))}>−</button>
     </div>
     <div style={{ position: 'absolute', bottom: 14, left: 12, right: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
       <button type="button" style={buttonStyle} aria-label="Turn left" onClick={()=>setYaw(value=>value-.3)}>‹</button>
-      <span style={{ color: '#fff', background: '#10232bd9', padding: '6px 10px', borderRadius: 6, fontSize: 11, pointerEvents: 'none', textAlign: 'center' }}>Drag to rotate · Click a section · Architectural approximation</span>
+      <span style={{ color: '#fff', background: '#10232bd9', padding: '6px 10px', borderRadius: 6, fontSize: 11, pointerEvents: 'none', textAlign: 'center' }}>{definition.teamId==='KKR'?'Drag to rotate · Click a section · Original geometry preserved':'Drag to rotate · Click a section · Architectural approximation'}</span>
       <button type="button" style={buttonStyle} aria-label="Turn right" onClick={()=>setYaw(value=>value+.3)}>›</button>
     </div>
   </div>;
