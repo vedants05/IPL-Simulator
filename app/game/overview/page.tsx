@@ -4,6 +4,7 @@ import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useGameStore, getSeasonDates, INITIAL_ACTIVE_SEASON } from "@/lib/store/gameStore";
+import { reconcileSmatCareer, smatStorageKey, type SmatCareerState } from "@/lib/logic/smat";
 import { formatPrice } from "@/lib/logic/auctionRules";
 import { getTradeWindowDates, isTradeWindowOpen } from "@/lib/logic/tradeEngine";
 import {
@@ -60,6 +61,8 @@ import {
 import {
   getPlayerSeasonHistory,
   mergePlayerIplHistory,
+  protectCompletedSeasonTeamsFromTrades,
+  upsertPlayerContractHistory,
   upsertPlayerIplHistory,
   wasPlayerAcquiredViaRtm,
 } from "@/lib/logic/playerHistory";
@@ -147,6 +150,7 @@ import {
 } from "@/lib/logic/commercialSystem";
 const SocialMediaPage = dynamic(() => import("@/components/social/SocialMediaPage"), { ssr: false });
 const NewsPage = dynamic(() => import("@/components/news/NewsPage"), { ssr: false });
+const SmatPage = dynamic(() => import("@/components/home/SmatPage"), { ssr: false });
 import { getClubOwnership } from "@/lib/data/clubOwnership";
 import { buildTeamSupporterView } from "@/lib/logic/supporters";
 import { checkEmergencyBudgetExtensionApproval, STAFF_SALARY_MODEL_VERSION } from "@/lib/logic/staffContracts";
@@ -1013,6 +1017,30 @@ function OverviewPageContent() {
   const [minorRecordsPreviewCapacity, setMinorRecordsPreviewCapacity] = useState(1);
   const [inbox, setInbox] = useState<CareerEmail[]>([]);
   const [isCareerLoaded, setIsCareerLoaded] = useState(false);
+  const [smatCareer, setSmatCareer] = useState<SmatCareerState>({ version: 1, activeSeason: null, history: [], playerCareerStats: {} });
+  const smatCareerKey = smatStorageKey(saveId || userTeamId || fixtureSeed || "career");
+  const loadedSmatKeyRef = useRef<string | null>(null);
+  const skipNextSmatPersistRef = useRef(false);
+  const smatCareerT20ByFullPlayerId = useMemo(() => {
+    const totals = { ...smatCareer.playerCareerStats };
+    if (smatCareer.activeSeason && !smatCareer.activeSeason.completed) {
+      Object.entries(smatCareer.activeSeason.playerStats).forEach(([id, stats]) => {
+        if (!id.startsWith("full:")) return;
+        const current = totals[id] ?? { matches: 0, runs: 0, wickets: 0 };
+        totals[id] = {
+          matches: current.matches + stats.matches,
+          runs: current.runs + stats.runs,
+          wickets: current.wickets + stats.wickets,
+          balls: (current.balls ?? 0) + (stats.balls ?? 0),
+          dismissals: (current.dismissals ?? 0) + (stats.dismissals ?? 0),
+          bowlingInnings: (current.bowlingInnings ?? 0) + (stats.bowlingInnings ?? 0),
+          bowlingBalls: (current.bowlingBalls ?? 0) + (stats.bowlingBalls ?? 0),
+          runsConceded: (current.runsConceded ?? 0) + (stats.runsConceded ?? 0),
+        };
+      });
+    }
+    return totals;
+  }, [smatCareer]);
 
   useEffect(() => {
     minorRecordsRef.current = minorRecords;
@@ -1409,6 +1437,23 @@ function OverviewPageContent() {
   const retentionDateString = retentionDeadline
     ? `${retentionDeadline.year}-${String(retentionDeadline.month + 1).padStart(2, "0")}-${String(retentionDeadline.day).padStart(2, "0")}`
     : "";
+
+  useEffect(() => {
+    if (!isCareerLoaded || !retentionDateString || !userTeamId) return;
+    let stored: SmatCareerState | null = null;
+    if (loadedSmatKeyRef.current !== smatCareerKey) {
+      try { stored = JSON.parse(localStorage.getItem(smatCareerKey) ?? "null") as SmatCareerState | null; } catch { stored = null; }
+      loadedSmatKeyRef.current = smatCareerKey;
+      skipNextSmatPersistRef.current = true;
+    }
+    setSmatCareer((current) => reconcileSmatCareer(stored ?? current, currentSeason, retentionDateString, currentDate, players));
+  }, [currentDate, currentSeason, isCareerLoaded, players, retentionDateString, smatCareerKey, userTeamId]);
+
+  useEffect(() => {
+    if (loadedSmatKeyRef.current !== smatCareerKey || !isCareerLoaded) return;
+    if (skipNextSmatPersistRef.current) { skipNextSmatPersistRef.current = false; return; }
+    try { localStorage.setItem(smatCareerKey, JSON.stringify(smatCareer)); } catch (error) { console.error("Unable to save SMAT career data:", error); }
+  }, [isCareerLoaded, smatCareer, smatCareerKey]);
 
   const isFixturesAnnounced = currentDate >= formattedAnnouncementDate;
 
@@ -5242,7 +5287,8 @@ This record has been officially verified and added to the IPL Minor Records arch
     ? (() => {
         const mergedHistory = mergePlayerIplHistory([], detailedPlayer.iplHistory);
         const currentEntry = currentSeasonHistoryByPlayer.get(detailedPlayer.id);
-        return currentEntry ? upsertPlayerIplHistory(mergedHistory, currentEntry) : mergedHistory;
+        const history = currentEntry ? upsertPlayerContractHistory(mergedHistory, currentEntry) : mergedHistory;
+        return protectCompletedSeasonTeamsFromTrades(history, detailedPlayer.id, tradeRecords);
       })()
     : [];
   const sortedRosterPlayers = useMemo(() => {
@@ -5528,7 +5574,7 @@ This record has been officially verified and added to the IPL Minor Records arch
     home: {
       label: "Home",
       icon: InboxIcon,
-      subtabs: ["overview", "inbox", "social", "news", "calendar"]
+      subtabs: ["overview", "inbox", "social", "news", "calendar", "smat"]
     },
     squad: {
       label: "Squad",
@@ -5612,6 +5658,7 @@ This record has been officially verified and added to the IPL Minor Records arch
     if (subtab === "retail") return "Retail & Marketing";
     if (subtab === "operations") return "Club Operations";
     if (subtab === "calendar") return "Season Calendar";
+    if (subtab === "smat") return "SMAT";
     if (subtab === "social") return "Social Media";
     if (subtab === "news") return "News";
     if (subtab === "records") return "Records";
@@ -7689,6 +7736,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                   </div>
                 </div>
               )}
+              {activeSubTab === "smat" && <SmatPage career={smatCareer} onOpenFullPlayer={setDetailedPlayerId} />}
             </>
           )}
 
@@ -10524,6 +10572,8 @@ This record has been officially verified and added to the IPL Minor Records arch
         playerId={detailedPlayerId}
         onClose={() => setDetailedPlayerId(null)}
         customFixtures={fixtures}
+        currentSeasonStats={detailedPlayerId ? playerStats[detailedPlayerId] : undefined}
+        additionalCareerT20Stats={detailedPlayerId ? smatCareerT20ByFullPlayerId[`full:${detailedPlayerId}`] : undefined}
         isShortlisted={detailedPlayerId ? shortlist.includes(detailedPlayerId) : false}
         onToggleShortlist={toggleShortlist}
       />

@@ -547,14 +547,16 @@ function MountedTeamProfilePage() {
   const team = teams[teamId];
   const homeStadium = getHomeStadium(teamId);
   const clubFigures = useMemo(
-    () => getClubFigures(
-      teamId,
-      players,
-      clubFigureTierOverrides,
-      clubFigureProgression,
-      retiredPlayerSnapshots,
-    ),
-    [clubFigureProgression, clubFigureTierOverrides, players, retiredPlayerSnapshots, teamId],
+    () => activeTab === "clubfigures"
+      ? getClubFigures(
+          teamId,
+          players,
+          clubFigureTierOverrides,
+          clubFigureProgression,
+          retiredPlayerSnapshots,
+        )
+      : [],
+    [activeTab, clubFigureProgression, clubFigureTierOverrides, players, retiredPlayerSnapshots, teamId],
   );
 
   const teamContracts = useMemo(() => {
@@ -1721,22 +1723,27 @@ function MountedTeamProfilePage() {
       </main>
 
       {/* ======================= FIXTURE SCORECARD MODAL ======================= */}
-      <MatchScorecardModal
-        match={activeScorecard as any}
-        teams={teams}
-        players={players}
-        isOpen={Boolean(activeScorecard)}
-        onClose={() => setActiveScorecard(null)}
-      />
+      {activeScorecard && (
+        <MatchScorecardModal
+          match={activeScorecard as any}
+          teams={teams}
+          players={players}
+          isOpen
+          onClose={() => setActiveScorecard(null)}
+        />
+      )}
 
       {/* Player Profile Modal */}
-      <PlayerProfileModal
-        playerId={detailedPlayerId}
-        onClose={() => setDetailedPlayerId(null)}
-        customFixtures={career.fixtures}
-        isShortlisted={detailedPlayerId ? shortlist.includes(detailedPlayerId) : false}
-        onToggleShortlist={toggleShortlist}
-      />
+      {detailedPlayerId && (
+        <PlayerProfileModal
+          playerId={detailedPlayerId}
+          onClose={() => setDetailedPlayerId(null)}
+          customFixtures={career.fixtures}
+          currentSeasonStats={career.playerStats[detailedPlayerId]}
+          isShortlisted={shortlist.includes(detailedPlayerId)}
+          onToggleShortlist={toggleShortlist}
+        />
+      )}
     </div>
   );
 }

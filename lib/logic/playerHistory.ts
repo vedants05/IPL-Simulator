@@ -1,4 +1,4 @@
-import type { IPLHistoryEntry } from "@/lib/types";
+import type { IPLHistoryEntry, TradeRecord } from "@/lib/types";
 
 interface SaleWithBids {
   teamId: string;
@@ -44,9 +44,42 @@ export function upsertPlayerIplHistory(
   ];
 }
 
+export function upsertPlayerContractHistory(
+  history: IPLHistoryEntry[] = [],
+  contract: IPLHistoryEntry,
+): IPLHistoryEntry[] {
+  const existing = getPlayerSeasonHistory(history, contract.season);
+  return upsertPlayerIplHistory(history, {
+    ...existing,
+    ...contract,
+    // Live auction and roster rows do not carry archived match totals.
+    // Retain them when refreshing the contract for the same season.
+    seasonStats: contract.seasonStats ?? existing?.seasonStats,
+  });
+}
+
 export function getPlayerSeasonHistory(
   history: IPLHistoryEntry[] = [],
   season: string,
 ): IPLHistoryEntry | undefined {
   return mergePlayerIplHistory([], history).find((entry) => entry.season === season);
+}
+
+export function protectCompletedSeasonTeamsFromTrades(
+  history: IPLHistoryEntry[] = [],
+  playerId: string,
+  tradeRecords: TradeRecord[] = [],
+): IPLHistoryEntry[] {
+  return history.map((entry) => {
+    const trade = tradeRecords.find((record) => (
+      String(record.season) === String(entry.season)
+      && (record.outgoingPlayerIds.includes(playerId) || record.incomingPlayerIds.includes(playerId))
+    ));
+    if (!trade) return entry;
+
+    const previousTeamId = trade.outgoingPlayerIds.includes(playerId)
+      ? trade.fromTeamId
+      : trade.toTeamId;
+    return entry.teamId === previousTeamId ? entry : { ...entry, teamId: previousTeamId };
+  });
 }

@@ -175,6 +175,8 @@ export interface Player {
   country?: string;
   /** Domestic state or regional cricket origin, where known. */
   state?: string;
+  /** Player date of birth (YYYY-MM-DD), where known. */
+  dateOfBirth?: string;
   role: Role;
   battingStyle: BattingStyle;
   bowlingStyle: BowlingType | null;

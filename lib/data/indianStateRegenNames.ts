@@ -2,7 +2,7 @@ import type { RegenNamePool } from "@/lib/data/regenNames";
 
 /**
  * State-keyed naming pools used only for domestic scouting discoveries.
- * Each state has at least 30 given names and 30 family names. Neighbouring
+ * Each state has at least 60 given names and 60 family names. Neighbouring
  * states intentionally retain some cultural overlap, while every selection is
  * made from the chosen state's own pool rather than the generic India pool.
  */
@@ -172,14 +172,70 @@ const TOP_STATE_NAME_SUPPLEMENTS: Record<string, RegenNamePool> = {
   },
 };
 
+/** Nearby pools supply common names shared across state borders and language regions. */
+const REGIONAL_NAME_NEIGHBOURS: Record<string, readonly string[]> = {
+  "jammu-kashmir": ["himachal-pradesh", "punjab", "delhi"],
+  "himachal-pradesh": ["uttarakhand", "punjab", "haryana"],
+  punjab: ["haryana", "himachal-pradesh", "delhi"],
+  haryana: ["delhi", "punjab", "rajasthan", "uttar-pradesh"],
+  delhi: ["haryana", "punjab", "uttar-pradesh"],
+  uttarakhand: ["himachal-pradesh", "uttar-pradesh", "delhi"],
+  rajasthan: ["haryana", "gujarat", "madhya-pradesh"],
+  "uttar-pradesh": ["bihar", "uttarakhand", "madhya-pradesh", "delhi"],
+  bihar: ["jharkhand", "uttar-pradesh", "west-bengal"],
+  sikkim: ["west-bengal", "assam", "arunachal-pradesh"],
+  "arunachal-pradesh": ["assam", "sikkim", "nagaland"],
+  assam: ["tripura", "west-bengal", "arunachal-pradesh"],
+  meghalaya: ["assam", "nagaland", "tripura"],
+  nagaland: ["manipur", "mizoram", "assam"],
+  manipur: ["nagaland", "mizoram", "assam"],
+  mizoram: ["manipur", "tripura", "nagaland"],
+  tripura: ["west-bengal", "assam", "mizoram"],
+  gujarat: ["rajasthan", "maharashtra", "madhya-pradesh"],
+  "madhya-pradesh": ["rajasthan", "uttar-pradesh", "maharashtra", "chhattisgarh"],
+  jharkhand: ["bihar", "odisha", "west-bengal", "chhattisgarh"],
+  "west-bengal": ["tripura", "odisha", "assam", "jharkhand"],
+  chhattisgarh: ["madhya-pradesh", "odisha", "jharkhand"],
+  odisha: ["west-bengal", "chhattisgarh", "andhra-pradesh"],
+  maharashtra: ["goa", "gujarat", "madhya-pradesh", "karnataka"],
+  goa: ["maharashtra", "karnataka", "kerala"],
+  telangana: ["andhra-pradesh", "karnataka", "maharashtra"],
+  "andhra-pradesh": ["telangana", "tamil-nadu", "odisha", "karnataka"],
+  karnataka: ["maharashtra", "goa", "kerala", "tamil-nadu"],
+  kerala: ["tamil-nadu", "karnataka", "goa"],
+  "tamil-nadu": ["kerala", "karnataka", "andhra-pradesh"],
+};
+
+const BLOCKED_GENERATED_NAMES = new Set(["shiningstar", "bhutan"]);
+const STATE_NAME_POOL_TARGETS: Record<string, number> = {
+  maharashtra: 100,
+  gujarat: 100,
+  punjab: 90,
+  "tamil-nadu": 90,
+};
+const allowedUniqueNames = (values: Iterable<string>) => Array.from(new Set(values)).filter(
+  (value) => !BLOCKED_GENERATED_NAMES.has(value.trim().toLocaleLowerCase("en-GB")),
+);
+const rawPool = (stateId: string): RegenNamePool => {
+  const base = BASE_INDIAN_STATE_REGEN_NAME_POOLS[stateId];
+  const supplement = TOP_STATE_NAME_SUPPLEMENTS[stateId];
+  return {
+    firstNames: allowedUniqueNames([...(base?.firstNames ?? []), ...(supplement?.firstNames ?? [])]),
+    lastNames: allowedUniqueNames([...(base?.lastNames ?? []), ...(supplement?.lastNames ?? [])]),
+  };
+};
+
+function expandedRegionalPool(stateId: string): RegenNamePool {
+  const related = [stateId, ...(REGIONAL_NAME_NEIGHBOURS[stateId] ?? [])].map(rawPool);
+  const target = STATE_NAME_POOL_TARGETS[stateId] ?? 60;
+  return {
+    firstNames: allowedUniqueNames(related.flatMap((pool) => [...pool.firstNames])).slice(0, target),
+    lastNames: allowedUniqueNames(related.flatMap((pool) => [...pool.lastNames])).slice(0, target),
+  };
+}
+
 export const INDIAN_STATE_REGEN_NAME_POOLS: Record<string, RegenNamePool> = Object.fromEntries(
-  Object.entries(BASE_INDIAN_STATE_REGEN_NAME_POOLS).map(([stateId, pool]) => {
-    const supplement = TOP_STATE_NAME_SUPPLEMENTS[stateId];
-    return [stateId, supplement ? {
-      firstNames: Array.from(new Set([...pool.firstNames, ...supplement.firstNames])),
-      lastNames: Array.from(new Set([...pool.lastNames, ...supplement.lastNames])),
-    } : pool];
-  }),
+  Object.keys(BASE_INDIAN_STATE_REGEN_NAME_POOLS).map((stateId) => [stateId, expandedRegionalPool(stateId)]),
 );
 
 export interface IndianRegenStateAllocation {
@@ -267,8 +323,12 @@ export function validateIndianStateRegenNamePools(stateIds: Iterable<string>): s
     const pool = INDIAN_STATE_REGEN_NAME_POOLS[stateId];
     if (!pool) return [`${stateId}: missing pool`];
     const issues: string[] = [];
-    if (new Set(pool.firstNames).size < 30) issues.push(`${stateId}: fewer than 30 unique first names`);
-    if (new Set(pool.lastNames).size < 30) issues.push(`${stateId}: fewer than 30 unique last names`);
+    if (new Set(pool.firstNames).size < 60) issues.push(`${stateId}: fewer than 60 unique first names`);
+    if (new Set(pool.lastNames).size < 60) issues.push(`${stateId}: fewer than 60 unique last names`);
+    const target = STATE_NAME_POOL_TARGETS[stateId] ?? 60;
+    if (new Set(pool.firstNames).size < target) issues.push(`${stateId}: fewer than its ${target} required first names`);
+    if (new Set(pool.lastNames).size < target) issues.push(`${stateId}: fewer than its ${target} required last names`);
+    if ([...pool.firstNames, ...pool.lastNames].some((name) => BLOCKED_GENERATED_NAMES.has(name.trim().toLocaleLowerCase("en-GB")))) issues.push(`${stateId}: contains a blocked name`);
     return issues;
   });
 }

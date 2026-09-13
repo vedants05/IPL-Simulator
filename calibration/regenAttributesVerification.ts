@@ -6,12 +6,18 @@ import type { Player } from "../lib/types";
 
 assert.equal(REGEN_NAME_DATABASE.India, undefined, "the obsolete all-India name pool still exists");
 assert.throws(() => generateRegenName("India", () => 0.5), /state-specific pool/);
-for (const state of INDIAN_REGEN_STATE_DISTRIBUTION.slice(0, 10)) {
+for (const state of INDIAN_REGEN_STATE_DISTRIBUTION) {
   const pool = INDIAN_STATE_REGEN_NAME_POOLS[state.id];
   assert.ok(pool, `${state.name} is missing its name pool`);
-  assert.ok(new Set(pool.firstNames).size >= 48, `${state.name} needs a larger first-name pool`);
-  assert.ok(new Set(pool.lastNames).size >= 48, `${state.name} needs a larger surname pool`);
-  assert.ok(new Set(pool.firstNames).size * new Set(pool.lastNames).size >= 2_400, `${state.name} has too few name combinations`);
+  assert.ok(new Set(pool.firstNames).size >= 60, `${state.name} needs a larger first-name pool`);
+  assert.ok(new Set(pool.lastNames).size >= 60, `${state.name} needs a larger surname pool`);
+  assert.ok(new Set(pool.firstNames).size * new Set(pool.lastNames).size >= 3_600, `${state.name} has too few name combinations`);
+  assert.ok(!pool.firstNames.some((name) => name.toLowerCase() === "shiningstar"), `${state.name} contains a blocked first name`);
+}
+for (const [stateId, target] of Object.entries({ maharashtra: 100, gujarat: 100, punjab: 90, "tamil-nadu": 90 })) {
+  const pool = INDIAN_STATE_REGEN_NAME_POOLS[stateId];
+  assert.ok(new Set(pool.firstNames).size >= target, `${stateId} needs ${target} first names for its domestic teams`);
+  assert.ok(new Set(pool.lastNames).size >= target, `${stateId} needs ${target} surnames for its domestic teams`);
 }
 
 const secondaryRatings: Array<keyof Player> = [

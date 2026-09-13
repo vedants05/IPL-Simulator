@@ -160,6 +160,7 @@ export interface HistoricalPlayerSnapshot {
   nationality: Player["nationality"];
   country?: string;
   state?: string;
+  dateOfBirth?: string;
   battingStyle?: Player["battingStyle"];
   bowlingStyle?: Player["bowlingStyle"];
   bowlingHand?: Player["bowlingHand"];
@@ -3676,6 +3677,7 @@ export function createHistoricalPlayerSnapshot(
     nationality: player.nationality,
     country: player.country,
     state: player.state,
+    dateOfBirth: player.dateOfBirth,
     battingStyle: player.battingStyle,
     bowlingStyle: player.bowlingStyle,
     bowlingHand: player.bowlingHand,

@@ -4954,6 +4954,18 @@ export const useGameStore = create<Store>()(
           const nextPlayers = { ...state.players };
           const transfer = (player: Player, fromTeamId: string, toTeamId: string) => {
             const salary = salaryFor(player);
+            const completedSeason = String(state.currentSeason);
+            const protectedHistory = player.iplHistory.map((entry) => (
+              String(entry.season) === completedSeason
+                ? {
+                    ...entry,
+                    teamId: fromTeamId,
+                    tradedFromTeamId: fromTeamId,
+                    tradedToTeamId: toTeamId,
+                    tradeId,
+                  }
+                : entry
+            ));
             nextPlayers[player.id] = {
               ...player,
               currentTeamId: toTeamId,
@@ -4962,10 +4974,9 @@ export const useGameStore = create<Store>()(
               basePrice: salary,
               isRetained: auctionType === "mega",
               retainedByTeamId: auctionType === "mega" ? toTeamId : null,
-              // A post-final trade must never rewrite the completed season's
-              // team, salary or statistics. The transaction is recorded in
-              // tradeRecords and the next season creates its own roster row.
-              iplHistory: player.iplHistory,
+              // Preserve the club represented during the completed season.
+              // The incoming club receives its own row when the next season begins.
+              iplHistory: protectedHistory,
             };
           };
           offeredPlayers.forEach((player) => transfer(player, proposer.id, recipient.id));

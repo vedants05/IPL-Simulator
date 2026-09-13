@@ -9,6 +9,8 @@ import { formatTopSevenBattingPositions } from "@/lib/logic/playerBattingPositio
 import {
   getPlayerSeasonHistory,
   mergePlayerIplHistory,
+  protectCompletedSeasonTeamsFromTrades,
+  upsertPlayerContractHistory,
   upsertPlayerIplHistory,
   wasPlayerAcquiredViaRtm,
 } from "@/lib/logic/playerHistory";
@@ -23,6 +25,7 @@ export function retiredSnapshotPlayer(snapshot: HistoricalPlayerSnapshot): Playe
     nationality: snapshot.nationality,
     country: snapshot.country,
     state: snapshot.state,
+    dateOfBirth: snapshot.dateOfBirth,
     role: snapshot.role,
     battingStyle: snapshot.battingStyle ?? "Right-hand",
     bowlingStyle: snapshot.bowlingStyle ?? null,
@@ -55,6 +58,22 @@ export function retiredSnapshotPlayer(snapshot: HistoricalPlayerSnapshot): Playe
     battingAggression: snapshot.battingAggression ?? snapshot.aggression,
     aggression: snapshot.aggression ?? snapshot.battingAggression,
   };
+}
+
+function formatDateOfBirth(dateStr?: string | null): string {
+  try {
+    if (!dateStr || typeof dateStr !== "string" || !dateStr.trim()) return "Not available";
+    const date = new Date(`${dateStr.trim()}T00:00:00Z`);
+    if (Number.isNaN(date.getTime())) return dateStr;
+    return date.toLocaleDateString("en-GB", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      timeZone: "UTC",
+    });
+  } catch {
+    return typeof dateStr === "string" ? dateStr : "Not available";
+  }
 }
 
 export interface ProfileModalMatch {
@@ -102,6 +121,27 @@ interface PlayerProfileModalProps {
   playerId: string | null;
   onClose: () => void;
   customFixtures?: ProfileModalMatch[];
+  currentSeasonStats?: {
+    matches: number;
+    runs: number;
+    balls?: number;
+    wickets: number;
+    runsConceded?: number;
+    oversBowled?: number;
+    battingInnings?: number;
+    dismissals?: number;
+    highestScore?: number;
+    bestBowling?: string;
+    fours?: number;
+    sixes?: number;
+    dotBalls?: number;
+    catches?: number;
+    stumpings?: number;
+    runOuts?: number;
+    maidens?: number;
+    powerplayWickets?: number;
+  };
+  additionalCareerT20Stats?: { matches: number; runs: number; wickets: number; balls?: number; dismissals?: number; bowlingInnings?: number; runsConceded?: number };
   isShortlisted?: boolean;
   onToggleShortlist?: (playerId: string) => void;
 }
@@ -110,6 +150,8 @@ export function PlayerProfileModal({
   playerId,
   onClose,
   customFixtures,
+  currentSeasonStats,
+  additionalCareerT20Stats,
   isShortlisted: propsIsShortlisted,
   onToggleShortlist,
 }: PlayerProfileModalProps) {
@@ -130,6 +172,22 @@ export function PlayerProfileModal({
   const retiredSnapshot = playerId && !activePlayer
     ? retiredPlayerSnapshots[playerId] ?? null
     : null;
+  const careerT20Matches = (activePlayer?.careerStats?.batting.matches ?? 0) + (additionalCareerT20Stats?.matches ?? 0);
+  const careerT20Innings = (activePlayer?.careerStats?.batting.innings ?? 0) + (additionalCareerT20Stats?.matches ?? 0);
+  const careerT20Runs = (activePlayer?.careerStats?.batting.runs ?? 0) + (additionalCareerT20Stats?.runs ?? 0);
+  const careerT20BowlingMatches = (activePlayer?.careerStats?.bowling.matches ?? 0) + (additionalCareerT20Stats?.bowlingInnings ?? 0);
+  const careerT20Wickets = (activePlayer?.careerStats?.bowling.wickets ?? 0) + (additionalCareerT20Stats?.wickets ?? 0);
+  const baseBattingDismissals = activePlayer?.careerStats?.batting.dismissals
+    ?? ((activePlayer?.careerStats?.batting.average ?? 0) > 0 ? (activePlayer?.careerStats?.batting.runs ?? 0) / activePlayer!.careerStats.batting.average : 0);
+  const baseBattingBalls = activePlayer?.careerStats?.batting.balls
+    ?? ((activePlayer?.careerStats?.batting.strikeRate ?? 0) > 0 ? (activePlayer?.careerStats?.batting.runs ?? 0) * 100 / activePlayer!.careerStats.batting.strikeRate : 0);
+  const careerT20Average = careerT20Runs > 0 && baseBattingDismissals + (additionalCareerT20Stats?.dismissals ?? 0) > 0
+    ? careerT20Runs / (baseBattingDismissals + (additionalCareerT20Stats?.dismissals ?? 0)) : 0;
+  const careerT20StrikeRate = careerT20Runs > 0 && baseBattingBalls + (additionalCareerT20Stats?.balls ?? 0) > 0
+    ? careerT20Runs * 100 / (baseBattingBalls + (additionalCareerT20Stats?.balls ?? 0)) : 0;
+  const baseBowlingRuns = activePlayer?.careerStats?.bowling.runsConceded
+    ?? (activePlayer?.careerStats?.bowling.wickets ?? 0) * (activePlayer?.careerStats?.bowling.average ?? 0);
+  const careerT20BowlingAverage = careerT20Wickets > 0 ? (baseBowlingRuns + (additionalCareerT20Stats?.runsConceded ?? 0)) / careerT20Wickets : 0;
   const detailedPlayer: Player | null = playerId
     ? activePlayer ?? (retiredSnapshot ? retiredSnapshotPlayer(retiredSnapshot) : null)
     : null;
@@ -339,31 +397,64 @@ export function PlayerProfileModal({
     if (!detailedPlayer) return [];
     const mergedHistory = mergePlayerIplHistory([], detailedPlayer.iplHistory);
     const currentEntry = currentSeasonHistoryByPlayer.get(detailedPlayer.id);
-    let history = currentEntry ? upsertPlayerIplHistory(mergedHistory, currentEntry) : mergedHistory;
+    let history = currentEntry ? upsertPlayerContractHistory(mergedHistory, currentEntry) : mergedHistory;
 
     // Attach live current season stats if available from current season fixtures
-    if (seasonStats && seasonStats.matches > 0) {
+    const savedSeasonStats = currentSeasonStats && currentSeasonStats.matches > 0
+      ? currentSeasonStats
+      : null;
+    if (savedSeasonStats || (seasonStats && seasonStats.matches > 0)) {
       const currentSeasonStr = String(currentSeason);
+      const resolvedSeasonStats = savedSeasonStats
+        ? {
+            matches: savedSeasonStats.matches,
+            runs: savedSeasonStats.runs,
+            balls: savedSeasonStats.balls ?? 0,
+            wickets: savedSeasonStats.wickets,
+            runsConceded: savedSeasonStats.runsConceded ?? 0,
+            oversBowled: savedSeasonStats.oversBowled ?? 0,
+            battingInnings: savedSeasonStats.battingInnings,
+            dismissals: savedSeasonStats.dismissals,
+            highestScore: savedSeasonStats.highestScore,
+            bestBowling: savedSeasonStats.bestBowling,
+            fours: savedSeasonStats.fours,
+            sixes: savedSeasonStats.sixes,
+            dotBalls: savedSeasonStats.dotBalls,
+            catches: savedSeasonStats.catches,
+            stumpings: savedSeasonStats.stumpings,
+            runOuts: savedSeasonStats.runOuts,
+            maidens: savedSeasonStats.maidens,
+            powerplayWickets: savedSeasonStats.powerplayWickets,
+          }
+        : {
+            matches: seasonStats!.matches,
+            runs: seasonStats!.runs,
+            balls: 0,
+            wickets: seasonStats!.bowlWickets,
+            runsConceded: 0,
+            oversBowled: 0,
+          };
+      if (!history.some((entry) => entry.season === currentSeasonStr)) {
+        history = upsertPlayerIplHistory(history, {
+          teamId: detailedPlayer.currentTeamId ?? "UNSOLD",
+          season: currentSeasonStr,
+          price: detailedPlayer.basePrice,
+          seasonStats: resolvedSeasonStats,
+        });
+      }
       history = history.map((entry) => {
         if (entry.season === currentSeasonStr) {
           return {
             ...entry,
-            seasonStats: {
-              matches: seasonStats.matches,
-              runs: seasonStats.runs,
-              balls: 0,
-              wickets: seasonStats.bowlWickets,
-              runsConceded: 0,
-              oversBowled: 0,
-            },
+            seasonStats: resolvedSeasonStats,
           };
         }
         return entry;
       });
     }
 
-    return history;
-  }, [currentSeasonHistoryByPlayer, currentSeason, detailedPlayer, seasonStats]);
+    return protectCompletedSeasonTeamsFromTrades(history, detailedPlayer.id, tradeRecords);
+  }, [currentSeasonHistoryByPlayer, currentSeason, currentSeasonStats, detailedPlayer, seasonStats, tradeRecords]);
 
   if (!detailedPlayer) return null;
 
@@ -439,9 +530,10 @@ export function PlayerProfileModal({
             {/* Player Details */}
             <section className={`col-start-1 row-start-1 rounded border border-border bg-bg p-3 ${isRetired ? "col-span-2" : ""}`}>
               <h4 className="mb-2 border-b border-border pb-1.5 font-anton text-[12px] uppercase text-text-primary">Player Details</h4>
-              <div className={`${isRetired ? "grid grid-cols-5 gap-2" : "space-y-1.5"} font-space-mono text-[9px]`}>
+              <div className={`${isRetired ? "grid grid-cols-4 sm:grid-cols-7 gap-2" : "space-y-1.5"} font-space-mono text-[9px]`}>
                 {[
                   ["Nationality", nationalityLabel],
+                  ["Date of Birth", formatDateOfBirth(detailedPlayer.dateOfBirth)],
                   ["State", detailedPlayer.state?.trim() || "Not available"],
                   ["Status", detailedPlayer.isCapped ? "Capped" : "Uncapped"],
                   ["Batting", detailedPlayer.battingStyle],
@@ -571,14 +663,14 @@ export function PlayerProfileModal({
               <h4 className="mb-2 border-b border-border pb-1.5 font-anton text-[12px] uppercase text-text-primary">Career T20 Stats</h4>
               <div className="grid grid-cols-8 gap-2">
                 {[
-                  ["Matches", detailedPlayer.careerStats?.batting.matches ?? 0],
-                  ["Bat Inns", detailedPlayer.careerStats?.batting.innings ?? 0],
-                  ["Runs", detailedPlayer.careerStats?.batting.runs ?? 0],
-                  ["Bat Avg", (detailedPlayer.careerStats?.batting.average ?? 0) > 0 ? formatStatValue(Number(detailedPlayer.careerStats?.batting.average)) : "-"],
-                  ["SR", (detailedPlayer.careerStats?.batting.strikeRate ?? 0) > 0 ? formatStatValue(Number(detailedPlayer.careerStats?.batting.strikeRate)) : "-"],
-                  ["Bowl Inns", detailedPlayer.careerStats?.bowling.matches ?? 0],
-                  ["Wickets", detailedPlayer.careerStats?.bowling.wickets ?? 0],
-                  ["Bowl Avg", (detailedPlayer.careerStats?.bowling.wickets ?? 0) > 0 && (detailedPlayer.careerStats?.bowling.average ?? 0) > 0 ? formatStatValue(Number(detailedPlayer.careerStats?.bowling.average)) : "-"],
+                  ["Matches", careerT20Matches],
+                  ["Bat Inns", careerT20Innings],
+                  ["Runs", careerT20Runs],
+                  ["Bat Avg", careerT20Average > 0 ? formatStatValue(careerT20Average) : "-"],
+                  ["SR", careerT20StrikeRate > 0 ? formatStatValue(careerT20StrikeRate) : "-"],
+                  ["Bowl Inns", careerT20BowlingMatches],
+                  ["Wickets", careerT20Wickets],
+                  ["Bowl Avg", careerT20BowlingAverage > 0 ? formatStatValue(careerT20BowlingAverage) : "-"],
                 ].map(([label, value]) => (
                   <div key={label} className="rounded border border-border bg-surface px-1 py-2 text-center">
                     <div className="whitespace-nowrap font-space-mono text-[7px] font-bold uppercase leading-none text-text-secondary">{label}</div>
