@@ -2,6 +2,7 @@
 import { useState, useRef, useEffect } from "react";
 import { ChevronUp, ChevronDown } from "lucide-react";
 import { useGameStore, getActiveSeasonYear } from "@/lib/store/gameStore";
+import { useShallow } from "zustand/react/shallow";
 import { wasPlayerAcquiredViaRtm } from "@/lib/logic/playerHistory";
 import { Player } from "@/lib/types";
 import PlayerCard from "./PlayerCard";
@@ -20,7 +21,10 @@ const ROLE_SHORT: Record<string, string> = {
 };
 
 export default function TeamPurseList() {
-  const { teams, players, userTeamId, auction, tradeRecords, injuryReplacementRecords } = useGameStore();
+  const { teams, players, userTeamId, auction, tradeRecords, injuryReplacementRecords } = useGameStore(useShallow((state) => ({
+    teams: state.teams, players: state.players, userTeamId: state.userTeamId, auction: state.auction,
+    tradeRecords: state.tradeRecords, injuryReplacementRecords: state.injuryReplacementRecords,
+  })));
   const [expanded, setExpanded] = useState<string | null>(null);
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);

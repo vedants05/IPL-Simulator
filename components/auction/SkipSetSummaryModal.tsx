@@ -1,6 +1,7 @@
 "use client";
 import { ArrowRight } from "lucide-react";
 import { useGameStore } from "@/lib/store/gameStore";
+import { useShallow } from "zustand/react/shallow";
 import { TEAM_THEMES } from "@/lib/theme/teams";
 
 function crore(lakhs: number) {
@@ -8,7 +9,7 @@ function crore(lakhs: number) {
 }
 
 export default function SkipSetSummaryModal() {
-  const { skipSetSummary, teams, userTeamId } = useGameStore();
+  const { skipSetSummary, teams, userTeamId } = useGameStore(useShallow((state) => ({ skipSetSummary: state.skipSetSummary, teams: state.teams, userTeamId: state.userTeamId })));
   const dismissSkipSetSummary = useGameStore((s) => s.dismissSkipSetSummary);
 
   if (!skipSetSummary) return null;

@@ -1,9 +1,9 @@
-import type { StaffAffinityProfile, StaffClubAffinity } from "../data/staffAffinities";
+import { getStaffClubAffinity, type StaffAffinityProfile, type StaffClubAffinity } from "../data/staffAffinities";
 import type { StaffSeasonReview } from "./staffPerformanceReview";
-import { calculateStaffSalaryDemand } from "./staffNegotiations";
+import { calculateStaffMoveInterest, calculateStaffRenewalInterest, calculateStaffSalaryDemand, type StaffNegotiationSession } from "./staffNegotiations";
 import type { StaffRatingAttributes } from "./staffRatings";
 
-export const STAFF_SALARY_MODEL_VERSION = 3;
+export const STAFF_SALARY_MODEL_VERSION = 5;
 
 export type StaffContractType = "fixed_term" | "rolling";
 export type StaffEmploymentStatus = "contracted" | "free_agent" | "retired";
@@ -127,6 +127,7 @@ export interface CareerStaffState {
   generatedProfiles: Record<string, GeneratedStaffProfile>;
   lastDevelopmentSeason: number | null;
   negotiationCooldowns: Record<string, string>;
+  activeNegotiations: Record<string, StaffNegotiationSession>;
 }
 
 export interface StaffRecruitmentSearch {
@@ -165,6 +166,7 @@ export const emptyCareerStaffState = (): CareerStaffState => ({
   generatedProfiles: {},
   lastDevelopmentSeason: null,
   negotiationCooldowns: {},
+  activeNegotiations: {},
 });
 
 const normalizeContractRoles = (roleValues: string[], requestedPrimaryRole: string) => {
@@ -230,10 +232,40 @@ export function normalizeCareerStaffState(state: CareerStaffState | null | undef
     generatedProfiles: state.generatedProfiles ?? {},
     lastDevelopmentSeason: state.lastDevelopmentSeason ?? null,
     negotiationCooldowns: state.negotiationCooldowns ?? {},
+    activeNegotiations: state.activeNegotiations ?? {},
   };
 }
 
 const unique = <T extends string>(values: T[]) => Array.from(new Set(values));
+
+const minimumCredibleSalary = (
+  contract: CareerStaffContract,
+  roles: string[],
+  primaryRole: string,
+  startSeason: number,
+  endSeason: number | null,
+  mode: "hire" | "renew" | "poach",
+) => {
+  const demand = calculateStaffSalaryDemand({
+    salaryExpectation: contract.annualSalary,
+    reputation: contract.reputation,
+    roleRating: contract.roleRatings?.[primaryRole] ?? contract.currentAbility,
+    roleCount: roles.length,
+    offeredRoles: roles,
+    offeredRoleRatings: contract.roleRatings,
+    startSeason,
+    endSeason,
+    poaching: mode === "poach",
+    incumbentRenewal: mode === "renew",
+    currentRoleCount: contract.roles.length || 1,
+    currentPrimaryRole: contract.primaryRole,
+    offeredPrimaryRole: primaryRole,
+    loyalty: contract.loyalty,
+    ambition: contract.ambition,
+    adaptability: contract.adaptability,
+  });
+  return Math.max(demand * 0.9, mode === "renew" ? contract.annualSalary * 0.97 : 0);
+};
 
 const moveAffinityToCurrentClub = (profile: StaffAffinityProfile, teamId: string): StaffAffinityProfile => {
   const prior: StaffClubAffinity[] = profile.clubs.map((club): StaffClubAffinity => ({
@@ -313,6 +345,8 @@ export function initializeCareerStaffState(
         reputation: member.reputation ?? 50,
         roleRating: member.role_ratings?.[primaryRole] ?? member.current_ability ?? 50,
         roleCount: Math.max(1, roles.length),
+        offeredRoles: roles,
+        offeredRoleRatings: member.role_ratings,
         startSeason: activeSeason,
         endSeason,
         currentPrimaryRole: primaryRole,
@@ -378,6 +412,7 @@ export function initializeCareerStaffState(
     generatedProfiles: {},
     lastDevelopmentSeason: null,
     negotiationCooldowns: {},
+    activeNegotiations: {},
   };
 }
 
@@ -472,6 +507,8 @@ export function synchronizeCareerStaffProfiles(
           reputation: contract.reputation,
           roleRating: contract.roleRatings[contract.primaryRole] ?? contract.currentAbility,
           roleCount: contract.roles.length,
+          offeredRoles: contract.roles,
+          offeredRoleRatings: contract.roleRatings,
           startSeason: activeSeason,
           endSeason: contract.endSeason,
           currentPrimaryRole: contract.primaryRole,
@@ -553,15 +590,21 @@ export function appointCareerStaff(
 ): CareerStaffState {
   const contract = state.contracts[input.staffId];
   if (!contract || contract.status !== "free_agent") return state;
+  if (state.negotiationCooldowns[input.staffId] && input.effectiveOn < state.negotiationCooldowns[input.staffId]) return state;
   const requestedRoles = unique([input.primaryRole, ...(input.roles.length ? input.roles : [input.primaryRole])]);
   if (requestedRoles.length > MAX_STAFF_CONTRACT_ROLES || !requestedRoles.includes(input.primaryRole)) return state;
   const { roles, primaryRole } = normalizeContractRoles(requestedRoles, input.primaryRole);
+  if (!Number.isFinite(input.annualSalary)
+    || input.annualSalary < minimumCredibleSalary(contract, roles, primaryRole, input.startSeason, input.endSeason, "hire")) return state;
   if (roles.includes("head_coach") && Object.values(state.contracts).some((candidate) => (
     candidate.staffId !== input.staffId
     && candidate.status === "contracted"
     && candidate.teamId === input.teamId
     && candidate.roles.includes("head_coach")
   ))) return state;
+  if (Object.values(state.contracts).some((candidate) => candidate.status === "contracted"
+    && candidate.teamId === input.teamId && candidate.staffId !== input.staffId
+    && candidate.roles.some((role) => roles.includes(role)))) return state;
   const teamFinance = state.financesByTeam[input.teamId];
   const annualBudget = teamFinance?.annualBudget ?? 100_000_000;
   const committedSalary = teamFinance?.committedSalary ?? 0;
@@ -612,6 +655,7 @@ export function renewCareerStaffContract(
 ): CareerStaffState {
   const contract = state.contracts[input.staffId];
   if (!contract || contract.status !== "contracted" || !contract.teamId) return state;
+  if (state.negotiationCooldowns[input.staffId] && input.effectiveOn < state.negotiationCooldowns[input.staffId]) return state;
   if (input.endSeason !== null && input.endSeason < input.season) return state;
   const teamFinance = state.financesByTeam[contract.teamId];
   const annualBudget = teamFinance?.annualBudget ?? 100_000_000;
@@ -622,10 +666,22 @@ export function renewCareerStaffContract(
   const requestedRoles = unique([requestedPrimaryRole, ...(input.roles ?? contract.roles)]);
   if (requestedRoles.length === 0 || requestedRoles.length > MAX_STAFF_CONTRACT_ROLES || !requestedRoles.includes(requestedPrimaryRole)) return state;
   const { roles, primaryRole } = normalizeContractRoles(requestedRoles, requestedPrimaryRole);
+  if (!Number.isFinite(input.annualSalary)
+    || input.annualSalary < minimumCredibleSalary(contract, roles, primaryRole, input.season, input.endSeason, "renew")) return state;
+  const remainingContractSeasons = contract.endSeason == null ? 1 : Math.max(0, contract.endSeason - input.season + 1);
+  if (!calculateStaffRenewalInterest({
+    loyalty: contract.loyalty, ambition: contract.ambition, adaptability: contract.adaptability,
+    clubAffinity: getStaffClubAffinity(contract.affinityProfile, contract.teamId),
+    currentSalary: contract.annualSalary, offeredSalary: input.annualSalary, remainingContractSeasons,
+  }).interested) return state;
   if (roles.includes("head_coach") && Object.values(state.contracts).some((candidate) => (
     candidate.staffId !== input.staffId && candidate.status === "contracted"
     && candidate.teamId === contract.teamId && candidate.roles.includes("head_coach")
   ))) return state;
+  const newlyAddedRoles = roles.filter((role) => !contract.roles.includes(role));
+  if (Object.values(state.contracts).some((candidate) => candidate.status === "contracted"
+    && candidate.teamId === contract.teamId && candidate.staffId !== input.staffId
+    && candidate.roles.some((role) => newlyAddedRoles.includes(role)))) return state;
   const renewed: CareerStaffContract = {
     ...contract,
     roles,
@@ -679,10 +735,31 @@ export function poachCareerStaff(
 ): CareerStaffState {
   const existing = state.contracts[input.staffId];
   if (!existing || existing.status !== "contracted" || !existing.teamId || existing.teamId === input.teamId) return state;
+  if (state.negotiationCooldowns[input.staffId] && input.effectiveOn < state.negotiationCooldowns[input.staffId]) return state;
   const remainingSeasons = existing.endSeason == null
     ? 1
     : Math.max(1, existing.endSeason - input.startSeason + 1);
   const compensation = existing.annualSalary * remainingSeasons;
+  const requestedRoles = unique([input.primaryRole, ...(input.roles.length ? input.roles : [input.primaryRole])]);
+  const normalizedOffer = normalizeContractRoles(requestedRoles, input.primaryRole);
+  if (!Number.isFinite(input.annualSalary) || input.annualSalary < minimumCredibleSalary(
+    existing, normalizedOffer.roles, normalizedOffer.primaryRole, input.startSeason, input.endSeason, "poach",
+  )) return state;
+  const destinationFinance = state.financesByTeam[input.teamId];
+  const availableForMove = Math.max(0, (destinationFinance?.annualBudget ?? 100_000_000)
+    - (destinationFinance?.committedSalary ?? 0));
+  if (Math.max(0, input.annualSalary) + compensation > availableForMove) return state;
+  const offeredRating = existing.roleRatings?.[input.primaryRole] ?? existing.currentAbility;
+  const moveInterest = calculateStaffMoveInterest({
+    loyalty: existing.loyalty, ambition: existing.ambition, adaptability: existing.adaptability,
+    currentAffinity: getStaffClubAffinity(existing.affinityProfile, existing.teamId),
+    destinationAffinity: getStaffClubAffinity(existing.affinityProfile, input.teamId),
+    currentSalary: existing.annualSalary, offeredSalary: input.annualSalary,
+    currentRoleRating: existing.roleRatings?.[existing.primaryRole] ?? existing.currentAbility,
+    offeredRoleRating: offeredRating, currentPrimaryRole: existing.primaryRole,
+    offeredPrimaryRole: input.primaryRole, remainingContractSeasons: remainingSeasons,
+  });
+  if (!moveInterest.interested) return state;
   const released = releaseCareerStaff(state, input.staffId, "staff_resigned", input.startSeason, input.effectiveOn);
   const appointed = appointCareerStaff(released, input);
   if (appointed === released) return state;
@@ -759,20 +836,35 @@ export function getTeamStaffSalaryBudgetCap(
   contracts: CareerStaffContract[] = [],
 ): number {
   const ownership = getClubOwnership(teamId);
-  const activeSalaries = contracts
-    .filter((contract) => contract.status === "contracted" && contract.teamId === teamId)
-    .map((contract) => Math.max(0, contract.annualSalary));
-  const committedDemand = activeSalaries.reduce((sum, salary) => sum + salary, 0);
-  const averageDemand = committedDemand / Math.max(1, activeSalaries.length);
-  const recruitmentReserve = averageDemand * (
-    1.1
+  const activeContracts = contracts
+    .filter((contract) => contract.status === "contracted" && contract.teamId === teamId);
+  const committedDemand = activeContracts.reduce((sum, contract) => sum + Math.max(0, contract.annualSalary), 0);
+  const marketWageBill = activeContracts.reduce((sum, contract) => sum + calculateStaffSalaryDemand({
+    salaryExpectation: contract.annualSalary,
+    reputation: contract.reputation ?? 50,
+    roleRating: contract.roleRatings?.[contract.primaryRole ?? ""] ?? contract.currentAbility ?? 70,
+    roleCount: Math.max(1, contract.roles?.length ?? 1),
+    offeredRoles: contract.roles,
+    offeredRoleRatings: contract.roleRatings,
+    startSeason: contract.startSeason ?? 0,
+    endSeason: contract.endSeason,
+    currentPrimaryRole: contract.primaryRole,
+    offeredPrimaryRole: contract.primaryRole,
+    incumbentRenewal: true,
+    currentRoleCount: Math.max(1, contract.roles?.length ?? 1),
+  }), 0);
+  const averageMarketDemand = marketWageBill / Math.max(1, activeContracts.length);
+  const recruitmentReserve = averageMarketDemand * (
+    1.05
     + ownership.staff_budget_flexibility * 0.035
     + ownership.financial_generosity * 0.012
   );
   const emptyStaffFloor = 80_000_000
     + Math.pow(ownership.financial_generosity, 1.35) * 1_650_000
     + ownership.staff_budget_flexibility * 425_000;
-  return Math.round(Math.max(committedDemand + recruitmentReserve, emptyStaffFloor) / 100_000) * 100_000;
+  const boardMarketAllowance = marketWageBill * (0.94 + ownership.financial_generosity * 0.008)
+    + recruitmentReserve;
+  return Math.round(Math.max(committedDemand, boardMarketAllowance, emptyStaffFloor) / 100_000) * 100_000;
 }
 
 export function getOwnerOfferedContractYears(teamId: string): number {

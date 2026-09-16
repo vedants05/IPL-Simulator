@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import { useGameStore } from "@/lib/store/gameStore";
+import { useShallow } from "zustand/react/shallow";
 import { switchColorMode } from "./TeamThemeProvider";
 import ThemeSelector from "./ThemeSelector";
 import {
@@ -67,7 +68,23 @@ export default function NavBar() {
     skipAllAuction,
     skipToAcceleratedAuction,
     resetGame,
-  } = useGameStore();
+  } = useGameStore(useShallow((state) => ({
+    teams: state.teams,
+    userTeamId: state.userTeamId,
+    currentDate: state.currentDate,
+    auction: state.auction,
+    isPaused: state.isPaused,
+    setPaused: state.setPaused,
+    togglePaused: state.togglePaused,
+    speed: state.speed,
+    careerFastForwardTargetDate: state.careerFastForwardTargetDate,
+    increaseSpeed: state.increaseSpeed,
+    decreaseSpeed: state.decreaseSpeed,
+    skipCurrentSet: state.skipCurrentSet,
+    skipAllAuction: state.skipAllAuction,
+    skipToAcceleratedAuction: state.skipToAcceleratedAuction,
+    resetGame: state.resetGame,
+  })));
 
   const [showConfirm, setShowConfirm] = useState(false);
   const [wasPausedBeforeConfirm, setWasPausedBeforeConfirm] = useState(false);

@@ -4,7 +4,9 @@ import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useGameStore, getSeasonDates, INITIAL_ACTIVE_SEASON } from "@/lib/store/gameStore";
+import { useShallow } from "zustand/react/shallow";
 import { reconcileSmatCareer, smatStorageKey, type SmatCareerState } from "@/lib/logic/smat";
+import { parseSmatCareer, serializeSmatCareer } from "@/lib/logic/smatStorage";
 import { formatPrice } from "@/lib/logic/auctionRules";
 import { getTradeWindowDates, isTradeWindowOpen } from "@/lib/logic/tradeEngine";
 import {
@@ -190,6 +192,7 @@ import {
   saveMatchSimulations,
   waitForPendingMatchSimulationWrites,
 } from "@/lib/logic/matchSimulationStorage";
+import { careerSnapshotStorageKey, compactCareerSnapshot, parseCareerSnapshot, serializeCareerSnapshot, writeCareerSnapshot } from "@/lib/logic/careerSnapshotStorage";
 import BallByBallSummary from "@/components/match/BallByBallSummary";
 import PlayableMatchEngine, { type PlayableMatchSession } from "@/components/match/PlayableMatchEngine";
 import {
@@ -862,7 +865,68 @@ function OverviewPageContent() {
     initializeCareerStaff,
     playerShortlist: shortlist,
     setPlayerShortlist: setShortlist,
-  } = useGameStore();
+  } = useGameStore(useShallow((state) => ({
+    teams: state.teams,
+    userTeamId: state.userTeamId,
+    players: state.players,
+    currentDate: state.currentDate,
+    currentSeason: state.currentSeason,
+    saveId: state.saveId,
+    fixtureSeed: state.fixtureSeed,
+    auction: state.auction,
+    clubFigureTierOverrides: state.clubFigureTierOverrides,
+    clubFigureProgression: state.clubFigureProgression,
+    simulatedLeagueHistory: state.simulatedLeagueHistory,
+    careerSeasonArchives: state.careerSeasonArchives,
+    homePitchSelections: state.homePitchSelections,
+    homeBoundaryDimensions: state.homeBoundaryDimensions,
+    boundaryPresetsByTeam: state.boundaryPresetsByTeam,
+    homeOutfieldSettings: state.homeOutfieldSettings,
+    outfieldProjectsByTeam: state.outfieldProjectsByTeam,
+    customPitchesByTeam: state.customPitchesByTeam,
+    pitchProjectsByTeam: state.pitchProjectsByTeam,
+    setHomePitchSelection: state.setHomePitchSelection,
+    setHomeBoundaryDimensions: state.setHomeBoundaryDimensions,
+    saveBoundaryPreset: state.saveBoundaryPreset,
+    applyBoundaryPreset: state.applyBoundaryPreset,
+    deleteBoundaryPreset: state.deleteBoundaryPreset,
+    startOutfieldPreparation: state.startOutfieldPreparation,
+    reconcileOutfieldProjects: state.reconcileOutfieldProjects,
+    startPitchCreation: state.startPitchCreation,
+    startPitchDestruction: state.startPitchDestruction,
+    reconcilePitchProjects: state.reconcilePitchProjects,
+    recordSimulatedLeagueSeason: state.recordSimulatedLeagueSeason,
+    recordIplMatchStats: state.recordIplMatchStats,
+    beginNextSeasonRetention: state.beginNextSeasonRetention,
+    archiveCareerSeason: state.archiveCareerSeason,
+    careerFastForwardTargetDate: state.careerFastForwardTargetDate,
+    setCareerFastForwardTarget: state.setCareerFastForwardTarget,
+    completeOffseasonAutomatically: state.completeOffseasonAutomatically,
+    activeInjuries: state.activeInjuries,
+    injuryHistory: state.injuryHistory,
+    injuryReplacementRecords: state.injuryReplacementRecords,
+    tradeRecords: state.tradeRecords,
+    tradeNegotiationCooldowns: state.tradeNegotiationCooldowns,
+    retiredPlayerSnapshots: state.retiredPlayerSnapshots,
+    lastCareerRetirements: state.lastCareerRetirements,
+    careerRetirementHistory: state.careerRetirementHistory,
+    processMatchInjuries: state.processMatchInjuries,
+    processBackgroundInjuries: state.processBackgroundInjuries,
+    reconcileInjuries: state.reconcileInjuries,
+    signInjuryReplacement: state.signInjuryReplacement,
+    processAIInjuryReplacements: state.processAIInjuryReplacements,
+    executeTrade: state.executeTrade,
+    setTradeNegotiationCooldown: state.setTradeNegotiationCooldown,
+    processAITrades: state.processAITrades,
+    scoutingReports: state.scoutingReports,
+    scoutingAssignments: state.scoutingAssignments,
+    reconcileScoutingAssignments: state.reconcileScoutingAssignments,
+    reconcileAIStaffRecruitment: state.reconcileAIStaffRecruitment,
+    careerStaff: state.careerStaff,
+    initializeCareerStaff: state.initializeCareerStaff,
+    playerShortlist: state.playerShortlist,
+    setPlayerShortlist: state.setPlayerShortlist,
+  })));
   const matchArchiveCareerId = `${userTeamId}:${currentSeason}:${fixtureSeed}`;
   const userTeam = teams[userTeamId];
   const scoutingPlayerPool = useMemo(() => ({
@@ -1233,9 +1297,6 @@ function OverviewPageContent() {
   const [isSimulatingDays, setIsSimulatingDays] = useState(false);
   const [isCalendarClosing, setIsCalendarClosing] = useState(false);
   const [seasonTransitionStage, setSeasonTransitionStage] = useState<string | null>(null);
-  const [fastForwardElapsedMs, setFastForwardElapsedMs] = useState(0);
-  const fastForwardStartedAtRef = useRef<number | null>(null);
-  const fastForwardOriginDateRef = useRef<string | null>(null);
   const [pendingSkipTargetDate, setPendingSkipTargetDate] = useState<string | null>(null);
   const fixturesRef = useRef<Match[]>([]);
   const lastCareerSaveRef = useRef<string | null>(null);
@@ -1356,38 +1417,6 @@ function OverviewPageContent() {
     : `${currentCalendarMonth.year}-${String(currentCalendarMonth.month + 1).padStart(2, "0")}-${String(selectedCalendarDay).padStart(2, "0")}`;
   const canSkipToSelectedCalendarDate = selectedCalendarDateString > currentDate;
 
-  useEffect(() => {
-    if (!careerFastForwardTargetDate) {
-      fastForwardStartedAtRef.current = null;
-      fastForwardOriginDateRef.current = null;
-      setFastForwardElapsedMs(0);
-      return;
-    }
-    if (fastForwardStartedAtRef.current === null) {
-      fastForwardStartedAtRef.current = Date.now();
-      fastForwardOriginDateRef.current = currentDate;
-    }
-    const updateElapsed = () => setFastForwardElapsedMs(
-      Date.now() - (fastForwardStartedAtRef.current ?? Date.now()),
-    );
-    updateElapsed();
-    const intervalId = window.setInterval(updateElapsed, 250);
-    return () => window.clearInterval(intervalId);
-  }, [careerFastForwardTargetDate]);
-
-  const fastForwardProgress = (() => {
-    if (!careerFastForwardTargetDate || !fastForwardOriginDateRef.current) return 0;
-    const toUtcDay = (dateKey: string) => {
-      const date = dateKeyToLocalDate(dateKey);
-      return Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / 86_400_000;
-    };
-    const totalDays = Math.max(1, toUtcDay(careerFastForwardTargetDate) - toUtcDay(fastForwardOriginDateRef.current));
-    const completedDays = Math.max(0, toUtcDay(currentDate) - toUtcDay(fastForwardOriginDateRef.current));
-    return Math.min(1, completedDays / totalDays);
-  })();
-  const fastForwardRemainingSeconds = fastForwardProgress > 0.02
-    ? Math.max(0, Math.ceil((fastForwardElapsedMs / 1000) * ((1 - fastForwardProgress) / fastForwardProgress)))
-    : null;
   const pendingUserMatchdayFixture = useMemo(
     () => fixtures
       .filter((match) => (
@@ -1442,17 +1471,27 @@ function OverviewPageContent() {
     if (!isCareerLoaded || !retentionDateString || !userTeamId) return;
     let stored: SmatCareerState | null = null;
     if (loadedSmatKeyRef.current !== smatCareerKey) {
-      try { stored = JSON.parse(localStorage.getItem(smatCareerKey) ?? "null") as SmatCareerState | null; } catch { stored = null; }
+      try {
+        const serialized = localStorage.getItem(smatCareerKey);
+        stored = serialized ? parseSmatCareer(serialized) : null;
+      } catch { stored = null; }
       loadedSmatKeyRef.current = smatCareerKey;
       skipNextSmatPersistRef.current = true;
     }
-    setSmatCareer((current) => reconcileSmatCareer(stored ?? current, currentSeason, retentionDateString, currentDate, players));
+    setSmatCareer((current) => {
+      const active = current.activeSeason;
+      if (!stored && active?.season === currentSeason && active.retentionDate === retentionDateString
+        && (active.completed || active.fixtures.every((fixture) => (
+          fixture.played ? Boolean(fixture.scorecard) : fixture.date > currentDate
+        )))) return current;
+      return reconcileSmatCareer(stored ?? current, currentSeason, retentionDateString, currentDate, players);
+    });
   }, [currentDate, currentSeason, isCareerLoaded, players, retentionDateString, smatCareerKey, userTeamId]);
 
   useEffect(() => {
     if (loadedSmatKeyRef.current !== smatCareerKey || !isCareerLoaded) return;
     if (skipNextSmatPersistRef.current) { skipNextSmatPersistRef.current = false; return; }
-    try { localStorage.setItem(smatCareerKey, JSON.stringify(smatCareer)); } catch (error) { console.error("Unable to save SMAT career data:", error); }
+    try { localStorage.setItem(smatCareerKey, serializeSmatCareer(smatCareer)); } catch (error) { console.error("Unable to save SMAT career data:", error); }
   }, [isCareerLoaded, smatCareer, smatCareerKey]);
 
   const isFixturesAnnounced = currentDate >= formattedAnnouncementDate;
@@ -1581,10 +1620,11 @@ function OverviewPageContent() {
   // Load and save state from LocalStorage
   useEffect(() => {
     setIsCareerLoaded(false);
-    const saved = localStorage.getItem(`ipl_career_${userTeamId}`);
+    const careerStorageKey = careerSnapshotStorageKey(userTeamId);
+    const saved = localStorage.getItem(careerStorageKey);
     if (saved) {
       try {
-        const parsed = JSON.parse(saved);
+        const parsed = parseCareerSnapshot(saved);
         const legacyShortlist = Array.isArray(parsed.shortlist)
           ? parsed.shortlist.filter((id: unknown): id is string => typeof id === "string")
           : [];
@@ -1601,7 +1641,7 @@ function OverviewPageContent() {
         // Season statistics are deliberately isolated by year. A career save
         // left behind by the previous season must never seed the new cap race.
         if (Number.isFinite(savedSeason) && savedSeason !== currentSeason) {
-          localStorage.removeItem(`ipl_career_${userTeamId}`);
+          localStorage.removeItem(careerStorageKey);
           initCareer();
           setIsCareerLoaded(true);
           return;
@@ -1694,7 +1734,7 @@ function OverviewPageContent() {
           fixturesRef.current = regeneratedFixtures;
           setFixtures(regeneratedFixtures);
           setStandings(calculateStandings(regeneratedFixtures));
-          localStorage.setItem(`ipl_career_${userTeamId}`, JSON.stringify(parsed));
+          writeCareerSnapshot(localStorage, careerStorageKey, parsed);
         }
         if (parsed.playerStats) {
           playerStatsRef.current = parsed.playerStats;
@@ -1715,12 +1755,12 @@ function OverviewPageContent() {
         if (parsed.seasonStartBattingAbilitiesSeason !== currentSeason || !parsed.seasonStartBattingAbilities) {
           parsed.seasonStartBattingAbilitiesSeason = currentSeason;
           parsed.seasonStartBattingAbilities = loadedSeasonStartBattingAbilities;
-          localStorage.setItem(`ipl_career_${userTeamId}`, JSON.stringify(parsed));
+          writeCareerSnapshot(localStorage, careerStorageKey, parsed);
         }
         if (parsed.seasonStartBowlingAbilitiesSeason !== currentSeason || !parsed.seasonStartBowlingAbilities) {
           parsed.seasonStartBowlingAbilitiesSeason = currentSeason;
           parsed.seasonStartBowlingAbilities = loadedSeasonStartBowlingAbilities;
-          localStorage.setItem(`ipl_career_${userTeamId}`, JSON.stringify(parsed));
+          writeCareerSnapshot(localStorage, careerStorageKey, parsed);
         }
         const loadedRecords = reconcileFastestSeasonRunInningsRecords(applyMinorRecordBaselineUpdates(
           Array.isArray(parsed.minorRecords) && parsed.minorRecords.length > 0
@@ -1746,7 +1786,7 @@ function OverviewPageContent() {
         ]));
         if (JSON.stringify(parsed.readEmailDedupeKeys ?? []) !== JSON.stringify(loadedReadKeys)) {
           parsed.readEmailDedupeKeys = loadedReadKeys;
-          localStorage.setItem(`ipl_career_${userTeamId}`, JSON.stringify(parsed));
+          writeCareerSnapshot(localStorage, careerStorageKey, parsed);
         }
         if (
           parsed.activePlayedMatch?.version === 1
@@ -1827,7 +1867,7 @@ function OverviewPageContent() {
           parsed.bowlingFirstImpactPlayerId = rebuiltPlan.bowlingFirstImpactPlayerId;
           parsed.bowlingFirstOutgoingPlayerId = rebuiltPlan.bowlingFirstOutgoingPlayerId;
           parsed.bowlingFirstImpactBattingPosition = rebuiltPlan.bowlingFirstImpactBattingPosition;
-          localStorage.setItem(`ipl_career_${userTeamId}`, JSON.stringify(parsed));
+          writeCareerSnapshot(localStorage, careerStorageKey, parsed);
         }
         if (typeof parsed.battingFirstImpactPlayerId === "string" || parsed.battingFirstImpactPlayerId === null) {
           setBattingFirstImpactPlayerId(parsed.battingFirstImpactPlayerId);
@@ -1888,7 +1928,7 @@ function OverviewPageContent() {
         }
         if (JSON.stringify(parsed.teamLeadership ?? {}) !== JSON.stringify(loadedLeadership)) {
           parsed.teamLeadership = loadedLeadership;
-          localStorage.setItem(`ipl_career_${userTeamId}`, JSON.stringify(parsed));
+          writeCareerSnapshot(localStorage, careerStorageKey, parsed);
         }
         const loadedAiTeamLeadership = reconcileAiLeagueLeadership(
           parsed.aiTeamLeadership,
@@ -1900,15 +1940,21 @@ function OverviewPageContent() {
         setAiTeamLeadership(loadedAiTeamLeadership);
         if (JSON.stringify(parsed.aiTeamLeadership ?? {}) !== JSON.stringify(loadedAiTeamLeadership)) {
           parsed.aiTeamLeadership = loadedAiTeamLeadership;
-          localStorage.setItem(`ipl_career_${userTeamId}`, JSON.stringify(parsed));
+          writeCareerSnapshot(localStorage, careerStorageKey, parsed);
         }
         const savedDeadline = parsed.retentionDeadline as RetentionDeadline | undefined;
         const nextDeadline = savedDeadline ?? generateNextRetentionDeadline(currentSeason);
         setRetentionDeadline(nextDeadline);
         if (!savedDeadline) {
-          localStorage.setItem(`ipl_career_${userTeamId}`, JSON.stringify({ ...parsed, retentionDeadline: nextDeadline }));
+          writeCareerSnapshot(localStorage, careerStorageKey, { ...parsed, retentionDeadline: nextDeadline });
         }
-        careerSaveStateRef.current = parsed;
+        // Always finish hydration with one compact rewrite. Previously this
+        // only happened if another state change followed the load, so the
+        // "reload once to compact" recovery path could reload the oversized
+        // value and immediately fast-forward before freeing any space.
+        const compactedLoadedState = compactCareerSnapshot(parsed);
+        writeCareerSnapshot(localStorage, careerStorageKey, compactedLoadedState);
+        careerSaveStateRef.current = compactedLoadedState;
       } catch (e) {
         console.error("Error loading career save:", e);
       }
@@ -1921,12 +1967,12 @@ function OverviewPageContent() {
   }, [userTeamId]);
 
   const saveCareerState = useCallback((updatedData: any) => {
-    const storageKey = `ipl_career_${userTeamId}`;
+    const storageKey = careerSnapshotStorageKey(userTeamId);
     let latestSavedState = careerSaveStateRef.current ?? {};
     if (careerSaveStateRef.current === null) {
       try {
         const saved = localStorage.getItem(storageKey);
-        if (saved) latestSavedState = JSON.parse(saved);
+        if (saved) latestSavedState = parseCareerSnapshot(saved);
       } catch (error) {
         console.error("Unable to merge latest career save:", error);
       }
@@ -2026,16 +2072,17 @@ function OverviewPageContent() {
           : fixture
       ));
     }
-    const serializedState = JSON.stringify(currentState);
+    const compactState = compactCareerSnapshot(currentState);
+    const serializedState = serializeCareerSnapshot(compactState, true);
     if (lastCareerSaveRef.current === serializedState) return;
     try {
       localStorage.setItem(storageKey, serializedState);
-      careerSaveStateRef.current = currentState;
+      careerSaveStateRef.current = compactState;
       lastCareerSaveRef.current = serializedState;
     } catch (error) {
       if (error instanceof DOMException && error.name === "QuotaExceededError") {
         throw new Error(
-          "Career storage is full. Fast-forward has stopped safely at the last completed date; reload once to compact the existing save.",
+          "Career storage is full. Fast-forward has stopped safely at the last completed date.",
         );
       }
       throw error;
@@ -6382,34 +6429,6 @@ This record has been officially verified and added to the IPL Minor Records arch
         />
       )}
 
-      {/* Fast-forward runs behind a stable progress screen rather than flashing calendar days. */}
-      {false && careerFastForwardTargetDate && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-[#0b1018]/95 px-6 text-white backdrop-blur-sm" role="status" aria-live="polite">
-          <div className="w-full max-w-lg border-2 border-white/15 bg-[#111925] p-8 shadow-2xl">
-            <p className="font-space-mono text-[9px] font-bold uppercase tracking-[0.24em] text-accent">Career simulation in progress</p>
-            <h2 className="mt-3 font-anton text-3xl uppercase">Fast-forwarding</h2>
-            <p className="mt-2 text-sm text-white/60">Simulating every match, retention window and auction through {careerFastForwardTargetDate}.</p>
-            <div className="mt-7 h-2 overflow-hidden rounded-full bg-white/10">
-              <div className="h-full bg-accent transition-[width] duration-300" style={{ width: `${Math.max(1, fastForwardProgress * 100)}%` }} />
-            </div>
-            <div className="mt-3 flex justify-between font-space-mono text-[10px] font-bold uppercase tracking-wider text-white/65">
-              <span>{Math.round(fastForwardProgress * 100)}% · {currentDate}</span>
-              <span>{fastForwardRemainingSeconds === null ? "Calculating time" : `About ${fastForwardRemainingSeconds}s left`}</span>
-            </div>
-            <div className="mt-6 flex items-center justify-between border-t border-white/10 pt-4 font-space-mono text-[9px] uppercase text-white/45">
-              <span>Elapsed {(fastForwardElapsedMs / 1000).toFixed(1)}s</span>
-              <button
-                type="button"
-                onClick={() => cancelCareerFastForward()}
-                className="border border-white/20 px-3 py-2 font-space-mono text-[9px] font-bold uppercase tracking-wider text-white/75 transition hover:border-white/50 hover:text-white"
-              >
-                Stop simulation
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Ticking Calendar Overlay */}
       {(careerFastForwardTargetDate || isSimulatingDays || isCalendarClosing) && (
         <div
@@ -9839,7 +9858,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                     <button
                       type="button"
                       onClick={() => setActiveSubTab("injuries")}
-                      className="group relative col-span-1 flex min-h-[18rem] flex-col overflow-hidden rounded-xl border-2 border-border bg-surface p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-accent hover:shadow-md xl:col-span-5 xl:col-start-8 xl:row-span-5 xl:row-start-6 xl:min-h-0"
+                      className="group relative col-span-1 flex min-h-[18rem] flex-col overflow-hidden rounded-xl border-2 border-border bg-surface p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-accent hover:shadow-md xl:col-span-5 xl:col-start-8 xl:row-span-5 xl:row-start-6 xl:min-h-0"
                     >
                       <div className="pointer-events-none absolute -right-12 -top-14 size-36 rounded-full bg-red-500/10 blur-3xl" />
                       <div className="relative flex items-start justify-between border-b border-border pb-3">
@@ -9853,15 +9872,15 @@ This record has been officially verified and added to the IPL Minor Records arch
                         <div><p className="font-anton text-4xl leading-none text-text-primary">{leagueInjuries.length}</p><p className="font-space-mono text-[8px] font-bold uppercase text-text-secondary">Active cases</p></div>
                         <div className="pb-0.5 font-space-mono text-[8px] font-bold uppercase leading-relaxed text-text-secondary"><span className="text-danger">{majorInjuries.length} major</span><br />{injuredClubs} clubs affected</div>
                       </div>
-                      <div className="relative mt-3 min-h-0 flex-1 space-y-1.5 overflow-hidden">
+                      <div className="relative mt-2 min-h-0 flex-1 space-y-1 overflow-hidden">
                         {featuredInjuries.length > 0 ? featuredInjuries.map((injury) => (
-                          <div key={injury.id} className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 rounded-md bg-bg/70 px-3 py-2">
+                          <div key={injury.id} className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 rounded-md bg-bg/70 px-3 py-1.5">
                             <span className="min-w-0"><span className="block truncate text-[11px] font-semibold text-text-primary">{injury.playerName}</span><span className="block truncate font-space-mono text-[8px] uppercase text-text-secondary">{teams[injury.teamId]?.shortName ?? injury.teamId} · {injury.conditionName}</span></span>
                             <span className="self-center font-space-mono text-[8px] font-bold uppercase text-text-secondary">to {injury.estimatedReturnEarliest}</span>
                           </div>
                         )) : <p className="rounded-md bg-success/5 px-3 py-2 text-xs text-success">No active injuries across the league.</p>}
                       </div>
-                      <span className="relative mt-2 inline-flex items-center gap-1 font-space-mono text-[8px] font-bold uppercase tracking-wider text-accent">Open injury report <ChevronRight size={12} /></span>
+                      <span className="relative mb-1 mt-2 inline-flex shrink-0 items-center gap-1 font-space-mono text-[8px] font-bold uppercase tracking-wider text-accent">Open injury report <ChevronRight size={12} /></span>
                     </button>
 
                     <button

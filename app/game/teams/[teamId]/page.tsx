@@ -24,6 +24,7 @@ import type { AiLeagueLeadership, AiTeamLeadership } from "@/lib/logic/aiLeaders
 import { dateKeyToLocalDate, getSeasonScheduleAnnouncementDate } from "@/lib/logic/careerCalendar";
 import { isRainAffectedMatch } from "@/lib/logic/matchWeather";
 import { getPlayerSeasonHistory } from "@/lib/logic/playerHistory";
+import { careerSnapshotStorageKey, parseCareerSnapshot, writeCareerSnapshot } from "@/lib/logic/careerSnapshotStorage";
 import { cacheTeamProfileCareer, getCachedTeamProfileCareer } from "@/lib/logic/teamProfileCareerCache";
 import { useGameStore } from "@/lib/store/gameStore";
 import type { Player, Team } from "@/lib/types";
@@ -187,12 +188,12 @@ function normalizeTeamProfileCareer(parsed: Partial<TeamProfileCareer>): TeamPro
 }
 
 function readTeamProfileCareer(userTeamId: string): TeamProfileCareer {
-  const storageKey = `ipl_career_${userTeamId}`;
+  const storageKey = careerSnapshotStorageKey(userTeamId);
   if (typeof localStorage === "undefined") return EMPTY_CAREER;
   const serialized = localStorage.getItem(storageKey);
   if (!serialized) return EMPTY_CAREER;
   try {
-    return normalizeTeamProfileCareer(JSON.parse(serialized) as Partial<TeamProfileCareer>);
+    return normalizeTeamProfileCareer(parseCareerSnapshot(serialized) as Partial<TeamProfileCareer>);
   } catch {
     return EMPTY_CAREER;
   }
@@ -525,15 +526,15 @@ function MountedTeamProfilePage() {
   const nextFixturesListRef = useRef<HTMLDivElement>(null);
 
   const toggleShortlist = (pid: string) => {
-    const storageKey = `ipl_career_${userTeamId}`;
+    const storageKey = careerSnapshotStorageKey(userTeamId);
     const next = shortlist.includes(pid)
       ? shortlist.filter((id) => id !== pid)
       : [...shortlist, pid];
     try {
       const saved = localStorage.getItem(storageKey);
-      const parsed = saved ? JSON.parse(saved) : {};
+      const parsed = saved ? parseCareerSnapshot(saved) : {};
       parsed.shortlist = next;
-      localStorage.setItem(storageKey, JSON.stringify(parsed));
+      writeCareerSnapshot(localStorage, storageKey, parsed);
     } catch {}
     setShortlist(next);
     if (typeof window !== "undefined") {
@@ -931,13 +932,11 @@ function MountedTeamProfilePage() {
       const next = { ...prev, bowlingFirstImpactPlayerId: playerId };
       if (typeof window !== "undefined" && userTeamId) {
         try {
-          const stored = localStorage.getItem(`ipl_career_${userTeamId}`);
+          const storageKey = careerSnapshotStorageKey(userTeamId);
+          const stored = localStorage.getItem(storageKey);
           if (stored) {
-            const parsed = JSON.parse(stored);
-            localStorage.setItem(
-              `ipl_career_${userTeamId}`,
-              JSON.stringify({ ...parsed, bowlingFirstImpactPlayerId: playerId }),
-            );
+            const parsed = parseCareerSnapshot(stored);
+            writeCareerSnapshot(localStorage, storageKey, { ...parsed, bowlingFirstImpactPlayerId: playerId });
           }
         } catch (e) {
           console.error("Failed to save bowlingFirstImpactPlayerId", e);
@@ -952,13 +951,11 @@ function MountedTeamProfilePage() {
       const next = { ...prev, bowlingFirstImpactBattingPosition: position };
       if (typeof window !== "undefined" && userTeamId) {
         try {
-          const stored = localStorage.getItem(`ipl_career_${userTeamId}`);
+          const storageKey = careerSnapshotStorageKey(userTeamId);
+          const stored = localStorage.getItem(storageKey);
           if (stored) {
-            const parsed = JSON.parse(stored);
-            localStorage.setItem(
-              `ipl_career_${userTeamId}`,
-              JSON.stringify({ ...parsed, bowlingFirstImpactBattingPosition: position }),
-            );
+            const parsed = parseCareerSnapshot(stored);
+            writeCareerSnapshot(localStorage, storageKey, { ...parsed, bowlingFirstImpactBattingPosition: position });
           }
         } catch (e) {
           console.error("Failed to save bowlingFirstImpactBattingPosition", e);

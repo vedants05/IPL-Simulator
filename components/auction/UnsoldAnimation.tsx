@@ -1,12 +1,15 @@
 "use client";
 import { useEffect } from "react";
 import { useGameStore } from "@/lib/store/gameStore";
+import { useShallow } from "zustand/react/shallow";
 
 export default function UnsoldAnimation() {
-  const { auction, players } = useGameStore();
+  const { unsoldFlash, isAcceleratedPhase, players } = useGameStore(useShallow((state) => ({
+    unsoldFlash: state.auction?.unsoldFlash,
+    isAcceleratedPhase: state.auction?.isAcceleratedPhase,
+    players: state.players,
+  })));
   const dismissSoldFlash = useGameStore((s) => s.dismissSoldFlash);
-
-  const unsoldFlash = auction?.unsoldFlash;
 
   useEffect(() => {
     if (!unsoldFlash) return;
@@ -40,7 +43,7 @@ export default function UnsoldAnimation() {
           {player?.name ?? playerId}
         </div>
         <div className="font-barlow text-[15px] text-text-secondary mb-6">
-          {auction?.isAcceleratedPhase
+          {isAcceleratedPhase
             ? "Player goes unsold"
             : "No bids received — re-enters accelerated auction"}
         </div>

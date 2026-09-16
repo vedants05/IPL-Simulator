@@ -38,14 +38,23 @@ assert.ok(Object.values(samples).every(({ mean }) => Math.abs(mean) < 0.03));
 assert.ok(samples.volatile.standardDeviation > samples.neutral.standardDeviation);
 assert.ok(samples.neutral.standardDeviation > samples.reliable.standardDeviation);
 
-// Inconsistency may still produce one-off brilliance, but must not turn wider
-// variance into a season-long advantage. Good form fades faster and bad form
-// bites harder; reliable players recover from the same slump more effectively.
-assert.ok(consistencyAdjustedBattingForm(3, 20) < consistencyAdjustedBattingForm(3, 50));
-assert.ok(consistencyAdjustedBattingForm(-3, 20) < consistencyAdjustedBattingForm(-3, 50));
-assert.ok(consistencyAdjustedBattingForm(-3, 95) > consistencyAdjustedBattingForm(-3, 50));
-assert.ok(consistencyAdjustedBattingLuck(3, 20) < consistencyAdjustedBattingLuck(3, 50));
-assert.ok(consistencyAdjustedBattingLuck(-3, 20) < consistencyAdjustedBattingLuck(-3, 50));
+// Before, sign-dependent form/luck adjustments silently changed average
+// quality. Afterwards consistency only changes spread and persistence.
+const oldUnreliability = (50 - 20) / 49;
+const oldPositiveForm = 3 * (1 - oldUnreliability * 0.45);
+const oldNegativeForm = -3 * (1 + oldUnreliability * 0.35);
+assert.ok(oldPositiveForm < 3 && oldNegativeForm < -3);
+for (const rating of [20, 50, 95]) {
+  assert.equal(consistencyAdjustedBattingForm(3, rating), 3);
+  assert.equal(consistencyAdjustedBattingForm(-3, rating), -3);
+  assert.equal(consistencyAdjustedBattingLuck(3, rating), 3);
+  assert.equal(consistencyAdjustedBattingLuck(-3, rating), -3);
+}
+console.log("Consistency before/after", {
+  oldFormAt20: { positive: oldPositiveForm, negative: oldNegativeForm },
+  newFormAt20: { positive: consistencyAdjustedBattingForm(3, 20), negative: consistencyAdjustedBattingForm(-3, 20) },
+  momentumSpread: samples,
+});
 
 const scorecards = (runs: number, balls: number) => [0, 1].map(() => ({
   inningsA: { batting: [{ id: "batter", runs, balls }], bowling: [] },

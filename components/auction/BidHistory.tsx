@@ -1,5 +1,6 @@
 "use client";
 import { useGameStore } from "@/lib/store/gameStore";
+import { useShallow } from "zustand/react/shallow";
 import { getNextBidAmount } from "@/lib/logic/auctionRules";
 
 function crore(lakhs: number) {
@@ -7,7 +8,7 @@ function crore(lakhs: number) {
 }
 
 export default function BidHistory() {
-  const { auction, teams } = useGameStore();
+  const { auction, teams } = useGameStore(useShallow((state) => ({ auction: state.auction, teams: state.teams })));
 
   if (!auction) return null;
 

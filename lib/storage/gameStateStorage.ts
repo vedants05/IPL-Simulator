@@ -1,4 +1,4 @@
-import type { StateStorage } from "zustand/middleware";
+import type { PersistStorage, StateStorage, StorageValue } from "zustand/middleware";
 
 const DATABASE_NAME = "ipl-simulator-game-state";
 const DATABASE_VERSION = 1;
@@ -76,6 +76,34 @@ type PendingWrite = {
 };
 
 const pendingWrites = new Map<string, PendingWrite>();
+
+type PendingObjectWrite = {
+  value: StorageValue<unknown>;
+  waiters: Array<{ resolve: () => void; reject: (error: unknown) => void }>;
+  scheduled: boolean;
+  running: boolean;
+};
+
+const pendingObjectWrites = new Map<string, PendingObjectWrite>();
+
+function scheduleObjectWrite(name: string, pending: PendingObjectWrite): void {
+  if (pending.scheduled || pending.running) return;
+  pending.scheduled = true;
+  globalThis.setTimeout(() => {
+    pending.scheduled = false;
+    pending.running = true;
+    const latestValue = pending.value;
+    const waiters = pending.waiters.splice(0);
+    void Promise.resolve(gameStateStorage.setItem(name, JSON.stringify(latestValue)))
+      .then(() => waiters.forEach((waiter) => waiter.resolve()))
+      .catch((error: unknown) => waiters.forEach((waiter) => waiter.reject(error)))
+      .finally(() => {
+        pending.running = false;
+        if (pending.waiters.length > 0) scheduleObjectWrite(name, pending);
+        else pendingObjectWrites.delete(name);
+      });
+  }, 0);
+}
 
 async function persistValue(name: string, value: string): Promise<void> {
   if (await writeIndexedValue(name, value)) {
@@ -209,4 +237,24 @@ export const gameStateStorage: StateStorage = {
     }
     removeLegacyValue(name);
   },
+};
+
+/**
+ * Zustand's createJSONStorage serializes the complete career synchronously for
+ * every state update. Defer and coalesce that work so rapid simulation updates
+ * paint first, while retaining exactly the same persisted JSON representation.
+ */
+export const gameStatePersistStorage: PersistStorage<unknown> = {
+  getItem: async (name) => {
+    const serialized = await gameStateStorage.getItem(name);
+    return serialized === null ? null : JSON.parse(serialized) as StorageValue<unknown>;
+  },
+  setItem: (name, value) => new Promise<void>((resolve, reject) => {
+    const pending = pendingObjectWrites.get(name) ?? { value, waiters: [], scheduled: false, running: false };
+    pending.value = value;
+    pending.waiters.push({ resolve, reject });
+    pendingObjectWrites.set(name, pending);
+    scheduleObjectWrite(name, pending);
+  }),
+  removeItem: (name) => gameStateStorage.removeItem?.(name) ?? Promise.resolve(),
 };

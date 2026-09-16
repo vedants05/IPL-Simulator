@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { AlertTriangle } from "lucide-react";
 import { useGameStore } from "@/lib/store/gameStore";
+import { useShallow } from "zustand/react/shallow";
 import { getNextBidAmount } from "@/lib/logic/auctionRules";
 
 function crore(lakhs: number) {
@@ -9,7 +10,7 @@ function crore(lakhs: number) {
 }
 
 export default function RTMModal() {
-  const { auction, teams, userTeamId } = useGameStore();
+  const { auction, teams, userTeamId } = useGameStore(useShallow((state) => ({ auction: state.auction, teams: state.teams, userTeamId: state.userTeamId })));
   const exerciseRtm = useGameStore((s) => s.exerciseRtm);
   const declineRtm = useGameStore((s) => s.declineRtm);
   const raiseCounter = useGameStore((s) => s.raiseCounter);

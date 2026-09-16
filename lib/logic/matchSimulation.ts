@@ -1358,7 +1358,7 @@ function playerPositionPenalty(player: Player, battingPosition: number): number 
   return 0;
 }
 
-function battingPitchAdjustment(player: Player, pitch: CuratorPitch): number {
+export function battingPitchAdjustment(player: Player, pitch: CuratorPitch): number {
   const aggression = player.battingAggression ?? 65;
   let adjustment = 0;
   if (hasPreference(pitch, "favours", "aggressive-batters") && aggression >= 78) adjustment += 2.5;
@@ -1367,10 +1367,12 @@ function battingPitchAdjustment(player: Player, pitch: CuratorPitch): number {
   if (hasPreference(pitch, "favours", "openers") && player.isOpener) adjustment += 1.5;
   if (hasPreference(pitch, "doesNotFavour", "openers") && player.isOpener) adjustment -= 2;
   if (hasPreference(pitch, "favours", "high-rated-batters") && player.currentBatting >= 82) adjustment += 1.5;
-  return adjustment;
+  // Ground scoring conditions already affect every delivery. Keep the extra
+  // style-to-ability edge small so it cannot eclipse overall player ability.
+  return clamp(adjustment * 0.35, -1.5, 1.5);
 }
 
-function bowlingPitchAdjustment(player: Player, pitch: CuratorPitch): number {
+export function bowlingPitchAdjustment(player: Player, pitch: CuratorPitch): number {
   let adjustment = 0;
   if (isSpinner(player)) {
     if (hasPreference(pitch, "favours", "spin-bowlers")) adjustment += 5;
@@ -1381,7 +1383,7 @@ function bowlingPitchAdjustment(player: Player, pitch: CuratorPitch): number {
     if (hasPreference(pitch, "favours", "high-rated-pace-bowlers") && player.currentBowling >= 82) adjustment += 3;
     if (hasPreference(pitch, "doesNotFavour", "pace-bowlers")) adjustment -= 4;
   }
-  return adjustment;
+  return clamp(adjustment * 0.35, -1.5, 1.5);
 }
 
 function inningsPhaseThresholds(maxOvers = 20) {
@@ -1448,6 +1450,28 @@ export function getPlayerPhaseRating(
   return player.deathBowling;
 }
 
+const PHASE_SPECIALISATION_WEIGHTS: Record<InningsPhase, number> = {
+  powerplay: 0.30,
+  middle: 0.45,
+  death: 0.25,
+};
+
+/** A phase preference relative to this player's own fixed phase profile. */
+export function getRelativePhaseSignal(
+  player: PhaseRatedPlayer,
+  discipline: "batting" | "bowling",
+  phase: InningsPhase,
+): number {
+  const powerplay = 50 + normalizePhaseRating(getPlayerPhaseRating(player, discipline, "powerplay")) * 50;
+  const middle = 50 + normalizePhaseRating(getPlayerPhaseRating(player, discipline, "middle")) * 50;
+  const death = 50 + normalizePhaseRating(getPlayerPhaseRating(player, discipline, "death")) * 50;
+  const baseline = PHASE_SPECIALISATION_WEIGHTS.powerplay * powerplay
+    + PHASE_SPECIALISATION_WEIGHTS.middle * middle
+    + PHASE_SPECIALISATION_WEIGHTS.death * death;
+  const current = phase === "powerplay" ? powerplay : phase === "middle" ? middle : death;
+  return clamp((current - baseline) / 50, -1, 1);
+}
+
 export function getPhaseMatchup(
   batter: PhaseRatedPlayer,
   bowler: PhaseRatedPlayer,
@@ -1455,8 +1479,8 @@ export function getPhaseMatchup(
   maxOvers = 20,
 ): PhaseMatchup {
   const phase = getInningsPhase(overNumber, maxOvers);
-  const battingSignal = normalizePhaseRating(getPlayerPhaseRating(batter, "batting", phase));
-  const bowlingSignal = normalizePhaseRating(getPlayerPhaseRating(bowler, "bowling", phase));
+  const battingSignal = getRelativePhaseSignal(batter, "batting", phase);
+  const bowlingSignal = getRelativePhaseSignal(bowler, "bowling", phase);
   return { phase, battingSignal, bowlingSignal, edge: clamp(battingSignal - bowlingSignal, -2, 2) };
 }
 
@@ -1515,6 +1539,18 @@ export function getBattingTypeRating(
   return 50;
 }
 
+/** Bowling-family preference, centred on this batter's own pace/spin profile. */
+export function getRelativeBattingTypeSignal(
+  batter: Pick<Player, "paceRating" | "spinRating">,
+  family: BowlingFamily | undefined,
+): number {
+  if (!family) return 0;
+  const pace = getBattingTypeRating(batter, "pace");
+  const spin = getBattingTypeRating(batter, "spin");
+  const baseline = pace * 0.60 + spin * 0.40;
+  return clamp((getBattingTypeRating(batter, family) - baseline) / 50, -1, 1);
+}
+
 export function getBattingTypeOutcomeModifiers(
   batter: BowlingTypeRatedBatter,
   bowler: Pick<Player, "role" | "bowlingStyle" | "currentBowling">,
@@ -1523,7 +1559,7 @@ export function getBattingTypeOutcomeModifiers(
   const family = getBowlingFamily(bowler);
   if (!family) return NEUTRAL_PHASE_OUTCOME_MODIFIERS;
 
-  const ratingSignal = normalizePhaseRating(getBattingTypeRating(batter, family));
+  const ratingSignal = getRelativeBattingTypeSignal(batter, family);
   const quality = clamp((bowler.currentBowling - 55) / 30, 0, 1);
   const qualityScale = 0.65 + quality * 0.35;
   // Matchup technique supplies the average edge. Batting consistency remains
@@ -1585,11 +1621,12 @@ export function bowlingTypeSelectionBonus(
 ): number {
   const family = getBowlingFamily(bowler);
   if (!family || !striker) return 0;
-  const strikerRating = getBattingTypeRating(striker, family);
-  const nonStrikerRating = nonStriker ? getBattingTypeRating(nonStriker, family) : 50;
-  const weightedRating = strikerRating * 0.68 + nonStrikerRating * 0.32;
+  const strikerSignal = getRelativeBattingTypeSignal(striker, family);
+  const nonStrikerSignal = nonStriker ? getRelativeBattingTypeSignal(nonStriker, family) : 0;
+  const weightedSignal = strikerSignal * 0.68 + nonStrikerSignal * 0.32;
   const captaincyAccess = 0.65 + clamp(captaincyRating, 0, 100) / 100 * 0.35;
-  return clamp((50 - weightedRating) * 0.18 * captaincyAccess, -5.5, 5.5);
+  if (weightedSignal === 0) return 0;
+  return clamp(-weightedSignal * 50 * 0.18 * captaincyAccess, -5.5, 5.5);
 }
 
 function battingIntent(
@@ -1793,7 +1830,7 @@ interface BowlerSelection {
 }
 
 export function phaseBowlingSelectionBonus(player: PhaseRatedPlayer, phase: InningsPhase): number {
-  return normalizePhaseRating(getPlayerPhaseRating(player, "bowling", phase)) * 6;
+  return getRelativePhaseSignal(player, "bowling", phase) * 6;
 }
 
 export function combinedDeathReserveOvers(maxOvers: number): number {
@@ -2379,18 +2416,21 @@ export interface BattingAggressionScoringProfile {
 
 /**
  * Converts aggression into tempo, not batting quality. A neutral 65 maps to an
- * indicative 157.5 SR and 95 maps to 185 SR. The innings engine applies the
- * same multiplier to dismissal odds, so aggressive players score their runs
+ * indicative 157.5 SR and 95 maps to 185 SR. Extreme intent above 95 has a
+ * stronger curve. The innings engine applies the same multiplier to dismissal
+ * probability, so aggressive players score their runs
  * faster but also use fewer balls rather than receiving free expected runs.
  */
 export function battingAggressionScoringProfile(
   battingAggression: number,
 ): BattingAggressionScoringProfile {
   const aggression = clamp(battingAggression, 1, 99);
-  const indicativeStrikeRate = 157.5 + (aggression - 65) * (27.5 / 30);
+  const extremeIntent = Math.max(0, (aggression - 95) / 4);
+  const indicativeStrikeRate = 157.5 + (aggression - 65) * (27.5 / 30)
+    + 20 * extremeIntent * extremeIntent;
   return {
     tempoMultiplier: indicativeStrikeRate / 157.5,
-    boundaryIntent: clamp((aggression - 65) / 30, -1, 1),
+    boundaryIntent: clamp((aggression - 65) / 34, -1, 1),
     indicativeStrikeRate,
   };
 }
@@ -3008,26 +3048,15 @@ function createPlayerLuck(
   }));
 }
 
-/**
- * Low consistency must not gain season-long value from a wider symmetric
- * distribution. It shortens good runs and deepens poor runs; high consistency
- * cushions a slump while leaving the player's underlying ceiling unchanged.
- */
+/** Preserve a player's form value; consistency changes its spread elsewhere. */
 export function consistencyAdjustedBattingForm(form: number, consistencyValue: number | undefined): number {
-  const consistency = clamp(consistencyValue ?? 50, 1, 99);
-  const unreliability = Math.max(0, (50 - consistency) / 49);
-  const reliability = Math.max(0, (consistency - 50) / 49);
-  if (form > 0) return form * (1 - unreliability * 0.45);
-  if (form < 0) return form * (1 + unreliability * 0.35) * (1 - reliability * 0.25);
-  return 0;
+  // The consistency profile controls variance and momentum persistence. Form
+  // must not receive a sign-dependent quality bonus or penalty on top of that.
+  return form;
 }
 
 export function consistencyAdjustedBattingLuck(luck: number, consistencyValue: number | undefined): number {
-  const consistency = clamp(consistencyValue ?? 50, 1, 99);
-  const unreliability = Math.max(0, (50 - consistency) / 49);
-  if (luck > 0) return luck * (1 - unreliability * 0.22);
-  if (luck < 0) return luck * (1 + unreliability * 0.14);
-  return 0;
+  return luck;
 }
 
 export interface DisciplineFormAdjustments {
@@ -4818,7 +4847,7 @@ function simulateInnings(context: InningsContext): MatchInnings {
           battingTypePressureKey,
           advanceBattingTypePressure(
             battingTypePressure,
-            getBattingTypeRating(striker, bowlingFamily),
+            50 + getRelativeBattingTypeSignal(striker, bowlingFamily) * 50,
             runsOffBat,
             Boolean(wicket),
             isLegal,

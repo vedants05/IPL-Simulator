@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {
   aggressionAdjustedWicketProbability,
   applyBattingAggressionOutcomeWeights,
+  battingAggressionScoringProfile,
   pressureAdjustedAggression,
 } from "../lib/logic/matchSimulation";
 
@@ -20,6 +21,19 @@ const attacking = applyBattingAggressionOutcomeWeights(base, 90);
 assert.ok(boundaryShare(attacking) > boundaryShare(neutral));
 assert.ok(boundaryShare(neutral) > boundaryShare(controlled));
 
+const oldGuide95 = 157.5 + (95 - 65) * 27.5 / 30;
+const oldGuide99 = 157.5 + (99 - 65) * 27.5 / 30;
+const newGuide95 = battingAggressionScoringProfile(95).indicativeStrikeRate;
+const newGuide99 = battingAggressionScoringProfile(99).indicativeStrikeRate;
+assert.equal(newGuide95, oldGuide95, "95 remains calibrated to the old tempo");
+assert.ok(newGuide99 - newGuide95 > oldGuide99 - oldGuide95 + 15);
+assert.ok(battingAggressionScoringProfile(99).boundaryIntent > battingAggressionScoringProfile(95).boundaryIntent);
+assert.ok(aggressionAdjustedWicketProbability(0.05, 99) > aggressionAdjustedWicketProbability(0.05, 95));
+console.log("Aggression before/after", {
+  old: { aggression95: oldGuide95, aggression99: oldGuide99 },
+  new: { aggression95: newGuide95, aggression99: newGuide99 },
+});
+
 const lowComposure = pressureAdjustedAggression(90, 1, 20, 6);
 const neutralComposure = pressureAdjustedAggression(90, 1, 50, 6);
 const highComposure = pressureAdjustedAggression(90, 1, 80, 6);
@@ -37,9 +51,13 @@ const production = (aggression: number) => (
 const lowProduction = production(45);
 const highProduction = production(90);
 assert.ok(Math.abs(highProduction / lowProduction - 1) < 0.005);
+const extremeProduction = production(99);
+const veryAttackingProduction = production(95);
+assert.ok(Math.abs(extremeProduction / veryAttackingProduction - 1) < 0.005,
+  "extreme aggression changes tempo and dismissal risk together, without adding quality");
 
 console.log("Batting aggression verification passed", {
   boundaryShare: { controlled: boundaryShare(controlled), neutral: boundaryShare(neutral), attacking: boundaryShare(attacking) },
   pressure: { lowComposure, neutralComposure, highComposure },
-  approximateRunsPerWicket: { controlled: lowProduction, attacking: highProduction },
+  approximateRunsPerWicket: { controlled: lowProduction, attacking: highProduction, veryAttacking: veryAttackingProduction, extreme: extremeProduction },
 });

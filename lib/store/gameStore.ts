@@ -1,7 +1,7 @@
 "use client";
 import { create } from "zustand";
-import { persist, createJSONStorage } from "zustand/middleware";
-import { gameStateStorage } from "@/lib/storage/gameStateStorage";
+import { persist } from "zustand/middleware";
+import { gameStatePersistStorage } from "@/lib/storage/gameStateStorage";
 import { v4 as uuidv4 } from "uuid";
 import {
   GameState,
@@ -533,6 +533,7 @@ interface GameActions {
     effectiveOn?: string;
   }) => boolean;
   setStaffNegotiationCooldown: (staffId: string, until: string | null) => void;
+  setStaffNegotiationSession: (staffId: string, session: import("@/lib/logic/staffNegotiations").StaffNegotiationSession | null) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -4186,6 +4187,13 @@ export const useGameStore = create<Store>()(
         return { careerStaff: { ...state.careerStaff, negotiationCooldowns } };
       }),
 
+      setStaffNegotiationSession: (staffId, session) => set((state) => {
+        const activeNegotiations = { ...state.careerStaff.activeNegotiations };
+        if (session) activeNegotiations[staffId] = session;
+        else delete activeNegotiations[staffId];
+        return { careerStaff: { ...state.careerStaff, activeNegotiations } };
+      }),
+
       beginNextSeasonRetention: async (captainIdsByTeam, viceCaptainIdsByTeam, requestedAuctionType, onStage) => {
           const state = get();
           const stage = async (message: string) => {
@@ -5353,7 +5361,7 @@ export const useGameStore = create<Store>()(
     }),
     {
       name: "ipl-simulator-save-v5",
-      storage: createJSONStorage(() => gameStateStorage),
+      storage: gameStatePersistStorage,
       partialize: (state) => ({
         saveId: state.saveId,
         saveCreatedAt: state.saveCreatedAt,

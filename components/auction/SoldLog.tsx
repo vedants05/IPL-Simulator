@@ -1,12 +1,13 @@
 "use client";
 import { useGameStore } from "@/lib/store/gameStore";
+import { useShallow } from "zustand/react/shallow";
 
 function crore(lakhs: number) {
   return `₹${(lakhs / 100).toFixed(2)} Cr`;
 }
 
 export default function SoldLog() {
-  const { auction, players, teams } = useGameStore();
+  const { auction, players, teams } = useGameStore(useShallow((state) => ({ auction: state.auction, players: state.players, teams: state.teams })));
 
   if (!auction) return null;
 

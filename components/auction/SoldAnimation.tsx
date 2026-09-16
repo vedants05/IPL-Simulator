@@ -1,6 +1,7 @@
 "use client";
 import { useEffect } from "react";
 import { useGameStore } from "@/lib/store/gameStore";
+import { useShallow } from "zustand/react/shallow";
 import { TEAM_THEMES } from "@/lib/theme/teams";
 
 function crore(lakhs: number) {
@@ -8,10 +9,8 @@ function crore(lakhs: number) {
 }
 
 export default function SoldAnimation() {
-  const { auction, teams, players } = useGameStore();
+  const { soldFlash, teams, players } = useGameStore(useShallow((state) => ({ soldFlash: state.auction?.soldFlash, teams: state.teams, players: state.players })));
   const dismissSoldFlash = useGameStore((s) => s.dismissSoldFlash);
-
-  const soldFlash = auction?.soldFlash;
 
   // Auto-dismiss safety timer so it never gets stuck
   useEffect(() => {

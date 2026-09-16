@@ -411,10 +411,14 @@ export function buildTeamSupporterView(input: {
   const budgetUse = input.boardContext?.annualStaffBudget
     ? clamp((input.boardContext.committedStaffSalary ?? 0) / input.boardContext.annualStaffBudget * 100)
     : 50;
-  const boardApproval = rounded(boardBase * 0.55 + resultsApproval * 0.2 + budgetUse * 0.1
+  const budgetDiscipline = clamp(100 - Math.abs(budgetUse - 78) * 1.5);
+  const compensationPenalty = input.boardContext?.annualStaffBudget
+    ? clamp(((input.boardContext.compensationPaid ?? 0) / input.boardContext.annualStaffBudget) * 30, 0, 15)
+    : 0;
+  const boardApproval = rounded(boardBase * 0.55 + resultsApproval * 0.2 + budgetDiscipline * 0.1
     + (input.boardContext?.activeProjects ?? 0) * 3
     + boardEvents.slice(-8).reduce((sum, event) => sum + event.impact, 0) * 0.45
-    - culture.boardScepticism * 0.16);
+    - compensationPenalty - culture.boardScepticism * 0.16);
   const categories = { results: resultsApproval, squad: squadApproval, staff: staffApproval, board: boardApproval, leadership: leadershipApproval };
 
   const performanceMomentum = (recentWinRate - 0.5) * 24;

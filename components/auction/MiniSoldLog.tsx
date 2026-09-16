@@ -1,6 +1,7 @@
 "use client";
 import { useState, useRef, useEffect } from "react";
 import { useGameStore } from "@/lib/store/gameStore";
+import { useShallow } from "zustand/react/shallow";
 
 function crore(lakhs: number) {
   return `₹${(lakhs / 100).toFixed(2)} Cr`;
@@ -20,7 +21,7 @@ function getTeamColors(teamId?: string, team?: any) {
 }
 
 export default function MiniSoldLog() {
-  const { auction, teams, players } = useGameStore();
+  const { auction, teams, players } = useGameStore(useShallow((state) => ({ auction: state.auction, teams: state.teams, players: state.players })));
   const [selectedSale, setSelectedSale] = useState<{ playerId: string; teamId: string; price: number; lot: number; bids?: any[] } | null>(null);
 
   const cardRef = useRef<HTMLDivElement>(null);

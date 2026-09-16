@@ -5,7 +5,7 @@ import { ArrowDown, ArrowUp, ArrowUpDown, Bot, BriefcaseBusiness, RefreshCw, Use
 
 import type { Team } from "@/lib/types";
 import { useGameStore } from "@/lib/store/gameStore";
-import { calculateInitialStaffNegotiationPatience, calculateStaffRecruitmentInterest, calculateStaffSalaryDemand, evaluateStaffContractOffer } from "@/lib/logic/staffNegotiations";
+import { calculateInitialStaffNegotiationPatience, calculateStaffMoveInterest, calculateStaffRecruitmentInterest, calculateStaffRenewalInterest, calculateStaffSalaryDemand, createStaffNegotiationSession, evaluateStaffNegotiationRound } from "@/lib/logic/staffNegotiations";
 import { getStaffClubAffinity, type StaffAffinityProfile } from "@/lib/data/staffAffinities";
 import { addDaysToDateKey } from "@/lib/logic/careerCalendar";
 import { loadStaffDirectory } from "@/lib/logic/staffDirectoryClient";
@@ -144,6 +144,7 @@ function StaffProfileModal({
   const releaseStaffMember = useGameStore((state) => state.releaseStaffMember);
   const poachStaffMember = useGameStore((state) => state.poachStaffMember);
   const setStaffNegotiationCooldown = useGameStore((state) => state.setStaffNegotiationCooldown);
+  const setStaffNegotiationSession = useGameStore((state) => state.setStaffNegotiationSession);
   const careerContract = careerStaff.contracts[member.id];
   const negotiationCooldownUntil = careerStaff.negotiationCooldowns[member.id];
   const negotiationCoolingDown = Boolean(negotiationCooldownUntil && currentDate < negotiationCooldownUntil);
@@ -162,6 +163,13 @@ function StaffProfileModal({
   const [negotiationHasStarted, setNegotiationHasStarted] = useState(false);
   const [showNegotiationExitWarning, setShowNegotiationExitWarning] = useState(false);
   const [showTerminationConfirm, setShowTerminationConfirm] = useState(false);
+  const persistedNegotiation = careerStaff.activeNegotiations[member.id];
+  useEffect(() => {
+    if (!contractAction || persistedNegotiation?.status !== "active" || persistedNegotiation.action !== contractAction) return;
+    setNegotiationPatience(persistedNegotiation.patience);
+    setStaffCounterOffer(persistedNegotiation.latestCounter?.annualSalary ?? null);
+    setNegotiationHasStarted(persistedNegotiation.rounds.length > 0);
+  }, [contractAction, persistedNegotiation]);
   const rawCoachingObj = (member.coaching_attributes && typeof member.coaching_attributes === "object" ? member.coaching_attributes : null)
     ?? careerContract?.coachingAttributes
     ?? null;
@@ -208,14 +216,17 @@ function StaffProfileModal({
   const offerSecondaryRole = normalizedOfferRoles[1] ?? "";
   const offeredSalaryRupees = Math.max(0, Math.round(Number(offerSalary || 0) * 10_000_000));
   const selectedRoleRating = Number(member.role_ratings?.[offerPrimaryRole] ?? member.current_ability ?? 50);
+  const liveSalaryExpectation = careerContract?.annualSalary ?? Number(member.salary_expectation ?? 0);
   const currentAffinity = careerContract?.teamId ? getStaffClubAffinity(careerContract.affinityProfile, careerContract.teamId) : 0;
   const destinationAffinity = careerContract ? getStaffClubAffinity(careerContract.affinityProfile, userTeamId) : 0;
   const remainingContractSeasons = careerContract?.endSeason == null ? 1 : Math.max(0, careerContract.endSeason - currentSeason + 1);
   const salaryDemand = calculateStaffSalaryDemand({
-    salaryExpectation: Number(member.salary_expectation ?? 0),
+    salaryExpectation: liveSalaryExpectation,
     reputation: Number(member.reputation ?? 0),
     roleRating: selectedRoleRating,
     roleCount: normalizedOfferRoles.length,
+    offeredRoles: normalizedOfferRoles,
+    offeredRoleRatings: member.role_ratings,
     startSeason: currentSeason,
     endSeason: offerEndSeason === "rolling" ? null : Number(offerEndSeason),
     poaching: contractAction === "poach",
@@ -231,7 +242,7 @@ function StaffProfileModal({
     remainingContractSeasons,
   });
   const negotiationPatienceFor = (action: "hire" | "poach" | "renew") => calculateInitialStaffNegotiationPatience({
-    salaryExpectation: Number(member.salary_expectation ?? 0),
+    salaryExpectation: liveSalaryExpectation,
     reputation: Number(member.reputation ?? 0),
     roleRating: selectedRoleRating,
     roleCount: normalizedOfferRoles.length,
@@ -251,19 +262,21 @@ function StaffProfileModal({
   const maximumNegotiationSalary = availableBudget + (contractAction === "renew" ? careerContract?.annualSalary ?? 0 : 0);
 
   const submitContractOffer = () => {
+    if (!contractAction) return;
     if (negotiationCoolingDown) {
       setContractMessage(`Negotiations are unavailable until ${negotiationCooldownUntil}.`);
       return;
     }
     setNegotiationHasStarted(true);
-    const evaluation = evaluateStaffContractOffer({
-      salaryExpectation: Number(member.salary_expectation ?? 0),
+    const negotiationProfile = {
+      salaryExpectation: liveSalaryExpectation,
       reputation: Number(member.reputation ?? 0),
       roleRating: selectedRoleRating,
       roleCount: normalizedOfferRoles.length,
+      offeredRoles: normalizedOfferRoles,
+      offeredRoleRatings: member.role_ratings,
       startSeason: currentSeason,
       endSeason: offerEndSeason === "rolling" ? null : Number(offerEndSeason),
-      offeredSalary: offeredSalaryRupees,
       poaching: contractAction === "poach",
       currentPrimaryRole: careerContract?.primaryRole ?? member.primary_role,
       offeredPrimaryRole: offerPrimaryRole,
@@ -275,19 +288,63 @@ function StaffProfileModal({
       currentAffinity,
       destinationAffinity,
       remainingContractSeasons,
-      previousCounterOffer: staffCounterOffer ?? undefined,
-      negotiationPatience,
+    };
+    const currentSession = persistedNegotiation?.status === "active" && persistedNegotiation.action === contractAction
+      ? persistedNegotiation
+      : createStaffNegotiationSession({ ...negotiationProfile, staffId: member.id, teamId: userTeamId, action: contractAction, openedOn: currentDate });
+    const evaluation = evaluateStaffNegotiationRound(currentSession, {
+      ...negotiationProfile,
+      currentDate,
+      offeredPackage: {
+        annualSalary: offeredSalaryRupees,
+        primaryRole: offerPrimaryRole,
+        roles: normalizedOfferRoles,
+        endSeason: offerEndSeason === "rolling" ? null : Number(offerEndSeason),
+      },
     });
+    setStaffNegotiationSession(member.id, evaluation.session);
+    if (evaluation.accepted && contractAction === "renew" && careerContract) {
+      const renewalInterest = calculateStaffRenewalInterest({
+        loyalty: careerContract.loyalty, ambition: careerContract.ambition,
+        adaptability: careerContract.adaptability, clubAffinity: currentAffinity,
+        currentSalary: careerContract.annualSalary, offeredSalary: offeredSalaryRupees,
+        remainingContractSeasons,
+      });
+      if (!renewalInterest.interested) {
+        setNegotiationEnded(true);
+        setStaffNegotiationSession(member.id, { ...evaluation.session, status: "failed" });
+        setStaffNegotiationCooldown(member.id, addDaysToDateKey(currentDate, 14));
+        setContractMessage("The staff member has rejected renewal and will consider their future.");
+        return;
+      }
+    }
+    if (evaluation.accepted && contractAction === "poach" && careerContract) {
+      const moveInterest = calculateStaffMoveInterest({
+        loyalty: careerContract.loyalty, ambition: careerContract.ambition,
+        adaptability: careerContract.adaptability, currentAffinity, destinationAffinity,
+        currentSalary: careerContract.annualSalary, offeredSalary: offeredSalaryRupees,
+        currentRoleRating: careerContract.roleRatings[careerContract.primaryRole] ?? careerContract.currentAbility,
+        offeredRoleRating: selectedRoleRating, currentPrimaryRole: careerContract.primaryRole,
+        offeredPrimaryRole: offerPrimaryRole, remainingContractSeasons,
+      });
+      if (!moveInterest.interested) {
+        setNegotiationEnded(true);
+        setStaffNegotiationSession(member.id, { ...evaluation.session, status: "failed" });
+        setStaffNegotiationCooldown(member.id, addDaysToDateKey(currentDate, 14));
+        setContractMessage("The staff member has rejected the approach for sporting and personal reasons.");
+        return;
+      }
+    }
     if (!evaluation.accepted) {
       setNegotiationPatience(evaluation.patienceAfter);
-      setStaffCounterOffer(evaluation.counterOffer);
+      setStaffCounterOffer(evaluation.counterPackage?.annualSalary ?? null);
       setNegotiationEnded(evaluation.outcome === "walked-away");
       if (evaluation.outcome === "walked-away") {
         setStaffNegotiationCooldown(member.id, addDaysToDateKey(currentDate, 7));
       }
       setContractMessage(evaluation.outcome === "countered"
-        ? `Counteroffer: ${formatSalary(evaluation.counterOffer)}. Improve the salary, role or contract length to continue negotiating.`
-        : evaluation.message);
+        ? `${evaluation.message} ${evaluation.signals.join(" · ")}`
+        : `${evaluation.message} ${evaluation.signals.join(" · ")}`);
       return;
     }
     if (offeredSalaryRupees > availableBudget + (contractAction === "renew" ? careerContract?.annualSalary ?? 0 : 0)) {
@@ -319,6 +376,7 @@ function StaffProfileModal({
       : "The contract could not be completed because its role or budget constraints are no longer valid.");
     if (completed) setContractAction(null);
     if (completed) setStaffCounterOffer(null);
+    if (completed) setStaffNegotiationSession(member.id, null);
     if (!completed) setNegotiationHasStarted(false);
   };
   const requestNegotiationClose = () => {
@@ -333,6 +391,7 @@ function StaffProfileModal({
     setShowNegotiationExitWarning(false);
     setNegotiationEnded(true);
     setContractAction(null);
+    setStaffNegotiationSession(member.id, null);
   };
   const profileFacts: Array<[string, unknown]> = [
     ["Primary role", roleLabel(member.primary_role)],
@@ -704,7 +763,7 @@ function StaffProfileModal({
                 <div>
                   <p className="font-space-mono text-[8px] font-bold uppercase tracking-[0.2em] text-accent">Contract negotiation</p>
                   <h3 id="staff-negotiation-title" className="mt-1 font-anton text-2xl uppercase leading-none text-text-primary">{member.full_name}</h3>
-                  <p className="mt-2 text-xs text-text-secondary">Build the role, duration and salary package. An insufficient offer may receive a counteroffer.</p>
+                  <p className="mt-2 text-xs text-text-secondary">Build a complete package. Their priorities and minimum position are private, and your conduct across rounds affects the talks.</p>
                 </div>
                 <button type="button" onClick={requestNegotiationClose} className="flex size-9 shrink-0 items-center justify-center rounded border border-border text-text-primary hover:bg-black/5 dark:hover:bg-white/10" aria-label="Close negotiation"><X size={17} /></button>
               </div>
@@ -717,7 +776,8 @@ function StaffProfileModal({
                 <div className="h-2 overflow-hidden rounded-sm border border-border bg-surface">
                   <div className="h-full transition-[width] duration-300" style={{ width: `${negotiationPatience}%`, backgroundColor: negotiationPatience >= 70 ? "#22c55e" : negotiationPatience >= 40 ? "#3b82f6" : negotiationPatience >= 20 ? "#facc15" : "#ef4444" }} />
                 </div>
-                <p className="mt-1.5 font-space-mono text-[7px] uppercase text-text-secondary">Poor offers consume more patience; credible improvements consume very little.</p>
+                <p className="mt-1.5 font-space-mono text-[7px] uppercase text-text-secondary">Patience reflects the offer gap, role, security, market leverage and negotiating conduct.</p>
+                <p className="mt-1 font-space-mono text-[7px] uppercase text-text-secondary">Trust: {persistedNegotiation?.status === "active" ? persistedNegotiation.trust : "Not established"}{persistedNegotiation?.status === "active" ? "/100" : ""}</p>
                 {negotiationHasStarted && !negotiationEnded && <p className="mt-1 font-space-mono text-[7px] font-bold uppercase text-accent">Leaving now will fail negotiations and make this staff member unavailable for seven days.</p>}
               </div>
 
@@ -762,14 +822,21 @@ function StaffProfileModal({
               <div className="mx-5 grid grid-cols-4 gap-3">
                 <div className="rounded border border-border bg-bg p-3"><p className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Offer type</p><p className="mt-1 font-anton text-sm uppercase text-text-primary">{contractAction === "poach" ? "Club approach" : contractAction === "renew" ? "Renewal" : "Free-agent offer"}</p></div>
                 <div className="rounded border border-border bg-bg p-3"><p className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Proposed roles</p><p className="mt-1 font-anton text-sm uppercase text-text-primary">{normalizedOfferRoles.map(roleLabel).join(" + ")}</p></div>
-                <div className={`rounded border p-3 ${staffCounterOffer ? "border-gold/50 bg-gold/10" : "border-accent/40 bg-accent/5"}`}><p className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">{staffCounterOffer ? "Counteroffer" : "Expected terms"}</p><p className="mt-1 font-anton text-sm uppercase text-text-primary">{formatSalary(staffCounterOffer ?? salaryDemand)}</p></div>
+                <div className={`rounded border p-3 ${staffCounterOffer ? "border-gold/50 bg-gold/10" : "border-accent/40 bg-accent/5"}`}><p className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">{staffCounterOffer ? "Proposed package" : "Market position"}</p><p className="mt-1 font-anton text-sm uppercase text-text-primary">{staffCounterOffer ? `${formatSalary(staffCounterOffer)} · ${roleLabel(persistedNegotiation?.latestCounter?.primaryRole ?? offerPrimaryRole)}` : salaryDemand >= maximumNegotiationSalary * 0.85 ? "Premium terms likely" : "Competitive terms likely"}</p></div>
                 <div className="rounded border border-border bg-bg p-3"><p className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Remaining budget</p><p className="mt-1 font-anton text-sm uppercase text-text-primary">{formatSalary(maximumNegotiationSalary)}</p></div>
               </div>
 
               {contractMessage && <p className="mx-5 mt-4 rounded border border-accent/30 bg-accent/5 px-3 py-2.5 font-space-mono text-[8px] font-bold uppercase leading-relaxed text-text-primary">{contractMessage}</p>}
 
               <div className="flex items-center justify-end gap-3 px-5 py-5">
-                {staffCounterOffer && <button type="button" onClick={() => setOfferSalary(String(staffCounterOffer / 10_000_000))} className="rounded border border-gold bg-gold/10 px-4 py-2.5 font-space-mono text-[8px] font-bold uppercase text-gold">Match counter</button>}
+                {staffCounterOffer && <button type="button" onClick={() => {
+                  const counter = persistedNegotiation?.latestCounter;
+                  if (!counter) return;
+                  setOfferSalary(String(counter.annualSalary / 10_000_000));
+                  setOfferPrimaryRole(counter.primaryRole);
+                  setOfferRoles(counter.roles);
+                  setOfferEndSeason(counter.endSeason === null ? "rolling" : String(counter.endSeason));
+                }} className="rounded border border-gold bg-gold/10 px-4 py-2.5 font-space-mono text-[8px] font-bold uppercase text-gold">Match package</button>}
                 <button type="button" onClick={requestNegotiationClose} className="rounded border border-border bg-surface px-4 py-2.5 font-space-mono text-[8px] font-bold uppercase text-text-primary">{negotiationEnded ? "Close" : negotiationHasStarted ? "Exit talks" : "Cancel"}</button>
                 <button type="button" onClick={submitContractOffer} disabled={negotiationEnded} className="rounded bg-accent px-5 py-2.5 font-space-mono text-[8px] font-bold uppercase text-white disabled:cursor-not-allowed disabled:opacity-40">{negotiationEnded ? "Negotiation ended" : "Submit offer"}</button>
               </div>
@@ -1142,7 +1209,7 @@ export default function StaffManagementPage({ teams, mode = "club", initialStaff
     .reverse();
   const visibleTeams = mode === "club"
     ? orderedTeams.filter((team) => team.id === userTeamId)
-    : orderedTeams.filter((team) => team.id !== userTeamId);
+    : orderedTeams;
   const leagueStaffEvents = [...careerStaff.employmentHistory]
     .filter((event) => event.teamId !== userTeamId)
     .reverse();
@@ -1397,7 +1464,7 @@ export default function StaffManagementPage({ teams, mode = "club", initialStaff
           <div className="flex divide-x divide-border font-space-mono text-[8px] font-bold uppercase text-text-secondary"><span className="px-4"><b className="mr-1 font-anton text-base text-text-primary">{contractedRecruitmentTargets.length}</b> employed</span><span className="px-4"><b className="mr-1 font-anton text-base text-text-primary">{freeAgents.length}</b> available</span><span className="pl-4"><b className="mr-1 font-anton text-base text-text-primary">{expiringContractCount}</b> expiring</span></div>
         </header>
 
-        <nav className="grid shrink-0 grid-cols-9 border-x-2 border-b-2 border-border bg-surface" aria-label="Select club">
+        <nav className="grid shrink-0 grid-cols-5 border-x-2 border-b-2 border-border bg-surface xl:grid-cols-10" aria-label="Select club">
           {visibleTeams.map((team) => {
             const selected = team.id === activeTeam?.id;
             const count = new Set((assignmentsByTeam.get(team.id) ?? []).map((assignment) => assignment.staff_id)).size;

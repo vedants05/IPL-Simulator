@@ -1,6 +1,7 @@
 "use client";
 import { useState, useRef, useEffect } from "react";
 import { useGameStore, getActiveSeasonYear } from "@/lib/store/gameStore";
+import { useShallow } from "zustand/react/shallow";
 import { wasPlayerAcquiredViaRtm } from "@/lib/logic/playerHistory";
 import { Player } from "@/lib/types";
 import PlayerCard from "./PlayerCard";
@@ -19,7 +20,10 @@ function crore(lakhs: number) {
 }
 
 export default function UserSquad() {
-  const { teams, players, userTeamId, auction, tradeRecords, injuryReplacementRecords } = useGameStore();
+  const { teams, players, userTeamId, auction, tradeRecords, injuryReplacementRecords } = useGameStore(useShallow((state) => ({
+    teams: state.teams, players: state.players, userTeamId: state.userTeamId, auction: state.auction,
+    tradeRecords: state.tradeRecords, injuryReplacementRecords: state.injuryReplacementRecords,
+  })));
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
   const popoutRef = useRef<HTMLDivElement>(null);
   const userTeam = teams[userTeamId];

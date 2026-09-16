@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useGameStore, getActiveSeasonYear } from "@/lib/store/gameStore";
+import { useShallow } from "zustand/react/shallow";
 import RetentionPhase from "./retention";
 import PlayerCard from "@/components/auction/PlayerCard";
 import BidPanel from "@/components/auction/BidPanel";
@@ -30,7 +31,13 @@ type PopupTab = "sold" | "unsold" | "left" | null;
 
 export default function AuctionPage() {
   const router = useRouter();
-  const { auction, teams, userTeamId, auctionTargets, acceleratedPlanningState } = useGameStore();
+  const { auction, teams, userTeamId, auctionTargets, acceleratedPlanningState } = useGameStore(useShallow((state) => ({
+    auction: state.auction,
+    teams: state.teams,
+    userTeamId: state.userTeamId,
+    auctionTargets: state.auctionTargets,
+    acceleratedPlanningState: state.acceleratedPlanningState,
+  })));
   const startAuction = useGameStore((s) => s.startAuction);
   const [activePopup, setActivePopup] = useState<PopupTab>(null);
   const [showTargetNotice, setShowTargetNotice] = useState(false);
@@ -1859,7 +1866,15 @@ function TeamSquadCard({
 }
 
 function AuctionComplete() {
-  const { auction, teams, players, userTeamId, currentSeason, tradeRecords, injuryReplacementRecords } = useGameStore();
+  const { auction, teams, players, userTeamId, currentSeason, tradeRecords, injuryReplacementRecords } = useGameStore(useShallow((state) => ({
+    auction: state.auction,
+    teams: state.teams,
+    players: state.players,
+    userTeamId: state.userTeamId,
+    currentSeason: state.currentSeason,
+    tradeRecords: state.tradeRecords,
+    injuryReplacementRecords: state.injuryReplacementRecords,
+  })));
   const [summaryTab] = useState<"buys" | "unsold">("buys");
   // Keep this unresolved during the first client render. Defaulting to false
   // briefly exposed the CTA before the persisted season state was loaded.

@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { Player } from "@/lib/types";
 import { useGameStore, getActiveSeasonYear } from "@/lib/store/gameStore";
+import { useShallow } from "zustand/react/shallow";
 
 interface Props {
   player: Player;
@@ -67,9 +68,8 @@ function RatingBar({
 
 export default function PlayerCard({ player, soldPrice, collapsible = true }: Props) {
   const [showDetails, setShowDetails] = useState(false);
-  const { teams, players } = useGameStore();
+  const { teams, storeP } = useGameStore(useShallow((state) => ({ teams: state.teams, storeP: state.players[player.id] })));
 
-  const storeP = players?.[player.id];
   const isWk = player.isWicketkeeper ?? storeP?.isWicketkeeper;
   const isPtWk = player.isPartTimeWk ?? storeP?.isPartTimeWk;
   const isOpener = player.isOpener ?? storeP?.isOpener;

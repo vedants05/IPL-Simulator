@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { Target, X } from "lucide-react";
 import { useGameStore } from "@/lib/store/gameStore";
+import { useShallow } from "zustand/react/shallow";
 import { AuctionTargetPriority, Player } from "@/lib/types";
 import { MAX_AUCTION_TARGETS, canTeamAffordBid, canTeamBidOnPlayer } from "@/lib/logic/auctionRules";
 import PlayerCard from "./PlayerCard";
@@ -291,7 +292,12 @@ export default function PlayerListPopup({
   type: PopupType;
   onClose: () => void;
 }) {
-  const { auction, players, teams, userTeamId, playerShortlist, auctionTargets, auctionTargetPriorities, setAuctionTarget, removeAuctionTarget } = useGameStore();
+  const { auction, players, teams, userTeamId, playerShortlist, auctionTargets, auctionTargetPriorities, setAuctionTarget, removeAuctionTarget } = useGameStore(useShallow((state) => ({
+    auction: state.auction, players: state.players, teams: state.teams, userTeamId: state.userTeamId,
+    playerShortlist: state.playerShortlist, auctionTargets: state.auctionTargets,
+    auctionTargetPriorities: state.auctionTargetPriorities, setAuctionTarget: state.setAuctionTarget,
+    removeAuctionTarget: state.removeAuctionTarget,
+  })));
   const [plannerShortlist, setPlannerShortlist] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {

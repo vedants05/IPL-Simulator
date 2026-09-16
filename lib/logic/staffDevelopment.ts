@@ -1,6 +1,7 @@
 import type { StaffRatingAttributes, StaffRatingRole } from "./staffRatings";
 import { calculateStaffPotentialAbility, calculateStaffRoleRatings, isStaffRatingRole } from "./staffRatings";
 import { recalculateStaffFinances, releaseCareerStaff, type CareerStaffContract, type CareerStaffState } from "./staffContracts";
+import { calculateStaffSalaryDemand } from "./staffNegotiations";
 import type { StaffSeasonReview } from "./staffPerformanceReview";
 
 const ATTRIBUTE_KEYS = [
@@ -139,7 +140,7 @@ function developContract(contract: CareerStaffContract, review: StaffSeasonRevie
     asOfDate: `${season}-12-31`,
   });
   const potentialAbility = Math.max(currentAbility, Math.min(95, Math.round(contract.potentialAbility * 0.65 + modelPotential * 0.35)));
-  return {
+  const developed = {
     ...contract,
     coachingAttributes: attributes,
     roleRatings,
@@ -152,6 +153,15 @@ function developContract(contract: CareerStaffContract, review: StaffSeasonRevie
     developmentBank: bank,
     reputationDevelopmentBank: reputationBank,
   };
+  return contract.contractType === "rolling" && contract.status === "contracted"
+    ? { ...developed, annualSalary: calculateStaffSalaryDemand({
+      salaryExpectation: contract.annualSalary, reputation, roleRating: roleRatings[primary],
+      roleCount: contract.roles.length, offeredRoles: contract.roles, offeredRoleRatings: roleRatings,
+      startSeason: season + 1, endSeason: null, currentPrimaryRole: contract.primaryRole,
+      offeredPrimaryRole: contract.primaryRole, incumbentRenewal: true,
+      currentRoleCount: contract.roles.length, loyalty: contract.loyalty,
+    }) }
+    : developed;
 }
 
 export interface StaffDevelopmentResult { state: CareerStaffState; retiredStaffIds: string[]; }
@@ -198,7 +208,7 @@ export function processAnnualStaffDevelopment(input: { state: CareerStaffState; 
     state: {
       ...state,
       lastDevelopmentSeason: input.completedSeason,
-      financesByTeam: recalculateStaffFinances(state.contracts, state.financesByTeam),
+      financesByTeam: recalculateStaffFinances(state.contracts, state.financesByTeam, true),
     },
   };
 }

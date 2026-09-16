@@ -19,10 +19,185 @@ export interface StaffOfferInput {
   remainingContractSeasons?: number;
   previousCounterOffer?: number;
   negotiationPatience?: number;
+  offeredRoles?: string[];
+  offeredRoleRatings?: Record<string, number>;
+}
+
+export interface StaffNegotiationPackage {
+  annualSalary: number;
+  primaryRole: string;
+  roles: string[];
+  endSeason: number | null;
+}
+
+export interface StaffNegotiationRound {
+  round: number;
+  offered: StaffNegotiationPackage;
+  packageScore: number;
+  salaryRatio: number;
+  patienceChange: number;
+  trustChange: number;
+  outcome: StaffNegotiationOutcome;
+}
+
+export type StaffNegotiationOutcome = "accepted" | "exceptional-accepted" | "countered" | "rejected" | "walked-away";
+
+export interface StaffNegotiationSession {
+  id: string;
+  staffId: string;
+  teamId: string;
+  action: "hire" | "poach" | "renew";
+  openedOn: string;
+  updatedOn: string;
+  status: "active" | "accepted" | "failed" | "abandoned";
+  patience: number;
+  trust: number;
+  rounds: StaffNegotiationRound[];
+  targetSalary: number;
+  reservationScore: number;
+  concessionBudget: number;
+  latestCounter: StaffNegotiationPackage | null;
+}
+
+export interface StaffNegotiationEvaluation {
+  accepted: boolean;
+  outcome: StaffNegotiationOutcome;
+  session: StaffNegotiationSession;
+  counterPackage: StaffNegotiationPackage | null;
+  patienceAfter: number;
+  patienceChange: number;
+  trustAfter: number;
+  trustChange: number;
+  signals: string[];
+  message: string;
 }
 
 const roundTo = (value: number, increment: number) => Math.ceil(value / increment) * increment;
 const clamp = (value: number, minimum: number, maximum: number) => Math.max(minimum, Math.min(maximum, value));
+
+const stableFraction = (value: string) => {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0) / 4_294_967_295;
+};
+
+const packageDuration = (offer: StaffNegotiationPackage, startSeason: number) => (
+  offer.endSeason === null ? 4 : Math.max(1, offer.endSeason - startSeason + 1)
+);
+
+export function createStaffNegotiationSession(input: StaffOfferInput & {
+  staffId: string;
+  teamId: string;
+  action: "hire" | "poach" | "renew";
+  openedOn: string;
+}): StaffNegotiationSession {
+  const personality = stableFraction(`${input.staffId}:${input.teamId}:${input.startSeason}:${input.action}`);
+  const targetSalary = calculateStaffSalaryDemand(input);
+  const resistance = input.poaching
+    ? Math.max(0, (input.loyalty ?? 50) - 50) * 0.0008
+      + Math.max(0, (input.currentAffinity ?? 0) - (input.destinationAffinity ?? 0)) * 0.00045
+    : 0;
+  return {
+    id: `${input.staffId}:${input.teamId}:${input.startSeason}:${input.action}`,
+    staffId: input.staffId,
+    teamId: input.teamId,
+    action: input.action,
+    openedOn: input.openedOn,
+    updatedOn: input.openedOn,
+    status: "active",
+    patience: calculateInitialStaffNegotiationPatience(input),
+    trust: Math.round(clamp(58 + ((input.adaptability ?? 50) - 50) * 0.12 - resistance * 100, 35, 75)),
+    rounds: [],
+    targetSalary,
+    // The floor is stable for this person/session but deliberately not derivable
+    // from one public percentage or exposed to the UI.
+    reservationScore: clamp(0.885 + personality * 0.045 + resistance, 0.88, 0.955),
+    concessionBudget: clamp(0.055 + (input.adaptability ?? 50) * 0.00035 - resistance * 0.35, 0.025, 0.085),
+    latestCounter: null,
+  };
+}
+
+export function evaluateStaffNegotiationRound(
+  session: StaffNegotiationSession,
+  input: StaffOfferInput & { offeredPackage: StaffNegotiationPackage; currentDate: string },
+): StaffNegotiationEvaluation {
+  if (session.status !== "active") {
+    return { accepted: false, outcome: "walked-away", session, counterPackage: null, patienceAfter: session.patience, patienceChange: 0, trustAfter: session.trust, trustChange: 0, signals: ["Talks have already ended"], message: "These negotiations have already ended." };
+  }
+  const offered = input.offeredPackage;
+  // Revalue the actual package each round so changing to a more valuable role
+  // or adding responsibilities cannot reuse a cheaper opening-round anchor.
+  const target = Math.max(1, calculateStaffSalaryDemand({
+    ...input,
+    offeredSalary: offered.annualSalary,
+    offeredPrimaryRole: offered.primaryRole,
+    offeredRoles: offered.roles,
+    roleCount: offered.roles.length,
+    endSeason: offered.endSeason,
+  }));
+  const salaryRatio = offered.annualSalary / target;
+  const duration = packageDuration(offered, input.startSeason);
+  const desiredDuration = input.incumbentRenewal || (input.loyalty ?? 50) >= 65 ? 3 : (input.ambition ?? 50) >= 70 ? 2 : 3;
+  const securityScore = offered.endSeason === null ? 0.82 : clamp(1 - Math.abs(duration - desiredDuration) * 0.055, 0.72, 1);
+  const currentSeniority = roleSeniority(input.currentPrimaryRole ?? offered.primaryRole);
+  const offeredSeniority = roleSeniority(offered.primaryRole);
+  const roleScore = clamp(0.88 + (offeredSeniority - currentSeniority) * 0.055 + Math.min(1, offered.roles.length) * 0.025, 0.7, 1.08);
+  const affinityScore = input.poaching
+    ? clamp(0.9 + ((input.destinationAffinity ?? 0) - (input.currentAffinity ?? 0)) * 0.0015, 0.76, 1.04)
+    : clamp(0.96 + (input.destinationAffinity ?? input.currentAffinity ?? 0) * 0.0008, 0.94, 1.04);
+  const marketPressure = clamp(((input.reputation + input.roleRating) / 2 - 50) / 220, 0, 0.2);
+  const packageScore = salaryRatio * 0.68 + roleScore * 0.13 + securityScore * 0.1 + affinityScore * 0.09;
+  const previous = session.rounds.at(-1);
+  const repeated = previous
+    ? Math.abs(offered.annualSalary - previous.offered.annualSalary) < target * 0.0125
+      && offered.primaryRole === previous.offered.primaryRole
+      && offered.endSeason === previous.offered.endSeason
+    : false;
+  const salaryImprovement = previous ? (offered.annualSalary - previous.offered.annualSalary) / target : 0;
+  const roleDowngrade = previous ? roleSeniority(offered.primaryRole) < roleSeniority(previous.offered.primaryRole) : false;
+  const openingInsult = session.rounds.length === 0 && salaryRatio < 0.62;
+  const nonCredible = salaryRatio < 0.7 && packageScore < 0.82;
+  const conductPenalty = (repeated ? 13 : 0) + (roleDowngrade ? 10 : 0) + (salaryImprovement < 0 && previous ? 8 : 0);
+  const gapPenalty = packageScore < 0.72 ? 42 : packageScore < 0.82 ? 25 : packageScore < 0.9 ? 12 : 4;
+  const patienceLoss = Math.round(clamp(gapPenalty + conductPenalty + marketPressure * 20 - Math.max(0, salaryImprovement) * 35, 2, 70));
+  const trustLoss = Math.round(clamp((openingInsult ? 24 : nonCredible ? 13 : 3) + conductPenalty * 0.7 - Math.max(0, salaryImprovement) * 25, 1, 35));
+  const patienceAfter = Math.max(0, session.patience - patienceLoss);
+  const trustAfter = Math.max(0, session.trust - trustLoss);
+  const acceptanceThreshold = session.reservationScore + marketPressure * 0.12 + Math.max(0, 50 - trustAfter) * 0.0008;
+  const hardSalaryFloor = Math.max(
+    target * 0.9,
+    input.incumbentRenewal ? Math.max(0, input.salaryExpectation) * 0.97 : 0,
+  );
+  const accepted = packageScore >= acceptanceThreshold && offered.annualSalary >= hardSalaryFloor && !roleDowngrade;
+  const exceptional = packageScore >= 1.08;
+  const walked = !accepted && (patienceAfter <= 0 || trustAfter <= 8);
+  const outcome: StaffNegotiationOutcome = accepted ? (exceptional ? "exceptional-accepted" : "accepted") : walked ? "walked-away" : nonCredible ? "rejected" : "countered";
+  const usedConcessions = session.rounds.filter((round) => round.outcome === "countered").length;
+  const concession = Math.min(session.concessionBudget, usedConcessions * 0.012 + Math.max(0, trustAfter - 45) * 0.00035);
+  const counterSalary = roundTo(Math.max(offered.annualSalary, target * (1 - concession)), 500_000);
+  const counterPackage = outcome === "countered" ? {
+    annualSalary: counterSalary,
+    primaryRole: offeredSeniority < currentSeniority ? input.currentPrimaryRole ?? offered.primaryRole : offered.primaryRole,
+    roles: offered.roles,
+    endSeason: duration < desiredDuration && offered.endSeason !== null ? input.startSeason + desiredDuration - 1 : offered.endSeason,
+  } : null;
+  const round: StaffNegotiationRound = { round: session.rounds.length + 1, offered, packageScore, salaryRatio, patienceChange: -patienceLoss, trustChange: -trustLoss, outcome };
+  const nextSession: StaffNegotiationSession = { ...session, updatedOn: input.currentDate, patience: accepted ? session.patience : patienceAfter, trust: accepted ? session.trust : trustAfter, rounds: [...session.rounds, round], latestCounter: counterPackage, status: accepted ? "accepted" : walked ? "failed" : "active" };
+  const signals = [
+    salaryRatio < 0.78 ? "Salary is not yet credible" : salaryRatio < 0.95 ? "Salary remains below expectations" : "Salary is competitive",
+    roleScore < 0.9 ? "The proposed role is a concern" : "The role is acceptable",
+    securityScore < 0.88 ? "Contract security needs improvement" : "Contract length is acceptable",
+    repeated ? "Repeating the same terms damaged trust" : "They assessed the complete package",
+  ];
+  const message = accepted ? (exceptional ? "The strength of the overall package secured an immediate agreement." : "The overall contract package has been accepted.")
+    : walked ? "Patience or trust has been exhausted. They have ended negotiations."
+      : nonCredible ? "They rejected the proposal without revealing counter-terms. Improve the overall package."
+        : "They remain in talks and have proposed revised package terms.";
+  return { accepted, outcome, session: nextSession, counterPackage, patienceAfter: nextSession.patience, patienceChange: accepted ? 0 : -patienceLoss, trustAfter: nextSession.trust, trustChange: accepted ? 0 : -trustLoss, signals, message };
+}
 
 export function calculateInitialStaffNegotiationPatience(input: StaffOfferInput): number {
   const loyaltyResistance = input.poaching ? Math.max(0, (input.loyalty ?? 50) - 50) * 0.22 : 0;
@@ -63,27 +238,41 @@ export function calculateStaffRecruitmentInterest(input: StaffOfferInput, coolin
 }
 
 export function calculateStaffSalaryDemand(input: StaffOfferInput): number {
-  const baseline = Math.max(5_000_000, input.salaryExpectation || 0);
-  const roleMultiplier = 0.8 + Math.max(0, input.roleRating - 60) * 0.0125;
-  const reputationMultiplier = 0.9 + Math.max(0, Math.min(100, input.reputation)) * 0.002;
+  const ratingMarketFor = (value: number) => {
+    const rating = clamp(value, 50, 94);
+    const quality = (rating - 50) / 44;
+    return 5_000_000 + 27_000_000 * Math.pow(quality, 1.65);
+  };
+  // Ratings establish the market rather than the previous contract. This avoids
+  // renewals recursively multiplying an already-inflated salary every season.
+  const ratingMarket = ratingMarketFor(input.roleRating);
+  const statedExpectation = Math.max(0, input.salaryExpectation || 0);
+  const boundedExpectation = clamp(statedExpectation, ratingMarket * 0.7, ratingMarket * 1.3);
+  const marketBaseline = input.incumbentRenewal
+    ? ratingMarket
+    : ratingMarket * 0.82 + boundedExpectation * 0.18;
+  const reputationMultiplier = 0.92 + clamp(input.reputation, 0, 100) * 0.0016;
   const salaryRoleMultiplier = (role?: string) => role === "head_coach" ? 1.55
     : role === "mentor" ? 1.18
       : role === "assistant_coach" ? 1.12
         : role === "batting_coach" || role === "pace_bowling_coach" || role === "spin_bowling_coach"
           || role === "fielding_coach" || role === "wicketkeeping_coach" ? 1.08
           : role === "coach" ? 0.95 : 1;
-  const offeredRoleMultiplier = salaryRoleMultiplier(input.offeredPrimaryRole);
-  const currentRoleMultiplier = salaryRoleMultiplier(input.currentPrimaryRole);
-  const hierarchyMultiplier = input.incumbentRenewal
-    ? offeredRoleMultiplier / Math.max(0.8, currentRoleMultiplier)
-    : offeredRoleMultiplier;
+  const offeredRoles = Array.from(new Set(input.offeredRoles?.length
+    ? input.offeredRoles
+    : [input.offeredPrimaryRole ?? input.currentPrimaryRole ?? "coach"]));
+  const primaryRole = input.offeredPrimaryRole ?? offeredRoles[0];
+  const primaryRoleMarket = ratingMarket * salaryRoleMultiplier(primaryRole);
+  const secondaryRoleMarket = offeredRoles
+    .filter((role) => role !== primaryRole)
+    .reduce((sum, role) => sum + ratingMarketFor(input.offeredRoleRatings?.[role] ?? input.roleRating)
+      * salaryRoleMultiplier(role) * 0.62, 0);
+  const roleValuedMarket = primaryRoleMarket + secondaryRoleMarket;
+  const expectationRatio = marketBaseline / Math.max(1, ratingMarket);
   const outOfRoleMultiplier = input.currentPrimaryRole && input.offeredPrimaryRole
     && input.currentPrimaryRole !== input.offeredPrimaryRole ? 1.18 : 1;
   const duration = input.endSeason === null ? null : input.endSeason - input.startSeason + 1;
-  const durationMultiplier = duration === null ? 1.05 : duration <= 1 ? 1.12 : duration === 2 ? 1.04 : 1;
-  const responsibilityMultiplier = input.incumbentRenewal
-    ? 1 + Math.max(0, input.roleCount - Math.max(1, input.currentRoleCount ?? 1)) * 0.28
-    : 1 + Math.max(0, input.roleCount - 1) * 0.28;
+  const durationMultiplier = duration === null ? 1.03 : duration <= 1 ? 1.08 : duration === 2 ? 1.03 : 1;
   const poachingMultiplier = input.poaching ? 1.1 : 1;
   const loyaltyPremium = input.poaching
     ? 1 + Math.max(0, (input.loyalty ?? 50) - 40) * 0.006
@@ -97,12 +286,13 @@ export function calculateStaffSalaryDemand(input: StaffOfferInput): number {
   const mobilityDiscount = input.poaching
     ? 1 - (Math.max(0, (input.ambition ?? 50) - 50) + Math.max(0, (input.adaptability ?? 50) - 50)) * 0.0015
     : 1;
-  return roundTo(
-    baseline * roleMultiplier * reputationMultiplier * durationMultiplier * hierarchyMultiplier
-      * outOfRoleMultiplier * responsibilityMultiplier * poachingMultiplier * loyaltyPremium
-      * affinityPremium * securityPremium * Math.max(0.88, mobilityDiscount),
-    500_000,
-  );
+  const calculatedDemand = roleValuedMarket * expectationRatio * reputationMultiplier * durationMultiplier
+      * outOfRoleMultiplier * poachingMultiplier * loyaltyPremium
+      * affinityPremium * securityPremium * Math.max(0.88, mobilityDiscount);
+  // An incumbent can resist a pay cut, but their old wage is only a floor—not
+  // the base to which all valuation multipliers are applied again.
+  const renewalFloor = input.incumbentRenewal ? statedExpectation * 0.97 : 0;
+  return roundTo(Math.max(calculatedDemand, renewalFloor), 500_000);
 }
 
 export function evaluateStaffContractOffer(input: StaffOfferInput): {
@@ -127,19 +317,29 @@ export function evaluateStaffContractOffer(input: StaffOfferInput): {
   }
   const shortfall = demand - offered;
   const offerRatio = offered / Math.max(1, demand);
-  const patienceLoss = offerRatio < 0.45 ? 55
-    : offerRatio < 0.6 ? 38
-      : offerRatio < 0.75 ? 24
+  const patienceLoss = offerRatio < 0.5 ? 65
+    : offerRatio < 0.7 ? 45
+      : offerRatio < 0.82 ? 24
         : offerRatio < 0.88 ? 12
           : Math.max(3, Math.round((1 - offerRatio) * 45));
   const patienceAfter = Math.max(0, patience - patienceLoss);
   if (patienceAfter <= 0) {
     return { accepted: false, outcome: "walked-away", demand, counterOffer: null, shortfall, patienceAfter, patienceChange: -patienceLoss, message: "Patience exhausted. The staff member has ended negotiations." };
   }
-  if (offerRatio < 0.45) {
+  if (offerRatio < 0.7) {
     return { accepted: false, outcome: "instant-rejected", demand, counterOffer: null, shortfall, patienceAfter, patienceChange: -patienceLoss, message: "The offer was rejected immediately as far below credible terms." };
   }
-  const reservation = roundTo(demand * 0.88, 500_000);
+  const reservationFactor = clamp(
+    0.92 + ((input.loyalty ?? 50) - 50) * 0.0005
+      + ((input.ambition ?? 50) - 50) * 0.0003
+      - ((input.adaptability ?? 50) - 50) * 0.0002,
+    0.91,
+    0.97,
+  );
+  const reservation = roundTo(Math.max(
+    demand * reservationFactor,
+    input.incumbentRenewal ? Math.max(0, input.salaryExpectation) * 0.97 : 0,
+  ), 500_000);
   const freshCounter = Math.min(demand, Math.max(reservation, roundTo(offered + shortfall * 0.55, 500_000)));
   // Once staff name a figure it is an anchor. An improved bid can hold that
   // figure or earn a small concession toward the club; it can never make the

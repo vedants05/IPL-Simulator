@@ -5,6 +5,7 @@ import { CalendarDays, Check, Clock3, Globe2, Map, Maximize2, Minimize2, Search,
 import IndiaMap from "@svg-maps/india";
 import WorldMap from "@svg-maps/world";
 import { useGameStore } from "@/lib/store/gameStore";
+import { useShallow } from "zustand/react/shallow";
 import {
   INDIA_SCOUTING_REGIONS,
   INTERNATIONAL_SCOUTING_REGIONS,
@@ -241,7 +242,18 @@ export default function ScoutingAssignmentsPage({ shortlist, onToggleShortlist }
     cancelScoutingAssignment,
     startDeepScoutingAssignment,
     reconcileScoutingAssignments,
-  } = useGameStore();
+  } = useGameStore(useShallow((state) => ({
+    players: state.players,
+    currentDate: state.currentDate,
+    currentSeason: state.currentSeason,
+    scoutingAssignments: state.scoutingAssignments,
+    scoutingReports: state.scoutingReports,
+    scoutingNetworks: state.scoutingNetworks,
+    startScoutingAssignment: state.startScoutingAssignment,
+    cancelScoutingAssignment: state.cancelScoutingAssignment,
+    startDeepScoutingAssignment: state.startDeepScoutingAssignment,
+    reconcileScoutingAssignments: state.reconcileScoutingAssignments,
+  })));
   const [market, setMarket] = useState<ScoutingMarket>("india");
   const [selectedIndia, setSelectedIndia] = useState("maharashtra");
   const [selectedInternational, setSelectedInternational] = useState("australia");

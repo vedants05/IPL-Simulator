@@ -43,7 +43,9 @@ export function findStaffByRole(
   contracts: CareerStaffContract[],
   role: string
 ): CareerStaffContract | null {
-  return contracts.find((c) => c.roles.includes(role) || c.primaryRole === role) ?? null;
+  return contracts
+    .filter((c) => c.roles.includes(role) || c.primaryRole === role)
+    .sort((left, right) => (right.roleRatings?.[role] ?? 0) - (left.roleRatings?.[role] ?? 0))[0] ?? null;
 }
 
 /**

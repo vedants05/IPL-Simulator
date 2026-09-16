@@ -1,10 +1,11 @@
 "use client";
 import { useState } from "react";
 import { useGameStore } from "@/lib/store/gameStore";
+import { useShallow } from "zustand/react/shallow";
 import { formatPrice } from "@/lib/logic/auctionRules";
 
 export default function AuctionSetNav() {
-  const { auction, players } = useGameStore();
+  const { auction, players } = useGameStore(useShallow((state) => ({ auction: state.auction, players: state.players })));
   const [openSet, setOpenSet] = useState<string | null>(auction?.sets[0]?.id ?? null);
 
   if (!auction) return null;

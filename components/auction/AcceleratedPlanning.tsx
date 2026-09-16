@@ -2,6 +2,7 @@
 import React, { useState, useMemo } from "react";
 import { Search, Check, Play, User, DollarSign, Info } from "lucide-react";
 import { useGameStore } from "@/lib/store/gameStore";
+import { useShallow } from "zustand/react/shallow";
 import { Player, Team } from "@/lib/types";
 
 // Helper to format lakhs to crores
@@ -50,7 +51,13 @@ export function AcceleratedNominationsScreen() {
     teams,
     userTeamId,
     confirmUserAcceleratedTargets,
-  } = useGameStore();
+  } = useGameStore(useShallow((state) => ({
+    auction: state.auction,
+    players: state.players,
+    teams: state.teams,
+    userTeamId: state.userTeamId,
+    confirmUserAcceleratedTargets: state.confirmUserAcceleratedTargets,
+  })));
 
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
@@ -283,7 +290,15 @@ export function AcceleratedPlanningResultsScreen() {
     aiAcceleratedTargets,
     aiAcceleratedBackups,
     startAcceleratedAuctionFromPlanning,
-  } = useGameStore();
+  } = useGameStore(useShallow((state) => ({
+    teams: state.teams,
+    players: state.players,
+    userTeamId: state.userTeamId,
+    userAcceleratedTargets: state.userAcceleratedTargets,
+    aiAcceleratedTargets: state.aiAcceleratedTargets,
+    aiAcceleratedBackups: state.aiAcceleratedBackups,
+    startAcceleratedAuctionFromPlanning: state.startAcceleratedAuctionFromPlanning,
+  })));
 
   const userTeam = teams[userTeamId];
 

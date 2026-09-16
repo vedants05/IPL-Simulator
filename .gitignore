@@ -61,6 +61,9 @@ simulation_*_report.json
 *.test.jsx
 !/calibration/stadiumGeometry.test.ts
 !/calibration/stadiums.test.ts
+!/calibration/playerSalarySeparation.test.ts
+!/calibration/bowlingConsistency.test.ts
+!/calibration/edenGardensAsset.test.ts
 *.spec.ts
 *.spec.tsx
 *.spec.js
@@ -100,4 +103,5 @@ simulation_*_report.json
 # Regression coverage for the imported Eden model's non-destructive editing.
 !/calibration/edenModules.test.ts
 !/calibration/edenRefurbishment.test.ts
+!/calibration/offseasonStatsCalibration.ts
 
