@@ -1977,15 +1977,10 @@ export function pickBiddingTeam(
 // AI retention decisions (pre-auction) — replaces the naive "top 3 capped +
 // top 1 uncapped by stars" heuristic. Each candidate's estimated market worth
 // (skill, age curve, potential, reputation, leadership, finishing) is weighed
-// against the explicit slab costs (18/14/11/18/14 Cr capped, 4 Cr uncapped).
+// against the save's retention slab costs (world rules).
 // Loyalty DNA lowers the retention bar and can override a modest deficit for
 // iconic high-reputation stars; stochastic noise varies outcomes per run.
 // ---------------------------------------------------------------------------
-const RETENTION_SLABS = [1800, 1400, 1100, 1800, 1400];
-const UNCAPPED_SLAB = 400;
-const MAX_CAPPED = 5;
-const MAX_UNCAPPED = 2;
-const MAX_TOTAL = 6;
 
 /** Estimated market worth in lakhs — used only for retention decisions. */
 export function estimateRetentionWorth(player: Player, team: Team): number {
@@ -2106,9 +2101,11 @@ export function decideAIRetentions(
     return b.worth - a.worth;
   });
 
+  const { maxCappedRetentions, maxUncappedRetentions, maxTotalRetentions, uncappedRetentionCostLakhs: UNCAPPED_SLAB } = worldRules();
+
   // 2. Perform trial evaluations to find a stable capped player count
-  // We try targeting 5 down to 0 capped players, and select the first target that is fully satisfied.
-  for (let targetCapped = MAX_CAPPED; targetCapped >= 0; targetCapped--) {
+  // We try the max capped count down to 0, and select the first target that is fully satisfied.
+  for (let targetCapped = maxCappedRetentions; targetCapped >= 0; targetCapped--) {
     const slabs = getCappedRetentionSlabsForCount(targetCapped);
     const retainedList: string[] = [];
     let cappedUsed = 0;
@@ -2116,16 +2113,16 @@ export function decideAIRetentions(
     let totalSpend = 0;
 
     for (const { p, worth, isCapped, cornerstone, isRep10 } of allCandidates) {
-      if (retainedList.length >= MAX_TOTAL) break;
+      if (retainedList.length >= maxTotalRetentions) break;
 
       // Check slot limits
       if (isCapped) {
         if (cappedUsed >= targetCapped) continue;
       } else {
-        if (uncappedUsed >= MAX_UNCAPPED) continue;
+        if (uncappedUsed >= maxUncappedRetentions) continue;
       }
 
-      const slabCost = isCapped ? slabs[cappedUsed] : UNCAPPED_SLAB;
+      const slabCost = isCapped ? (slabs[cappedUsed] ?? slabs[slabs.length - 1] ?? 0) : UNCAPPED_SLAB;
       const spendCap = cornerstone ? cornerstoneSpendCap : maxRetentionSpend;
 
       if (totalSpend + slabCost > spendCap && !isRep10) {
