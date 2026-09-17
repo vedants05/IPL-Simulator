@@ -1,8 +1,9 @@
 "use client";
 
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Bookmark, X } from "lucide-react";
+import { Bookmark, Lock, Pencil, X } from "lucide-react";
 import { useGameStore } from "@/lib/store/gameStore";
+import { PlayerEditorModal } from "@/components/player/PlayerEditorModal";
 import { formatPrice } from "@/lib/logic/auctionRules";
 import { formatStatValue } from "@/lib/logic/statFormatting";
 import { formatTopSevenBattingPositions } from "@/lib/logic/playerBattingPositions";
@@ -164,9 +165,12 @@ export function PlayerProfileModal({
   const userTeamId = useGameStore((state) => state.userTeamId);
   const internalShortlist = useGameStore((state) => state.playerShortlist);
   const setInternalShortlist = useGameStore((state) => state.setPlayerShortlist);
+  const playerOverride = useGameStore((state) => (playerId ? state.playerOverrides[playerId] : undefined));
+  const frozenAttributes = useGameStore((state) => (playerId ? state.frozenPlayerAttributes[playerId] : undefined));
   const viewportRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
   const [profileScale, setProfileScale] = useState(1);
+  const [isEditing, setIsEditing] = useState(false);
 
   const activePlayer = playerId ? players[playerId] ?? null : null;
   const retiredSnapshot = playerId && !activePlayer
@@ -458,6 +462,16 @@ export function PlayerProfileModal({
 
   if (!detailedPlayer) return null;
 
+  const isEdited = Boolean(
+    (playerOverride && Object.keys(playerOverride).length > 0)
+    || (frozenAttributes && Object.keys(frozenAttributes).length > 0),
+  );
+  const frozenMark = (key: keyof Player) => (
+    frozenAttributes && key in frozenAttributes
+      ? <Lock size={7} className="ml-1 inline-block align-middle text-accent" aria-label="Frozen" />
+      : null
+  );
+
   const currentTeam = teams[detailedPlayer.currentTeamId ?? ""];
   const isRetired = Boolean(retiredSnapshot);
   const nationalityLabel = detailedPlayer.nationality === "Overseas"
@@ -483,6 +497,14 @@ export function PlayerProfileModal({
           <div className="min-w-0">
             <div className="mb-1 flex items-center gap-2">
               <span className="font-space-mono text-[9px] font-bold uppercase tracking-widest text-text-secondary">Player Profile</span>
+              {isEdited && (
+                <span
+                  className="rounded-[2px] border border-accent/60 bg-accent/10 px-1.5 py-0.5 font-space-mono text-[8px] font-bold uppercase text-accent"
+                  title="This player has manual edits or frozen ratings in this save"
+                >
+                  Edited
+                </span>
+              )}
               {detailedPlayer.nationality === "Overseas" && (
                 <span
                   className="rounded-[2px] px-1.5 py-0.5 font-space-mono text-[8px] font-bold text-white"
@@ -499,6 +521,17 @@ export function PlayerProfileModal({
             </p>
           </div>
           <div className="ml-4 flex shrink-0 items-center gap-2">
+            {activePlayer && (
+              <button
+                type="button"
+                onClick={() => setIsEditing(true)}
+                className="flex h-9 items-center gap-1.5 rounded border border-border bg-surface px-3 font-space-mono text-[9px] font-bold uppercase tracking-wider text-text-primary transition-all hover:border-accent hover:bg-accent/5 hover:text-accent"
+                title="Edit this player's profile and ratings"
+              >
+                <Pencil size={13} />
+                <span>Edit Player</span>
+              </button>
+            )}
             {!isRetired && (
               <button
                 type="button"
@@ -558,14 +591,14 @@ export function PlayerProfileModal({
             {!isRetired && <section className="col-start-2 row-start-1 rounded border border-border bg-bg p-3">
               <h4 className="mb-2 border-b border-border pb-1.5 font-anton text-[12px] uppercase text-text-primary">Ability & Phase Ratings</h4>
               <div className="grid grid-cols-4 gap-2">
-                {[
-                  ["Batting CA", detailedPlayer.currentBatting],
-                  ["Batting PA", detailedPlayer.potentialBatting],
-                  ["Bowling CA", detailedPlayer.currentBowling],
-                  ["Bowling PA", detailedPlayer.potentialBowling],
-                ].map(([label, value]) => (
+                {([
+                  ["Batting CA", detailedPlayer.currentBatting, "currentBatting"],
+                  ["Batting PA", detailedPlayer.potentialBatting, "potentialBatting"],
+                  ["Bowling CA", detailedPlayer.currentBowling, "currentBowling"],
+                  ["Bowling PA", detailedPlayer.potentialBowling, "potentialBowling"],
+                ] as Array<[string, number, keyof Player]>).map(([label, value, key]) => (
                   <div key={label} className="rounded border border-border bg-surface p-2 text-center">
-                    <div className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">{label}</div>
+                    <div className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">{label}{frozenMark(key)}</div>
                     <div className="mt-0.5 font-anton text-[21px] text-text-primary">{value}</div>
                   </div>
                 ))}
@@ -578,15 +611,15 @@ export function PlayerProfileModal({
                     <div className="mb-1 text-center font-space-mono text-[7.5px] font-bold uppercase tracking-wider text-text-secondary">Batting Phases</div>
                     <div className="grid grid-cols-3 gap-1 text-center">
                       <div className="rounded bg-bg p-1">
-                        <div className="font-space-mono text-[6.5px] uppercase text-text-secondary">PP (1-6)</div>
+                        <div className="font-space-mono text-[6.5px] uppercase text-text-secondary">PP (1-6){frozenMark("powerplayBatting")}</div>
                         <div className="font-anton text-[14px] text-text-primary">{detailedPlayer.powerplayBatting ?? "-"}</div>
                       </div>
                       <div className="rounded bg-bg p-1">
-                        <div className="font-space-mono text-[6.5px] uppercase text-text-secondary">MID (7-15)</div>
+                        <div className="font-space-mono text-[6.5px] uppercase text-text-secondary">MID (7-15){frozenMark("middleOversBatting")}</div>
                         <div className="font-anton text-[14px] text-text-primary">{detailedPlayer.middleOversBatting ?? "-"}</div>
                       </div>
                       <div className="rounded bg-bg p-1">
-                        <div className="font-space-mono text-[6.5px] uppercase text-text-secondary">DTH (16-20)</div>
+                        <div className="font-space-mono text-[6.5px] uppercase text-text-secondary">DTH (16-20){frozenMark("deathBatting")}</div>
                         <div className="font-anton text-[14px] text-text-primary">{detailedPlayer.deathBatting ?? "-"}</div>
                       </div>
                     </div>
@@ -595,15 +628,15 @@ export function PlayerProfileModal({
                     <div className="mb-1 text-center font-space-mono text-[7.5px] font-bold uppercase tracking-wider text-text-secondary">Bowling Phases</div>
                     <div className="grid grid-cols-3 gap-1 text-center">
                       <div className="rounded bg-bg p-1">
-                        <div className="font-space-mono text-[6.5px] uppercase text-text-secondary">PP (1-6)</div>
+                        <div className="font-space-mono text-[6.5px] uppercase text-text-secondary">PP (1-6){frozenMark("powerplayBowling")}</div>
                         <div className="font-anton text-[14px] text-text-primary">{detailedPlayer.powerplayBowling ?? "-"}</div>
                       </div>
                       <div className="rounded bg-bg p-1">
-                        <div className="font-space-mono text-[6.5px] uppercase text-text-secondary">MID (7-15)</div>
+                        <div className="font-space-mono text-[6.5px] uppercase text-text-secondary">MID (7-15){frozenMark("middleOversBowling")}</div>
                         <div className="font-anton text-[14px] text-text-primary">{detailedPlayer.middleOversBowling ?? "-"}</div>
                       </div>
                       <div className="rounded bg-bg p-1">
-                        <div className="font-space-mono text-[6.5px] uppercase text-text-secondary">DTH (16-20)</div>
+                        <div className="font-space-mono text-[6.5px] uppercase text-text-secondary">DTH (16-20){frozenMark("deathBowling")}</div>
                         <div className="font-anton text-[14px] text-text-primary">{detailedPlayer.deathBowling ?? "-"}</div>
                       </div>
                     </div>
@@ -615,43 +648,43 @@ export function PlayerProfileModal({
               {(detailedPlayer.stamina != null || detailedPlayer.consistency != null || detailedPlayer.bigMatchRating != null || detailedPlayer.pressureRating != null || detailedPlayer.battingAggression != null || detailedPlayer.aggression != null || detailedPlayer.fieldingRating != null || detailedPlayer.wicketkeepingRating != null || detailedPlayer.injuryProneness != null || detailedPlayer.paceRating != null || detailedPlayer.spinRating != null) && (
                 <div className="mt-2.5 grid grid-cols-5 gap-1.5 lg:gap-2">
                   <div className="rounded border border-border/70 bg-surface/60 p-1.5 text-center">
-                    <div className="whitespace-nowrap font-space-mono text-[6px] font-bold uppercase text-text-secondary lg:text-[6.5px]">Bat Cons</div>
+                    <div className="whitespace-nowrap font-space-mono text-[6px] font-bold uppercase text-text-secondary lg:text-[6.5px]">Bat Cons{frozenMark("battingConsistency")}</div>
                     <div className="mt-0.5 font-anton text-[15px] text-text-primary">{detailedPlayer.battingConsistency ?? detailedPlayer.stamina ?? "-"}</div>
                   </div>
                   <div className="rounded border border-border/70 bg-surface/60 p-1.5 text-center">
-                    <div className="whitespace-nowrap font-space-mono text-[6px] font-bold uppercase text-text-secondary lg:text-[6.5px]">Bowl Cons</div>
+                    <div className="whitespace-nowrap font-space-mono text-[6px] font-bold uppercase text-text-secondary lg:text-[6.5px]">Bowl Cons{frozenMark("bowlingConsistency")}</div>
                     <div className="mt-0.5 font-anton text-[15px] text-text-primary">{detailedPlayer.bowlingConsistency ?? detailedPlayer.consistency ?? "-"}</div>
                   </div>
                   <div className="rounded border border-border/70 bg-surface/60 p-1.5 text-center">
-                    <div className="whitespace-nowrap font-space-mono text-[6px] font-bold uppercase text-text-secondary lg:text-[6.5px]">Aggression</div>
+                    <div className="whitespace-nowrap font-space-mono text-[6px] font-bold uppercase text-text-secondary lg:text-[6.5px]">Aggression{frozenMark("battingAggression")}</div>
                     <div className="mt-0.5 font-anton text-[15px] text-text-primary">{detailedPlayer.battingAggression ?? detailedPlayer.aggression ?? "-"}</div>
                   </div>
                   <div className="rounded border border-border/70 bg-surface/60 p-1.5 text-center">
-                    <div className="whitespace-nowrap font-space-mono text-[6px] font-bold uppercase text-text-secondary lg:text-[6.5px]">Big Match</div>
+                    <div className="whitespace-nowrap font-space-mono text-[6px] font-bold uppercase text-text-secondary lg:text-[6.5px]">Big Match{frozenMark("bigMatchRating")}</div>
                     <div className="mt-0.5 font-anton text-[15px] text-text-primary">{detailedPlayer.bigMatchRating ?? "-"}</div>
                   </div>
                   <div className="rounded border border-border/70 bg-surface/60 p-1.5 text-center">
-                    <div className="whitespace-nowrap font-space-mono text-[6px] font-bold uppercase text-text-secondary lg:text-[6.5px]">Pressure</div>
+                    <div className="whitespace-nowrap font-space-mono text-[6px] font-bold uppercase text-text-secondary lg:text-[6.5px]">Pressure{frozenMark("pressureRating")}</div>
                     <div className="mt-0.5 font-anton text-[15px] text-text-primary">{detailedPlayer.pressureRating ?? "-"}</div>
                   </div>
                   <div className="rounded border border-border/70 bg-surface/60 p-1.5 text-center">
-                    <div className="whitespace-nowrap font-space-mono text-[6px] font-bold uppercase text-text-secondary lg:text-[6.5px]">Fielding</div>
+                    <div className="whitespace-nowrap font-space-mono text-[6px] font-bold uppercase text-text-secondary lg:text-[6.5px]">Fielding{frozenMark("fieldingRating")}</div>
                     <div className="mt-0.5 font-anton text-[15px] text-text-primary">{detailedPlayer.fieldingRating ?? "-"}</div>
                   </div>
                   <div className="rounded border border-border/70 bg-surface/60 p-1.5 text-center">
-                    <div className="whitespace-nowrap font-space-mono text-[6px] font-bold uppercase text-text-secondary lg:text-[6.5px]">Keeping</div>
+                    <div className="whitespace-nowrap font-space-mono text-[6px] font-bold uppercase text-text-secondary lg:text-[6.5px]">Keeping{frozenMark("wicketkeepingRating")}</div>
                     <div className="mt-0.5 font-anton text-[15px] text-text-primary">{detailedPlayer.wicketkeepingRating ?? "-"}</div>
                   </div>
                   <div className="rounded border border-border/70 bg-surface/60 p-1.5 text-center">
-                    <div className="whitespace-nowrap font-space-mono text-[6px] font-bold uppercase text-text-secondary lg:text-[6.5px]">Injury Risk</div>
+                    <div className="whitespace-nowrap font-space-mono text-[6px] font-bold uppercase text-text-secondary lg:text-[6.5px]">Injury Risk{frozenMark("injuryProneness")}</div>
                     <div className="mt-0.5 font-anton text-[15px] text-text-primary">{detailedPlayer.injuryProneness ?? "-"}</div>
                   </div>
                   <div className="rounded border border-border/70 bg-surface/60 p-1.5 text-center">
-                    <div className="whitespace-nowrap font-space-mono text-[6px] font-bold uppercase text-text-secondary lg:text-[6.5px]">Vs Pace</div>
+                    <div className="whitespace-nowrap font-space-mono text-[6px] font-bold uppercase text-text-secondary lg:text-[6.5px]">Vs Pace{frozenMark("paceRating")}</div>
                     <div className="mt-0.5 font-anton text-[15px] text-text-primary">{detailedPlayer.paceRating ?? "-"}</div>
                   </div>
                   <div className="rounded border border-border/70 bg-surface/60 p-1.5 text-center">
-                    <div className="whitespace-nowrap font-space-mono text-[6px] font-bold uppercase text-text-secondary lg:text-[6.5px]">Vs Spin</div>
+                    <div className="whitespace-nowrap font-space-mono text-[6px] font-bold uppercase text-text-secondary lg:text-[6.5px]">Vs Spin{frozenMark("spinRating")}</div>
                     <div className="mt-0.5 font-anton text-[15px] text-text-primary">{detailedPlayer.spinRating ?? "-"}</div>
                   </div>
                 </div>
@@ -901,6 +934,10 @@ export function PlayerProfileModal({
             </section>
           </div>
         </div>
+
+        {isEditing && activePlayer && (
+          <PlayerEditorModal player={activePlayer} onClose={() => setIsEditing(false)} />
+        )}
       </div>
     </div>
   );

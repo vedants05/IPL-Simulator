@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowDown, ArrowUp, ArrowUpDown, Bot, BriefcaseBusiness, RefreshCw, UserMinus, UserPlus, UsersRound, X } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, Bot, BriefcaseBusiness, Lock, Pencil, RefreshCw, UserMinus, UserPlus, UsersRound, X } from "lucide-react";
 
+import { StaffEditorModal } from "@/components/club/StaffEditorModal";
 import type { Team } from "@/lib/types";
 import { useGameStore } from "@/lib/store/gameStore";
 import { calculateInitialStaffNegotiationPatience, calculateStaffMoveInterest, calculateStaffRecruitmentInterest, calculateStaffRenewalInterest, calculateStaffSalaryDemand, createStaffNegotiationSession, evaluateStaffNegotiationRound } from "@/lib/logic/staffNegotiations";
@@ -146,6 +147,13 @@ function StaffProfileModal({
   const setStaffNegotiationCooldown = useGameStore((state) => state.setStaffNegotiationCooldown);
   const setStaffNegotiationSession = useGameStore((state) => state.setStaffNegotiationSession);
   const careerContract = careerStaff.contracts[member.id];
+  const staffOverride = useGameStore((state) => state.staffOverrides[member.id]);
+  const frozenStaffAttributes = useGameStore((state) => state.frozenStaffAttributes[member.id]);
+  const isEdited = Boolean(
+    (staffOverride && Object.keys(staffOverride).length > 0)
+    || (frozenStaffAttributes && Object.keys(frozenStaffAttributes).length > 0),
+  );
+  const [isEditing, setIsEditing] = useState(false);
   const negotiationCooldownUntil = careerStaff.negotiationCooldowns[member.id];
   const negotiationCoolingDown = Boolean(negotiationCooldownUntil && currentDate < negotiationCooldownUntil);
   const isFreeAgent = careerContract?.status === "free_agent";
@@ -432,7 +440,17 @@ function StaffProfileModal({
               {initials(member.full_name)}
             </div>
             <div className="min-w-0">
-              <p className="font-space-mono text-[8px] font-bold uppercase tracking-[0.2em] text-text-secondary">Staff profile</p>
+              <p className="flex items-center gap-2 font-space-mono text-[8px] font-bold uppercase tracking-[0.2em] text-text-secondary">
+                Staff profile
+                {isEdited && (
+                  <span
+                    className="rounded-[2px] border border-accent/60 bg-accent/10 px-1.5 py-0.5 font-space-mono text-[8px] font-bold uppercase tracking-normal text-accent"
+                    title="This staff member has manual edits or frozen ratings in this save"
+                  >
+                    Edited
+                  </span>
+                )}
+              </p>
               <h2 className="truncate font-anton text-2xl uppercase leading-tight text-text-primary sm:text-3xl">{member.full_name}</h2>
               <p className="mt-1 font-space-mono text-[9px] font-bold uppercase tracking-wider text-text-secondary">
                 {roleLabel(assignment.role)} · {team?.name ?? assignment.team_id}
@@ -441,6 +459,17 @@ function StaffProfileModal({
           </div>
 
           <div className="flex items-center gap-3">
+            {careerContract && (
+              <button
+                type="button"
+                onClick={() => setIsEditing(true)}
+                className="flex h-9 items-center gap-1.5 rounded border border-border bg-surface px-3 font-space-mono text-[9px] font-bold uppercase tracking-wider text-text-primary transition-all hover:border-accent hover:bg-accent/5 hover:text-accent"
+                title="Edit this staff member's profile, attributes and contract"
+              >
+                <Pencil size={13} />
+                <span>Edit Staff</span>
+              </button>
+            )}
             <div className="hidden sm:flex items-center gap-3.5 rounded-lg border border-border bg-bg px-4 py-2">
               <div>
                 <p className="font-space-mono text-[7px] font-bold uppercase tracking-wider text-text-secondary">Contract</p>
@@ -661,6 +690,9 @@ function StaffProfileModal({
                   <div key={key} className="grid grid-cols-[9.5rem_minmax(0,1fr)_1.75rem] items-center gap-2">
                     <span className="font-space-mono text-[8.5px] font-bold uppercase text-text-secondary whitespace-nowrap" title={fieldLabel(key)}>
                       {fieldLabel(key).replace(" Coaching", "")}
+                      {frozenStaffAttributes && `attr:${key}` in frozenStaffAttributes && (
+                        <Lock size={8} className="ml-1 inline-block align-middle text-accent" aria-label="Frozen" />
+                      )}
                     </span>
                     <div className="h-1.5 overflow-hidden rounded-full bg-[#252a34]">
                       <div
@@ -756,6 +788,9 @@ function StaffProfileModal({
           </div>
         </div>
 
+        {isEditing && careerContract && (
+          <StaffEditorModal contract={careerContract} onClose={() => setIsEditing(false)} />
+        )}
         {contractAction && (
           <div className="fixed inset-0 z-[160] flex items-center justify-center bg-black/75 p-6 backdrop-blur-sm" role="presentation" onMouseDown={requestNegotiationClose}>
             <div role="dialog" aria-modal="true" aria-labelledby="staff-negotiation-title" className="w-full max-w-2xl overflow-hidden rounded-lg border-2 border-accent bg-surface shadow-2xl" onMouseDown={(event) => event.stopPropagation()}>
@@ -951,9 +986,18 @@ export default function StaffManagementPage({ teams, mode = "club", initialStaff
       if (!contract) return member;
       return {
         ...member,
-        coaching_attributes: member.coaching_attributes ?? contract.coachingAttributes,
+        coaching_attributes: contract.coachingAttributes,
         ...contract.coachingAttributes,
         current_real_team_id: contract.teamId,
+        full_name: contract.fullName,
+        country: contract.country,
+        date_of_birth: contract.dateOfBirth ?? member.date_of_birth,
+        loyalty: contract.loyalty,
+        ambition: contract.ambition,
+        adaptability: contract.adaptability,
+        coaching_philosophy: contract.coachingPhilosophy ?? member.coaching_philosophy,
+        preferred_team_strategy: contract.preferredTeamStrategy ?? member.preferred_team_strategy,
+        secondary_roles: contract.roles.filter((role) => role !== contract.primaryRole),
         primary_role: contract.primaryRole,
         role_ratings: contract.roleRatings,
         current_ability: contract.currentAbility,
