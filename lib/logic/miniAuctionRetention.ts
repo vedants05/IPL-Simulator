@@ -1,7 +1,8 @@
 import type { Player, Team } from "@/lib/types";
 import { getTopSevenBattingPositions } from "./playerBattingPositions";
+import { worldRules } from "./worldRules";
 
-export const MINI_AUCTION_PURSE_LAKHS = 12_500;
+export const getMiniAuctionPurseLakhs = () => worldRules().miniAuctionPurseLakhs;
 
 export interface MiniRetentionValidation {
   valid: boolean;
@@ -108,14 +109,14 @@ export function validateMiniAuctionRetentions(input: { team: Team; keptIds: stri
   });
 
   const overseasCount = uniqueIds.filter((playerId) => players[playerId]?.nationality === "Overseas").length;
-  const maximumSquadSize = team.maxSquadSize ?? 25;
-  const maximumOverseas = team.overseasPlayersMax ?? 8;
+  const maximumSquadSize = team.maxSquadSize ?? worldRules().maxSquadSize;
+  const maximumOverseas = team.overseasPlayersMax ?? worldRules().maxOverseasInSquad;
   if (uniqueIds.length > maximumSquadSize) errors.push(`Kept squad exceeds the ${maximumSquadSize}-player limit.`);
   if (overseasCount > maximumOverseas) errors.push(`Kept squad exceeds the ${maximumOverseas}-player overseas limit.`);
 
   const totalSalary = calculateMiniAuctionKeptSalary(uniqueIds, team.id, players, season);
-  if (totalSalary > MINI_AUCTION_PURSE_LAKHS) errors.push("Kept-player salaries exceed the Rs 125 Cr mini-auction purse.");
-  return { valid: errors.length === 0, totalSalary, remainingPurse: Math.max(0, MINI_AUCTION_PURSE_LAKHS - totalSalary), errors };
+  if (totalSalary > getMiniAuctionPurseLakhs()) errors.push("Kept-player salaries exceed the mini-auction purse.");
+  return { valid: errors.length === 0, totalSalary, remainingPurse: Math.max(0, getMiniAuctionPurseLakhs() - totalSalary), errors };
 }
 
 function abilityAdjustment(rating: number): number {
@@ -378,17 +379,17 @@ export function enforceMiniAuctionRetentionLimits(
     return false;
   };
 
-  const maximumOverseas = team.overseasPlayersMax ?? 8;
+  const maximumOverseas = team.overseasPlayersMax ?? worldRules().maxOverseasInSquad;
   while (ranked.filter(({ player }) => player.nationality === "Overseas").length > maximumOverseas) {
     if (!releaseLowest((player) => player.nationality === "Overseas")) break;
   }
 
-  const maximumSquadSize = team.maxSquadSize ?? 25;
+  const maximumSquadSize = team.maxSquadSize ?? worldRules().maxSquadSize;
   while (ranked.length > maximumSquadSize) releaseLowest(() => true);
 
   while (
     ranked.length > 0
-    && calculateMiniAuctionKeptSalary(ranked.map(({ player }) => player.id), team.id, players, season) > MINI_AUCTION_PURSE_LAKHS
+    && calculateMiniAuctionKeptSalary(ranked.map(({ player }) => player.id), team.id, players, season) > getMiniAuctionPurseLakhs()
   ) releaseLowest(() => true);
 
   return ranked.map(({ player }) => player.id);
@@ -437,9 +438,9 @@ export function repairMiniAuctionRetentionState(input: {
       ...team,
       squad: eligibleSquadIds,
       retainedPlayers,
-      totalPurse: MINI_AUCTION_PURSE_LAKHS,
+      totalPurse: getMiniAuctionPurseLakhs(),
       spentAmount,
-      remainingPurse: Math.max(0, MINI_AUCTION_PURSE_LAKHS - spentAmount),
+      remainingPurse: Math.max(0, getMiniAuctionPurseLakhs() - spentAmount),
       rtmCardsTotal: 0,
       rtmCardsUsed: 0,
     }];

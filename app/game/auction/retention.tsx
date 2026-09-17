@@ -3,10 +3,10 @@ import { useState, useEffect } from "react";
 import { useGameStore } from "@/lib/store/gameStore";
 import {
   formatPrice,
-  TOTAL_PURSE_LAKHS,
-  MAX_CAPPED_RETENTIONS,
-  MAX_UNCAPPED_RETENTIONS,
-  MAX_TOTAL_RETENTIONS,
+  getTotalPurseLakhs,
+  getMaxCappedRetentions,
+  getMaxUncappedRetentions,
+  getMaxTotalRetentions,
   getPlayerRetentionCost,
   calculateTotalRetentionCost,
 } from "@/lib/logic/auctionRules";
@@ -54,8 +54,8 @@ function MegaRetentionPhase() {
 
   const retainedIds = userTeam.retainedPlayers;
   const totalCost = calculateTotalRetentionCost(retainedIds, players);
-  const purseAfter = TOTAL_PURSE_LAKHS - totalCost;
-  const rtmCards = Math.max(0, MAX_TOTAL_RETENTIONS - retainedIds.length);
+  const purseAfter = getTotalPurseLakhs() - totalCost;
+  const rtmCards = Math.max(0, getMaxTotalRetentions() - retainedIds.length);
 
   const cappedCount = retainedIds.filter((id) => {
     const p = players[id];
@@ -74,7 +74,7 @@ function MegaRetentionPhase() {
           Select Retentions
         </h1>
         <p className="font-barlow text-[13px] text-text-secondary mt-2">
-          Up to {MAX_TOTAL_RETENTIONS} players (max {MAX_CAPPED_RETENTIONS} capped/overseas · max {MAX_UNCAPPED_RETENTIONS} uncapped Indian). Each retention deducts from your ₹120 Cr purse.
+          Up to {getMaxTotalRetentions()} players (max {getMaxCappedRetentions()} capped/overseas · max {getMaxUncappedRetentions()} uncapped Indian). Each retention deducts from your {formatPrice(getTotalPurseLakhs())} purse.
         </p>
       </div>
 
@@ -96,8 +96,8 @@ function MegaRetentionPhase() {
             const isPlayerCapped = player.isCapped || player.nationality === "Overseas";
             const canAdd =
               !isRetained &&
-              retainedIds.length < MAX_TOTAL_RETENTIONS &&
-              (isPlayerCapped ? cappedCount < MAX_CAPPED_RETENTIONS : uncappedCount < MAX_UNCAPPED_RETENTIONS);
+              retainedIds.length < getMaxTotalRetentions() &&
+              (isPlayerCapped ? cappedCount < getMaxCappedRetentions() : uncappedCount < getMaxUncappedRetentions());
 
             return (
               <div
@@ -196,7 +196,7 @@ function MegaRetentionPhase() {
             <div className="border-t-2 border-hairline pt-4 mt-4 flex flex-col gap-2">
               <div className="flex justify-between text-[12px]">
                 <span className="font-barlow text-text-secondary">Total Purse</span>
-                <span className="font-barlow-condensed font-bold text-[14px] text-text-primary">{formatPrice(TOTAL_PURSE_LAKHS)}</span>
+                <span className="font-barlow-condensed font-bold text-[14px] text-text-primary">{formatPrice(getTotalPurseLakhs())}</span>
               </div>
               <div className="flex justify-between text-[12px]">
                 <span className="font-barlow text-text-secondary">Deductions</span>
@@ -212,14 +212,14 @@ function MegaRetentionPhase() {
             <div className="mt-4 flex gap-3">
               <div className="flex-1 border border-hairline p-3 rounded-[3px]">
                 <div className="font-space-mono text-[8px] tracking-wider text-text-secondary mb-1">CAPPED/OS</div>
-                <div className="font-barlow-condensed font-bold text-[18px]" style={{ color: cappedCount >= MAX_CAPPED_RETENTIONS ? "#d6492f" : "var(--ink)" }}>
-                  {cappedCount}/{MAX_CAPPED_RETENTIONS}
+                <div className="font-barlow-condensed font-bold text-[18px]" style={{ color: cappedCount >= getMaxCappedRetentions() ? "#d6492f" : "var(--ink)" }}>
+                  {cappedCount}/{getMaxCappedRetentions()}
                 </div>
               </div>
               <div className="flex-1 border border-hairline p-3 rounded-[3px]">
                 <div className="font-space-mono text-[8px] tracking-wider text-text-secondary mb-1">UNCAPPED</div>
-                <div className="font-barlow-condensed font-bold text-[18px]" style={{ color: uncappedCount >= MAX_UNCAPPED_RETENTIONS ? "#d6492f" : "var(--ink)" }}>
-                  {uncappedCount}/{MAX_UNCAPPED_RETENTIONS}
+                <div className="font-barlow-condensed font-bold text-[18px]" style={{ color: uncappedCount >= getMaxUncappedRetentions() ? "#d6492f" : "var(--ink)" }}>
+                  {uncappedCount}/{getMaxUncappedRetentions()}
                 </div>
               </div>
             </div>
@@ -230,7 +230,7 @@ function MegaRetentionPhase() {
                 {rtmCards}
               </div>
               <p className="font-barlow text-[11px] text-text-secondary mt-1">
-                {MAX_TOTAL_RETENTIONS} total slots minus retentions used.
+                {getMaxTotalRetentions()} total slots minus retentions used.
               </p>
             </div>
           </div>
@@ -259,7 +259,7 @@ function MegaRetentionPhase() {
             </button>
             {retainedIds.length === 0 && (
               <p className="font-space-mono text-[9px] text-text-secondary text-center mt-1 tracking-wider">
-                Proceeding with 0 retentions · {MAX_TOTAL_RETENTIONS} RTM cards
+                Proceeding with 0 retentions · {getMaxTotalRetentions()} RTM cards
               </p>
             )}
           </div>

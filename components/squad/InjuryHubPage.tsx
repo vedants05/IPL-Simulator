@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { Activity, AlertTriangle, CheckCircle2, Clock3, ShieldAlert } from "lucide-react";
 import { getInjuryReturnLabel, type InjuryCategory, type PlayerInjury } from "@/lib/logic/injuries";
 import {
-  MAX_INJURY_REPLACEMENTS_PER_TEAM,
+  getMaxInjuryReplacementsPerTeam,
   eligibleInjuryReplacementCandidates,
   injuryQualifiesForReplacement,
   replacementForInjury,
@@ -135,7 +135,7 @@ export default function InjuryHubPage({
     replacementRecords,
     userTeamId,
     currentSeason,
-  ) >= MAX_INJURY_REPLACEMENTS_PER_TEAM;
+  ) >= getMaxInjuryReplacementsPerTeam();
 
   const replacementName = (injury: PlayerInjury) => {
     const record = replacementForInjury(replacementRecords, injury.id)

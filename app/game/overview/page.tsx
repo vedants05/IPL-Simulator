@@ -153,6 +153,7 @@ import {
 const SocialMediaPage = dynamic(() => import("@/components/social/SocialMediaPage"), { ssr: false });
 const NewsPage = dynamic(() => import("@/components/news/NewsPage"), { ssr: false });
 const SmatPage = dynamic(() => import("@/components/home/SmatPage"), { ssr: false });
+const WorldRulesPage = dynamic(() => import("@/components/home/WorldRulesPage"), { ssr: false });
 import { getClubOwnership } from "@/lib/data/clubOwnership";
 import { buildTeamSupporterView } from "@/lib/logic/supporters";
 import { checkEmergencyBudgetExtensionApproval, STAFF_SALARY_MODEL_VERSION } from "@/lib/logic/staffContracts";
@@ -250,6 +251,7 @@ import {
   Crown,
   ShieldCheck,
 } from "lucide-react";
+import { worldRules } from "@/lib/logic/worldRules";
 
 interface PlayerStats {
   id: string;
@@ -3876,7 +3878,7 @@ This record has been officially verified and added to the IPL Minor Records arch
       const problems: string[] = [];
       if (new Set(ids).size !== ids.length) problems.push(`${label} contains the same player more than once.`);
       if (validation.playerCount !== 11) problems.push(`${label} must contain exactly 11 eligible squad players.`);
-      if (validation.overseasCount > 4) problems.push(`${label} has ${validation.overseasCount} overseas players; the maximum is 4.`);
+      if (validation.overseasCount > worldRules().maxOverseasInXI) problems.push(`${label} has ${validation.overseasCount} overseas players; the maximum is ${worldRules().maxOverseasInXI}.`);
       if (validation.wicketkeeperCount < 1) problems.push(`${label} needs a wicketkeeper.`);
       const requiredBowlers = plan === "bowlingFirst" ? 5 : 4;
       if (validation.bowlingOptionCount < requiredBowlers) {
@@ -3900,7 +3902,7 @@ This record has been officially verified and added to the IPL Minor Records arch
       const overseasStarters = ids.filter((id) => players[id]?.nationality === "Overseas").length;
       if (
         selectedImpact?.nationality === "Overseas"
-        && overseasStarters - Number(selectedOutgoing?.nationality === "Overseas") >= 4
+        && overseasStarters - Number(selectedOutgoing?.nationality === "Overseas") >= worldRules().maxOverseasInXI
       ) {
         problems.push(`${label}'s selected Impact change would introduce a fifth overseas player.`);
       }
@@ -5621,7 +5623,7 @@ This record has been officially verified and added to the IPL Minor Records arch
     home: {
       label: "Home",
       icon: InboxIcon,
-      subtabs: ["overview", "inbox", "social", "news", "calendar", "smat"]
+      subtabs: ["overview", "inbox", "social", "news", "calendar", "smat", "rules"]
     },
     squad: {
       label: "Squad",
@@ -5706,6 +5708,7 @@ This record has been officially verified and added to the IPL Minor Records arch
     if (subtab === "operations") return "Club Operations";
     if (subtab === "calendar") return "Season Calendar";
     if (subtab === "smat") return "SMAT";
+    if (subtab === "rules") return "World Rules";
     if (subtab === "social") return "Social Media";
     if (subtab === "news") return "News";
     if (subtab === "records") return "Records";
@@ -7756,6 +7759,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                 </div>
               )}
               {activeSubTab === "smat" && <SmatPage career={smatCareer} onOpenFullPlayer={setDetailedPlayerId} />}
+              {activeSubTab === "rules" && <WorldRulesPage />}
             </>
           )}
 
@@ -8264,7 +8268,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                                     {plan.label}
                                   </span>
                                   <span className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">
-                                    {plan.ids.length}/11 · {plan.overseas}/4 OS
+                                    {plan.ids.length}/11 · {plan.overseas}/{worldRules().maxOverseasInXI} OS
                                   </span>
                                 </div>
 
@@ -8812,7 +8816,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                         <div className="flex w-44 shrink-0 flex-col font-space-mono text-xs text-text-secondary">
                           <h4 className="mb-3 shrink-0 border-b border-[#16130f]/10 pb-2 font-anton text-[14px] uppercase text-text-primary">AUCTION PLANNER</h4>
                           <div className="space-y-2">
-                        <div>CAP LIMIT: <span className="font-bold text-text-primary">₹120.00 Cr</span></div>
+                        <div>CAP LIMIT: <span className="font-bold text-text-primary">{formatPrice(worldRules().megaAuctionPurseLakhs)}</span></div>
                         <div>SHORTLISTED: <span className="font-bold text-text-primary">{shortlist.length} Players</span></div>
                           </div>
                         </div>
@@ -9021,7 +9025,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                     <div className="space-y-4 font-space-mono text-xs">
                       <div className="flex justify-between border-b border-[#16130f]/5 pb-1">
                         <span className="text-text-secondary">TOTAL SALARY CAP</span>
-                        <span className="font-bold text-text-primary">₹120.00 Cr</span>
+                        <span className="font-bold text-text-primary">{formatPrice(worldRules().megaAuctionPurseLakhs)}</span>
                       </div>
                       <div className="flex justify-between border-b border-[#16130f]/5 pb-1">
                         <span className="text-text-secondary">SPENT PURSE</span>

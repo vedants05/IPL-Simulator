@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { AuctionType, Player, Team, TradeRecord } from "@/lib/types";
-import { calculateTeamTradeValue, calculateTradePackageValue, getRequestedTradePremium, getTeamTradeWillingness, getTradeOverseasLimit, getTradeSalaryBand, getTradeSalaryOptions, getTradeWindowDates, isTradeBalanced, isTradeWindowOpen, MINI_TRADE_OVERDRAFT_LAKHS } from "@/lib/logic/tradeEngine";
+import { calculateTeamTradeValue, calculateTradePackageValue, getRequestedTradePremium, getTeamTradeWillingness, getTradeOverseasLimit, getTradeSalaryBand, getTradeSalaryOptions, getTradeWindowDates, isTradeBalanced, isTradeWindowOpen, getMiniTradeOverdraftLakhs } from "@/lib/logic/tradeEngine";
 import { getPlayerSeasonHistory } from "@/lib/logic/playerHistory";
 import { addDaysToDateKey } from "@/lib/logic/careerCalendar";
 import TradeHubGuidedTour from "./TradeHubGuidedTour";
@@ -134,7 +134,7 @@ export default function TradeHubPage({
     const purse = team.remainingPurse + salaryDelta;
     return [
       `${overseas}/${overseasLimit} overseas players after trade ${overseas <= overseasLimit ? "✓" : "✕"}`,
-      auctionType === "mini" ? `₹${(purse / 100).toFixed(2)} Cr projected purse · ₹5 Cr trade allowance ${purse >= -MINI_TRADE_OVERDRAFT_LAKHS ? "✓" : "✕"}` : "Mega auction: purse limit is not applied before fixed retentions ✓",
+      auctionType === "mini" ? `₹${(purse / 100).toFixed(2)} Cr projected purse · ₹5 Cr trade allowance ${purse >= -getMiniTradeOverdraftLakhs() ? "✓" : "✕"}` : "Mega auction: purse limit is not applied before fixed retentions ✓",
       `${incoming.length <= 3 && outgoing.length <= 3 ? "1–3 players per side ✓" : "Maximum three players per side ✕"}`,
       "Each player can be traded once this window ✓",
     ];
@@ -213,7 +213,7 @@ export default function TradeHubPage({
           return isTradeBalanced({ offeredValue, requestedValue, requestedWillingness: getTeamTradeWillingness({ player: p, team: recipientTeam, players, season: currentSeason }), requestedPremium: getRequestedTradePremium([p]) })
             && isTradeBalanced({ offeredValue: reverseOffered, requestedValue: reverseRequested, requestedWillingness: "open" })
             && userOverseas <= getTradeOverseasLimit(userTeam, players) && targetOverseas <= getTradeOverseasLimit(recipientTeam, players)
-            && (auctionType === "mega" || (userPurseAfter >= -MINI_TRADE_OVERDRAFT_LAKHS && targetPurseAfter >= -MINI_TRADE_OVERDRAFT_LAKHS));
+            && (auctionType === "mega" || (userPurseAfter >= -getMiniTradeOverdraftLakhs() && targetPurseAfter >= -getMiniTradeOverdraftLakhs()));
         }).sort((a, b) => Math.abs(Math.max(a.currentBatting, a.currentBowling) - offeredRating) - Math.abs(Math.max(b.currentBatting, b.currentBowling) - offeredRating)).slice(0, 5).map((p) => [p.id]);
         setCounterOptions(options);
         setCounterIndex(0);
@@ -251,7 +251,7 @@ export default function TradeHubPage({
       const recipientOutgoingSalary = incoming.reduce((s, id) => s + contractSalary(id), 0);
       return overseasCountAfter(userTeam, outgoing, incoming) <= getTradeOverseasLimit(userTeam, players)
         && overseasCountAfter(recipientTeam, incoming, outgoing) <= getTradeOverseasLimit(recipientTeam, players)
-        && (auctionType === "mega" || (userTeam.remainingPurse + outSalary - inSalary >= -MINI_TRADE_OVERDRAFT_LAKHS && recipientTeam.remainingPurse + recipientOutgoingSalary - outSalary >= -MINI_TRADE_OVERDRAFT_LAKHS));
+        && (auctionType === "mega" || (userTeam.remainingPurse + outSalary - inSalary >= -getMiniTradeOverdraftLakhs() && recipientTeam.remainingPurse + recipientOutgoingSalary - outSalary >= -getMiniTradeOverdraftLakhs()));
     };
     const ranks = { available: 0, open: 1, reluctant: 2, "highly-reluctant": 3 } as const;
     const strongestWillingness = (group: Player[]) => group.reduce((best, p) => {
@@ -363,7 +363,7 @@ export default function TradeHubPage({
         if (overseasCountAfter(userTeam, [offered.id], [requested.id]) > getTradeOverseasLimit(userTeam, players) || overseasCountAfter(team, [requested.id], [offered.id]) > getTradeOverseasLimit(team, players)) return;
         const userPurse = userTeam.remainingPurse + contractSalary(offered.id) - getTradeSalaryBand(requested, currentSeason).demand;
         const aiPurse = team.remainingPurse + contractSalary(requested.id) - contractSalary(offered.id);
-        if (auctionType === "mini" && (userPurse < -MINI_TRADE_OVERDRAFT_LAKHS || aiPurse < -MINI_TRADE_OVERDRAFT_LAKHS)) return;
+        if (auctionType === "mini" && (userPurse < -getMiniTradeOverdraftLakhs() || aiPurse < -getMiniTradeOverdraftLakhs())) return;
         suggestions.push({ team, offered, requested, surplus: incomingValue - outgoingValue });
       }));
     });

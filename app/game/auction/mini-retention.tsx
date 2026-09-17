@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useGameStore } from "@/lib/store/gameStore";
 import { formatPrice } from "@/lib/logic/auctionRules";
 import {
-  MINI_AUCTION_PURSE_LAKHS,
+  getMiniAuctionPurseLakhs,
   getMiniAuctionContractPrice,
   selectAIMiniAuctionKeeps,
   validateMiniAuctionRetentions,
@@ -110,7 +110,7 @@ export default function MiniRetentionPhase() {
         </div>
         <h1 className="font-anton text-[44px] uppercase leading-none">Keep or Release</h1>
         <p className="mt-2 font-barlow text-[13px] text-text-secondary">
-          Kept players retain their existing salary. Your auction purse is ₹125 Cr minus kept-player salaries. Mini auctions have no retention limits, slabs or RTM cards.
+          Kept players retain their existing salary. Your auction purse is {formatPrice(getMiniAuctionPurseLakhs())} minus kept-player salaries. Mini auctions have no retention limits, slabs or RTM cards.
         </p>
       </div>
 
@@ -154,7 +154,7 @@ export default function MiniRetentionPhase() {
             <div className="space-y-3 border-b border-border pb-4 font-barlow text-[13px]">
               <div className="flex justify-between"><span>Players kept</span><strong>{keptIds.length}</strong></div>
               <div className="flex justify-between"><span>Players released</span><strong>{squadPlayers.length - keptIds.length}</strong></div>
-              <div className="flex justify-between"><span>Salary cap</span><strong>{formatPrice(MINI_AUCTION_PURSE_LAKHS)}</strong></div>
+              <div className="flex justify-between"><span>Salary cap</span><strong>{formatPrice(getMiniAuctionPurseLakhs())}</strong></div>
               <div className="flex justify-between"><span>Kept salaries</span><strong className="text-danger">-{formatPrice(validation.totalSalary)}</strong></div>
             </div>
             <div className="mt-4 flex items-center justify-between">

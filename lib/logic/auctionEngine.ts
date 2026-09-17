@@ -9,6 +9,7 @@ import {
   getRawAuctionRating,
   isPlayerAuctionEligible,
 } from "./auctionMarket";
+import { worldRules } from "./worldRules";
 
 // ---------------------------------------------------------------------------
 // Per-lot valuation cache — computed once per team per player lot
@@ -282,10 +283,13 @@ interface SquadComp {
   indianBowlers: number;
 }
 
-// IPL structural rules — these are fixed (league rules, not preferences)
+// IPL structural rules; squad limits follow the save's world rules.
 const RULES = {
   batters: 5, wks: 2, allrounders: 2, spinners: 2, pacers: 3,
-  minTotal: 18, maxTotal: 25, maxOverseas: 8, minSalaryPerSlot: 30,
+  get minTotal() { return worldRules().minSquadSize; },
+  get maxTotal() { return worldRules().maxSquadSize; },
+  get maxOverseas() { return worldRules().maxOverseasInSquad; },
+  minSalaryPerSlot: 30,
 };
 
 function getBattingSlotsCoverage(squad: Player[]): {
@@ -1782,7 +1786,7 @@ export function canAIBidAtAmount(
   const isMandatoryPlayer = isPriorityAuctionSale(player);
   const isPriorityOpeningBid = isMandatoryPlayer && nextBid <= getNextBidAmount(player.basePrice);
   const planningReserve = isPriorityOpeningBid
-    ? Math.max(0, (team.minSquadSize ?? 18) - team.squad.length - 1) * 50
+    ? Math.max(0, (team.minSquadSize ?? worldRules().minSquadSize) - team.squad.length - 1) * 50
     : minimumReserveLakhs(team, allPlayers);
   if (team.remainingPurse - nextBid < planningReserve) return reject("reserve");
   if (nextBid > 50 && !canTeamAffordBid(
