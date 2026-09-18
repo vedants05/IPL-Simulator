@@ -1,4 +1,43 @@
 import type { PersistStorage, StateStorage, StorageValue } from "zustand/middleware";
+import { uploadSave, setCloudSyncStatus } from "../supabase/cloudSaves";
+
+/** Debounced cloud mirror of the latest persisted value. Local IndexedDB is the primary store. */
+const CLOUD_SYNC_DELAY_MS = 20_000;
+let cloudTimer: ReturnType<typeof setTimeout> | null = null;
+let cloudLatest: StorageValue<unknown> | null = null;
+let cloudInFlight = false;
+
+function scheduleCloudSync(value: StorageValue<unknown>): void {
+  if (typeof window === "undefined") return;
+  cloudLatest = value;
+  if (cloudTimer) return;
+  cloudTimer = setTimeout(runCloudSync, CLOUD_SYNC_DELAY_MS);
+}
+
+async function runCloudSync(): Promise<void> {
+  cloudTimer = null;
+  if (cloudInFlight || !cloudLatest) return;
+  const value = cloudLatest;
+  cloudLatest = null;
+  cloudInFlight = true;
+  setCloudSyncStatus("syncing");
+  try {
+    await uploadSave(value as { state: unknown; version?: number });
+    setCloudSyncStatus("synced");
+  } catch (error) {
+    console.warn("Cloud save sync failed:", error);
+    setCloudSyncStatus("error");
+  } finally {
+    cloudInFlight = false;
+    if (cloudLatest) scheduleCloudSync(cloudLatest);
+  }
+}
+
+/** Push the newest state immediately (e.g. before sign-out or on explicit save). */
+export async function flushCloudSync(): Promise<void> {
+  if (cloudTimer) { clearTimeout(cloudTimer); cloudTimer = null; }
+  await runCloudSync();
+}
 
 const DATABASE_NAME = "ipl-simulator-game-state";
 const DATABASE_VERSION = 1;
@@ -94,6 +133,7 @@ function scheduleObjectWrite(name: string, pending: PendingObjectWrite): void {
     pending.running = true;
     const latestValue = pending.value;
     const waiters = pending.waiters.splice(0);
+    scheduleCloudSync(latestValue);
     void Promise.resolve(gameStateStorage.setItem(name, JSON.stringify(latestValue)))
       .then(() => waiters.forEach((waiter) => waiter.resolve()))
       .catch((error: unknown) => waiters.forEach((waiter) => waiter.reject(error)))

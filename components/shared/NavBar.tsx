@@ -11,6 +11,7 @@ import {
   type AppearanceTheme,
 } from "@/lib/theme/appearance";
 import AuctionGuidedTour from "@/components/auction/AuctionGuidedTour";
+import CloudAccountPanel from "./CloudAccountPanel";
 import {
   getSeasonAccessStorageKey,
   SEASON_ACCESS_CHANGED_EVENT,
@@ -286,7 +287,7 @@ export default function NavBar() {
       )}
 
       <div className="flex items-center gap-0">
-        {NAV_ITEMS.filter((item) => !isAuctionPage || item.href === "/game/auction").map((item) => {
+        {NAV_ITEMS.map((item) => {
           let active = false;
           if (item.href === "/game/auction") {
             active = pathname.startsWith("/game/auction");
@@ -692,6 +693,7 @@ export default function NavBar() {
                     </span>
                   </button>
                 </div>}
+                <CloudAccountPanel onNavigate={() => setShowSettings(false)} />
                 <div className="flex flex-col gap-2 border-t border-[var(--ink)]/15 pt-2">
                   <span className="text-[9px] font-bold text-red-600 uppercase tracking-wider">
                     Danger Zone

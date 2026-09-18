@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+
+<helmet>
+<meta name="design_doc_mode" content="canvas"></meta>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Space+Mono:wght@400;700&family=Barlow:wght@400;600;700&family=Barlow+Condensed:wght@600;700&display=swap" rel="stylesheet"></link>
+<style>
+body{margin:0;background:#d8d4c8;}
+.tag{font-family:'Space Mono',monospace;font-size:8.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:3px 7px;border-radius:4px;background:rgba(185,69,72,0.14);color:#b94548;display:inline-block;white-space:nowrap;}
+.card{background:#fff;border:1px solid rgba(22,19,15,0.12);border-radius:8px;padding:14px;display:flex;flex-direction:column;gap:8px;box-shadow:0 2px 8px rgba(22,19,15,0.06);min-height:0;}
+.cardtitle{font-family:'Anton',sans-serif;font-size:12px;text-transform:uppercase;color:#16130f;border-bottom:1px solid rgba(22,19,15,0.12);padding-bottom:6px;letter-spacing:.02em;}
+.frame{width:1120px;height:630px;background:#f4f1ea;border:1.5px solid #16130f;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(22,19,15,0.08);display:flex;flex-direction:column;font-family:'Barlow',sans-serif;color:#16130f;}
+.navbar{height:46px;display:flex;align-items:center;padding:0 18px;border-bottom:1.5px solid #16130f;background:#f4f1ea;flex-shrink:0;gap:0;}
+.navbtn{width:24px;height:24px;border-radius:4px;border:1.5px solid #16130f;display:flex;align-items:center;justify-content:center;font-size:11px;margin-right:6px;color:#16130f;}
+.navcrest{width:28px;height:28px;border-radius:50%;background:#b94548;color:#fff;font-family:'Space Mono',monospace;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;margin:0 10px;}
+.navname{font-family:'Space Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;margin-right:22px;}
+.navitem{height:46px;display:flex;align-items:center;padding:0 14px;font-family:'Space Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#8a8378;border-bottom:2px solid transparent;}
+.navitem.active{color:#16130f;border-bottom-color:#b94548;}
+.subbar{height:36px;display:flex;align-items:center;padding:0 18px;gap:6px;border-bottom:1px solid rgba(22,19,15,0.12);flex-shrink:0;background:rgba(22,19,15,0.02);}
+.subpill{font-family:'Space Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:5px 10px;border-radius:4px;color:#8a8378;}
+.subpill.active{background:#b94548;color:#fff;}
+.grid2{flex:1;display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:16px;min-height:0;}
+.grid3{flex:1;display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;padding:16px;min-height:0;}
+.grid4{flex:1;display:grid;grid-template-columns:repeat(4,1fr);gap:14px;padding:16px;min-height:0;}
+.col{display:flex;flex-direction:column;gap:14px;min-height:0;}
+.row{display:flex;align-items:center;justify-content:space-between;font-size:11.5px;padding:7px 0;border-bottom:1px solid rgba(22,19,15,0.08);}
+.scrlabel{font-family:'Space Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#8a8378;margin-bottom:8px;}
+.photo-ph{background:repeating-linear-gradient(135deg,rgba(22,19,15,0.06),rgba(22,19,15,0.06) 6px,rgba(22,19,15,0.02) 6px,rgba(22,19,15,0.02) 12px);border-radius:6px;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;font-size:8px;color:#8a8378;text-align:center;letter-spacing:.05em;text-transform:uppercase;flex-shrink:0;}
+.attrbar{height:5px;border-radius:3px;background:rgba(22,19,15,0.08);overflow:hidden;flex:1;}
+.attrfill{height:100%;background:#b94548;border-radius:3px;}
+.star{color:#e5b842;font-size:10px;}
+.crest-lg{width:56px;height:56px;border-radius:50%;background:#b94548;color:#fff;font-family:'Anton',sans-serif;font-size:16px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.hubtile{background:#fff;border:1.5px solid rgba(22,19,15,0.12);border-radius:8px;padding:16px;display:flex;flex-direction:column;gap:8px;box-shadow:0 2px 8px rgba(22,19,15,0.06);}
+.navrow{display:flex;align-items:center;}
+</style>
+</helmet>
+<div style="padding:48px;display:flex;flex-direction:column;gap:40px;font-family:'Barlow',sans-serif;">
+  <div style="font-family:'Anton',sans-serif;font-size:26px;text-transform:uppercase;color:#16130f;">Redesign pass — every tab and subtab, high fidelity</div>
+  <div style="font-family:'Space Mono',monospace;font-size:11px;color:#5a5348;max-width:800px;line-height:1.6;">Foundation baked in throughout: harmonized RCB accent (#b94548), shared 4/8px radius scale, one shadow, one badge shape, real nav + subtab chrome. Subtabs mirror the app's actual structure (Home: Overview/Inbox/Calendar/Office · Squad: Overview/Roster/Playing XI/Captaincy/Tactics · Scouting: Overview/Search/Planner · Season: Overview/Fixtures/Standings/Stats · History: Overview/Records/Club History/Club Figures/League History/Hall of Fame).</div>
+
+  <div style="display:flex;flex-wrap:wrap;gap:32px;">
+
+    <!-- 1.1 HOME OVERVIEW HUB -->
+    <div style="width:1120px;">
+      <div class="scrlabel">1.1 · Home — Overview (hub)</div>
+      <div class="frame">
+        <div class="navbar navrow">
+          <div class="navbtn">&#8592;</div><div class="navbtn">&#8594;</div>
+          <div class="navcrest">RCB</div><div class="navname">Royal Challengers Bengaluru</div>
+          <div class="navitem active">Home</div><div class="navitem">Squad</div><div class="navitem">Scouting</div><div class="navitem">Season</div><div class="navitem">History</div>
+          <div style="flex:1;"></div>
+          <div style="font-family:'Space Mono';font-size:10px;color:#8a8378;letter-spacing:.08em;">04 MAY 2027</div>
+        </div>
+        <div class="subbar"><span class="subpill active">Overview</span><span class="subpill">Inbox</span><span class="subpill">Calendar</span><span class="subpill">Office</span></div>
+        <div class="grid3">
+          <div class="hubtile"><div class="cardtitle">Inbox</div><div style="font-family:'Anton';font-size:28px;color:#b94548;">2 unread</div><div style="font-family:'Space Mono';font-size:9px;color:#8a8378;">Board memo · Scout report</div></div>
+          <div class="hubtile"><div class="cardtitle">Season Calendar</div><div style="font-family:'Anton';font-size:22px;">vs CSK</div><div style="font-family:'Space Mono';font-size:9px;color:#8a8378;">Matchday 24 · Home</div></div>
+          <div class="hubtile"><div class="cardtitle">Manager Office</div><div style="font-family:'Anton';font-size:28px;color:#b94548;">82% trust</div><div class="attrbar" style="height:6px;"><div class="attrfill" style="width:82%;"></div></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 1.2 HOME INBOX -->
+    <div style="width:1120px;">
+      <div class="scrlabel">1.2 · Home — Inbox</div>
+      <div class="frame">
+        <div class="navbar navrow"><div class="navbtn">&#8592;</div><div class="navbtn">&#8594;</div><div class="navcrest">RCB</div><div class="navname">Royal Challengers Bengaluru</div>
+          <div class="navitem active">Home</div><div class="navitem">Squad</div><div class="navitem">Scouting</div><div class="navitem">Season</div><div class="navitem">History</div></div>
+        <div class="subbar"><span class="subpill">Overview</span><span class="subpill active">Inbox</span><span class="subpill">Calendar</span><span class="subpill">Office</span></div>
+        <div class="grid2" style="grid-template-columns:1fr 1.4fr;">
+          <div class="card" style="flex:1;"><div class="cardtitle">Threads</div>
+            <sc-for list="{{ threads }}" as="t" hint-placeholder-count="4">
+              <div class="row"><span>{{ t.subject }}</span><span class="tag" style="background:{{ t.tagBg }};color:{{ t.tagColor }};">{{ t.tag }}</span></div>
+            </sc-for>
+          </div>
+          <div class="card" style="flex:1;"><div class="cardtitle">Retention Deadline</div>
+            <div style="font-family:'Anton';font-size:20px;">6 days remaining</div>
+            <div style="font-size:12px;line-height:1.6;color:#5a5348;">The board expects at least 3 retentions locked in before the mega auction opens. Review your shortlist in Squad → Roster.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 1.3 HOME CALENDAR -->
+    <div style="width:1120px;">
+      <div class="scrlabel">1.3 · Home — Calendar</div>
+      <div class="frame">
+        <div class="navbar navrow"><div class="navbtn">&#8592;</div><div class="navbtn">&#8594;</div><div class="navcrest">RCB</div><div class="navname">Royal Challengers Bengaluru</div>
+          <div class="navitem active">Home</div><div class="navitem">Squad</div><div class="navitem">Scouting</div><div class="navitem">Season</div><div class="navitem">History</div></div>
+        <div class="subbar"><span class="subpill">Overview</span><span class="subpill">Inbox</span><span class="subpill active">Calendar</span><span class="subpill">Office</span></div>
+        <div style="padding:16px;display:flex;flex-direction:column;gap:14px;flex:1;min-height:0;">
+          <div class="card"><div class="cardtitle">Matchday Ticker</div>
+            <div style="display:flex;gap:5px;">
+              <sc-for list="{{ fullCalendar }}" as="d" hint-placeholder-count="14">
+                <div style="flex:1;height:46px;border-radius:4px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:'Space Mono';font-size:8.5px;font-weight:700;background:{{ d.bg }};color:{{ d.color }};">
+                  <span>{{ d.label }}</span><span style="font-size:6.5px;opacity:.75;">{{ d.opp }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+          <div class="card" style="flex:1;"><div class="cardtitle">Upcoming Fixtures</div>
+            <sc-for list="{{ upcoming }}" as="u" hint-placeholder-count="4">
+              <div class="row"><span>{{ u.text }}</span><span style="font-family:'Space Mono';font-size:10px;color:#8a8378;">{{ u.venue }}</span></div>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 1.4 HOME OFFICE -->
+    <div style="width:1120px;">
+      <div class="scrlabel">1.4 · Home — Manager Office</div>
+      <div class="frame">
+        <div class="navbar navrow"><div class="navbtn">&#8592;</div><div class="navbtn">&#8594;</div><div class="navcrest">RCB</div><div class="navname">Royal Challengers Bengaluru</div>
+          <div class="navitem active">Home</div><div class="navitem">Squad</div><div class="navitem">Scouting</div><div class="navitem">Season</div><div class="navitem">History</div></div>
+        <div class="subbar"><span class="subpill">Overview</span><span class="subpill">Inbox</span><span class="subpill">Calendar</span><span class="subpill active">Office</span></div>
+        <div class="grid2">
+          <div class="card" style="flex:1;align-items:center;justify-content:center;"><div class="cardtitle" style="align-self:flex-start;">Board Trust</div><div style="font-family:'Anton';font-size:52px;color:#b94548;">82%</div>
+            <div style="display:flex;gap:4px;width:100%;">
+              <sc-for list="{{ trustHistory }}" as="h" hint-placeholder-count="8">
+                <div style="flex:1;height:{{ h.h }}px;background:#b94548;border-radius:2px;align-self:flex-end;"></div>
+              </sc-for>
+            </div>
+          </div>
+          <div class="card" style="flex:1;"><div class="cardtitle">Board Expectations</div>
+            <sc-for list="{{ expectations }}" as="e" hint-placeholder-count="3">
+              <div class="row"><span>{{ e.text }}</span><span class="tag" style="background:{{ e.tagBg }};color:{{ e.tagColor }};">{{ e.status }}</span></div>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2.1 SQUAD OVERVIEW HUB -->
+    <div style="width:1120px;">
+      <div class="scrlabel">2.1 · Squad — Overview (hub)</div>
+      <div class="frame">
+        <div class="navbar navrow"><div class="navbtn">&#8592;</div><div class="navbtn">&#8594;</div><div class="navcrest">RCB</div><div class="navname">Royal Challengers Bengaluru</div>
+          <div class="navitem">Home</div><div class="navitem active">Squad</div><div class="navitem">Scouting</div><div class="navitem">Season</div><div class="navitem">History</div></div>
+        <div class="subbar"><span class="subpill active">Overview</span><span class="subpill">Roster</span><span class="subpill">Playing XI</span><span class="subpill">Captaincy</span><span class="subpill">Tactics</span></div>
+        <div class="grid4">
+          <div class="hubtile"><div class="cardtitle">Roster</div><div style="font-family:'Anton';font-size:26px;">22</div><div style="font-family:'Space Mono';font-size:9px;color:#8a8378;">Players signed</div></div>
+          <div class="hubtile"><div class="cardtitle">Playing XI</div><div style="font-family:'Anton';font-size:26px;">3/4</div><div style="font-family:'Space Mono';font-size:9px;color:#8a8378;">Overseas used</div></div>
+          <div class="hubtile"><div class="cardtitle">Captaincy</div><div style="font-family:'Anton';font-size:20px;">V. Kohli</div><div style="font-family:'Space Mono';font-size:9px;color:#8a8378;">Captain · F. du Plessis VC</div></div>
+          <div class="hubtile"><div class="cardtitle">Team Tactics</div><div style="font-family:'Anton';font-size:20px;">Aggressive</div><div style="font-family:'Space Mono';font-size:9px;color:#8a8378;">Batting order set</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2.2 SQUAD ROSTER -->
+    <div style="width:1120px;">
+      <div class="scrlabel">2.2 · Squad — Roster</div>
+      <div class="frame">
+        <div class="navbar navrow"><div class="navbtn">&#8592;</div><div class="navbtn">&#8594;</div><div class="navcrest">RCB</div><div class="navname">Royal Challengers Bengaluru</div>
+          <div class="navitem">Home</div><div class="navitem active">Squad</div><div class="navitem">Scouting</div><div class="navitem">Season</div><div class="navitem">History</div></div>
+        <div class="subbar"><span class="subpill">Overview</span><span class="subpill active">Roster</span><span class="subpill">Playing XI</span><span class="subpill">Captaincy</span><span class="subpill">Tactics</span></div>
+        <div class="grid2" style="grid-template-columns:2.1fr 1fr;">
+          <div class="card" style="flex:1;overflow:hidden;">
+            <div class="cardtitle">Full Squad (22)</div>
+            <sc-for list="{{ players }}" as="p" hint-placeholder-count="5">
+              <div style="display:grid;grid-template-columns:34px 1.4fr 0.6fr 1fr 0.5fr;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid rgba(22,19,15,0.08);font-size:12px;">
+                <div class="photo-ph" style="width:34px;height:34px;">{{ p.initials }}</div>
+                <div style="display:flex;flex-direction:column;">
+                  <span style="font-weight:700;">{{ p.name }}</span>
+                  <span style="font-family:'Space Mono';font-size:9px;color:#8a8378;">{{ p.role }}</span>
+                </div>
+                <sc-if value="{{ p.overseas }}" hint-placeholder-val="{{ true }}"><span class="tag">OS</span></sc-if>
+                <div class="attrbar"><div class="attrfill" style="width:{{ p.ratingPct }}%;"></div></div>
+                <sc-if value="{{ p.captain }}" hint-placeholder-val="{{ false }}"><span class="tag" style="background:rgba(229,184,66,0.2);color:#a67c00;">CAP</span></sc-if>
+                <sc-if value="{{ p.showRating }}" hint-placeholder-val="{{ true }}"><div style="font-family:'Anton';font-size:15px;color:#b94548;">{{ p.rating }}</div></sc-if>
+              </div>
+            </sc-for>
+          </div>
+          <div class="col">
+            <div class="card">
+              <div class="cardtitle">Role Composition</div>
+              <sc-for list="{{ roleComp }}" as="r" hint-placeholder-count="3">
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <span style="font-family:'Space Mono';font-size:10px;width:74px;">{{ r.role }}</span>
+                  <div class="attrbar"><div class="attrfill" style="width:{{ r.pct }}%;"></div></div>
+                  <span style="font-family:'Anton';font-size:13px;width:18px;text-align:right;">{{ r.count }}</span>
+                </div>
+              </sc-for>
+            </div>
+            <div class="card" style="flex:1;">
+              <div class="cardtitle">Overseas Slots</div>
+              <div style="font-family:'Anton';font-size:30px;">6 / 8</div>
+              <div class="attrbar" style="height:8px;"><div class="attrfill" style="width:75%;"></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2.3 SQUAD PLAYING XI -->
+    <div style="width:1120px;">
+      <div class="scrlabel">2.3 · Squad — Playing XI</div>
+      <div class="frame">
+        <div class="navbar navrow"><div class="navbtn">&#8592;</div><div class="navbtn">&#8594;</div><div class="navcrest">RCB</div><div class="navname">Royal Challengers Bengaluru</div>
+          <div class="navitem">Home</div><div class="navitem active">Squad</div><div class="navitem">Scouting</div><div class="navitem">Season</div><div class="navitem">History</div></div>
+        <div class="subbar"><span class="subpill">Overview</span><span class="subpill">Roster</span><span class="subpill active">Playing XI</span><span class="subpill">Captaincy</span><span class="subpill">Tactics</span></div>
+        <div class="grid2" style="grid-template-columns:1.6fr 1fr;">
+          <div class="card" style="flex:1;">
+            <div class="cardtitle">Batting Order</div>
+            <sc-for list="{{ xi }}" as="x" hint-placeholder-count="6">
+              <div style="display:grid;grid-template-columns:22px 1fr auto auto;align-items:center;gap:10px;padding:7px 4px;border-bottom:1px solid rgba(22,19,15,0.08);font-size:12px;">
+                <span style="font-family:'Anton';font-size:14px;color:#8a8378;">{{ x.pos }}</span>
+                <span style="font-weight:700;">{{ x.name }}</span>
+                <span style="font-family:'Space Mono';font-size:9px;color:#8a8378;">{{ x.role }}</span>
+                <sc-if value="{{ x.overseas }}" hint-placeholder-val="{{ false }}"><span class="tag">OS</span></sc-if>
+              </div>
+            </sc-for>
+          </div>
+          <div class="card" style="flex:1;"><div class="cardtitle">Overseas Check</div>
+            <div style="font-family:'Anton';font-size:30px;color:#1f9d57;">3 / 4</div>
+            <div style="font-family:'Space Mono';font-size:9px;color:#8a8378;">Within matchday XI limit</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2.4 SQUAD CAPTAINCY -->
+    <div style="width:1120px;">
+      <div class="scrlabel">2.4 · Squad — Captaincy</div>
+      <div class="frame">
+        <div class="navbar navrow"><div class="navbtn">&#8592;</div><div class="navbtn">&#8594;</div><div class="navcrest">RCB</div><div class="navname">Royal Challengers Bengaluru</div>
+          <div class="navitem">Home</div><div class="navitem active">Squad</div><div class="navitem">Scouting</div><div class="navitem">Season</div><div class="navitem">History</div></div>
+        <div class="subbar"><span class="subpill">Overview</span><span class="subpill">Roster</span><span class="subpill">Playing XI</span><span class="subpill active">Captaincy</span><span class="subpill">Tactics</span></div>
+        <div class="grid3">
+          <div class="card"><div class="cardtitle">Captain</div><div style="display:flex;align-items:center;gap:10px;"><div class="photo-ph" style="width:44px;height:44px;">VK</div><div><div style="font-weight:700;font-size:13px;">V. Kohli</div><div style="font-family:'Space Mono';font-size:9px;color:#8a8378;">Batter · 91 OVR</div></div></div></div>
+          <div class="card"><div class="cardtitle">Vice-Captain</div><div style="display:flex;align-items:center;gap:10px;"><div class="photo-ph" style="width:44px;height:44px;">FP</div><div><div style="font-weight:700;font-size:13px;">F. du Plessis</div><div style="font-family:'Space Mono';font-size:9px;color:#8a8378;">Batter · 87 OVR</div></div></div></div>
+          <div class="card" style="flex:1;grid-column:span 3;"><div class="cardtitle">Squad List</div>
+            <sc-for list="{{ captaincyList }}" as="c" hint-placeholder-count="4">
+              <div class="row"><span>{{ c.name }}</span><span class="tag" style="background:{{ c.tagBg }};color:{{ c.tagColor }};">{{ c.role }}</span></div>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2.5 SQUAD TACTICS -->
+    <div style="width:1120px;">
+      <div class="scrlabel">2.5 · Squad — Team Tactics</div>
+      <div class="frame">
+        <div class="navbar navrow"><div class="navbtn">&#8592;</div><div class="navbtn">&#8594;</div><div class="navcrest">RCB</div><div class="navname">Royal Challengers Bengaluru</div>
+          <div class="navitem">Home</div><div class="navitem active">Squad</div><div class="navitem">Scouting</div><div class="navitem">Season</div><div class="navitem">History</div></div>
+        <div class="subbar"><span class="subpill">Overview</span><span class="subpill">Roster</span><span class="subpill">Playing XI</span><span class="subpill">Captaincy</span><span class="subpill active">Tactics</span></div>
+        <div class="grid2">
+          <div class="card" style="flex:1;"><div class="cardtitle">Batting Approach</div>
+            <sc-for list="{{ battingTactics }}" as="b" hint-placeholder-count="3">
+              <div style="display:flex;align-items:center;gap:8px;"><span style="font-family:'Space Mono';font-size:10px;width:110px;">{{ b.label }}</span><div class="attrbar"><div class="attrfill" style="width:{{ b.pct }}%;"></div></div></div>
+            </sc-for>
+          </div>
+          <div class="card" style="flex:1;"><div class="cardtitle">Bowling Order</div>
+            <sc-for list="{{ bowlingOrder }}" as="b" hint-placeholder-count="4">
+              <div class="row"><span>{{ b.name }}</span><span style="font-family:'Space Mono';font-size:9px;color:#8a8378;">{{ b.overs }} overs</span></div>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3.1 SCOUTING OVERVIEW HUB -->
+    <div style="width:1120px;">
+      <div class="scrlabel">3.1 · Scouting — Overview (hub)</div>
+      <div class="frame">
+        <div class="navbar navrow"><div class="navbtn">&#8592;</div><div class="navbtn">&#8594;</div><div class="navcrest">RCB</div><div class="navname">Royal Challengers Bengaluru</div>
+          <div class="navitem">Home</div><div class="navitem">Squad</div><div class="navitem active">Scouting</div><div class="navitem">Season</div><div class="navitem">History</div></div>
+        <div class="subbar"><span class="subpill active">Overview</span><span class="subpill">Search</span><span class="subpill">Planner</span></div>
+        <div class="grid2">
+          <div class="hubtile"><div class="cardtitle">Player Search</div><div style="font-family:'Anton';font-size:26px;">4 shortlisted</div><div style="font-family:'Space Mono';font-size:9px;color:#8a8378;">Across all roles</div></div>
+          <div class="hubtile"><div class="cardtitle">Auction Planner</div><div style="font-family:'Anton';font-size:26px;color:#b94548;">₹8.4 Cr left</div><div style="font-family:'Space Mono';font-size:9px;color:#8a8378;">Targets tiered by priority</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3.2 SCOUTING SEARCH -->
+    <div style="width:1120px;">
+      <div class="scrlabel">3.2 · Scouting — Search</div>
+      <div class="frame">
+        <div class="navbar navrow"><div class="navbtn">&#8592;</div><div class="navbtn">&#8594;</div><div class="navcrest">RCB</div><div class="navname">Royal Challengers Bengaluru</div>
+          <div class="navitem">Home</div><div class="navitem">Squad</div><div class="navitem active">Scouting</div><div class="navitem">Season</div><div class="navitem">History</div></div>
+        <div class="subbar"><span class="subpill">Overview</span><span class="subpill active">Search</span><span class="subpill">Planner</span></div>
+        <div class="grid3">
+          <div class="col" style="grid-column:1;">
+            <div class="card"><div class="cardtitle">Search</div><div style="height:32px;border:1px solid rgba(22,19,15,0.15);border-radius:4px;display:flex;align-items:center;padding:0 10px;font-size:11px;color:#8a8378;font-family:'Space Mono';">&#128269;&nbsp; Search players…</div></div>
+            <div class="card" style="flex:1;"><div class="cardtitle">Cap Limit Details</div><div style="font-family:'Anton';font-size:26px;color:#b94548;">₹8.4 Cr left</div><div class="attrbar" style="height:8px;"><div class="attrfill" style="width:60%;"></div></div></div>
+          </div>
+          <div class="card" style="flex:1;grid-column:2 / span 2;">
+            <div class="cardtitle">Shortlist (4)</div>
+            <sc-for list="{{ shortlist }}" as="s" hint-placeholder-count="3">
+              <div style="display:grid;grid-template-columns:32px 1fr auto auto;align-items:center;gap:10px;padding:7px 4px;border-bottom:1px solid rgba(22,19,15,0.08);">
+                <div class="photo-ph" style="width:32px;height:32px;">{{ s.initials }}</div>
+                <div style="display:flex;flex-direction:column;"><span style="font-weight:700;font-size:12px;">{{ s.name }}</span><span style="font-family:'Space Mono';font-size:9px;color:#8a8378;">{{ s.role }}</span></div>
+                <div style="display:flex;gap:1px;"><span class="star">★★★★</span><span class="star" style="opacity:.25;">★</span></div>
+                <div style="font-family:'Space Mono';font-size:10px;color:#8a8378;">{{ s.price }}</div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3.3 SCOUTING PLANNER -->
+    <div style="width:1120px;">
+      <div class="scrlabel">3.3 · Scouting — Auction Planner</div>
+      <div class="frame">
+        <div class="navbar navrow"><div class="navbtn">&#8592;</div><div class="navbtn">&#8594;</div><div class="navcrest">RCB</div><div class="navname">Royal Challengers Bengaluru</div>
+          <div class="navitem">Home</div><div class="navitem">Squad</div><div class="navitem active">Scouting</div><div class="navitem">Season</div><div class="navitem">History</div></div>
+        <div class="subbar"><span class="subpill">Overview</span><span class="subpill">Search</span><span class="subpill active">Planner</span></div>
+        <div class="grid3">
+          <sc-for list="{{ tiers }}" as="t" hint-placeholder-count="3">
+            <div class="card" style="flex:1;">
+              <div class="cardtitle" style="color:{{ t.color }};">{{ t.label }}</div>
+              <sc-for list="{{ t.players }}" as="p" hint-placeholder-count="2">
+                <div class="row"><span>{{ p.name }}</span><span style="font-family:'Space Mono';font-size:9px;color:#8a8378;">{{ p.price }}</span></div>
+              </sc-for>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+
+    <!-- 4.1 SEASON OVERVIEW HUB -->
+    <div style="width:1120px;">
+      <div class="scrlabel">4.1 · Season — Overview (hub)</div>
+      <div class="frame">
+        <div class="navbar navrow"><div class="navbtn">&#8592;</div><div class="navbtn">&#8594;</div><div class="navcrest">RCB</div><div class="navname">Royal Challengers Bengaluru</div>
+          <div class="navitem">Home</div><div class="navitem">Squad</div><div class="navitem">Scouting</div><div class="navitem active">Season</div><div class="navitem">History</div></div>
+        <div class="subbar"><span class="subpill active">Overview</span><span class="subpill">Fixtures</span><span class="subpill">Standings</span><span class="subpill">Stats</span></div>
+        <div class="grid3">
+          <div class="hubtile"><div class="cardtitle">Fixtures & Results</div><div style="font-family:'Anton';font-size:22px;">vs CSK</div><div style="font-family:'Space Mono';font-size:9px;color:#8a8378;">Next · Matchday 24</div></div>
+          <div class="hubtile"><div class="cardtitle">Points Table</div><div style="font-family:'Anton';font-size:26px;color:#b94548;">1st · 18 pts</div><div style="font-family:'Space Mono';font-size:9px;color:#8a8378;">12 played</div></div>
+          <div class="hubtile"><div class="cardtitle">Tournament Stats</div><div style="font-family:'Anton';font-size:20px;">Orange & Purple Cap</div><div style="font-family:'Space Mono';font-size:9px;color:#8a8378;">Leaderboards</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 4.2 SEASON FIXTURES & STANDINGS -->
+    <div style="width:1120px;">
+      <div class="scrlabel">4.2 · Season — Fixtures & Standings</div>
+      <div class="frame">
+        <div class="navbar navrow"><div class="navbtn">&#8592;</div><div class="navbtn">&#8594;</div><div class="navcrest">RCB</div><div class="navname">Royal Challengers Bengaluru</div>
+          <div class="navitem">Home</div><div class="navitem">Squad</div><div class="navitem">Scouting</div><div class="navitem active">Season</div><div class="navitem">History</div></div>
+        <div class="subbar"><span class="subpill">Overview</span><span class="subpill active">Fixtures</span><span class="subpill active">Standings</span><span class="subpill">Stats</span></div>
+        <div class="grid2">
+          <div class="card" style="flex:1;">
+            <div class="cardtitle">Points Table</div>
+            <div style="display:grid;grid-template-columns:1.4fr 0.5fr 0.5fr 0.5fr 0.6fr;font-family:'Space Mono';font-size:9px;color:#8a8378;padding:0 4px 4px;text-transform:uppercase;"><span>Team</span><span>P</span><span>W</span><span>L</span><span>Pts</span></div>
+            <sc-for list="{{ points }}" as="r" hint-placeholder-count="4">
+              <div style="display:grid;grid-template-columns:1.4fr 0.5fr 0.5fr 0.5fr 0.6fr;align-items:center;padding:6px 4px;border-bottom:1px solid rgba(22,19,15,0.08);font-size:11.5px;">
+                <span style="font-weight:700;">{{ r.team }}</span><span>{{ r.p }}</span><span>{{ r.w }}</span><span>{{ r.l }}</span><span style="font-family:'Anton';font-size:14px;">{{ r.pts }}</span>
+              </div>
+            </sc-for>
+          </div>
+          <div class="card" style="flex:1;">
+            <div class="cardtitle">Fixtures & Results</div>
+            <sc-for list="{{ fixtures }}" as="f" hint-placeholder-count="3">
+              <div class="row"><span>{{ f.text }}</span><span style="font-family:'Anton';font-size:13px;color:#8a8378;">{{ f.score }}</span><span class="tag" style="background:{{ f.badgeBg }};color:{{ f.badgeColor }};">{{ f.result }}</span></div>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 4.3 SEASON STATS -->
+    <div style="width:1120px;">
+      <div class="scrlabel">4.3 · Season — Tournament Stats</div>
+      <div class="frame">
+        <div class="navbar navrow"><div class="navbtn">&#8592;</div><div class="navbtn">&#8594;</div><div class="navcrest">RCB</div><div class="navname">Royal Challengers Bengaluru</div>
+          <div class="navitem">Home</div><div class="navitem">Squad</div><div class="navitem">Scouting</div><div class="navitem active">Season</div><div class="navitem">History</div></div>
+        <div class="subbar"><span class="subpill">Overview</span><span class="subpill">Fixtures</span><span class="subpill">Standings</span><span class="subpill active">Stats</span></div>
+        <div class="grid2">
+          <div class="card" style="flex:1;"><div class="cardtitle">Orange Cap Leaderboard</div>
+            <sc-for list="{{ orangeCap }}" as="o" hint-placeholder-count="4">
+              <div class="row"><span>{{ o.pos }}. {{ o.name }}</span><span style="font-family:'Anton';font-size:14px;color:#e1773b;">{{ o.runs }}</span></div>
+            </sc-for>
+          </div>
+          <div class="card" style="flex:1;"><div class="cardtitle">Purple Cap Leaderboard</div>
+            <sc-for list="{{ purpleCap }}" as="p" hint-placeholder-count="4">
+              <div class="row"><span>{{ p.pos }}. {{ p.name }}</span><span style="font-family:'Anton';font-size:14px;color:#8962c5;">{{ p.wkts }}</span></div>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 5.1 HISTORY OVERVIEW HUB -->
+    <div style="width:1120px;">
+      <div class="scrlabel">5.1 · History — Overview (hub)</div>
+      <div class="frame">
+        <div class="navbar navrow"><div class="navbtn">&#8592;</div><div class="navbtn">&#8594;</div><div class="navcrest">RCB</div><div class="navname">Royal Challengers Bengaluru</div>
+          <div class="navitem">Home</div><div class="navitem">Squad</div><div class="navitem">Scouting</div><div class="navitem">Season</div><div class="navitem active">History</div></div>
+        <div class="subbar"><span class="subpill active">Overview</span><span class="subpill">Records</span><span class="subpill">Club History</span><span class="subpill">Club Figures</span><span class="subpill">League History</span><span class="subpill">Hall of Fame</span></div>
+        <div class="grid3">
+          <div class="hubtile"><div class="cardtitle">Club History</div><div style="font-family:'Anton';font-size:24px;">17 seasons</div></div>
+          <div class="hubtile"><div class="cardtitle">Club Figures</div><div style="font-family:'Anton';font-size:20px;">Owner · Coach</div></div>
+          <div class="hubtile"><div class="cardtitle">Records</div><div style="font-family:'Anton';font-size:24px;color:#b94548;">973 runs</div></div>
+          <div class="hubtile"><div class="cardtitle">League History</div><div style="font-family:'Anton';font-size:24px;">18 champions</div></div>
+          <div class="hubtile"><div class="cardtitle">League Hall of Fame</div><div style="font-family:'Anton';font-size:24px;">32 legends</div></div>
+          <div class="hubtile"><div class="cardtitle">Trophy Cabinet</div><div style="font-family:'Anton';font-size:24px;color:#b94548;">3 titles</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 5.2 HISTORY RECORDS & HALL OF FAME -->
+    <div style="width:1120px;">
+      <div class="scrlabel">5.2 · History — Records & Hall of Fame</div>
+      <div class="frame">
+        <div class="navbar navrow"><div class="navbtn">&#8592;</div><div class="navbtn">&#8594;</div><div class="navcrest">RCB</div><div class="navname">Royal Challengers Bengaluru</div>
+          <div class="navitem">Home</div><div class="navitem">Squad</div><div class="navitem">Scouting</div><div class="navitem">Season</div><div class="navitem active">History</div></div>
+        <div class="subbar"><span class="subpill">Overview</span><span class="subpill active">Records</span><span class="subpill">Club History</span><span class="subpill">Club Figures</span><span class="subpill">League History</span><span class="subpill active">Hall of Fame</span></div>
+        <div class="grid3">
+          <div class="card">
+            <div class="cardtitle">Trophy Cabinet</div>
+            <div class="photo-ph" style="height:100px;">TROPHY IMAGE</div>
+            <div style="font-family:'Anton';font-size:24px;color:#b94548;">3 Titles</div>
+          </div>
+          <div class="card" style="flex:1;">
+            <div class="cardtitle">Hall of Fame</div>
+            <sc-for list="{{ hallOfFame }}" as="m" hint-placeholder-count="3">
+              <div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid rgba(22,19,15,0.08);">
+                <div class="crest-lg" style="width:34px;height:34px;font-size:11px;">{{ m.initials }}</div>
+                <div style="display:flex;flex-direction:column;"><span style="font-weight:700;font-size:12px;">{{ m.name }}</span><span style="font-family:'Space Mono';font-size:9px;color:#8a8378;">{{ m.era }}</span></div>
+              </div>
+            </sc-for>
+          </div>
+          <div class="card" style="flex:1;">
+            <div class="cardtitle">League Records</div>
+            <sc-for list="{{ records }}" as="r" hint-placeholder-count="3">
+              <div class="row"><span>{{ r.label }}</span><span style="font-family:'Anton';font-size:15px;color:#b94548;">{{ r.value }}</span></div>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 5.3 HISTORY CLUB HISTORY -->
+    <div style="width:1120px;">
+      <div class="scrlabel">5.3 · History — Club History</div>
+      <div class="frame">
+        <div class="navbar navrow"><div class="navbtn">&#8592;</div><div class="navbtn">&#8594;</div><div class="navcrest">RCB</div><div class="navname">Royal Challengers Bengaluru</div>
+          <div class="navitem">Home</div><div class="navitem">Squad</div><div class="navitem">Scouting</div><div class="navitem">Season</div><div class="navitem active">History</div></div>
+        <div class="subbar"><span class="subpill">Overview</span><span class="subpill">Records</span><span class="subpill active">Club History</span><span class="subpill">Club Figures</span><span class="subpill">League History</span><span class="subpill">Hall of Fame</span></div>
+        <div class="card" style="margin:16px;flex:1;">
+          <div class="cardtitle">Season-by-Season</div>
+          <sc-for list="{{ clubHistory }}" as="s" hint-placeholder-count="5">
+            <div class="row"><span style="font-family:'Space Mono';font-weight:700;">{{ s.season }}</span><span>{{ s.finish }}</span><sc-if value="{{ s.champion }}" hint-placeholder-val="{{ false }}"><span class="tag" style="background:rgba(229,184,66,0.2);color:#a67c00;">CHAMPION</span></sc-if></div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+
+    <!-- 5.4 HISTORY CLUB FIGURES -->
+    <div style="width:1120px;">
+      <div class="scrlabel">5.4 · History — Club Figures</div>
+      <div class="frame">
+        <div class="navbar navrow"><div class="navbtn">&#8592;</div><div class="navbtn">&#8594;</div><div class="navcrest">RCB</div><div class="navname">Royal Challengers Bengaluru</div>
+          <div class="navitem">Home</div><div class="navitem">Squad</div><div class="navitem">Scouting</div><div class="navitem">Season</div><div class="navitem active">History</div></div>
+        <div class="subbar"><span class="subpill">Overview</span><span class="subpill">Records</span><span class="subpill">Club History</span><span class="subpill active">Club Figures</span><span class="subpill">League History</span><span class="subpill">Hall of Fame</span></div>
+        <div class="grid3">
+          <sc-for list="{{ clubFigures }}" as="f" hint-placeholder-count="3">
+            <div class="card" style="align-items:center;text-align:center;">
+              <div class="photo-ph" style="width:56px;height:56px;border-radius:50%;">{{ f.initials }}</div>
+              <div style="font-weight:700;font-size:13px;">{{ f.name }}</div>
+              <div style="font-family:'Space Mono';font-size:9px;color:#8a8378;text-transform:uppercase;">{{ f.role }}</div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+
+    <!-- 5.5 HISTORY LEAGUE HISTORY -->
+    <div style="width:1120px;">
+      <div class="scrlabel">5.5 · History — League History</div>
+      <div class="frame">
+        <div class="navbar navrow"><div class="navbtn">&#8592;</div><div class="navbtn">&#8594;</div><div class="navcrest">RCB</div><div class="navname">Royal Challengers Bengaluru</div>
+          <div class="navitem">Home</div><div class="navitem">Squad</div><div class="navitem">Scouting</div><div class="navitem">Season</div><div class="navitem active">History</div></div>
+        <div class="subbar"><span class="subpill">Overview</span><span class="subpill">Records</span><span class="subpill">Club History</span><span class="subpill">Club Figures</span><span class="subpill active">League History</span><span class="subpill">Hall of Fame</span></div>
+        <div class="card" style="margin:16px;flex:1;">
+          <div class="cardtitle">Champions by Season</div>
+          <sc-for list="{{ leagueHistory }}" as="l" hint-placeholder-count="5">
+            <div class="row"><span style="font-family:'Space Mono';font-weight:700;">{{ l.season }}</span><span style="font-weight:700;">{{ l.champion }}</span><span style="font-family:'Space Mono';font-size:9px;color:#8a8378;">beat {{ l.runnerUp }}</span></div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+
+    <!-- 6 AUCTION ROOM -->
+    <div style="width:1120px;">
+      <div class="scrlabel">6 · Auction Room (harmonized bid panel)</div>
+      <div class="frame" style="background:#160c0c;">
+        <div class="navbar" style="background:#160c0c;border-bottom-color:rgba(255,255,255,0.15);">
+          <div style="font-family:'Space Mono';font-size:10px;color:#8a8378;letter-spacing:.08em;">SET 4 OF 9 · ACCELERATED</div>
+          <div style="flex:1;"></div>
+          <div style="display:flex;gap:8px;">
+            <div style="border:1.5px solid rgba(255,255,255,0.3);color:#fff;font-family:'Space Mono';font-size:9px;font-weight:700;padding:5px 10px;border-radius:4px;">SKIP SET</div>
+            <div style="border:1.5px solid rgba(255,255,255,0.3);color:#fff;font-family:'Space Mono';font-size:9px;font-weight:700;padding:5px 10px;border-radius:4px;">PAUSE</div>
+          </div>
+        </div>
+        <div style="flex:1;display:grid;grid-template-columns:1fr 1fr;gap:0;min-height:0;">
+          <div style="padding:26px;color:#fff;display:flex;flex-direction:column;gap:14px;">
+            <div class="photo-ph" style="height:180px;background:repeating-linear-gradient(135deg,rgba(255,255,255,0.05),rgba(255,255,255,0.05) 6px,rgba(255,255,255,0.02) 6px,rgba(255,255,255,0.02) 12px);color:rgba(255,255,255,0.5);">PLAYER PHOTO</div>
+            <div style="font-family:'Anton';font-size:28px;text-transform:uppercase;">Marcus Stoinis</div>
+            <div style="font-family:'Space Mono';font-size:10px;color:rgba(255,255,255,0.55);letter-spacing:.08em;">ALL-ROUNDER · OVERSEAS · BASE ₹2 CR</div>
+          </div>
+          <div style="padding:26px;display:flex;flex-direction:column;justify-content:center;gap:14px;background:rgba(185,69,72,0.08);">
+            <div style="font-family:'Space Mono';font-size:10px;color:#b94548;letter-spacing:.1em;text-transform:uppercase;">Current Bid · Royal Challengers Bengaluru</div>
+            <div style="font-family:'Anton';font-size:56px;color:#fff;">₹4.20<span style="font-size:24px;color:rgba(255,255,255,0.5);"> Cr</span></div>
+            <div style="display:flex;gap:4px;">
+              <sc-for list="{{ bidTicks }}" as="t" hint-placeholder-count="8">
+                <div style="flex:1;height:5px;border-radius:3px;background:{{ t.color }};"></div>
+              </sc-for>
+            </div>
+            <div style="background:#b94548;color:#fff;font-family:'Space Mono';font-weight:700;font-size:11px;padding:12px 18px;border-radius:4px;text-align:center;letter-spacing:.05em;">PLACE BID · ₹4.40 CR</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 7 SETUP -->
+    <div style="width:1120px;">
+      <div class="scrlabel">7 · Setup / Team Select</div>
+      <div class="frame" style="align-items:center;justify-content:center;gap:20px;">
+        <div style="font-family:'Anton';font-size:28px;text-transform:uppercase;">Choose Your Franchise</div>
+        <div style="font-family:'Space Mono';font-size:10px;color:#8a8378;">Every crest below uses its own harmonized accent — same recipe, ten identities</div>
+        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:14px;padding:0 50px;width:100%;box-sizing:border-box;">
+          <sc-for list="{{ franchises }}" as="t" hint-placeholder-count="10">
+            <div style="display:flex;flex-direction:column;align-items:center;gap:8px;padding:14px 8px;border:1.5px solid rgba(22,19,15,0.15);border-radius:8px;">
+              <div class="crest-lg" style="background:{{ t.color }};color:{{ t.text }};">{{ t.code }}</div>
+              <div style="font-family:'Space Mono';font-size:9px;font-weight:700;letter-spacing:.05em;">{{ t.code }}</div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+
+    <!-- 8 RETENTIONS -->
+    <div style="width:1120px;">
+      <div class="scrlabel">8 · Retentions</div>
+      <div class="frame">
+        <div style="padding:18px;border-bottom:1.5px solid #16130f;display:flex;align-items:center;justify-content:space-between;">
+          <div style="font-family:'Anton';font-size:24px;text-transform:uppercase;">Pre-Auction Retentions</div>
+          <div style="font-family:'Space Mono';font-size:10px;color:#8a8378;">3 of 6 slots used</div>
+        </div>
+        <div class="grid2">
+          <div class="card" style="flex:1;">
+            <div class="cardtitle">Retain</div>
+            <sc-for list="{{ retainList }}" as="p" hint-placeholder-count="3">
+              <div style="display:grid;grid-template-columns:32px 1fr auto auto;align-items:center;gap:10px;padding:7px 4px;border-bottom:1px solid rgba(22,19,15,0.08);">
+                <div class="photo-ph" style="width:32px;height:32px;">{{ p.initials }}</div>
+                <span style="font-weight:700;font-size:12px;">{{ p.name }}</span>
+                <span style="font-family:'Space Mono';font-size:10px;color:#8a8378;">{{ p.price }}</span>
+                <span class="tag">RETAIN</span>
+              </div>
+            </sc-for>
+          </div>
+          <div class="card" style="flex:1;">
+            <div class="cardtitle">Purse Impact</div>
+            <div style="font-family:'Anton';font-size:28px;color:#b94548;">₹42 Cr used</div>
+            <div class="attrbar" style="height:8px;"><div class="attrfill" style="width:35%;"></div></div>
+            <div style="font-family:'Space Mono';font-size:10px;color:#8a8378;">₹78 Cr remaining for auction day</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      threads: [
+        {subject:'Board memo: mid-season review', tag:'NEW', tagBg:'rgba(214,73,47,0.14)', tagColor:'#d6492f'},
+        {subject:'Scout report: 2 targets shortlisted', tag:'READ', tagBg:'rgba(22,19,15,0.06)', tagColor:'#8a8378'},
+        {subject:'Retention deadline reminder', tag:'URGENT', tagBg:'rgba(214,73,47,0.14)', tagColor:'#d6492f'},
+        {subject:'Fan sentiment update', tag:'READ', tagBg:'rgba(22,19,15,0.06)', tagColor:'#8a8378'},
+      ],
+      fullCalendar: Array.from({length:14},(_,i)=>({label:'MD'+(i+15), opp: ['MI','SRH','CSK','GT','KKR','LSG','RR','PBKS','DC','MI','SRH','CSK','GT','KKR'][i], bg: i===9?'#b94548':'rgba(22,19,15,0.05)', color: i===9?'#fff':'#16130f'})),
+      upcoming: [{text:'RCB vs CSK', venue:'Chinnaswamy'},{text:'RCB vs GT', venue:'Narendra Modi Stadium'},{text:'RCB vs KKR', venue:'Chinnaswamy'},{text:'RCB vs LSG', venue:'Ekana Stadium'}],
+      trustHistory: [40,44,50,55,60,68,75,82].map(v=>({h: Math.round(v*0.45)})),
+      expectations: [
+        {text:'Finish top 4', status:'ON TRACK', tagBg:'rgba(31,157,87,0.14)', tagColor:'#1f9d57'},
+        {text:'Develop 2 uncapped players', status:'ON TRACK', tagBg:'rgba(31,157,87,0.14)', tagColor:'#1f9d57'},
+        {text:'Stay under salary cap', status:'AT RISK', tagBg:'rgba(214,73,47,0.14)', tagColor:'#d6492f'},
+      ],
+      players: [
+        {initials:'VK',name:'V. Kohli',role:'Batter',overseas:false,captain:true,showRating:false,ratingPct:91,rating:91},
+        {initials:'FP',name:'F. du Plessis',role:'Batter',overseas:true,captain:false,showRating:true,ratingPct:87,rating:87},
+        {initials:'MS',name:'M. Siraj',role:'Bowler',overseas:false,captain:false,showRating:true,ratingPct:84,rating:84},
+        {initials:'JH',name:'J. Hazlewood',role:'Bowler',overseas:true,captain:false,showRating:true,ratingPct:85,rating:85},
+        {initials:'RJ',name:'R. Jurel',role:'Wicketkeeper',overseas:false,captain:false,showRating:true,ratingPct:79,rating:79},
+      ],
+      roleComp: [{role:'Batters',count:8,pct:60},{role:'Bowlers',count:9,pct:70},{role:'All-rounders',count:5,pct:35}],
+      xi: [
+        {pos:1,name:'F. du Plessis',role:'Batter',overseas:true},
+        {pos:2,name:'V. Kohli',role:'Batter',overseas:false},
+        {pos:3,name:'R. Jurel',role:'Wicketkeeper',overseas:false},
+        {pos:4,name:'C. Green',role:'All-rounder',overseas:true},
+        {pos:5,name:'W. Jacks',role:'All-rounder',overseas:true},
+        {pos:6,name:'M. Siraj',role:'Bowler',overseas:false},
+      ],
+      captaincyList: [
+        {name:'V. Kohli',role:'CAPTAIN',tagBg:'rgba(229,184,66,0.2)',tagColor:'#a67c00'},
+        {name:'F. du Plessis',role:'VICE-CAPTAIN',tagBg:'rgba(31,157,87,0.14)',tagColor:'#1f9d57'},
+        {name:'M. Siraj',role:'Player',tagBg:'rgba(22,19,15,0.06)',tagColor:'#8a8378'},
+        {name:'R. Jurel',role:'Player',tagBg:'rgba(22,19,15,0.06)',tagColor:'#8a8378'},
+      ],
+      battingTactics: [{label:'Aggression',pct:78},{label:'Powerplay Focus',pct:65},{label:'Death Overs',pct:55}],
+      bowlingOrder: [{name:'M. Siraj',overs:4},{name:'J. Hazlewood',overs:4},{name:'K. Topley',overs:3},{name:'S. Gopal',overs:3}],
+      shortlist: [
+        {initials:'RR',name:'R. Ravindra',role:'All-rounder',price:'₹2.4 Cr'},
+        {initials:'NE',name:'N. Ellis',role:'Bowler',price:'₹1.8 Cr'},
+        {initials:'TH',name:'T. Head',role:'Batter',price:'₹3.1 Cr'},
+      ],
+      tiers: [
+        {label:'Elite', color:'#a67c00', players:[{name:'T. Head',price:'₹3.1 Cr'},{name:'M. Stoinis',price:'₹2.6 Cr'}]},
+        {label:'Premium', color:'#b94548', players:[{name:'R. Ravindra',price:'₹2.4 Cr'},{name:'N. Ellis',price:'₹1.8 Cr'}]},
+        {label:'Depth', color:'#8a8378', players:[{name:'A. Zampa',price:'₹1.2 Cr'},{name:'D. Conway',price:'₹90 L'}]},
+      ],
+      points: [{team:'RCB',p:'12',w:'9',l:'3',pts:'18'},{team:'CSK',p:'12',w:'8',l:'4',pts:'16'},{team:'GT',p:'12',w:'7',l:'5',pts:'14'},{team:'MI',p:'12',w:'6',l:'6',pts:'12'}],
+      fixtures: [
+        {text:'RCB vs CSK',score:'182/6',result:'WON',badgeBg:'rgba(31,157,87,0.14)',badgeColor:'#1f9d57'},
+        {text:'RCB vs MI',score:'156/8',result:'LOST',badgeBg:'rgba(214,73,47,0.14)',badgeColor:'#d6492f'},
+        {text:'RCB vs GT',score:'201/4',result:'WON',badgeBg:'rgba(31,157,87,0.14)',badgeColor:'#1f9d57'},
+      ],
+      orangeCap: [{pos:1,name:'V. Kohli',runs:602},{pos:2,name:'T. Head',runs:571},{pos:3,name:'S. Gill',runs:548},{pos:4,name:'F. du Plessis',runs:510}],
+      purpleCap: [{pos:1,name:'M. Siraj',wkts:24},{pos:2,name:'J. Bumrah',wkts:22},{pos:3,name:'Y. Chahal',wkts:21},{pos:4,name:'J. Hazlewood',wkts:19}],
+      hallOfFame: [{initials:'AK',name:'A. Kumble',era:'2008–2014 · Legend'},{initials:'RD',name:'R. Dravid',era:'2011–2013 · Legend'},{initials:'CG',name:'C. Gayle',era:'2011–2017 · Legend'}],
+      records: [{label:'Most runs (season)',value:'973'},{label:'Most wkts (season)',value:'32'},{label:'Highest total',value:'263/5'}],
+      clubHistory: [
+        {season:'2023',finish:'Runners-up',champion:false},
+        {season:'2016',finish:'Runners-up',champion:false},
+        {season:'2011',finish:'Runners-up',champion:false},
+        {season:'2009',finish:'Semi-final',champion:false},
+        {season:'2008',finish:'Group stage',champion:false},
+      ],
+      clubFigures: [{initials:'RD',name:'Rahul Dravid',role:'Head Coach'},{initials:'VK',name:'Vijay Kumar',role:'Owner'},{initials:'AK',name:'Anil Kumble',role:'Director of Cricket'}],
+      leagueHistory: [
+        {season:'2026',champion:'GT',runnerUp:'MI'},
+        {season:'2025',champion:'CSK',runnerUp:'RCB'},
+        {season:'2024',champion:'KKR',runnerUp:'SRH'},
+        {season:'2023',champion:'CSK',runnerUp:'GT'},
+        {season:'2022',champion:'GT',runnerUp:'RR'},
+      ],
+      bidTicks: Array.from({length:8}, (_,i)=>({color: i<5 ? '#b94548' : 'rgba(255,255,255,0.15)'})),
+      franchises: [
+        {code:'MI',color:'#0086c4',text:'#fff'},{code:'CSK',color:'#e3b831',text:'#16130f'},{code:'RCB',color:'#b94548',text:'#fff'},
+        {code:'DC',color:'#0099c1',text:'#fff'},{code:'GT',color:'#c2a132',text:'#16130f'},{code:'LSG',color:'#2a67bd',text:'#fff'},
+        {code:'PBKS',color:'#b03d5b',text:'#fff'},{code:'KKR',color:'#8962c5',text:'#fff'},{code:'SRH',color:'#e1773b',text:'#fff'},{code:'RR',color:'#c0558d',text:'#fff'},
+      ],
+      retainList: [{initials:'VK',name:'V. Kohli',price:'₹18 Cr'},{initials:'FP',name:'F. du Plessis',price:'₹8 Cr'},{initials:'MS',name:'M. Siraj',price:'₹9.5 Cr'}],
+    };
+  }
+}
+</script>
+</body>
+</html>
