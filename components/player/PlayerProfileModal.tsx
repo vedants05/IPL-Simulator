@@ -175,7 +175,6 @@ export function PlayerProfileModal({
   const auction = useGameStore((state) => state.auction);
   const retiredPlayerSnapshots = useGameStore((state) => state.retiredPlayerSnapshots);
   const tradeRecords = useGameStore((state) => state.tradeRecords);
-  const userTeamId = useGameStore((state) => state.userTeamId);
   const internalShortlist = useGameStore((state) => state.playerShortlist);
   const setInternalShortlist = useGameStore((state) => state.setPlayerShortlist);
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -265,15 +264,6 @@ export function PlayerProfileModal({
       ? internalShortlist.filter((id) => id !== detailedPlayer.id)
       : [...internalShortlist, detailedPlayer.id];
     setInternalShortlist(nextList);
-    try {
-      const storageKey = `ipl_career_${userTeamId}`;
-      const saved = localStorage.getItem(storageKey);
-      const parsed = saved ? JSON.parse(saved) : {};
-      parsed.shortlist = nextList;
-      localStorage.setItem(storageKey, JSON.stringify(parsed));
-    } catch (e) {
-      console.warn("Unable to mirror shortlist to the legacy season save:", e);
-    }
     if (typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("ipl_shortlist_updated", { detail: { shortlist: nextList } }));
     }

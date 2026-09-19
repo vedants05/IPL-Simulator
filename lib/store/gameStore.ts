@@ -42,6 +42,7 @@ import {
   type IplTeamId,
 } from "@/lib/data/pitchCurator";
 import { getSeasonAccessStorageKey } from "@/lib/config/featureFlags";
+import { legacyCareerSnapshotStorageKey } from "@/lib/logic/careerSnapshotStorage";
 import { addDaysToDateKey } from "@/lib/logic/careerCalendar";
 import {
   deriveCustomPitch,
@@ -1301,6 +1302,11 @@ export const useGameStore = create<Store>()(
       initNewGame: async (userTeamId) => {
         if (typeof window !== "undefined") {
           localStorage.removeItem(getSeasonAccessStorageKey(userTeamId));
+          localStorage.removeItem(legacyCareerSnapshotStorageKey(userTeamId));
+          const legacyCommercialPrefix = `ipl_commercial_state_${userTeamId.toLowerCase()}_`;
+          Object.keys(localStorage)
+            .filter((key) => key.startsWith(legacyCommercialPrefix))
+            .forEach((key) => localStorage.removeItem(key));
         }
         const [fetchedPlayers, fetchedTeams, staffDirectory] = await Promise.all([
           fetchPlayersFromSupabase(),
@@ -1433,6 +1439,11 @@ export const useGameStore = create<Store>()(
           userTeamId,
           auctionTargets: {},
           auctionTargetPriorities: {},
+          playerShortlist: [],
+          acceleratedPlanningState: null,
+          userAcceleratedTargets: [],
+          aiAcceleratedTargets: {},
+          aiAcceleratedBackups: {},
           clubFigureTierOverrides: {},
           clubFigureProgression: {},
           offseasonStats: null,
@@ -1477,6 +1488,7 @@ export const useGameStore = create<Store>()(
           scoutingReports: [],
           scoutingNetworks: {},
           careerStaff,
+          delegateStaffToCeo: false,
           auction: {
             type: openingAuctionType,
             season: INITIAL_ACTIVE_SEASON,
@@ -1500,6 +1512,9 @@ export const useGameStore = create<Store>()(
             saleHistory: [],
           },
           isSetupComplete: false,
+          isPaused: false,
+          speed: 1,
+          skipSetSummary: null,
         });
       },
 

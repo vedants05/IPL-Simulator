@@ -70,7 +70,7 @@ import {
 } from "@/lib/logic/playerHistory";
 import {
   FIXTURE_SIMULATION_ENABLED,
-  SEASON_ACCESS_ENABLED,
+  getSeasonAccessStorageKey,
 } from "@/lib/config/featureFlags";
 import { findClubTeamOutcome, formatClubSeasonOutcome, getClubSeasonHistory, LAST_HISTORICAL_CLUB_SEASON } from "@/lib/data/clubHistory";
 import { getAuctionTypeForSeason } from "@/lib/logic/auctionCycle";
@@ -192,7 +192,7 @@ import {
   saveMatchSimulations,
   waitForPendingMatchSimulationWrites,
 } from "@/lib/logic/matchSimulationStorage";
-import { careerSnapshotStorageKey, compactCareerSnapshot, parseCareerSnapshot, serializeCareerSnapshot, writeCareerSnapshot } from "@/lib/logic/careerSnapshotStorage";
+import { careerSnapshotStorageKey, compactCareerSnapshot, parseCareerSnapshot, readCareerSnapshot, serializeCareerSnapshot, writeCareerSnapshot } from "@/lib/logic/careerSnapshotStorage";
 import BallByBallSummary from "@/components/match/BallByBallSummary";
 import PlayableMatchEngine, { type PlayableMatchSession } from "@/components/match/PlayableMatchEngine";
 import {
@@ -497,7 +497,8 @@ function getArchivedPartnershipContribution(
 }
 
 type MatchResultView = "scorecard" | "summary" | "ball-by-ball";
-const CAREER_FAST_FORWARD_RECOVERY_KEY = "ipl-career-fast-forward-target";
+const careerFastForwardRecoveryKey = (saveId: string) =>
+  `ipl-career-fast-forward-target-${saveId || "unsaved"}`;
 
 interface PendingMatchPreparation {
   matchId: string;
@@ -985,13 +986,6 @@ function OverviewPageContent() {
     });
   }, [currentSeason]);
 
-  // Ensure season access is marked in localStorage when viewing overview
-  useEffect(() => {
-    if (typeof window !== "undefined" && userTeamId) {
-      localStorage.setItem(`ipl_continued_to_season_${userTeamId}`, "true");
-    }
-  }, [userTeamId]);
-
   // --------------------------------------------------------------------------
   // Core UI Tabs State
   // --------------------------------------------------------------------------
@@ -1193,7 +1187,7 @@ function OverviewPageContent() {
   // complete localStorage career save during navigation.
   useEffect(() => {
     if (!isCareerLoaded || !userTeamId) return;
-    cacheTeamProfileCareer(userTeamId, {
+    cacheTeamProfileCareer(saveId, userTeamId, {
       fixtures,
       standings,
       playerStats,
@@ -1225,6 +1219,7 @@ function OverviewPageContent() {
     fixtures,
     isCareerLoaded,
     playerStats,
+    saveId,
     standings,
     teamLeadership,
     userTeamId,
@@ -1365,7 +1360,7 @@ function OverviewPageContent() {
         // Clear it on failure so the reload watchdog cannot repeatedly restart
         // the same failing calendar event and leave its overlay blocking input.
         useGameStore.getState().setCareerFastForwardTarget(null);
-        sessionStorage.removeItem(CAREER_FAST_FORWARD_RECOVERY_KEY);
+        sessionStorage.removeItem(careerFastForwardRecoveryKey(saveId));
         setIsSimulatingDays(false);
         setToastMessage(
           error instanceof Error
@@ -1620,8 +1615,8 @@ function OverviewPageContent() {
   // Load and save state from LocalStorage
   useEffect(() => {
     setIsCareerLoaded(false);
-    const careerStorageKey = careerSnapshotStorageKey(userTeamId);
-    const saved = localStorage.getItem(careerStorageKey);
+    const careerStorageKey = careerSnapshotStorageKey(saveId, userTeamId);
+    const saved = readCareerSnapshot(localStorage, saveId, userTeamId)?.serialized;
     if (saved) {
       try {
         const parsed = parseCareerSnapshot(saved);
@@ -1964,10 +1959,10 @@ function OverviewPageContent() {
       initCareer();
     }
     setIsCareerLoaded(true);
-  }, [userTeamId]);
+  }, [userTeamId, saveId]);
 
   const saveCareerState = useCallback((updatedData: any) => {
-    const storageKey = careerSnapshotStorageKey(userTeamId);
+    const storageKey = careerSnapshotStorageKey(saveId, userTeamId);
     let latestSavedState = careerSaveStateRef.current ?? {};
     if (careerSaveStateRef.current === null) {
       try {
@@ -2087,7 +2082,7 @@ function OverviewPageContent() {
       }
       throw error;
     }
-  }, [userTeamId, currentSeason, fixtures, standings, playerStats, seasonStartBattingAbilities, seasonStartBowlingAbilities, inbox, battingFirstXI, bowlingFirstXI, battingFirstImpactSubs, bowlingFirstImpactSubs, battingFirstImpactPlayerId, battingFirstOutgoingPlayerId, battingFirstImpactBattingPosition, bowlingFirstImpactPlayerId, bowlingFirstOutgoingPlayerId, bowlingFirstImpactBattingPosition, teamTactics, teamLeadership, aiTeamLeadership, shortlist, retentionDeadline, matchArchiveCareerId]);
+  }, [userTeamId, saveId, currentSeason, fixtures, standings, playerStats, seasonStartBattingAbilities, seasonStartBowlingAbilities, inbox, battingFirstXI, bowlingFirstXI, battingFirstImpactSubs, bowlingFirstImpactPlayerId, battingFirstOutgoingPlayerId, battingFirstImpactBattingPosition, bowlingFirstImpactPlayerId, bowlingFirstOutgoingPlayerId, bowlingFirstImpactBattingPosition, teamTactics, teamLeadership, aiTeamLeadership, shortlist, retentionDeadline, matchArchiveCareerId]);
 
   useEffect(() => {
     if (
@@ -2176,6 +2171,7 @@ function OverviewPageContent() {
         finishRank = userStandingIdx >= 0 ? userStandingIdx + 1 : 5;
       }
       processSeasonEndCommercialSettlement(
+        saveId,
         userTeamId,
         currentSeason,
         finishRank,
@@ -3427,7 +3423,7 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}${replacementEligible
     const date = match.date ?? currentDate;
     const userTeamParticipating = Boolean(userTeamId && (match.teamA === userTeamId || match.teamB === userTeamId));
     const commercialModifiers = userTeamParticipating && userTeamId
-      ? getInjurySystemModifiersFromCommercial(userTeamId, currentSeason, userHomeStadium?.capacity ?? 45000)
+      ? getInjurySystemModifiersFromCommercial(saveId, userTeamId, currentSeason, userHomeStadium?.capacity ?? 45000)
       : undefined;
 
     const result = processMatchInjuries({
@@ -3460,7 +3456,7 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}${replacementEligible
       firstFixtureDate,
       seasonFinalDate: finalDate,
       modifiersByTeam: userTeamId ? {
-        [userTeamId]: getInjurySystemModifiersFromCommercial(userTeamId, currentSeason, userHomeStadium?.capacity ?? 45000),
+        [userTeamId]: getInjurySystemModifiersFromCommercial(saveId, userTeamId, currentSeason, userHomeStadium?.capacity ?? 45000),
       } : undefined,
       generationEnabled: Boolean(
         liveAuction?.phase === "completed"
@@ -3759,6 +3755,7 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}${replacementEligible
       const squadPlayersList = userTeam ? userTeam.squad.map((id) => players[id]).filter((p): p is Player => Boolean(p)) : undefined;
       const userStadiumCap = userHomeStadium?.capacity ?? 45000;
       const settlement = processHomeMatchCommercialSettlement(
+        saveId,
         userTeamId,
         currentSeason,
         simulatedMatch.id,
@@ -3786,6 +3783,7 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}${replacementEligible
       const squadPlayersList = userTeam ? userTeam.squad.map((id) => players[id]).filter((p): p is Player => Boolean(p)) : undefined;
       const userStadiumCap = userHomeStadium?.capacity ?? 45000;
       checkAndReleaseBcciTranches(
+        saveId,
         userTeamId,
         currentSeason,
         userMatchesPlayed,
@@ -4106,6 +4104,7 @@ This record has been officially verified and added to the IPL Minor Records arch
         const squadPlayersList = userTeam ? userTeam.squad.map((id) => players[id]).filter((p): p is Player => Boolean(p)) : undefined;
         const userStadiumCap = userHomeStadium?.capacity ?? 45000;
         processHomeMatchCommercialSettlement(
+          saveId,
           userTeamId,
           currentSeason,
           simulatedMatch.id,
@@ -4129,6 +4128,7 @@ This record has been officially verified and added to the IPL Minor Records arch
         const squadPlayersList = userTeam ? userTeam.squad.map((id) => players[id]).filter((p): p is Player => Boolean(p)) : undefined;
         const userStadiumCap = userHomeStadium?.capacity ?? 45000;
         checkAndReleaseBcciTranches(
+          saveId,
           userTeamId,
           currentSeason,
           userMatchesPlayed,
@@ -4258,7 +4258,7 @@ This record has been officially verified and added to the IPL Minor Records arch
     careerFastForwardCancelledRef.current = true;
     stopSimulating();
     useGameStore.getState().setCareerFastForwardTarget(null);
-    sessionStorage.removeItem(CAREER_FAST_FORWARD_RECOVERY_KEY);
+    sessionStorage.removeItem(careerFastForwardRecoveryKey(saveId));
     setPendingSkipTargetDate(null);
     showToast(message);
   }, [stopSimulating]);
@@ -4302,7 +4302,7 @@ This record has been officially verified and added to the IPL Minor Records arch
     const final = fixturesRef.current.find((fixture) => fixture.stage === "final" && fixture.played && fixture.winner);
     if (!final?.winner) {
       useGameStore.getState().setCareerFastForwardTarget(null);
-      sessionStorage.removeItem(CAREER_FAST_FORWARD_RECOVERY_KEY);
+      sessionStorage.removeItem(careerFastForwardRecoveryKey(saveId));
       showToast("Cannot begin the offseason until the season final has a recorded winner.");
       seasonRolloverInProgressRef.current = false;
       setSeasonTransitionStage(null);
@@ -4472,6 +4472,7 @@ This record has been officially verified and added to the IPL Minor Records arch
       const userStadiumCap = userHomeStadium?.capacity ?? 45000;
       const squadPlayersList = userTeam ? userTeam.squad.map((id) => players[id]).filter((p): p is Player => Boolean(p)) : undefined;
       processSeasonEndCommercialSettlement(
+        saveId,
         userTeamId,
         currentSeason,
         finishRank,
@@ -4543,29 +4544,29 @@ This record has been officially verified and added to the IPL Minor Records arch
     ) ? persistedFastForwardTarget : null;
     if (!fastForwardTarget && persistedFastForwardTarget) {
       useGameStore.getState().setCareerFastForwardTarget(null);
-      sessionStorage.removeItem(CAREER_FAST_FORWARD_RECOVERY_KEY);
+      sessionStorage.removeItem(careerFastForwardRecoveryKey(saveId));
     }
     if (fastForwardTarget) {
       const auctionCompleted = await completeOffseasonAutomatically();
       if (!auctionCompleted) {
         useGameStore.getState().setCareerFastForwardTarget(null);
-        sessionStorage.removeItem(CAREER_FAST_FORWARD_RECOVERY_KEY);
+        sessionStorage.removeItem(careerFastForwardRecoveryKey(saveId));
         stopSimulating();
         showToast("Automatic offseason simulation could not complete safely.");
         router.push("/game/auction");
         return false;
       }
-      localStorage.setItem(`ipl_continued_to_season_${userTeamId}`, "true");
+      localStorage.setItem(getSeasonAccessStorageKey(userTeamId, saveId), "true");
       localStorage.removeItem(`ipl_career_${userTeamId}`);
       stopSimulating();
       // The large Zustand save can be at the browser quota during an auction.
       // Carry the small target in both session storage and the reload URL so
       // automatic match simulation cannot silently become manual afterwards.
-      sessionStorage.setItem(CAREER_FAST_FORWARD_RECOVERY_KEY, fastForwardTarget);
+      sessionStorage.setItem(careerFastForwardRecoveryKey(saveId), fastForwardTarget);
       window.location.assign(`/game/overview?tab=home&fastForwardTarget=${encodeURIComponent(fastForwardTarget)}`);
       return true;
     }
-    localStorage.removeItem(`ipl_continued_to_season_${userTeamId}`);
+    localStorage.removeItem(getSeasonAccessStorageKey(userTeamId, saveId));
     stopSimulating();
     router.push("/game/auction");
     return true;
@@ -4573,7 +4574,7 @@ This record has been officially verified and added to the IPL Minor Records arch
       seasonRolloverInProgressRef.current = false;
       setSeasonTransitionStage(null);
       useGameStore.getState().setCareerFastForwardTarget(null);
-      sessionStorage.removeItem(CAREER_FAST_FORWARD_RECOVERY_KEY);
+      sessionStorage.removeItem(careerFastForwardRecoveryKey(saveId));
       stopSimulating();
       showToast(error instanceof Error ? error.message : "The offseason transition could not be completed safely.");
       return false;
@@ -4595,7 +4596,7 @@ This record has been officially verified and added to the IPL Minor Records arch
       if (!FIXTURE_SIMULATION_ENABLED) {
         stopSimulating();
         useGameStore.getState().setCareerFastForwardTarget(null);
-        sessionStorage.removeItem(CAREER_FAST_FORWARD_RECOVERY_KEY);
+        sessionStorage.removeItem(careerFastForwardRecoveryKey(saveId));
         showToast("Paused before the fixtures begin. Fixture simulation is not currently enabled.");
         return;
       }
@@ -4622,7 +4623,7 @@ This record has been officially verified and added to the IPL Minor Records arch
             console.error("Unable to auto-simulate calendar fixture:", error);
             stopSimulating();
             useGameStore.getState().setCareerFastForwardTarget(null);
-            sessionStorage.removeItem(CAREER_FAST_FORWARD_RECOVERY_KEY);
+            sessionStorage.removeItem(careerFastForwardRecoveryKey(saveId));
             showToast(error instanceof Error ? error.message : "Unable to auto-simulate your fixture.");
           }
           return;
@@ -4831,7 +4832,7 @@ This record has been officially verified and added to the IPL Minor Records arch
       if (targetDate <= useGameStore.getState().currentDate) return;
       careerFastForwardCancelledRef.current = false;
       careerFastForwardActiveRef.current = true;
-      sessionStorage.setItem(CAREER_FAST_FORWARD_RECOVERY_KEY, targetDate);
+      sessionStorage.setItem(careerFastForwardRecoveryKey(saveId), targetDate);
       setCareerFastForwardTarget(targetDate);
       skipToCalendarDate(targetDate, true);
     };
@@ -4853,7 +4854,7 @@ This record has been officially verified and added to the IPL Minor Records arch
         // the full auction, and another season from this single click. That
         // workload grows with long careers and can freeze or crash the tab.
         liveState.setCareerFastForwardTarget(null);
-        sessionStorage.removeItem(CAREER_FAST_FORWARD_RECOVERY_KEY);
+        sessionStorage.removeItem(careerFastForwardRecoveryKey(saveId));
         skipStartDateRef.current = null;
         skipTargetDateRef.current = null;
         autoSimUserFixturesRef.current = false;
@@ -4909,7 +4910,7 @@ This record has been officially verified and added to the IPL Minor Records arch
       skipStartDateRef.current = null;
       skipTargetDateRef.current = null;
       autoSimUserFixturesRef.current = false;
-      sessionStorage.removeItem(CAREER_FAST_FORWARD_RECOVERY_KEY);
+      sessionStorage.removeItem(careerFastForwardRecoveryKey(saveId));
       if (useGameStore.getState().careerFastForwardTargetDate) {
         setCareerFastForwardTarget(null);
       }
@@ -4927,7 +4928,7 @@ This record has been officially verified and added to the IPL Minor Records arch
       "",
       `${recoveryUrl.pathname}${recoveryUrl.search}${recoveryUrl.hash}`,
     );
-    sessionStorage.removeItem(CAREER_FAST_FORWARD_RECOVERY_KEY);
+    sessionStorage.removeItem(careerFastForwardRecoveryKey(saveId));
     const liveDate = useGameStore.getState().currentDate;
     if (recoveryTarget <= liveDate) {
       setCareerFastForwardTarget(null);
@@ -4953,7 +4954,7 @@ This record has been officially verified and added to the IPL Minor Records arch
       careerFastForwardActiveRef.current = false;
       careerFastForwardCancelledRef.current = false;
       setCareerFastForwardTarget(null);
-      sessionStorage.removeItem(CAREER_FAST_FORWARD_RECOVERY_KEY);
+      sessionStorage.removeItem(careerFastForwardRecoveryKey(saveId));
       stopSimulating();
       showToast("Career fast-forward complete.");
       return;
@@ -8031,6 +8032,7 @@ This record has been officially verified and added to the IPL Minor Records arch
               ================================================================== */}
           {activeTab === "commercial" && userTeam && (
             <CommercialMainPage
+              saveId={saveId}
               teamId={userTeamId}
               season={currentSeason}
               stadiumCapacity={stadiumBuilderCapacity ?? userHomeStadium?.capacity ?? 45000}
@@ -11368,16 +11370,14 @@ export default function OverviewPage() {
 
     if (typeof window !== "undefined") {
       let recoveredTeamId: string | null = null;
+      const knownTeamIds = Object.keys(currentTeams);
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
         if (key?.startsWith("ipl_career_")) {
-          const candidate = key.replace("ipl_career_", "");
-          if (candidate) {
-            recoveredTeamId = candidate;
-            break;
-          }
-        } else if (key?.startsWith("ipl_continued_to_season_")) {
-          const candidate = key.replace("ipl_continued_to_season_", "");
+          const candidate = knownTeamIds.find((teamId) => (
+            key === `ipl_career_${teamId}`
+            || key === `ipl_career_${currentStore.saveId}_${teamId}`
+          ));
           if (candidate) {
             recoveredTeamId = candidate;
             break;
@@ -11387,7 +11387,7 @@ export default function OverviewPage() {
 
       if (recoveredTeamId && currentTeams[recoveredTeamId]) {
         useGameStore.setState({ userTeamId: recoveredTeamId });
-        localStorage.setItem(`ipl_continued_to_season_${recoveredTeamId}`, "true");
+        localStorage.setItem(getSeasonAccessStorageKey(recoveredTeamId, currentStore.saveId), "true");
         return;
       }
     }
@@ -11402,7 +11402,7 @@ export default function OverviewPage() {
           auction: s.auction ? { ...s.auction, phase: "completed" } : null,
         }));
         if (typeof window !== "undefined") {
-          localStorage.setItem(`ipl_continued_to_season_${targetTeamId}`, "true");
+          localStorage.setItem(getSeasonAccessStorageKey(targetTeamId, useGameStore.getState().saveId), "true");
         }
       })
       .catch((err) => {

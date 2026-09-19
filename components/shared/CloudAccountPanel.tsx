@@ -60,7 +60,7 @@ export default function CloudAccountPanel({ onNavigate }: { onNavigate?: () => v
       </div>
       {guest ? (
         <button onClick={() => { onNavigate?.(); router.push("/login?switch=1"); }} className={rowClass}>
-          <span className="flex items-center gap-1.5"><Cloud size={11} /> Sign in to enable cloud saves</span>
+          <span className="flex items-center gap-1.5"><Cloud size={11} /> Sign in</span>
         </button>
       ) : (
         <button onClick={saveNow} disabled={busy} className={rowClass}>

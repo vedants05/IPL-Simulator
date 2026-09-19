@@ -8,5 +8,15 @@ export const FIXTURE_SIMULATION_ENABLED = true;
 
 export const SEASON_ACCESS_CHANGED_EVENT = "ipl_season_access_changed";
 
-export const getSeasonAccessStorageKey = (teamId: string) =>
-  `ipl_continued_to_season_${teamId}`;
+export const getSeasonAccessStorageKey = (teamId: string, saveId?: string) =>
+  `ipl_continued_to_season_${saveId || teamId}`;
+
+export function hasSeasonAccess(storage: Storage, teamId: string, saveId: string): boolean {
+  const key = getSeasonAccessStorageKey(teamId, saveId);
+  if (storage.getItem(key) === "true") return true;
+  const legacyKey = getSeasonAccessStorageKey(teamId);
+  if (storage.getItem(legacyKey) !== "true") return false;
+  storage.setItem(key, "true");
+  storage.removeItem(legacyKey);
+  return true;
+}

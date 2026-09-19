@@ -2,6 +2,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useGameStore } from "@/lib/store/gameStore";
+import { hasSeasonAccess } from "@/lib/config/featureFlags";
 
 export default function RootPage() {
   const router = useRouter();
@@ -13,7 +14,8 @@ export default function RootPage() {
       navigated = true;
       const { saveId, userTeamId, auction } = useGameStore.getState();
       if (saveId && userTeamId) {
-        if (auction && auction.phase !== "completed") {
+        const continuedToSeason = hasSeasonAccess(localStorage, userTeamId, saveId);
+        if (!continuedToSeason || (auction && auction.phase !== "completed")) {
           router.replace("/game/auction");
         } else {
           router.replace("/game/overview");

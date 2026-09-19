@@ -12,8 +12,10 @@ import {
 } from "@/lib/theme/appearance";
 import AuctionGuidedTour from "@/components/auction/AuctionGuidedTour";
 import CloudAccountPanel from "./CloudAccountPanel";
+import { clearSideStorageForSave } from "@/lib/supabase/cloudSaves";
 import {
   getSeasonAccessStorageKey,
+  hasSeasonAccess,
   SEASON_ACCESS_CHANGED_EVENT,
   SEASON_ACCESS_ENABLED,
 } from "@/lib/config/featureFlags";
@@ -55,6 +57,7 @@ export default function NavBar() {
   const router = useRouter();
   const {
     teams,
+    saveId,
     userTeamId,
     currentDate,
     auction,
@@ -71,6 +74,7 @@ export default function NavBar() {
     resetGame,
   } = useGameStore(useShallow((state) => ({
     teams: state.teams,
+    saveId: state.saveId,
     userTeamId: state.userTeamId,
     currentDate: state.currentDate,
     auction: state.auction,
@@ -109,13 +113,18 @@ export default function NavBar() {
   const isTradeHubPage = pathname === "/game/overview"
     && activeTabFromUrl === "league"
     && searchParams.get("subtab") === "trades";
-  const seasonPagesUnlocked = true;
-  const showSeasonNavigation = true;
+  const seasonPagesUnlocked = SEASON_ACCESS_ENABLED && continuedToSeason === true;
+  const showSeasonNavigation = seasonPagesUnlocked && (!isAuctionPage || auction?.phase === "completed");
   const teamProfilePrefetchKey = Object.keys(teams).sort().join("|");
 
   useEffect(() => {
     const syncSeasonAccess = () => {
-      setContinuedToSeason(true);
+      if (!SEASON_ACCESS_ENABLED) {
+        localStorage.removeItem(getSeasonAccessStorageKey(userTeamId, saveId));
+        setContinuedToSeason(false);
+        return;
+      }
+      setContinuedToSeason(hasSeasonAccess(localStorage, userTeamId, saveId));
     };
 
     syncSeasonAccess();
@@ -124,7 +133,12 @@ export default function NavBar() {
     return () => {
       window.removeEventListener(SEASON_ACCESS_CHANGED_EVENT, syncSeasonAccess);
     };
-  }, [userTeamId, pathname]);
+  }, [userTeamId, saveId, pathname]);
+
+  useEffect(() => {
+    if (continuedToSeason === null || seasonPagesUnlocked || isAuctionPage) return;
+    router.replace("/game/auction");
+  }, [continuedToSeason, isAuctionPage, router, seasonPagesUnlocked]);
 
   useEffect(() => {
     if (!seasonPagesUnlocked || !teamProfilePrefetchKey) return;
@@ -156,7 +170,7 @@ export default function NavBar() {
   };
 
   const handleRestartGame = () => {
-    localStorage.removeItem(getSeasonAccessStorageKey(userTeamId));
+    clearSideStorageForSave(saveId, userTeamId);
     resetGame();
     setShowRestartConfirm(false);
     setShowSettings(false);
@@ -287,7 +301,7 @@ export default function NavBar() {
       )}
 
       <div className="flex items-center gap-0">
-        {NAV_ITEMS.map((item) => {
+        {(showSeasonNavigation ? NAV_ITEMS : [{ label: "Auction", href: "/game/auction" }]).map((item) => {
           let active = false;
           if (item.href === "/game/auction") {
             active = pathname.startsWith("/game/auction");

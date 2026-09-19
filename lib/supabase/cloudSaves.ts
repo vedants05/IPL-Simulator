@@ -10,6 +10,7 @@ export interface CloudSaveMeta {
   current_season: number | null;
   game_date: string | null;
   updated_at: string;
+  size_bytes: number | null;
 }
 
 /** The subset of persisted store state the saves row is indexed by. */
@@ -42,22 +43,46 @@ export function isGuest(): boolean {
  */
 const SIDE_KEY = /^ipl[_-]/;
 const SIDE_KEY_EXCLUDE = /^ipl-simulator-save/;
-export function snapshotSideStorage(): Record<string, string> {
+
+function sideKeyBelongsToSave(key: string, saveId?: string, teamId?: string): boolean {
+  if (!SIDE_KEY.test(key) || SIDE_KEY_EXCLUDE.test(key)) return false;
+  if (!saveId) return true;
+  if (key.includes(saveId)) return true;
+  if (!teamId) return false;
+  // Legacy keys are accepted only for the matching club and are migrated by
+  // their owning feature as soon as that save is opened.
+  return key === `ipl_career_${teamId}`
+    || key === `ipl_continued_to_season_${teamId}`
+    || key.startsWith(`ipl_commercial_state_${teamId.toLowerCase()}_`);
+}
+
+export function snapshotSideStorage(saveId?: string, teamId?: string): Record<string, string> {
   const out: Record<string, string> = {};
   if (typeof localStorage === "undefined") return out;
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);
-    if (!key || !SIDE_KEY.test(key) || SIDE_KEY_EXCLUDE.test(key)) continue;
+    if (!key || !sideKeyBelongsToSave(key, saveId, teamId)) continue;
     const value = localStorage.getItem(key);
     if (value !== null) out[key] = value;
   }
   return out;
 }
-export function restoreSideStorage(entries: Record<string, string> | null | undefined): void {
+export function clearSideStorageForSave(saveId?: string, teamId?: string): void {
+  if (typeof localStorage === "undefined") return;
+  for (const key of Object.keys(snapshotSideStorage(saveId, teamId))) localStorage.removeItem(key);
+}
+
+export function restoreSideStorage(
+  entries: Record<string, string> | null | undefined,
+  saveId?: string,
+  teamId?: string,
+): void {
   if (!entries || typeof localStorage === "undefined") return;
-  // Clear stale side data first so a loaded save does not inherit another's.
-  for (const key of Object.keys(snapshotSideStorage())) localStorage.removeItem(key);
+  // Replace only this career's side data. Other saves may be open in another
+  // tab and must never be erased as a side effect of switching careers.
+  clearSideStorageForSave(saveId, teamId);
   for (const [key, value] of Object.entries(entries)) {
+    if (!sideKeyBelongsToSave(key, saveId, teamId)) continue;
     try { localStorage.setItem(key, value); } catch { /* quota: main save still loads */ }
   }
 }
@@ -104,7 +129,7 @@ export async function uploadSave(persisted: { state: unknown; version?: number }
     current_season: summary.currentSeason ?? null,
     game_date: summary.currentDate ?? null,
     state: persisted,
-    local_storage: snapshotSideStorage(),
+    local_storage: snapshotSideStorage(summary.saveId, summary.userTeamId),
     updated_at: new Date().toISOString(),
   });
   if (error) throw error;
@@ -114,10 +139,20 @@ export async function listSaves(): Promise<CloudSaveMeta[]> {
   const supabase = getSupabaseBrowserClient();
   const { data, error } = await supabase
     .from("saves")
-    .select("id,name,user_team_id,current_season,game_date,updated_at")
+    .select("id,name,user_team_id,current_season,game_date,updated_at,size_bytes")
     .order("updated_at", { ascending: false });
-  if (error) throw error;
-  return data ?? [];
+  if (!error) return data ?? [];
+  // Keep cloud saves usable while the size metadata migration is being rolled
+  // out. The next successful query after the migration will include sizes.
+  if (/size_bytes|schema cache|column/i.test(error.message)) {
+    const fallback = await supabase
+      .from("saves")
+      .select("id,name,user_team_id,current_season,game_date,updated_at")
+      .order("updated_at", { ascending: false });
+    if (fallback.error) throw fallback.error;
+    return (fallback.data ?? []).map((save) => ({ ...save, size_bytes: null }));
+  }
+  throw error;
 }
 
 export interface CloudSavePayload { state: { state: unknown; version?: number }; local_storage: Record<string, string> | null }

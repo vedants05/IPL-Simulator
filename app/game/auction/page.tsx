@@ -22,6 +22,7 @@ import { getAuctionEndSquadIds } from "@/lib/logic/auctionSquadSnapshot";
 import type { Player } from "@/lib/types";
 import {
   getSeasonAccessStorageKey,
+  hasSeasonAccess,
   SEASON_ACCESS_CHANGED_EVENT,
   SEASON_ACCESS_ENABLED,
 } from "@/lib/config/featureFlags";
@@ -1866,11 +1867,12 @@ function TeamSquadCard({
 }
 
 function AuctionComplete() {
-  const { auction, teams, players, userTeamId, currentSeason, tradeRecords, injuryReplacementRecords } = useGameStore(useShallow((state) => ({
+  const { auction, teams, players, userTeamId, saveId, currentSeason, tradeRecords, injuryReplacementRecords } = useGameStore(useShallow((state) => ({
     auction: state.auction,
     teams: state.teams,
     players: state.players,
     userTeamId: state.userTeamId,
+    saveId: state.saveId,
     currentSeason: state.currentSeason,
     tradeRecords: state.tradeRecords,
     injuryReplacementRecords: state.injuryReplacementRecords,
@@ -1885,17 +1887,17 @@ function AuctionComplete() {
   useEffect(() => {
     if (typeof window !== "undefined") {
       if (!SEASON_ACCESS_ENABLED) {
-        localStorage.removeItem(getSeasonAccessStorageKey(userTeamId));
+        localStorage.removeItem(getSeasonAccessStorageKey(userTeamId, saveId));
         setContinued(false);
         return;
       }
-      setContinued(localStorage.getItem(getSeasonAccessStorageKey(userTeamId)) === "true");
+      setContinued(hasSeasonAccess(localStorage, userTeamId, saveId));
     }
-  }, [userTeamId, pathname]);
+  }, [userTeamId, saveId, pathname]);
 
   const handleContinue = () => {
     if (!SEASON_ACCESS_ENABLED) return;
-    localStorage.setItem(getSeasonAccessStorageKey(userTeamId), "true");
+    localStorage.setItem(getSeasonAccessStorageKey(userTeamId, saveId), "true");
     localStorage.removeItem(`ipl_career_${userTeamId}`);
     setContinued(true);
     window.dispatchEvent(new Event(SEASON_ACCESS_CHANGED_EVENT));

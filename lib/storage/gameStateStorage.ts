@@ -1,5 +1,5 @@
 import type { PersistStorage, StateStorage, StorageValue } from "zustand/middleware";
-import { uploadSave, setCloudSyncStatus } from "../supabase/cloudSaves";
+import { PERSIST_KEY, restoreSideStorage, snapshotSideStorage, uploadSave, setCloudSyncStatus } from "../supabase/cloudSaves";
 
 /** Debounced cloud mirror of the latest persisted value. Local IndexedDB is the primary store. */
 const CLOUD_SYNC_DELAY_MS = 20_000;
@@ -107,6 +107,87 @@ async function deleteIndexedValue(name: string): Promise<void> {
   }
 }
 
+const LOCAL_SAVE_SLOT_PREFIX = "ipl-local-save:";
+
+export interface LocalSaveMeta {
+  id: string;
+  user_team_id: string | null;
+  current_season: number | null;
+  game_date: string | null;
+  updated_at: string;
+  size_bytes: number;
+}
+
+interface LocalSaveSlot {
+  state: StorageValue<unknown>;
+  local_storage: Record<string, string>;
+  updated_at: string;
+}
+
+function localSaveSummary(slot: LocalSaveSlot): LocalSaveMeta | null {
+  const state = (slot.state?.state ?? {}) as { saveId?: string; userTeamId?: string; currentSeason?: number; currentDate?: string };
+  if (!state.saveId) return null;
+  return {
+    id: state.saveId,
+    user_team_id: state.userTeamId ?? null,
+    current_season: state.currentSeason ?? null,
+    game_date: state.currentDate ?? null,
+    updated_at: slot.updated_at,
+    size_bytes: new TextEncoder().encode(JSON.stringify(slot)).byteLength,
+  };
+}
+
+/** Preserve the active browser career before starting or loading another one. */
+export async function archiveActiveLocalSave(): Promise<void> {
+  const active = await gameStatePersistStorage.getItem(PERSIST_KEY) as StorageValue<unknown> | null;
+  const state = (active?.state ?? {}) as { saveId?: string; userTeamId?: string };
+  if (!active || !state.saveId) return;
+  const slot: LocalSaveSlot = {
+    state: active,
+    local_storage: snapshotSideStorage(state.saveId, state.userTeamId),
+    updated_at: new Date().toISOString(),
+  };
+  await writeIndexedValue(`${LOCAL_SAVE_SLOT_PREFIX}${state.saveId}`, JSON.stringify(slot));
+}
+
+export async function listLocalSaves(): Promise<LocalSaveMeta[]> {
+  const database = await openDatabase();
+  if (!database) return [];
+  try {
+    const slots = await new Promise<LocalSaveSlot[]>((resolve, reject) => {
+      const values: LocalSaveSlot[] = [];
+      const transaction = database.transaction(STORE_NAME, "readonly");
+      const request = transaction.objectStore(STORE_NAME).openCursor();
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (!cursor) { resolve(values); return; }
+        if (typeof cursor.key === "string" && cursor.key.startsWith(LOCAL_SAVE_SLOT_PREFIX) && typeof cursor.value === "string") {
+          try { values.push(JSON.parse(cursor.value) as LocalSaveSlot); } catch { /* Ignore corrupt optional slots. */ }
+        }
+        cursor.continue();
+      };
+      request.onerror = () => reject(request.error ?? new Error("Unable to list local saves."));
+    });
+    return slots.map(localSaveSummary).filter((save): save is LocalSaveMeta => Boolean(save)).sort((a, b) => b.updated_at.localeCompare(a.updated_at));
+  } finally {
+    database.close();
+  }
+}
+
+export async function loadLocalSave(id: string): Promise<StorageValue<unknown> | null> {
+  const serialized = await readIndexedValue(`${LOCAL_SAVE_SLOT_PREFIX}${id}`);
+  if (!serialized) return null;
+  const slot = JSON.parse(serialized) as LocalSaveSlot;
+  const state = (slot.state?.state ?? {}) as { saveId?: string; userTeamId?: string };
+  restoreSideStorage(slot.local_storage, state.saveId, state.userTeamId);
+  await gameStatePersistStorage.setItem(PERSIST_KEY, slot.state);
+  return slot.state;
+}
+
+export async function deleteLocalSave(id: string): Promise<void> {
+  await deleteIndexedValue(`${LOCAL_SAVE_SLOT_PREFIX}${id}`);
+}
+
 type PendingWrite = {
   value: string;
   waiters: Array<{ resolve: () => void; reject: (error: unknown) => void }>;
@@ -134,7 +215,19 @@ function scheduleObjectWrite(name: string, pending: PendingObjectWrite): void {
     const latestValue = pending.value;
     const waiters = pending.waiters.splice(0);
     scheduleCloudSync(latestValue);
-    void Promise.resolve(gameStateStorage.setItem(name, JSON.stringify(latestValue)))
+    const persistedState = (latestValue.state ?? {}) as { saveId?: string; userTeamId?: string };
+    const serializedValue = JSON.stringify(latestValue);
+    const mirrorCurrentSave = persistedState.saveId
+      ? writeIndexedValue(`${LOCAL_SAVE_SLOT_PREFIX}${persistedState.saveId}`, JSON.stringify({
+          state: latestValue,
+          local_storage: snapshotSideStorage(persistedState.saveId, persistedState.userTeamId),
+          updated_at: new Date().toISOString(),
+        } satisfies LocalSaveSlot))
+      : Promise.resolve(false);
+    void Promise.all([
+      gameStateStorage.setItem(name, serializedValue),
+      mirrorCurrentSave,
+    ])
       .then(() => waiters.forEach((waiter) => waiter.resolve()))
       .catch((error: unknown) => waiters.forEach((waiter) => waiter.reject(error)))
       .finally(() => {
