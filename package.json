@@ -10,6 +10,7 @@
     "build": "next build",
     "start": "next start",
     "players:dob": "node scripts/populatePlayerDatesOfBirth.mjs",
+    "players:t20i-retired": "node scripts/populateT20iRetirements.mjs",
     "test:player-salary-separation": "tsx calibration/playerSalarySeparation.test.ts",
     "test:staff-economy": "tsx calibration/staffEconomyVerification.ts",
     "test:bowling-consistency": "tsx calibration/bowlingConsistency.test.ts",

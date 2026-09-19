@@ -58,6 +58,13 @@ function readOptionalRating(value: unknown): number | undefined {
   return Number.isFinite(rating) ? Math.max(0, Math.min(100, rating)) : undefined;
 }
 
+function readBoolean(value: unknown): boolean {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value !== 0;
+  if (typeof value === "string") return ["true", "yes", "y", "1", "retired"].includes(value.trim().toLowerCase());
+  return false;
+}
+
 export function mapRowsToPlayers(data: any[]): Player[] {
   const seenIds = new Set<string>();
 
@@ -246,6 +253,7 @@ export function mapRowsToPlayers(data: any[]): Player[] {
         internationalDebutDate: typeof row.international_debut_date === "string" && row.international_debut_date.trim()
           ? row.international_debut_date.trim()
           : undefined,
+        isT20IRetired: readBoolean(row.is_t20i_retired ?? row.t20i_retired ?? row.international_t20_retired),
         role,
         battingStyle: batHand as any,
         bowlingStyle: bowlStyle(bowlType),

@@ -44,7 +44,7 @@ const result = trackMinorRecordsOnMatchComplete(
 
 assert.equal(result.updatedRecords.find((record) => record.id === "fastest-300-balls")?.value, "102 balls");
 assert.equal(result.updatedRecords.find((record) => record.id === "fastest-300-innings")?.value, "5 innings");
-assert.equal(result.brokenRecordNotices.length, 2);
+assert.equal(result.brokenRecordNotices.length, 0, "routine fastest-to-runs records should update without inbox emails");
 
 const storedSaltRecord = result.updatedRecords.map((record) => record.id === "fastest-300-innings"
   ? { ...record, value: "4 innings", holder: "Phil Salt", season: "2028" }

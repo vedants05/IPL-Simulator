@@ -540,6 +540,14 @@ export function PlayerProfileModal({
                   OS
                 </span>
               )}
+              {detailedPlayer.isT20IRetired && (
+                <span
+                  className="rounded-[2px] border border-slate-400/40 bg-slate-500/15 px-1.5 py-0.5 font-space-mono text-[8px] font-bold uppercase text-text-secondary"
+                  title="Retired from T20 international cricket; still eligible for franchise cricket"
+                >
+                  T20I Retired
+                </span>
+              )}
             </div>
             <h3 className={`${isRetired ? "whitespace-normal" : "truncate"} font-anton text-[25px] uppercase leading-none text-text-primary`}>{detailedPlayer.name}</h3>
             <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1">

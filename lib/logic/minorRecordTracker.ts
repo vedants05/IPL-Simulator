@@ -359,6 +359,7 @@ export function trackMinorRecordsOnMatchComplete(
 ): { updatedRecords: MinorRecord[]; brokenRecordNotices: string[] } {
   const updatedRecords = [...currentRecords];
   const brokenRecordNotices: string[] = [];
+  const suppressRecordEmail = (id: string) => /^fastest-\d+-(balls|innings)$/.test(id);
 
   const teamA = teams[match.teamA];
   const teamB = teams[match.teamB];
@@ -423,9 +424,11 @@ export function trackMinorRecordsOnMatchComplete(
           lastBrokenOn: brokenOn,
           breakSequence,
         };
-        brokenRecordNotices.push(
-          `Record Broken! "${oldRecord.title}" has been updated: ${holder} achieved ${newValue} (${notes}, ${seasonStr})`
-        );
+        if (!suppressRecordEmail(id)) {
+          brokenRecordNotices.push(
+            `Record Broken! "${oldRecord.title}" has been updated: ${holder} achieved ${newValue} (${notes}, ${seasonStr})`
+          );
+        }
       }
     }
   };

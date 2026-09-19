@@ -153,6 +153,18 @@ import {
 const SocialMediaPage = dynamic(() => import("@/components/social/SocialMediaPage"), { ssr: false });
 const NewsPage = dynamic(() => import("@/components/news/NewsPage"), { ssr: false });
 const SmatPage = dynamic(() => import("@/components/home/SmatPage"), { ssr: false });
+const InternationalPage = dynamic(() => import("@/components/home/InternationalPage"), { ssr: false });
+import {
+  internationalCareerNeedsReconcile,
+  internationalCareerStatsForPlayer,
+  internationalStorageKey,
+  reconcileInternationalCareer,
+  type InternationalCareerState,
+} from "@/lib/logic/international";
+import {
+  loadInternationalCareer,
+  saveInternationalCareer,
+} from "@/lib/storage/internationalStorage";
 import { getClubOwnership } from "@/lib/data/clubOwnership";
 import { buildTeamSupporterView } from "@/lib/logic/supporters";
 import { checkEmergencyBudgetExtensionApproval, STAFF_SALARY_MODEL_VERSION } from "@/lib/logic/staffContracts";
@@ -339,6 +351,162 @@ interface Match {
   stage?: KnockoutStage;
   label?: string;
   archivedResultText?: string;
+}
+
+function deriveIplSeasonStatsRecord(
+  fixtures: readonly Match[],
+  players?: Record<string, Player>,
+): Record<string, PlayerStats> {
+  const stats: Record<string, PlayerStats> = {};
+  const bowlingBalls: Record<string, number> = {};
+  const processedFixtureIds = new Set<string>();
+
+  const ensurePlayer = (playerId: string, playerName: string, teamId: string) => {
+    stats[playerId] ??= {
+      id: playerId,
+      name: playerName,
+      teamId,
+      runs: 0,
+      balls: 0,
+      wickets: 0,
+      runsConceded: 0,
+      oversBowled: 0,
+      matches: 0,
+      battingInnings: 0,
+      dismissals: 0,
+      highestScore: 0,
+      bestBowling: "0/0",
+      fours: 0,
+      sixes: 0,
+      dotBalls: 0,
+      catches: 0,
+      stumpings: 0,
+      runOuts: 0,
+      maidens: 0,
+      powerplayWickets: 0,
+      battingPerformanceBonus: 0,
+      bowlingPerformanceBonus: 0,
+    };
+    return stats[playerId];
+  };
+
+  const addInnings = (innings: InningsScorecard, battingTeamId: string, bowlingTeamId: string) => {
+    innings.batting.forEach((player) => {
+      const entry = ensurePlayer(player.id, player.name, battingTeamId);
+      entry.runs += player.runs ?? 0;
+      entry.balls += player.balls ?? 0;
+      if (player.dismissal !== "did not bat" && ((player.balls ?? 0) > 0 || (player.runs ?? 0) > 0 || Boolean(player.dismissal))) {
+        entry.battingInnings = (entry.battingInnings ?? 0) + 1;
+      }
+      entry.battingPerformanceBonus = (entry.battingPerformanceBonus ?? 0)
+        + calculateBattingPerformanceBonus(player.runs ?? 0);
+      entry.fours = (entry.fours ?? 0) + (player.fours ?? 0);
+      entry.sixes = (entry.sixes ?? 0) + (player.sixes ?? 0);
+      if (player.dismissal && player.dismissal !== "not out" && player.dismissal !== "did not bat") {
+        entry.dismissals = (entry.dismissals ?? 0) + 1;
+      }
+      entry.highestScore = Math.max(entry.highestScore, player.runs ?? 0);
+    });
+
+    innings.bowling.forEach((player) => {
+      const entry = ensurePlayer(player.id, player.name, bowlingTeamId);
+      const wkts = player.wickets ?? 0;
+      const runs = player.runsConceded ?? 0;
+      const maidens = player.maidens ?? 0;
+      entry.wickets += wkts;
+      entry.runsConceded += runs;
+      entry.maidens = (entry.maidens ?? 0) + maidens;
+      entry.bowlingPerformanceBonus = (entry.bowlingPerformanceBonus ?? 0)
+        + calculateBowlingPerformanceBonus(wkts, player.overs ?? 0, runs, maidens);
+
+      const overs = player.overs ?? 0;
+      bowlingBalls[player.id] = (bowlingBalls[player.id] ?? 0)
+        + Math.floor(overs) * 6
+        + Math.round((overs - Math.floor(overs)) * 10);
+
+      const currentBestWkts = parseInt(entry.bestBowling.split("/")[0]) || 0;
+      const currentBestRuns = parseInt(entry.bestBowling.split("/")[1]) || 999;
+      if (wkts > currentBestWkts || (wkts === currentBestWkts && runs < currentBestRuns)) {
+        entry.bestBowling = `${wkts}/${runs}`;
+      }
+    });
+  };
+
+  fixtures.forEach((fixture) => {
+    if (!fixture.played || processedFixtureIds.has(fixture.id)) return;
+    processedFixtureIds.add(fixture.id);
+
+    if (fixture.scorecard) {
+      addInnings(fixture.scorecard.inningsA, fixture.teamA, fixture.teamB);
+      addInnings(fixture.scorecard.inningsB, fixture.teamB, fixture.teamA);
+    }
+
+    if (fixture.simulation) {
+      Object.values(fixture.simulation.lineups).forEach((lineup) => {
+        const participants = new Set([...lineup.startingXI, ...lineup.finalXI]);
+        participants.forEach((playerId) => {
+          const playerName = players?.[playerId]?.name ?? playerId;
+          const entry = ensurePlayer(playerId, playerName, lineup.teamId);
+          entry.matches += 1;
+        });
+        if (lineup.captainId && participants.has(lineup.captainId)) {
+          const entry = ensurePlayer(lineup.captainId, players?.[lineup.captainId]?.name ?? lineup.captainId, lineup.teamId);
+          entry.matchesCaptained = (entry.matchesCaptained ?? 0) + 1;
+        }
+        if (lineup.viceCaptainId && lineup.viceCaptainId !== lineup.captainId && participants.has(lineup.viceCaptainId)) {
+          const entry = ensurePlayer(lineup.viceCaptainId, players?.[lineup.viceCaptainId]?.name ?? lineup.viceCaptainId, lineup.teamId);
+          entry.matchesViceCaptained = (entry.matchesViceCaptained ?? 0) + 1;
+        }
+      });
+
+      const exactMvpEvents = extractMvpEventStats(fixture.simulation);
+      Object.entries(exactMvpEvents).forEach(([playerId, events]) => {
+        const playerName = players?.[playerId]?.name ?? playerId;
+        const lineup = Object.values(fixture.simulation!.lineups).find((entry) => (
+          entry.startingXI.includes(playerId) || entry.finalXI.includes(playerId)
+        ));
+        const entry = ensurePlayer(playerId, playerName, lineup?.teamId ?? players?.[playerId]?.currentTeamId ?? "");
+        if (events.fours > 0 || events.sixes > 0) {
+          entry.fours = (entry.fours ?? 0) + events.fours - (fixture.scorecard?.inningsA.batting.find(b => b.id === playerId)?.fours ?? 0) - (fixture.scorecard?.inningsB.batting.find(b => b.id === playerId)?.fours ?? 0);
+          entry.sixes = (entry.sixes ?? 0) + events.sixes - (fixture.scorecard?.inningsA.batting.find(b => b.id === playerId)?.sixes ?? 0) - (fixture.scorecard?.inningsB.batting.find(b => b.id === playerId)?.sixes ?? 0);
+        }
+        entry.dotBalls = (entry.dotBalls ?? 0) + events.dotBalls;
+        entry.catches = (entry.catches ?? 0) + events.catches;
+        entry.stumpings = (entry.stumpings ?? 0) + events.stumpings;
+        entry.runOuts = (entry.runOuts ?? 0) + events.runOuts;
+      });
+
+      fixture.simulation.innings.forEach((innings) => {
+        innings.oversDetail
+          ?.filter((over) => (over.number ?? 0) <= 6)
+          ?.flatMap((over) => over.deliveries)
+          ?.forEach((delivery) => {
+            if (!delivery.wicket?.bowlerCredited) return;
+            const entry = stats[delivery.bowlerId];
+            if (entry) entry.powerplayWickets = (entry.powerplayWickets ?? 0) + 1;
+          });
+      });
+    } else if (fixture.scorecard) {
+      const appearanceIds = new Set<string>();
+      [...fixture.scorecard.inningsA.batting, ...fixture.scorecard.inningsA.bowling,
+       ...fixture.scorecard.inningsB.batting, ...fixture.scorecard.inningsB.bowling].forEach((p) => {
+        appearanceIds.add(p.id);
+      });
+      appearanceIds.forEach((playerId) => {
+        if (stats[playerId]) stats[playerId].matches += 1;
+      });
+    }
+  });
+
+  Object.entries(bowlingBalls).forEach(([playerId, balls]) => {
+    if (stats[playerId]) stats[playerId].oversBowled = oversFromBalls(balls);
+  });
+
+  return stats;
+}
+
+function deriveIplCapStats(fixtures: readonly Match[], players?: Record<string, Player>): PlayerStats[] {
+  return Object.values(deriveIplSeasonStatsRecord(fixtures, players));
 }
 
 function toIplCareerMatchUpdate(match: Match, season: number): IplCareerMatchUpdate | null {
@@ -1099,6 +1267,59 @@ function OverviewPageContent() {
     }
     return totals;
   }, [smatCareer]);
+  const [internationalCareer, setInternationalCareer] = useState<InternationalCareerState | null>(null);
+  const internationalCareerRef = useRef<InternationalCareerState | null>(null);
+  const loadedInternationalKeyRef = useRef<string | null>(null);
+  const internationalCareerKey = internationalStorageKey(saveId || fixtureSeed || userTeamId || "career");
+
+  useEffect(() => {
+    let cancelled = false;
+    if (loadedInternationalKeyRef.current !== internationalCareerKey) {
+      internationalCareerRef.current = null;
+      setInternationalCareer(null);
+    }
+
+    const reconcileAndPersist = async () => {
+      try {
+        const saved = loadedInternationalKeyRef.current === internationalCareerKey
+          ? internationalCareerRef.current
+          : await loadInternationalCareer(internationalCareerKey);
+        // A fast-forward can advance through many dates before the initial
+        // IndexedDB read completes. Superseded effects must stop here rather
+        // than each cloning and simulating the same career in parallel.
+        if (cancelled) return;
+        if (saved && !internationalCareerNeedsReconcile(saved, currentSeason, currentDate)) {
+          loadedInternationalKeyRef.current = internationalCareerKey;
+          internationalCareerRef.current = saved;
+          setInternationalCareer((current) => current === saved ? current : saved);
+          return;
+        }
+        const livePlayers = useGameStore.getState().players;
+        const result = reconcileInternationalCareer(saved, currentSeason, currentDate, livePlayers);
+        if (cancelled) return;
+
+        loadedInternationalKeyRef.current = internationalCareerKey;
+        internationalCareerRef.current = result.state;
+        setInternationalCareer(result.state);
+
+        const playerUpdates = Object.entries(result.playerUpdates);
+        if (playerUpdates.length > 0) {
+          useGameStore.setState((state) => ({
+            players: {
+              ...state.players,
+              ...Object.fromEntries(playerUpdates),
+            },
+          }));
+        }
+        await saveInternationalCareer(internationalCareerKey, result.state);
+      } catch (error) {
+        if (!cancelled) console.error("Unable to load international career data:", error);
+      }
+    };
+
+    void reconcileAndPersist();
+    return () => { cancelled = true; };
+  }, [currentDate, currentSeason, internationalCareerKey]);
 
   useEffect(() => {
     minorRecordsRef.current = minorRecords;
@@ -1106,16 +1327,17 @@ function OverviewPageContent() {
 
   useEffect(() => {
     if (!isCareerLoaded || fixtures.length === 0) return;
+    const pureIplStats = deriveIplSeasonStatsRecord(fixtures, players);
     setMinorRecords((currentRecords) => reconcileCumulativeMinorRecords(
       reconcileFastestSeasonRunInningsRecords(currentRecords, fixtures, teams, currentSeason),
       fixtures,
-      playerStats,
+      pureIplStats,
       players,
       teams,
       currentSeason,
       auction?.saleHistory ?? [],
     ));
-  }, [auction?.saleHistory, currentSeason, fixtures, isCareerLoaded, playerStats, players, teams]);
+  }, [auction?.saleHistory, currentSeason, fixtures, isCareerLoaded, players, teams]);
 
   useEffect(() => {
     const preview = minorRecordsPreviewRef.current;
@@ -1305,6 +1527,7 @@ function OverviewPageContent() {
   const calendarAnimationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const skipStartDateRef = useRef<string | null>(null);
   const skipTargetDateRef = useRef<string | null>(null);
+  const maximumSpeedFastForwardRef = useRef(false);
   const autoSimUserFixturesRef = useRef(false);
   const continueButtonRef = useRef<HTMLButtonElement | null>(null);
   const calendarStopButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -1318,6 +1541,7 @@ function OverviewPageContent() {
         const skipStartDate = skipStartDateRef.current;
         const skipTargetDate = skipTargetDateRef.current;
         if (skipStartDate && skipTargetDate) {
+          if (maximumSpeedFastForwardRef.current) return 0;
           return getSkipSimulationIntervalMs(simulationDate, skipStartDate, skipTargetDate);
         }
 
@@ -1938,10 +2162,22 @@ function OverviewPageContent() {
           writeCareerSnapshot(localStorage, careerStorageKey, parsed);
         }
         const savedDeadline = parsed.retentionDeadline as RetentionDeadline | undefined;
-        const nextDeadline = savedDeadline ?? generateNextRetentionDeadline(currentSeason);
+        const expectedDeadline = generateNextRetentionDeadline(currentSeason);
+        const expectedDeadlineKey = `${expectedDeadline.year}-${String(expectedDeadline.month + 1).padStart(2, "0")}-${String(expectedDeadline.day).padStart(2, "0")}`;
+        const savedDeadlineKey = savedDeadline
+          ? `${savedDeadline.year}-${String(savedDeadline.month + 1).padStart(2, "0")}-${String(savedDeadline.day).padStart(2, "0")}`
+          : null;
+        // Saves created from the retention/auction flow can still contain the
+        // boundary that opened that auction. Once the auction is complete that
+        // date is in the past; treating it as the next boundary immediately
+        // starts postseason rollover before a single league fixture is played.
+        const nextDeadline = savedDeadlineKey === expectedDeadlineKey
+          ? savedDeadline!
+          : expectedDeadline;
         setRetentionDeadline(nextDeadline);
-        if (!savedDeadline) {
+        if (savedDeadlineKey !== expectedDeadlineKey) {
           writeCareerSnapshot(localStorage, careerStorageKey, { ...parsed, retentionDeadline: nextDeadline });
+          parsed.retentionDeadline = nextDeadline;
         }
         // Always finish hydration with one compact rewrite. Previously this
         // only happened if another state change followed the load, so the
@@ -2121,15 +2357,16 @@ function OverviewPageContent() {
     // is replaced. Never archive those old fixtures under the new season.
     if (!final.date || Number(final.date.slice(0, 4)) !== currentSeason) return;
 
-    const orangeCap = Object.values(playerStats)
+    const iplStatsMap = deriveIplSeasonStatsRecord(fixtures, players);
+    const orangeCap = Object.values(iplStatsMap)
       .filter((stats) => stats.runs > 0 && teams[stats.teamId])
       .sort((left, right) => right.runs - left.runs || left.name.localeCompare(right.name))[0];
-    const purpleCap = Object.values(playerStats)
+    const purpleCap = Object.values(iplStatsMap)
       .filter((stats) => stats.wickets > 0 && teams[stats.teamId])
       .sort((left, right) => right.wickets - left.wickets || left.name.localeCompare(right.name))[0];
     if (!orangeCap || !purpleCap) return;
     const seasonAwards = calculateSeasonAwardLeaders(
-      playerStats,
+      iplStatsMap,
       players,
       currentSeason,
       simulatedLeagueHistory,
@@ -4240,6 +4477,7 @@ This record has been officially verified and added to the IPL Minor Records arch
     dayTickerRef.current?.stop();
     skipStartDateRef.current = null;
     skipTargetDateRef.current = null;
+    maximumSpeedFastForwardRef.current = false;
     autoSimUserFixturesRef.current = false;
     setIsCalendarClosing(true);
     setIsSimulatingDays(false);
@@ -4311,89 +4549,11 @@ This record has been officially verified and added to the IPL Minor Records arch
     const runnerUpTeamId = final.winner === final.teamA ? final.teamB : final.teamA;
 
     // Self-healing: Re-accumulate player stats from played fixtures if playerStatsRef is empty
-    setSeasonTransitionStage(`Transition 2/8 · Checking saved statistics for ${Object.keys(playerStatsRef.current).length} players...`);
+    setSeasonTransitionStage(`Transition 2/8 · Rebuilding season statistics from ${fixturesRef.current.filter((fixture) => fixture.played).length} completed IPL matches...`);
     await yieldToBrowser();
-    let statsRecord = { ...playerStatsRef.current };
-    if (Object.keys(statsRecord).length === 0) {
-      setSeasonTransitionStage(`Transition 2/8 · Rebuilding statistics from ${fixturesRef.current.filter((fixture) => fixture.played).length} completed matches...`);
-      await yieldToBrowser();
-      (fixturesRef.current ?? []).forEach((match) => {
-        if (match.played && match.simulation?.innings) {
-          Object.values(match.simulation.lineups).forEach((lineup) => {
-            const participants = new Set([...lineup.startingXI, ...lineup.finalXI]);
-            participants.forEach((playerId) => {
-              const player = players[playerId];
-              if (!statsRecord[playerId]) {
-                statsRecord[playerId] = {
-                  id: playerId,
-                  name: player?.name ?? playerId,
-                  teamId: lineup.teamId,
-                  runs: 0,
-                  balls: 0,
-                  wickets: 0,
-                  runsConceded: 0,
-                  oversBowled: 0,
-                  matches: 0,
-                  highestScore: 0,
-                  bestBowling: "0/0",
-                };
-              }
-              statsRecord[playerId].matches += 1;
-            });
-            if (lineup.captainId && participants.has(lineup.captainId)) {
-              statsRecord[lineup.captainId].matchesCaptained = (statsRecord[lineup.captainId].matchesCaptained ?? 0) + 1;
-            }
-            if (lineup.viceCaptainId && lineup.viceCaptainId !== lineup.captainId && participants.has(lineup.viceCaptainId)) {
-              statsRecord[lineup.viceCaptainId].matchesViceCaptained = (statsRecord[lineup.viceCaptainId].matchesViceCaptained ?? 0) + 1;
-            }
-          });
-          match.simulation.innings.forEach((inn) => {
-            (inn.batting ?? []).forEach((b) => {
-              const pId = (b as any).playerId || b.name;
-              if (!statsRecord[pId]) {
-                statsRecord[pId] = {
-                  id: pId,
-                  name: b.name,
-                  teamId: inn.battingTeamId,
-                  runs: 0,
-                  balls: 0,
-                  wickets: 0,
-                  runsConceded: 0,
-                  oversBowled: 0,
-                  matches: 0,
-                  highestScore: 0,
-                  bestBowling: "0/0",
-                };
-              }
-              statsRecord[pId].runs += b.runs ?? 0;
-              statsRecord[pId].balls += b.balls ?? 0;
-            });
-            (inn.bowling ?? []).forEach((bw) => {
-              const pId = (bw as any).playerId || bw.name;
-              if (!statsRecord[pId]) {
-                statsRecord[pId] = {
-                  id: pId,
-                  name: bw.name,
-                  teamId: inn.bowlingTeamId,
-                  runs: 0,
-                  balls: 0,
-                  wickets: 0,
-                  runsConceded: 0,
-                  oversBowled: 0,
-                  matches: 0,
-                  highestScore: 0,
-                  bestBowling: "0/0",
-                };
-              }
-              statsRecord[pId].wickets += bw.wickets ?? 0;
-              statsRecord[pId].runsConceded += bw.runsConceded ?? 0;
-            });
-          });
-        }
-      });
-      playerStatsRef.current = statsRecord;
-      setPlayerStats(statsRecord);
-    }
+    let statsRecord = deriveIplSeasonStatsRecord(fixturesRef.current, players);
+    playerStatsRef.current = statsRecord;
+    setPlayerStats(statsRecord);
 
     setSeasonTransitionStage(`Transition 3/8 · Ranking awards from ${Object.keys(statsRecord).length} player records...`);
     await yieldToBrowser();
@@ -4828,10 +4988,11 @@ This record has been officially verified and added to the IPL Minor Records arch
   }, [startSimulating]);
 
   useEffect(() => {
-    const startFastForward = (targetDate: string) => {
+    const startFastForward = (targetDate: string, maximumSpeed = false) => {
       if (targetDate <= useGameStore.getState().currentDate) return;
       careerFastForwardCancelledRef.current = false;
       careerFastForwardActiveRef.current = true;
+      maximumSpeedFastForwardRef.current = maximumSpeed;
       sessionStorage.setItem(careerFastForwardRecoveryKey(saveId), targetDate);
       setCareerFastForwardTarget(targetDate);
       skipToCalendarDate(targetDate, true);
@@ -4842,7 +5003,7 @@ This record has been officially verified and added to the IPL Minor Records arch
         const finalDate = fixturesRef.current
           .map((fixture) => fixture.date ?? "")
           .sort((left, right) => right.localeCompare(left))[0];
-        if (finalDate) startFastForward(finalDate);
+        if (finalDate) startFastForward(finalDate, true);
         return;
       }
       if (kind === "retention") {
@@ -5622,7 +5783,7 @@ This record has been officially verified and added to the IPL Minor Records arch
     home: {
       label: "Home",
       icon: InboxIcon,
-      subtabs: ["overview", "inbox", "social", "news", "calendar", "smat"]
+      subtabs: ["overview", "inbox", "social", "news", "calendar", "smat", "international"]
     },
     squad: {
       label: "Squad",
@@ -5707,6 +5868,7 @@ This record has been officially verified and added to the IPL Minor Records arch
     if (subtab === "operations") return "Club Operations";
     if (subtab === "calendar") return "Season Calendar";
     if (subtab === "smat") return "SMAT";
+    if (subtab === "international") return "International";
     if (subtab === "social") return "Social Media";
     if (subtab === "news") return "News";
     if (subtab === "records") return "Records";
@@ -5781,22 +5943,40 @@ This record has been officially verified and added to the IPL Minor Records arch
     };
   }, [activeTab, activeSubTab, bestScoutingPlayers.length]);
 
-  // Derived Orange/Purple Cap lists
+  // Derive tournament cap and award tables exclusively from this season's played IPL scorecards & matches.
+  // The persisted playerStats object may contain stale totals or non-IPL stats in older saves.
+  const iplSeasonStats = useMemo(() => deriveIplSeasonStatsRecord(fixtures, players), [fixtures, players]);
+  const iplSeasonStatsList = useMemo(() => Object.values(iplSeasonStats), [iplSeasonStats]);
+
   const orangeCapLeaders = useMemo(() => {
-    return Object.values(playerStats)
-      .sort((a,b) => b.runs - a.runs)
-      .slice(0, 5);
-  }, [playerStats]);
+    return iplSeasonStatsList
+      .filter((player) => (player.runs ?? 0) > 0 || (player.balls ?? 0) > 0)
+      .sort((a, b) => {
+        if (b.runs !== a.runs) return b.runs - a.runs;
+        const srB = (b.runs / Math.max(1, b.balls)) * 100;
+        const srA = (a.runs / Math.max(1, a.balls)) * 100;
+        if (Math.abs(srB - srA) > 0.01) return srB - srA;
+        return a.balls - b.balls;
+      });
+  }, [iplSeasonStatsList]);
 
   const purpleCapLeaders = useMemo(() => {
-    return Object.values(playerStats)
-      .sort((a,b) => b.wickets - a.wickets)
-      .slice(0, 5);
-  }, [playerStats]);
+    return iplSeasonStatsList
+      .filter((player) => (player.wickets ?? 0) > 0 || (player.oversBowled ?? 0) > 0)
+      .sort((a, b) => {
+        if (b.wickets !== a.wickets) return b.wickets - a.wickets;
+        const ballsA = Math.floor(a.oversBowled) * 6 + Math.round((a.oversBowled - Math.floor(a.oversBowled)) * 10);
+        const ballsB = Math.floor(b.oversBowled) * 6 + Math.round((b.oversBowled - Math.floor(b.oversBowled)) * 10);
+        const econA = ballsA > 0 ? (a.runsConceded / ballsA) * 6 : 999;
+        const econB = ballsB > 0 ? (b.runsConceded / ballsB) * 6 : 999;
+        if (Math.abs(econA - econB) > 0.01) return econA - econB;
+        return a.runsConceded - b.runsConceded;
+      });
+  }, [iplSeasonStatsList]);
 
   const mvpLeaders = useMemo(() => {
-    return rankMvpCandidates(Object.values(playerStats)).slice(0, 5);
-  }, [playerStats]);
+    return rankMvpCandidates(iplSeasonStatsList).slice(0, 5);
+  }, [iplSeasonStatsList]);
 
   const emergingPlayerLeaders = useMemo(() => {
     const previousWinnerNames = [
@@ -5806,13 +5986,13 @@ This record has been officially verified and added to the IPL Minor Records arch
       .filter((record) => record.season < currentSeason && record.emergingPlayer)
       .map((record) => record.emergingPlayer!.name);
     return rankEmergingPlayerCandidates({
-      stats: Object.values(playerStats),
+      stats: iplSeasonStatsList,
       players,
       season: currentSeason,
       initialSeason: INITIAL_ACTIVE_SEASON,
       previousWinnerNames,
     }).slice(0, 5);
-  }, [currentSeason, playerStats, players, simulatedLeagueHistory]);
+  }, [currentSeason, iplSeasonStatsList, players, simulatedLeagueHistory]);
 
   const bestBattingPerformances = useMemo(() => fixtures
     .filter((match) => match.played && match.scorecard)
@@ -7128,6 +7308,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                   fixtures={detailedFixtures}
                   currentDate={currentDate}
                   clubFigureProgression={clubFigureProgression}
+                  internationalCareer={internationalCareer}
                   onOpenPlayer={setDetailedPlayerId}
                   onViewAllFixtures={() => {
                     setActiveTab("season");
@@ -7757,6 +7938,11 @@ This record has been officially verified and added to the IPL Minor Records arch
                 </div>
               )}
               {activeSubTab === "smat" && <SmatPage career={smatCareer} onOpenFullPlayer={setDetailedPlayerId} />}
+              {activeSubTab === "international" && (
+                internationalCareer
+                  ? <InternationalPage career={internationalCareer} onOpenFullPlayer={setDetailedPlayerId} />
+                  : <div className="grid h-full min-h-[500px] place-items-center font-space-mono text-[10px] font-bold uppercase tracking-widest text-text-secondary">Loading international cricket...</div>
+              )}
             </>
           )}
 
@@ -10596,6 +10782,7 @@ This record has been officially verified and added to the IPL Minor Records arch
         customFixtures={fixtures}
         currentSeasonStats={detailedPlayerId ? playerStats[detailedPlayerId] : undefined}
         additionalCareerT20Stats={detailedPlayerId ? smatCareerT20ByFullPlayerId[`full:${detailedPlayerId}`] : undefined}
+        internationalStats={detailedPlayerId && internationalCareer ? internationalCareerStatsForPlayer(internationalCareer, detailedPlayerId) : undefined}
         isShortlisted={detailedPlayerId ? shortlist.includes(detailedPlayerId) : false}
         onToggleShortlist={toggleShortlist}
       />

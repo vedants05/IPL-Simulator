@@ -38,6 +38,7 @@ export interface InternationalPlayerProfile {
   paceRating: number;
   spinRating: number;
   battingPositions: number[];
+  isT20IRetired?: boolean;
 }
 
 export interface InternationalPlayerStats {
@@ -276,6 +277,7 @@ function fullProfile(player: Player, id: string): InternationalPlayerProfile {
     powerplayBowling: player.powerplayBowling ?? 50, middleOversBowling: player.middleOversBowling ?? 50, deathBowling: player.deathBowling ?? 50,
     paceRating: player.paceRating ?? 50, spinRating: player.spinRating ?? 50,
     battingPositions: listedPositions.length > 0 ? listedPositions : normalizedRole === "WK-Batsman" || normalizedRole === "Batsman" ? [3, 4, 5] : normalizedRole === "All-Rounder" ? [6, 7] : [8, 9, 10, 11],
+    isT20IRetired: player.isT20IRetired,
   };
 }
 
@@ -302,7 +304,7 @@ function lightweightProfile(country: InternationalTeamDefinition, season: number
 }
 
 function selectSquad(country: InternationalTeamDefinition, profiles: InternationalPlayerProfile[], captainId?: string, standing: Record<string, number> = {}, forcedIds: string[] = []): string[] {
-  const sorted = [...profiles].sort((a, b) => (roleValue(b) + (standing[b.id] ?? 0)) - (roleValue(a) + (standing[a.id] ?? 0)));
+  const sorted = profiles.filter((profile) => !profile.isT20IRetired).sort((a, b) => (roleValue(b) + (standing[b.id] ?? 0)) - (roleValue(a) + (standing[a.id] ?? 0)));
   const picked: InternationalPlayerProfile[] = [];
   const add = (rows: InternationalPlayerProfile[], count: number) => rows.forEach((row) => {
     if (picked.length < 17 && count > 0 && !picked.some((item) => item.id === row.id)) { picked.push(row); count -= 1; }
@@ -360,14 +362,15 @@ function selectXI(squad: string[], profiles: Record<string, InternationalPlayerP
 }
 
 function chooseCaptain(definition: InternationalTeamDefinition, profiles: InternationalPlayerProfile[], previous?: NationalTeamState): InternationalPlayerProfile {
+  const eligibleProfiles = profiles.filter((profile) => !profile.isT20IRetired);
   if (previous) {
-    const incumbent = profiles.find((row) => row.id === previous.captainId);
-    if (incumbent && incumbent.age < 39 && roleValue(incumbent) >= definition.strength - 18) return incumbent;
+    const incumbent = eligibleProfiles.find((row) => row.id === previous.captainId);
+    if (incumbent && !incumbent.isT20IRetired && incumbent.age < 39 && roleValue(incumbent) >= definition.strength - 18) return incumbent;
   }
   const named = definition.startingCaptainName
-    ? profiles.find((row) => row.name.toLowerCase() === definition.startingCaptainName!.toLowerCase())
+    ? eligibleProfiles.find((row) => row.name.toLowerCase() === definition.startingCaptainName!.toLowerCase())
     : undefined;
-  return named ?? [...profiles].sort((a, b) => (roleValue(b) + b.captaincy * 0.18) - (roleValue(a) + a.captaincy * 0.18))[0];
+  return named ?? [...eligibleProfiles].sort((a, b) => (roleValue(b) + b.captaincy * 0.18) - (roleValue(a) + a.captaincy * 0.18))[0];
 }
 
 function buildTeams(players: Record<string, Player>, season: number, previous?: InternationalCareerState): Pick<InternationalCareerState, "teams" | "profiles"> {
@@ -379,11 +382,11 @@ function buildTeams(players: Record<string, Player>, season: number, previous?: 
       : [];
     const priorLightweights = Object.values(previous?.profiles ?? {}).filter((profile) => profile.countryId === definition.id && !profile.fullPlayerId && profile.age < 38).map((profile) => ({ ...profile, age: profile.age + Math.max(0, season - (previous?.season ?? season)) }));
     const pool = [...available, ...priorLightweights];
-    const existingCount = pool.length;
+    const existingCount = pool.filter((profile) => !profile.isT20IRetired).length;
     for (let index = existingCount; index < 22; index += 1) pool.push(lightweightProfile(definition, season, index, index - existingCount));
     const bowlingSlots = [6, 7, 8, 9, 10, 12, 13, 14, 16];
     let bowlingSlotIndex = 0;
-    while (pool.filter(isCredibleInternationalBowlingOption).length < 7) {
+    while (pool.filter((profile) => !profile.isT20IRetired && isCredibleInternationalBowlingOption(profile)).length < 7) {
       const index = 100 + bowlingSlotIndex;
       pool.push(lightweightProfile(definition, season, index, bowlingSlots[bowlingSlotIndex % bowlingSlots.length]));
       bowlingSlotIndex += 1;
@@ -663,6 +666,21 @@ export function createInternationalCareer(season: number, players: Record<string
   return { version: 1, season, ...roster, ...schedule, careerStats: {}, seasonStats: {}, rankings: Object.fromEntries(INTERNATIONAL_TEAMS.map((row) => [row.id, row.strength])), history: [] };
 }
 
+/**
+ * Calendar ticks are extremely frequent during IPL fast-forwarding. Most of
+ * them cannot change international state, so avoid cloning and rebuilding the
+ * entire international career until a fixture or reporting-year boundary is
+ * actually due.
+ */
+export function internationalCareerNeedsReconcile(
+  state: InternationalCareerState,
+  season: number,
+  currentDate: string,
+): boolean {
+  if (state.season < internationalSeasonForDate(season, currentDate)) return true;
+  return state.fixtures.some((fixture) => !fixture.played && fixture.date <= currentDate);
+}
+
 export function reconcileInternationalCareer(state: InternationalCareerState | null, season: number, currentDate: string, players: Record<string, Player>): { state: InternationalCareerState; playerUpdates: Record<string, Player> } {
   let career = state?.version === 1 ? structuredClone(state) : createInternationalCareer(season, players);
   const targetSeason = internationalSeasonForDate(season, currentDate);
@@ -693,7 +711,13 @@ export function reconcileInternationalCareer(state: InternationalCareerState | n
   Object.values(career.teams).forEach((nationalTeam) => {
     nationalTeam.pendingDebuts ??= {};
     const definition = team(nationalTeam.countryId);
-    const pool = Object.values(career.profiles).filter((profile) => profile.countryId === nationalTeam.countryId);
+    const pool = Object.values(career.profiles).filter((profile) => profile.countryId === nationalTeam.countryId && !profile.isT20IRetired);
+    if (!pool.some((profile) => profile.id === nationalTeam.captainId)) {
+      const replacement = chooseCaptain(definition, pool, nationalTeam);
+      nationalTeam.captainId = replacement.id;
+      nationalTeam.captainAppointedSeason = career.season;
+      nationalTeam.captainReviewSeason = career.season + 2;
+    }
     Object.keys(nationalTeam.pendingDebuts).forEach((id) => {
       const profile = career.profiles[id];
       const player = profile?.fullPlayerId ? players[profile.fullPlayerId] : undefined;

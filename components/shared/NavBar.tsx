@@ -143,21 +143,12 @@ export default function NavBar() {
   useEffect(() => {
     if (!seasonPagesUnlocked || !teamProfilePrefetchKey) return;
 
-    const prefetchTeamProfiles = () => {
-      // One dynamic-route prefetch warms the shared team-profile bundle. Ten
-      // simultaneous RSC prefetches compete with clicks and provide no extra
-      // client code, so prefer the user's club and let other data load on use.
-      const preferredTeamId = userTeamId || teamProfilePrefetchKey.split("|").find(Boolean);
-      if (preferredTeamId) router.prefetch(`/game/teams/${preferredTeamId}`);
-    };
-
-    if (typeof window.requestIdleCallback === "function") {
-      const idleId = window.requestIdleCallback(prefetchTeamProfiles, { timeout: 1200 });
-      return () => window.cancelIdleCallback(idleId);
-    }
-
-    const timeoutId = globalThis.setTimeout(prefetchTeamProfiles, 150);
-    return () => globalThis.clearTimeout(timeoutId);
+    // A single dynamic-route prefetch warms the shared team-profile bundle for
+    // every club. Do this immediately: waiting for requestIdleCallback meant a
+    // quick first click paid the route compilation/download cost, especially
+    // after any development rebuild. Other team IDs reuse the same route code.
+    const preferredTeamId = userTeamId || teamProfilePrefetchKey.split("|").find(Boolean);
+    if (preferredTeamId) router.prefetch(`/game/teams/${preferredTeamId}`);
   }, [router, seasonPagesUnlocked, teamProfilePrefetchKey, userTeamId]);
 
   useEffect(() => {
