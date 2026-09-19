@@ -29,6 +29,7 @@
     "test:career-storage": "tsx calibration/careerSnapshotStorageVerification.ts",
     "test:offseason-stats": "tsx calibration/offseasonStatsCalibration.ts",
     "test:smat-lifecycle": "tsx calibration/smatLifecycleVerification.ts",
+    "test:international-lifecycle": "tsx calibration/internationalLifecycleVerification.ts",
     "test:eden-stadium-asset": "tsx calibration/edenGardensAsset.test.ts",
     "test:eden-modules": "tsx calibration/edenModules.test.ts && tsx calibration/edenRefurbishment.test.ts"
   },

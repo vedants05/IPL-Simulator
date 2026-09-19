@@ -1,5 +1,5 @@
 import { supabase } from "./client";
-import { Player, Nationality, Role, Potential, BowlingType, IPLStats } from "../types";
+import { Player, Nationality, Role, Potential, BowlingType, IPLStats, T20IStats } from "../types";
 import { calculateBasePrice } from "../logic/playerBasePrice";
 import { enforceBattingPositionEligibility } from "../logic/playerBattingPositions";
 
@@ -186,6 +186,35 @@ export function mapRowsToPlayers(data: any[]): Player[] {
       bowlingRunsConceded: iplRunsConceded,
     };
 
+    const t20iBestW = parseInt(row.t20i_best_bowling_wickets) || 0;
+    const t20iBestR = parseInt(row.t20i_best_bowling_runs) || 0;
+    const t20iStats: T20IStats = {
+      matches: parseInt(row.t20i_matches) || 0,
+      battingInnings: parseInt(row.t20i_batting_innings) || 0,
+      notOuts: parseInt(row.t20i_not_outs) || 0,
+      runs: parseInt(row.t20i_runs) || 0,
+      ballsFaced: parseInt(row.t20i_balls_faced) || 0,
+      highScore: parseInt(row.t20i_high_score) || 0,
+      highScoreNotOut: Boolean(row.t20i_high_score_not_out),
+      fifties: parseInt(row.t20i_fifties) || 0,
+      hundreds: parseInt(row.t20i_hundreds) || 0,
+      fours: parseInt(row.t20i_fours) || 0,
+      sixes: parseInt(row.t20i_sixes) || 0,
+      bowlingInnings: parseInt(row.t20i_bowling_innings) || 0,
+      bowlingBalls: parseInt(row.t20i_bowling_balls) || 0,
+      bowlingMaidens: parseInt(row.t20i_bowling_maidens) || 0,
+      runsConceded: parseInt(row.t20i_runs_conceded) || 0,
+      wickets: parseInt(row.t20i_wickets) || 0,
+      bestBowlingWickets: t20iBestW,
+      bestBowlingRuns: t20iBestR,
+      bestBowlingFigures: t20iBestW > 0 ? `${t20iBestW}/${t20iBestR}` : "-",
+      fourWickets: parseInt(row.t20i_four_wicket_hauls) || 0,
+      fiveWickets: parseInt(row.t20i_five_wicket_hauls) || 0,
+      catches: parseInt(row.t20i_catches) || 0,
+      stumpings: parseInt(row.t20i_stumpings) || 0,
+      runOuts: parseInt(row.t20i_run_outs) || 0,
+    };
+
     const batting = {
       matches: t20Games,
       innings: t20BatInns,
@@ -214,6 +243,9 @@ export function mapRowsToPlayers(data: any[]): Player[] {
         country: row.nationality || (nat === "Indian" ? "India" : "Overseas"),
         state: typeof row.state === "string" && row.state.trim() ? row.state.trim() : undefined,
         dateOfBirth: typeof row.date_of_birth === "string" && row.date_of_birth.trim() ? row.date_of_birth.trim() : undefined,
+        internationalDebutDate: typeof row.international_debut_date === "string" && row.international_debut_date.trim()
+          ? row.international_debut_date.trim()
+          : undefined,
         role,
         battingStyle: batHand as any,
         bowlingStyle: bowlStyle(bowlType),
@@ -270,6 +302,16 @@ export function mapRowsToPlayers(data: any[]): Player[] {
         injuryProneness: readOptionalRating(row.injury_proneness),
         paceRating: readOptionalRating(row.pace_rating),
         spinRating: readOptionalRating(row.spin_rating),
+        bowlingUsage: typeof row.bowling_usage === "string" ? row.bowling_usage as any : undefined,
+        iplTitleSeasons: Array.isArray(row.ipl_title_seasons) ? row.ipl_title_seasons : undefined,
+        iplRunnerUpSeasons: Array.isArray(row.ipl_runner_up_seasons) ? row.ipl_runner_up_seasons : undefined,
+        iplOrangeCapSeasons: Array.isArray(row.ipl_orange_cap_seasons) ? row.ipl_orange_cap_seasons : undefined,
+        iplPurpleCapSeasons: Array.isArray(row.ipl_purple_cap_seasons) ? row.ipl_purple_cap_seasons : undefined,
+        iplMvpSeasons: Array.isArray(row.ipl_mvp_seasons) ? row.ipl_mvp_seasons : undefined,
+        iplEmergingPlayerSeasons: Array.isArray(row.ipl_emerging_player_seasons) ? row.ipl_emerging_player_seasons : undefined,
+        paceSpeedBand: typeof row.pace_speed_band === "string" ? row.pace_speed_band as any : undefined,
+        spinStyle: typeof row.spin_style === "string" ? row.spin_style as any : undefined,
+        t20iStats,
       });
     });
 }

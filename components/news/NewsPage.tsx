@@ -42,11 +42,13 @@ import {
   offseasonBowlingStrikeRate,
   offseasonOvers,
 } from "@/lib/logic/offseasonStats";
+import type { OffseasonPlayerStats, OffseasonStatsPeriod } from "@/lib/logic/offseasonStats";
 import { getSeasonScheduleAnnouncementDate } from "@/lib/logic/careerCalendar";
 import { LEAGUE_HISTORY_TEAMS } from "@/lib/data/leagueHistory";
 import { addNewsDays, getNewsArticleExpiry, NEWS_REPEAT_COOLDOWN_DAYS } from "@/lib/logic/newsArticlePolicy";
 import { selectTeamOfSeason } from "@/lib/logic/teamOfSeason";
 import type { ClubFigureProgression } from "@/lib/data/clubFigures";
+import type { InternationalCareerState } from "@/lib/logic/international";
 
 interface NewsFixture {
   id: string;
@@ -104,6 +106,7 @@ interface NewsPageProps {
   clubFigureProgression?: ClubFigureProgression;
   onViewAllFixtures?: () => void;
   onOpenPlayer?: (playerId: string) => void;
+  internationalCareer?: InternationalCareerState | null;
 }
 
 export interface NewsArticle {
@@ -161,6 +164,7 @@ export default function NewsPage({
   clubFigureProgression = {},
   onViewAllFixtures,
   onOpenPlayer,
+  internationalCareer,
 }: NewsPageProps) {
   const saveId = useGameStore((state) => state.saveId);
   useEffect(() => {
@@ -187,20 +191,59 @@ export default function NewsPage({
   const [offseasonLevel, setOffseasonLevel] = useState<"all" | "International" | "Domestic">("all");
   const pinStorageKey = `ipl-news-pins-v1-${saveId || "unsaved"}`;
 
+  const combinedOffseasonPeriod = useMemo<OffseasonStatsPeriod | null>(() => {
+    if (!internationalCareer) return offseasonStatsPeriod;
+    const domesticPlayers = Object.fromEntries(Object.entries(offseasonStatsPeriod?.players ?? {}).filter(([, row]) => !row.competitionLevel.includes("International")));
+    const internationalPlayers: Record<string, OffseasonPlayerStats> = {};
+    Object.entries(internationalCareer.seasonStats).forEach(([profileId, stats]) => {
+      const profile = internationalCareer.profiles[profileId];
+      if (!profile) return;
+      const playerId = profile.fullPlayerId ?? profileId;
+      internationalPlayers[playerId] = {
+        playerId,
+        playerName: profile.name,
+        nationality: profile.countryId === "IND" ? "Indian" : "Overseas",
+        country: profile.countryId,
+        teamId: profile.fullPlayerId ? players[profile.fullPlayerId]?.currentTeamId ?? null : null,
+        competitionLevel: "International",
+        selectionStatus: `${profile.countryId} international`,
+        matches: stats.matches,
+        innings: stats.innings,
+        runs: stats.runs,
+        balls: stats.balls,
+        notOuts: stats.notOuts,
+        highestScore: stats.highestScore,
+        bowlingInnings: stats.bowlingInnings,
+        bowlingBalls: stats.bowlingBalls,
+        runsConceded: stats.runsConceded,
+        wickets: stats.wickets,
+        bestBowlingWickets: stats.bestBowlingWickets,
+        bestBowlingRuns: stats.bestBowlingRuns,
+      };
+    });
+    return {
+      generatorVersion: offseasonStatsPeriod?.generatorVersion ?? 1,
+      fromSeason: offseasonStatsPeriod?.fromSeason ?? Math.max(0, currentSeason - 1),
+      toSeason: offseasonStatsPeriod?.toSeason ?? currentSeason,
+      generatedAt: offseasonStatsPeriod?.generatedAt ?? `${currentSeason}-01-01`,
+      players: { ...domesticPlayers, ...internationalPlayers },
+    };
+  }, [currentSeason, internationalCareer, offseasonStatsPeriod, players]);
+
   const offseasonStats = useMemo(() => {
     const query = offseasonSearch.trim().toLocaleLowerCase("en-GB");
-    const rows = Object.values(offseasonStatsPeriod?.players ?? {}).filter((row) => {
+    const rows = Object.values(combinedOffseasonPeriod?.players ?? {}).filter((row) => {
       if (query && !row.playerName.toLocaleLowerCase("en-GB").includes(query)) return false;
       if (offseasonNationality !== "all" && row.nationality !== offseasonNationality) return false;
       if (offseasonLevel !== "all" && !row.competitionLevel.includes(offseasonLevel)) return false;
       return true;
     });
     return {
-      period: offseasonStatsPeriod,
+      period: combinedOffseasonPeriod,
       batting: [...rows].filter((row) => row.innings > 0).sort((a, b) => b.runs - a.runs || b.matches - a.matches),
       bowling: [...rows].filter((row) => row.bowlingBalls > 0).sort((a, b) => b.wickets - a.wickets || a.runsConceded - b.runsConceded),
     };
-  }, [offseasonLevel, offseasonNationality, offseasonSearch, offseasonStatsPeriod]);
+  }, [combinedOffseasonPeriod, offseasonLevel, offseasonNationality, offseasonSearch]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -4178,7 +4221,7 @@ export default function NewsPage({
 
       {section === "stats" && layout !== "newsletter" && (
         <OffseasonStatsDashboard
-          period={offseasonStatsPeriod}
+          period={combinedOffseasonPeriod}
           teams={teams}
           layout={layout}
           onOpenPlayer={onOpenPlayer}

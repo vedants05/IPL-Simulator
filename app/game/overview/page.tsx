@@ -10031,7 +10031,8 @@ This record has been officially verified and added to the IPL Minor Records arch
               {activeSubTab === "legacy" && (
                 <LeagueLegacyPage
                   seasons={leagueHistorySeasons}
-                  players={Object.values(scoutingPlayerPool)}
+                  players={Object.values(players)}
+                  retiredPlayers={Object.values(retiredPlayerSnapshots).map(retiredSnapshotPlayer)}
                   careerStaff={careerStaff}
                   onOpenStaff={(staffSlug) => {
                     setLegacyStaffSlug(staffSlug);

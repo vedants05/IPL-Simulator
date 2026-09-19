@@ -243,7 +243,9 @@ export function generateOffseasonStats(input: {
   seed: string;
   injuredPlayerIds?: Set<string>;
 }): { period: OffseasonStatsPeriod; players: Record<string, Player> } {
-  const indiaSquad = chooseIndiaSquad(Object.values(input.players), input.performance, input.injuredPlayerIds ?? new Set());
+  // Actual international fixtures are simulated by the isolated international
+  // system. This generator now covers domestic/franchise cricket only.
+  const indiaSquad = new Map<string, number>();
   const indiaScheduleRandom = randomFor(`${input.seed}:${input.completedSeason}:india-schedule`);
   const indiaMatches = integerAround(indiaScheduleRandom, 12.5, 2.5, 10, 15);
   const indiaAppearances = new Map<string, number>();
@@ -285,23 +287,13 @@ export function generateOffseasonStats(input: {
       if (!player.isCapped) {
         player = {
           ...player,
-          isCapped: true,
-          internationalDebutSeason: player.internationalDebutSeason ?? input.completedSeason,
-          internationalDebutCountry: player.internationalDebutCountry ?? "India",
+          internationalCallUpSeason: player.internationalCallUpSeason ?? input.completedSeason,
         };
         updatedPlayers[player.id] = player;
       }
     } else if (player.nationality === "Indian") {
       selectionStatus = score >= 72 ? "Established domestic" : player.age <= 23 ? "Young prospect" : "Domestic fringe";
       averageMatches = score >= 72 ? 8 : player.age <= 23 ? 6 : 4;
-    } else if (player.isCapped && score >= 77) {
-      competitionLevel = "International";
-      selectionStatus = "International regular";
-      averageMatches = 10;
-    } else if (player.isCapped && score >= 68) {
-      competitionLevel = "International + Domestic";
-      selectionStatus = "International rotation";
-      averageMatches = 7;
     } else {
       competitionLevel = "Domestic";
       selectionStatus = score >= 65 ? "Franchise regular" : "Franchise fringe";

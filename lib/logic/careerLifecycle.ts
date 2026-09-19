@@ -26,6 +26,7 @@ import {
 } from "../data/indianStateRegenNames";
 import { calculateBasePrice } from "./playerBasePrice";
 import { enforceBattingPositionEligibility } from "./playerBattingPositions";
+import { classifyBowlingUsage } from "./playerBowlingUsage";
 import { getEmergingPlayerEligibility, rankMvpCandidates } from "./seasonAwards";
 
 export const CAREER_POLICY = {
@@ -164,9 +165,19 @@ export interface HistoricalPlayerSnapshot {
   battingStyle?: Player["battingStyle"];
   bowlingStyle?: Player["bowlingStyle"];
   bowlingHand?: Player["bowlingHand"];
+  bowlingUsage?: Player["bowlingUsage"];
+  paceSpeedBand?: Player["paceSpeedBand"];
+  spinStyle?: Player["spinStyle"];
   isCapped?: boolean;
   internationalDebutSeason?: number;
   internationalDebutCountry?: string;
+  internationalDebutDate?: string;
+  iplTitleSeasons?: number[];
+  iplRunnerUpSeasons?: number[];
+  iplOrangeCapSeasons?: number[];
+  iplPurpleCapSeasons?: number[];
+  iplMvpSeasons?: number[];
+  iplEmergingPlayerSeasons?: number[];
   currentBatting?: number;
   potentialBatting?: number;
   currentBowling?: number;
@@ -188,6 +199,7 @@ export interface HistoricalPlayerSnapshot {
   finalRating: number;
   careerStats: Player["careerStats"];
   iplStats: Player["iplStats"];
+  t20iStats?: Player["t20iStats"];
   iplHistory: Player["iplHistory"];
 }
 
@@ -461,6 +473,35 @@ export function initializeCareerPlayers(
           )).name,
         };
       }
+      if (!playerWithConsistency.isCapped && !playerWithConsistency.dateOfBirth) {
+        const referenceSeason = player.careerState.lastAgedSeason
+          ?? player.careerState.generatedSeason
+          ?? baselineSeason;
+        playerWithConsistency = {
+          ...playerWithConsistency,
+          dateOfBirth: generatedRegenDateOfBirth(
+            referenceSeason,
+            playerWithConsistency.age,
+            seededRandom(`regen-date-of-birth-backfill:${player.id}:${referenceSeason}`),
+          ),
+        };
+      }
+      if ((player.careerState.phaseRatingsGenerationVersion ?? 0) < 1) {
+        const generatedSeason = player.careerState.generatedSeason ?? baselineSeason;
+        playerWithConsistency = {
+          ...playerWithConsistency,
+          ...generatedPhaseRatings(
+            playerWithConsistency,
+            playerWithConsistency.bowlingStyle,
+            seededRandom(`regen-phase-backfill:${player.id}:${generatedSeason}:batting`),
+            seededRandom(`regen-phase-backfill:${player.id}:${generatedSeason}:bowling`),
+          ),
+          careerState: {
+            ...playerWithConsistency.careerState!,
+            phaseRatingsGenerationVersion: 1,
+          },
+        };
+      }
     }
     const ability = Math.max(playerWithConsistency.currentBatting ?? 0, playerWithConsistency.currentBowling ?? 0);
     const startingReputation = playerWithConsistency.reputation ?? 5;
@@ -477,6 +518,7 @@ export function initializeCareerPlayers(
         ?? (playerWithConsistency.isCapped || ability >= 86
           ? (playerWithConsistency.country ?? (playerWithConsistency.nationality === "Indian" ? "India" : "Overseas"))
           : undefined),
+      bowlingUsage: playerWithConsistency.bowlingUsage ?? classifyBowlingUsage(playerWithConsistency),
     };
     const careerState = initializePlayerCareerState(normalizedPlayer, baselineSeason);
     const reputationCareerState = reputation > startingReputation
@@ -494,6 +536,15 @@ export function initializeCareerPlayers(
       careerState: cappedCareerState,
     })];
   }));
+}
+
+function generatedRegenDateOfBirth(season: number, age: number, random: () => number): string {
+  const month = integerBetween(random, 1, 12);
+  const daysInMonth = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
+  const day = integerBetween(random, 1, daysInMonth);
+  const birthdayAfterSeasonStart = month > 4 || (month === 4 && day > 1);
+  const year = season - age - (birthdayAfterSeasonStart ? 1 : 0);
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
 export function normalizeCareerSeasonPerformance(value: unknown): Record<string, CareerSeasonPerformance> {
@@ -2171,18 +2222,14 @@ export function processPostSeasonCareer(input: {
       injuryAbsenceShare,
     )];
   }));
-  const capping = applyInternationalCappingAfterSeason({
-    players: developed,
-    performance: enrichedPerformance,
-    completedSeason: input.completedSeason,
-    seed: input.seed,
-  });
   return {
-    players: capping.players,
+    // International appearances now own the uncapped-to-capped transition.
+    // Domestic/IPL performance can earn a call-up, but cannot itself award a cap.
+    players: developed,
     teams: input.teams,
     retirements: [],
     retiredPlayers: [],
-    newlyCappedPlayers: capping.selections,
+    newlyCappedPlayers: [],
   };
 }
 
@@ -2974,51 +3021,72 @@ function generatedPhaseRatings(
   | "powerplayBatting" | "middleOversBatting" | "deathBatting"
   | "powerplayBowling" | "middleOversBowling" | "deathBowling"
 > {
-  // Position influences phase familiarity, not absolute batting ability. The
-  // strength of that influence varies continuously so two openers or finishers
-  // do not inherit the same template.
-  const openerExposure = profile.isOpener ? 1 : 0;
+  const centredProfile = (
+    priors: number[],
+    random: () => number,
+    targetPhase: number,
+  ): [number, number, number] => {
+    const strength = boundedNormalValue(random, 1, 0.12, 0.75, 1.25);
+    const raw = priors.map((prior) => prior * strength + normalRandom(random, 0, 2.2));
+    const mean = raw.reduce((sum, value) => sum + value, 0) / 3;
+    const sharedLevel = boundedNormalValue(random, 0, 7, -12, 15);
+    const ratings = raw.map((value) => Math.round(clamp(50 + sharedLevel + value - mean, 15, 95)));
+    if (ratings[targetPhase] < 56 + sharedLevel * 0.35) {
+      const weakest = ratings.reduce((best, value, index) => value < ratings[best] ? index : best, 0);
+      const transfer = Math.min(Math.round(56 + sharedLevel * 0.35) - ratings[targetPhase], ratings[weakest] - 15);
+      ratings[targetPhase] += transfer;
+      ratings[weakest] -= transfer;
+    }
+    const weakest = ratings.reduce((best, value, index) => value < ratings[best] ? index : best, 0);
+    const spreadShortfall = 8 - (ratings[targetPhase] - ratings[weakest]);
+    if (spreadShortfall > 0) ratings[targetPhase] = Math.min(95, ratings[targetPhase] + spreadShortfall);
+    return ratings as [number, number, number];
+  };
+
   const middlePositionCount = [profile.hasBattedAt3, profile.hasBattedAt4, profile.hasBattedAt5]
     .filter(Boolean).length;
-  const middleExposure = Math.min(1, middlePositionCount / 2);
-  const finisherExposure = profile.isFinisher ? 1 : 0;
-  const battingSpecialisationStrength = boundedNormalValue(battingRandom, 0.80, 0.20, 0.40, 1.20);
-  const positionPrior = [
-    10 * openerExposure + middleExposure - 3 * finisherExposure,
-    2 * openerExposure + 8 * middleExposure + 2 * finisherExposure,
-    -2 * openerExposure + 2 * middleExposure + 11 * finisherExposure,
-  ].map((value) => clamp(value * battingSpecialisationStrength, -8, 12));
-  const battingBreadth = normalRandom(battingRandom, 0, 4);
-  const batting = positionPrior.map((prior) => boundedCompositeRating(
-    battingRandom,
-    50 + prior + battingBreadth,
-    7,
-    20,
-    90,
-  ));
+  const battingArchetypeRoll = battingRandom();
+  let battingPrior: number[];
+  let battingTarget: number;
+  if (profile.isFinisher) {
+    if (battingArchetypeRoll < 0.08) { battingPrior = [-18, -8, 32]; battingTarget = 2; }
+    else if (battingArchetypeRoll < 0.58) { battingPrior = [-8, 0, 12]; battingTarget = 2; }
+    else if (battingArchetypeRoll < 0.88) { battingPrior = [-7, 8, 10]; battingTarget = 2; }
+    else { battingPrior = [-5, 12, 8]; battingTarget = 1; }
+  } else if (profile.isOpener) {
+    if (battingArchetypeRoll < 0.06) { battingPrior = [30, -5, -17]; battingTarget = 0; }
+    else if (battingArchetypeRoll < 0.56) { battingPrior = [12, 2, -7]; battingTarget = 0; }
+    else if (battingArchetypeRoll < 0.78) { battingPrior = [10, 8, -7]; battingTarget = 0; }
+    else if (battingArchetypeRoll < 0.92) { battingPrior = [5, 12, -6]; battingTarget = 1; }
+    else { battingPrior = [7, 4, 11]; battingTarget = 2; }
+  } else if (middlePositionCount > 0) {
+    if (battingArchetypeRoll < 0.58) { battingPrior = [-4, 11, 0]; battingTarget = 1; }
+    else if (battingArchetypeRoll < 0.84) { battingPrior = [-6, 9, 10]; battingTarget = 2; }
+    else { battingPrior = [7, 10, -5]; battingTarget = 1; }
+  } else {
+    if (battingArchetypeRoll < 0.75) { battingPrior = [-8, 0, 12]; battingTarget = 2; }
+    else { battingPrior = [-5, 10, 8]; battingTarget = 1; }
+  }
+  const batting = centredProfile(battingPrior, battingRandom, battingTarget);
 
-  // Style shifts likely practice emphasis but never fixes a bowler's best
-  // phase. Only this emphasis component is centred; total phase skill remains
-  // free to move together through breadth and phase-specific execution.
-  const styleVector = bowlingStyle === "Pacer"
-    ? [0.7, -0.4, 0.4]
-    : bowlingStyle === "Spinner"
-      ? [-0.2, 0.9, -0.3]
-      : [0, 0, 0];
-  const styleStrength = boundedNormalValue(bowlingRandom, 0.85, 0.25, 0.35, 1.35);
-  const focus = styleVector.map((stylePrior) => (
-    styleStrength * stylePrior + normalRandom(bowlingRandom, 0, 0.75)
-  ));
-  const focusMean = focus.reduce((sum, value) => sum + value, 0) / focus.length;
-  const practiceDeviation = focus.map((value) => 7 * (value - focusMean));
-  const bowlingBreadth = normalRandom(bowlingRandom, 0, 4);
-  const bowling = practiceDeviation.map((deviation) => boundedCompositeRating(
-    bowlingRandom,
-    50 + deviation + bowlingBreadth,
-    5,
-    20,
-    90,
-  ));
+  let bowlingPrior: number[];
+  let bowlingTarget: number;
+  const archetypeRoll = bowlingRandom();
+  if (bowlingStyle === "Spinner") {
+    if (archetypeRoll < 0.08) { bowlingPrior = [-16, 31, -13]; bowlingTarget = 1; }
+    else if (archetypeRoll < 0.75) { bowlingPrior = [-5, 11, -4]; bowlingTarget = 1; }
+    else if (archetypeRoll < 0.90) { bowlingPrior = [9, 4, -5]; bowlingTarget = 0; }
+    else { bowlingPrior = [-1, 4, 9]; bowlingTarget = 2; }
+  } else if (bowlingStyle === "Pacer") {
+    if (archetypeRoll < 0.05) { bowlingPrior = [31, -15, -7]; bowlingTarget = 0; }
+    else if (archetypeRoll < 0.10) { bowlingPrior = [-7, -15, 31]; bowlingTarget = 2; }
+    else if (archetypeRoll < 0.45) { bowlingPrior = [11, -5, 1]; bowlingTarget = 0; }
+    else if (archetypeRoll < 0.75) { bowlingPrior = [2, -5, 11]; bowlingTarget = 2; }
+    else { bowlingPrior = [8, -4, 8]; bowlingTarget = archetypeRoll < 0.875 ? 0 : 2; }
+  } else {
+    bowlingPrior = [-3, 8, 2]; bowlingTarget = 1;
+  }
+  const bowling = centredProfile(bowlingPrior, bowlingRandom, bowlingTarget);
 
   return {
     powerplayBatting: batting[0],
@@ -3183,6 +3251,11 @@ function createGeneratedPlayer(input: {
     ? input.forcedState ?? generatedStateAllocation?.name
     : undefined;
   const isCapped = generatedAbility >= 86 || (mature && (ratings.current >= 82 || nationality === "Overseas"));
+  const dateOfBirth = generatedRegenDateOfBirth(
+    input.season,
+    age,
+    seededRandom(`${input.seed}:${input.season}:regen:${input.index}:date-of-birth`),
+  );
   const serial = String(input.index + 1).padStart(3, "0");
   const id = `regen-${input.season}-${serial}-${hashSeed(`${input.seed}:${serial}`).toString(36)}`;
   // Use a separate seed so changing the name list never changes player
@@ -3239,6 +3312,7 @@ function createGeneratedPlayer(input: {
     id,
     name,
     age,
+    dateOfBirth,
     nationality,
     country,
     state: generatedState,
@@ -3271,6 +3345,13 @@ function createGeneratedPlayer(input: {
     ...consistencyAndDurability,
     ...phaseRatings,
     isWicketkeeper: roleGroup === "WK",
+    bowlingUsage: roleGroup === "WK"
+      ? "does_not_bowl"
+      : roleGroup === "PACE" || roleGroup === "SPIN"
+        ? "frontline"
+        : roleGroup === "AR"
+          ? "regular"
+          : "does_not_bowl",
   };
   player.potential = potentialLabel(player);
   player.careerState = {
@@ -3278,6 +3359,7 @@ function createGeneratedPlayer(input: {
     origin: "generated",
     generatedSeason: input.season,
     secondaryAttributesGenerationVersion: 1,
+    phaseRatingsGenerationVersion: 1,
     lastAgedSeason: input.season,
   };
   return enforceBattingPositionEligibility(player);
@@ -3681,9 +3763,11 @@ export function createHistoricalPlayerSnapshot(
     battingStyle: player.battingStyle,
     bowlingStyle: player.bowlingStyle,
     bowlingHand: player.bowlingHand,
+    bowlingUsage: player.bowlingUsage,
     isCapped: player.isCapped,
     internationalDebutSeason: player.internationalDebutSeason,
     internationalDebutCountry: player.internationalDebutCountry,
+    internationalDebutDate: player.internationalDebutDate,
     currentBatting: player.currentBatting,
     potentialBatting: player.potentialBatting,
     currentBowling: player.currentBowling,

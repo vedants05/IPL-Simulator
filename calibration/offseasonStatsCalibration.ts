@@ -44,13 +44,9 @@ assert(first.period.players["ind-0"].matches === 0, "injured player must receive
 assert(Object.values(first.period.players).every((row) => row.matches >= 0 && row.matches <= 14), "match totals must remain within the off-season schedule");
 assert(Object.values(first.period.players).every((row) => row.innings <= row.matches && row.notOuts <= row.innings), "batting aggregates must be internally valid");
 assert(Object.values(first.period.players).every((row) => row.bowlingBalls <= row.matches * 24), "no player may bowl more than four overs per match");
-const indiaSelections = Object.values(first.period.players).filter((row) => row.selectionStatus.startsWith("India"));
-assert(indiaSelections.length > 15 && indiaSelections.length <= 21, "India must use a wider regular, rotation and reserve pool");
-const indiaAppearances = indiaSelections.reduce((total, row) => total + row.matches, 0);
-assert(indiaAppearances % 11 === 0 && indiaAppearances / 11 >= 10 && indiaAppearances / 11 <= 15, "India appearances must equal 11 players across 10 to 15 matches");
-assert(indiaSelections.some((row) => !players[row.playerId].isCapped && first.players[row.playerId].isCapped), "an uncapped India selection must become capped");
-const availableIndiaSelections = indiaSelections.filter((row) => row.matches > 0);
-assert(availableIndiaSelections.filter((row) => row.selectionStatus === "India regular").length >= 8, "the leading available India players must be regulars, not reserves");
+const internationalSelections = Object.values(first.period.players).filter((row) => row.competitionLevel.includes("International"));
+assert(internationalSelections.length === 0, "synthetic off-season generation must not create international appearances");
+assert(Object.values(players).every((row) => first.players[row.id].isCapped === row.isCapped), "off-season generation must not award international caps");
 const frontlineBowlers = Object.values(first.period.players).filter((row) => {
   const role = players[row.playerId].role;
   return row.matches >= 7 && (role === "Pace Bowler" || role === "Spin Bowler");
@@ -62,4 +58,4 @@ const sampleWithWickets = Object.values(first.period.players).find((row) => row.
 assert(careerUpdated[sampleWithRuns.playerId].careerStats.batting.runs === first.players[sampleWithRuns.playerId].careerStats.batting.runs + sampleWithRuns.runs, "off-season runs must enter career T20 totals");
 assert(careerUpdated[sampleWithWickets.playerId].careerStats.bowling.wickets === first.players[sampleWithWickets.playerId].careerStats.bowling.wickets + sampleWithWickets.wickets, "off-season wickets must enter career T20 totals");
 
-console.log(`Off-season calibration passed: ${Object.keys(first.period.players).length} players, ${indiaSelections.length} India selections.`);
+console.log(`Off-season calibration passed: ${Object.keys(first.period.players).length} domestic/franchise players, no synthetic internationals.`);

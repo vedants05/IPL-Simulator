@@ -70,6 +70,33 @@ export interface IPLStats {
   bowlingRunsConceded?: number;
 }
 
+export interface T20IStats {
+  matches: number;
+  battingInnings: number;
+  notOuts: number;
+  runs: number;
+  ballsFaced: number;
+  highScore: number;
+  highScoreNotOut: boolean;
+  fifties: number;
+  hundreds: number;
+  fours: number;
+  sixes: number;
+  bowlingInnings: number;
+  bowlingBalls: number;
+  bowlingMaidens: number;
+  runsConceded: number;
+  wickets: number;
+  bestBowlingWickets: number;
+  bestBowlingRuns: number;
+  bestBowlingFigures?: string;
+  fourWickets: number;
+  fiveWickets: number;
+  catches: number;
+  stumpings: number;
+  runOuts: number;
+}
+
 export interface IPLHistoryEntry {
   teamId: string;
   season: string;
@@ -127,6 +154,8 @@ export interface PlayerCareerState {
   generatedSeason?: number;
   /** Version of the secondary-attribute generator/migration applied to this regen. */
   secondaryAttributesGenerationVersion?: number;
+  /** Version of the role-aware batting and bowling phase generator. */
+  phaseRatingsGenerationVersion?: number;
   unsoldAuctionStreak: number;
   belowAuctionStandardSeasons: number;
   lastRetirementEvaluationSeason?: number;
@@ -194,6 +223,10 @@ export interface Player {
   internationalDebutSeason?: number;
   /** Nation represented when the player first became capped. */
   internationalDebutCountry?: string;
+  /** Season in which the player earned a national call-up, before making a debut. */
+  internationalCallUpSeason?: number;
+  /** Match date of the player's first international appearance. Capped status begins the following day. */
+  internationalDebutDate?: string;
   isRetained: boolean;
   retainedByTeamId: string | null;
   currentTeamId: string | null;
@@ -247,7 +280,21 @@ export interface Player {
   injuryProneness?: number;
   paceRating?: number;
   spinRating?: number;
+  bowlingUsage?: BowlingUsage;
+  iplTitleSeasons?: number[];
+  iplRunnerUpSeasons?: number[];
+  iplOrangeCapSeasons?: number[];
+  iplPurpleCapSeasons?: number[];
+  iplMvpSeasons?: number[];
+  iplEmergingPlayerSeasons?: number[];
+  paceSpeedBand?: PaceSpeedBand;
+  spinStyle?: SpinStyle;
+  t20iStats?: T20IStats;
 }
+
+export type PaceSpeedBand = "express" | "fast" | "fast_medium" | "medium";
+export type SpinStyle = "off_spin" | "leg_spin" | "left_arm_orthodox" | "left_arm_wrist_spin" | "mystery_spin";
+export type BowlingUsage = "frontline" | "regular" | "part_time" | "emergency" | "does_not_bowl";
 
 // Segment focus — from teamLogic.csv: how strongly a franchise targets each
 // nationality × role segment (all fields 0–100, ~30 = avoids, ~95 = obsessed)
