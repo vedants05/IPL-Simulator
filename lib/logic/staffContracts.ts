@@ -1,4 +1,5 @@
 import { getStaffClubAffinity, type StaffAffinityProfile, type StaffClubAffinity } from "../data/staffAffinities";
+import { NATIONAL_STAFF_SEEDS, NATIONAL_STAFF_SEED_REVISION, type NationalStaffFormat } from "../data/nationalStaffSeeds";
 import type { StaffSeasonReview } from "./staffPerformanceReview";
 import { calculateStaffMoveInterest, calculateStaffRenewalInterest, calculateStaffSalaryDemand, type StaffNegotiationSession } from "./staffNegotiations";
 import type { StaffRatingAttributes } from "./staffRatings";
@@ -56,6 +57,8 @@ export interface CareerStaffContract {
   staffSlug: string;
   fullName: string;
   teamId: string | null;
+  nationalTeamId?: string | null;
+  nationalFormat?: NationalStaffFormat | null;
   roles: string[];
   primaryRole: string;
   startSeason: number | null;
@@ -94,6 +97,7 @@ export interface StaffEmploymentEvent {
   id: string;
   staffId: string;
   teamId: string | null;
+  nationalTeamId?: string | null;
   roles: string[];
   season: number;
   effectiveOn: string;
@@ -123,6 +127,7 @@ export interface CareerStaffState {
   performanceReviews: StaffSeasonReview[];
   lastReviewedSeason: number | null;
   salaryModelVersion: number;
+  nationalStaffSeedRevision?: number;
   /** Save-specific profiles created from retiring players. Never written to the shared staff database. */
   generatedProfiles: Record<string, GeneratedStaffProfile>;
   lastDevelopmentSeason: number | null;
@@ -163,6 +168,7 @@ export const emptyCareerStaffState = (): CareerStaffState => ({
   performanceReviews: [],
   lastReviewedSeason: null,
   salaryModelVersion: 0,
+  nationalStaffSeedRevision: 0,
   generatedProfiles: {},
   lastDevelopmentSeason: null,
   negotiationCooldowns: {},
@@ -256,6 +262,7 @@ const minimumCredibleSalary = (
     startSeason,
     endSeason,
     poaching: mode === "poach",
+    nationalTeamAppointment: mode === "poach" && Boolean(contract.nationalTeamId),
     incumbentRenewal: mode === "renew",
     currentRoleCount: contract.roles.length || 1,
     currentPrimaryRole: contract.primaryRole,
@@ -322,21 +329,24 @@ export function initializeCareerStaffState(
     const teamIds = unique(staffAssignments.map((assignment) => assignment.team_id));
     if (teamIds.length > 1) throw new Error(`${member.id} has starting assignments at multiple clubs.`);
     const teamId = teamIds[0] ?? null;
+    const nationalSeed = teamId ? null : NATIONAL_STAFF_SEEDS[member.slug ?? member.id] ?? null;
     const assignedRoles = unique(staffAssignments.map((assignment) => assignment.role)).slice(0, MAX_STAFF_CONTRACT_ROLES);
-    const normalizedRoles = normalizeContractRoles(assignedRoles, assignedRoles[0] ?? member.primary_role);
+    const normalizedRoles = normalizeContractRoles(assignedRoles, nationalSeed?.role ?? assignedRoles[0] ?? member.primary_role);
     const roles = normalizedRoles.roles;
     const primaryRole = normalizedRoles.primaryRole;
-    const contracted = teamId !== null;
-    const endSeason = contracted ? (member.contract_end_year ?? null) : null;
+    const contracted = teamId !== null || nationalSeed !== null;
+    const endSeason = nationalSeed?.endSeason ?? (teamId ? (member.contract_end_year ?? null) : null);
     return [member.id, {
       staffId: member.id,
       staffSlug: member.slug ?? member.id,
       fullName: member.full_name ?? member.id,
       teamId,
+      nationalTeamId: nationalSeed?.countryId ?? null,
+      nationalFormat: nationalSeed?.format ?? null,
       roles: contracted ? (roles.length ? roles : [member.primary_role]) : [],
       primaryRole,
       startSeason: contracted
-        ? (member.contract_start_year ?? Math.min(...staffAssignments.map((assignment) => assignment.start_season), activeSeason))
+        ? (nationalSeed?.startSeason ?? member.contract_start_year ?? Math.min(...staffAssignments.map((assignment) => assignment.start_season), activeSeason))
         : null,
       endSeason,
       contractType: contracted ? (endSeason == null ? "rolling" : "fixed_term") : null,
@@ -409,6 +419,7 @@ export function initializeCareerStaffState(
     performanceReviews: [],
     lastReviewedSeason: null,
     salaryModelVersion: STAFF_SALARY_MODEL_VERSION,
+    nationalStaffSeedRevision: NATIONAL_STAFF_SEED_REVISION,
     generatedProfiles: {},
     lastDevelopmentSeason: null,
     negotiationCooldowns: {},
@@ -496,6 +507,47 @@ export function synchronizeCareerStaffProfiles(
     newlySeededIds.add(staffId);
     changed = true;
   });
+  let nationalStaffSeedRevision = state.nationalStaffSeedRevision ?? 0;
+  if (nationalStaffSeedRevision < NATIONAL_STAFF_SEED_REVISION) {
+    Object.entries(contracts).forEach(([staffId, contract]) => {
+      const seededContract = seeded.contracts[staffId];
+      if (!seededContract?.nationalTeamId || contract.status !== "free_agent" || contract.releasedOn
+        || state.employmentHistory.some((event) => event.staffId === staffId)) return;
+      const seedRole = seededContract.primaryRole;
+      const occupied = Object.values(contracts).some((candidate) => candidate.staffId !== staffId
+        && candidate.status === "contracted" && candidate.nationalTeamId === seededContract.nationalTeamId
+        && candidate.nationalFormat === seededContract.nationalFormat && candidate.roles.includes(seedRole));
+      if (occupied) return;
+      const endSeason = Math.max(activeSeason + 2, seededContract.endSeason ?? activeSeason + 2);
+      contracts[staffId] = {
+        ...contract,
+        teamId: null,
+        nationalTeamId: seededContract.nationalTeamId,
+        nationalFormat: seededContract.nationalFormat,
+        roles: [seedRole],
+        primaryRole: seedRole,
+        startSeason: activeSeason,
+        endSeason,
+        contractType: "fixed_term",
+        annualSalary: calculateStaffSalaryDemand({
+          salaryExpectation: contract.annualSalary,
+          reputation: contract.reputation,
+          roleRating: contract.roleRatings[seedRole] ?? contract.currentAbility,
+          roleCount: 1,
+          offeredRoles: [seedRole],
+          startSeason: activeSeason,
+          endSeason,
+          offeredPrimaryRole: seedRole,
+        }),
+        status: "contracted",
+        joinedOn: `season:${activeSeason}:national-seed`,
+        releasedOn: null,
+      };
+      changed = true;
+    });
+    nationalStaffSeedRevision = NATIONAL_STAFF_SEED_REVISION;
+    changed = true;
+  }
   let salaryModelVersion = state.salaryModelVersion ?? 0;
   if (salaryModelVersion < STAFF_SALARY_MODEL_VERSION) {
     Object.entries(contracts).forEach(([staffId, contract]) => {
@@ -523,6 +575,7 @@ export function synchronizeCareerStaffProfiles(
     ...state,
     contracts,
     salaryModelVersion,
+    nationalStaffSeedRevision,
     financesByTeam: recalculateStaffFinances(contracts, state.financesByTeam, (state.salaryModelVersion ?? 0) < STAFF_SALARY_MODEL_VERSION),
   } : state;
 }
@@ -535,12 +588,15 @@ export function releaseCareerStaff(
   effectiveOn: string,
 ): CareerStaffState {
   const contract = state.contracts[staffId];
-  if (!contract || contract.status !== "contracted" || !contract.teamId) return state;
-  const compensation = reason === "club_sacked" ? contract.annualSalary : 0;
+  if (!contract || contract.status !== "contracted" || (!contract.teamId && !contract.nationalTeamId)) return state;
+  const compensation = reason === "club_sacked" && contract.teamId ? contract.annualSalary : 0;
   const previousTeamId = contract.teamId;
+  const previousNationalTeamId = contract.nationalTeamId ?? null;
   const releasedContract: CareerStaffContract = {
     ...contract,
     teamId: null,
+    nationalTeamId: null,
+    nationalFormat: null,
     roles: [],
     startSeason: null,
     endSeason: null,
@@ -553,7 +609,7 @@ export function releaseCareerStaff(
     [staffId]: releasedContract,
   };
   const financesByTeam = recalculateStaffFinances(nextContracts, state.financesByTeam);
-  financesByTeam[previousTeamId] = {
+  if (previousTeamId) financesByTeam[previousTeamId] = {
     ...financesByTeam[previousTeamId],
     compensationPaid: (financesByTeam[previousTeamId]?.compensationPaid ?? 0) + compensation,
   };
@@ -565,6 +621,7 @@ export function releaseCareerStaff(
       id: `${staffId}:${season}:${reason}:${state.employmentHistory.length}`,
       staffId,
       teamId: previousTeamId,
+      nationalTeamId: previousNationalTeamId,
       roles: contract.roles,
       season,
       effectiveOn,
@@ -612,6 +669,8 @@ export function appointCareerStaff(
   const appointed: CareerStaffContract = {
     ...contract,
     teamId: input.teamId,
+    nationalTeamId: null,
+    nationalFormat: null,
     roles,
     primaryRole,
     startSeason: input.startSeason,
@@ -639,6 +698,134 @@ export function appointCareerStaff(
       compensation: 0,
     }],
   };
+}
+
+export function appointNationalStaff(
+  state: CareerStaffState,
+  staffId: string,
+  nationalTeamId: string,
+  format: NationalStaffFormat,
+  role: string,
+  season: number,
+  effectiveOn: string,
+): CareerStaffState {
+  const contract = state.contracts[staffId];
+  if (!contract || contract.status !== "free_agent") return state;
+  if (Object.values(state.contracts).some((candidate) => candidate.status === "contracted"
+    && candidate.nationalTeamId === nationalTeamId && candidate.nationalFormat === format
+    && candidate.roles.includes(role))) return state;
+  const annualSalary = calculateStaffSalaryDemand({
+    salaryExpectation: contract.annualSalary,
+    reputation: contract.reputation,
+    roleRating: contract.roleRatings[role] ?? contract.currentAbility,
+    roleCount: 1,
+    offeredRoles: [role],
+    startSeason: season,
+    endSeason: season + 2,
+    currentPrimaryRole: contract.primaryRole,
+    offeredPrimaryRole: role,
+  });
+  const appointed: CareerStaffContract = {
+    ...contract,
+    teamId: null,
+    nationalTeamId,
+    nationalFormat: format,
+    roles: [role],
+    primaryRole: role,
+    startSeason: season,
+    endSeason: season + 2,
+    contractType: "fixed_term",
+    annualSalary,
+    status: "contracted",
+    joinedOn: effectiveOn,
+    releasedOn: null,
+  };
+  return {
+    ...state,
+    contracts: { ...state.contracts, [staffId]: appointed },
+    employmentHistory: [...state.employmentHistory, {
+      id: `${staffId}:${season}:national-appointed:${state.employmentHistory.length}`,
+      staffId, teamId: null, nationalTeamId, roles: [role], season,
+      effectiveOn, kind: "appointed", compensation: 0,
+    }],
+  };
+}
+
+export function appointNationalHeadCoach(
+  state: CareerStaffState,
+  staffId: string,
+  nationalTeamId: string,
+  format: NationalStaffFormat,
+  season: number,
+  effectiveOn: string,
+): CareerStaffState {
+  return appointNationalStaff(state, staffId, nationalTeamId, format, "head_coach", season, effectiveOn);
+}
+
+export function reviewNationalStaffContracts(state: CareerStaffState, completedSeason: number, effectiveOn: string): CareerStaffState {
+  let next = state;
+  Object.values(state.contracts).forEach((contract) => {
+    if (contract.status !== "contracted" || !contract.nationalTeamId
+      || contract.contractType !== "fixed_term" || contract.endSeason === null
+      || contract.endSeason > completedSeason) return;
+    const rating = contract.roleRatings[contract.primaryRole] ?? contract.currentAbility;
+    if (rating < 70) return;
+    const endSeason = completedSeason + (rating >= 85 ? 3 : 2);
+    const annualSalary = calculateStaffSalaryDemand({
+      salaryExpectation: contract.annualSalary,
+      reputation: contract.reputation,
+      roleRating: rating,
+      roleCount: 1,
+      offeredRoles: contract.roles,
+      startSeason: completedSeason + 1,
+      endSeason,
+      currentPrimaryRole: contract.primaryRole,
+      offeredPrimaryRole: contract.primaryRole,
+      incumbentRenewal: true,
+    });
+    if (!calculateStaffRenewalInterest({
+      loyalty: contract.loyalty, ambition: contract.ambition, adaptability: contract.adaptability,
+      clubAffinity: 50, currentSalary: contract.annualSalary, offeredSalary: annualSalary,
+      remainingContractSeasons: 1,
+    }).interested) return;
+    next = {
+      ...next,
+      contracts: { ...next.contracts, [contract.staffId]: { ...contract, endSeason, annualSalary } },
+      employmentHistory: [...next.employmentHistory, {
+        id: `${contract.staffId}:${completedSeason}:national-renewed:${next.employmentHistory.length}`,
+        staffId: contract.staffId, teamId: null, nationalTeamId: contract.nationalTeamId,
+        roles: contract.roles, season: completedSeason, effectiveOn,
+        kind: "contract_renewed", compensation: 0,
+      }],
+    };
+  });
+  return next;
+}
+
+/** Fill vacated seeded T20 coaching posts at the annual staff review. */
+export function maintainNationalHeadCoaches(state: CareerStaffState, season: number, effectiveOn: string): CareerStaffState {
+  let next = state;
+  const posts = Array.from(new Map(Object.values(NATIONAL_STAFF_SEEDS)
+    .filter((seed) => seed.format === "t20")
+    .map((seed) => [`${seed.countryId}:${seed.role}`, seed] as const)).values());
+  posts.forEach(({ countryId, role }) => {
+    if (Object.values(next.contracts).some((contract) => contract.status === "contracted"
+      && contract.nationalTeamId === countryId && contract.nationalFormat === "t20"
+      && contract.roles.includes(role))) return;
+    const countryName = {
+      IND: "India", ENG: "England", AUS: "Australia", SA: "South Africa",
+      NZ: "New Zealand", WI: "West Indies", SL: "Sri Lanka", PAK: "Pakistan", AFG: "Afghanistan", MAS: "Malaysia",
+    }[countryId] ?? countryId;
+    const candidate = Object.values(next.contracts)
+      .filter((contract) => contract.status === "free_agent" && (contract.roleRatings[role] ?? 0) >= 65)
+      .sort((left, right) => (
+        (Number(right.country === countryName) - Number(left.country === countryName)) * 20
+        + (right.roleRatings[role] ?? 0) - (left.roleRatings[role] ?? 0)
+        || left.staffId.localeCompare(right.staffId)
+      ))[0];
+    if (candidate) next = appointNationalStaff(next, candidate.staffId, countryId, "t20", role, season, effectiveOn);
+  });
+  return next;
 }
 
 export function renewCareerStaffContract(
@@ -734,12 +921,13 @@ export function poachCareerStaff(
   },
 ): CareerStaffState {
   const existing = state.contracts[input.staffId];
-  if (!existing || existing.status !== "contracted" || !existing.teamId || existing.teamId === input.teamId) return state;
+  if (!existing || existing.status !== "contracted" || (!existing.teamId && !existing.nationalTeamId)
+    || existing.teamId === input.teamId) return state;
   if (state.negotiationCooldowns[input.staffId] && input.effectiveOn < state.negotiationCooldowns[input.staffId]) return state;
   const remainingSeasons = existing.endSeason == null
     ? 1
     : Math.max(1, existing.endSeason - input.startSeason + 1);
-  const compensation = existing.annualSalary * remainingSeasons;
+  const compensation = existing.teamId ? existing.annualSalary * remainingSeasons : 0;
   const requestedRoles = unique([input.primaryRole, ...(input.roles.length ? input.roles : [input.primaryRole])]);
   const normalizedOffer = normalizeContractRoles(requestedRoles, input.primaryRole);
   if (!Number.isFinite(input.annualSalary) || input.annualSalary < minimumCredibleSalary(
@@ -752,30 +940,33 @@ export function poachCareerStaff(
   const offeredRating = existing.roleRatings?.[input.primaryRole] ?? existing.currentAbility;
   const moveInterest = calculateStaffMoveInterest({
     loyalty: existing.loyalty, ambition: existing.ambition, adaptability: existing.adaptability,
-    currentAffinity: getStaffClubAffinity(existing.affinityProfile, existing.teamId),
+    currentAffinity: existing.teamId ? getStaffClubAffinity(existing.affinityProfile, existing.teamId) : 45,
     destinationAffinity: getStaffClubAffinity(existing.affinityProfile, input.teamId),
     currentSalary: existing.annualSalary, offeredSalary: input.annualSalary,
     currentRoleRating: existing.roleRatings?.[existing.primaryRole] ?? existing.currentAbility,
     offeredRoleRating: offeredRating, currentPrimaryRole: existing.primaryRole,
     offeredPrimaryRole: input.primaryRole, remainingContractSeasons: remainingSeasons,
+    nationalTeamAppointment: Boolean(existing.nationalTeamId),
   });
   if (!moveInterest.interested) return state;
   const released = releaseCareerStaff(state, input.staffId, "staff_resigned", input.startSeason, input.effectiveOn);
   const appointed = appointCareerStaff(released, input);
   if (appointed === released) return state;
   const teamFinance = appointed.financesByTeam[input.teamId];
-  const sourceFinance = appointed.financesByTeam[existing.teamId];
   const financesByTeam = {
     ...appointed.financesByTeam,
     [input.teamId]: {
       ...teamFinance,
       compensationPaid: (teamFinance?.compensationPaid ?? 0) + compensation,
     },
-    [existing.teamId]: {
+  };
+  if (existing.teamId) {
+    const sourceFinance = appointed.financesByTeam[existing.teamId];
+    financesByTeam[existing.teamId] = {
       ...sourceFinance,
       compensationReceived: (sourceFinance?.compensationReceived ?? 0) + compensation,
-    },
-  };
+    };
+  }
   const employmentHistory = [...appointed.employmentHistory];
   const appointment = employmentHistory[employmentHistory.length - 1];
   employmentHistory[employmentHistory.length - 1] = {
@@ -813,9 +1004,11 @@ export function processStaffContractExpiries(
 export function validateCareerStaffState(state: CareerStaffState): string[] {
   const errors: string[] = [];
   const headCoachByTeam = new Map<string, string>();
+  const nationalRoleByTeam = new Map<string, string>();
   Object.values(state.contracts).forEach((contract) => {
-    if (contract.status === "contracted" && !contract.teamId) errors.push(`${contract.staffId}: contracted without a club`);
-    if (contract.status === "free_agent" && contract.teamId) errors.push(`${contract.staffId}: free agent still has a club`);
+    if (contract.status === "contracted" && !contract.teamId && !contract.nationalTeamId) errors.push(`${contract.staffId}: contracted without an employer`);
+    if (contract.status === "contracted" && contract.teamId && contract.nationalTeamId) errors.push(`${contract.staffId}: two employers`);
+    if (contract.status === "free_agent" && (contract.teamId || contract.nationalTeamId)) errors.push(`${contract.staffId}: free agent still has an employer`);
     if (contract.contractType === "fixed_term" && contract.endSeason == null) errors.push(`${contract.staffId}: fixed contract has no expiry`);
     if (contract.roles.length > MAX_STAFF_CONTRACT_ROLES) errors.push(`${contract.staffId}: more than ${MAX_STAFF_CONTRACT_ROLES} contracted roles`);
     if (contract.roles.includes("head_coach") && contract.primaryRole !== "head_coach") errors.push(`${contract.staffId}: head coach role is not primary`);
@@ -824,6 +1017,12 @@ export function validateCareerStaffState(state: CareerStaffState): string[] {
       if (existing && existing !== contract.staffId) errors.push(`${contract.teamId}: multiple active head coaches`);
       headCoachByTeam.set(contract.teamId, contract.staffId);
     }
+    if (contract.status === "contracted" && contract.nationalTeamId) contract.roles.forEach((role) => {
+      const key = `${contract.nationalTeamId}:${contract.nationalFormat ?? "t20"}:${role}`;
+      const existing = nationalRoleByTeam.get(key);
+      if (existing && existing !== contract.staffId) errors.push(`${key}: multiple active national coaches in one role`);
+      nationalRoleByTeam.set(key, contract.staffId);
+    });
   });
   return errors;
 }

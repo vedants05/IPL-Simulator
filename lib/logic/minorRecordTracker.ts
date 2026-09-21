@@ -1,4 +1,4 @@
-import { type MinorRecord } from "@/lib/data/minorRecords";
+import { MINOR_RECORDS, type MinorRecord } from "@/lib/data/minorRecords";
 import { type Player } from "@/lib/types";
 
 interface MatchScore {
@@ -119,6 +119,88 @@ export interface MinorRecordEvaluationContext {
   auctionSales?: Array<{ playerId: string; teamId: string; price: number }>;
 }
 
+type RecordChangeKind = "broken" | "extended";
+
+function sameRecordHolder(left: string, right: string) {
+  return left.trim().toLocaleLowerCase("en-GB") === right.trim().toLocaleLowerCase("en-GB");
+}
+
+function nextBreakSequence(records: MinorRecord[]) {
+  return records.reduce((latest, record) => Math.max(latest, record.breakSequence ?? 0), 0) + 1;
+}
+
+function applyRecordAchievement(
+  records: MinorRecord[],
+  previous: MinorRecord,
+  updates: Pick<MinorRecord, "value" | "holder" | "season" | "notes" | "source" | "verified">,
+  occurredOn: string,
+): { record: MinorRecord; kind: RecordChangeKind } {
+  if (sameRecordHolder(previous.holder, updates.holder)) {
+    return {
+      kind: "extended",
+      record: {
+        ...previous,
+        ...updates,
+        lastExtendedOn: occurredOn,
+      },
+    };
+  }
+
+  const sequence = nextBreakSequence(records);
+  return {
+    kind: "broken",
+    record: {
+      ...previous,
+      ...updates,
+      lastBrokenOn: occurredOn,
+      breakSequence: sequence,
+      lastExtendedOn: undefined,
+      previousHolder: previous.holder,
+      previousValue: previous.value,
+      breakHistory: [
+        ...(previous.breakHistory ?? (previous.lastBrokenOn ? [{
+          on: previous.lastBrokenOn,
+          sequence: previous.breakSequence ?? 0,
+          holder: previous.holder,
+          value: previous.value,
+          previousHolder: previous.previousHolder ?? "Previous holder",
+          previousValue: previous.previousValue ?? "—",
+        }] : [])),
+        { on: occurredOn, sequence, holder: updates.holder, value: updates.value, previousHolder: previous.holder, previousValue: previous.value },
+      ],
+    },
+  };
+}
+
+function clearPlacementEvent(record: MinorRecord): MinorRecord {
+  const {
+    lastBrokenOn: _lastBrokenOn,
+    breakSequence: _breakSequence,
+    lastExtendedOn: _lastExtendedOn,
+    previousHolder: _previousHolder,
+    previousValue: _previousValue,
+    breakHistory: _breakHistory,
+    ...placement
+  } = record;
+  return placement;
+}
+
+export function isActualMinorRecordBenchmark(record: MinorRecord) {
+  if (record.id === "season-runs-uncapped-previous") return false;
+  const rankedPrefixes = [
+    "all-time-season-runs-",
+    "all-time-season-wickets-",
+    "career-sixes-",
+    "career-centuries-",
+    "career-fifties-",
+    "career-stumpings-",
+    "career-potm-",
+  ];
+  const prefix = rankedPrefixes.find((candidate) => record.id.startsWith(candidate));
+  if (!prefix) return true;
+  return Number.parseInt(record.id.slice(prefix.length), 10) === 1;
+}
+
 export function updateAllTimeBattingSeasonRecords(
   currentRecords: MinorRecord[],
   seasonStats: Record<string, BattingSeasonStat>,
@@ -179,7 +261,7 @@ function updateAllTimeRunsRecords(
   slots.forEach((slot, index) => {
     const leader = leaders[index];
     if (!leader) return;
-    const replacement: MinorRecord = {
+    const baseReplacement: MinorRecord = {
       ...slot,
       value: `${leader.runs} runs`,
       holder: leader.holder,
@@ -188,12 +270,20 @@ function updateAllTimeRunsRecords(
       source: leader.source,
       verified: leader.verified,
     };
+    const achievementChanged = baseReplacement.value !== slot.value || baseReplacement.holder !== slot.holder;
+    const replacement = index === 0 && achievementChanged
+      ? applyRecordAchievement(currentRecords, slot, baseReplacement, String(currentSeason)).record
+      : index === 0
+        ? baseReplacement
+        : clearPlacementEvent(baseReplacement);
     replacements.set(slot.id, replacement);
     if (
       replacement.value !== slot.value
       || replacement.holder !== slot.holder
       || replacement.season !== slot.season
       || replacement.notes !== slot.notes
+      || replacement.lastBrokenOn !== slot.lastBrokenOn
+      || replacement.lastExtendedOn !== slot.lastExtendedOn
     ) changed = true;
   });
 
@@ -251,7 +341,7 @@ export function updateAllTimeBowlingSeasonRecords(
   slots.forEach((slot, index) => {
     const leader = leaders[index];
     if (!leader) return;
-    const replacement: MinorRecord = {
+    const baseReplacement: MinorRecord = {
       ...slot,
       value: `${leader.wickets} wickets`,
       holder: leader.holder,
@@ -260,12 +350,20 @@ export function updateAllTimeBowlingSeasonRecords(
       source: leader.source,
       verified: leader.verified,
     };
+    const achievementChanged = baseReplacement.value !== slot.value || baseReplacement.holder !== slot.holder;
+    const replacement = index === 0 && achievementChanged
+      ? applyRecordAchievement(currentRecords, slot, baseReplacement, String(currentSeason)).record
+      : index === 0
+        ? baseReplacement
+        : clearPlacementEvent(baseReplacement);
     replacements.set(slot.id, replacement);
     if (
       replacement.value !== slot.value
       || replacement.holder !== slot.holder
       || replacement.season !== slot.season
       || replacement.notes !== slot.notes
+      || replacement.lastBrokenOn !== slot.lastBrokenOn
+      || replacement.lastExtendedOn !== slot.lastExtendedOn
     ) changed = true;
   });
 
@@ -322,10 +420,7 @@ export function reconcileFastestSeasonRunInningsRecords(
     });
 
   let changed = false;
-  let nextBreakSequence = currentRecords.reduce(
-    (latest, record) => Math.max(latest, record.breakSequence ?? 0),
-    0,
-  );
+  let nextSequence = currentRecords.reduce((latest, record) => Math.max(latest, record.breakSequence ?? 0), 0);
   const reconciled = currentRecords.map((record) => {
     const match = record.id.match(/^fastest-(\d+)-innings$/);
     if (!match) return record;
@@ -333,8 +428,7 @@ export function reconcileFastestSeasonRunInningsRecords(
     const existingInnings = Number.parseInt(record.value, 10);
     if (!candidate || candidate.innings >= existingInnings) return record;
     changed = true;
-    nextBreakSequence += 1;
-    return {
+    const updates = {
       ...record,
       value: `${candidate.innings} innings`,
       holder: candidate.holder,
@@ -342,8 +436,29 @@ export function reconcileFastestSeasonRunInningsRecords(
       notes: teams[candidate.teamId]?.shortName ?? candidate.teamId,
       source: "Career simulation",
       verified: true,
+    };
+    if (sameRecordHolder(record.holder, candidate.holder)) {
+      return { ...updates, lastExtendedOn: candidate.date ?? String(currentSeason) };
+    }
+    nextSequence += 1;
+    return {
+      ...updates,
       lastBrokenOn: candidate.date ?? String(currentSeason),
-      breakSequence: nextBreakSequence,
+      breakSequence: nextSequence,
+      lastExtendedOn: undefined,
+      previousHolder: record.holder,
+      previousValue: record.value,
+      breakHistory: [
+        ...(record.breakHistory ?? (record.lastBrokenOn ? [{
+          on: record.lastBrokenOn,
+          sequence: record.breakSequence ?? 0,
+          holder: record.holder,
+          value: record.value,
+          previousHolder: record.previousHolder ?? "Previous holder",
+          previousValue: record.previousValue ?? "—",
+        }] : [])),
+        { on: candidate.date ?? String(currentSeason), sequence: nextSequence, holder: candidate.holder, value: updates.value, previousHolder: record.holder, previousValue: record.value },
+      ],
     };
   });
   return changed ? reconciled : currentRecords;
@@ -410,23 +525,18 @@ export function trackMinorRecordsOnMatchComplete(
       }
 
       if (shouldUpdate) {
-        const breakSequence = updatedRecords.reduce(
-          (latest, record) => Math.max(latest, record.breakSequence ?? 0),
-          0,
-        ) + 1;
-        updatedRecords[idx] = {
-          ...oldRecord,
+        const change = applyRecordAchievement(updatedRecords, oldRecord, {
           value: newValue,
           holder,
           season: seasonStr,
           notes,
+          source: "Career simulation",
           verified: true,
-          lastBrokenOn: brokenOn,
-          breakSequence,
-        };
+        }, brokenOn);
+        updatedRecords[idx] = change.record;
         if (!suppressRecordEmail(id)) {
           brokenRecordNotices.push(
-            `Record Broken! "${oldRecord.title}" has been updated: ${holder} achieved ${newValue} (${notes}, ${seasonStr})`
+            `Record ${change.kind === "broken" ? "Broken" : "Extended"}! "${oldRecord.title}" has been updated: ${holder} achieved ${newValue} (${notes}, ${seasonStr})`
           );
         }
       }
@@ -542,9 +652,9 @@ export function trackMinorRecordsOnMatchComplete(
     if ((lowerIsBetter && newAge < oldAge) || (!lowerIsBetter && newAge > oldAge)) {
       // Age is currently stored as whole years, so do not manufacture day precision.
       const oldRecord = updatedRecords[index];
-      const breakSequence = updatedRecords.reduce((latest, record) => Math.max(latest, record.breakSequence ?? 0), 0) + 1;
-      updatedRecords[index] = { ...oldRecord, value: `${newAge} years`, holder: player.name, season: seasonStr, notes, source: "Career simulation", verified: true, lastBrokenOn: brokenOn, breakSequence };
-      brokenRecordNotices.push(`Record Broken! "${oldRecord.title}" has been updated: ${player.name} achieved ${newAge} years (${notes}, ${seasonStr})`);
+      const change = applyRecordAchievement(updatedRecords, oldRecord, { value: `${newAge} years`, holder: player.name, season: seasonStr, notes, source: "Career simulation", verified: true }, brokenOn);
+      updatedRecords[index] = change.record;
+      brokenRecordNotices.push(`Record ${change.kind === "broken" ? "Broken" : "Extended"}! "${oldRecord.title}" has been updated: ${player.name} achieved ${newAge} years (${notes}, ${seasonStr})`);
     }
   };
 
@@ -700,9 +810,9 @@ export function trackMinorRecordsOnMatchComplete(
           const runs = bowler.runsConceded ?? 0;
           if (wickets > oldWickets || (wickets === oldWickets && runs < oldRuns)) {
             const oldRecord = updatedRecords[index];
-            const breakSequence = updatedRecords.reduce((latest, record) => Math.max(latest, record.breakSequence ?? 0), 0) + 1;
-            updatedRecords[index] = { ...oldRecord, value: `${wickets}/${runs}`, holder: bowler.name, season: seasonStr, notes: matchLabel, source: "Career simulation", verified: true, lastBrokenOn: brokenOn, breakSequence };
-            brokenRecordNotices.push(`Record Broken! "${oldRecord.title}" has been updated: ${bowler.name} achieved ${wickets}/${runs} (${matchLabel}, ${seasonStr})`);
+            const change = applyRecordAchievement(updatedRecords, oldRecord, { value: `${wickets}/${runs}`, holder: bowler.name, season: seasonStr, notes: matchLabel, source: "Career simulation", verified: true }, brokenOn);
+            updatedRecords[index] = change.record;
+            brokenRecordNotices.push(`Record ${change.kind === "broken" ? "Broken" : "Extended"}! "${oldRecord.title}" has been updated: ${bowler.name} achieved ${wickets}/${runs} (${matchLabel}, ${seasonStr})`);
           }
         }
       }
@@ -715,8 +825,9 @@ export function trackMinorRecordsOnMatchComplete(
           const runs = bowler.runsConceded ?? 0;
           if (wickets > oldWickets || (wickets === oldWickets && runs < oldRuns)) {
             const oldRecord = updatedRecords[index];
-            updatedRecords[index] = { ...oldRecord, value: `${wickets}/${runs}`, holder: bowler.name, season: seasonStr, notes: matchLabel, source: "Career simulation", verified: true, lastBrokenOn: brokenOn, breakSequence: updatedRecords.reduce((latest, record) => Math.max(latest, record.breakSequence ?? 0), 0) + 1 };
-            brokenRecordNotices.push(`Record Broken! "${oldRecord.title}" has been updated: ${bowler.name} achieved ${wickets}/${runs} (${matchLabel}, ${seasonStr})`);
+            const change = applyRecordAchievement(updatedRecords, oldRecord, { value: `${wickets}/${runs}`, holder: bowler.name, season: seasonStr, notes: matchLabel, source: "Career simulation", verified: true }, brokenOn);
+            updatedRecords[index] = change.record;
+            brokenRecordNotices.push(`Record ${change.kind === "broken" ? "Broken" : "Extended"}! "${oldRecord.title}" has been updated: ${bowler.name} achieved ${wickets}/${runs} (${matchLabel}, ${seasonStr})`);
           }
         }
       }
@@ -880,13 +991,18 @@ export function reconcileCumulativeMinorRecords(
   const season = String(currentSeason);
   const completed = fixtures.filter((fixture) => fixture.played && fixture.scorecard);
   const numeric = (value: string) => Number.parseFloat(value.replace(/[^\d.]/g, ""));
+  const percentageRecordIndex = next.findIndex((record) => record.id === "highest-percentage-team-runs");
+  if (percentageRecordIndex >= 0 && numeric(next[percentageRecordIndex].value) > 100) {
+    const baseline = MINOR_RECORDS.find((record) => record.id === "highest-percentage-team-runs");
+    if (baseline) next[percentageRecordIndex] = { ...baseline };
+  }
   const replace = (id: string, value: number, display: string, holder: string, notes: string, lower = false) => {
     const index = next.findIndex((record) => record.id === id);
     if (index < 0) return;
     const oldValue = numeric(next[index].value);
     if (!Number.isFinite(value) || (lower ? value >= oldValue : value <= oldValue)) return;
     const old = next[index];
-    next[index] = { ...old, value: display, holder, season, notes, source: "Career simulation", verified: true, lastBrokenOn: season, breakSequence: next.reduce((maximum, record) => Math.max(maximum, record.breakSequence ?? 0), 0) + 1 };
+    next[index] = applyRecordAchievement(next, old, { value: display, holder, season, notes, source: "Career simulation", verified: true }, season).record;
   };
   const teamName = (teamId: string) => teams[teamId]?.shortName ?? teamId;
   const stats = Object.values(seasonStats);
@@ -931,7 +1047,11 @@ export function reconcileCumulativeMinorRecords(
   const writeRankedUncapped = (id: string, candidate: typeof uncappedAllTime[number] | undefined) => {
     const index = next.findIndex((record) => record.id === id);
     if (index < 0 || !candidate || candidate.value <= numeric(next[index].value)) return;
-    next[index] = { ...next[index], value: `${candidate.value} runs`, holder: candidate.holder, season: candidate.season, notes: candidate.teamId, source: "Career simulation", verified: true, lastBrokenOn: season, breakSequence: next.reduce((maximum, record) => Math.max(maximum, record.breakSequence ?? 0), 0) + 1 };
+    const old = next[index];
+    const updates = { value: `${candidate.value} runs`, holder: candidate.holder, season: candidate.season, notes: candidate.teamId, source: "Career simulation", verified: true };
+    next[index] = id === "season-runs-uncapped-record"
+      ? applyRecordAchievement(next, old, updates, season).record
+      : clearPlacementEvent({ ...old, ...updates });
   };
   writeRankedUncapped("season-runs-uncapped-record", uncappedAllTime[0]);
   writeRankedUncapped("season-runs-uncapped-previous", uncappedAllTime[1]);
@@ -950,6 +1070,7 @@ export function reconcileCumulativeMinorRecords(
   const batterInningsScores = new Map<string, Array<{ runs: number }>>();
   const playerMatchAwards = new Map<string, number>();
   const teamRuns = new Map<string, number>();
+  const teamPlayerRuns = new Map<string, { playerId: string; name: string; teamId: string; runs: number }>();
   const powerplayWickets = new Map<string, number>();
   const hatTricks = new Map<string, number>();
   const matchSequenceByPlayer = new Map<string, Array<{ opponent: string; fifty: boolean }>>();
@@ -961,8 +1082,14 @@ export function reconcileCumulativeMinorRecords(
       { innings: fixture.scorecard!.inningsB, teamId: fixture.teamB, opponent: fixture.teamA },
     ];
     pairs.forEach(({ innings, teamId, opponent }, inningsIndex) => {
-      teamRuns.set(teamId, (teamRuns.get(teamId) ?? 0) + innings.batting.reduce((sum, batter) => sum + (batter.runs ?? 0), 0) + (innings.extras ?? 0));
+      const inningsTotal = innings.batting.reduce((sum, batter) => sum + (batter.runs ?? 0), 0) + (innings.extras ?? 0);
+      const officialTotal = inningsIndex === 0 ? fixture.scoreA?.runs : fixture.scoreB?.runs;
+      teamRuns.set(teamId, (teamRuns.get(teamId) ?? 0) + (officialTotal ?? inningsTotal));
       innings.batting.forEach((batter, index) => {
+        const playerKey = `${teamId}:${batter.id}`;
+        const teamPlayer = teamPlayerRuns.get(playerKey) ?? { playerId: batter.id, name: batter.name, teamId, runs: 0 };
+        teamPlayer.runs += batter.runs ?? 0;
+        teamPlayerRuns.set(playerKey, teamPlayer);
         const position = batter.battingPosition ?? index + 1;
         const key = `${batter.id}:${position}`;
         const aggregate = positionRuns.get(key) ?? { runs: 0, name: batter.name, teamId, position };
@@ -1045,9 +1172,19 @@ export function reconcileCumulativeMinorRecords(
   bowlerDots.forEach((count, playerId) => replace("season-most-dot-balls", count, `${count} dot balls`, players[playerId]?.name ?? playerId, teamName(seasonStats[playerId]?.teamId ?? "")));
   fiveWicketHauls.forEach((count, playerId) => replace("season-most-multi-wickets", count, `${count} hauls`, players[playerId]?.name ?? playerId, teamName(seasonStats[playerId]?.teamId ?? "")));
 
+  // The denominator must cover the whole season. A midseason share would
+  // otherwise become a permanent all-time record even after it later falls.
+  if (completed.some((fixture) => fixture.stage === "final")) {
+    teamPlayerRuns.forEach(({ name, teamId, runs }) => {
+      const total = teamRuns.get(teamId) ?? 0;
+      if (total > 0 && runs <= total) {
+        const percentage = runs / total * 100;
+        replace("highest-percentage-team-runs", percentage, `${percentage.toFixed(1)}%`, name, `Scored ${runs} of ${teamName(teamId)}'s ${total} runs in ${season}`);
+      }
+    });
+  }
+
   stats.forEach((stat) => {
-    const total = teamRuns.get(stat.teamId) ?? 0;
-    if (total > 0) replace("highest-percentage-team-runs", stat.runs / total * 100, `${(stat.runs / total * 100).toFixed(1)}%`, stat.name, `Scored ${stat.runs} of ${teamName(stat.teamId)}'s ${total} runs`);
     if (stat.runs >= 250 && (stat.balls ?? 0) > 0) {
       const sr = (stat.runs / stat.balls!) * 100;
       replace("season-highest-strike-rate", sr, sr.toFixed(2), stat.name, `${stat.runs} runs off ${stat.balls}b, ${teamName(stat.teamId)}`);
@@ -1153,16 +1290,18 @@ export function reconcileCumulativeMinorRecords(
       const valStr = `${leader.value} ${unit}`;
       const slotIdx = next.findIndex((r) => r.id === slot.id);
       if (slotIdx >= 0 && (next[slotIdx].value !== valStr || next[slotIdx].holder !== leader.holder)) {
-        next[slotIdx] = {
+        const old = next[slotIdx];
+        const replacement = {
           ...next[slotIdx],
           value: valStr,
           holder: leader.holder,
           notes: leader.notes,
           source: "Career simulation",
           verified: true,
-          lastBrokenOn: season,
-          breakSequence: next.reduce((max, r) => Math.max(max, r.breakSequence ?? 0), 0) + 1,
         };
+        next[slotIdx] = idx === 0
+          ? applyRecordAchievement(next, old, replacement, season).record
+          : clearPlacementEvent(replacement);
       }
     });
   };
@@ -1202,5 +1341,7 @@ export function reconcileCumulativeMinorRecords(
     replace("highest-auction-purse-spent", crores, `₹${crores.toFixed(2)} Cr`, teamName(sale.teamId), player?.name ?? sale.playerId);
   });
 
-  return next;
+  // Ranking movements below first place are leaderboard maintenance, not record
+  // events. Clear legacy false-positive markers from older saves as they load.
+  return next.map((record) => isActualMinorRecordBenchmark(record) ? record : clearPlacementEvent(record));
 }

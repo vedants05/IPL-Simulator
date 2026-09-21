@@ -1,7 +1,7 @@
 "use client";
 import { useEffect } from "react";
 import { useGameStore } from "@/lib/store/gameStore";
-import { TEAM_THEMES, readableOn } from "@/lib/theme/teams";
+import { TEAM_THEMES, readableAccentOn, readableOn } from "@/lib/theme/teams";
 import {
   APPEARANCE_THEME_STORAGE_KEY,
   getStoredAppearanceTheme,
@@ -32,7 +32,7 @@ const TEAM_SKIN_VARIABLES = [
   "--background", "--foreground", "--app-base-bg", "--base-bg", "--surface",
   "--surface2", "--ink", "--hairline", "--text-secondary", "--marquee",
   "--modal-footer", "--auction-status-bg", "--auction-status-border", "--accent",
-  "--accent-hover", "--app-pattern-image", "--team-skin-nav-start",
+  "--accent-hover", "--accent-readable", "--app-pattern-image", "--team-skin-nav-start",
   "--team-skin-nav-end", "--team-skin-selected",
 ] as const;
 
@@ -62,6 +62,7 @@ function applyTeamSkinPalette(root: HTMLElement, primary: string, secondary: str
   root.style.setProperty("--auction-status-bg", mixHex("#090c12", primary, 0.18));
   root.style.setProperty("--auction-status-border", hairline);
   root.style.setProperty("--accent", primary);
+  root.style.setProperty("--accent-readable", readableAccentOn(primary, surface2));
   root.style.setProperty("--accent-hover", secondary);
   root.style.setProperty("--app-pattern-image", `url("data:image/svg+xml,${encodeURIComponent(patternSvg)}")`);
   root.style.setProperty("--team-skin-nav-start", mixHex("#151923", primary, 0.32));
@@ -93,6 +94,7 @@ export function applyTeamTheme(teamCode: string) {
   root.style.setProperty("--team-primary", theme.accent);
   root.style.setProperty("--team-accent", theme.accent);
   root.style.setProperty("--team-accent-text", accentText);
+  root.style.setProperty("--on-accent", isTeam ? accentText : isRetro ? readableOn("#c68f27") : readableOn("#ffc400"));
   root.style.setProperty("--team-bowling-bar", theme.bowlingBar || "#ffc72c");
   root.style.setProperty("--team-primary-rgb", rgb);
   root.style.setProperty("--team-primary-tint", "rgba(22, 19, 15, 0.05)");

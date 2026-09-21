@@ -123,7 +123,7 @@ const LeagueHallOfFame = dynamic(() => import("@/components/history/LeagueHallOf
 const LeagueRecords = dynamic(() => import("@/components/history/LeagueRecords"), { ssr: false });
 const MinorRecords = dynamic(() => import("@/components/history/MinorRecords"), { ssr: false });
 import { applyMinorRecordBaselineUpdates, MINOR_RECORDS, type MinorRecord } from "@/lib/data/minorRecords";
-import { reconcileCumulativeMinorRecords, reconcileFastestSeasonRunInningsRecords, trackMinorRecordsOnMatchComplete, updateAllTimeBattingSeasonRecords } from "@/lib/logic/minorRecordTracker";
+import { isActualMinorRecordBenchmark, reconcileCumulativeMinorRecords, reconcileFastestSeasonRunInningsRecords, trackMinorRecordsOnMatchComplete, updateAllTimeBattingSeasonRecords } from "@/lib/logic/minorRecordTracker";
 const CaptaincyPage = dynamic(() => import("@/components/squad/CaptaincyPage"), { ssr: false });
 const SquadAnalysisPage = dynamic(() => import("@/components/squad/SquadAnalysisPage"), { ssr: false });
 const InjuryHubPage = dynamic(() => import("@/components/squad/InjuryHubPage"), { ssr: false });
@@ -168,6 +168,7 @@ import {
 import { getClubOwnership } from "@/lib/data/clubOwnership";
 import { buildTeamSupporterView } from "@/lib/logic/supporters";
 import { checkEmergencyBudgetExtensionApproval, STAFF_SALARY_MODEL_VERSION } from "@/lib/logic/staffContracts";
+import { NATIONAL_STAFF_SEED_REVISION } from "@/lib/data/nationalStaffSeeds";
 import {
   calculateSeasonUnderperformancePressure,
   calculateEffectiveJobPressure,
@@ -621,6 +622,9 @@ function buildPlayerSeasonMatchLogs(fixtures: Match[]) {
       entry.batting.forEach((row) => participantIds.add(row.id));
       entry.bowling.forEach((row) => participantIds.add(row.id));
     });
+    Object.values(fixture.simulation?.lineups ?? {}).forEach((lineup) => {
+      [...lineup.startingXI, ...lineup.finalXI].forEach((playerId) => participantIds.add(playerId));
+    });
     participantIds.forEach((playerId) => {
       const battingInnings = innings.find((entry) => entry.batting.some((row) => row.id === playerId));
       const batting = battingInnings?.batting.find((row) => row.id === playerId);
@@ -628,7 +632,10 @@ function buildPlayerSeasonMatchLogs(fixtures: Match[]) {
       const bowling = bowlingInnings?.bowling.find((row) => row.id === playerId);
       const battingInningsIndex = battingInnings ? innings.indexOf(battingInnings) : -1;
       const bowlingInningsIndex = bowlingInnings ? innings.indexOf(bowlingInnings) : -1;
-      const playerTeamId = battingInningsIndex === 0 || bowlingInningsIndex === 1 ? fixture.teamA : fixture.teamB;
+      const lineupTeamId = Object.values(fixture.simulation?.lineups ?? {}).find((lineup) => (
+        lineup.startingXI.includes(playerId) || lineup.finalXI.includes(playerId)
+      ))?.teamId;
+      const playerTeamId = lineupTeamId ?? (battingInningsIndex === 0 || bowlingInningsIndex === 1 ? fixture.teamA : fixture.teamB);
       const opponentId = playerTeamId === fixture.teamA ? fixture.teamB : fixture.teamA;
       (logs[playerId] ??= []).push({
         id: fixture.id,
@@ -746,7 +753,7 @@ function ClubProfileSummaryTile({
   return (
     <Link
       href={`/game/teams/${team.id}`}
-      className="group relative flex h-full min-h-0 flex-col overflow-hidden rounded-lg border-2 border-border bg-surface p-6 text-left transition-colors hover:border-accent"
+      className="club-profile-summary-tile group relative flex h-full min-h-0 flex-col overflow-hidden rounded-lg border-2 border-border bg-surface p-6 text-left transition-colors hover:border-accent"
       style={{
         backgroundImage: `linear-gradient(135deg, ${team.primaryColor}24 0%, transparent 52%)`,
       }}
@@ -755,7 +762,7 @@ function ClubProfileSummaryTile({
         className="absolute inset-x-0 top-0 h-1"
         style={{ backgroundColor: team.primaryColor }}
       />
-      <div className="flex shrink-0 items-start justify-between gap-4 border-b border-[#16130f]/10 pb-4">
+      <div className="club-profile-summary-header flex shrink-0 items-start justify-between gap-4 pb-3">
         <div>
           <div className="font-space-mono text-[8px] font-bold uppercase tracking-[0.2em] text-text-secondary">
             Your club · Season {season}
@@ -767,18 +774,18 @@ function ClubProfileSummaryTile({
         </span>
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col items-center justify-center py-5 text-center">
+      <div className="club-profile-summary-hero flex min-h-0 flex-1 flex-col items-center justify-center gap-0 overflow-hidden py-4 text-center">
         <div
-          className="flex size-28 shrink-0 items-center justify-center rounded-full border-[6px] border-white/75 font-anton text-[30px] shadow-lg"
+          className="club-profile-summary-badge flex size-28 shrink-0 items-center justify-center rounded-full border-[6px] border-white/75 font-anton text-[30px] shadow-lg"
           style={{ backgroundColor: team.primaryColor, color: team.secondaryColor }}
         >
           {team.shortName}
         </div>
-        <div className="mt-5 min-w-0">
-          <h3 className="max-w-3xl font-anton text-[clamp(30px,3.25vw,48px)] uppercase leading-[0.92] text-text-primary">
+        <div className="club-profile-summary-identity mt-4 min-w-0">
+          <h3 className="club-profile-summary-name max-w-3xl font-anton text-[clamp(28px,3vw,44px)] uppercase leading-[0.92] text-text-primary">
             {team.name}
           </h3>
-          <div className="mt-3 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 font-space-mono text-[8px] font-bold uppercase tracking-wider text-text-secondary">
+          <div className="club-profile-summary-meta mt-2 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 font-space-mono text-[8px] font-bold uppercase tracking-wider text-text-secondary">
             <span>{team.city}</span>
             <span className="size-1 rounded-full bg-accent" />
             <span>{team.homeGround}</span>
@@ -786,7 +793,7 @@ function ClubProfileSummaryTile({
         </div>
       </div>
 
-      <div className="grid shrink-0 gap-3 border-t border-[#16130f]/10 pt-4 md:grid-cols-[minmax(0,.8fr)_minmax(0,1.2fr)]">
+      <div className="club-profile-summary-footer grid shrink-0 gap-3 pt-3 md:grid-cols-[minmax(0,.8fr)_minmax(0,1.2fr)]">
         <div className="rounded-lg border border-border bg-surface/75 p-3">
           <div className="font-space-mono text-[7px] font-bold uppercase tracking-[0.16em] text-text-secondary">Leadership</div>
           <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-2">
@@ -870,8 +877,36 @@ function ManagerOfficeSummaryTile({
   );
 }
 
-function ClubSectionSummaryTile({ title, onOpen, children }: { title: string; onOpen: () => void; children: ReactNode }) {
-  return <button type="button" onClick={onOpen} className="group flex h-full min-h-0 cursor-pointer flex-col overflow-hidden rounded-lg border-2 border-border bg-surface p-3 text-left transition-colors hover:border-accent"><div className="flex shrink-0 items-start justify-between gap-3 border-b border-[#16130f]/10 pb-2"><div className="font-anton text-[14px] uppercase text-text-primary">{title}</div><ArrowUpRight size={13} className="shrink-0 text-text-secondary group-hover:text-accent" /></div><div className="flex min-h-0 flex-1 flex-col justify-center py-2">{children}</div></button>;
+function ClubSectionSummaryTile({
+  title,
+  onOpen,
+  children,
+  contentPosition = "center",
+  hideHeaderDivider = false,
+  compact = false,
+}: {
+  title: string;
+  onOpen: () => void;
+  children: ReactNode;
+  contentPosition?: "center" | "start";
+  hideHeaderDivider?: boolean;
+  compact?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className={`group flex h-full min-h-0 cursor-pointer flex-col overflow-hidden rounded-lg border-2 border-border bg-surface text-left transition-colors hover:border-accent ${compact ? "p-2.5" : "p-3"}`}
+    >
+      <div className={`flex shrink-0 items-start justify-between gap-3 ${hideHeaderDivider ? "pb-0.5" : `border-b border-[#16130f]/10 ${compact ? "pb-1" : "pb-2"}`}`}>
+        <div className="font-anton text-[14px] uppercase text-text-primary">{title}</div>
+        <ArrowUpRight size={13} className="shrink-0 text-text-secondary group-hover:text-accent" />
+      </div>
+      <div className={`flex min-h-0 flex-1 flex-col overflow-hidden pb-0.5 ${compact ? "pt-1" : "pt-2"} ${contentPosition === "start" ? "justify-start" : "justify-center"}`}>
+        {children}
+      </div>
+    </button>
+  );
 }
 
 function PitchCuratorSummaryTile({
@@ -1364,6 +1399,7 @@ function OverviewPageContent() {
   }, [activeTab, activeSubTab]);
   const careerStaffNeedsProfileSync = !careerStaff.initialized
     || careerStaff.salaryModelVersion < STAFF_SALARY_MODEL_VERSION
+    || (careerStaff.nationalStaffSeedRevision ?? 0) < NATIONAL_STAFF_SEED_REVISION
     || Object.values(careerStaff.contracts).some((contract) => (
       !contract.roleRatings || Object.keys(contract.roleRatings).length === 0
     ));
@@ -2421,7 +2457,7 @@ function OverviewPageContent() {
       season: currentSeason,
       fixtures: fixturesForCareerHistory(fixtures),
       standings,
-      playerStats,
+      playerStats: iplStatsMap,
       playerMatchLogs: buildPlayerSeasonMatchLogs(fixtures),
       reputationAchievements: buildCareerReputationAchievements(fixtures, playerStats, seasonAwards, players),
       leagueRecords: computeDynamicLeagueRecords(
@@ -4049,6 +4085,7 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}${replacementEligible
     if (recordCheck.brokenRecordNotices.length > 0) {
       const newEmails = recordCheck.brokenRecordNotices.map((notice, idx) => {
         const recordTitle = notice.split('"')[1] ?? "IPL Record";
+        const isExtension = notice.startsWith("Record Extended!");
         const emailId = `record_broken_${recordTitle.replace(/\s+/g, "_")}_${Date.now()}_${idx}`;
         return {
           id: emailId,
@@ -4057,11 +4094,11 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}${replacementEligible
           threadId: "records_announcement",
           daySequence: 99 + idx,
           sender: "IPL Stat Operations",
-          subject: `🚨 RECORD BROKEN: ${recordTitle}`,
-          preview: `The all-time record for "${recordTitle}" has been broken!`,
-          body: `A historic moment in the IPL!
+          subject: `🚨 RECORD ${isExtension ? "EXTENDED" : "BROKEN"}: ${recordTitle}`,
+          preview: `The all-time record for "${recordTitle}" has been ${isExtension ? "extended" : "broken"}!`,
+          body: `${isExtension ? "An existing record holder has raised the benchmark" : "A historic moment in the IPL"}!
 
-The all-time record for "${recordTitle}" has been broken.
+The all-time record for "${recordTitle}" has been ${isExtension ? "extended by its current holder" : "broken by a new holder"}.
 
 ${notice}
 
@@ -4401,6 +4438,7 @@ This record has been officially verified and added to the IPL Minor Records arch
       if (allNotices.length > 0) {
         const newEmails = allNotices.map((notice, idx) => {
           const recordTitle = notice.split('"')[1] ?? "IPL Record";
+          const isExtension = notice.startsWith("Record Extended!");
           const emailId = `record_broken_${recordTitle.replace(/\s+/g, "_")}_${Date.now()}_${idx}`;
           return {
             id: emailId,
@@ -4409,11 +4447,11 @@ This record has been officially verified and added to the IPL Minor Records arch
             threadId: "records_announcement",
             daySequence: 99 + idx,
             sender: "IPL Stat Operations",
-            subject: `🚨 RECORD BROKEN: ${recordTitle}`,
-            preview: `The all-time record for "${recordTitle}" has been broken!`,
-            body: `A historic moment in the IPL!
+            subject: `🚨 RECORD ${isExtension ? "EXTENDED" : "BROKEN"}: ${recordTitle}`,
+            preview: `The all-time record for "${recordTitle}" has been ${isExtension ? "extended" : "broken"}!`,
+            body: `${isExtension ? "An existing record holder has raised the benchmark" : "A historic moment in the IPL"}!
 
-The all-time record for "${recordTitle}" has been broken.
+The all-time record for "${recordTitle}" has been ${isExtension ? "extended by its current holder" : "broken by a new holder"}.
 
 ${notice}
 
@@ -6793,10 +6831,10 @@ This record has been officially verified and added to the IPL Minor Records arch
 
         {/* Dynamic Detail Body Screen */}
         <div className={`flex min-h-0 flex-1 flex-col ${activeTab === "history" ? "compact-history" : ""} ${activeSubTab === "overview"
-          ? `${activeTab === "scouting" ? "overflow-hidden" : "overflow-y-auto"} p-8`
+          ? "overflow-y-auto p-8"
           : activeTab === "history" || (activeTab === "league" && activeSubTab === "minorrecords")
             ? "overflow-y-auto p-8"
-            : "overflow-hidden"}`}>
+            : "overflow-auto"}`}>
           
           {/* ==================================================================
               MAIN TAB: HOME
@@ -7205,11 +7243,6 @@ This record has been officially verified and added to the IPL Minor Records arch
                                       ? "bg-black/[0.055] dark:bg-white/[0.07]"
                                       : "bg-black/[0.015] dark:bg-white/[0.025]"
                                 }`}
-                                style={isNextFixture ? {
-                                  outline: "2px solid #2d6bb5",
-                                  outlineOffset: 0,
-                                  zIndex: 1,
-                                } : undefined}
                               >
                                 <div className="flex h-full min-h-0 flex-col items-center justify-center leading-none">
                                   <span className="font-space-mono text-[12px] font-bold">{fixtureDate?.getDate() ?? "-"}</span>
@@ -7952,7 +7985,7 @@ This record has been officially verified and added to the IPL Minor Records arch
           {activeTab === "club" && (
             <>
               {activeSubTab === "overview" && (
-                <div className="grid min-h-[720px] grid-cols-1 gap-4 lg:h-[calc(100vh-200px)] lg:min-h-[560px] lg:grid-cols-[minmax(0,2fr)_minmax(280px,.78fr)] lg:overflow-hidden">
+                <div className="grid h-[calc(100vh-200px)] min-h-[500px] grid-cols-1 gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(280px,.78fr)] lg:overflow-hidden">
                   <div className="grid min-h-0 gap-4 lg:grid-rows-[minmax(0,1fr)_auto]">
                   <ClubProfileSummaryTile
                     team={userTeam}
@@ -7983,9 +8016,9 @@ This record has been officially verified and added to the IPL Minor Records arch
                   </div>
                   </div>
                   <div className="grid min-h-0 gap-4 sm:grid-cols-2 lg:grid-cols-1 lg:grid-rows-4">
-                    <ClubSectionSummaryTile title="Board & Ownership" onOpen={() => setActiveSubTab("board")}><div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1.5"><div><div className="font-space-mono text-[6px] font-bold uppercase text-text-secondary">Ownership group</div><div className="mt-0.5 text-[9px] font-bold leading-tight text-text-primary">{getClubOwnership(userTeamId).consortium_name}</div></div><div className="text-right"><div className="font-space-mono text-[6px] font-bold uppercase text-text-secondary">Ambition</div><div className="font-anton text-[18px] text-accent">{getClubOwnership(userTeamId).ceo_ambition}/20</div></div><div className="border-t border-border/60 pt-1.5"><span className="font-space-mono text-[6px] uppercase text-text-secondary">CEO </span><span className="text-[9px] font-semibold">{getClubOwnership(userTeamId).ceo_name}</span></div><div className="border-t border-border/60 pt-1.5 text-right font-space-mono text-[7px] font-bold uppercase text-accent">{getClubOwnership(userTeamId).ownership_archetype.replaceAll("_", " ")}</div></div></ClubSectionSummaryTile>
-                    <ClubSectionSummaryTile title="Supporters" onOpen={() => setActiveSubTab("supporters")}><div className="grid grid-cols-3 gap-2 text-center"><div className="rounded border border-border/70 bg-background/40 p-2"><div className="font-anton text-[18px] leading-none text-text-primary">{supporterPreview?.overallHappiness ?? "–"}</div><div className="mt-1 font-space-mono text-[6px] font-bold uppercase text-text-secondary">Happiness</div></div><div className="rounded border border-border/70 bg-background/40 p-2"><div className="font-anton text-[18px] leading-none text-text-primary">{supporterPreview?.fanbaseIndex ?? "–"}</div><div className="mt-1 font-space-mono text-[6px] font-bold uppercase text-text-secondary">Fanbase</div></div><div className="rounded border border-border/70 bg-background/40 p-2"><div className="font-anton text-[18px] leading-none text-text-primary">{supporterPreview?.homeAtmosphere ?? "–"}</div><div className="mt-1 font-space-mono text-[6px] font-bold uppercase text-text-secondary">Atmosphere</div></div></div><div className="mt-2 flex items-center justify-between border-t border-border/60 pt-2"><span className="font-space-mono text-[6px] font-bold uppercase text-text-secondary">Overall mood</span><span className="font-anton text-[14px] uppercase text-accent">{supporterPreview?.mood ?? "Assessing"}</span></div></ClubSectionSummaryTile>
-                    <ClubSectionSummaryTile title="Manager's Office" onOpen={() => setActiveSubTab("office")}><div className="flex items-end justify-between"><div><div className="font-space-mono text-[6px] font-bold uppercase text-text-secondary">Board confidence</div><div className="mt-1 font-anton text-[22px] text-accent">{managerBoardConfidence}%</div></div><div className="rounded-full border border-border px-2 py-1 font-space-mono text-[7px] font-bold uppercase">{managerBoardConfidence >= 70 ? "Strong" : managerBoardConfidence >= 50 ? "Stable" : managerBoardConfidence >= 35 ? "Under scrutiny" : "Under pressure"}</div></div><div className="mt-2 h-2 overflow-hidden rounded-full bg-border/60"><div className="h-full bg-accent" style={{ width: `${managerBoardConfidence}%` }} /></div></ClubSectionSummaryTile>
+                    <ClubSectionSummaryTile title="Board & Ownership" compact contentPosition="start" onOpen={() => setActiveSubTab("board")}><div className="grid w-full grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1"><div className="min-w-0"><div className="font-space-mono text-[6px] font-bold uppercase leading-none text-text-secondary">Ownership group</div><div className="mt-1 text-[9px] font-bold leading-tight text-text-primary">{getClubOwnership(userTeamId).consortium_name}</div></div><div className="shrink-0 text-right"><div className="font-space-mono text-[6px] font-bold uppercase leading-none text-text-secondary">Ambition</div><div className="mt-0.5 font-anton text-[17px] leading-none text-accent">{getClubOwnership(userTeamId).ceo_ambition}/20</div></div><div className="border-t border-border/50 pt-1"><span className="font-space-mono text-[6px] uppercase text-text-secondary">CEO </span><span className="text-[9px] font-semibold">{getClubOwnership(userTeamId).ceo_name}</span></div><div className="border-t border-border/50 pt-1 text-right font-space-mono text-[7px] font-bold uppercase text-accent">{getClubOwnership(userTeamId).ownership_archetype.replaceAll("_", " ")}</div></div></ClubSectionSummaryTile>
+                    <ClubSectionSummaryTile title="Supporters" compact contentPosition="start" hideHeaderDivider onOpen={() => setActiveSubTab("supporters")}><div className="grid grid-cols-3 gap-1.5 text-center"><div className="rounded border border-border/70 bg-background/40 p-1.5"><div className="font-anton text-[16px] leading-none text-text-primary">{supporterPreview?.overallHappiness ?? "–"}</div><div className="mt-0.5 font-space-mono text-[6px] font-bold uppercase text-text-secondary">Happiness</div></div><div className="rounded border border-border/70 bg-background/40 p-1.5"><div className="font-anton text-[16px] leading-none text-text-primary">{supporterPreview?.fanbaseIndex ?? "–"}</div><div className="mt-0.5 font-space-mono text-[6px] font-bold uppercase text-text-secondary">Fanbase</div></div><div className="rounded border border-border/70 bg-background/40 p-1.5"><div className="font-anton text-[16px] leading-none text-text-primary">{supporterPreview?.homeAtmosphere ?? "–"}</div><div className="mt-0.5 font-space-mono text-[6px] font-bold uppercase text-text-secondary">Atmosphere</div></div></div><div className="mt-1 flex items-center justify-between border-t border-border/30 pt-1"><span className="font-space-mono text-[6px] font-bold uppercase text-text-secondary">Overall mood</span><span className="font-anton text-[13px] uppercase text-accent">{supporterPreview?.mood ?? "Assessing"}</span></div></ClubSectionSummaryTile>
+                    <ClubSectionSummaryTile title="Manager's Office" compact contentPosition="start" onOpen={() => setActiveSubTab("office")}><div className="flex items-end justify-between gap-2"><div><div className="font-space-mono text-[6px] font-bold uppercase text-text-secondary">Board confidence</div><div className="mt-0.5 font-anton text-[20px] leading-none text-accent">{managerBoardConfidence}%</div></div><div className="shrink-0 rounded-full border border-border px-1.5 py-0.5 font-space-mono text-[7px] font-bold uppercase">{managerBoardConfidence >= 70 ? "Strong" : managerBoardConfidence >= 50 ? "Stable" : managerBoardConfidence >= 35 ? "Under scrutiny" : "Under pressure"}</div></div><div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-border/60"><div className="h-full bg-accent" style={{ width: `${managerBoardConfidence}%` }} /></div></ClubSectionSummaryTile>
                     <ClubSectionSummaryTile title="Staff Management" onOpen={() => setActiveSubTab("staffmanagement")}><div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-1"><div className="row-span-2 border-r border-border pr-3 text-center"><div className="font-anton text-[24px] text-accent">{userSupporterStaff.length}</div><div className="font-space-mono text-[6px] uppercase text-text-secondary">Contracted</div></div><div><span className="font-space-mono text-[6px] uppercase text-text-secondary">Head coach </span><span className="text-[9px] font-bold">{userHeadCoach?.fullName ?? "Vacant"}</span></div><div className="border-t border-border/60 pt-1"><span className="font-space-mono text-[6px] uppercase text-text-secondary">Mentor </span><span className="text-[9px] font-bold">{userMentor?.fullName ?? "Vacant"}</span></div></div></ClubSectionSummaryTile>
                   </div>
                 </div>
@@ -9980,7 +10013,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                 const playedMatches = fixtures.filter((fixture) => fixture.played).length;
                 const seasonProgress = Math.round((playedMatches / Math.max(1, fixtures.length)) * 100);
                 const recentlyBrokenRecords = minorRecords
-                  .filter((record) => record.lastBrokenOn)
+                  .filter((record) => record.lastBrokenOn && isActualMinorRecordBenchmark(record))
                   .sort((left, right) => (
                     (right.lastBrokenOn ?? "").localeCompare(left.lastBrokenOn ?? "")
                     || (right.breakSequence ?? 0) - (left.breakSequence ?? 0)
@@ -10014,33 +10047,33 @@ This record has been officially verified and added to the IPL Minor Records arch
                   .map(([teamId, titles]) => ({ team: getLeagueHistoryTeam(teamId), titles }));
 
                 return (
-                  <div className="grid min-h-[560px] grid-cols-1 gap-4 overflow-visible xl:h-[calc(100vh-200px)] xl:min-h-0 xl:grid-cols-12 xl:grid-rows-[repeat(18,minmax(0,1fr))] xl:overflow-hidden">
+                  <div className="grid h-[calc(100vh-200px)] min-h-[500px] grid-cols-1 gap-4 overflow-visible xl:grid-cols-12 xl:grid-rows-[repeat(18,minmax(0,1fr))] xl:overflow-hidden">
                     <button
                       type="button"
                       onClick={() => setActiveSubTab("staff")}
-                      className="group relative col-span-1 flex min-h-[18rem] flex-col overflow-hidden rounded-xl border-2 border-border bg-surface p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-accent hover:shadow-md xl:col-span-5 xl:col-start-8 xl:row-span-5 xl:row-start-1 xl:min-h-0"
+                      className="league-personnel-tile group relative col-span-1 flex min-h-[18rem] flex-col overflow-hidden rounded-xl border-2 border-border bg-surface p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-accent hover:shadow-md xl:col-span-5 xl:col-start-8 xl:row-span-5 xl:row-start-1 xl:min-h-0"
                     >
                       <div className="pointer-events-none absolute -right-12 -top-14 size-36 rounded-full bg-sky-500/10 blur-3xl" />
-                      <div className="relative flex items-start justify-between border-b border-border pb-3">
+                      <div className="league-personnel-header relative flex shrink-0 items-start justify-between border-b border-border pb-2.5">
                         <div className="flex items-center gap-3">
-                          <span className="flex size-9 items-center justify-center rounded-lg bg-sky-500/10 text-sky-600 dark:text-sky-400"><Briefcase size={18} aria-hidden="true" /></span>
-                          <div><p className="font-space-mono text-[8px] font-bold uppercase tracking-[0.18em] text-text-secondary">League personnel</p><h3 className="mt-1 font-anton text-lg uppercase leading-none text-text-primary">Staff Activity</h3></div>
+                          <span className="league-personnel-icon flex size-9 shrink-0 items-center justify-center rounded-lg bg-sky-500/10 text-sky-600 dark:text-sky-400"><Briefcase size={18} aria-hidden="true" /></span>
+                          <div><p className="league-personnel-kicker font-space-mono text-[8px] font-bold uppercase tracking-[0.18em] text-text-secondary">League personnel</p><h3 className="league-personnel-title mt-1 font-anton text-lg uppercase leading-none text-text-primary">Staff Activity</h3></div>
                         </div>
                         <ArrowUpRight size={15} className="text-accent transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
                       </div>
-                      <div className="relative mt-3 grid grid-cols-2 gap-2">
-                        <div className="rounded-lg bg-bg/70 p-3"><p className="font-anton text-3xl leading-none text-text-primary">{rivalContracts.length}</p><p className="mt-1 font-space-mono text-[8px] font-bold uppercase text-text-secondary">Rival staff in post</p></div>
-                        <div className="rounded-lg bg-bg/70 p-3"><p className="font-anton text-3xl leading-none text-text-primary">{rivalStaffEvents.length}</p><p className="mt-1 font-space-mono text-[8px] font-bold uppercase text-text-secondary">Moves this season</p></div>
+                      <div className="league-personnel-stats relative mt-2.5 grid shrink-0 grid-cols-2 gap-2">
+                        <div className="league-personnel-stat rounded-lg bg-bg/70 p-2.5"><p className="league-personnel-value font-anton text-3xl leading-none text-text-primary">{rivalContracts.length}</p><p className="league-personnel-label mt-1 font-space-mono text-[8px] font-bold uppercase leading-tight text-text-secondary">Rival staff in post</p></div>
+                        <div className="league-personnel-stat rounded-lg bg-bg/70 p-2.5"><p className="league-personnel-value font-anton text-3xl leading-none text-text-primary">{rivalStaffEvents.length}</p><p className="league-personnel-label mt-1 font-space-mono text-[8px] font-bold uppercase leading-tight text-text-secondary">Moves this season</p></div>
                       </div>
-                      <div className="relative mt-3 min-h-0 flex-1 space-y-1.5 overflow-hidden">
+                      <div className="league-personnel-events relative mt-2 min-h-0 flex-1 space-y-1 overflow-hidden">
                         {recentStaffEvents.length > 0 ? recentStaffEvents.map((event) => (
-                          <div key={event.id} className="flex items-center justify-between gap-3 border-t border-border/70 pt-1.5 text-[11px]">
-                            <span className="truncate font-semibold text-text-primary">{careerStaff.contracts[event.staffId]?.fullName ?? "Staff member"}</span>
-                            <span className="shrink-0 font-space-mono text-[8px] font-bold uppercase text-text-secondary">{teams[event.teamId ?? ""]?.shortName ?? "League"} · {event.kind.replaceAll("_", " ")}</span>
+                          <div key={event.id} className="league-personnel-event flex items-center justify-between gap-2 border-t border-border/70 pt-1 text-[10px] leading-tight">
+                            <span className="min-w-0 truncate font-semibold text-text-primary">{careerStaff.contracts[event.staffId]?.fullName ?? "Staff member"}</span>
+                            <span className="league-personnel-event-meta shrink-0 font-space-mono text-[7px] font-bold uppercase text-text-secondary">{teams[event.teamId ?? ""]?.shortName ?? "League"} · {event.kind.replaceAll("_", " ")}</span>
                           </div>
                         )) : <p className="pt-2 text-xs text-text-secondary">No rival appointments or departures this season.</p>}
                       </div>
-                      <span className="relative mt-2 inline-flex items-center gap-1 font-space-mono text-[8px] font-bold uppercase tracking-wider text-accent">Open league staff <ChevronRight size={12} /></span>
+                      <span className="league-personnel-link relative mt-1.5 inline-flex shrink-0 items-center gap-1 font-space-mono text-[8px] font-bold uppercase tracking-wider text-accent">Open league staff <ChevronRight size={12} /></span>
                     </button>
 
                     <button
@@ -10214,7 +10247,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                 <SeasonDataAnalysisPage fixtures={detailedFixtures} teams={teams} players={players} seasonStartBattingAbilities={seasonStartBattingAbilities} seasonStartBowlingAbilities={seasonStartBowlingAbilities} userTeamId={userTeamId} />
               )}
               {activeSubTab === "minorrecords" && (
-                <MinorRecords minorRecords={minorRecords} />
+                <MinorRecords minorRecords={minorRecords} currentSeason={currentSeason} />
               )}
               {activeSubTab === "legacy" && (
                 <LeagueLegacyPage
@@ -10780,7 +10813,7 @@ This record has been officially verified and added to the IPL Minor Records arch
         playerId={detailedPlayerId}
         onClose={() => setDetailedPlayerId(null)}
         customFixtures={fixtures}
-        currentSeasonStats={detailedPlayerId ? playerStats[detailedPlayerId] : undefined}
+        currentSeasonStats={detailedPlayerId ? iplSeasonStats[detailedPlayerId] : undefined}
         additionalCareerT20Stats={detailedPlayerId ? smatCareerT20ByFullPlayerId[`full:${detailedPlayerId}`] : undefined}
         internationalStats={detailedPlayerId && internationalCareer ? internationalCareerStatsForPlayer(internationalCareer, detailedPlayerId) : undefined}
         isShortlisted={detailedPlayerId ? shortlist.includes(detailedPlayerId) : false}
@@ -10945,7 +10978,7 @@ This record has been officially verified and added to the IPL Minor Records arch
       {pendingMatchPreparation && (
         <div className="fixed inset-0 z-[96] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
           <div className="w-full max-w-xl overflow-hidden rounded border-2 border-border bg-surface shadow-xl">
-            <div className="flex items-start justify-between border-b-2 border-accent bg-[var(--ink)] p-5">
+            <div className="flex items-start justify-between border-b-2 border-accent bg-[var(--auction-status-bg)] p-5">
               <div>
                 <div className={`font-space-mono text-[8px] font-bold uppercase tracking-[0.18em] ${
                   pendingMatchPreparation.errors.length > 0 ? "text-red-300" : "text-amber-300"

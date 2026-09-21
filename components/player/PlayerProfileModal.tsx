@@ -2,7 +2,7 @@
 
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Bookmark, X } from "lucide-react";
-import { useGameStore } from "@/lib/store/gameStore";
+import { INITIAL_ACTIVE_SEASON, useGameStore } from "@/lib/store/gameStore";
 import { formatPrice } from "@/lib/logic/auctionRules";
 import { formatStatValue } from "@/lib/logic/statFormatting";
 import { formatTopSevenBattingPositions } from "@/lib/logic/playerBattingPositions";
@@ -11,6 +11,7 @@ import {
   getPlayerSeasonHistory,
   mergePlayerIplHistory,
   protectCompletedSeasonTeamsFromTrades,
+  summarizeIplSeasonMatchLogs,
   upsertPlayerContractHistory,
   upsertPlayerIplHistory,
   wasPlayerAcquiredViaRtm,
@@ -175,6 +176,7 @@ export function PlayerProfileModal({
   const auction = useGameStore((state) => state.auction);
   const retiredPlayerSnapshots = useGameStore((state) => state.retiredPlayerSnapshots);
   const tradeRecords = useGameStore((state) => state.tradeRecords);
+  const careerSeasonArchives = useGameStore((state) => state.careerSeasonArchives);
   const internalShortlist = useGameStore((state) => state.playerShortlist);
   const setInternalShortlist = useGameStore((state) => state.setPlayerShortlist);
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -504,6 +506,31 @@ export function PlayerProfileModal({
 
     return protectCompletedSeasonTeamsFromTrades(history, detailedPlayer.id, tradeRecords);
   }, [currentSeasonHistoryByPlayer, currentSeason, currentSeasonStats, detailedPlayer, seasonStats, tradeRecords]);
+
+  const teamHistoryIplStats = useMemo(() => {
+    const bySeason = new Map<string, { matches: number; runs: number; wickets: number }>();
+    if (!detailedPlayer) return bySeason;
+    detailedPlayerHistory.forEach((entry) => {
+      if (entry.season === String(currentSeason)) {
+        const live = currentSeasonStats && currentSeasonStats.matches > 0
+          ? currentSeasonStats
+          : seasonStats && seasonStats.matches > 0
+            ? { matches: seasonStats.matches, runs: seasonStats.runs, wickets: seasonStats.bowlWickets }
+            : null;
+        if (live) bySeason.set(entry.season, { matches: live.matches, runs: live.runs, wickets: live.wickets });
+        return;
+      }
+      const archive = careerSeasonArchives.find((record) => String(record.season) === entry.season);
+      if (archive) {
+        const verified = summarizeIplSeasonMatchLogs(archive.playerMatchLogs?.[detailedPlayer.id]);
+        if (verified) bySeason.set(entry.season, verified);
+      } else if (Number(entry.season) < INITIAL_ACTIVE_SEASON && entry.seasonStats) {
+        // Imported pre-career IPL history has no simulation match archive.
+        bySeason.set(entry.season, entry.seasonStats);
+      }
+    });
+    return bySeason;
+  }, [careerSeasonArchives, currentSeason, currentSeasonStats, detailedPlayer, detailedPlayerHistory, seasonStats]);
 
   if (!detailedPlayer) return null;
 
@@ -1011,6 +1038,7 @@ export function PlayerProfileModal({
                   .filter((entry) => entry.teamId && entry.teamId !== "UNSOLD")
                   .sort((a, b) => Number(b.season) - Number(a.season))
                   .map((entry) => {
+                    const iplStats = teamHistoryIplStats.get(entry.season);
                     const trade = tradeRecords.find((record) => record.season === Number(entry.season) && [...record.outgoingPlayerIds, ...record.incomingPlayerIds].includes(detailedPlayer.id));
                     const movedFromId = trade?.outgoingPlayerIds.includes(detailedPlayer.id) ? trade.fromTeamId : trade?.toTeamId;
                     const movedToId = trade?.outgoingPlayerIds.includes(detailedPlayer.id) ? trade.toTeamId : trade?.fromTeamId;
@@ -1024,9 +1052,9 @@ export function PlayerProfileModal({
                       <span className="font-space-mono text-text-secondary">{entry.season}</span>
                       <span className="min-w-0 font-semibold text-text-primary">
                         <span className="block truncate">{teams[entry.teamId]?.name ?? entry.teamId}</span>
-                        {entry.seasonStats && (
+                        {iplStats && (
                           <span className="mt-0.5 block whitespace-nowrap font-space-mono text-[7px] font-bold text-accent">
-                            {entry.seasonStats.matches} Mts&nbsp;&nbsp;&nbsp;{entry.seasonStats.runs} Rs&nbsp;&nbsp;&nbsp;{entry.seasonStats.wickets} Ws
+                            {iplStats.matches} Mts&nbsp;&nbsp;&nbsp;{iplStats.runs} Rs&nbsp;&nbsp;&nbsp;{iplStats.wickets} Ws
                           </span>
                         )}
                       </span>

@@ -1,3 +1,12 @@
+export interface MinorRecordBreak {
+  on: string;
+  sequence: number;
+  holder: string;
+  value: string;
+  previousHolder: string;
+  previousValue: string;
+}
+
 export interface MinorRecord {
   id: string;
   category: "batting_position" | "partnership_position" | "season_batting" | "season_bowling" | "milestone" | "fielding" | "team";
@@ -10,6 +19,10 @@ export interface MinorRecord {
   verified: boolean;
   lastBrokenOn?: string;
   breakSequence?: number;
+  lastExtendedOn?: string;
+  previousHolder?: string;
+  previousValue?: string;
+  breakHistory?: MinorRecordBreak[];
 }
 
 export const MINOR_RECORDS: MinorRecord[] = [

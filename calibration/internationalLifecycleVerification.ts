@@ -6,6 +6,7 @@ import {
   INTERNATIONAL_TEAMS,
   internationalProgrammePreview,
   internationalProfileName,
+  internationalCareerNeedsReconcile,
   reconcileInternationalCareer,
 } from "../lib/logic/international";
 import { generateOffseasonStats } from "../lib/logic/offseasonStats";
@@ -86,6 +87,25 @@ assert.ok(augustCareer.fixtures.some((fixture) => fixture.date.startsWith("2029-
 assert.ok(state.fixtures.filter((fixture) => fixture.stage === "bilateral").every((fixture) => fixture.date.startsWith("2025-")), "The 2026 international year must begin after the 2025 IPL");
 assert.equal(state.profiles["full:IND-keeper-role"].role, "WK-Batsman", "A dedicated keeper must not retain an incorrect all-rounder label");
 assert.ok(state.teams.IND.preferredXI.indexOf("full:IND-keeper-role") < 3, "A high-rated keeper-opener must bat in the top three");
+
+const pathirana = player("SL-pathirana", "Matheesha Pathirana", "Sri Lanka", "Pace Bowler", 96);
+pathirana.currentBatting = 35;
+const sriLankaPlayers = { ...players, [pathirana.id]: pathirana };
+const sriLankaCareer = createInternationalCareer(2028, sriLankaPlayers);
+const sriLankaXI = sriLankaCareer.teams.SL.preferredXI;
+assert.ok(sriLankaXI.includes("full:SL-pathirana"), "A leading pace bowler must be selected for Sri Lanka");
+assert.ok(sriLankaXI.indexOf("full:SL-pathirana") >= 7, "Pathirana must bat in the lower order, never at number three");
+assert.ok(sriLankaXI.slice(0, 5).every((id) => ["Batsman", "WK-Batsman", "All-Rounder"].includes(sriLankaCareer.profiles[id].role)), "Sri Lanka's top five must contain batting options");
+Object.values(sriLankaCareer.teams).forEach((nationalTeam) => {
+  const availableBatters = nationalTeam.preferredXI.filter((id) => ["Batsman", "WK-Batsman", "All-Rounder"].includes(sriLankaCareer.profiles[id].role)).length;
+  if (availableBatters >= 5) assert.ok(nationalTeam.preferredXI.slice(0, 5).every((id) => ["Batsman", "WK-Batsman", "All-Rounder"].includes(sriLankaCareer.profiles[id].role)), `${nationalTeam.countryId} must not bat a specialist bowler in the top five`);
+});
+const legacySriLankaCareer = structuredClone(sriLankaCareer);
+delete legacySriLankaCareer.lineupRevision;
+legacySriLankaCareer.teams.SL.preferredXI = ["full:SL-pathirana", ...sriLankaXI.filter((id) => id !== "full:SL-pathirana")];
+assert.ok(internationalCareerNeedsReconcile(legacySriLankaCareer, 2028, "2027-05-01"), "Older saves must rebuild their preferred XI");
+const repairedSriLankaCareer = reconcileInternationalCareer(legacySriLankaCareer, 2028, "2027-05-01", sriLankaPlayers).state;
+assert.ok(repairedSriLankaCareer.teams.SL.preferredXI.indexOf("full:SL-pathirana") >= 7, "Reconciliation must repair the saved batting order");
 
 const originalProspect = structuredClone(players["IND-prospect"]);
 const completed = reconcileInternationalCareer(state, 2026, "2026-05-31", players);

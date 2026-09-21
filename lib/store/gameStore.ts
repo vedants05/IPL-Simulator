@@ -4506,10 +4506,11 @@ export const useGameStore = create<Store>()(
           const previousArchive = state.careerSeasonArchives.find((record) => record.season === archive.season);
           // Aggregated season totals are tiny compared with delivery archives
           // and are the authoritative repair source for player profile history.
-          const archivedStats = {
-            ...((previousArchive?.playerStats ?? {}) as Record<string, unknown>),
-            ...((archive.playerStats ?? {}) as Record<string, unknown>),
-          };
+          // Completed IPL fixtures are the authoritative source. Merging an
+          // older archive can reintroduce totals from other competitions.
+          const archivedStats = Object.keys(archive.playerStats ?? {}).length > 0
+            ? archive.playerStats
+            : previousArchive?.playerStats ?? {};
           const compactArchive = { ...archiveForHistory, playerStats: archivedStats };
           const careerSeasonArchives = [
             compactArchive,

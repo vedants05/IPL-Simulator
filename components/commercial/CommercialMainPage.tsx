@@ -49,7 +49,7 @@ const EMPTY_SQUAD: Player[] = [];
 
 function CommercialViewport({ pageKey, children }: { pageKey: string; children: ReactNode }) {
   return (
-    <div key={pageKey} className="h-[calc(100vh-200px)] min-h-[500px] w-full overflow-hidden bg-[radial-gradient(circle_at_top_right,color-mix(in_srgb,var(--accent)_7%,transparent),transparent_36%)]">
+    <div key={pageKey} className="h-[calc(100vh-200px)] min-h-[500px] w-full overflow-auto bg-[radial-gradient(circle_at_top_right,color-mix(in_srgb,var(--accent)_7%,transparent),transparent_36%)]">
       <div className="h-full min-h-0 w-full">{children}</div>
     </div>
   );

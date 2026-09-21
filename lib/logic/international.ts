@@ -118,6 +118,7 @@ export interface InternationalSeasonArchive {
 
 export interface InternationalCareerState {
   version: 1;
+  lineupRevision?: number;
   season: number;
   teams: Record<string, NationalTeamState>;
   profiles: Record<string, InternationalPlayerProfile>;
@@ -229,9 +230,9 @@ function battingPositionFit(profile: InternationalPlayerProfile, position: numbe
 }
 
 function optimizeTopSeven(players: InternationalPlayerProfile[]): { order: InternationalPlayerProfile[]; score: number } {
-  const requiredTopSevenIds = new Set(players
-    .filter((profile) => profile.isWicketkeeper || isInternationalOpener(profile))
-    .map((profile) => profile.id));
+  const requiredTopSevenIds = new Set(players.filter((profile) => profile.isWicketkeeper).map((profile) => profile.id));
+  const openerCount = players.filter((profile) => isInternationalBattingOption(profile) && isInternationalOpener(profile)).length;
+  const battingCount = players.filter(isInternationalBattingOption).length;
   const memo = new Map<string, { score: number; ids: string[] }>();
   const solve = (position: number, usedMask: number): { score: number; ids: string[] } => {
     if (position > 7) {
@@ -246,8 +247,9 @@ function optimizeTopSeven(players: InternationalPlayerProfile[]): { order: Inter
     let best = { score: -Infinity, ids: [] as string[] };
     players.forEach((profile, index) => {
       if ((usedMask & (1 << index)) !== 0) return;
-      if (position <= 2 && !isInternationalOpener(profile)) return;
-      const specialistPenalty = isInternationalBattingOption(profile) ? 0 : -48;
+      if (position <= 2 && openerCount >= 2 && !isInternationalOpener(profile)) return;
+      if (position <= Math.min(5, battingCount) && !isInternationalBattingOption(profile)) return;
+      const specialistPenalty = isInternationalBattingOption(profile) ? 0 : -100;
       const slotScore = profile.batting + battingPositionFit(profile, position) + specialistPenalty;
       const tail = solve(position + 1, usedMask | (1 << index));
       if (slotScore + tail.score > best.score) best = { score: slotScore + tail.score, ids: [profile.id, ...tail.ids] };
@@ -312,13 +314,16 @@ function selectSquad(country: InternationalTeamDefinition, profiles: Internation
   add(sorted.filter((row) => forcedIds.includes(row.id)), forcedIds.length);
   if (captainId) add(sorted.filter((row) => row.id === captainId), 1);
   add(sorted.filter((row) => row.isWicketkeeper), 2);
-  add(sorted.filter(isInternationalOpener), 3);
+  add(sorted.filter((row) => isInternationalBattingOption(row) && isInternationalOpener(row)), 3);
+  add(sorted.filter((row) => isInternationalBattingOption(row) && profileBattingPositions(row).includes(3)), 2);
+  add(sorted.filter((row) => isInternationalBattingOption(row) && profileBattingPositions(row).some((position) => position === 4 || position === 5)), 3);
+  add(sorted.filter((row) => row.role === "All-Rounder" && isCredibleInternationalBowlingOption(row)), 2);
+  add(sorted.filter((row) => row.role === "Pace Bowler" && isCredibleInternationalBowlingOption(row)), 2);
+  add(sorted.filter((row) => row.role === "Spin Bowler" && isCredibleInternationalBowlingOption(row)), 1);
+  add(sorted.filter((row) => row.role === "All-Rounder" && isCredibleInternationalBowlingOption(row)), 3);
   add(sorted.filter((row) => row.role === "Pace Bowler" && isCredibleInternationalBowlingOption(row)), 4);
   add(sorted.filter((row) => row.role === "Spin Bowler" && isCredibleInternationalBowlingOption(row)), 2);
-  add(sorted.filter((row) => row.role === "All-Rounder" && isCredibleInternationalBowlingOption(row)), 2);
-  add(sorted.filter((row) => profileBattingPositions(row).includes(3)), 2);
-  add(sorted.filter((row) => profileBattingPositions(row).some((position) => position === 4 || position === 5)), 3);
-  add(sorted.filter((row) => profileBattingPositions(row).some((position) => position === 6 || position === 7)), 2);
+  add(sorted.filter((row) => isInternationalBattingOption(row) && profileBattingPositions(row).some((position) => position === 6 || position === 7)), 2);
   add(sorted.filter((row) => row.role === "Batsman" || row.role === "WK-Batsman"), 17 - picked.length);
   add(sorted, 17 - picked.length);
   return picked.slice(0, 17).map((row) => row.id);
@@ -330,6 +335,8 @@ function selectXI(squad: string[], profiles: Record<string, InternationalPlayerP
   const requiredIds = new Set([captainId, dueDebut?.id].filter(Boolean) as string[]);
   let chosen: InternationalPlayerProfile[] | null = null;
   let bestScore = -Infinity;
+  let fallback: InternationalPlayerProfile[] | null = null;
+  let bestFallbackScore = -Infinity;
   const combinations = (start: number, picked: InternationalPlayerProfile[]) => {
     if (picked.length === 11) {
       if (Array.from(requiredIds).some((id) => !picked.some((row) => row.id === id))) return;
@@ -339,6 +346,11 @@ function selectXI(squad: string[], profiles: Record<string, InternationalPlayerP
       const pace = picked.filter((row) => row.role === "Pace Bowler" && isCredibleInternationalBowlingOption(row)).length;
       const spin = picked.filter((row) => row.role === "Spin Bowler" && isCredibleInternationalBowlingOption(row)).length;
       const bowling = picked.filter(isCredibleInternationalBowlingOption).length;
+      const fallbackScore = picked.reduce((sum, row) => sum + roleValue(row) + (standing[row.id] ?? 0), 0)
+        - Math.max(0, 2 - openers) * 500 - Math.max(0, 1 - keepers) * 500
+        - Math.max(0, 6 - batters) * 500 - Math.max(0, 5 - bowling) * 500
+        - Math.max(0, 2 - pace) * 200 - Math.max(0, 1 - spin) * 200;
+      if (fallbackScore > bestFallbackScore) { bestFallbackScore = fallbackScore; fallback = [...picked]; }
       if (openers < 2 || keepers < 1 || batters < 6 || pace < 2 || spin < 1 || bowling < 5) return;
       const score = picked.reduce((sum, row) => sum + roleValue(row) + (standing[row.id] ?? 0), 0)
         + Math.min(7, batters) * 1.5 + Math.min(5, bowling) * 1.5
@@ -351,7 +363,7 @@ function selectXI(squad: string[], profiles: Record<string, InternationalPlayerP
     for (let index = start; index < rows.length; index += 1) combinations(index + 1, [...picked, rows[index]]);
   };
   combinations(0, []);
-  if (!chosen) chosen = rows.slice(0, 11);
+  if (!chosen) chosen = fallback ?? rows.slice(0, 11);
   const optimized = optimizeTopSeven(chosen);
   const topSevenIds = new Set(optimized.order.map((row) => row.id));
   const lowerOrder = chosen.filter((row) => !topSevenIds.has(row.id)).sort((a, b) => {
@@ -663,7 +675,7 @@ function simulateFixture(fixture: InternationalFixture, state: InternationalCare
 
 export function createInternationalCareer(season: number, players: Record<string, Player>): InternationalCareerState {
   const roster = buildTeams(players, season); const schedule = createSeasonSchedule(season);
-  return { version: 1, season, ...roster, ...schedule, careerStats: {}, seasonStats: {}, rankings: Object.fromEntries(INTERNATIONAL_TEAMS.map((row) => [row.id, row.strength])), history: [] };
+  return { version: 1, lineupRevision: 2, season, ...roster, ...schedule, careerStats: {}, seasonStats: {}, rankings: Object.fromEntries(INTERNATIONAL_TEAMS.map((row) => [row.id, row.strength])), history: [] };
 }
 
 /**
@@ -677,6 +689,7 @@ export function internationalCareerNeedsReconcile(
   season: number,
   currentDate: string,
 ): boolean {
+  if (state.lineupRevision !== 2) return true;
   if (state.season < internationalSeasonForDate(season, currentDate)) return true;
   return state.fixtures.some((fixture) => !fixture.played && fixture.date <= currentDate);
 }
@@ -746,6 +759,7 @@ export function reconcileInternationalCareer(state: InternationalCareerState | n
   Object.values(career.teams).forEach((nationalTeam) => {
     nationalTeam.preferredXI = selectXI(nationalTeam.squad, career.profiles, nationalTeam.captainId, nationalTeam.pendingDebuts, career.season, nationalTeam.internationalStanding);
   });
+  career.lineupRevision = 2;
   if (career.season < targetSeason) {
     // Catch up the closing reporting window before archiving it. This matters
     // when the international page has not been opened since before its World

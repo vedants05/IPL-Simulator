@@ -11,7 +11,7 @@ export default function GameLayout({ children }: { children: React.ReactNode }) 
         <Suspense fallback={<div className="h-12 border-b-2 border-border bg-surface shrink-0" />}>
           <NavBar />
         </Suspense>
-        <main className="flex-1 overflow-hidden">{children}</main>
+        <main className="game-main min-h-0 flex-1 overflow-auto">{children}</main>
       </div>
     </TeamThemeProvider>
   );

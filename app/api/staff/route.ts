@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { calculateStaffRoleRatings } from "@/lib/logic/staffRatings";
 import { getStaffContractSeed } from "@/lib/data/staffContractSeeds";
+import { STAFF_ADDITION_TRAITS, STAFF_DIRECTORY_ADDITIONS } from "@/lib/data/staffDirectoryAdditions";
 import { resolveStaffAffinityProfile } from "@/lib/data/staffAffinities";
 import { supabase } from "@/lib/supabase/client";
 
@@ -31,8 +32,38 @@ export async function GET() {
     if (traitsResult.error) throw traitsResult.error;
 
     const traitsByStaff = new Map((traitsResult.data ?? []).map((traits) => [traits.staff_id, traits]));
+    for (const member of STAFF_DIRECTORY_ADDITIONS) {
+      if (!traitsByStaff.has(member.id)) traitsByStaff.set(member.id, {
+        staff_id: member.id,
+        ...STAFF_ADDITION_TRAITS[member.slug],
+      });
+    }
+    // The checked-in additions are visible in local/new saves even before the
+    // accompanying Supabase migration has been applied. A migrated row wins.
+    const databaseMembers = membersResult.data ?? [];
+    const databaseSlugs = new Set(databaseMembers.map((member) => member.slug));
+    const members = [
+      ...databaseMembers,
+      ...STAFF_DIRECTORY_ADDITIONS.filter((member) => !databaseSlugs.has(member.slug)).map((member) => ({
+        ...member,
+        secondary_roles: [...member.secondary_roles],
+        current_real_team_id: null,
+        real_contract_end_year: null,
+        image_url: null,
+        is_available: true,
+        is_generated: false,
+        is_active: true,
+        profile_confidence: "medium",
+      })),
+    ];
+    const zaheerId = members.find((member) => member.slug === "zaheer-khan")?.id;
+    const morganId = members.find((member) => member.slug === "eoin-morgan")?.id;
+    const assignments = (assignmentsResult.data ?? [])
+      .filter((assignment) => (assignment.staff_id !== morganId || assignment.team_id !== "CSK")
+        && assignment.staff_id !== zaheerId);
+    if (zaheerId) assignments.push({ staff_id: zaheerId, team_id: "CSK", role: "head_coach", start_season: 2026 });
     return NextResponse.json({
-      members: (membersResult.data ?? []).map((member) => {
+      members: members.map((member) => {
         const contract = getStaffContractSeed(member.slug);
         const staffTraits = traitsByStaff.get(member.id) ?? {};
         const traitLabels = Object.entries(staffTraits)
@@ -41,6 +72,8 @@ export async function GET() {
         const traitPreferences = Object.fromEntries(Object.entries(staffTraits).filter(([, value]) => typeof value === "number"));
         return {
           ...member,
+          current_real_team_id: member.slug === "eoin-morgan" && member.current_real_team_id === "CSK"
+            ? null : member.slug === "zaheer-khan" ? "CSK" : member.current_real_team_id,
           affinity_profile: resolveStaffAffinityProfile({
             slug: member.slug,
             country: member.country,
@@ -70,7 +103,7 @@ export async function GET() {
           staff_traits: staffTraits,
         };
       }),
-      assignments: assignmentsResult.data ?? [],
+      assignments,
     });
   } catch (error) {
     console.error("API error fetching staff:", error);

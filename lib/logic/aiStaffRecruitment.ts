@@ -229,6 +229,7 @@ export function reconcileAIMidseasonRecruitment(input: {
         startSeason: input.currentSeason,
         endSeason,
         poaching: candidate.contract.status === "contracted",
+        nationalTeamAppointment: Boolean(candidate.contract.nationalTeamId),
         currentPrimaryRole: candidate.contract.primaryRole,
         offeredPrimaryRole: search.role,
       });
@@ -239,7 +240,7 @@ export function reconcileAIMidseasonRecruitment(input: {
           loyalty: candidate.contract.loyalty,
           ambition: candidate.contract.ambition,
           adaptability: candidate.contract.adaptability,
-          currentAffinity: getStaffClubAffinity(candidate.contract.affinityProfile, candidate.contract.teamId ?? ""),
+          currentAffinity: candidate.contract.nationalTeamId ? 45 : getStaffClubAffinity(candidate.contract.affinityProfile, candidate.contract.teamId ?? ""),
           destinationAffinity: candidate.destinationAffinity,
           currentSalary: candidate.contract.annualSalary,
           offeredSalary: annualSalary,
@@ -248,6 +249,7 @@ export function reconcileAIMidseasonRecruitment(input: {
           currentPrimaryRole: candidate.contract.primaryRole,
           offeredPrimaryRole: search.role,
           remainingContractSeasons,
+          nationalTeamAppointment: Boolean(candidate.contract.nationalTeamId),
           sameCountryAsHeadCoach: Boolean(candidate.headCoach && candidate.headCoach.country !== "Unknown" && candidate.headCoach.country === candidate.contract.country),
           relationshipBonus: candidate.relationshipBonus,
         });
