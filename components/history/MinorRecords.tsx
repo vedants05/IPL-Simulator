@@ -1,7 +1,8 @@
 "use client";
 import { useMemo, useState } from "react";
-import { MINOR_RECORDS, type MinorRecord } from "@/lib/data/minorRecords";
+import { MINOR_RECORDS, type MinorRecord, type MinorRecordBreak } from "@/lib/data/minorRecords";
 import { LEAGUE_HISTORY_TEAMS } from "@/lib/data/leagueHistory";
+import { isActualMinorRecordBenchmark } from "@/lib/logic/minorRecordTracker";
 
 const labels: Record<string, string> = {
   all: "All records", batting_position: "Batting positions", partnership_position: "Partnerships",
@@ -9,10 +10,11 @@ const labels: Record<string, string> = {
   fielding: "Fielding", team: "Team records",
 };
 
-type RecordSection = "all" | "finals" | "team" | "match_batting" | "match_bowling" | "batting_positions" | "partnerships" | "season_batting" | "season_bowling" | "fielding" | "uncapped" | "age_debut" | "career" | "milestones" | "auction";
+type RecordSection = "all" | "recently_broken" | "finals" | "team" | "match_batting" | "match_bowling" | "batting_positions" | "partnerships" | "season_batting" | "season_bowling" | "fielding" | "uncapped" | "age_debut" | "career" | "milestones" | "auction";
 
 const recordSections: Array<{ id: RecordSection; label: string; description: string }> = [
   { id: "all", label: "All", description: "The complete specialist record archive" },
+  { id: "recently_broken", label: "Recently Broken", description: "Records broken during the active season and the season immediately before it" },
   { id: "finals", label: "Finals", description: "Batting, bowling, team and captaincy records from IPL finals" },
   { id: "team", label: "Teams", description: "Totals, chases, margins, phases and winning streaks" },
   { id: "match_batting", label: "Match Batting", description: "Individual scores, scoring speed, boundaries and chase performances" },
@@ -87,9 +89,15 @@ function RankedRecordTable({ title, description, records }: { title: string; des
 
 interface MinorRecordsProps {
   minorRecords?: MinorRecord[];
+  currentSeason: number;
 }
 
-export default function MinorRecords({ minorRecords = MINOR_RECORDS }: MinorRecordsProps) {
+function brokenSeason(on?: string) {
+  const year = on?.match(/(?:19|20)\d{2}/)?.[0];
+  return year ? Number.parseInt(year, 10) : undefined;
+}
+
+export default function MinorRecords({ minorRecords = MINOR_RECORDS, currentSeason }: MinorRecordsProps) {
   const [category, setCategory] = useState<RecordSection>("all");
   const [verifiedOnly, setVerifiedOnly] = useState(false);
 
@@ -264,11 +272,33 @@ export default function MinorRecords({ minorRecords = MINOR_RECORDS }: MinorReco
            ));
   };
 
-  const records = useMemo(() => minorRecords.filter((record) => (
-    (category === "all" || recordSection(record) === category) &&
-    (!verifiedOnly || record.verified) &&
-    (!(["all", "team", "batting_positions", "partnerships", "age_debut", "milestones", "season_batting", "season_bowling", "career", "fielding"] as RecordSection[]).includes(category) || !isGroupedRecord(record))
-  )), [category, verifiedOnly, minorRecords]);
+  const records = useMemo(() => minorRecords.filter((record) => {
+    const recordBrokenSeason = brokenSeason(record.lastBrokenOn);
+    const isRecentlyBroken = isActualMinorRecordBenchmark(record)
+      && (recordBrokenSeason === currentSeason || recordBrokenSeason === currentSeason - 1);
+    return (
+      (category === "all" || (category === "recently_broken" ? isRecentlyBroken : recordSection(record) === category)) &&
+      (!verifiedOnly || record.verified) &&
+      (!(["all", "team", "batting_positions", "partnerships", "age_debut", "milestones", "season_batting", "season_bowling", "career", "fielding"] as RecordSection[]).includes(category) || !isGroupedRecord(record))
+    );
+  }).sort((left, right) => category === "recently_broken"
+    ? (right.lastBrokenOn ?? "").localeCompare(left.lastBrokenOn ?? "")
+      || (right.breakSequence ?? 0) - (left.breakSequence ?? 0)
+    : 0), [category, currentSeason, verifiedOnly, minorRecords]);
+
+  const timelineEvents = useMemo(() => records.flatMap((record) => {
+    const history: MinorRecordBreak[] = record.breakHistory ?? (record.lastBrokenOn ? [{
+      on: record.lastBrokenOn,
+      sequence: record.breakSequence ?? 0,
+      holder: record.holder,
+      value: record.value,
+      previousHolder: record.previousHolder ?? "Previous holder",
+      previousValue: record.previousValue ?? "—",
+    }] : []);
+    return history
+      .filter((event) => brokenSeason(event.on) === currentSeason || brokenSeason(event.on) === currentSeason - 1)
+      .map((event) => ({ record, event }));
+  }).sort((left, right) => right.event.on.localeCompare(left.event.on) || right.event.sequence - left.event.sequence), [records, currentSeason]);
 
   const teamGameRecords = useMemo(() => {
     return records.filter(r => 
@@ -322,7 +352,51 @@ export default function MinorRecords({ minorRecords = MINOR_RECORDS }: MinorReco
         ))}
       </div>
 
-      {category !== "all" && <div className="mb-5 flex items-end justify-between gap-4 rounded-lg border border-border bg-bg/60 px-4 py-3"><div><p className="font-anton text-lg uppercase text-text-primary">{recordSections.find((section) => section.id === category)?.label}</p><p className="mt-1 text-[11px] text-text-secondary">{recordSections.find((section) => section.id === category)?.description}</p></div><span className="shrink-0 font-space-mono text-[9px] font-bold uppercase text-accent">{records.length} records</span></div>}
+      {category !== "all" && <div className="mb-5 flex items-end justify-between gap-4 rounded-lg border border-border bg-bg/60 px-4 py-3"><div><p className="font-anton text-lg uppercase text-text-primary">{recordSections.find((section) => section.id === category)?.label}</p><p className="mt-1 text-[11px] text-text-secondary">{category === "recently_broken" ? `Records broken during the ${currentSeason - 1} and ${currentSeason} IPL seasons` : recordSections.find((section) => section.id === category)?.description}</p></div><span className="shrink-0 font-space-mono text-[9px] font-bold uppercase text-accent">{category === "recently_broken" ? timelineEvents.length : records.length} records</span></div>}
+
+      {category === "recently_broken" && timelineEvents.length === 0 && (
+        <div className="mb-8 flex min-h-52 flex-col items-center justify-center rounded-xl border border-dashed border-border bg-bg/40 px-6 text-center">
+          <p className="font-anton text-lg uppercase text-text-primary">No recently broken records</p>
+          <p className="mt-2 max-w-lg text-xs leading-relaxed text-text-secondary">Records broken during the {currentSeason - 1} or {currentSeason} seasons will appear here as the career progresses.</p>
+        </div>
+      )}
+
+      {category === "recently_broken" && timelineEvents.length > 0 && (
+        <div className="relative mb-8 ml-2 border-l-2 border-accent/25 pl-6 sm:ml-4 sm:pl-8">
+          {timelineEvents.map(({ record, event }, index) => (
+            <article key={`${record.id}-${event.sequence}-${event.on}`} className={`relative ${index === timelineEvents.length - 1 ? "pb-0" : "pb-6"}`}>
+              <span className="absolute -left-[1.95rem] top-5 flex size-3.5 rounded-full border-[3px] border-surface bg-accent shadow-sm sm:-left-[2.45rem]" />
+              <div className="overflow-hidden rounded-xl border border-border bg-bg shadow-sm transition-colors hover:border-accent/60">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 bg-surface/70 px-4 py-2.5">
+                  <span className="font-space-mono text-[9px] font-bold uppercase tracking-[0.14em] text-accent">Broken {event.on}</span>
+                  <span className="rounded-full border border-border bg-bg px-2 py-1 font-space-mono text-[7px] font-bold uppercase tracking-wider text-text-secondary">{labels[record.category] ?? recordSection(record).replaceAll("_", " ")}</span>
+                </div>
+                <div className="grid gap-4 p-4 md:grid-cols-[minmax(0,1fr)_minmax(15rem,0.8fr)] md:items-center">
+                  <div className="min-w-0">
+                    <h2 className="text-[14px] font-semibold leading-5 text-text-primary">{record.title}</h2>
+                    {record.lastExtendedOn && event.on === record.lastBrokenOn && (
+                      <p className="mt-2 font-space-mono text-[8px] font-bold uppercase text-warning">Extended by the holder on {record.lastExtendedOn}</p>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 rounded-lg border border-border/70 bg-surface/70 p-3">
+                    <div className="min-w-0">
+                      <p className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Previous benchmark</p>
+                      <p className="mt-1 truncate text-[10px] font-semibold text-text-secondary">{event.previousHolder}</p>
+                      <p className="mt-0.5 font-anton text-lg leading-none text-text-secondary">{event.previousValue}</p>
+                    </div>
+                    <span className="font-anton text-xl text-accent">→</span>
+                    <div className="min-w-0 text-right">
+                      <p className="font-space-mono text-[7px] font-bold uppercase text-accent">New record</p>
+                      <p className="mt-1 truncate text-[10px] font-semibold text-text-primary">{event.holder}</p>
+                      <p className="mt-0.5 font-anton text-2xl leading-none text-accent [overflow-wrap:anywhere]">{event.value}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
 
       {/* --- INNINGS TOTAL TABLES (1/2 Columns) --- */}
       {(category === "all" || category === "team") && (
@@ -893,7 +967,7 @@ export default function MinorRecords({ minorRecords = MINOR_RECORDS }: MinorReco
       )}
 
       {/* Grid of Other Individual Cards (Non-Team) */}
-      {nonTeamRecords.length > 0 && (
+      {category !== "recently_broken" && nonTeamRecords.length > 0 && (
         <div className="mb-8">
           {category === "all" ? (
             <div className="mb-4 border-b border-border/40 pb-2">

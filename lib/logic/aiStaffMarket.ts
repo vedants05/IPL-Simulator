@@ -1,9 +1,11 @@
 import {
   appointCareerStaff,
   getTeamStaffSalaryBudgetCap,
+  maintainNationalHeadCoaches,
   poachCareerStaff,
   processStaffContractExpiries,
   releaseCareerStaff,
+  reviewNationalStaffContracts,
   renewCareerStaffContract,
   type CareerStaffContract,
   type CareerStaffState,
@@ -238,6 +240,9 @@ export function processAIStaffMarket(input: {
       }
     });
 
+  const previousNationalRenewals = state.employmentHistory.length;
+  state = reviewNationalStaffContracts(state, input.completedSeason, effectiveOn);
+  renewed += state.employmentHistory.length - previousNationalRenewals;
   const beforeExpiryCount = Object.values(state.contracts).filter((contract) => contract.status === "contracted").length;
   state = processStaffContractExpiries(state, input.completedSeason, effectiveOn);
   const afterExpiryCount = Object.values(state.contracts).filter((contract) => contract.status === "contracted").length;
@@ -340,6 +345,7 @@ export function processAIStaffMarket(input: {
           startSeason: nextSeason,
           endSeason,
           poaching: candidate.contract.status === "contracted",
+          nationalTeamAppointment: Boolean(candidate.contract.nationalTeamId),
           currentPrimaryRole: candidate.contract.primaryRole,
           offeredPrimaryRole: vacantRole,
         });
@@ -351,7 +357,7 @@ export function processAIStaffMarket(input: {
             loyalty: candidate.contract.loyalty,
             ambition: candidate.contract.ambition,
             adaptability: candidate.contract.adaptability,
-            currentAffinity: getStaffClubAffinity(candidate.contract.affinityProfile, candidate.contract.teamId ?? ""),
+            currentAffinity: candidate.contract.nationalTeamId ? 45 : getStaffClubAffinity(candidate.contract.affinityProfile, candidate.contract.teamId ?? ""),
             destinationAffinity: candidate.destinationAffinity,
             currentSalary: candidate.contract.annualSalary,
             offeredSalary: annualSalary,
@@ -360,6 +366,7 @@ export function processAIStaffMarket(input: {
             currentPrimaryRole: candidate.contract.primaryRole,
             offeredPrimaryRole: vacantRole,
             remainingContractSeasons,
+            nationalTeamAppointment: Boolean(candidate.contract.nationalTeamId),
             sameCountryAsHeadCoach: Boolean(headCoach && headCoach.country !== "Unknown" && headCoach.country === candidate.contract.country),
             relationshipBonus: candidate.relationshipBonus,
           });
@@ -399,6 +406,7 @@ export function processAIStaffMarket(input: {
     });
   });
 
+  state = maintainNationalHeadCoaches(state, input.completedSeason + 1, effectiveOn);
   state = { ...state, lastAIProcessedSeason: input.completedSeason };
   return { state, renewed, released, hired, poached };
 }

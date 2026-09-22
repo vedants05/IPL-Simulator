@@ -68,7 +68,7 @@ export const STAFF_CONTRACT_SEEDS: Record<string, StaffContractSeed> = {
   "dinesh-karthik": seed("RCB", "batting_coach", 2025, 2027, "provided", RCB_SOURCE, "User-confirmed contract expiry in 2027."),
   "dishant-yagnik": seed("KKR", "fielding_coach", 2026, 2027, "estimated", KKR_SOURCE, "Part of KKR's new 2026 coaching group; no public term, so a two-season initial deal is assumed."),
   "dwayne-bravo": seed("KKR", "mentor", 2025, 2027, "provided", KKR_SOURCE, "User-confirmed contract expiry in 2027."),
-  "eoin-morgan": seed("CSK", "head_coach", 2026, 2030, "provided", CSK_SOURCE, "User-directed CSK head-coach appointment with a contract expiry in 2030."),
+  "zaheer-khan": seed("CSK", "head_coach", 2026, 2030, "provided", CSK_SOURCE, "User-directed CSK head-coach appointment with a contract expiry in 2030."),
   "eric-simons": seed("CSK", "pace_bowling_coach", 2018, 2026, "estimated", CSK_SOURCE, "Long-serving CSK consultant active in 2026; the private rolling arrangement is conservatively seeded only through the current season."),
   "govindamenon-jayakumar": seed("LSG", "batting_coach", 2026, 2027, "provided", LSG_SOURCE, "User-confirmed contract expiry in 2027."),
   "hariesh-jaikumar": seed("SRH", "batting_coach", 2026, 2027, "estimated", SRH_SOURCE, "Included in SRH's 2026 specialist group; no term disclosed, so a two-season new appointment is assumed."),

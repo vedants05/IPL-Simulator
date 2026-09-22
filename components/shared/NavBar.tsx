@@ -11,8 +11,11 @@ import {
   type AppearanceTheme,
 } from "@/lib/theme/appearance";
 import AuctionGuidedTour from "@/components/auction/AuctionGuidedTour";
+import CloudAccountPanel from "./CloudAccountPanel";
+import { clearSideStorageForSave } from "@/lib/supabase/cloudSaves";
 import {
   getSeasonAccessStorageKey,
+  hasSeasonAccess,
   SEASON_ACCESS_CHANGED_EVENT,
   SEASON_ACCESS_ENABLED,
 } from "@/lib/config/featureFlags";
@@ -54,6 +57,7 @@ export default function NavBar() {
   const router = useRouter();
   const {
     teams,
+    saveId,
     userTeamId,
     currentDate,
     auction,
@@ -70,6 +74,7 @@ export default function NavBar() {
     resetGame,
   } = useGameStore(useShallow((state) => ({
     teams: state.teams,
+    saveId: state.saveId,
     userTeamId: state.userTeamId,
     currentDate: state.currentDate,
     auction: state.auction,
@@ -108,13 +113,18 @@ export default function NavBar() {
   const isTradeHubPage = pathname === "/game/overview"
     && activeTabFromUrl === "league"
     && searchParams.get("subtab") === "trades";
-  const seasonPagesUnlocked = true;
-  const showSeasonNavigation = true;
+  const seasonPagesUnlocked = SEASON_ACCESS_ENABLED && continuedToSeason === true;
+  const showSeasonNavigation = seasonPagesUnlocked && (!isAuctionPage || auction?.phase === "completed");
   const teamProfilePrefetchKey = Object.keys(teams).sort().join("|");
 
   useEffect(() => {
     const syncSeasonAccess = () => {
-      setContinuedToSeason(true);
+      if (!SEASON_ACCESS_ENABLED) {
+        localStorage.removeItem(getSeasonAccessStorageKey(userTeamId, saveId));
+        setContinuedToSeason(false);
+        return;
+      }
+      setContinuedToSeason(hasSeasonAccess(localStorage, userTeamId, saveId));
     };
 
     syncSeasonAccess();
@@ -123,26 +133,22 @@ export default function NavBar() {
     return () => {
       window.removeEventListener(SEASON_ACCESS_CHANGED_EVENT, syncSeasonAccess);
     };
-  }, [userTeamId, pathname]);
+  }, [userTeamId, saveId, pathname]);
+
+  useEffect(() => {
+    if (continuedToSeason === null || seasonPagesUnlocked || isAuctionPage) return;
+    router.replace("/game/auction");
+  }, [continuedToSeason, isAuctionPage, router, seasonPagesUnlocked]);
 
   useEffect(() => {
     if (!seasonPagesUnlocked || !teamProfilePrefetchKey) return;
 
-    const prefetchTeamProfiles = () => {
-      // One dynamic-route prefetch warms the shared team-profile bundle. Ten
-      // simultaneous RSC prefetches compete with clicks and provide no extra
-      // client code, so prefer the user's club and let other data load on use.
-      const preferredTeamId = userTeamId || teamProfilePrefetchKey.split("|").find(Boolean);
-      if (preferredTeamId) router.prefetch(`/game/teams/${preferredTeamId}`);
-    };
-
-    if (typeof window.requestIdleCallback === "function") {
-      const idleId = window.requestIdleCallback(prefetchTeamProfiles, { timeout: 1200 });
-      return () => window.cancelIdleCallback(idleId);
-    }
-
-    const timeoutId = globalThis.setTimeout(prefetchTeamProfiles, 150);
-    return () => globalThis.clearTimeout(timeoutId);
+    // A single dynamic-route prefetch warms the shared team-profile bundle for
+    // every club. Do this immediately: waiting for requestIdleCallback meant a
+    // quick first click paid the route compilation/download cost, especially
+    // after any development rebuild. Other team IDs reuse the same route code.
+    const preferredTeamId = userTeamId || teamProfilePrefetchKey.split("|").find(Boolean);
+    if (preferredTeamId) router.prefetch(`/game/teams/${preferredTeamId}`);
   }, [router, seasonPagesUnlocked, teamProfilePrefetchKey, userTeamId]);
 
   useEffect(() => {
@@ -155,7 +161,7 @@ export default function NavBar() {
   };
 
   const handleRestartGame = () => {
-    localStorage.removeItem(getSeasonAccessStorageKey(userTeamId));
+    clearSideStorageForSave(saveId, userTeamId);
     resetGame();
     setShowRestartConfirm(false);
     setShowSettings(false);
@@ -286,7 +292,7 @@ export default function NavBar() {
       )}
 
       <div className="flex items-center gap-0">
-        {NAV_ITEMS.filter((item) => !isAuctionPage || item.href === "/game/auction").map((item) => {
+        {(showSeasonNavigation ? NAV_ITEMS : [{ label: "Auction", href: "/game/auction" }]).map((item) => {
           let active = false;
           if (item.href === "/game/auction") {
             active = pathname.startsWith("/game/auction");
@@ -692,6 +698,7 @@ export default function NavBar() {
                     </span>
                   </button>
                 </div>}
+                <CloudAccountPanel onNavigate={() => setShowSettings(false)} />
                 <div className="flex flex-col gap-2 border-t border-[var(--ink)]/15 pt-2">
                   <span className="text-[9px] font-bold text-red-600 uppercase tracking-wider">
                     Danger Zone

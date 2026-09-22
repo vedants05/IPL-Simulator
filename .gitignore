@@ -99,6 +99,9 @@ simulation_*_report.json
 
 # Large local cricket-data archive used only by one-off population tooling
 /ipljsons/
+/t20s_male_json/
+/names.csv
+/people.csv
 
 # Regression coverage for the imported Eden model's non-destructive editing.
 !/calibration/edenModules.test.ts

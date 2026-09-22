@@ -10,6 +10,7 @@
     "build": "next build",
     "start": "next start",
     "players:dob": "node scripts/populatePlayerDatesOfBirth.mjs",
+    "players:t20i-retired": "node scripts/populateT20iRetirements.mjs",
     "test:player-salary-separation": "tsx calibration/playerSalarySeparation.test.ts",
     "test:staff-economy": "tsx calibration/staffEconomyVerification.ts",
     "test:bowling-consistency": "tsx calibration/bowlingConsistency.test.ts",
@@ -29,11 +30,13 @@
     "test:career-storage": "tsx calibration/careerSnapshotStorageVerification.ts",
     "test:offseason-stats": "tsx calibration/offseasonStatsCalibration.ts",
     "test:smat-lifecycle": "tsx calibration/smatLifecycleVerification.ts",
+    "test:international-lifecycle": "tsx calibration/internationalLifecycleVerification.ts",
     "test:eden-stadium-asset": "tsx calibration/edenGardensAsset.test.ts",
     "test:eden-modules": "tsx calibration/edenModules.test.ts && tsx calibration/edenRefurbishment.test.ts"
   },
   "dependencies": {
     "@react-three/fiber": "^8.17.10",
+    "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.110.0",
     "@svg-maps/india": "^2.0.0",
     "@svg-maps/world": "^2.0.0",

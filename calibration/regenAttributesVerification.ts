@@ -40,12 +40,12 @@ const generationRanges: Partial<Record<keyof Player, readonly [number, number]>>
   pressureRating: [15, 90],
   bigMatchRating: [15, 90],
   fieldingRating: [20, 95],
-  powerplayBatting: [20, 90],
-  middleOversBatting: [20, 90],
-  deathBatting: [20, 90],
-  powerplayBowling: [20, 90],
-  middleOversBowling: [20, 90],
-  deathBowling: [20, 90],
+  powerplayBatting: [15, 95],
+  middleOversBatting: [15, 95],
+  deathBatting: [15, 95],
+  powerplayBowling: [15, 95],
+  middleOversBowling: [15, 95],
+  deathBowling: [15, 95],
 };
 
 const roles = ["BAT", "WK", "AR", "PACE", "SPIN"] as const;
@@ -130,6 +130,12 @@ for (const { roleGroup, player } of generated) {
 }
 
 const allPlayers = generated.map(({ player }) => player);
+const ageOnSeasonStart = (dateOfBirth: string, season: number): number => {
+  const [year, month, day] = dateOfBirth.split("-").map(Number);
+  return season - year - (month > 4 || (month === 4 && day > 1) ? 1 : 0);
+};
+assert.ok(allPlayers.filter((player) => !player.isCapped).every((player) => Boolean(player.dateOfBirth)), "an uncapped regen is missing a date of birth");
+assert.ok(allPlayers.filter((player) => !player.isCapped).every((player) => ageOnSeasonStart(player.dateOfBirth!, 2032) === player.age), "an uncapped regen date of birth does not match its generated age");
 const indianPlayers = allPlayers.filter((player) => player.nationality === "Indian");
 const overseasPlayers = allPlayers.filter((player) => player.nationality === "Overseas");
 assert.ok(indianPlayers.every((player) => Boolean(player.state?.trim())), "an ordinary Indian regen is missing a state");
@@ -235,6 +241,19 @@ assert.ok(mean(values(finishers, "deathBatting")) > mean(values(finishers, "powe
 assert.ok(mean(values(byRole.PACE, "powerplayBowling")) > mean(values(byRole.PACE, "middleOversBowling")) + 3);
 assert.ok(mean(values(byRole.SPIN, "middleOversBowling")) > mean(values(byRole.SPIN, "powerplayBowling")) + 3);
 assert.ok(mean(values(byRole.SPIN, "middleOversBowling")) > mean(values(byRole.SPIN, "deathBowling")) + 3);
+for (const player of allPlayers) {
+  const battingPhases = [player.powerplayBatting!, player.middleOversBatting!, player.deathBatting!];
+  const bowlingPhases = [player.powerplayBowling!, player.middleOversBowling!, player.deathBowling!];
+  assert.ok(Math.max(...battingPhases) - Math.min(...battingPhases) >= 8, "a regen batting profile has no meaningful phase variation");
+  assert.ok(Math.max(...bowlingPhases) - Math.min(...bowlingPhases) >= 8, "a regen bowling profile has no meaningful phase variation");
+  if (player.isFinisher) assert.equal(Math.max(player.middleOversBatting!, player.deathBatting!), Math.max(...battingPhases), "a finisher is strongest in an irrelevant phase");
+}
+const openerNonPowerplaySpecialists = openerBatters.filter((player) => player.powerplayBatting! < Math.max(player.middleOversBatting!, player.deathBatting!)).length / openerBatters.length;
+const finisherMiddleSpecialists = finishers.filter((player) => player.middleOversBatting! > player.deathBatting!).length / finishers.length;
+assert.ok(openerNonPowerplaySpecialists >= 0.12 && openerNonPowerplaySpecialists <= 0.40, "opener phase profiles lack controlled middle/death variation");
+assert.ok(finisherMiddleSpecialists >= 0.07 && finisherMiddleSpecialists <= 0.25, "finisher phase profiles lack controlled middle-overs variation");
+assert.ok(allPlayers.some((player) => Math.max(player.powerplayBatting!, player.middleOversBatting!, player.deathBatting!) >= 85), "regen batting phases never produce rare extreme specialists");
+assert.ok(allPlayers.some((player) => Math.max(player.powerplayBowling!, player.middleOversBowling!, player.deathBowling!) >= 85), "regen bowling phases never produce rare extreme specialists");
 
 const activeBatters = [...byRole.BAT, ...byRole.WK, ...byRole.AR];
 const activeBowlers = [...byRole.PACE, ...byRole.SPIN, ...byRole.AR];

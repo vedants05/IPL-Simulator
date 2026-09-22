@@ -198,5 +198,29 @@ export function readableOn(bgHex: string): string {
   const getLum = (c: number) => (c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
   const lum = 0.2126 * getLum(r) + 0.7152 * getLum(g) + 0.0722 * getLum(b);
 
-  return lum > 0.55 ? "#16130f" : "#ffffff";
+  // WCAG contrast with black exceeds contrast with white above this luminance.
+  return lum > 0.179 ? "#000000" : "#ffffff";
+}
+
+export function readableAccentOn(accentHex: string, backgroundHex: string): string {
+  const luminance = (hex: string) => {
+    const channels = [1, 3, 5].map((offset) => Number.parseInt(hex.slice(offset, offset + 2), 16) / 255);
+    const linear = channels.map((channel) => channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4);
+    return linear[0] * 0.2126 + linear[1] * 0.7152 + linear[2] * 0.0722;
+  };
+  const backgroundLuminance = luminance(backgroundHex);
+  const target = backgroundLuminance < 0.179 ? "#ffffff" : "#16130f";
+  const contrast = (left: string, right: string) => {
+    const lighter = Math.max(luminance(left), luminance(right));
+    const darker = Math.min(luminance(left), luminance(right));
+    return (lighter + 0.05) / (darker + 0.05);
+  };
+  if (contrast(accentHex, backgroundHex) >= 4.5) return accentHex;
+  const channel = (hex: string, offset: number) => Number.parseInt(hex.slice(offset, offset + 2), 16);
+  for (let weight = 0.05; weight <= 1.0001; weight += 0.05) {
+    const mixed = `#${[1, 3, 5].map((offset) => Math.round(channel(accentHex, offset) * (1 - weight) + channel(target, offset) * weight)
+      .toString(16).padStart(2, "0")).join("")}`;
+    if (contrast(mixed, backgroundHex) >= 4.5) return mixed;
+  }
+  return target;
 }

@@ -24,7 +24,7 @@ import type { AiLeagueLeadership, AiTeamLeadership } from "@/lib/logic/aiLeaders
 import { dateKeyToLocalDate, getSeasonScheduleAnnouncementDate } from "@/lib/logic/careerCalendar";
 import { isRainAffectedMatch } from "@/lib/logic/matchWeather";
 import { getPlayerSeasonHistory } from "@/lib/logic/playerHistory";
-import { careerSnapshotStorageKey, parseCareerSnapshot, writeCareerSnapshot } from "@/lib/logic/careerSnapshotStorage";
+import { careerSnapshotStorageKey, parseCareerSnapshot, readCareerSnapshot, writeCareerSnapshot } from "@/lib/logic/careerSnapshotStorage";
 import { cacheTeamProfileCareer, getCachedTeamProfileCareer } from "@/lib/logic/teamProfileCareerCache";
 import { useGameStore } from "@/lib/store/gameStore";
 import type { Player, Team } from "@/lib/types";
@@ -187,10 +187,9 @@ function normalizeTeamProfileCareer(parsed: Partial<TeamProfileCareer>): TeamPro
   };
 }
 
-function readTeamProfileCareer(userTeamId: string): TeamProfileCareer {
-  const storageKey = careerSnapshotStorageKey(userTeamId);
+function readTeamProfileCareer(saveId: string, userTeamId: string): TeamProfileCareer {
   if (typeof localStorage === "undefined") return EMPTY_CAREER;
-  const serialized = localStorage.getItem(storageKey);
+  const serialized = readCareerSnapshot(localStorage, saveId, userTeamId)?.serialized;
   if (!serialized) return EMPTY_CAREER;
   try {
     return normalizeTeamProfileCareer(parseCareerSnapshot(serialized) as Partial<TeamProfileCareer>);
@@ -494,6 +493,7 @@ function MountedTeamProfilePage() {
   const params = useParams<{ teamId: string }>();
   const teams = useGameStore((state) => state.teams);
   const players = useGameStore((state) => state.players);
+  const saveId = useGameStore((state) => state.saveId);
   const userTeamId = useGameStore((state) => state.userTeamId);
   const currentSeason = useGameStore((state) => state.currentSeason);
   const currentDate = useGameStore((state) => state.currentDate);
@@ -506,11 +506,11 @@ function MountedTeamProfilePage() {
   const shortlist = useGameStore((state) => state.playerShortlist);
   const setShortlist = useGameStore((state) => state.setPlayerShortlist);
   const [hasLoadedCareer, setHasLoadedCareer] = useState(() => Boolean(
-    getCachedTeamProfileCareer<TeamProfileCareer>(userTeamId),
+    getCachedTeamProfileCareer<TeamProfileCareer>(saveId, userTeamId),
   ));
   const [activeTab, setActiveTab] = useState<TeamProfileTab>("overview");
   const [career, setCareer] = useState<TeamProfileCareer>(() => (
-    getCachedTeamProfileCareer<TeamProfileCareer>(userTeamId) ?? EMPTY_CAREER
+    getCachedTeamProfileCareer<TeamProfileCareer>(saveId, userTeamId) ?? EMPTY_CAREER
   ));
   const [aiLineupLogic, setAiLineupLogic] = useState<AiLineupModule | null>(null);
   const [fallbackAiLeadership, setFallbackAiLeadership] = useState<AiTeamLeadership | null>(null);
@@ -526,7 +526,7 @@ function MountedTeamProfilePage() {
   const nextFixturesListRef = useRef<HTMLDivElement>(null);
 
   const toggleShortlist = (pid: string) => {
-    const storageKey = careerSnapshotStorageKey(userTeamId);
+    const storageKey = careerSnapshotStorageKey(saveId, userTeamId);
     const next = shortlist.includes(pid)
       ? shortlist.filter((id) => id !== pid)
       : [...shortlist, pid];
@@ -619,7 +619,7 @@ function MountedTeamProfilePage() {
   useEffect(() => {
     if (!userTeamId) return;
 
-    const cachedCareer = getCachedTeamProfileCareer<TeamProfileCareer>(userTeamId);
+    const cachedCareer = getCachedTeamProfileCareer<TeamProfileCareer>(saveId, userTeamId);
     if (cachedCareer) {
       setCareer(cachedCareer);
       setHasLoadedCareer(true);
@@ -627,18 +627,18 @@ function MountedTeamProfilePage() {
     }
 
     try {
-      setCareer(readTeamProfileCareer(userTeamId));
+      setCareer(readTeamProfileCareer(saveId, userTeamId));
     } catch (error) {
       console.error("Unable to load team profile career data:", error);
       setCareer(EMPTY_CAREER);
     }
     setHasLoadedCareer(true);
-  }, [userTeamId]);
+  }, [saveId, userTeamId]);
 
   useEffect(() => {
     if (!hasLoadedCareer || !userTeamId) return;
-    cacheTeamProfileCareer(userTeamId, career);
-  }, [career, hasLoadedCareer, userTeamId]);
+    cacheTeamProfileCareer(saveId, userTeamId, career);
+  }, [career, hasLoadedCareer, saveId, userTeamId]);
 
   const squad = useMemo(() => {
     if (!team) return [];
@@ -932,7 +932,7 @@ function MountedTeamProfilePage() {
       const next = { ...prev, bowlingFirstImpactPlayerId: playerId };
       if (typeof window !== "undefined" && userTeamId) {
         try {
-          const storageKey = careerSnapshotStorageKey(userTeamId);
+          const storageKey = careerSnapshotStorageKey(saveId, userTeamId);
           const stored = localStorage.getItem(storageKey);
           if (stored) {
             const parsed = parseCareerSnapshot(stored);
@@ -951,7 +951,7 @@ function MountedTeamProfilePage() {
       const next = { ...prev, bowlingFirstImpactBattingPosition: position };
       if (typeof window !== "undefined" && userTeamId) {
         try {
-          const storageKey = careerSnapshotStorageKey(userTeamId);
+          const storageKey = careerSnapshotStorageKey(saveId, userTeamId);
           const stored = localStorage.getItem(storageKey);
           if (stored) {
             const parsed = parseCareerSnapshot(stored);

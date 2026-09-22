@@ -1,12 +1,14 @@
 "use client";
 
-import { Crown, Sparkles, Target, TrendingUp, Trophy } from "lucide-react";
+import { useState } from "react";
+import { Crown, Maximize2, Sparkles, Target, TrendingUp, Trophy } from "lucide-react";
 
 import type { EmergingAwardCandidate, MvpAwardCandidate } from "@/lib/logic/seasonAwards";
 import { getTeamColorStyle } from "@/lib/theme/teamColors";
 import type { Team } from "@/lib/types";
+import TournamentLeaderboardModal from "./TournamentLeaderboardModal";
 
-interface TournamentPlayerStat {
+export interface TournamentPlayerStat {
   id: string;
   name: string;
   teamId: string;
@@ -15,6 +17,15 @@ interface TournamentPlayerStat {
   wickets: number;
   runsConceded: number;
   oversBowled: number;
+  matches?: number;
+  battingInnings?: number;
+  dismissals?: number;
+  highestScore?: number;
+  bestBowling?: string;
+  fours?: number;
+  sixes?: number;
+  dotBalls?: number;
+  maidens?: number;
 }
 
 interface MatchPerformance {
@@ -56,10 +67,12 @@ function AwardColumn({
   board,
   teams,
   onOpenPlayer,
+  onExpand,
 }: {
   board: AwardBoard;
   teams: Record<string, Team>;
   onOpenPlayer: (playerId: string) => void;
+  onExpand?: () => void;
 }) {
   const Icon = board.icon;
   const leader = board.rows[0];
@@ -78,7 +91,23 @@ function AwardColumn({
             <p className="mt-1 truncate font-space-mono text-[7px] font-bold uppercase tracking-wider text-text-secondary">{board.subtitle}</p>
           </div>
         </div>
-        <span className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Top 5</span>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <span className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Top 5</span>
+          {onExpand && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onExpand();
+              }}
+              className="group flex h-6 w-6 items-center justify-center rounded-md border border-border bg-surface text-text-secondary transition-all hover:border-accent hover:bg-accent/10 hover:text-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+              title={`View full ${board.subtitle || board.title} leaderboard`}
+              aria-label={`View full ${board.subtitle || board.title} leaderboard`}
+            >
+              <Maximize2 size={11} className="transition-transform group-hover:scale-110" />
+            </button>
+          )}
+        </div>
       </header>
 
       {leader ? (
@@ -228,6 +257,8 @@ export default function TournamentStatsDashboard({
   bestBowlingFigures: MatchPerformance[];
   onOpenPlayer: (playerId: string) => void;
 }) {
+  const [expandedLeaderboard, setExpandedLeaderboard] = useState<"orange" | "purple" | null>(null);
+
   const awardBoards: AwardBoard[] = [
     {
       id: "orange",
@@ -249,13 +280,17 @@ export default function TournamentStatsDashboard({
       subtitle: "Purple Cap",
       color: "#7e22ce",
       icon: Target,
-      rows: purpleCapLeaders.map((player) => ({
-        id: player.id,
-        name: player.name,
-        teamId: player.teamId,
-        value: `${player.wickets}`,
-        detail: `Econ ${(player.runsConceded / Math.max(1, player.oversBowled)).toFixed(1)}`,
-      })),
+      rows: purpleCapLeaders.map((player) => {
+        const balls = Math.floor(player.oversBowled) * 6 + Math.round((player.oversBowled - Math.floor(player.oversBowled)) * 10);
+        const econ = balls > 0 ? ((player.runsConceded / balls) * 6).toFixed(1) : "—";
+        return {
+          id: player.id,
+          name: player.name,
+          teamId: player.teamId,
+          value: `${player.wickets}`,
+          detail: `Econ ${econ}`,
+        };
+      }),
     },
     {
       id: "mvp",
@@ -291,7 +326,12 @@ export default function TournamentStatsDashboard({
     <div className="h-full min-h-0 overflow-y-auto pr-1 xl:overflow-hidden">
       <div className="grid min-h-full grid-cols-1 gap-4 xl:h-full xl:grid-rows-2">
         <div className="grid min-h-0 grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <AwardColumn board={awardBoards[0]} teams={teams} onOpenPlayer={onOpenPlayer} />
+          <AwardColumn
+            board={awardBoards[0]}
+            teams={teams}
+            onOpenPlayer={onOpenPlayer}
+            onExpand={() => setExpandedLeaderboard("orange")}
+          />
           <PerformanceList
             title="Highest Scores"
             subtitle={`${season} best individual innings`}
@@ -301,7 +341,12 @@ export default function TournamentStatsDashboard({
             teams={teams}
             onOpenPlayer={onOpenPlayer}
           />
-          <AwardColumn board={awardBoards[1]} teams={teams} onOpenPlayer={onOpenPlayer} />
+          <AwardColumn
+            board={awardBoards[1]}
+            teams={teams}
+            onOpenPlayer={onOpenPlayer}
+            onExpand={() => setExpandedLeaderboard("purple")}
+          />
           <PerformanceList
             title="Best Bowling Figures"
             subtitle={`${season} most destructive spells`}
@@ -318,6 +363,16 @@ export default function TournamentStatsDashboard({
           <AwardColumn board={awardBoards[3]} teams={teams} onOpenPlayer={onOpenPlayer} />
         </div>
       </div>
+
+      <TournamentLeaderboardModal
+        isOpen={expandedLeaderboard !== null}
+        type={expandedLeaderboard ?? "orange"}
+        season={season}
+        players={expandedLeaderboard === "orange" ? orangeCapLeaders : purpleCapLeaders}
+        teams={teams}
+        onClose={() => setExpandedLeaderboard(null)}
+        onOpenPlayer={onOpenPlayer}
+      />
     </div>
   );
 }

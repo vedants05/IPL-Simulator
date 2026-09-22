@@ -7,6 +7,7 @@ export interface StaffOfferInput {
   endSeason: number | null;
   offeredSalary?: number;
   poaching?: boolean;
+  nationalTeamAppointment?: boolean;
   currentPrimaryRole?: string;
   offeredPrimaryRole?: string;
   incumbentRenewal?: boolean;
@@ -206,7 +207,7 @@ export function calculateInitialStaffNegotiationPatience(input: StaffOfferInput)
     : 0;
   return Math.round(clamp(
     68 + ((input.adaptability ?? 50) - 50) * 0.18 - ((input.ambition ?? 50) - 50) * 0.1
-      - loyaltyResistance - affinityResistance,
+      - loyaltyResistance - affinityResistance - (input.poaching && input.nationalTeamAppointment ? 5 : 0),
     30,
     90,
   ));
@@ -225,7 +226,8 @@ export function calculateStaffRecruitmentInterest(input: StaffOfferInput, coolin
     : 0;
   const destinationPull = Math.max(0, (input.destinationAffinity ?? 0) - (input.currentAffinity ?? 0)) * 0.08;
   const score = Math.round(clamp(
-    calculateInitialStaffNegotiationPatience(input) + freeAgentBonus - contractSecurityPenalty + destinationPull,
+    calculateInitialStaffNegotiationPatience(input) + freeAgentBonus - contractSecurityPenalty + destinationPull
+      - (input.poaching && input.nationalTeamAppointment ? 5 : 0),
     0,
     100,
   ));
@@ -288,7 +290,8 @@ export function calculateStaffSalaryDemand(input: StaffOfferInput): number {
     : 1;
   const calculatedDemand = roleValuedMarket * expectationRatio * reputationMultiplier * durationMultiplier
       * outOfRoleMultiplier * poachingMultiplier * loyaltyPremium
-      * affinityPremium * securityPremium * Math.max(0.88, mobilityDiscount);
+      * affinityPremium * securityPremium * Math.max(0.88, mobilityDiscount)
+      * (input.poaching && input.nationalTeamAppointment ? 1.08 : 1);
   // An incumbent can resist a pay cut, but their old wage is only a floor—not
   // the base to which all valuation multipliers are applied again.
   const renewalFloor = input.incumbentRenewal ? statedExpectation * 0.97 : 0;
@@ -399,6 +402,7 @@ export interface StaffMoveInterestInput {
   currentPrimaryRole: string;
   offeredPrimaryRole: string;
   remainingContractSeasons: number;
+  nationalTeamAppointment?: boolean;
   sameCountryAsHeadCoach?: boolean;
   relationshipBonus?: number;
 }
@@ -433,6 +437,7 @@ export function calculateStaffMoveInterest(input: StaffMoveInterestInput): {
     contractSecurity: -Math.max(0, input.remainingContractSeasons - 1) * 4,
     compatriotHeadCoach: input.sameCountryAsHeadCoach ? 3 : 0,
     relationship: Math.min(20, Math.max(0, input.relationshipBonus ?? 0)),
+    nationalDuty: input.nationalTeamAppointment ? -8 : 0,
   };
   const score = Math.round(Math.max(0, Math.min(100,
     Object.values(factors).reduce((sum, value) => sum + value, 0),

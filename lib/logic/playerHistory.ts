@@ -65,6 +65,23 @@ export function getPlayerSeasonHistory(
   return mergePlayerIplHistory([], history).find((entry) => entry.season === season);
 }
 
+/** Rebuild the three Team History figures from archived IPL match rows. */
+export function summarizeIplSeasonMatchLogs(logs: unknown): Pick<NonNullable<IPLHistoryEntry["seasonStats"]>, "matches" | "runs" | "wickets"> | undefined {
+  if (!Array.isArray(logs)) return undefined;
+  const matchIds = new Set<string>();
+  let runs = 0;
+  let wickets = 0;
+  for (const log of logs) {
+    if (!log || typeof log !== "object") continue;
+    const row = log as { id?: unknown; batting?: unknown; bowling?: unknown };
+    if (typeof row.id !== "string" || !row.id || matchIds.has(row.id)) continue;
+    matchIds.add(row.id);
+    if (typeof row.batting === "string") runs += Number(row.batting.match(/^(\d+)\s*\(/)?.[1] ?? 0);
+    if (typeof row.bowling === "string") wickets += Number(row.bowling.match(/^(\d+)\s*\//)?.[1] ?? 0);
+  }
+  return matchIds.size > 0 ? { matches: matchIds.size, runs, wickets } : undefined;
+}
+
 export function protectCompletedSeasonTeamsFromTrades(
   history: IPLHistoryEntry[] = [],
   playerId: string,

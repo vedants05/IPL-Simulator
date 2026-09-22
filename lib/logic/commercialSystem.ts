@@ -1035,9 +1035,12 @@ export function createDefaultCommercialState(
 // STORAGE & LOCALSTORAGE SYNC
 // ============================================================================
 
-export function getCommercialStorageKey(teamId: string, season: number): string {
-  return `ipl_commercial_state_${teamId.toLowerCase()}_${season}`;
+export function getCommercialStorageKey(saveId: string, teamId: string, season: number): string {
+  return `ipl_commercial_state_${saveId}_${teamId.toLowerCase()}_${season}`;
 }
+
+const getLegacyCommercialStorageKey = (teamId: string, season: number) =>
+  `ipl_commercial_state_${teamId.toLowerCase()}_${season}`;
 
 function mergeCommercialStateDefaults<T>(defaults: T, saved: unknown): T {
   if (Array.isArray(defaults)) {
@@ -1061,6 +1064,7 @@ function mergeCommercialStateDefaults<T>(defaults: T, saved: unknown): T {
 }
 
 export function loadCommercialState(
+  saveId: string,
   teamId: string,
   season: number,
   customCapacity?: number,
@@ -1071,13 +1075,16 @@ export function loadCommercialState(
   }
 
   try {
-    const raw = localStorage.getItem(getCommercialStorageKey(teamId, season));
+    const storageKey = getCommercialStorageKey(saveId, teamId, season);
+    const legacyKey = getLegacyCommercialStorageKey(teamId, season);
+    const raw = localStorage.getItem(storageKey) ?? localStorage.getItem(legacyKey);
     if (raw) {
       const parsed = JSON.parse(raw) as Partial<CommercialState>;
       if (parsed.teamId === teamId && parsed.season === season && parsed.ticketing && (parsed.operations || (parsed as any).facilities)) {
         const defaults = createDefaultCommercialState(teamId, season, customCapacity, squadPlayers);
         const hydrated = mergeCommercialStateDefaults(defaults, parsed);
-        localStorage.setItem(getCommercialStorageKey(teamId, season), JSON.stringify(hydrated));
+        localStorage.setItem(storageKey, JSON.stringify(hydrated));
+        localStorage.removeItem(legacyKey);
         return hydrated;
       }
     }
@@ -1087,7 +1094,7 @@ export function loadCommercialState(
 
   const defaultState = createDefaultCommercialState(teamId, season, customCapacity, squadPlayers);
   try {
-    localStorage.setItem(getCommercialStorageKey(teamId, season), JSON.stringify(defaultState));
+    localStorage.setItem(getCommercialStorageKey(saveId, teamId, season), JSON.stringify(defaultState));
   } catch (e) {
     // quota exceeded or private mode
   }
@@ -1148,11 +1155,11 @@ export function syncCommercialFinance(state: CommercialState): CommercialState {
   };
 }
 
-export function saveCommercialState(state: CommercialState): void {
+export function saveCommercialState(saveId: string, state: CommercialState): void {
   if (typeof window === "undefined") return;
   try {
     const synchronized = syncCommercialFinance(state);
-    localStorage.setItem(getCommercialStorageKey(synchronized.teamId, synchronized.season), JSON.stringify(synchronized));
+    localStorage.setItem(getCommercialStorageKey(saveId, synchronized.teamId, synchronized.season), JSON.stringify(synchronized));
   } catch (error) {
     console.error("Unable to persist commercial state:", error);
   }
@@ -1189,6 +1196,7 @@ export interface MatchdaySettlementResult {
  * when a user's home match is completed. Credits the cash ledger and updates season metrics.
  */
 export function processHomeMatchCommercialSettlement(
+  saveId: string,
   teamId: string,
   season: number,
   matchId: string,
@@ -1199,7 +1207,7 @@ export function processHomeMatchCommercialSettlement(
   squadPlayers?: Player[],
   supporterContext?: SupporterCommercialContext,
 ): MatchdaySettlementResult | null {
-  const state = loadCommercialState(teamId, season, stadiumCapacity, squadPlayers);
+  const state = loadCommercialState(saveId, teamId, season, stadiumCapacity, squadPlayers);
   if (state.ticketing.settledMatchIds?.includes(matchId)) {
     return null;
   }
@@ -1323,7 +1331,7 @@ export function processHomeMatchCommercialSettlement(
     },
   };
 
-  saveCommercialState(nextState);
+  saveCommercialState(saveId, nextState);
 
   return {
     gateReceiptCr,
@@ -1339,6 +1347,7 @@ export function processHomeMatchCommercialSettlement(
  * Releases scheduled BCCI central media pool tranches as league milestones are reached.
  */
 export function checkAndReleaseBcciTranches(
+  saveId: string,
   teamId: string,
   season: number,
   playedMatchCount: number,
@@ -1346,7 +1355,7 @@ export function checkAndReleaseBcciTranches(
   stadiumCapacity: number,
   squadPlayers?: Player[],
 ): void {
-  const state = loadCommercialState(teamId, season, stadiumCapacity, squadPlayers);
+  const state = loadCommercialState(saveId, teamId, season, stadiumCapacity, squadPlayers);
   const existingTx = state.finance.transactions;
 
   // Mid-season tranche: after 7 matches played
@@ -1368,7 +1377,7 @@ export function checkAndReleaseBcciTranches(
         transactions: [newTx, ...state.finance.transactions],
       },
     };
-    saveCommercialState(nextState);
+    saveCommercialState(saveId, nextState);
   }
 }
 
@@ -1376,13 +1385,14 @@ export function checkAndReleaseBcciTranches(
  * Awards post-season BCCI media rights final tranche and official tournament prize purse.
  */
 export function processSeasonEndCommercialSettlement(
+  saveId: string,
   teamId: string,
   season: number,
   finishRank: number,
   stadiumCapacity: number,
   squadPlayers?: Player[],
 ): void {
-  const state = loadCommercialState(teamId, season, stadiumCapacity, squadPlayers);
+  const state = loadCommercialState(saveId, teamId, season, stadiumCapacity, squadPlayers);
   const existingTx = state.finance.transactions;
   if (existingTx.some((t) => t.id === `tx-bcci-final-tranche-${season}`)) {
     return;
@@ -1454,19 +1464,20 @@ export function processSeasonEndCommercialSettlement(
     },
   };
 
-  saveCommercialState(nextState);
+  saveCommercialState(saveId, nextState);
 }
 
 /**
  * Returns dynamic injury system modifiers based on the club's active High-Performance Sports Science contract.
  */
 export function getInjurySystemModifiersFromCommercial(
+  saveId: string,
   teamId: string,
   season: number,
   stadiumCapacity = 45000,
 ): InjurySystemModifiers {
   try {
-    const state = loadCommercialState(teamId, season, stadiumCapacity);
+    const state = loadCommercialState(saveId, teamId, season, stadiumCapacity);
     const sportsScienceTier = state.operations?.programmes?.sports_science?.activeTierId;
     if (sportsScienceTier === "global_high_performance") {
       return {

@@ -54,6 +54,22 @@ assert.equal(cumulativeValue("runs-by-age-22"), "1000 runs");
 assert.equal(cumulativeValue("fastest-32-wickets"), "1 matches");
 assert.equal(cumulativeValue("most-expensive-auction-buy"), "₹30.00 Crore");
 
+assert.equal(cumulativeValue("highest-percentage-team-runs"), "41.6%");
+assert.match(cumulative.find((record) => record.id === "highest-percentage-team-runs")?.notes ?? "", /Scored 104 of MI's 250 runs in 2030/);
+
+const inflatedPercentage = MINOR_RECORDS.map((record) => record.id === "highest-percentage-team-runs"
+  ? { ...record, value: "500.0%", holder: "Invalid Leader", lastBrokenOn: "2030", breakSequence: 1 }
+  : record);
+const repairedPercentage = reconcileCumulativeMinorRecords(inflatedPercentage, [match], {}, players, { MI: { shortName: "MI" }, KKR: { shortName: "KKR" } }, 2030)
+  .find((record) => record.id === "highest-percentage-team-runs");
+assert.equal(repairedPercentage?.value, "41.6%");
+assert.equal(repairedPercentage?.holder, "Test Batter");
+
+const unfinishedSeasonPercentage = reconcileCumulativeMinorRecords(MINOR_RECORDS, [{ ...match, stage: undefined }], {}, players,
+  { MI: { shortName: "MI" }, KKR: { shortName: "KKR" } }, 2030)
+  .find((record) => record.id === "highest-percentage-team-runs");
+assert.equal(unfinishedSeasonPercentage?.value, "31.2%");
+
 // Verify 1,000-run and 40-wicket season dynamic promotion into all-time leaderboards
 const seasonStats = {
   batter: { id: "batter", name: "Test Batter", teamId: "MI", runs: 1000, balls: 400, matches: 14, battingInnings: 14, wickets: 0, catches: 5, stumpings: 0, maidens: 0 },
@@ -80,5 +96,54 @@ const wktRank2 = promoted.find((r) => r.id === "all-time-season-wickets-2");
 assert.equal(wktRank2?.value, "32 wickets");
 assert.equal(wktRank2?.holder, "Dwayne Bravo");
 assert.equal(wktRank2?.season, "2013");
+
+// Leaderboard movement below first place is not a record break.
+const careerSixes = MINOR_RECORDS.filter((record) => record.id.startsWith("career-sixes-"));
+const reshuffledCareerSixes = reconcileCumulativeMinorRecords(careerSixes, [], {}, {
+  dhoni: { name: "MS Dhoni", isWicketkeeper: true, iplStats: { sixes: 318, matches: 265 } },
+} as any, {}, 2030);
+assert.equal(reshuffledCareerSixes.find((record) => record.id === "career-sixes-3")?.holder, "MS Dhoni");
+assert.equal(reshuffledCareerSixes.find((record) => record.id === "career-sixes-3")?.lastBrokenOn, undefined);
+assert.equal(reshuffledCareerSixes.find((record) => record.id === "career-sixes-4")?.lastBrokenOn, undefined);
+
+// The existing number-one holder raising their benchmark is an extension.
+const extendedCareerSixes = reconcileCumulativeMinorRecords(careerSixes, [], {}, {
+  gayle: { name: "Chris Gayle", isWicketkeeper: false, iplStats: { sixes: 360, matches: 142 } },
+} as any, {}, 2030);
+const extendedSixesRecord = extendedCareerSixes.find((record) => record.id === "career-sixes-1");
+assert.equal(extendedSixesRecord?.holder, "Chris Gayle");
+assert.equal(extendedSixesRecord?.lastExtendedOn, "2030");
+assert.equal(extendedSixesRecord?.lastBrokenOn, undefined);
+
+// A new number-one holder is a genuine record break with the prior benchmark retained.
+const brokenCareerSixes = reconcileCumulativeMinorRecords(careerSixes, [], {}, {
+  challenger: { name: "New Sixes Leader", isWicketkeeper: false, iplStats: { sixes: 400, matches: 120 } },
+} as any, {}, 2030);
+const brokenSixesRecord = brokenCareerSixes.find((record) => record.id === "career-sixes-1");
+assert.equal(brokenSixesRecord?.holder, "New Sixes Leader");
+assert.equal(brokenSixesRecord?.lastBrokenOn, "2030");
+assert.equal(brokenSixesRecord?.previousHolder, "Chris Gayle");
+assert.equal(brokenSixesRecord?.previousValue, "359 sixes");
+assert.deepEqual(brokenSixesRecord?.breakHistory?.map((event) => [event.previousValue, event.value]), [["359 sixes", "400 sixes"]]);
+
+// A second holder change is another break; the first event remains in the timeline.
+const brokenAgain = reconcileCumulativeMinorRecords(brokenCareerSixes, [], {}, {
+  challenger: { name: "New Sixes Leader", isWicketkeeper: false, iplStats: { sixes: 410, matches: 121 } },
+  successor: { name: "Next Sixes Leader", isWicketkeeper: false, iplStats: { sixes: 425, matches: 122 } },
+} as any, {}, 2031);
+const twiceBrokenRecord = brokenAgain.find((record) => record.id === "career-sixes-1");
+assert.deepEqual(twiceBrokenRecord?.breakHistory?.map((event) => [event.on, event.holder, event.value]), [
+  ["2030", "New Sixes Leader", "400 sixes"],
+  ["2031", "Next Sixes Leader", "425 sixes"],
+]);
+assert.equal(brokenAgain.find((record) => record.id === "career-sixes-2")?.lastBrokenOn, undefined);
+
+const extendedAfterBreak = reconcileCumulativeMinorRecords(brokenCareerSixes, [], {}, {
+  challenger: { name: "New Sixes Leader", isWicketkeeper: false, iplStats: { sixes: 410, matches: 121 } },
+} as any, {}, 2031);
+const laterExtension = extendedAfterBreak.find((record) => record.id === "career-sixes-1");
+assert.equal(laterExtension?.lastBrokenOn, "2030");
+assert.equal(laterExtension?.lastExtendedOn, "2031");
+assert.equal(laterExtension?.breakHistory?.[0].value, "400 sixes");
 
 console.log("Comprehensive minor-record evaluator verification passed.");

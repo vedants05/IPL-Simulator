@@ -12,10 +12,13 @@ import {
   getStoredAppearanceTheme,
   type AppearanceTheme,
 } from "@/lib/theme/appearance";
+import { archiveActiveLocalSave } from "@/lib/storage/gameStateStorage";
+import { clearSideStorageForSave } from "@/lib/supabase/cloudSaves";
 
 export default function SetupPage() {
   const router = useRouter();
   const initNewGame = useGameStore((s) => s.initNewGame);
+  const resetGame = useGameStore((s) => s.resetGame);
   const [step, setStep] = useState<"team" | "confirm">("team");
   const [selectedTeam, setSelectedTeam] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -58,6 +61,12 @@ export default function SetupPage() {
     if (!selectedTeam) return;
     setLoading(true);
     try {
+      const active = useGameStore.getState();
+      if (active.saveId) {
+        await archiveActiveLocalSave();
+        clearSideStorageForSave(active.saveId, active.userTeamId);
+        resetGame();
+      }
       await initNewGame(selectedTeam);
       router.push("/game/auction");
     } catch (err) {

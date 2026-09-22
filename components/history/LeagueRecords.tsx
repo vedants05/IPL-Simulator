@@ -226,7 +226,7 @@ export default function LeagueRecords({
         </p>
       </header>
 
-      <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_17rem] gap-3 bg-[linear-gradient(180deg,rgba(30,60,100,0.035),transparent_18rem)] p-3">
+      <div className="grid min-h-0 min-w-0 flex-1 grid-cols-[minmax(0,1fr)_minmax(13rem,17rem)] gap-3 bg-[linear-gradient(180deg,rgba(30,60,100,0.035),transparent_18rem)] p-3">
         <div className="grid min-h-0 grid-cols-2 grid-rows-2 gap-3">
           {columnDefinitions.map((column) => {
             const Icon = column.icon;
@@ -283,7 +283,7 @@ export default function LeagueRecords({
           })}
         </div>
 
-        <aside className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden border border-border bg-surface shadow-sm">
+        <aside className="grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden border border-border bg-surface shadow-sm">
           <div className="border-b border-[#16130f]/10 px-3 py-2">
             <p className="font-space-mono text-[7px] font-bold uppercase tracking-[0.2em] text-[#9b6823]">Across every era</p>
             <h4 className="mt-1 font-anton text-[16px] uppercase leading-none text-text-primary">Other Records</h4>
@@ -295,18 +295,18 @@ export default function LeagueRecords({
                 .find((player): player is CareerRecordCandidate => Boolean(player));
               const content = (
                 <>
-                  <span className="min-w-0 flex-1">
+                  <span className="min-w-0 overflow-hidden">
                     <span className="block truncate font-space-mono text-[7px] font-bold uppercase tracking-wide text-text-secondary">{record.label}</span>
                     <span className="mt-0.5 block truncate text-[10px] font-semibold text-text-primary">{record.holder}</span>
                     <span className="mt-0.5 block truncate font-space-mono text-[7px] text-text-secondary">{record.detail}</span>
                   </span>
-                  <span className="shrink-0 text-right">
-                    <span className="block font-anton text-[17px] leading-none text-[#9b6823]">{record.value}</span>
+                  <span className="min-w-0 text-right">
+                    <span className="block whitespace-nowrap font-anton text-[clamp(13px,1.15vw,17px)] leading-none text-[#9b6823]">{record.value}</span>
                     {linkedPlayer && <ChevronRight size={11} className="ml-auto mt-1 text-text-secondary/60" />}
                   </span>
                 </>
               );
-              const rowClass = "flex min-h-0 items-center gap-2 border-b border-[#16130f]/10 px-3 py-1.5 text-left last:border-b-0";
+              const rowClass = "grid min-h-0 w-full min-w-0 max-w-full grid-cols-[minmax(0,1fr)_minmax(3.75rem,auto)] items-center gap-2 overflow-hidden border-b border-[#16130f]/10 px-3 py-1.5 text-left last:border-b-0";
               return linkedPlayer ? (
                 <button key={record.id} type="button" onClick={() => onOpenPlayer(linkedPlayer.id)} className={`${rowClass} hover:bg-black/[0.035] dark:hover:bg-white/[0.035]`}>{content}</button>
               ) : (

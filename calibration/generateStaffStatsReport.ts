@@ -1,0 +1,17 @@
+import { writeFileSync } from "node:fs";
+import { STAFF_ADDITION_TRAITS, STAFF_DIRECTORY_ADDITIONS } from "../lib/data/staffDirectoryAdditions";
+
+const short = (value: string) => value.replaceAll("_", " ");
+const coreRows = STAFF_DIRECTORY_ADDITIONS.map((s) =>
+  `| [${s.full_name}](${s.source_url}) | ${s.country} | ${short(s.primary_role)}; ${s.secondary_roles.map(short).join(", ")} | ${s.reputation} | ${s.current_ability}/${s.potential_ability} | ${s.experience_years} | ${(s.salary_expectation / 1_000_000).toFixed(1)}m | ${s.ambition}/${s.loyalty}/${s.adaptability}/${s.learning_rate} | ${s.development_phase}; ${s.retirement_age} | ${s.personality}; ${s.coaching_philosophy}; ${s.preferred_team_strategy} |`);
+const skillRows = STAFF_DIRECTORY_ADDITIONS.map((s) =>
+  `| ${s.full_name} | ${[s.batting_coaching, s.pace_bowling_coaching, s.spin_bowling_coaching, s.fielding_coaching, s.wicketkeeping_coaching].join("/")} | ${[s.technical_coaching, s.tactical_knowledge, s.player_development, s.youth_development, s.judging_ability, s.judging_potential, s.man_management, s.motivation].join("/")} |`);
+const traitRows = STAFF_DIRECTORY_ADDITIONS.map((s) => {
+  const entries = Object.entries(STAFF_ADDITION_TRAITS[s.slug]);
+  const flags = entries.filter(([, value]) => value === true).map(([name]) => short(name));
+  const preferences = entries.filter(([, value]) => typeof value === "number").map(([name, value]) => `${short(name)} ${value}`);
+  return `| ${s.full_name} | ${flags.join(", ")} | ${preferences.join(", ")} |`;
+});
+
+writeFileSync("docs/new-staff-profiles-2026.md", `# Additional staff profiles (21 September 2026)\n\nThese 12 profiles are stored in Supabase and included in the local staff API. Source links support each person's cricket role or career; **every numerical rating is an in-game estimate**, not a real-world statistic. All 1-20 coaching attributes are listed below. Salaries are annual in-game expectations in rupees. No existing Daniel Vettori national appointment was added; his game contract remains SRH.\n\n## Core profile and market attributes\n\nRep, CA and PA use 0-100. A/L/Ad/Lr means ambition, loyalty, adaptability and learning rate. Experience is in years. Contract compensation is 0 for all 12 profiles until they take a game contract. The 2026 national starting contract applies to Pietersen, Trescothick, Taylor and Cooley with England.\n\n| Name and role source | Country | Primary; secondary roles | Rep | CA/PA | Exp | Salary | A/L/Ad/Lr | Phase; retirement age | Personality; philosophy; strategy |\n| --- | --- | --- | ---: | ---: | ---: | ---: | --- | --- | --- |\n${coreRows.join("\n")}\n\n## Coaching ratings\n\nBat/Pace/Spin/Field/WK = batting, pace, spin, fielding and wicketkeeping coaching. Tech/Tac/Dev/Youth/JA/JP/Man/Mot = technical coaching, tactical knowledge, player development, youth development, judging ability, judging potential, man management and motivation.\n\n| Name | Bat/Pace/Spin/Field/WK | Tech/Tac/Dev/Youth/JA/JP/Man/Mot |\n| --- | --- | --- |\n${skillRows.join("\n")}\n\n## Traits and preference ratings\n\nOnly non-default preferences are shown. Other preference fields retain the database defaults.\n\n| Name | Active traits | Set preferences |\n| --- | --- | --- |\n${traitRows.join("\n")}\n\n## Rating rationale\n\n${STAFF_DIRECTORY_ADDITIONS.map((s) => `- **${s.full_name}:** ${s.rating_basis}`).join("\n")}\n`);
+console.log("Wrote docs/new-staff-profiles-2026.md");

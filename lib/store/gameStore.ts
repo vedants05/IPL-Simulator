@@ -46,6 +46,7 @@ import {
   type IplTeamId,
 } from "@/lib/data/pitchCurator";
 import { getSeasonAccessStorageKey } from "@/lib/config/featureFlags";
+import { legacyCareerSnapshotStorageKey } from "@/lib/logic/careerSnapshotStorage";
 import { addDaysToDateKey } from "@/lib/logic/careerCalendar";
 import {
   deriveCustomPitch,
@@ -1502,6 +1503,11 @@ export const useGameStore = create<Store>()(
       initNewGame: async (userTeamId) => {
         if (typeof window !== "undefined") {
           localStorage.removeItem(getSeasonAccessStorageKey(userTeamId));
+          localStorage.removeItem(legacyCareerSnapshotStorageKey(userTeamId));
+          const legacyCommercialPrefix = `ipl_commercial_state_${userTeamId.toLowerCase()}_`;
+          Object.keys(localStorage)
+            .filter((key) => key.startsWith(legacyCommercialPrefix))
+            .forEach((key) => localStorage.removeItem(key));
         }
         const [fetchedPlayers, fetchedTeams, staffDirectory] = await Promise.all([
           fetchPlayersFromSupabase(),
@@ -1641,6 +1647,11 @@ export const useGameStore = create<Store>()(
           staffOverrides: {},
           frozenStaffAttributes: {},
           worldRules: setActiveWorldRules(DEFAULT_WORLD_RULES),
+          playerShortlist: [],
+          acceleratedPlanningState: null,
+          userAcceleratedTargets: [],
+          aiAcceleratedTargets: {},
+          aiAcceleratedBackups: {},
           clubFigureTierOverrides: {},
           clubFigureProgression: {},
           offseasonStats: null,
@@ -1685,6 +1696,7 @@ export const useGameStore = create<Store>()(
           scoutingReports: [],
           scoutingNetworks: {},
           careerStaff,
+          delegateStaffToCeo: false,
           auction: {
             type: openingAuctionType,
             season: INITIAL_ACTIVE_SEASON,
@@ -1708,6 +1720,9 @@ export const useGameStore = create<Store>()(
             saleHistory: [],
           },
           isSetupComplete: false,
+          isPaused: false,
+          speed: 1,
+          skipSetSummary: null,
         });
       },
 
@@ -5149,10 +5164,11 @@ export const useGameStore = create<Store>()(
           const previousArchive = state.careerSeasonArchives.find((record) => record.season === archive.season);
           // Aggregated season totals are tiny compared with delivery archives
           // and are the authoritative repair source for player profile history.
-          const archivedStats = {
-            ...((previousArchive?.playerStats ?? {}) as Record<string, unknown>),
-            ...((archive.playerStats ?? {}) as Record<string, unknown>),
-          };
+          // Completed IPL fixtures are the authoritative source. Merging an
+          // older archive can reintroduce totals from other competitions.
+          const archivedStats = Object.keys(archive.playerStats ?? {}).length > 0
+            ? archive.playerStats
+            : previousArchive?.playerStats ?? {};
           const compactArchive = { ...archiveForHistory, playerStats: archivedStats };
           const careerSeasonArchives = [
             compactArchive,

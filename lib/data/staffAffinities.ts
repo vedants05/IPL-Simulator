@@ -44,7 +44,7 @@ const STAFF_AFFINITY_SEEDS: Record<string, AffinitySeed> = {
   "dinesh-karthik": seed("Chennai", { CSK: { strength: 72, reasons: ["home"] }, KKR: { strength: 78, reasons: ["played", "long_service"] }, RCB: { strength: 73, reasons: ["played", "coached"] }, DC: { strength: 50, reasons: ["played"] }, MI: { strength: 49, reasons: ["played"] } }),
   "dwayne-bravo": seed("Trinidad", { CSK: { strength: 96, reasons: ["played", "coached", "long_service"] }, KKR: { strength: 70, reasons: ["coached"] }, MI: { strength: 51, reasons: ["played"] } }),
   "dishant-yagnik": seed("Rajasthan", { RR: { strength: 82, reasons: ["home", "played", "long_service"] }, KKR: { strength: 58, reasons: ["coached"] } }),
-  "eoin-morgan": seed("Dublin", { KKR: { strength: 75, reasons: ["played"] }, RCB: { strength: 42, reasons: ["played"] }, SRH: { strength: 42, reasons: ["played"] }, CSK: { strength: 68, reasons: ["coached"] } }),
+  "eoin-morgan": seed("Dublin", { KKR: { strength: 75, reasons: ["played"] }, RCB: { strength: 42, reasons: ["played"] }, SRH: { strength: 42, reasons: ["played"] } }),
   "eric-simons": seed("Cape Town", { CSK: { strength: 94, reasons: ["coached", "long_service"] }, DC: { strength: 55, reasons: ["coached"] } }),
   "gautam-gambhir": seed("Delhi", { DC: { strength: 83, reasons: ["home", "played"] }, KKR: { strength: 97, reasons: ["played", "coached", "long_service"] }, LSG: { strength: 68, reasons: ["coached"] } }),
   "govindamenon-jayakumar": seed("Kerala", { LSG: { strength: 68, reasons: ["coached"] } }),
@@ -105,7 +105,7 @@ const STAFF_AFFINITY_SEEDS: Record<string, AffinitySeed> = {
   "vvs-laxman": seed("Hyderabad", { SRH: { strength: 94, reasons: ["home", "coached", "long_service"] } }),
   "wasim-jaffer": seed("Mumbai", { MI: { strength: 68, reasons: ["home"] }, PBKS: { strength: 72, reasons: ["coached"] } }),
   "yuvraj-singh": seed("Punjab", { PBKS: { strength: 91, reasons: ["home", "played", "long_service"] }, SRH: { strength: 46, reasons: ["played"] }, RCB: { strength: 45, reasons: ["played"] }, DC: { strength: 60, reasons: ["coached"] } }),
-  "zaheer-khan": seed("Mumbai", { MI: { strength: 88, reasons: ["home", "played", "coached"] }, DC: { strength: 72, reasons: ["played", "coached"] }, RCB: { strength: 48, reasons: ["played"] }, LSG: { strength: 58, reasons: ["coached"] } }),
+  "zaheer-khan": seed("Mumbai", { MI: { strength: 88, reasons: ["home", "played", "coached"] }, DC: { strength: 72, reasons: ["played", "coached"] }, RCB: { strength: 48, reasons: ["played"] }, LSG: { strength: 58, reasons: ["coached"] }, CSK: { strength: 55, reasons: ["coached"] } }),
 };
 
 const clamp = (value: number) => Math.max(0, Math.min(100, Math.round(value)));

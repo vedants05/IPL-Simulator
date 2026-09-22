@@ -22,6 +22,7 @@ interface LeagueLegacyPageProps {
   seasons: LeagueHistorySeason[];
   teams: Record<string, LeagueHistoryTeam>;
   players: Player[];
+  retiredPlayers?: Player[];
   careerStaff: CareerStaffState;
   onOpenStaff?: (staffSlug: string) => void;
 }
@@ -88,26 +89,49 @@ function buildTeamRows(seasons: LeagueHistorySeason[], teams: Record<string, Lea
 
 function playerAwardTotal(row: PersonLegacyRow) { return row.mvps.length + row.emerging.length + row.orangeCaps.length + row.purpleCaps.length; }
 
-export function buildPlayerRows(seasons: LeagueHistorySeason[], players: Player[]): PersonLegacyRow[] {
+const honourEntries = (years: number[] | undefined): LegacyEntry[] => Array.from(new Set(years ?? []))
+  .filter((season) => Number.isInteger(season))
+  .sort((a, b) => a - b)
+  .map((season) => ({ season }));
+
+function databaseLegacyCounts(player: Player): LegacyCounts {
+  return {
+    titles: honourEntries(player.iplTitleSeasons),
+    runnerUps: honourEntries(player.iplRunnerUpSeasons),
+    mvps: honourEntries(player.iplMvpSeasons),
+    emerging: honourEntries(player.iplEmergingPlayerSeasons),
+    orangeCaps: honourEntries(player.iplOrangeCapSeasons),
+    purpleCaps: honourEntries(player.iplPurpleCapSeasons),
+  };
+}
+
+function addEntry(entries: LegacyEntry[], entry: LegacyEntry) {
+  if (!entries.some((existing) => existing.season === entry.season)) entries.push(entry);
+}
+
+export function buildPlayerRows(seasons: LeagueHistorySeason[], players: Player[], retiredPlayers: Player[] = []): PersonLegacyRow[] {
   const seasonsByYear = new Map(seasons.map((season) => [season.season, season]));
   const rows = new Map<string, PersonLegacyRow>();
   const playersByName = new Map<string, LeagueLegacyPlayer>();
   HISTORICAL_RETIRED_LEGACY_PLAYERS.forEach((player) => playersByName.set(normalizeName(player.name), player));
+  retiredPlayers.forEach((player) => playersByName.set(normalizeName(player.name), player));
   players.forEach((player) => playersByName.set(normalizeName(player.name), player));
   Array.from(playersByName.values()).forEach((player) => {
-    const row = { id: player.id, name: player.name, subtitle: `${player.role} · ${player.nationality}`, ...emptyCounts() };
+    const isDatabasePlayer = "iplTitleSeasons" in player;
+    const row = { id: player.id, name: player.name, subtitle: `${player.role} · ${player.nationality}`, ...(isDatabasePlayer ? databaseLegacyCounts(player as Player) : emptyCounts()) };
     player.iplHistory.forEach((history) => {
       const season = seasonsByYear.get(Number.parseInt(history.season, 10));
-      if (!season) return;
-      if (canonicalTeamId(history.teamId) === canonicalTeamId(season.championTeamId)) row.titles.push({ season: season.season, name: canonicalTeamId(season.championTeamId) });
-      if (canonicalTeamId(history.teamId) === canonicalTeamId(season.runnerUpTeamId)) row.runnerUps.push({ season: season.season, name: canonicalTeamId(season.runnerUpTeamId) });
+      if (!season || (isDatabasePlayer && season.source !== "career")) return;
+      if (canonicalTeamId(history.teamId) === canonicalTeamId(season.championTeamId)) addEntry(row.titles, { season: season.season, name: canonicalTeamId(season.championTeamId) });
+      if (canonicalTeamId(history.teamId) === canonicalTeamId(season.runnerUpTeamId)) addEntry(row.runnerUps, { season: season.season, name: canonicalTeamId(season.runnerUpTeamId) });
     });
     rows.set(player.id, row);
   });
   const award = (honour: { name: string; teamId: string } | undefined, season: number, key: "mvps" | "emerging" | "orangeCaps" | "purpleCaps") => {
     if (!honour) return;
     const player = playersByName.get(normalizeName(honour.name));
-    if (player) rows.get(player.id)?.[key].push({ season, name: canonicalTeamId(honour.teamId) });
+    const row = player ? rows.get(player.id) : undefined;
+    if (row && (!("iplTitleSeasons" in player!) || seasonsByYear.get(season)?.source === "career")) addEntry(row[key], { season, name: canonicalTeamId(honour.teamId) });
   };
   seasons.forEach((season) => {
     award(season.mvp, season.season, "mvps"); award(season.emergingPlayer, season.season, "emerging");
@@ -154,11 +178,9 @@ function buildCoachRows(seasons: LeagueHistorySeason[], state: CareerStaffState)
 function LegacyCell({ entries, label, color }: { entries: LegacyEntry[]; label: string; color: string }) {
   const buttonRef = useRef<HTMLButtonElement>(null);
   const [tooltipPosition, setTooltipPosition] = useState<{ left: number; top: number; placeBelow: boolean } | null>(null);
-  const grouped = new Map<string, number[]>();
-  entries.forEach((entry) => { if (entry.name) grouped.set(entry.name, [...(grouped.get(entry.name) ?? []), entry.season]); });
-  const details = entries.length === 0 ? [`No ${label.toLowerCase()} recorded`] : grouped.size
-    ? Array.from(grouped).map(([name, years]) => `${name} — ${years.sort((a, b) => a - b).join(", ")}`)
-    : [entries.map((entry) => entry.season).sort((a, b) => a - b).join(", ")];
+  const details = entries.length === 0
+    ? [`No ${label.toLowerCase()} recorded`]
+    : [Array.from(new Set(entries.map((entry) => entry.season))).sort((a, b) => a - b).join(", ")];
   const showTooltip = () => {
     const rect = buttonRef.current?.getBoundingClientRect();
     if (!rect) return;
@@ -182,7 +204,7 @@ function PersonTable({ rows, visibleColumns, onOpenStaff, sortKey, ascending, on
   </div>;
 }
 
-export default function LeagueLegacyPage({ seasons, teams, players, careerStaff, onOpenStaff }: LeagueLegacyPageProps) {
+export default function LeagueLegacyPage({ seasons, teams, players, retiredPlayers = [], careerStaff, onOpenStaff }: LeagueLegacyPageProps) {
   const [view, setView] = useState<LegacyView>("teams");
   const [sortKey, setSortKey] = useState<LegacyCategory>("titles");
   const [sortAscending, setSortAscending] = useState(false);
@@ -192,7 +214,7 @@ export default function LeagueLegacyPage({ seasons, teams, players, careerStaff,
     return (sortAscending ? difference : -difference) || nameOf(a).localeCompare(nameOf(b));
   });
   const teamRows = useMemo(() => sortRows(buildTeamRows(seasons, teams).filter((row) => includePastTeams || !PAST_TEAM_IDS.has(row.team.id)), (row) => row.team.name), [includePastTeams, seasons, sortAscending, sortKey, teams]);
-  const playerRows = useMemo(() => sortRows(buildPlayerRows(seasons, players), (row) => row.name), [players, seasons, sortAscending, sortKey]);
+  const playerRows = useMemo(() => sortRows(buildPlayerRows(seasons, players, retiredPlayers), (row) => row.name), [players, retiredPlayers, seasons, sortAscending, sortKey]);
   const coachSortKey = sortKey === "titles" || sortKey === "runnerUps" ? sortKey : "titles";
   const coachRows = useMemo(() => [...buildCoachRows(seasons, careerStaff)].sort((a, b) => {
     const difference = a[coachSortKey].length - b[coachSortKey].length;

@@ -14,7 +14,11 @@
   --app-scale: 1;
   --app-inverse-scale: 1;
   --app-viewport-width: 1280px;
-  --app-viewport-height: 720px;
+  --app-viewport-height: 800px;
+  --app-viewport-height-85: 680px;
+  --app-viewport-height-90: 720px;
+  --app-viewport-height-92: 736px;
+  --app-viewport-height-97: 776px;
 
   --background: #f4f1ea;
   --foreground: #16130f;
@@ -34,6 +38,8 @@
   --team-cta-bg: #1d55c4;
   --team-cta-text: #ffffff;
   --accent: #ffc400;
+  --accent-readable: #765600;
+  --on-accent: #16130f;
   --accent-hover: #000000;
   --retro-nav-ink: #f4ecd0;
   --retro-nav-muted: #c4c5a9;
@@ -55,6 +61,7 @@
 .dark {
   --background: #0f111a;
   --foreground: #e5e7eb;
+  --accent-readable: #ffc400;
 
   --app-base-bg: #0b0d13;
   --chrome-nav-active: #e5e7eb;
@@ -95,6 +102,7 @@
   --auction-status-bg: #14372f;
   --auction-status-border: #c99634;
   --accent: #c68f27;
+  --accent-readable: #765019;
   --accent-hover: #765019;
   --app-pattern-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='96' viewBox='0 0 96 96'%3E%3Cg fill='none' stroke='%235e532d' stroke-width='1.4' stroke-linecap='round' opacity='.17'%3E%3Cpath d='M15 7v16M7 15h16' transform='rotate(-24 15 15)'/%3E%3Cpath d='M70 61v14M63 68h14' transform='rotate(-24 70 68)'/%3E%3C/g%3E%3C/svg%3E");
 }
@@ -116,12 +124,22 @@
   --auction-status-bg: #09111b;
   --auction-status-border: #35465a;
   --accent: #008cff;
+  --accent-readable: #4aafff;
   --accent-hover: #ffc72c;
   --team-skin-nav-start: #102d4d;
   --team-skin-nav-end: #0a111b;
   --team-skin-selected: #153552;
   --app-pattern-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='96' viewBox='0 0 96 96'%3E%3Cg fill='none' stroke-width='1.4' stroke-linecap='round'%3E%3Cpath d='M15 7v16M7 15h16' transform='rotate(-24 15 15)' stroke='%23008cff' opacity='.18'/%3E%3Cpath d='M70 61v14M63 68h14' transform='rotate(-24 70 68)' stroke='%23ffc72c' opacity='.16'/%3E%3C/g%3E%3C/svg%3E");
 }
+
+/* Keep brand fills and readable labels separate across light and dark skins. */
+.text-accent { color: var(--accent-readable); }
+.hover\:text-accent:hover { color: var(--accent-readable); }
+.group:hover .group-hover\:text-accent { color: var(--accent-readable); }
+[class~="bg-accent"][class~="text-white"],
+[class~="bg-accent"][class~="text-bg"] { color: var(--on-accent) !important; }
+[class~="hover:bg-accent"][class~="hover:text-white"]:hover { color: var(--on-accent) !important; }
+[class~="bg-[var(--ink)]"][class~="text-white"] { color: var(--background) !important; }
 
 body {
   color: var(--foreground);
@@ -179,10 +197,12 @@ body {
   --surface2: #ffffff;
   --ink: #16130f;
   --hairline: #eee9dd;
-  --text-secondary: #8a8378;
+  --text-secondary: #665f55;
   --marquee: #fff6d6;
   --modal-footer: #e6e2d6;
   --accent: #ffc400;
+  --accent-readable: #765600;
+  --on-accent: #16130f;
   --accent-hover: #000000;
 }
 
@@ -239,7 +259,7 @@ body {
   top: 0;
   left: 0;
   min-width: 1280px;
-  min-height: 720px;
+  min-height: 800px;
   overflow: auto;
   transform-origin: top left;
   background: var(--app-base-bg, var(--background));
@@ -263,6 +283,14 @@ body {
   height: calc(var(--app-viewport-height) - 3rem) !important;
 }
 
+.app-canvas [class~="h-[calc(100vh-1.5rem)]"] {
+  height: calc(var(--app-viewport-height) - 1.5rem) !important;
+}
+
+.app-canvas [class~="h-[calc(100vh-2.5rem)]"] {
+  height: calc(var(--app-viewport-height) - 2.5rem) !important;
+}
+
 .app-canvas [class~="h-[calc(100vh-160px)]"] {
   height: calc(var(--app-viewport-height) - 160px) !important;
 }
@@ -271,13 +299,174 @@ body {
   height: calc(var(--app-viewport-height) - 200px) !important;
 }
 
+.app-canvas [class~="min-h-[calc(100vh-200px)]"] {
+  min-height: calc(var(--app-viewport-height) - 200px) !important;
+}
+
 .app-canvas [class~="max-h-[calc(100vh-6rem)]"] {
   max-height: calc(var(--app-viewport-height) - 6rem) !important;
+}
+
+.app-canvas [class~="max-h-[calc(100vh-2rem)]"] {
+  max-height: calc(var(--app-viewport-height) - 2rem) !important;
+}
+
+.app-canvas [class~="max-h-[calc(100vh-2.5rem)]"] {
+  max-height: calc(var(--app-viewport-height) - 2.5rem) !important;
+}
+
+.app-canvas [class~="max-h-[calc(100vh-24px)]"] {
+  max-height: calc(var(--app-viewport-height) - 24px) !important;
+}
+
+/* Viewport-relative modal sizing must use the logical canvas dimensions too.
+   Native vh values are measured before the canvas transform and otherwise get
+   scaled twice on compact displays. */
+.app-canvas [class~="h-[92vh]"]:not([class~="sm:h-auto"]) {
+  height: var(--app-viewport-height-92) !important;
+}
+
+.app-canvas [class~="max-h-[85vh]"] {
+  max-height: var(--app-viewport-height-85) !important;
+}
+
+.app-canvas [class~="max-h-[90vh]"] {
+  max-height: var(--app-viewport-height-90) !important;
+}
+
+.app-canvas [class~="max-h-[92vh]"] {
+  max-height: var(--app-viewport-height-92) !important;
+}
+
+.app-canvas [class~="max-h-[97vh]"] {
+  max-height: var(--app-viewport-height-97) !important;
+}
+
+@media (max-width: 639px) {
+  .app-canvas [class~="h-[92vh]"] {
+    height: var(--app-viewport-height-92) !important;
+  }
 }
 
 /* Overview cards use the compact tile rhythm throughout every sub-page. */
 .overview-page .gap-6 {
   gap: 0.75rem;
+}
+
+/* The Club Profile overview tile becomes shallow before it becomes narrow on
+   laptop screens. Reflow its identity horizontally so the city/ground metadata
+   cannot collide with the leadership and leading-player panels below. */
+.club-profile-summary-tile {
+  container-name: club-profile-summary;
+  container-type: size;
+}
+
+/* The league dashboard gives this tile five short grid rows on laptop-height
+   screens. Compact its internals from the tile height so every section remains
+   visible without introducing an internal scrollbar. */
+.league-personnel-tile {
+  container-name: league-personnel;
+  container-type: size;
+}
+
+@container league-personnel (max-height: 15rem) {
+  .league-personnel-header {
+    padding-bottom: 0.35rem;
+  }
+
+  .league-personnel-icon {
+    width: 1.75rem;
+    height: 1.75rem;
+  }
+
+  .league-personnel-kicker,
+  .league-personnel-label,
+  .league-personnel-link {
+    font-size: 0.42rem;
+  }
+
+  .league-personnel-title {
+    margin-top: 0.15rem;
+    font-size: 1rem;
+  }
+
+  .league-personnel-stats {
+    margin-top: 0.4rem;
+    gap: 0.35rem;
+  }
+
+  .league-personnel-stat {
+    padding: 0.4rem 0.5rem;
+  }
+
+  .league-personnel-value {
+    font-size: 1.35rem;
+  }
+
+  .league-personnel-label {
+    margin-top: 0.15rem;
+  }
+
+  .league-personnel-events {
+    margin-top: 0.35rem;
+  }
+
+  .league-personnel-event {
+    padding-top: 0.2rem;
+    font-size: 0.56rem;
+  }
+
+  .league-personnel-event-meta {
+    font-size: 0.4rem;
+  }
+
+  .league-personnel-link {
+    margin-top: 0.25rem;
+  }
+}
+
+@container club-profile-summary (max-height: 31rem) {
+  .club-profile-summary-tile {
+    padding: 1rem;
+  }
+
+  .club-profile-summary-header {
+    padding-bottom: 0.35rem;
+  }
+
+  .club-profile-summary-hero {
+    flex-direction: row;
+    justify-content: center;
+    gap: 1rem;
+    padding-block: 0.5rem;
+    text-align: left;
+  }
+
+  .club-profile-summary-badge {
+    width: 4.75rem;
+    height: 4.75rem;
+    border-width: 4px;
+    font-size: 1.5rem;
+  }
+
+  .club-profile-summary-identity {
+    margin-top: 0;
+  }
+
+  .club-profile-summary-name {
+    font-size: clamp(1.5rem, 8cqh, 2.25rem);
+    line-height: 0.95;
+  }
+
+  .club-profile-summary-meta {
+    justify-content: flex-start;
+    margin-top: 0.5rem;
+  }
+
+  .club-profile-summary-footer {
+    gap: 0.5rem;
+    padding-top: 0.5rem;
+  }
 }
 
 /* The squad summary is narrower than the surrounding overview canvas. Size

@@ -33,6 +33,7 @@ import type { Player } from "@/lib/types";
 import CommercialDecisionHub from "./CommercialDecisionHub";
 
 export interface CommercialMainPageProps {
+  saveId: string;
   teamId: string;
   season: number;
   stadiumCapacity?: number;
@@ -48,13 +49,14 @@ const EMPTY_SQUAD: Player[] = [];
 
 function CommercialViewport({ pageKey, children }: { pageKey: string; children: ReactNode }) {
   return (
-    <div key={pageKey} className="h-[calc(100vh-200px)] min-h-[500px] w-full overflow-hidden bg-[radial-gradient(circle_at_top_right,color-mix(in_srgb,var(--accent)_7%,transparent),transparent_36%)]">
+    <div key={pageKey} className="h-[calc(100vh-200px)] min-h-[500px] w-full overflow-auto bg-[radial-gradient(circle_at_top_right,color-mix(in_srgb,var(--accent)_7%,transparent),transparent_36%)]">
       <div className="h-full min-h-0 w-full">{children}</div>
     </div>
   );
 }
 
 export default function CommercialMainPage({
+  saveId,
   teamId,
   season,
   stadiumCapacity = 45000,
@@ -67,18 +69,18 @@ export default function CommercialMainPage({
 }: CommercialMainPageProps) {
   const effectiveSquad = squadPlayers ?? EMPTY_SQUAD;
   const [commercialState, setCommercialState] = useState<CommercialState>(() =>
-    loadCommercialState(teamId, season, stadiumCapacity, effectiveSquad)
+    loadCommercialState(saveId, teamId, season, stadiumCapacity, effectiveSquad)
   );
 
   // Sync state whenever teamId or season changes
   useEffect(() => {
-    setCommercialState(loadCommercialState(teamId, season, stadiumCapacity, effectiveSquad));
-  }, [teamId, season, stadiumCapacity, squadPlayers]);
+    setCommercialState(loadCommercialState(saveId, teamId, season, stadiumCapacity, effectiveSquad));
+  }, [saveId, teamId, season, stadiumCapacity, squadPlayers]);
 
   const handleUpdateState = (nextState: CommercialState) => {
     const synchronized = syncCommercialFinance(nextState);
     setCommercialState(synchronized);
-    saveCommercialState(synchronized);
+    saveCommercialState(saveId, synchronized);
   };
 
   const currentSubTab = activeSubTab || "overview";

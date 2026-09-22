@@ -3,7 +3,10 @@
 import { useLayoutEffect, useState } from "react";
 
 const DESIGN_WIDTH = 1280;
-const DESIGN_HEIGHT = 720;
+// Most game screens contain a 48px global nav, a secondary toolbar and dense
+// dashboard panels. Treat 800px as the minimum authored height so shorter
+// displays scale the complete composition instead of clipping its lower rows.
+const DESIGN_HEIGHT = 800;
 
 type ViewportMetrics = {
   scale: number;
@@ -57,6 +60,10 @@ export default function ViewportScaler({ children }: { children: React.ReactNode
         document.documentElement.style.setProperty("--app-inverse-scale", String(1 / next.scale));
         document.documentElement.style.setProperty("--app-viewport-width", `${next.width}px`);
         document.documentElement.style.setProperty("--app-viewport-height", `${next.height}px`);
+        document.documentElement.style.setProperty("--app-viewport-height-85", `${next.height * 0.85}px`);
+        document.documentElement.style.setProperty("--app-viewport-height-90", `${next.height * 0.9}px`);
+        document.documentElement.style.setProperty("--app-viewport-height-92", `${next.height * 0.92}px`);
+        document.documentElement.style.setProperty("--app-viewport-height-97", `${next.height * 0.97}px`);
         setMetrics(next);
       });
     };

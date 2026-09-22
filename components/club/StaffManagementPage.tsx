@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDown, ArrowUp, ArrowUpDown, Bot, BriefcaseBusiness, Lock, Pencil, RefreshCw, UserMinus, UserPlus, UsersRound, X } from "lucide-react";
 
 import { StaffEditorModal } from "@/components/club/StaffEditorModal";
@@ -10,7 +10,14 @@ import { calculateInitialStaffNegotiationPatience, calculateStaffMoveInterest, c
 import { getStaffClubAffinity, type StaffAffinityProfile } from "@/lib/data/staffAffinities";
 import { addDaysToDateKey } from "@/lib/logic/careerCalendar";
 import { loadStaffDirectory } from "@/lib/logic/staffDirectoryClient";
+import { supabase } from "@/lib/supabase/client";
 import { getStaffPreferenceColor, getStaffRatingColor } from "@/lib/theme/staffRatingColors";
+import { internationalTeamName } from "@/lib/logic/international";
+import type { CareerStaffContract } from "@/lib/logic/staffContracts";
+
+const nationalEmployer = (contract?: CareerStaffContract) => contract?.nationalTeamId
+  ? `${internationalTeamName(contract.nationalTeamId)} ${contract.nationalFormat === "test" ? "Test" : "T20"}`
+  : null;
 
 interface StaffMember extends Record<string, unknown> {
   id: string;
@@ -26,7 +33,6 @@ interface StaffMember extends Record<string, unknown> {
   role_ratings?: Record<string, number>;
   affinity_profile?: StaffAffinityProfile;
 }
-
 interface StartingAssignment {
   staff_id: string;
   team_id: string;
@@ -38,6 +44,17 @@ interface StaffResponse {
   members: StaffMember[];
   assignments: StartingAssignment[];
   error?: string;
+}
+
+interface PersonnelRelationship {
+  dynamic_id: number;
+  dynamic_type_name: string;
+  rating: number;
+  partner_name: string;
+  partner_type: "player" | "staff";
+  partner_role: string;
+  subject_reason: string;
+  story: string | null;
 }
 
 interface StaffManagementPageProps {
@@ -77,6 +94,20 @@ const ratingForRole = (member: StaffMember, role: string) => (
 const formatSalary = (value: unknown): string => typeof value === "number"
   ? new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(value)
   : String(value ?? "Not recorded");
+
+const formatCompactSalary = (value: unknown): string => {
+  if (typeof value !== "number") return String(value ?? "Not recorded");
+
+  const absoluteValue = Math.abs(value);
+  const unit = absoluteValue >= 10_000_000
+    ? { divisor: 10_000_000, suffix: "Cr" }
+    : { divisor: 100_000, suffix: "L" };
+  const conciseValue = new Intl.NumberFormat("en-IN", {
+    maximumFractionDigits: 2,
+  }).format(value / unit.divisor);
+
+  return `\u20B9${conciseValue}${unit.suffix}`;
+};
 
 const ageFromDateOfBirth = (dateOfBirth: string | null) => {
   if (!dateOfBirth) return null;
@@ -171,6 +202,32 @@ function StaffProfileModal({
   const [negotiationHasStarted, setNegotiationHasStarted] = useState(false);
   const [showNegotiationExitWarning, setShowNegotiationExitWarning] = useState(false);
   const [showTerminationConfirm, setShowTerminationConfirm] = useState(false);
+  const traitsRowRef = useRef<HTMLDivElement>(null);
+  const traitsContentRef = useRef<HTMLDivElement>(null);
+  const [traitsScale, setTraitsScale] = useState(1);
+  const [relationships, setRelationships] = useState<PersonnelRelationship[]>([]);
+  const [relationshipsStatus, setRelationshipsStatus] = useState<"loading" | "ready" | "error">("loading");
+  useEffect(() => {
+    let cancelled = false;
+    setRelationships([]);
+    setRelationshipsStatus("loading");
+    void (async () => {
+      const { data, error } = await supabase
+        .from("person_dynamics_view")
+        .select("dynamic_id,dynamic_type_name,rating,partner_name,partner_type,partner_role,subject_reason,story")
+        .eq("subject_type", "staff")
+        .eq("subject_id", member.id)
+        .order("rating", { ascending: false });
+      if (cancelled) return;
+      if (error) {
+        setRelationshipsStatus("error");
+        return;
+      }
+      setRelationships((data ?? []) as PersonnelRelationship[]);
+      setRelationshipsStatus("ready");
+    })();
+    return () => { cancelled = true; };
+  }, [member.id]);
   const persistedNegotiation = careerStaff.activeNegotiations[member.id];
   useEffect(() => {
     if (!contractAction || persistedNegotiation?.status !== "active" || persistedNegotiation.action !== contractAction) return;
@@ -198,6 +255,18 @@ function StaffProfileModal({
         "Youth Developer",
       ].slice(0, 3);
 
+  useEffect(() => {
+    const row = traitsRowRef.current;
+    const content = traitsContentRef.current;
+    if (!row || !content) return;
+    const fitTraits = () => setTraitsScale(Math.min(1, row.clientWidth / Math.max(1, content.offsetWidth)));
+    const observer = new ResizeObserver(fitTraits);
+    observer.observe(row);
+    observer.observe(content);
+    fitTraits();
+    return () => observer.disconnect();
+  }, [traits]);
+
   const rawTraitPrefs = (member.trait_preferences && typeof member.trait_preferences === "object" ? member.trait_preferences : null)
     ?? (careerContract as any)?.traitPreferences
     ?? {
@@ -209,14 +278,22 @@ function StaffProfileModal({
       data_analytics_reliance: 55,
     };
 
-  const traitPreferences = Object.entries(rawTraitPrefs as Record<string, number>)
-    .filter(([, val]) => typeof val === "number")
-    .sort((left, right) => right[1] - left[1])
-    .slice(0, 8);
+  const loyaltyPreference = typeof member.loyalty === "number" ? member.loyalty : careerContract?.loyalty;
+  const traitPreferences = [
+    ...Object.entries(rawTraitPrefs as Record<string, number>)
+      .filter(([key, val]) => key !== "loyalty" && typeof val === "number")
+      .sort((left, right) => right[1] - left[1])
+      .slice(0, 8),
+    ...(typeof loyaltyPreference === "number" ? [["loyalty", loyaltyPreference] as [string, number]] : []),
+  ].sort((left, right) => right[1] - left[1]);
   const roleRatings = Object.entries(member.role_ratings ?? {})
     .sort((left, right) => right[1] - left[1]);
   const topRoleRatings = roleRatings.slice(0, 3);
   const otherRoleRatings = roleRatings.slice(3);
+  const profileAge = ageFromDateOfBirth(member.date_of_birth);
+  const profileCountry = member.country
+    ? (member.affinity_profile?.homeRegion ? `${member.country} (${member.affinity_profile.homeRegion})` : String(member.country))
+    : null;
   const normalizedOfferRoles = [
     offerPrimaryRole,
     ...offerRoles.filter((role) => role !== offerPrimaryRole),
@@ -225,7 +302,7 @@ function StaffProfileModal({
   const offeredSalaryRupees = Math.max(0, Math.round(Number(offerSalary || 0) * 10_000_000));
   const selectedRoleRating = Number(member.role_ratings?.[offerPrimaryRole] ?? member.current_ability ?? 50);
   const liveSalaryExpectation = careerContract?.annualSalary ?? Number(member.salary_expectation ?? 0);
-  const currentAffinity = careerContract?.teamId ? getStaffClubAffinity(careerContract.affinityProfile, careerContract.teamId) : 0;
+  const currentAffinity = careerContract?.teamId ? getStaffClubAffinity(careerContract.affinityProfile, careerContract.teamId) : careerContract?.nationalTeamId ? 45 : 0;
   const destinationAffinity = careerContract ? getStaffClubAffinity(careerContract.affinityProfile, userTeamId) : 0;
   const remainingContractSeasons = careerContract?.endSeason == null ? 1 : Math.max(0, careerContract.endSeason - currentSeason + 1);
   const salaryDemand = calculateStaffSalaryDemand({
@@ -238,6 +315,7 @@ function StaffProfileModal({
     startSeason: currentSeason,
     endSeason: offerEndSeason === "rolling" ? null : Number(offerEndSeason),
     poaching: contractAction === "poach",
+    nationalTeamAppointment: Boolean(careerContract?.nationalTeamId),
     currentPrimaryRole: careerContract?.primaryRole ?? member.primary_role,
     offeredPrimaryRole: offerPrimaryRole,
     incumbentRenewal: contractAction === "renew",
@@ -257,6 +335,7 @@ function StaffProfileModal({
     startSeason: currentSeason,
     endSeason: offerEndSeason === "rolling" ? null : Number(offerEndSeason),
     poaching: action === "poach",
+    nationalTeamAppointment: Boolean(careerContract?.nationalTeamId),
     incumbentRenewal: action === "renew",
     loyalty: careerContract?.loyalty ?? Number(member.loyalty ?? 50),
     ambition: careerContract?.ambition ?? Number(member.ambition ?? 50),
@@ -286,6 +365,7 @@ function StaffProfileModal({
       startSeason: currentSeason,
       endSeason: offerEndSeason === "rolling" ? null : Number(offerEndSeason),
       poaching: contractAction === "poach",
+      nationalTeamAppointment: Boolean(careerContract?.nationalTeamId),
       currentPrimaryRole: careerContract?.primaryRole ?? member.primary_role,
       offeredPrimaryRole: offerPrimaryRole,
       incumbentRenewal: contractAction === "renew",
@@ -334,6 +414,7 @@ function StaffProfileModal({
         currentRoleRating: careerContract.roleRatings[careerContract.primaryRole] ?? careerContract.currentAbility,
         offeredRoleRating: selectedRoleRating, currentPrimaryRole: careerContract.primaryRole,
         offeredPrimaryRole: offerPrimaryRole, remainingContractSeasons,
+        nationalTeamAppointment: Boolean(careerContract.nationalTeamId),
       });
       if (!moveInterest.interested) {
         setNegotiationEnded(true);
@@ -401,21 +482,10 @@ function StaffProfileModal({
     setContractAction(null);
     setStaffNegotiationSession(member.id, null);
   };
-  const profileFacts: Array<[string, unknown]> = [
-    ["Primary role", roleLabel(member.primary_role)],
-    ["Secondary roles", member.secondary_roles?.length > 0 ? member.secondary_roles.map(roleLabel).join(", ") : "None recorded"],
-    ["Age", ageFromDateOfBirth(member.date_of_birth)],
-    [
-      "Country",
-      member.country
-        ? (member.affinity_profile?.homeRegion ? `${member.country} (${member.affinity_profile.homeRegion})` : member.country)
-        : null,
-    ],
-    ["Experience", typeof member.experience_years === "number" ? `${member.experience_years} years` : null],
-    ["Personality", member.personality],
-    ["Loyalty", typeof member.loyalty === "number" ? `${member.loyalty}/100` : member.loyalty],
-    ["Philosophy", member.coaching_philosophy],
-    ["Team strategy", member.preferred_team_strategy],
+  const traitProfileFacts: Array<[string, unknown, string]> = [
+    ["Personality", member.personality, "personality"],
+    ["Strategy", member.preferred_team_strategy, "preferred_team_strategy"],
+    ["Philosophy", member.coaching_philosophy, "coaching_philosophy"],
   ];
   const clubAffinities = (member.affinity_profile?.clubs ?? []).filter((c) => Boolean(c.teamId) && c.teamId !== "UNSOLD");
 
@@ -431,7 +501,7 @@ function StaffProfileModal({
         className="flex h-[calc(100vh-1.5rem)] max-h-[97vh] w-full max-w-[96vw] 2xl:max-w-7xl flex-col overflow-hidden rounded-lg border-2 border-border bg-surface shadow-2xl sm:h-[calc(100vh-2.5rem)]"
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <header className="flex shrink-0 flex-wrap items-center justify-between gap-4 border-b-2 border-border px-5 py-3 sm:px-6">
+        <header className="flex shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-3 border-b-2 border-border px-5 py-4 sm:px-6">
           <div className="flex min-w-0 items-center gap-4">
             <div
               className="flex size-14 shrink-0 items-center justify-center rounded-full font-anton text-xl"
@@ -440,7 +510,7 @@ function StaffProfileModal({
               {initials(member.full_name)}
             </div>
             <div className="min-w-0">
-              <p className="flex items-center gap-2 font-space-mono text-[8px] font-bold uppercase tracking-[0.2em] text-text-secondary">
+              <p className="flex items-center gap-2 font-space-mono text-[9px] font-bold uppercase tracking-wider text-text-secondary">
                 Staff profile
                 {isEdited && (
                   <span
@@ -451,97 +521,126 @@ function StaffProfileModal({
                   </span>
                 )}
               </p>
-              <h2 className="truncate font-anton text-2xl uppercase leading-tight text-text-primary sm:text-3xl">{member.full_name}</h2>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <h2 className="min-w-0 font-anton text-2xl uppercase leading-tight text-text-primary sm:text-3xl">{member.full_name}</h2>
+                {(profileCountry || profileAge !== null) && (
+                  <div className="flex flex-col font-space-mono text-[9px] font-bold uppercase leading-tight tracking-wider text-text-secondary">
+                    {profileCountry && <span>{profileCountry}</span>}
+                    {profileAge !== null && <span>{profileAge} years old</span>}
+                  </div>
+                )}
+              </div>
               <p className="mt-1 font-space-mono text-[9px] font-bold uppercase tracking-wider text-text-secondary">
-                {roleLabel(assignment.role)} · {team?.name ?? assignment.team_id}
+                {roleLabel(assignment.role)}{" \u00B7 "}{team?.name ?? assignment.team_id}
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex w-full min-w-0 items-start gap-2 xl:w-auto">
+            <div className="grid min-w-0 flex-1 grid-cols-1 gap-2 md:flex-none md:grid-cols-[12rem_20rem]">
+              <div className="flex h-[3.75rem] min-w-0 items-center justify-between gap-2 rounded-lg border border-border bg-bg px-3 py-2">
+                <div className="min-w-0">
+                  <p className="-translate-y-1.5 font-space-mono text-[9px] font-bold uppercase leading-tight tracking-wider text-text-secondary">Ability</p>
+                  <p className="font-anton text-xl leading-none text-text-primary">{ratingForRole(member, member.primary_role) ?? "–"}</p>
+                </div>
+                <div className="h-6 w-px shrink-0 bg-border" />
+                <div className="min-w-0">
+                  <p className="-translate-y-1.5 font-space-mono text-[9px] font-bold uppercase leading-tight tracking-wider text-text-secondary">Potential</p>
+                  <p className="text-right font-anton text-xl leading-none text-text-primary">{formatFieldValue(member.potential_ability)}</p>
+                </div>
+              </div>
+              <div className="flex h-[3.75rem] min-w-0 items-center justify-between gap-2 rounded-lg border border-border bg-bg px-3 py-2">
+                <div className="shrink-0">
+                  <p className="-translate-y-1.5 whitespace-nowrap font-space-mono text-[9px] font-bold uppercase leading-tight tracking-wider text-text-secondary">Contract Start</p>
+                  <p className="font-anton text-xl leading-none text-text-primary">{member.contract_start_year ? formatFieldValue(member.contract_start_year) : "–"}</p>
+                </div>
+                <div className="h-6 w-px shrink-0 bg-border" />
+                <div className="shrink-0">
+                  <p className="-translate-y-1.5 whitespace-nowrap font-space-mono text-[9px] font-bold uppercase leading-tight tracking-wider text-text-secondary">Contract End</p>
+                  <p className="font-anton text-xl leading-none text-text-primary">
+                    {member.contract_end_year ? formatFieldValue(member.contract_end_year) : (member.contract_status === "uncontracted" ? "Free Agent" : "Rolling")}
+                  </p>
+                </div>
+                <div className="h-6 w-px shrink-0 bg-border" />
+                <div className="min-w-0">
+                  <p className="-translate-y-1.5 whitespace-nowrap font-space-mono text-[9px] font-bold uppercase leading-tight tracking-wider text-text-secondary">Salary</p>
+                  <p className="font-anton text-xl leading-none text-text-primary">
+                    {formatCompactSalary(member.annual_salary ?? member.salary_expectation)}
+                  </p>
+                </div>
+              </div>
+            </div>
             {careerContract && (
               <button
                 type="button"
                 onClick={() => setIsEditing(true)}
-                className="flex h-9 items-center gap-1.5 rounded border border-border bg-surface px-3 font-space-mono text-[9px] font-bold uppercase tracking-wider text-text-primary transition-all hover:border-accent hover:bg-accent/5 hover:text-accent"
+                className="ml-1 flex h-9 shrink-0 items-center gap-1.5 rounded border border-border bg-surface px-3 font-space-mono text-[9px] font-bold uppercase tracking-wider text-text-primary transition-all hover:border-accent hover:bg-accent/5 hover:text-accent"
                 title="Edit this staff member's profile, attributes and contract"
               >
                 <Pencil size={13} />
                 <span>Edit Staff</span>
               </button>
             )}
-            <div className="hidden sm:flex items-center gap-3.5 rounded-lg border border-border bg-bg px-4 py-2">
-              <div>
-                <p className="font-space-mono text-[7px] font-bold uppercase tracking-wider text-text-secondary">Contract</p>
-                <p className="font-anton text-xs uppercase text-text-primary">
-                  {member.contract_end_year ? `Until ${member.contract_end_year}` : (member.contract_status === "uncontracted" ? "Free Agent" : "Rolling")}
-                </p>
-              </div>
-              <div className="h-6 w-px bg-border" />
-              <div>
-                <p className="font-space-mono text-[7px] font-bold uppercase tracking-wider text-text-secondary">Salary</p>
-                <p className="font-anton text-xs uppercase text-accent">
-                  {formatSalary(member.annual_salary ?? member.salary_expectation)}
-                </p>
-              </div>
-              {Boolean(member.contract_start_year) && (
-                <>
-                  <div className="h-6 w-px bg-border" />
-                  <div>
-                    <p className="font-space-mono text-[7px] font-bold uppercase tracking-wider text-text-secondary">Signed</p>
-                    <p className="font-anton text-xs uppercase text-text-primary">{formatFieldValue(member.contract_start_year)}</p>
-                  </div>
-                </>
-              )}
-            </div>
-
             <button type="button" onClick={onClose} className="ml-1 flex size-9 shrink-0 items-center justify-center rounded border border-border text-text-primary hover:bg-black/5 dark:hover:bg-white/10" aria-label="Close staff profile">
               <X size={17} />
             </button>
           </div>
+          <div ref={traitsRowRef} className="w-full min-w-0 overflow-hidden border-t border-border/60 pt-3">
+            <div ref={traitsContentRef} className="flex w-max flex-nowrap items-center gap-2" style={{ transform: `scale(${traitsScale})`, transformOrigin: "left center" }}>
+              {traits.map((trait) => (
+                <span key={trait} className="shrink-0 whitespace-nowrap rounded border border-accent/40 bg-accent/10 px-2.5 py-1 font-space-mono text-[8px] font-bold uppercase tracking-wider text-text-primary">
+                  {fieldLabel(trait)}
+                </span>
+              ))}
+            </div>
+          </div>
         </header>
         <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden bg-bg/40 p-3 sm:p-4 lg:grid-cols-[21rem_minmax(0,1fr)] lg:gap-4">
-          {/* LEFT SIDEBAR: Bio, Ratings Overview, Club Connections, Contract Actions */}
-          <div className="flex min-h-0 flex-col gap-3 overflow-hidden pr-1">
-            <div className="rounded-lg border border-border bg-surface p-4">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="font-space-mono text-[7.5px] font-bold uppercase tracking-wider text-text-secondary">Primary role</p>
-                  <p className="mt-0.5 font-anton text-3xl leading-none text-text-primary">{ratingForRole(member, member.primary_role) ?? "–"}</p>
-                </div>
-                <div className="text-right">
-                  <p className="font-space-mono text-[7.5px] font-bold uppercase tracking-wider text-text-secondary">Potential</p>
-                  <p className="mt-0.5 font-anton text-3xl leading-none text-text-primary">{formatFieldValue(member.potential_ability)}</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-lg border border-border bg-surface p-4">
-              <h3 className="mb-3 font-anton text-xs uppercase text-text-primary">Profile overview</h3>
-              <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 text-xs">
-                {profileFacts.map(([label, value]) => (
-                  <div key={String(label)} className="border-t border-border/60 pt-1.5">
-                    <p className="font-space-mono text-[7px] font-bold uppercase tracking-wider text-text-secondary">{label}</p>
-                    <p className="mt-0.5 text-xs font-semibold text-text-primary break-words">{formatFieldValue(value, String(label).toLowerCase().replace(/ /g, "_"))}</p>
+          {/* LEFT SIDEBAR: Club Connections, Contract Actions */}
+          <div className="flex min-h-0 flex-col gap-3 overflow-y-auto pr-1">
+            <div className="rounded-lg border border-border bg-surface p-3">
+              <div className="grid grid-cols-3 gap-1">
+                {traitProfileFacts.map(([label, value, field]) => (
+                  <div key={field} className="min-w-0 rounded border border-border bg-bg p-1.5">
+                    <p className="font-space-mono text-[7px] font-bold uppercase leading-tight text-text-secondary">{label}</p>
+                    <p className="mt-0.5 break-words text-[9px] font-semibold leading-tight text-text-primary">{formatFieldValue(value, field)}</p>
                   </div>
                 ))}
               </div>
             </div>
-
             <div className="rounded-lg border border-border bg-surface p-4">
-              <div className="mb-2 flex items-center justify-between gap-2">
-                <h3 className="font-anton text-xs uppercase text-text-primary">Club connections</h3>
-                <span className="font-space-mono text-[7px] uppercase text-text-secondary">{member.affinity_profile?.homeCountry ?? String(member.country ?? "Unknown")}</span>
-              </div>
+              <h3 className="mb-2 font-anton text-xs uppercase text-text-primary">Club connections</h3>
               {clubAffinities.length > 0 ? (
                 <div className="flex flex-wrap gap-1.5">
                   {clubAffinities.map((affinity) => (
                     <span key={affinity.teamId} className="rounded border border-border bg-bg px-2.5 py-1 font-space-mono text-[8px] font-bold uppercase text-text-primary">
-                      {affinity.teamId} · {affinity.strength}<span className="ml-1 text-text-secondary">{affinity.reasons.map(fieldLabel).join("·")}</span>
+                      {affinity.teamId}{" \u00B7 "}{affinity.strength}<span className="ml-1 text-text-secondary">{affinity.reasons.map(fieldLabel).join("\u00B7")}</span>
                     </span>
                   ))}
                 </div>
               ) : <p className="text-xs text-text-secondary">No specific IPL club connection recorded.</p>}
+            </div>
+
+            <div className="rounded-lg border border-border bg-surface p-4">
+              <h3 className="mb-2 font-anton text-xs uppercase text-text-primary">Personnel relationships</h3>
+              {relationshipsStatus === "loading" && <p className="text-xs text-text-secondary">Loading relationships...</p>}
+              {relationshipsStatus === "error" && <p className="text-xs text-danger">Unable to load relationships.</p>}
+              {relationshipsStatus === "ready" && relationships.length === 0 && (
+                <p className="text-xs text-text-secondary">No personnel relationships recorded.</p>
+              )}
+              {relationshipsStatus === "ready" && relationships.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {relationships.map((relationship) => (
+                    <span
+                      key={relationship.dynamic_id}
+                      title={`${relationship.partner_type} · ${relationship.partner_role}\n${relationship.subject_reason}`}
+                      className="rounded border border-border bg-bg px-2.5 py-1 font-space-mono text-[8px] font-bold uppercase text-text-primary"
+                    >
+                      {relationship.partner_name} <span className="text-text-secondary">· {relationship.dynamic_type_name}</span> <span className="text-accent">{relationship.rating}</span>
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
 
             {allowContractActions && (isFreeAgent || isUserStaff || isOtherClubStaff) && (
@@ -608,28 +707,33 @@ function StaffProfileModal({
             )}
           </div>
 
-          {/* RIGHT MAIN COLUMN: Top Roles, 3-Column Attributes, Traits & Preferences */}
-          <div className="flex min-h-0 flex-col gap-3 overflow-hidden pl-1">
+          {/* RIGHT MAIN COLUMN: Top Roles, 3-Column Attributes & Preferences */}
+          <div className="flex min-h-0 flex-col gap-3 overflow-y-auto pl-1 pr-1">
             {topRoleRatings.length > 0 && (
               <section className="rounded-lg border border-border bg-surface p-4">
                 <div className="mb-2.5 flex items-center justify-between gap-2">
                   <h3 className="font-anton text-xs uppercase text-text-primary">Top coaching positions</h3>
                   <span className="font-space-mono text-[7px] uppercase text-text-secondary">Suitability rating</span>
                 </div>
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
                   {topRoleRatings.map(([role, rating], index) => {
                     const isPrimary = role === member.primary_role;
+                    const isSecondary = !isPrimary && member.secondary_roles?.includes(role);
                     return (
                       <div
                         key={role}
                         className={`relative overflow-hidden rounded-md border p-3 ${isPrimary ? "border-accent bg-accent/10" : "border-border bg-bg"}`}
                       >
                         <div className="flex items-start justify-between gap-1">
-                          <div>
+                          <div className="min-w-0">
                             <p className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">#{index + 1} fit</p>
-                            <p className="font-anton text-sm uppercase leading-tight text-text-primary">{roleLabel(role)}</p>
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <p className="font-anton text-sm uppercase leading-tight text-text-primary">{roleLabel(role)}</p>
+                              {isPrimary && <span className="rounded border border-accent/50 bg-accent/10 px-1.5 py-0.5 font-space-mono text-[7px] font-bold text-accent">Primary Role</span>}
+                              {isSecondary && <span className="rounded border border-border bg-surface px-1.5 py-0.5 font-space-mono text-[7px] font-bold text-text-secondary">Secondary Role</span>}
+                            </div>
                           </div>
-                          <span className="font-anton text-2xl tabular-nums leading-none text-text-primary">{rating}</span>
+                          <span className="shrink-0 font-anton text-2xl tabular-nums leading-none text-text-primary">{rating}</span>
                         </div>
                         <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-border">
                           <div className="h-full rounded-full bg-accent" style={{ width: `${rating}%` }} />
@@ -642,7 +746,10 @@ function StaffProfileModal({
                   <div className="mt-2.5 flex flex-wrap gap-2">
                     {otherRoleRatings.map(([role, rating]) => (
                       <span key={role} className="rounded border border-border/70 bg-bg px-2.5 py-1 font-space-mono text-[8px] font-bold uppercase text-text-secondary">
-                        {roleLabel(role)} <strong className="ml-1 text-text-primary">{rating}</strong>
+                        {roleLabel(role)}
+                        {role === member.primary_role && <span className="ml-1 rounded border border-accent/50 bg-accent/20 px-1 py-0.5 text-[7px] font-bold leading-none text-text-primary" title="Primary role" aria-label="Primary role">{"1\u00B0 Role"}</span>}
+                        {role !== member.primary_role && member.secondary_roles?.includes(role) && <span className="ml-1 rounded border border-gold/50 bg-gold/20 px-1 py-0.5 text-[7px] font-bold leading-none text-text-primary" title="Secondary role" aria-label="Secondary role">{"2\u00B0 Role"}</span>}
+                        <strong className="ml-1 text-text-primary">{rating}</strong>
                       </span>
                     ))}
                   </div>
@@ -718,9 +825,6 @@ function StaffProfileModal({
 
               return (
                 <section className="rounded-lg border border-border bg-surface p-4">
-                  <h3 className="mb-3 border-b border-border pb-2 font-anton text-xs uppercase text-text-primary">
-                    Coaching Attributes · 1–20
-                  </h3>
                   <div className="grid grid-cols-3 gap-5">
                     <div className="flex flex-col gap-2.5">
                       <h4 className="border-b border-border/60 pb-1 font-space-mono text-[8.5px] font-bold uppercase tracking-wider text-accent">
@@ -748,41 +852,24 @@ function StaffProfileModal({
               );
             })()}
 
-            {(traits.length > 0 || traitPreferences.length > 0) && (
-              <section className="grid grid-cols-1 gap-3 sm:grid-cols-[0.7fr_1.3fr]">
-                {traits.length > 0 && (
-                  <div className="rounded-lg border border-border bg-surface p-4">
-                    <h3 className="mb-2.5 font-anton text-xs uppercase text-text-primary">Traits</h3>
-                    <div className="flex flex-wrap gap-2">
-                      {traits.map((trait) => (
-                        <span key={trait} className="rounded border border-accent/40 bg-accent/10 px-2.5 py-1 font-space-mono text-[8px] font-bold uppercase tracking-wider text-text-primary">
-                          {fieldLabel(trait)}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {traitPreferences.length > 0 && (
-                  <div className="rounded-lg border border-border bg-surface p-3">
-                    <h3 className="mb-2 font-anton text-xs uppercase text-text-primary">Behavioral preferences</h3>
-                    <div className="grid grid-cols-1 gap-x-4 gap-y-1.5 xl:grid-cols-2">
-                      {traitPreferences.map(([preference, value]) => {
-                        const boundedValue = Math.max(0, Math.min(100, value));
-                        const preferenceColor = getStaffPreferenceColor(boundedValue);
-                        return (
-                          <div key={preference} className="grid min-w-0 grid-cols-[minmax(0,1fr)_1.75rem] items-center gap-x-2 gap-y-0.5">
-                            <span className="col-span-2 whitespace-normal font-space-mono text-[7px] font-bold uppercase leading-tight text-text-secondary" title={fieldLabel(preference)}>{fieldLabel(preference)}</span>
-                            <div className="h-1.5 overflow-hidden rounded-sm border border-border bg-bg shadow-inner">
-                              <div className="h-full" style={{ width: `${boundedValue}%`, backgroundColor: preferenceColor }} />
-                            </div>
-                            <span className="text-right font-space-mono text-[10px] font-bold tabular-nums" style={{ color: preferenceColor }}>{boundedValue}</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
+            {traitPreferences.length > 0 && (
+              <section className="rounded-lg border border-border bg-surface p-3">
+                <h3 className="mb-2 font-anton text-xs uppercase text-text-primary">Behavioural preferences</h3>
+                <div className="grid grid-cols-1 gap-x-4 gap-y-2 sm:grid-cols-2 lg:grid-cols-3">
+                  {traitPreferences.map(([preference, value]) => {
+                    const boundedValue = Math.max(0, Math.min(100, value));
+                    const preferenceColor = getStaffPreferenceColor(boundedValue);
+                    return (
+                      <div key={preference} className="grid min-w-0 grid-cols-[minmax(0,1fr)_1.75rem] items-center gap-x-2 gap-y-0.5">
+                        <span className="col-span-2 whitespace-normal font-space-mono text-[7px] font-bold uppercase leading-tight text-text-secondary" title={fieldLabel(preference)}>{fieldLabel(preference)}</span>
+                        <div className="h-1.5 overflow-hidden rounded-sm border border-border bg-bg shadow-inner">
+                          <div className="h-full" style={{ width: `${boundedValue}%`, backgroundColor: preferenceColor }} />
+                        </div>
+                        <span className="text-right font-space-mono text-[10px] font-bold tabular-nums" style={{ color: preferenceColor }}>{boundedValue}</span>
+                      </div>
+                    );
+                  })}
+                </div>
               </section>
             )}
           </div>
@@ -855,7 +942,7 @@ function StaffProfileModal({
               </div>
 
               <div className="mx-5 grid grid-cols-4 gap-3">
-                <div className="rounded border border-border bg-bg p-3"><p className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Offer type</p><p className="mt-1 font-anton text-sm uppercase text-text-primary">{contractAction === "poach" ? "Club approach" : contractAction === "renew" ? "Renewal" : "Free-agent offer"}</p></div>
+                <div className="rounded border border-border bg-bg p-3"><p className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Offer type</p><p className="mt-1 font-anton text-sm uppercase text-text-primary">{contractAction === "poach" ? (careerContract?.nationalTeamId ? "National team approach" : "Club approach") : contractAction === "renew" ? "Renewal" : "Free-agent offer"}</p></div>
                 <div className="rounded border border-border bg-bg p-3"><p className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Proposed roles</p><p className="mt-1 font-anton text-sm uppercase text-text-primary">{normalizedOfferRoles.map(roleLabel).join(" + ")}</p></div>
                 <div className={`rounded border p-3 ${staffCounterOffer ? "border-gold/50 bg-gold/10" : "border-accent/40 bg-accent/5"}`}><p className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">{staffCounterOffer ? "Proposed package" : "Market position"}</p><p className="mt-1 font-anton text-sm uppercase text-text-primary">{staffCounterOffer ? `${formatSalary(staffCounterOffer)} · ${roleLabel(persistedNegotiation?.latestCounter?.primaryRole ?? offerPrimaryRole)}` : salaryDemand >= maximumNegotiationSalary * 0.85 ? "Premium terms likely" : "Competitive terms likely"}</p></div>
                 <div className="rounded border border-border bg-bg p-3"><p className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Remaining budget</p><p className="mt-1 font-anton text-sm uppercase text-text-primary">{formatSalary(maximumNegotiationSalary)}</p></div>
@@ -1067,14 +1154,15 @@ export default function StaffManagementPage({ teams, mode = "club", initialStaff
     return (displayData?.members ?? [])
       // The assignment is authoritative. A stale availability flag must not
       // make an otherwise unattached staff profile disappear from the directory.
-      .filter((member) => member.current_real_team_id === null && !assignedIds.has(member.id))
+      .filter((member) => careerStaff.contracts[member.id]?.status === "free_agent"
+        && member.current_real_team_id === null && !assignedIds.has(member.id))
       .sort((left, right) => {
         const leftRole = ROLE_ORDER.indexOf(left.primary_role);
         const rightRole = ROLE_ORDER.indexOf(right.primary_role);
         const roleDifference = (leftRole === -1 ? 999 : leftRole) - (rightRole === -1 ? 999 : rightRole);
         return roleDifference || left.full_name.localeCompare(right.full_name);
       });
-  }, [displayData?.assignments, displayData?.members]);
+  }, [careerStaff.contracts, displayData?.assignments, displayData?.members]);
   const contractedRecruitmentTargets = useMemo(() => (displayData?.members ?? [])
     .filter((member) => {
       const contract = careerStaff.contracts[member.id];
@@ -1109,6 +1197,7 @@ export default function StaffManagementPage({ teams, mode = "club", initialStaff
         startSeason: currentSeason,
         endSeason: currentSeason + 2,
         poaching: contract?.status === "contracted",
+        nationalTeamAppointment: Boolean(contract?.nationalTeamId),
         currentPrimaryRole: contract?.primaryRole ?? member.primary_role,
         offeredPrimaryRole: offeredRole,
       })] as const;
@@ -1118,7 +1207,7 @@ export default function StaffManagementPage({ teams, mode = "club", initialStaff
     [...freeAgents, ...contractedRecruitmentTargets].map((member) => {
       const contract = careerStaff.contracts[member.id];
       const offeredRole = roleFilter === "all" ? member.primary_role : roleFilter;
-      const currentAffinity = contract?.teamId ? getStaffClubAffinity(contract.affinityProfile, contract.teamId) : 0;
+      const currentAffinity = contract?.teamId ? getStaffClubAffinity(contract.affinityProfile, contract.teamId) : contract?.nationalTeamId ? 45 : 0;
       const destinationAffinity = getStaffClubAffinity(contract?.affinityProfile ?? member.affinity_profile, userTeamId);
       const coolingDown = Boolean(careerStaff.negotiationCooldowns[member.id] && currentDate < careerStaff.negotiationCooldowns[member.id]);
       return [member.id, calculateStaffRecruitmentInterest({
@@ -1129,6 +1218,7 @@ export default function StaffManagementPage({ teams, mode = "club", initialStaff
         startSeason: currentSeason,
         endSeason: currentSeason + 2,
         poaching: contract?.status === "contracted",
+        nationalTeamAppointment: Boolean(contract?.nationalTeamId),
         loyalty: contract?.loyalty ?? Number(member.loyalty ?? 50),
         ambition: contract?.ambition ?? Number(member.ambition ?? 50),
         adaptability: contract?.adaptability ?? Number(member.adaptability ?? 50),
@@ -1188,8 +1278,8 @@ export default function StaffManagementPage({ teams, mode = "club", initialStaff
         case "club_link": comparison = (leftLink?.strength ?? -1) - (rightLink?.strength ?? -1)
           || (leftLink?.teamId ?? "").localeCompare(rightLink?.teamId ?? ""); break;
         case "budget": comparison = Number(leftDemand <= recruitmentAvailableBudget) - Number(rightDemand <= recruitmentAvailableBudget); break;
-        case "status": comparison = (marketScope === "free_agents" ? "Available" : teams.find((team) => team.id === leftContract?.teamId)?.shortName ?? "Contracted")
-          .localeCompare(marketScope === "free_agents" ? "Available" : teams.find((team) => team.id === rightContract?.teamId)?.shortName ?? "Contracted"); break;
+        case "status": comparison = (marketScope === "free_agents" ? "Available" : teams.find((team) => team.id === leftContract?.teamId)?.shortName ?? nationalEmployer(leftContract) ?? "Contracted")
+          .localeCompare(marketScope === "free_agents" ? "Available" : teams.find((team) => team.id === rightContract?.teamId)?.shortName ?? nationalEmployer(rightContract) ?? "Contracted"); break;
       }
       const directedComparison = staffMarketSort.direction === "asc" ? comparison : -comparison;
       return directedComparison || left.full_name.localeCompare(right.full_name);
@@ -1236,7 +1326,7 @@ export default function StaffManagementPage({ teams, mode = "club", initialStaff
   const selectedAssignment = displayData?.assignments.find((assignment) => (
     assignment.staff_id === selectedStaffId && assignment.role === selectedMember?.primary_role
   )) ?? displayData?.assignments.find((assignment) => assignment.staff_id === selectedStaffId)
-    ?? (selectedMember ? { staff_id: selectedMember.id, team_id: "Free agent", role: selectedMember.primary_role, start_season: 2026 } : undefined);
+    ?? (selectedMember ? { staff_id: selectedMember.id, team_id: nationalEmployer(careerStaff.contracts[selectedMember.id]) ?? "Free agent", role: selectedMember.primary_role, start_season: 2026 } : undefined);
   const selectedTeam = selectedAssignment ? teams.find((team) => team.id === selectedAssignment.team_id) : undefined;
   const expiringContractCount = Object.values(careerStaff.contracts).filter((contract) => (
     contract.status === "contracted" && contract.endSeason === currentSeason
@@ -1432,7 +1522,7 @@ export default function StaffManagementPage({ teams, mode = "club", initialStaff
                   <span className="min-w-0"><span className="block font-space-mono text-[7px] font-bold uppercase" style={{ color: interestColor }}>{interest.label}</span><span className="mt-1 block h-1.5 overflow-hidden rounded-sm border border-border bg-bg"><span className="block h-full" style={{ width: `${interest.score}%`, backgroundColor: interestColor }} /></span>{cooldownUntil && currentDate < cooldownUntil && <span className="mt-0.5 block whitespace-nowrap font-space-mono text-[6px] uppercase text-danger">Unavailable until {cooldownUntil}</span>}</span>
                   <span className="text-right font-space-mono text-[8px] font-bold text-text-primary">{formatSalary(demand)}</span>
                   <span className={`text-center font-space-mono text-[7px] font-bold uppercase ${withinBudget ? "text-success" : "text-danger"}`}>{withinBudget ? "Within" : "Over"}</span>
-                  <span className={`text-right font-space-mono text-[7px] font-bold uppercase ${marketScope === "free_agents" ? "text-success" : "text-gold"}`}>{marketScope === "free_agents" ? "Available" : teams.find((team) => team.id === contract?.teamId)?.shortName ?? "Contracted"}</span>
+                  <span className={`text-right font-space-mono text-[7px] font-bold uppercase ${marketScope === "free_agents" ? "text-success" : "text-gold"}`}>{marketScope === "free_agents" ? "Available" : teams.find((team) => team.id === contract?.teamId)?.shortName ?? nationalEmployer(contract) ?? "Contracted"}</span>
                 </button>
               );
             })}
@@ -1563,7 +1653,7 @@ export default function StaffManagementPage({ teams, mode = "club", initialStaff
             <div className="grid min-h-0 flex-1 grid-cols-3 content-start overflow-y-auto">
               {directory.map((member) => {
                 const contract = careerStaff.contracts[member.id]; const club = teams.find((team) => team.id === contract?.teamId); const role = contract?.primaryRole ?? member.primary_role;
-                return <button key={member.id} type="button" onClick={() => setSelectedStaffId(member.id)} className="group flex min-w-0 items-center gap-3 border-b border-r border-hairline px-4 py-2 text-left hover:bg-accent/5"><span className="flex size-8 shrink-0 items-center justify-center rounded font-anton text-[9px]" style={{ backgroundColor: marketScope === "contracted" ? club?.primaryColor ?? "var(--border)" : "var(--border)", color: marketScope === "contracted" ? club?.textColor ?? "#fff" : "var(--text-primary)" }}>{marketScope === "contracted" ? club?.shortName ?? "?" : initials(member.full_name)}</span><span className="min-w-0 flex-1"><span className="block truncate text-xs font-bold text-text-primary group-hover:underline">{member.full_name}</span><span className="mt-0.5 block truncate font-space-mono text-[7px] font-bold uppercase text-text-secondary">{roleLabel(role)}{club ? ` · ${club.shortName}` : ""}</span></span><span className="font-anton text-base text-text-primary">{ratingForRole(member, role) ?? "–"}</span></button>;
+                return <button key={member.id} type="button" onClick={() => setSelectedStaffId(member.id)} className="group flex min-w-0 items-center gap-3 border-b border-r border-hairline px-4 py-2 text-left hover:bg-accent/5"><span className="flex size-8 shrink-0 items-center justify-center rounded font-anton text-[9px]" style={{ backgroundColor: marketScope === "contracted" ? club?.primaryColor ?? "var(--border)" : "var(--border)", color: marketScope === "contracted" ? club?.textColor ?? "#fff" : "var(--text-primary)" }}>{marketScope === "contracted" ? club?.shortName ?? contract?.nationalTeamId ?? "?" : initials(member.full_name)}</span><span className="min-w-0 flex-1"><span className="block truncate text-xs font-bold text-text-primary group-hover:underline">{member.full_name}</span><span className="mt-0.5 block truncate font-space-mono text-[7px] font-bold uppercase text-text-secondary">{roleLabel(role)}{club ? ` · ${club.shortName}` : nationalEmployer(contract) ? ` · ${nationalEmployer(contract)}` : ""}</span></span><span className="font-anton text-base text-text-primary">{ratingForRole(member, role) ?? "–"}</span></button>;
               })}
             </div>
           </section>
@@ -1659,7 +1749,7 @@ export default function StaffManagementPage({ teams, mode = "club", initialStaff
                   const club = teams.find((team) => team.id === contract?.teamId);
                   return (
                     <button key={member.id} type="button" onClick={() => setSelectedStaffId(member.id)} className="group flex min-w-0 items-center gap-2 border-b border-r border-hairline px-3 py-1.5 text-left hover:bg-gold/5">
-                      <span className="flex size-6 shrink-0 items-center justify-center rounded font-anton text-[7px]" style={{ backgroundColor: club?.primaryColor ?? "var(--border)", color: club?.textColor ?? "#fff" }}>{club?.shortName ?? "?"}</span>
+                      <span className="flex size-6 shrink-0 items-center justify-center rounded font-anton text-[7px]" style={{ backgroundColor: club?.primaryColor ?? "var(--border)", color: club?.textColor ?? "#fff" }}>{club?.shortName ?? contract?.nationalTeamId ?? "?"}</span>
                       <span className="min-w-0 flex-1"><span className="block truncate text-[11px] font-bold text-text-primary group-hover:underline">{member.full_name}</span><span className="block truncate font-space-mono text-[6px] font-bold uppercase text-text-secondary">{roleLabel(contract?.primaryRole ?? member.primary_role)}</span></span>
                       <span className="font-anton text-sm text-text-primary">{ratingForRole(member, contract?.primaryRole ?? member.primary_role) ?? "–"}</span>
                     </button>
@@ -1939,7 +2029,7 @@ export default function StaffManagementPage({ teams, mode = "club", initialStaff
                 <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-gold/10 font-space-mono text-[9px] font-bold text-text-primary">{initials(member.full_name)}</div>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-bold text-text-primary group-hover:underline">{member.full_name}</p>
-                  <p className="font-space-mono text-[8px] font-bold uppercase tracking-wider text-text-secondary">{club?.shortName ?? contract?.teamId} · {roleLabel(contract?.primaryRole ?? member.primary_role)}</p>
+                  <p className="font-space-mono text-[8px] font-bold uppercase tracking-wider text-text-secondary">{club?.shortName ?? nationalEmployer(contract) ?? contract?.teamId} · {roleLabel(contract?.primaryRole ?? member.primary_role)}</p>
                 </div>
                 <span className="font-anton text-lg text-text-primary">{ratingForRole(member, contract?.primaryRole ?? member.primary_role) ?? "–"}</span>
               </button>

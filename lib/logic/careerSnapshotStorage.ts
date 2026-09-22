@@ -6,7 +6,28 @@ interface SnapshotFixture extends Record<string, unknown> {
   simulation?: MatchSimulationRecord;
 }
 
-export const careerSnapshotStorageKey = (teamId: string) => `ipl_career_${teamId}`;
+export const legacyCareerSnapshotStorageKey = (teamId: string) => `ipl_career_${teamId}`;
+
+export const careerSnapshotStorageKey = (saveId: string, teamId: string) =>
+  `ipl_career_${saveId}_${teamId}`;
+
+export function readCareerSnapshot(
+  storage: Storage,
+  saveId: string,
+  teamId: string,
+): { key: string; serialized: string } | null {
+  const key = careerSnapshotStorageKey(saveId, teamId);
+  const scoped = storage.getItem(key);
+  if (scoped) return { key, serialized: scoped };
+
+  // One-time compatibility path for careers created before saves were isolated.
+  const legacyKey = legacyCareerSnapshotStorageKey(teamId);
+  const legacy = storage.getItem(legacyKey);
+  if (!legacy) return null;
+  storage.setItem(key, legacy);
+  storage.removeItem(legacyKey);
+  return { key, serialized: legacy };
+}
 
 /**
  * The overview snapshot is a small active-season cache, not the canonical

@@ -2,15 +2,17 @@
 
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Bookmark, Lock, Pencil, X } from "lucide-react";
-import { useGameStore } from "@/lib/store/gameStore";
+import { INITIAL_ACTIVE_SEASON, useGameStore } from "@/lib/store/gameStore";
 import { PlayerEditorModal } from "@/components/player/PlayerEditorModal";
 import { formatPrice } from "@/lib/logic/auctionRules";
 import { formatStatValue } from "@/lib/logic/statFormatting";
 import { formatTopSevenBattingPositions } from "@/lib/logic/playerBattingPositions";
+import { classifyBowlingUsage } from "@/lib/logic/playerBowlingUsage";
 import {
   getPlayerSeasonHistory,
   mergePlayerIplHistory,
   protectCompletedSeasonTeamsFromTrades,
+  summarizeIplSeasonMatchLogs,
   upsertPlayerContractHistory,
   upsertPlayerIplHistory,
   wasPlayerAcquiredViaRtm,
@@ -31,13 +33,24 @@ export function retiredSnapshotPlayer(snapshot: HistoricalPlayerSnapshot): Playe
     battingStyle: snapshot.battingStyle ?? "Right-hand",
     bowlingStyle: snapshot.bowlingStyle ?? null,
     bowlingHand: snapshot.bowlingHand ?? null,
+    bowlingUsage: snapshot.bowlingUsage,
+    paceSpeedBand: snapshot.paceSpeedBand,
+    spinStyle: snapshot.spinStyle,
     careerStats: snapshot.careerStats,
     iplStats: snapshot.iplStats,
+    t20iStats: snapshot.t20iStats,
     iplHistory: snapshot.iplHistory,
     basePrice: 0,
     isCapped: snapshot.isCapped ?? true,
     internationalDebutSeason: snapshot.internationalDebutSeason,
     internationalDebutCountry: snapshot.internationalDebutCountry,
+    internationalDebutDate: snapshot.internationalDebutDate,
+    iplTitleSeasons: snapshot.iplTitleSeasons,
+    iplRunnerUpSeasons: snapshot.iplRunnerUpSeasons,
+    iplOrangeCapSeasons: snapshot.iplOrangeCapSeasons,
+    iplPurpleCapSeasons: snapshot.iplPurpleCapSeasons,
+    iplMvpSeasons: snapshot.iplMvpSeasons,
+    iplEmergingPlayerSeasons: snapshot.iplEmergingPlayerSeasons,
     isRetained: false,
     retainedByTeamId: null,
     currentTeamId: null,
@@ -143,6 +156,7 @@ interface PlayerProfileModalProps {
     powerplayWickets?: number;
   };
   additionalCareerT20Stats?: { matches: number; runs: number; wickets: number; balls?: number; dismissals?: number; bowlingInnings?: number; runsConceded?: number };
+  internationalStats?: { matches: number; innings: number; runs: number; balls: number; notOuts: number; highestScore: number; bowlingInnings: number; bowlingBalls: number; runsConceded: number; wickets: number; bestBowlingWickets: number; bestBowlingRuns: number };
   isShortlisted?: boolean;
   onToggleShortlist?: (playerId: string) => void;
 }
@@ -153,6 +167,7 @@ export function PlayerProfileModal({
   customFixtures,
   currentSeasonStats,
   additionalCareerT20Stats,
+  internationalStats,
   isShortlisted: propsIsShortlisted,
   onToggleShortlist,
 }: PlayerProfileModalProps) {
@@ -162,7 +177,7 @@ export function PlayerProfileModal({
   const auction = useGameStore((state) => state.auction);
   const retiredPlayerSnapshots = useGameStore((state) => state.retiredPlayerSnapshots);
   const tradeRecords = useGameStore((state) => state.tradeRecords);
-  const userTeamId = useGameStore((state) => state.userTeamId);
+  const careerSeasonArchives = useGameStore((state) => state.careerSeasonArchives);
   const internalShortlist = useGameStore((state) => state.playerShortlist);
   const setInternalShortlist = useGameStore((state) => state.setPlayerShortlist);
   const playerOverride = useGameStore((state) => (playerId ? state.playerOverrides[playerId] : undefined));
@@ -196,6 +211,51 @@ export function PlayerProfileModal({
     ? activePlayer ?? (retiredSnapshot ? retiredSnapshotPlayer(retiredSnapshot) : null)
     : null;
 
+  const effectiveInternationalStats = useMemo(() => {
+    const dbStats = detailedPlayer?.t20iStats;
+    const simStats = internationalStats;
+    const matches = (dbStats?.matches ?? 0) + (simStats?.matches ?? 0);
+    const innings = (dbStats?.battingInnings ?? 0) + (simStats?.innings ?? 0);
+    const runs = (dbStats?.runs ?? 0) + (simStats?.runs ?? 0);
+    const balls = (dbStats?.ballsFaced ?? 0) + (simStats?.balls ?? 0);
+    const notOuts = (dbStats?.notOuts ?? 0) + (simStats?.notOuts ?? 0);
+    const highestScore = Math.max(dbStats?.highScore ?? 0, simStats?.highestScore ?? 0);
+    const bowlingInnings = (dbStats?.bowlingInnings ?? 0) + (simStats?.bowlingInnings ?? 0);
+    const bowlingBalls = (dbStats?.bowlingBalls ?? 0) + (simStats?.bowlingBalls ?? 0);
+    const runsConceded = (dbStats?.runsConceded ?? 0) + (simStats?.runsConceded ?? 0);
+    const wickets = (dbStats?.wickets ?? 0) + (simStats?.wickets ?? 0);
+
+    let bestBowlingWickets = 0;
+    let bestBowlingRuns = 0;
+    const dbBestW = dbStats?.bestBowlingWickets ?? 0;
+    const dbBestR = dbStats?.bestBowlingRuns ?? 0;
+    const simBestW = simStats?.bestBowlingWickets ?? 0;
+    const simBestR = simStats?.bestBowlingRuns ?? 0;
+
+    if (dbBestW > simBestW || (dbBestW === simBestW && dbBestW > 0 && dbBestR <= simBestR)) {
+      bestBowlingWickets = dbBestW;
+      bestBowlingRuns = dbBestR;
+    } else {
+      bestBowlingWickets = simBestW;
+      bestBowlingRuns = simBestR;
+    }
+
+    return {
+      matches,
+      innings,
+      runs,
+      balls,
+      notOuts,
+      highestScore,
+      bowlingInnings,
+      bowlingBalls,
+      runsConceded,
+      wickets,
+      bestBowlingWickets,
+      bestBowlingRuns,
+    };
+  }, [detailedPlayer?.t20iStats, internationalStats]);
+
   const isPlayerShortlisted = propsIsShortlisted !== undefined
     ? propsIsShortlisted
     : Boolean(detailedPlayer && internalShortlist.includes(detailedPlayer.id));
@@ -210,15 +270,6 @@ export function PlayerProfileModal({
       ? internalShortlist.filter((id) => id !== detailedPlayer.id)
       : [...internalShortlist, detailedPlayer.id];
     setInternalShortlist(nextList);
-    try {
-      const storageKey = `ipl_career_${userTeamId}`;
-      const saved = localStorage.getItem(storageKey);
-      const parsed = saved ? JSON.parse(saved) : {};
-      parsed.shortlist = nextList;
-      localStorage.setItem(storageKey, JSON.stringify(parsed));
-    } catch (e) {
-      console.warn("Unable to mirror shortlist to the legacy season save:", e);
-    }
     if (typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("ipl_shortlist_updated", { detail: { shortlist: nextList } }));
     }
@@ -460,6 +511,31 @@ export function PlayerProfileModal({
     return protectCompletedSeasonTeamsFromTrades(history, detailedPlayer.id, tradeRecords);
   }, [currentSeasonHistoryByPlayer, currentSeason, currentSeasonStats, detailedPlayer, seasonStats, tradeRecords]);
 
+  const teamHistoryIplStats = useMemo(() => {
+    const bySeason = new Map<string, { matches: number; runs: number; wickets: number }>();
+    if (!detailedPlayer) return bySeason;
+    detailedPlayerHistory.forEach((entry) => {
+      if (entry.season === String(currentSeason)) {
+        const live = currentSeasonStats && currentSeasonStats.matches > 0
+          ? currentSeasonStats
+          : seasonStats && seasonStats.matches > 0
+            ? { matches: seasonStats.matches, runs: seasonStats.runs, wickets: seasonStats.bowlWickets }
+            : null;
+        if (live) bySeason.set(entry.season, { matches: live.matches, runs: live.runs, wickets: live.wickets });
+        return;
+      }
+      const archive = careerSeasonArchives.find((record) => String(record.season) === entry.season);
+      if (archive) {
+        const verified = summarizeIplSeasonMatchLogs(archive.playerMatchLogs?.[detailedPlayer.id]);
+        if (verified) bySeason.set(entry.season, verified);
+      } else if (Number(entry.season) < INITIAL_ACTIVE_SEASON && entry.seasonStats) {
+        // Imported pre-career IPL history has no simulation match archive.
+        bySeason.set(entry.season, entry.seasonStats);
+      }
+    });
+    return bySeason;
+  }, [careerSeasonArchives, currentSeason, currentSeasonStats, detailedPlayer, detailedPlayerHistory, seasonStats]);
+
   if (!detailedPlayer) return null;
 
   const isEdited = Boolean(
@@ -534,12 +610,67 @@ export function PlayerProfileModal({
                   OS
                 </span>
               )}
+              {detailedPlayer.isT20IRetired && (
+                <span
+                  className="rounded-[2px] border border-slate-400/40 bg-slate-500/15 px-1.5 py-0.5 font-space-mono text-[8px] font-bold uppercase text-text-secondary"
+                  title="Retired from T20 international cricket; still eligible for franchise cricket"
+                >
+                  T20I Retired
+                </span>
+              )}
             </div>
             <h3 className={`${isRetired ? "whitespace-normal" : "truncate"} font-anton text-[25px] uppercase leading-none text-text-primary`}>{detailedPlayer.name}</h3>
-            <p className="mt-1.5 font-space-mono text-[9px] uppercase text-text-secondary">
-              {detailedPlayer.role} · Age {detailedPlayer.age} · {currentTeam?.name
-                ?? (retiredSnapshot ? `Retired ${retiredSnapshot.retirementSeason}` : "No current club")}
-            </p>
+            <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1">
+              <p className="font-space-mono text-[9px] uppercase text-text-secondary">
+                {detailedPlayer.role} · Age {detailedPlayer.age} · {currentTeam?.name
+                  ?? (retiredSnapshot ? `Retired ${retiredSnapshot.retirementSeason}` : "No current club")}
+              </p>
+              {(() => {
+                const titles = detailedPlayer.iplTitleSeasons?.length ?? 0;
+                const runnersUp = detailedPlayer.iplRunnerUpSeasons?.length ?? 0;
+                const orangeCaps = detailedPlayer.iplOrangeCapSeasons?.length ?? 0;
+                const purpleCaps = detailedPlayer.iplPurpleCapSeasons?.length ?? 0;
+                const mvps = detailedPlayer.iplMvpSeasons?.length ?? 0;
+                const emerging = detailedPlayer.iplEmergingPlayerSeasons?.length ?? 0;
+
+                if (!titles && !runnersUp && !orangeCaps && !purpleCaps && !mvps && !emerging) return null;
+
+                return (
+                  <div className="flex flex-wrap items-center gap-1">
+                    {titles > 0 && (
+                      <span className="inline-flex items-center gap-1 rounded bg-amber-500/15 px-1.5 py-0.5 font-space-mono text-[8px] font-bold uppercase text-amber-600 dark:text-amber-400 border border-amber-500/30" title={`IPL Champion: ${detailedPlayer.iplTitleSeasons?.join(", ")}`}>
+                        🏆 {titles}× Champion
+                      </span>
+                    )}
+                    {orangeCaps > 0 && (
+                      <span className="inline-flex items-center gap-1 rounded bg-orange-500/15 px-1.5 py-0.5 font-space-mono text-[8px] font-bold uppercase text-orange-600 dark:text-orange-400 border border-orange-500/30" title={`Orange Cap: ${detailedPlayer.iplOrangeCapSeasons?.join(", ")}`}>
+                        🧢 {orangeCaps}× Orange Cap
+                      </span>
+                    )}
+                    {purpleCaps > 0 && (
+                      <span className="inline-flex items-center gap-1 rounded bg-purple-500/15 px-1.5 py-0.5 font-space-mono text-[8px] font-bold uppercase text-purple-600 dark:text-purple-400 border border-purple-500/30" title={`Purple Cap: ${detailedPlayer.iplPurpleCapSeasons?.join(", ")}`}>
+                        🟣 {purpleCaps}× Purple Cap
+                      </span>
+                    )}
+                    {mvps > 0 && (
+                      <span className="inline-flex items-center gap-1 rounded bg-emerald-500/15 px-1.5 py-0.5 font-space-mono text-[8px] font-bold uppercase text-emerald-600 dark:text-emerald-400 border border-emerald-500/30" title={`Tournament MVP: ${detailedPlayer.iplMvpSeasons?.join(", ")}`}>
+                        ⭐ {mvps}× MVP
+                      </span>
+                    )}
+                    {emerging > 0 && (
+                      <span className="inline-flex items-center gap-1 rounded bg-sky-500/15 px-1.5 py-0.5 font-space-mono text-[8px] font-bold uppercase text-sky-600 dark:text-sky-400 border border-sky-500/30" title={`Emerging Player: ${detailedPlayer.iplEmergingPlayerSeasons?.join(", ")}`}>
+                        🌟 Emerging Player ({detailedPlayer.iplEmergingPlayerSeasons?.join(", ")})
+                      </span>
+                    )}
+                    {runnersUp > 0 && (
+                      <span className="inline-flex items-center gap-1 rounded bg-zinc-500/15 px-1.5 py-0.5 font-space-mono text-[8px] font-bold uppercase text-zinc-600 dark:text-zinc-400 border border-zinc-500/30" title={`IPL Finalist / Runner-up: ${detailedPlayer.iplRunnerUpSeasons?.join(", ")}`}>
+                        🥈 {runnersUp}× Finalist
+                      </span>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
           </div>
           <div className="ml-4 flex shrink-0 items-center gap-2">
             {activePlayer && (
@@ -590,14 +721,40 @@ export function PlayerProfileModal({
                   ["Date of Birth", formatDateOfBirth(detailedPlayer.dateOfBirth)],
                   ["State", detailedPlayer.state?.trim() || "Not available"],
                   ["Status", detailedPlayer.isCapped ? "Capped" : "Uncapped"],
+                  ["International Debut Date", formatDateOfBirth(detailedPlayer.internationalDebutDate)],
                   ["Batting", detailedPlayer.battingStyle],
                   ["Bats at", formatTopSevenBattingPositions(detailedPlayer)],
                   ["Bowling", (() => {
                     if (!detailedPlayer.bowlingStyle) return "DNB";
-                    if (!detailedPlayer.bowlingHand) return detailedPlayer.bowlingStyle;
-                    const hand = detailedPlayer.bowlingHand === "Left-hand" ? "Left handed" : "Right handed";
-                    const type = detailedPlayer.bowlingStyle === "Spinner" ? "spinner" : "pacer";
-                    return `${hand} ${type}`;
+                    const hand = detailedPlayer.bowlingHand === "Left-hand" ? "Left-arm" : detailedPlayer.bowlingHand === "Right-hand" ? "Right-arm" : "";
+                    if (detailedPlayer.bowlingStyle === "Pacer") {
+                      const band = detailedPlayer.paceSpeedBand;
+                      let bandLabel = "Pacer";
+                      if (band === "express") bandLabel = "Express Fast (150+ km/h)";
+                      else if (band === "fast") bandLabel = "Fast (140-150 km/h)";
+                      else if (band === "fast_medium") bandLabel = "Fast-Medium (130-140 km/h)";
+                      else if (band === "medium") bandLabel = "Medium (<130 km/h)";
+                      return hand ? `${hand} ${bandLabel}` : bandLabel;
+                    }
+                    if (detailedPlayer.bowlingStyle === "Spinner") {
+                      const style = detailedPlayer.spinStyle;
+                      let styleLabel = "Spinner";
+                      if (style === "leg_spin") styleLabel = "Leg-spin";
+                      else if (style === "off_spin") styleLabel = "Off-spin";
+                      else if (style === "left_arm_orthodox") styleLabel = "Orthodox";
+                      else if (style === "left_arm_wrist_spin") styleLabel = "Wrist-spin (Chinaman)";
+                      else if (style === "mystery_spin") styleLabel = "Mystery Spin";
+                      return hand ? `${hand} ${styleLabel}` : styleLabel;
+                    }
+                    return detailedPlayer.bowlingStyle;
+                  })()],
+                  ["Bowling Usage", (() => {
+                    const usage = detailedPlayer.bowlingUsage ?? classifyBowlingUsage(detailedPlayer);
+                    if (usage === "frontline") return "Frontline";
+                    if (usage === "regular") return "Regular";
+                    if (usage === "part_time") return "Part-time";
+                    if (usage === "emergency") return "Emergency";
+                    return "Does Not Bowl";
                   })()],
                 ].map(([label, value]) => (
                   <div key={label} className={`flex gap-2 border-b border-border/60 pb-1 ${isRetired ? "min-w-0 flex-col items-start justify-start" : "items-center justify-between"}`}>
@@ -743,6 +900,20 @@ export function PlayerProfileModal({
                     <div className="mt-1 font-anton text-[17px] leading-tight text-text-primary">{value}</div>
                   </div>
                 ))}
+              </div>
+            </section>
+
+            <section className="col-span-2 col-start-1 self-start rounded border border-border bg-bg p-3">
+              <h4 className="mb-2 border-b border-border pb-1.5 font-anton text-[12px] uppercase text-text-primary">International T20</h4>
+              <div className="grid grid-cols-8 gap-2">
+                {[
+                  ["Matches", effectiveInternationalStats?.matches ?? 0], ["Innings", effectiveInternationalStats?.innings ?? 0],
+                  ["Runs", effectiveInternationalStats?.runs ?? 0], ["Highest", effectiveInternationalStats?.highestScore ?? 0],
+                  ["Strike rate", effectiveInternationalStats?.balls ? formatStatValue(effectiveInternationalStats.runs * 100 / effectiveInternationalStats.balls) : "-"],
+                  ["Wickets", effectiveInternationalStats?.wickets ?? 0],
+                  ["Economy", effectiveInternationalStats?.bowlingBalls ? formatStatValue(effectiveInternationalStats.runsConceded * 6 / effectiveInternationalStats.bowlingBalls) : "-"],
+                  ["Best", effectiveInternationalStats?.bowlingInnings && effectiveInternationalStats.bestBowlingWickets > 0 ? `${effectiveInternationalStats.bestBowlingWickets}/${effectiveInternationalStats.bestBowlingRuns}` : "-"],
+                ].map(([label, value]) => <div key={label} className="rounded border border-border bg-surface px-1 py-2 text-center"><div className="font-space-mono text-[6px] uppercase text-text-secondary">{label}</div><div className="font-anton text-[15px] text-text-primary">{value}</div></div>)}
               </div>
             </section>
 
@@ -933,6 +1104,7 @@ export function PlayerProfileModal({
                   .filter((entry) => entry.teamId && entry.teamId !== "UNSOLD")
                   .sort((a, b) => Number(b.season) - Number(a.season))
                   .map((entry) => {
+                    const iplStats = teamHistoryIplStats.get(entry.season);
                     const trade = tradeRecords.find((record) => record.season === Number(entry.season) && [...record.outgoingPlayerIds, ...record.incomingPlayerIds].includes(detailedPlayer.id));
                     const movedFromId = trade?.outgoingPlayerIds.includes(detailedPlayer.id) ? trade.fromTeamId : trade?.toTeamId;
                     const movedToId = trade?.outgoingPlayerIds.includes(detailedPlayer.id) ? trade.toTeamId : trade?.fromTeamId;
@@ -946,9 +1118,9 @@ export function PlayerProfileModal({
                       <span className="font-space-mono text-text-secondary">{entry.season}</span>
                       <span className="min-w-0 font-semibold text-text-primary">
                         <span className="block truncate">{teams[entry.teamId]?.name ?? entry.teamId}</span>
-                        {entry.seasonStats && (
+                        {iplStats && (
                           <span className="mt-0.5 block whitespace-nowrap font-space-mono text-[7px] font-bold text-accent">
-                            {entry.seasonStats.matches} Mts&nbsp;&nbsp;&nbsp;{entry.seasonStats.runs} Rs&nbsp;&nbsp;&nbsp;{entry.seasonStats.wickets} Ws
+                            {iplStats.matches} Mts&nbsp;&nbsp;&nbsp;{iplStats.runs} Rs&nbsp;&nbsp;&nbsp;{iplStats.wickets} Ws
                           </span>
                         )}
                       </span>
