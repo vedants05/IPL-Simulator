@@ -529,6 +529,7 @@ interface GameActions {
   setWorldRules: (patch: Partial<WorldRules>) => void;
   resetWorldRules: () => void;
   setTeamFinances: (teamId: string, finances: { totalPurse?: number; remainingPurse?: number }) => void;
+  setTeamStaffBudget: (teamId: string, annualBudget: number) => void;
   applyStaffEdit: (staffId: string, patch: Partial<CareerStaffContract>, frozenKeys?: string[]) => void;
   resetStaffToDatabase: (staffId: string) => Promise<"reset" | "not-in-database" | "unavailable">;
   transferStaffMember: (
@@ -4553,7 +4554,37 @@ export const useGameStore = create<Store>()(
             ? getRtmCardsForRetentions(team.retainedPlayers.length, rules)
             : team.rtmCardsTotal,
         }]));
-        set({ worldRules: rules, teams });
+        const staffBudgetChanged = rules.staffBudgetPercent !== state.worldRules.staffBudgetPercent;
+        set({
+          worldRules: rules,
+          teams,
+          careerStaff: staffBudgetChanged && state.careerStaff.initialized
+            ? {
+                ...state.careerStaff,
+                financesByTeam: recalculateStaffFinances(state.careerStaff.contracts, state.careerStaff.financesByTeam, true),
+              }
+            : state.careerStaff,
+        });
+      },
+
+      setTeamStaffBudget: (teamId, annualBudget) => {
+        const state = get();
+        const finance = state.careerStaff.financesByTeam[teamId];
+        if (!state.teams[teamId]) return;
+        set({
+          careerStaff: {
+            ...state.careerStaff,
+            financesByTeam: {
+              ...state.careerStaff.financesByTeam,
+              [teamId]: {
+                annualBudget: Math.max(0, Math.round(annualBudget)),
+                committedSalary: finance?.committedSalary ?? 0,
+                compensationPaid: finance?.compensationPaid ?? 0,
+                compensationReceived: finance?.compensationReceived ?? 0,
+              },
+            },
+          },
+        });
       },
 
       resetWorldRules: () => {

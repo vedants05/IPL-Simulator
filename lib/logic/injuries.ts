@@ -1,5 +1,6 @@
 import type { Player } from "@/lib/types";
 import { dateKeyToLocalDate } from "@/lib/logic/careerCalendar";
+import { worldInjuryModifiers } from "./worldRules";
 
 export type InjuryCategory = "minor" | "major";
 export type InjuryWorseningRisk = "mild" | "moderate" | "severe";
@@ -235,7 +236,7 @@ export function createPlayerInjury({
   conditionId,
   sourceMatchId,
   worsenedFromConditionId,
-  modifiers = DEFAULT_INJURY_SYSTEM_MODIFIERS,
+  modifiers = worldInjuryModifiers(),
 }: {
   player: Player;
   teamId: string;
@@ -337,7 +338,7 @@ export function processMatchInjuries(
   if (reconciled.state.processedInjuryMatchIds.includes(input.matchId)) {
     return { state: reconciled.state, result: { created: [], worsened: [], recovered: reconciled.recovered } };
   }
-  const defaultModifiers = input.modifiers ?? DEFAULT_INJURY_SYSTEM_MODIFIERS;
+  const defaultModifiers = input.modifiers ?? worldInjuryModifiers();
   const activeInjuries = { ...reconciled.state.activeInjuries };
   const history = [...reconciled.state.injuryHistory];
   const participantsById = new Map(input.participants.map((entry) => [entry.player.id, entry]));
@@ -447,7 +448,7 @@ export function processBackgroundInjuries(
   if (!input.generationEnabled) {
     return { state: reconciled.state, result: { created: [], worsened: [], recovered: reconciled.recovered } };
   }
-  const defaultModifiers = input.modifiers ?? DEFAULT_INJURY_SYSTEM_MODIFIERS;
+  const defaultModifiers = input.modifiers ?? worldInjuryModifiers();
   const activeInjuries = { ...reconciled.state.activeInjuries };
   const created: PlayerInjury[] = [];
   const processedKeys = [...reconciled.state.processedInjuryDateKeys];

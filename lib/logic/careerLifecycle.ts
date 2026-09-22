@@ -27,6 +27,7 @@ import {
 import { calculateBasePrice } from "./playerBasePrice";
 import { enforceBattingPositionEligibility } from "./playerBattingPositions";
 import { getEmergingPlayerEligibility, rankMvpCandidates } from "./seasonAwards";
+import { worldRules } from "./worldRules";
 
 export const CAREER_POLICY = {
   auctionEligibilityRating: 67,
@@ -1574,21 +1575,25 @@ export function calculateAbilityChange(input: {
   const inactivityLoss = inactivityAbilityLoss(player.age, input.lowUsageSeasons)
     * injuryPenaltyFactor
     * preDeclineWeight;
-  const performanceGrowth = breakout + formMovement + lateCareerGrowth;
-  const weightedAgingDecline = appliedDecline * declineWeight;
-  const combinedPoorFormLoss = poorFormLoss + inactivityLoss;
-  const uncapped = naturalAndOpportunityGrowth + performanceGrowth + combinedPoorFormLoss - weightedAgingDecline;
+  const growthScale = worldRules().playerGrowthPercent / 100;
+  const declineScale = worldRules().playerDeclinePercent / 100;
+  const scaleMovement = (value: number) => value * (value >= 0 ? growthScale : declineScale);
+  const scaledNaturalGrowth = scaleMovement(naturalAndOpportunityGrowth);
+  const performanceGrowth = scaleMovement(breakout + formMovement + lateCareerGrowth);
+  const weightedAgingDecline = appliedDecline * declineWeight * declineScale;
+  const combinedPoorFormLoss = (poorFormLoss + inactivityLoss) * declineScale;
+  const uncapped = scaledNaturalGrowth + performanceGrowth + combinedPoorFormLoss - weightedAgingDecline;
   // Positive movement is governed by performance, rating difficulty and the
   // player's effective PA headroom. Do not discard a legitimate breakout with
   // a second, age-only annual ceiling; applyAbilityBank() enforces CA <= PA.
   const finalDelta = Math.max(uncapped, -annualNegativeMovementCap(player.age));
   return {
     phase,
-    naturalAndOpportunityGrowth,
+    naturalAndOpportunityGrowth: scaledNaturalGrowth,
     performanceGrowth,
     poorFormLoss: combinedPoorFormLoss,
     agingDecline: weightedAgingDecline,
-    declineProtection: (rawDecline - appliedDecline) * declineWeight,
+    declineProtection: (rawDecline - appliedDecline) * declineWeight * declineScale,
     finalDelta,
   };
 }
@@ -1856,7 +1861,8 @@ export function calculateCareerContinuationScore(player: Player, projectedAge: n
     const oldRating = Math.max(twoYearsAgo.batting, twoYearsAgo.bowling);
     score -= Math.min(18, Math.max(0, oldRating - rating) * 3);
   }
-  if (projectedAge >= 35) score -= (projectedAge - 34) * 3;
+  const shiftedAge = projectedAge - worldRules().retirementAgeShift;
+  if (shiftedAge >= 35) score -= (shiftedAge - 34) * 3;
   return score;
 }
 
@@ -2225,7 +2231,8 @@ function discretionaryRetirementPriority(player: Player, reason: RetirementReaso
     + Math.max(0, 5 - (player.reputation ?? 5)) * 2;
 }
 
-function veteranRetirementThreshold(player: Player, age: number): number | null {
+function veteranRetirementThreshold(player: Player, rawAge: number): number | null {
+  const age = rawAge - worldRules().retirementAgeShift;
   const isPacer = player.role === "Pace Bowler"
     || (player.role === "All-Rounder" && player.bowlingStyle === "Pacer");
   const isSpinner = player.role === "Spin Bowler"

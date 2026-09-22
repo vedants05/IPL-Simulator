@@ -18,6 +18,7 @@ import type { CareerStaffState } from "@/lib/logic/staffContracts";
 import { calculateCoachingStaffModifiers, deriveAITeamTactics } from "@/lib/logic/coachingStrategyImpact";
 import { appendRainAffectedResultLabel, hasRainReducedOvers } from "@/lib/logic/matchWeather";
 import type { Player, Team } from "@/lib/types";
+import { worldRules } from "./worldRules";
 
 export const MATCH_SIMULATION_VERSION = 4;
 export const DEFAULT_CHASING_SCORING_BONUS = 0;
@@ -1332,12 +1333,12 @@ function createActiveTeamState(
     startingXI: [...plan.startingXI],
     finalXI: [...plan.startingXI],
     battingOrder: [...plan.startingXI],
-    impactUsed: false,
+    impactUsed: !worldRules().impactPlayerEnabled,
     impactDecision: {
       teamId: team.id,
       used: false,
       reason: "not-used",
-      explanation: "No Impact Player was used.",
+      explanation: worldRules().impactPlayerEnabled ? "No Impact Player was used." : "The Impact Player rule is disabled.",
     },
   };
 }
@@ -5426,7 +5427,7 @@ function simulateMatchToCompletion(
   ) {
     const unusedIncomingId = chasingImpact.incomingPlayerId;
     bowlingFirstState.finalXI = [...bowlingFirstState.startingXI];
-    bowlingFirstState.impactUsed = false;
+    bowlingFirstState.impactUsed = !worldRules().impactPlayerEnabled;
     bowlingFirstState.impactDecision = {
       teamId: bowlingFirstTeam.id,
       used: false,

@@ -474,6 +474,27 @@ export function PlayerProfileModal({
 
   const currentTeam = teams[detailedPlayer.currentTeamId ?? ""];
   const isRetired = Boolean(retiredSnapshot);
+  const careerPeaks = (() => {
+    const history = detailedPlayer.careerState?.ratingHistory ?? [];
+    const liveSeason = currentSeason;
+    const peakOf = (
+      pick: (entry: { season: number; batting: number; bowling: number; potentialBatting: number; potentialBowling: number }) => number,
+      liveValue: number,
+    ) => {
+      let best = { value: liveValue, season: liveSeason };
+      history.forEach((entry) => {
+        const value = pick(entry);
+        if (value > best.value || (value === best.value && entry.season < best.season)) best = { value, season: entry.season };
+      });
+      return best;
+    };
+    return [
+      ["Peak Bat CA", peakOf((entry) => entry.batting, detailedPlayer.currentBatting)],
+      ["Peak Bat PA", peakOf((entry) => entry.potentialBatting, detailedPlayer.potentialBatting)],
+      ["Peak Bowl CA", peakOf((entry) => entry.bowling, detailedPlayer.currentBowling)],
+      ["Peak Bowl PA", peakOf((entry) => entry.potentialBowling, detailedPlayer.potentialBowling)],
+    ] as Array<[string, { value: number; season: number }]>;
+  })();
   const nationalityLabel = detailedPlayer.nationality === "Overseas"
     && detailedPlayer.country
     && detailedPlayer.country !== "Overseas"
@@ -600,6 +621,18 @@ export function PlayerProfileModal({
                   <div key={label} className="rounded border border-border bg-surface p-2 text-center">
                     <div className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">{label}{frozenMark(key)}</div>
                     <div className="mt-0.5 font-anton text-[21px] text-text-primary">{value}</div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-1.5 grid grid-cols-4 gap-2">
+                {careerPeaks.map(([label, peak]) => (
+                  <div key={label} className="flex items-center justify-between rounded border border-border/60 bg-surface/60 px-2 py-1">
+                    <span className="font-space-mono text-[6.5px] font-bold uppercase text-text-secondary">{label}</span>
+                    <span className="font-space-mono text-[9px] font-bold text-text-primary">
+                      {peak.value}
+                      <span className="ml-1 font-normal text-text-secondary">'{String(peak.season).slice(-2)}</span>
+                    </span>
                   </div>
                 ))}
               </div>

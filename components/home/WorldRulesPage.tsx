@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Check, RotateCcw, Scale, Wallet } from "lucide-react";
+import { BriefcaseBusiness, Check, RotateCcw, Scale, Wallet } from "lucide-react";
 import { useGameStore } from "@/lib/store/gameStore";
 import { formatPrice } from "@/lib/logic/auctionRules";
 import {
@@ -72,10 +72,16 @@ function RuleInput({ field, value, onChange }: { field: WorldRuleField; value: s
           {field.unit === "lakhs" && (
             <span className="w-16 shrink-0 text-right font-space-mono text-[8px] font-bold text-accent">{formatPrice(Math.max(0, Number(value) || 0))}</span>
           )}
+          {field.unit === "percent" && (
+            <span className="w-10 shrink-0 text-right font-space-mono text-[8px] font-bold text-accent">{Number(value) || 0}%</span>
+          )}
+          {field.unit === "years" && (
+            <span className="w-10 shrink-0 text-right font-space-mono text-[8px] font-bold text-accent">{Number(value) > 0 ? "+" : ""}{Number(value) || 0} yr</span>
+          )}
         </div>
       )}
       <div className="mt-1 font-space-mono text-[6.5px] uppercase text-text-secondary">
-        {field.unit === "toggle" ? "" : `${field.min}-${field.max}${field.unit === "lakhs" ? " lakhs" : ""}`}
+        {field.unit === "toggle" ? "" : `${field.min}-${field.max}${field.unit === "lakhs" ? " lakhs" : field.unit === "percent" ? "%" : field.unit === "years" ? " years" : ""}`}
         {field.hint ? ` · ${field.hint}` : ""}
       </div>
     </div>
@@ -87,6 +93,8 @@ export default function WorldRulesPage() {
   const setWorldRules = useGameStore((state) => state.setWorldRules);
   const resetWorldRules = useGameStore((state) => state.resetWorldRules);
   const setTeamFinances = useGameStore((state) => state.setTeamFinances);
+  const setTeamStaffBudget = useGameStore((state) => state.setTeamStaffBudget);
+  const staffFinances = useGameStore((state) => state.careerStaff.financesByTeam);
   const teams = useGameStore((state) => state.teams);
   const auction = useGameStore((state) => state.auction);
   const userTeamId = useGameStore((state) => state.userTeamId);
@@ -94,6 +102,8 @@ export default function WorldRulesPage() {
   const [draft, setDraft] = useState<RuleDraft>(() => toDraft(worldRules));
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [purseDrafts, setPurseDrafts] = useState<Record<string, { total: string; remaining: string }>>({});
+  const [staffBudgetDrafts, setStaffBudgetDrafts] = useState<Record<string, string>>({});
+  const formatCrore = (rupees: number) => `₹${(rupees / 10_000_000).toFixed(2)} Cr`;
 
   useEffect(() => { setDraft(toDraft(worldRules)); }, [worldRules]);
 
@@ -291,6 +301,68 @@ export default function WorldRulesPage() {
                   </div>
                 );
               })}
+            </div>
+          </section>
+
+          <section className="rounded-xl border border-border bg-surface p-5 xl:col-span-12">
+            <div className="flex items-center gap-2 border-b border-border pb-3">
+              <span className="grid size-8 place-items-center rounded bg-[var(--ink)] text-accent"><BriefcaseBusiness size={14} /></span>
+              <div>
+                <h3 className="font-anton text-[19px] uppercase">Staff Budgets</h3>
+                <p className="font-space-mono text-[7px] uppercase text-text-secondary">Annual coaching salary cap per club, in crore · the Staff budget rule above rescales all of these</p>
+              </div>
+            </div>
+            <div className="mt-3 overflow-x-auto">
+              <div className="grid min-w-[640px] grid-cols-[minmax(0,1.6fr)_1fr_1fr_1fr_6rem] gap-2 border-b border-border pb-2 font-space-mono text-[7px] font-bold uppercase text-text-secondary">
+                <span>Team</span>
+                <span>Committed</span>
+                <span>Available</span>
+                <span>Budget (Cr)</span>
+                <span />
+              </div>
+              {orderedTeams.map((team) => {
+                const finance = staffFinances[team.id];
+                const budget = finance?.annualBudget ?? 0;
+                const committed = finance?.committedSalary ?? 0;
+                const entry = staffBudgetDrafts[team.id] ?? (budget / 10_000_000).toFixed(2);
+                const dirty = Math.round(Number(entry) * 10_000_000) !== budget;
+                return (
+                  <div key={team.id} className="grid min-w-[640px] grid-cols-[minmax(0,1.6fr)_1fr_1fr_1fr_6rem] items-center gap-2 border-b border-border/60 py-1.5">
+                    <span className="flex min-w-0 items-center gap-2">
+                      <span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: team.primaryColor }} />
+                      <span className="truncate text-[10px] font-semibold text-text-primary">{team.name}</span>
+                      {team.id === userTeamId && <span className="shrink-0 rounded-[2px] bg-accent/15 px-1 font-space-mono text-[6.5px] font-bold uppercase text-accent">You</span>}
+                    </span>
+                    <span className="font-space-mono text-[9px] text-text-secondary">{formatCrore(committed)}</span>
+                    <span className={`font-space-mono text-[9px] ${budget - committed < 0 ? "text-red-500" : "text-text-secondary"}`}>{formatCrore(budget - committed)}</span>
+                    <input
+                      type="number"
+                      min={0}
+                      step={0.5}
+                      value={entry}
+                      onChange={(event) => setStaffBudgetDrafts((current) => ({ ...current, [team.id]: event.target.value }))}
+                      className={inputClass}
+                    />
+                    <button
+                      type="button"
+                      disabled={!dirty || !Number.isFinite(Number(entry))}
+                      onClick={() => {
+                        setTeamStaffBudget(team.id, Number(entry) * 10_000_000);
+                        setStaffBudgetDrafts((current) => {
+                          const { [team.id]: _removed, ...rest } = current;
+                          return rest;
+                        });
+                      }}
+                      className="h-8 rounded border border-accent bg-accent/10 px-2 font-space-mono text-[8px] font-bold uppercase text-accent transition-colors hover:bg-accent/20 disabled:cursor-not-allowed disabled:opacity-30"
+                    >
+                      Apply
+                    </button>
+                  </div>
+                );
+              })}
+              {orderedTeams.length > 0 && Object.keys(staffFinances).length === 0 && (
+                <p className="py-4 text-center font-space-mono text-[8px] uppercase text-text-secondary">Staff budgets appear once the staff directory has loaded (open Club → Staff Management).</p>
+              )}
             </div>
           </section>
         </div>

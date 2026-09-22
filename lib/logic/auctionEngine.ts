@@ -1700,6 +1700,9 @@ export function getLotValuation(
 
     // Apply discount if this player is in the team's backups list
     const state = (globalThis as any).__getGameStoreState ? (globalThis as any).__getGameStoreState() : null;
+    if (!state || state.userTeamId !== team.id) {
+      value = Math.round(value * (worldRules().aiBiddingAggressionPercent / 100));
+    }
     if (state && state.aiAcceleratedBackups && state.aiAcceleratedBackups[team.id]?.includes(player.id)) {
       const mainTargets = state.aiAcceleratedTargets[team.id] ?? [];
       const hasBoughtMainTarget = mainTargets.some((targetId: string) => {
