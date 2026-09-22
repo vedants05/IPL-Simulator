@@ -9,7 +9,7 @@ const countByCategory = PERSON_DYNAMICS_SEEDS.reduce<Record<string, number>>((co
   return counts;
 }, {});
 
-if (PERSON_DYNAMICS_SEEDS.length !== 248 || countByCategory.player_player !== 112 || countByCategory.player_staff !== 93 || countByCategory.staff_staff !== 43) {
+if (PERSON_DYNAMICS_SEEDS.length !== 292 || countByCategory.player_player !== 148 || countByCategory.player_staff !== 101 || countByCategory.staff_staff !== 43) {
   throw new Error(`Unexpected seed counts: ${JSON.stringify(countByCategory)}`);
 }
 
@@ -28,8 +28,8 @@ const values = PERSON_DYNAMICS_SEEDS.map((seed) => `  (${[
   seed.rating, seed.bidirectional === false ? "false" : "true", quote(seed.reason), quote(seed.evidenceUrl),
 ].join(", ")})`).join(",\n");
 
-const sql = `-- Approved 2026 starting roster: 108 bidirectional player pairs, 81 bidirectional player/staff pairs,
--- 43 staff pairs and 16 one-way idol links (248 rows total).
+const sql = `-- Approved 2026 starting roster: 144 bidirectional player pairs, 89 bidirectional player/staff pairs,
+-- 43 staff pairs and 16 one-way idol links (292 rows total).
 -- Generated from lib/data/personDynamicsSeeds.ts. Re-running is safe.
 
 create temp table _person_dynamics_seed (
@@ -50,8 +50,8 @@ do $$
 declare
   bad text;
 begin
-  if (select count(*) from _person_dynamics_seed) <> 248 then
-    raise exception 'Expected 248 person dynamics seeds';
+  if (select count(*) from _person_dynamics_seed) <> 292 then
+    raise exception 'Expected 292 person dynamics seeds';
   end if;
 
   select format('%s / %s / %s (matches: %s, %s)', category, person1_key, person2_key, first_matches, second_matches)

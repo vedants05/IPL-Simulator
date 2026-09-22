@@ -1,5 +1,5 @@
--- Approved 2026 starting roster: 108 bidirectional player pairs, 81 bidirectional player/staff pairs,
--- 43 staff pairs and 16 one-way idol links (248 rows total).
+-- Approved 2026 starting roster: 144 bidirectional player pairs, 89 bidirectional player/staff pairs,
+-- 43 staff pairs and 16 one-way idol links (292 rows total).
 -- Generated from lib/data/personDynamicsSeeds.ts. Re-running is safe.
 
 create temp table _person_dynamics_seed (
@@ -261,14 +261,58 @@ insert into _person_dynamics_seed values
   ('player_staff', 'idol', 'Dhruv Jurel', 'ms-dhoni', 93, false, 'Jurel considers MS Dhoni his wicketkeeping and finishing idol.', 'https://www.rajasthanroyals.com/'),
   ('player_staff', 'idol', 'Ishan Kishan', 'ms-dhoni', 92, false, 'Hailing from Jharkhand, Kishan grew up modeling his wicketkeeping on MS Dhoni.', 'https://www.mumbaiindians.com/'),
   ('player_staff', 'idol', 'Rishabh Pant', 'ms-dhoni', 94, false, 'Pant shares a deep bond with Dhoni, looking up to him as his elder brother and hero.', 'https://www.bcci.tv/'),
-  ('player_staff', 'idol', 'Mayank Yadav', 'dale-steyn', 94, false, 'Mayank Yadav grew up watching Dale Steyn videos and modeled his fast bowling after him.', 'https://www.lucknowsupergiants.in/');
+  ('player_staff', 'idol', 'Mayank Yadav', 'dale-steyn', 94, false, 'Mayank Yadav grew up watching Dale Steyn videos and modeled his fast bowling after him.', 'https://www.lucknowsupergiants.in/'),
+  ('player_player', 'franchise_teammates', 'Angkrish Raghuvanshi', 'Rinku Singh', 46, true, 'Emerging youngster sharing the Kolkata Knight Riders dugout and batting group with senior finisher Rinku.', 'https://www.iplt20.com/teams/kolkata-knight-riders'),
+  ('player_player', 'franchise_teammates', 'Angkrish Raghuvanshi', 'Venkatesh Iyer', 50, true, 'Young top-order batter learning middle-order tempo from senior KKR compatriot Venkatesh Iyer.', 'https://www.iplt20.com/teams/kolkata-knight-riders'),
+  ('player_player', 'franchise_teammates', 'Ramandeep Singh', 'Rinku Singh', 52, true, 'Developing camaraderie in Kolkata Knight Riders lower-order finishing unit.', 'https://www.iplt20.com/teams/kolkata-knight-riders'),
+  ('player_player', 'pace_tandem', 'Vaibhav Arora', 'Harshit Rana', 55, true, 'Young pace partnership sharing new ball and middle overs duties at Kolkata Knight Riders.', 'https://www.iplt20.com/teams/kolkata-knight-riders'),
+  ('player_player', 'spin_twins', 'Suyash Sharma', 'Sunil Narine', 54, true, 'Young mystery spinner observing and learning craft from senior maestro Narine at KKR.', 'https://www.iplt20.com/teams/kolkata-knight-riders'),
+  ('player_player', 'mentor_protege', 'Sameer Rizvi', 'Ruturaj Gaikwad', 45, true, 'Young big-hitting recruit guided by captain Gaikwad in Chennai Super Kings setup.', 'https://www.iplt20.com/teams/chennai-super-kings'),
+  ('player_player', 'franchise_teammates', 'Sameer Rizvi', 'Shivam Dube', 48, true, 'Emerging spin-hitter learning middle-overs boundary striking alongside Dube at CSK.', 'https://www.iplt20.com/teams/chennai-super-kings'),
+  ('player_player', 'pace_tandem', 'Mukesh Choudhary', 'Deepak Chahar', 52, true, 'Fellow left-and-right new-ball swing partners competing and learning within CSK pace unit.', 'https://www.iplt20.com/teams/chennai-super-kings'),
+  ('player_player', 'pace_tandem', 'Tushar Deshpande', 'Deepak Chahar', 58, true, 'Indian seam combination operating together across multiple CSK campaigns.', 'https://www.iplt20.com/teams/chennai-super-kings'),
+  ('player_player', 'mentor_protege', 'Naman Dhir', 'Suryakumar Yadav', 48, true, 'Emerging top-order batter learning 360-degree shot-making from senior mentor Suryakumar at MI.', 'https://www.mumbaiindians.com/'),
+  ('player_player', 'franchise_teammates', 'Naman Dhir', 'Tilak Varma', 54, true, 'Next-generation young Indian batting core sharing the Mumbai Indians top order.', 'https://www.mumbaiindians.com/'),
+  ('player_player', 'mentor_protege', 'Anshul Kamboj', 'Jasprit Bumrah', 45, true, 'Young domestic seam sensation learning elite execution alongside Bumrah at Mumbai Indians.', 'https://www.mumbaiindians.com/'),
+  ('player_player', 'mentor_protege', 'Dewald Brevis', 'Suryakumar Yadav', 52, true, 'Young overseas power-hitter absorbing batting intent and practice routines from Suryakumar at MI.', 'https://www.mumbaiindians.com/'),
+  ('player_player', 'franchise_teammates', 'Nehal Wadhera', 'Tilak Varma', 58, true, 'Young middle-order pair frequently batting together in high-pressure chases for Mumbai Indians.', 'https://www.mumbaiindians.com/'),
+  ('player_player', 'mentor_protege', 'Dhruv Jurel', 'Sanju Samson', 58, true, 'Young wicketkeeper-batter learning leadership and pressure absorption from captain Samson at RR.', 'https://www.rajasthanroyals.com/'),
+  ('player_player', 'pace_tandem', 'Kuldeep Sen', 'Sandeep Sharma', 46, true, 'Young express bowler learning seam control and variations from veteran Sandeep Sharma at RR.', 'https://www.rajasthanroyals.com/'),
+  ('player_player', 'franchise_teammates', 'Yashasvi Jaiswal', 'Riyan Parag', 62, true, 'Longstanding age-group peers sharing Rajasthan Royals top-and-middle order development.', 'https://www.rajasthanroyals.com/'),
+  ('player_player', 'mentor_protege', 'Ayush Badoni', 'KL Rahul', 55, true, 'Young finisher learning match-building awareness and temperament from captain KL Rahul at LSG.', 'https://www.lucknowsupergiants.in/'),
+  ('player_player', 'pace_tandem', 'Mayank Yadav', 'Mohsin Khan', 50, true, 'Young Indian pace battery sharing rehab and opening attack responsibilities at Lucknow Super Giants.', 'https://www.lucknowsupergiants.in/'),
+  ('player_player', 'franchise_teammates', 'Ayush Badoni', 'Ravi Bishnoi', 56, true, 'Young domestic peers who arrived at LSG in the inaugural season and bonded closely.', 'https://www.lucknowsupergiants.in/'),
+  ('player_player', 'franchise_teammates', 'Anuj Rawat', 'Rajat Patidar', 52, true, 'Young Indian domestic batting teammates developing together in RCB middle order.', 'https://www.royalchallengers.com/'),
+  ('player_player', 'franchise_teammates', 'Mahipal Lomror', 'Rajat Patidar', 54, true, 'Complementary left-and-right middle-overs batting partners for Royal Challengers Bengaluru.', 'https://www.royalchallengers.com/'),
+  ('player_player', 'pace_tandem', 'Vijaykumar Vyshak', 'Mohammed Siraj', 50, true, 'Local Karnataka pacer learning international intensity from pace spearhead Siraj at RCB.', 'https://www.royalchallengers.com/'),
+  ('player_player', 'franchise_teammates', 'Nitish Kumar Reddy', 'Abhishek Sharma', 58, true, 'Young domestic all-round stars spearheading Sunrisers Hyderabad dynamic new era.', 'https://www.sunrisershyderabad.in/'),
+  ('player_player', 'franchise_teammates', 'Abdul Samad', 'Abhishek Sharma', 55, true, 'Longtime Sunrisers Hyderabad young batting group peers who rose through the ranks together.', 'https://www.sunrisershyderabad.in/'),
+  ('player_player', 'mentor_protege', 'Umran Malik', 'Bhuvneshwar Kumar', 52, true, 'Raw express pacer mentored on discipline and seam presentation by veteran Bhuvneshwar at SRH.', 'https://www.sunrisershyderabad.in/'),
+  ('player_player', 'franchise_teammates', 'Sai Sudharsan', 'Rahul Tewatia', 52, true, 'Top-order anchor and lower-order finisher sharing pressure situations for Gujarat Titans.', 'https://www.gujarattitansipl.com/'),
+  ('player_player', 'franchise_teammates', 'R. Sai Kishore', 'Sai Sudharsan', 58, true, 'Tamil Nadu domestic teammates sharing state dressing rooms and Gujarat Titans dugout.', 'https://www.gujarattitansipl.com/'),
+  ('player_player', 'franchise_teammates', 'Shahrukh Khan', 'Rahul Tewatia', 54, true, 'Twin power-hitting middle order partners combining for death-overs onslaughts at GT.', 'https://www.gujarattitansipl.com/'),
+  ('player_player', 'mentor_protege', 'Abishek Porel', 'Rishabh Pant', 54, true, 'Young wicketkeeper-batter mentored and backed by senior keeper-captain Pant at Delhi Capitals.', 'https://www.delhicapitals.in/'),
+  ('player_player', 'franchise_teammates', 'Abishek Porel', 'Axar Patel', 50, true, 'Young dynamic batter combining with senior all-rounder Axar in high-pressure chases at DC.', 'https://www.delhicapitals.in/'),
+  ('player_player', 'pace_tandem', 'Rasikh Salam', 'Khaleel Ahmed', 48, true, 'Emerging seam talent combining with senior left-armer Khaleel in Delhi Capitals pace attack.', 'https://www.delhicapitals.in/'),
+  ('player_player', 'mentor_protege', 'Kumar Kushagra', 'Rishabh Pant', 44, true, 'Young keeper-batter recruit observing Pant closely in the Delhi Capitals squad.', 'https://www.delhicapitals.in/'),
+  ('player_player', 'franchise_teammates', 'Prabhsimran Singh', 'Jitesh Sharma', 52, true, 'Attacking wicketkeeper-batters sharing Punjab Kings top-order and middle-order roles.', 'https://www.punjabkingsipl.in/'),
+  ('player_player', 'franchise_teammates', 'Harpreet Brar', 'Arshdeep Singh', 58, true, 'Punjab domestic teammates and close franchise bowling unit partners for PBKS.', 'https://www.punjabkingsipl.in/'),
+  ('player_player', 'franchise_teammates', 'Ashutosh Sharma', 'Jitesh Sharma', 50, true, 'Railways / domestic circuit power hitters connecting in Punjab Kings dugout.', 'https://www.punjabkingsipl.in/'),
+  ('player_staff', 'coached', 'Angkrish Raghuvanshi', 'chandrakant-pandit', 48, true, 'Young batter adapting to senior head coach Pandit tactical discipline and demands at KKR.', 'https://www.iplt20.com/teams/kolkata-knight-riders'),
+  ('player_staff', 'specialist_tutelage', 'Ramandeep Singh', 'abhishek-nayar', 55, true, 'Power-hitting recruit benefiting from Nayar technical guidance at the KKR high performance setup.', 'https://www.iplt20.com/teams/kolkata-knight-riders'),
+  ('player_staff', 'specialist_tutelage', 'Sameer Rizvi', 'michael-hussey', 50, true, 'Young power-hitter receiving initial batting coaching and shot selection guidance from Hussey at CSK.', 'https://www.iplt20.com/teams/chennai-super-kings'),
+  ('player_staff', 'specialist_tutelage', 'Naman Dhir', 'kieron-pollard', 52, true, 'Young batter working with Pollard on power hitting and mental resilience at Mumbai Indians.', 'https://www.mumbaiindians.com/'),
+  ('player_staff', 'coached', 'Nehal Wadhera', 'mahela-jayawardene', 54, true, 'Middle-order batter receiving tactical positioning and game situation coaching from Jayawardene.', 'https://www.mumbaiindians.com/'),
+  ('player_staff', 'coached', 'Nitish Kumar Reddy', 'daniel-vettori', 58, true, 'Emerging all-rounder given expanded responsibility under head coach Vettori at Sunrisers Hyderabad.', 'https://www.sunrisershyderabad.in/'),
+  ('player_staff', 'talent_champion', 'Abishek Porel', 'sourav-ganguly', 55, true, 'Young Bengal wicketkeeper backed by Director of Cricket Ganguly into the Delhi Capitals squad.', 'https://www.delhicapitals.in/'),
+  ('player_staff', 'coached', 'Rasikh Salam', 'pravin-amre', 46, true, 'Young seamer receiving support and team integration within the Delhi Capitals coaching group.', 'https://www.delhicapitals.in/');
 
 do $$
 declare
   bad text;
 begin
-  if (select count(*) from _person_dynamics_seed) <> 248 then
-    raise exception 'Expected 248 person dynamics seeds';
+  if (select count(*) from _person_dynamics_seed) <> 292 then
+    raise exception 'Expected 292 person dynamics seeds';
   end if;
 
   select format('%s / %s / %s (matches: %s, %s)', category, person1_key, person2_key, first_matches, second_matches)

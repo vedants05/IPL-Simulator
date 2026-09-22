@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDown, ArrowUp, ArrowUpDown, Bot, BriefcaseBusiness, RefreshCw, UserMinus, UserPlus, UsersRound, X } from "lucide-react";
 
 import type { Team } from "@/lib/types";
@@ -9,6 +9,7 @@ import { calculateInitialStaffNegotiationPatience, calculateStaffMoveInterest, c
 import { getStaffClubAffinity, type StaffAffinityProfile } from "@/lib/data/staffAffinities";
 import { addDaysToDateKey } from "@/lib/logic/careerCalendar";
 import { loadStaffDirectory } from "@/lib/logic/staffDirectoryClient";
+import { supabase } from "@/lib/supabase/client";
 import { getStaffPreferenceColor, getStaffRatingColor } from "@/lib/theme/staffRatingColors";
 import { internationalTeamName } from "@/lib/logic/international";
 import type { CareerStaffContract } from "@/lib/logic/staffContracts";
@@ -42,6 +43,17 @@ interface StaffResponse {
   members: StaffMember[];
   assignments: StartingAssignment[];
   error?: string;
+}
+
+interface PersonnelRelationship {
+  dynamic_id: number;
+  dynamic_type_name: string;
+  rating: number;
+  partner_name: string;
+  partner_type: "player" | "staff";
+  partner_role: string;
+  subject_reason: string;
+  story: string | null;
 }
 
 interface StaffManagementPageProps {
@@ -182,6 +194,32 @@ function StaffProfileModal({
   const [negotiationHasStarted, setNegotiationHasStarted] = useState(false);
   const [showNegotiationExitWarning, setShowNegotiationExitWarning] = useState(false);
   const [showTerminationConfirm, setShowTerminationConfirm] = useState(false);
+  const traitsRowRef = useRef<HTMLDivElement>(null);
+  const traitsContentRef = useRef<HTMLDivElement>(null);
+  const [traitsScale, setTraitsScale] = useState(1);
+  const [relationships, setRelationships] = useState<PersonnelRelationship[]>([]);
+  const [relationshipsStatus, setRelationshipsStatus] = useState<"loading" | "ready" | "error">("loading");
+  useEffect(() => {
+    let cancelled = false;
+    setRelationships([]);
+    setRelationshipsStatus("loading");
+    void (async () => {
+      const { data, error } = await supabase
+        .from("person_dynamics_view")
+        .select("dynamic_id,dynamic_type_name,rating,partner_name,partner_type,partner_role,subject_reason,story")
+        .eq("subject_type", "staff")
+        .eq("subject_id", member.id)
+        .order("rating", { ascending: false });
+      if (cancelled) return;
+      if (error) {
+        setRelationshipsStatus("error");
+        return;
+      }
+      setRelationships((data ?? []) as PersonnelRelationship[]);
+      setRelationshipsStatus("ready");
+    })();
+    return () => { cancelled = true; };
+  }, [member.id]);
   const persistedNegotiation = careerStaff.activeNegotiations[member.id];
   useEffect(() => {
     if (!contractAction || persistedNegotiation?.status !== "active" || persistedNegotiation.action !== contractAction) return;
@@ -208,6 +246,18 @@ function StaffProfileModal({
         "Disciplinarian",
         "Youth Developer",
       ].slice(0, 3);
+
+  useEffect(() => {
+    const row = traitsRowRef.current;
+    const content = traitsContentRef.current;
+    if (!row || !content) return;
+    const fitTraits = () => setTraitsScale(Math.min(1, row.clientWidth / Math.max(1, content.offsetWidth)));
+    const observer = new ResizeObserver(fitTraits);
+    observer.observe(row);
+    observer.observe(content);
+    fitTraits();
+    return () => observer.disconnect();
+  }, [traits]);
 
   const rawTraitPrefs = (member.trait_preferences && typeof member.trait_preferences === "object" ? member.trait_preferences : null)
     ?? (careerContract as any)?.traitPreferences
@@ -443,7 +493,7 @@ function StaffProfileModal({
         className="flex h-[calc(100vh-1.5rem)] max-h-[97vh] w-full max-w-[96vw] 2xl:max-w-7xl flex-col overflow-hidden rounded-lg border-2 border-border bg-surface shadow-2xl sm:h-[calc(100vh-2.5rem)]"
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <header className="flex shrink-0 flex-wrap items-center justify-between gap-4 border-b-2 border-border px-5 py-3 sm:px-6">
+        <header className="flex shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-3 border-b-2 border-border px-5 py-4 sm:px-6">
           <div className="flex min-w-0 items-center gap-4">
             <div
               className="flex size-14 shrink-0 items-center justify-center rounded-full font-anton text-xl"
@@ -506,31 +556,29 @@ function StaffProfileModal({
               <X size={17} />
             </button>
           </div>
+          <div ref={traitsRowRef} className="w-full min-w-0 overflow-hidden border-t border-border/60 pt-3">
+            <div ref={traitsContentRef} className="flex w-max flex-nowrap items-center gap-2" style={{ transform: `scale(${traitsScale})`, transformOrigin: "left center" }}>
+              {traits.map((trait) => (
+                <span key={trait} className="shrink-0 whitespace-nowrap rounded border border-accent/40 bg-accent/10 px-2.5 py-1 font-space-mono text-[8px] font-bold uppercase tracking-wider text-text-primary">
+                  {fieldLabel(trait)}
+                </span>
+              ))}
+            </div>
+          </div>
         </header>
         <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden bg-bg/40 p-3 sm:p-4 lg:grid-cols-[21rem_minmax(0,1fr)] lg:gap-4">
-          {/* LEFT SIDEBAR: Traits, Club Connections, Contract Actions */}
+          {/* LEFT SIDEBAR: Club Connections, Contract Actions */}
           <div className="flex min-h-0 flex-col gap-3 overflow-y-auto pr-1">
-            <div className="rounded-lg border border-border bg-surface p-4">
-              <h3 className="mb-2.5 font-anton text-xs uppercase text-text-primary">Traits</h3>
-              <div className="grid grid-cols-3 gap-1.5">
+            <div className="rounded-lg border border-border bg-surface p-3">
+              <div className="grid grid-cols-3 gap-1">
                 {traitProfileFacts.map(([label, value, field]) => (
-                  <div key={field} className="min-w-0 rounded border border-border bg-bg p-2">
+                  <div key={field} className="min-w-0 rounded border border-border bg-bg p-1.5">
                     <p className="font-space-mono text-[7px] font-bold uppercase leading-tight text-text-secondary">{label}</p>
-                    <p className="mt-1 break-words text-[10px] font-semibold leading-tight text-text-primary">{formatFieldValue(value, field)}</p>
+                    <p className="mt-0.5 break-words text-[9px] font-semibold leading-tight text-text-primary">{formatFieldValue(value, field)}</p>
                   </div>
                 ))}
               </div>
-              {traits.length > 0 && (
-                <div className="mt-3 flex flex-wrap gap-2 border-t border-border/60 pt-3">
-                  {traits.map((trait) => (
-                    <span key={trait} className="rounded border border-accent/40 bg-accent/10 px-2.5 py-1 font-space-mono text-[8px] font-bold uppercase tracking-wider text-text-primary">
-                      {fieldLabel(trait)}
-                    </span>
-                  ))}
-                </div>
-              )}
             </div>
-
             <div className="rounded-lg border border-border bg-surface p-4">
               <h3 className="mb-2 font-anton text-xs uppercase text-text-primary">Club connections</h3>
               {clubAffinities.length > 0 ? (
@@ -542,6 +590,28 @@ function StaffProfileModal({
                   ))}
                 </div>
               ) : <p className="text-xs text-text-secondary">No specific IPL club connection recorded.</p>}
+            </div>
+
+            <div className="rounded-lg border border-border bg-surface p-4">
+              <h3 className="mb-2 font-anton text-xs uppercase text-text-primary">Personnel relationships</h3>
+              {relationshipsStatus === "loading" && <p className="text-xs text-text-secondary">Loading relationships...</p>}
+              {relationshipsStatus === "error" && <p className="text-xs text-danger">Unable to load relationships.</p>}
+              {relationshipsStatus === "ready" && relationships.length === 0 && (
+                <p className="text-xs text-text-secondary">No personnel relationships recorded.</p>
+              )}
+              {relationshipsStatus === "ready" && relationships.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {relationships.map((relationship) => (
+                    <span
+                      key={relationship.dynamic_id}
+                      title={`${relationship.partner_type} · ${relationship.partner_role}\n${relationship.subject_reason}`}
+                      className="rounded border border-border bg-bg px-2.5 py-1 font-space-mono text-[8px] font-bold uppercase text-text-primary"
+                    >
+                      {relationship.partner_name} <span className="text-text-secondary">· {relationship.dynamic_type_name}</span> <span className="text-accent">{relationship.rating}</span>
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
 
             {allowContractActions && (isFreeAgent || isUserStaff || isOtherClubStaff) && (
