@@ -31,7 +31,6 @@ interface StaffMember extends Record<string, unknown> {
   role_ratings?: Record<string, number>;
   affinity_profile?: StaffAffinityProfile;
 }
-
 interface StartingAssignment {
   staff_id: string;
   team_id: string;
@@ -82,6 +81,20 @@ const ratingForRole = (member: StaffMember, role: string) => (
 const formatSalary = (value: unknown): string => typeof value === "number"
   ? new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(value)
   : String(value ?? "Not recorded");
+
+const formatCompactSalary = (value: unknown): string => {
+  if (typeof value !== "number") return String(value ?? "Not recorded");
+
+  const absoluteValue = Math.abs(value);
+  const unit = absoluteValue >= 10_000_000
+    ? { divisor: 10_000_000, suffix: "Cr" }
+    : { divisor: 100_000, suffix: "L" };
+  const conciseValue = new Intl.NumberFormat("en-IN", {
+    maximumFractionDigits: 2,
+  }).format(value / unit.divisor);
+
+  return `\u20B9${conciseValue}${unit.suffix}`;
+};
 
 const ageFromDateOfBirth = (dateOfBirth: string | null) => {
   if (!dateOfBirth) return null;
@@ -207,14 +220,22 @@ function StaffProfileModal({
       data_analytics_reliance: 55,
     };
 
-  const traitPreferences = Object.entries(rawTraitPrefs as Record<string, number>)
-    .filter(([, val]) => typeof val === "number")
-    .sort((left, right) => right[1] - left[1])
-    .slice(0, 8);
+  const loyaltyPreference = typeof member.loyalty === "number" ? member.loyalty : careerContract?.loyalty;
+  const traitPreferences = [
+    ...Object.entries(rawTraitPrefs as Record<string, number>)
+      .filter(([key, val]) => key !== "loyalty" && typeof val === "number")
+      .sort((left, right) => right[1] - left[1])
+      .slice(0, 8),
+    ...(typeof loyaltyPreference === "number" ? [["loyalty", loyaltyPreference] as [string, number]] : []),
+  ].sort((left, right) => right[1] - left[1]);
   const roleRatings = Object.entries(member.role_ratings ?? {})
     .sort((left, right) => right[1] - left[1]);
   const topRoleRatings = roleRatings.slice(0, 3);
   const otherRoleRatings = roleRatings.slice(3);
+  const profileAge = ageFromDateOfBirth(member.date_of_birth);
+  const profileCountry = member.country
+    ? (member.affinity_profile?.homeRegion ? `${member.country} (${member.affinity_profile.homeRegion})` : String(member.country))
+    : null;
   const normalizedOfferRoles = [
     offerPrimaryRole,
     ...offerRoles.filter((role) => role !== offerPrimaryRole),
@@ -403,21 +424,10 @@ function StaffProfileModal({
     setContractAction(null);
     setStaffNegotiationSession(member.id, null);
   };
-  const profileFacts: Array<[string, unknown]> = [
-    ["Primary role", roleLabel(member.primary_role)],
-    ["Secondary roles", member.secondary_roles?.length > 0 ? member.secondary_roles.map(roleLabel).join(", ") : "None recorded"],
-    ["Age", ageFromDateOfBirth(member.date_of_birth)],
-    [
-      "Country",
-      member.country
-        ? (member.affinity_profile?.homeRegion ? `${member.country} (${member.affinity_profile.homeRegion})` : member.country)
-        : null,
-    ],
-    ["Experience", typeof member.experience_years === "number" ? `${member.experience_years} years` : null],
-    ["Personality", member.personality],
-    ["Loyalty", typeof member.loyalty === "number" ? `${member.loyalty}/100` : member.loyalty],
-    ["Philosophy", member.coaching_philosophy],
-    ["Team strategy", member.preferred_team_strategy],
+  const traitProfileFacts: Array<[string, unknown, string]> = [
+    ["Personality", member.personality, "personality"],
+    ["Strategy", member.preferred_team_strategy, "preferred_team_strategy"],
+    ["Philosophy", member.coaching_philosophy, "coaching_philosophy"],
   ];
   const clubAffinities = (member.affinity_profile?.clubs ?? []).filter((c) => Boolean(c.teamId) && c.teamId !== "UNSOLD");
 
@@ -442,83 +452,92 @@ function StaffProfileModal({
               {initials(member.full_name)}
             </div>
             <div className="min-w-0">
-              <p className="font-space-mono text-[8px] font-bold uppercase tracking-[0.2em] text-text-secondary">Staff profile</p>
-              <h2 className="truncate font-anton text-2xl uppercase leading-tight text-text-primary sm:text-3xl">{member.full_name}</h2>
+              <p className="font-space-mono text-[9px] font-bold uppercase tracking-wider text-text-secondary">Staff profile</p>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <h2 className="min-w-0 font-anton text-2xl uppercase leading-tight text-text-primary sm:text-3xl">{member.full_name}</h2>
+                {(profileCountry || profileAge !== null) && (
+                  <div className="flex flex-col font-space-mono text-[9px] font-bold uppercase leading-tight tracking-wider text-text-secondary">
+                    {profileCountry && <span>{profileCountry}</span>}
+                    {profileAge !== null && <span>{profileAge} years old</span>}
+                  </div>
+                )}
+              </div>
               <p className="mt-1 font-space-mono text-[9px] font-bold uppercase tracking-wider text-text-secondary">
-                {roleLabel(assignment.role)} · {team?.name ?? assignment.team_id}
+                {roleLabel(assignment.role)}{" \u00B7 "}{team?.name ?? assignment.team_id}
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            <div className="hidden sm:flex items-center gap-3.5 rounded-lg border border-border bg-bg px-4 py-2">
-              <div>
-                <p className="font-space-mono text-[7px] font-bold uppercase tracking-wider text-text-secondary">Contract</p>
-                <p className="font-anton text-xs uppercase text-text-primary">
-                  {member.contract_end_year ? `Until ${member.contract_end_year}` : (member.contract_status === "uncontracted" ? "Free Agent" : "Rolling")}
-                </p>
+          <div className="flex w-full min-w-0 items-start gap-2 xl:w-auto">
+            <div className="grid min-w-0 flex-1 grid-cols-1 gap-2 md:flex-none md:grid-cols-[12rem_20rem]">
+              <div className="flex h-[3.75rem] min-w-0 items-center justify-between gap-2 rounded-lg border border-border bg-bg px-3 py-2">
+                <div className="min-w-0">
+                  <p className="-translate-y-1.5 font-space-mono text-[9px] font-bold uppercase leading-tight tracking-wider text-text-secondary">Ability</p>
+                  <p className="font-anton text-xl leading-none text-text-primary">{ratingForRole(member, member.primary_role) ?? "–"}</p>
+                </div>
+                <div className="h-6 w-px shrink-0 bg-border" />
+                <div className="min-w-0">
+                  <p className="-translate-y-1.5 font-space-mono text-[9px] font-bold uppercase leading-tight tracking-wider text-text-secondary">Potential</p>
+                  <p className="text-right font-anton text-xl leading-none text-text-primary">{formatFieldValue(member.potential_ability)}</p>
+                </div>
               </div>
-              <div className="h-6 w-px bg-border" />
-              <div>
-                <p className="font-space-mono text-[7px] font-bold uppercase tracking-wider text-text-secondary">Salary</p>
-                <p className="font-anton text-xs uppercase text-accent">
-                  {formatSalary(member.annual_salary ?? member.salary_expectation)}
-                </p>
+              <div className="flex h-[3.75rem] min-w-0 items-center justify-between gap-2 rounded-lg border border-border bg-bg px-3 py-2">
+                <div className="shrink-0">
+                  <p className="-translate-y-1.5 whitespace-nowrap font-space-mono text-[9px] font-bold uppercase leading-tight tracking-wider text-text-secondary">Contract Start</p>
+                  <p className="font-anton text-xl leading-none text-text-primary">{member.contract_start_year ? formatFieldValue(member.contract_start_year) : "–"}</p>
+                </div>
+                <div className="h-6 w-px shrink-0 bg-border" />
+                <div className="shrink-0">
+                  <p className="-translate-y-1.5 whitespace-nowrap font-space-mono text-[9px] font-bold uppercase leading-tight tracking-wider text-text-secondary">Contract End</p>
+                  <p className="font-anton text-xl leading-none text-text-primary">
+                    {member.contract_end_year ? formatFieldValue(member.contract_end_year) : (member.contract_status === "uncontracted" ? "Free Agent" : "Rolling")}
+                  </p>
+                </div>
+                <div className="h-6 w-px shrink-0 bg-border" />
+                <div className="min-w-0">
+                  <p className="-translate-y-1.5 whitespace-nowrap font-space-mono text-[9px] font-bold uppercase leading-tight tracking-wider text-text-secondary">Salary</p>
+                  <p className="font-anton text-xl leading-none text-text-primary">
+                    {formatCompactSalary(member.annual_salary ?? member.salary_expectation)}
+                  </p>
+                </div>
               </div>
-              {Boolean(member.contract_start_year) && (
-                <>
-                  <div className="h-6 w-px bg-border" />
-                  <div>
-                    <p className="font-space-mono text-[7px] font-bold uppercase tracking-wider text-text-secondary">Signed</p>
-                    <p className="font-anton text-xs uppercase text-text-primary">{formatFieldValue(member.contract_start_year)}</p>
-                  </div>
-                </>
-              )}
             </div>
-
             <button type="button" onClick={onClose} className="ml-1 flex size-9 shrink-0 items-center justify-center rounded border border-border text-text-primary hover:bg-black/5 dark:hover:bg-white/10" aria-label="Close staff profile">
               <X size={17} />
             </button>
           </div>
         </header>
         <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden bg-bg/40 p-3 sm:p-4 lg:grid-cols-[21rem_minmax(0,1fr)] lg:gap-4">
-          {/* LEFT SIDEBAR: Bio, Ratings Overview, Club Connections, Contract Actions */}
-          <div className="flex min-h-0 flex-col gap-3 overflow-hidden pr-1">
+          {/* LEFT SIDEBAR: Traits, Club Connections, Contract Actions */}
+          <div className="flex min-h-0 flex-col gap-3 overflow-y-auto pr-1">
             <div className="rounded-lg border border-border bg-surface p-4">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="font-space-mono text-[7.5px] font-bold uppercase tracking-wider text-text-secondary">Primary role</p>
-                  <p className="mt-0.5 font-anton text-3xl leading-none text-text-primary">{ratingForRole(member, member.primary_role) ?? "–"}</p>
-                </div>
-                <div className="text-right">
-                  <p className="font-space-mono text-[7.5px] font-bold uppercase tracking-wider text-text-secondary">Potential</p>
-                  <p className="mt-0.5 font-anton text-3xl leading-none text-text-primary">{formatFieldValue(member.potential_ability)}</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-lg border border-border bg-surface p-4">
-              <h3 className="mb-3 font-anton text-xs uppercase text-text-primary">Profile overview</h3>
-              <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 text-xs">
-                {profileFacts.map(([label, value]) => (
-                  <div key={String(label)} className="border-t border-border/60 pt-1.5">
-                    <p className="font-space-mono text-[7px] font-bold uppercase tracking-wider text-text-secondary">{label}</p>
-                    <p className="mt-0.5 text-xs font-semibold text-text-primary break-words">{formatFieldValue(value, String(label).toLowerCase().replace(/ /g, "_"))}</p>
+              <h3 className="mb-2.5 font-anton text-xs uppercase text-text-primary">Traits</h3>
+              <div className="grid grid-cols-3 gap-1.5">
+                {traitProfileFacts.map(([label, value, field]) => (
+                  <div key={field} className="min-w-0 rounded border border-border bg-bg p-2">
+                    <p className="font-space-mono text-[7px] font-bold uppercase leading-tight text-text-secondary">{label}</p>
+                    <p className="mt-1 break-words text-[10px] font-semibold leading-tight text-text-primary">{formatFieldValue(value, field)}</p>
                   </div>
                 ))}
               </div>
+              {traits.length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-2 border-t border-border/60 pt-3">
+                  {traits.map((trait) => (
+                    <span key={trait} className="rounded border border-accent/40 bg-accent/10 px-2.5 py-1 font-space-mono text-[8px] font-bold uppercase tracking-wider text-text-primary">
+                      {fieldLabel(trait)}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="rounded-lg border border-border bg-surface p-4">
-              <div className="mb-2 flex items-center justify-between gap-2">
-                <h3 className="font-anton text-xs uppercase text-text-primary">Club connections</h3>
-                <span className="font-space-mono text-[7px] uppercase text-text-secondary">{member.affinity_profile?.homeCountry ?? String(member.country ?? "Unknown")}</span>
-              </div>
+              <h3 className="mb-2 font-anton text-xs uppercase text-text-primary">Club connections</h3>
               {clubAffinities.length > 0 ? (
                 <div className="flex flex-wrap gap-1.5">
                   {clubAffinities.map((affinity) => (
                     <span key={affinity.teamId} className="rounded border border-border bg-bg px-2.5 py-1 font-space-mono text-[8px] font-bold uppercase text-text-primary">
-                      {affinity.teamId} · {affinity.strength}<span className="ml-1 text-text-secondary">{affinity.reasons.map(fieldLabel).join("·")}</span>
+                      {affinity.teamId}{" \u00B7 "}{affinity.strength}<span className="ml-1 text-text-secondary">{affinity.reasons.map(fieldLabel).join("\u00B7")}</span>
                     </span>
                   ))}
                 </div>
@@ -589,28 +608,33 @@ function StaffProfileModal({
             )}
           </div>
 
-          {/* RIGHT MAIN COLUMN: Top Roles, 3-Column Attributes, Traits & Preferences */}
-          <div className="flex min-h-0 flex-col gap-3 overflow-hidden pl-1">
+          {/* RIGHT MAIN COLUMN: Top Roles, 3-Column Attributes & Preferences */}
+          <div className="flex min-h-0 flex-col gap-3 overflow-y-auto pl-1 pr-1">
             {topRoleRatings.length > 0 && (
               <section className="rounded-lg border border-border bg-surface p-4">
                 <div className="mb-2.5 flex items-center justify-between gap-2">
                   <h3 className="font-anton text-xs uppercase text-text-primary">Top coaching positions</h3>
                   <span className="font-space-mono text-[7px] uppercase text-text-secondary">Suitability rating</span>
                 </div>
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
                   {topRoleRatings.map(([role, rating], index) => {
                     const isPrimary = role === member.primary_role;
+                    const isSecondary = !isPrimary && member.secondary_roles?.includes(role);
                     return (
                       <div
                         key={role}
                         className={`relative overflow-hidden rounded-md border p-3 ${isPrimary ? "border-accent bg-accent/10" : "border-border bg-bg"}`}
                       >
                         <div className="flex items-start justify-between gap-1">
-                          <div>
+                          <div className="min-w-0">
                             <p className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">#{index + 1} fit</p>
-                            <p className="font-anton text-sm uppercase leading-tight text-text-primary">{roleLabel(role)}</p>
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <p className="font-anton text-sm uppercase leading-tight text-text-primary">{roleLabel(role)}</p>
+                              {isPrimary && <span className="rounded border border-accent/50 bg-accent/10 px-1.5 py-0.5 font-space-mono text-[7px] font-bold text-accent">Primary Role</span>}
+                              {isSecondary && <span className="rounded border border-border bg-surface px-1.5 py-0.5 font-space-mono text-[7px] font-bold text-text-secondary">Secondary Role</span>}
+                            </div>
                           </div>
-                          <span className="font-anton text-2xl tabular-nums leading-none text-text-primary">{rating}</span>
+                          <span className="shrink-0 font-anton text-2xl tabular-nums leading-none text-text-primary">{rating}</span>
                         </div>
                         <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-border">
                           <div className="h-full rounded-full bg-accent" style={{ width: `${rating}%` }} />
@@ -623,7 +647,10 @@ function StaffProfileModal({
                   <div className="mt-2.5 flex flex-wrap gap-2">
                     {otherRoleRatings.map(([role, rating]) => (
                       <span key={role} className="rounded border border-border/70 bg-bg px-2.5 py-1 font-space-mono text-[8px] font-bold uppercase text-text-secondary">
-                        {roleLabel(role)} <strong className="ml-1 text-text-primary">{rating}</strong>
+                        {roleLabel(role)}
+                        {role === member.primary_role && <span className="ml-1 rounded border border-accent/50 bg-accent/20 px-1 py-0.5 text-[7px] font-bold leading-none text-text-primary" title="Primary role" aria-label="Primary role">{"1\u00B0 Role"}</span>}
+                        {role !== member.primary_role && member.secondary_roles?.includes(role) && <span className="ml-1 rounded border border-gold/50 bg-gold/20 px-1 py-0.5 text-[7px] font-bold leading-none text-text-primary" title="Secondary role" aria-label="Secondary role">{"2\u00B0 Role"}</span>}
+                        <strong className="ml-1 text-text-primary">{rating}</strong>
                       </span>
                     ))}
                   </div>
@@ -696,9 +723,6 @@ function StaffProfileModal({
 
               return (
                 <section className="rounded-lg border border-border bg-surface p-4">
-                  <h3 className="mb-3 border-b border-border pb-2 font-anton text-xs uppercase text-text-primary">
-                    Coaching Attributes · 1–20
-                  </h3>
                   <div className="grid grid-cols-3 gap-5">
                     <div className="flex flex-col gap-2.5">
                       <h4 className="border-b border-border/60 pb-1 font-space-mono text-[8.5px] font-bold uppercase tracking-wider text-accent">
@@ -726,41 +750,24 @@ function StaffProfileModal({
               );
             })()}
 
-            {(traits.length > 0 || traitPreferences.length > 0) && (
-              <section className="grid grid-cols-1 gap-3 sm:grid-cols-[0.7fr_1.3fr]">
-                {traits.length > 0 && (
-                  <div className="rounded-lg border border-border bg-surface p-4">
-                    <h3 className="mb-2.5 font-anton text-xs uppercase text-text-primary">Traits</h3>
-                    <div className="flex flex-wrap gap-2">
-                      {traits.map((trait) => (
-                        <span key={trait} className="rounded border border-accent/40 bg-accent/10 px-2.5 py-1 font-space-mono text-[8px] font-bold uppercase tracking-wider text-text-primary">
-                          {fieldLabel(trait)}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {traitPreferences.length > 0 && (
-                  <div className="rounded-lg border border-border bg-surface p-3">
-                    <h3 className="mb-2 font-anton text-xs uppercase text-text-primary">Behavioral preferences</h3>
-                    <div className="grid grid-cols-1 gap-x-4 gap-y-1.5 xl:grid-cols-2">
-                      {traitPreferences.map(([preference, value]) => {
-                        const boundedValue = Math.max(0, Math.min(100, value));
-                        const preferenceColor = getStaffPreferenceColor(boundedValue);
-                        return (
-                          <div key={preference} className="grid min-w-0 grid-cols-[minmax(0,1fr)_1.75rem] items-center gap-x-2 gap-y-0.5">
-                            <span className="col-span-2 whitespace-normal font-space-mono text-[7px] font-bold uppercase leading-tight text-text-secondary" title={fieldLabel(preference)}>{fieldLabel(preference)}</span>
-                            <div className="h-1.5 overflow-hidden rounded-sm border border-border bg-bg shadow-inner">
-                              <div className="h-full" style={{ width: `${boundedValue}%`, backgroundColor: preferenceColor }} />
-                            </div>
-                            <span className="text-right font-space-mono text-[10px] font-bold tabular-nums" style={{ color: preferenceColor }}>{boundedValue}</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
+            {traitPreferences.length > 0 && (
+              <section className="rounded-lg border border-border bg-surface p-3">
+                <h3 className="mb-2 font-anton text-xs uppercase text-text-primary">Behavioural preferences</h3>
+                <div className="grid grid-cols-1 gap-x-4 gap-y-2 sm:grid-cols-2 lg:grid-cols-3">
+                  {traitPreferences.map(([preference, value]) => {
+                    const boundedValue = Math.max(0, Math.min(100, value));
+                    const preferenceColor = getStaffPreferenceColor(boundedValue);
+                    return (
+                      <div key={preference} className="grid min-w-0 grid-cols-[minmax(0,1fr)_1.75rem] items-center gap-x-2 gap-y-0.5">
+                        <span className="col-span-2 whitespace-normal font-space-mono text-[7px] font-bold uppercase leading-tight text-text-secondary" title={fieldLabel(preference)}>{fieldLabel(preference)}</span>
+                        <div className="h-1.5 overflow-hidden rounded-sm border border-border bg-bg shadow-inner">
+                          <div className="h-full" style={{ width: `${boundedValue}%`, backgroundColor: preferenceColor }} />
+                        </div>
+                        <span className="text-right font-space-mono text-[10px] font-bold tabular-nums" style={{ color: preferenceColor }}>{boundedValue}</span>
+                      </div>
+                    );
+                  })}
+                </div>
               </section>
             )}
           </div>
