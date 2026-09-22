@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import type { Player, Team } from "@/lib/types";
 import type { ScoutingReport } from "@/lib/logic/scoutingAssignments";
 import { getBestPlayerScoutingReport, getPlayerScoutingConfidence } from "@/lib/logic/scoutingAssignments";
+import { summarizeIplPlayerFixtures, summarizeIplSeasonMatchLogs } from "@/lib/logic/playerHistory";
 
 type View = "attributes" | "career" | "season";
 type CareerScope = "ipl" | "t20";
@@ -15,7 +16,7 @@ export interface PlayerAnalysisPageProps {
   userTeamId: string;
   currentSeason: number;
   fixtures: FixtureLike[];
-  seasonArchives: Array<{ season: number; playerMatchLogs?: Record<string, unknown[]> }>;
+  seasonArchives: Array<{ season: number; playerMatchLogs?: Record<string, unknown[]>; playerStats?: Record<string, unknown> }>;
   scoutingReports: ScoutingReport[];
   shortlist: string[];
   onToggleShortlist: (playerId: string) => void;
@@ -49,7 +50,14 @@ function visibleRating(player: Player, key: keyof Player, reports: ScoutingRepor
   return `${Math.max(1, Math.round(value - margin))}–${Math.min(99, Math.round(value + margin))}`;
 }
 
-function seasonEntry(player: Player, season: number) {
+function seasonEntry(player: Player, season: number, props: PlayerAnalysisPageProps) {
+  if (season === props.currentSeason) return summarizeIplPlayerFixtures(props.fixtures, player.id);
+  const archive = props.seasonArchives.find((entry) => entry.season === season);
+  if (archive) {
+    const archivedStats = archive.playerStats?.[player.id];
+    const loggedStats = summarizeIplSeasonMatchLogs(archive.playerMatchLogs?.[player.id]);
+    return archivedStats || loggedStats ? { ...(archivedStats as Record<string, unknown> | undefined), ...loggedStats } : undefined;
+  }
   return player.iplHistory.find((entry) => Number(entry.season) === season)?.seasonStats;
 }
 
@@ -103,7 +111,7 @@ export default function PlayerAnalysisPage(props: PlayerAnalysisPageProps) {
     <div className={`grid min-h-0 flex-1 gap-4 overflow-hidden ${selected.length === 2 ? "grid-cols-2" : "grid-cols-1"}`}>{selected.map((player, playerIndex) => <div key={player.id} className="flex min-h-0 flex-col gap-4 overflow-y-auto rounded-xl border-2 border-border bg-surface p-5 shadow-sm"><PlayerHeader player={player} />
       {view === "attributes" && <div className="space-y-3">{Array.from(new Set(ATTRIBUTES.map((attribute) => attribute.group))).map((group) => <div key={group}><h3 className="mb-1 border-b border-border pb-1 font-anton text-[11px] uppercase">{group}</h3><div className="grid grid-cols-2 gap-1">{ATTRIBUTES.filter((attribute) => attribute.group === group).map((attribute) => <div key={String(attribute.key)} className="flex justify-between rounded bg-bg/60 px-2 py-1.5 text-[9px]"><span className="text-text-secondary">{attribute.label}</span><span className="font-space-mono font-bold text-text-primary">{visibleRating(player, attribute.key, props.scoutingReports, props.userTeamId)}</span></div>)}</div></div>)}</div>}
       {view === "career" && (() => { const stats = careerScope === "ipl" ? { matches: player.iplStats.matches, runs: player.iplStats.runs, average: player.iplStats.battingAverage, strikeRate: player.iplStats.strikeRate, wickets: player.iplStats.wickets, bowlingAverage: player.iplStats.bowlingAverage, economy: player.iplStats.economy ?? 0 } : { matches: player.careerStats.batting.matches, runs: player.careerStats.batting.runs, average: player.careerStats.batting.average, strikeRate: player.careerStats.batting.strikeRate, wickets: player.careerStats.bowling.wickets, bowlingAverage: player.careerStats.bowling.average, economy: player.careerStats.bowling.economy }; return <StatGrid stats={stats} />; })()}
-      {view === "season" && <><StatGrid stats={seasonEntry(player, season) ?? {}} emptyText={`No IPL statistics recorded for ${season}.`} /><MatchLog rows={rows[playerIndex]} /></>}
+      {view === "season" && <><StatGrid stats={seasonEntry(player, season, props) ?? {}} emptyText={`No IPL statistics recorded for ${season}.`} /><MatchLog rows={rows[playerIndex]} /></>}
     </div>)}</div>
   </div>;
 }

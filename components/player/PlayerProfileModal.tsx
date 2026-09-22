@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Bookmark, X } from "lucide-react";
 import { INITIAL_ACTIVE_SEASON, useGameStore } from "@/lib/store/gameStore";
 import { formatPrice } from "@/lib/logic/auctionRules";
@@ -11,6 +11,7 @@ import {
   getPlayerSeasonHistory,
   mergePlayerIplHistory,
   protectCompletedSeasonTeamsFromTrades,
+  summarizeIplPlayerFixtures,
   summarizeIplSeasonMatchLogs,
   upsertPlayerContractHistory,
   upsertPlayerIplHistory,
@@ -89,9 +90,49 @@ function formatDateOfBirth(dateStr?: string | null): string {
   }
 }
 
+const NATIONAL_CAP_COLORS: Record<string, string> = {
+  india: "#1d4ed8", indian: "#1d4ed8", ind: "#1d4ed8",
+  "south africa": "#15803d", sa: "#15803d",
+  australia: "#a16207", aus: "#a16207",
+  england: "#b91c1c", eng: "#b91c1c",
+  pakistan: "#15803d", pak: "#15803d",
+  "new zealand": "#334155", nz: "#334155",
+  "west indies": "#881337", wi: "#881337",
+  "sri lanka": "#1e40af", sl: "#1e40af",
+  bangladesh: "#166534", ban: "#166534",
+  afghanistan: "#2563eb", afg: "#2563eb",
+  zimbabwe: "#b91c1c", zim: "#b91c1c",
+  ireland: "#15803d", ire: "#15803d",
+  scotland: "#1d4ed8", sco: "#1d4ed8",
+  netherlands: "#c2410c", ned: "#c2410c",
+  nepal: "#b91c1c", nep: "#b91c1c",
+  "united states": "#1d4ed8", usa: "#1d4ed8",
+  canada: "#b91c1c", can: "#b91c1c",
+  namibia: "#1d4ed8", nam: "#1d4ed8",
+  "united arab emirates": "#b91c1c", uae: "#b91c1c",
+  oman: "#b91c1c", oma: "#b91c1c",
+  "papua new guinea": "#b91c1c", png: "#b91c1c",
+  uganda: "#b91c1c", uga: "#b91c1c",
+  kenya: "#15803d", ken: "#15803d",
+  "hong kong": "#b91c1c", hkg: "#b91c1c",
+  malaysia: "#1d4ed8", mas: "#1d4ed8",
+  italy: "#1d4ed8", ita: "#1d4ed8",
+  jersey: "#b91c1c", jer: "#b91c1c",
+};
+
 export interface ProfileModalMatch {
   id: string;
   played: boolean;
+  date?: string;
+  teamA?: string;
+  teamB?: string;
+  simulation?: {
+    lineups?: Record<string, { startingXI?: string[]; finalXI?: string[] }>;
+    innings?: Array<{
+      batting: Array<{ id: string; runs?: number; balls?: number; fours?: number; sixes?: number; notOut?: boolean; dismissal?: string }>;
+      bowling: Array<{ id: string; wickets?: number; overs?: number; runsConceded?: number }>;
+    }>;
+  };
   scorecard?: {
     inningsA: {
       batting: Array<{
@@ -134,26 +175,6 @@ interface PlayerProfileModalProps {
   playerId: string | null;
   onClose: () => void;
   customFixtures?: ProfileModalMatch[];
-  currentSeasonStats?: {
-    matches: number;
-    runs: number;
-    balls?: number;
-    wickets: number;
-    runsConceded?: number;
-    oversBowled?: number;
-    battingInnings?: number;
-    dismissals?: number;
-    highestScore?: number;
-    bestBowling?: string;
-    fours?: number;
-    sixes?: number;
-    dotBalls?: number;
-    catches?: number;
-    stumpings?: number;
-    runOuts?: number;
-    maidens?: number;
-    powerplayWickets?: number;
-  };
   additionalCareerT20Stats?: { matches: number; runs: number; wickets: number; balls?: number; dismissals?: number; bowlingInnings?: number; runsConceded?: number };
   internationalStats?: { matches: number; innings: number; runs: number; balls: number; notOuts: number; highestScore: number; bowlingInnings: number; bowlingBalls: number; runsConceded: number; wickets: number; bestBowlingWickets: number; bestBowlingRuns: number };
   isShortlisted?: boolean;
@@ -164,7 +185,6 @@ export function PlayerProfileModal({
   playerId,
   onClose,
   customFixtures,
-  currentSeasonStats,
   additionalCareerT20Stats,
   internationalStats,
   isShortlisted: propsIsShortlisted,
@@ -173,15 +193,24 @@ export function PlayerProfileModal({
   const players = useGameStore((state) => state.players);
   const teams = useGameStore((state) => state.teams);
   const currentSeason = useGameStore((state) => state.currentSeason);
+  const currentDate = useGameStore((state) => state.currentDate);
   const auction = useGameStore((state) => state.auction);
   const retiredPlayerSnapshots = useGameStore((state) => state.retiredPlayerSnapshots);
   const tradeRecords = useGameStore((state) => state.tradeRecords);
   const careerSeasonArchives = useGameStore((state) => state.careerSeasonArchives);
   const internalShortlist = useGameStore((state) => state.playerShortlist);
   const setInternalShortlist = useGameStore((state) => state.setPlayerShortlist);
-  const viewportRef = useRef<HTMLDivElement>(null);
-  const profileRef = useRef<HTMLDivElement>(null);
-  const [profileScale, setProfileScale] = useState(1);
+
+  useEffect(() => {
+    if (!playerId) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      onClose();
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [onClose, playerId]);
 
   const activePlayer = playerId ? players[playerId] ?? null : null;
   const retiredSnapshot = playerId && !activePlayer
@@ -271,41 +300,6 @@ export function PlayerProfileModal({
     }
   };
 
-  useLayoutEffect(() => {
-    if (!detailedPlayer) return;
-
-    let animationFrame = 0;
-    const fitProfile = () => {
-      window.cancelAnimationFrame(animationFrame);
-      animationFrame = window.requestAnimationFrame(() => {
-        const viewport = viewportRef.current;
-        const profile = profileRef.current;
-        if (!viewport || !profile) return;
-
-        const availableWidth = Math.max(1, viewport.clientWidth - 16);
-        const availableHeight = Math.max(1, viewport.clientHeight - 16);
-        const nextScale = Math.min(
-          1,
-          availableWidth / Math.max(1, profile.scrollWidth),
-          availableHeight / Math.max(1, profile.scrollHeight),
-        );
-        setProfileScale((current) => Math.abs(current - nextScale) < 0.001 ? current : nextScale);
-      });
-    };
-
-    fitProfile();
-    const resizeObserver = new ResizeObserver(fitProfile);
-    if (viewportRef.current) resizeObserver.observe(viewportRef.current);
-    if (profileRef.current) resizeObserver.observe(profileRef.current);
-    window.addEventListener("resize", fitProfile);
-
-    return () => {
-      window.cancelAnimationFrame(animationFrame);
-      window.removeEventListener("resize", fitProfile);
-      resizeObserver.disconnect();
-    };
-  }, [detailedPlayer]);
-
   const rosterSeason = String(auction?.season ?? currentSeason);
 
   const currentSeasonHistoryByPlayer = useMemo(() => {
@@ -356,9 +350,16 @@ export function PlayerProfileModal({
     const fixturesToScan = customFixtures ?? [];
 
     fixturesToScan.forEach((fixture) => {
-      if (!fixture.played || !fixture.scorecard) return;
+      if (!fixture.played) return;
+      if (fixture.date && Number(fixture.date.slice(0, 4)) !== currentSeason) return;
+      if (!fixture.teamA || !fixture.teamB || !teams[fixture.teamA] || !teams[fixture.teamB]) return;
+      if (Object.values(fixture.simulation?.lineups ?? {}).some((lineup) => (
+        lineup.startingXI?.includes(detailedPlayer.id) || lineup.finalXI?.includes(detailedPlayer.id)
+      ))) playerMatchSet.add(fixture.id);
+      const inningsRows = fixture.simulation?.innings
+        ?? (fixture.scorecard ? [fixture.scorecard.inningsA, fixture.scorecard.inningsB] : []);
 
-      [fixture.scorecard.inningsA, fixture.scorecard.inningsB].forEach((innings) => {
+      inningsRows.forEach((innings) => {
         const batEntry = innings.batting.find((b) => b.id === detailedPlayer.id);
         if (batEntry) {
           const bRuns = batEntry.runs ?? 0;
@@ -442,7 +443,15 @@ export function PlayerProfileModal({
       threeFers,
       bestFiguresStr,
     };
-  }, [customFixtures, detailedPlayer]);
+  }, [customFixtures, currentSeason, detailedPlayer, teams]);
+
+  const currentIplHistoryStats = useMemo(
+    () => detailedPlayer ? summarizeIplPlayerFixtures(customFixtures, detailedPlayer.id, {
+      season: currentSeason,
+      teamIds: new Set(Object.keys(teams)),
+    }) : undefined,
+    [customFixtures, currentSeason, detailedPlayer, teams],
+  );
 
   const detailedPlayerHistory = useMemo(() => {
     if (!detailedPlayer) return [];
@@ -450,41 +459,15 @@ export function PlayerProfileModal({
     const currentEntry = currentSeasonHistoryByPlayer.get(detailedPlayer.id);
     let history = currentEntry ? upsertPlayerContractHistory(mergedHistory, currentEntry) : mergedHistory;
 
-    // Attach live current season stats if available from current season fixtures
-    const savedSeasonStats = currentSeasonStats && currentSeasonStats.matches > 0
-      ? currentSeasonStats
-      : null;
-    if (savedSeasonStats || (seasonStats && seasonStats.matches > 0)) {
+    // Only IPL fixtures may contribute to the current IPL history row.
+    if (currentIplHistoryStats) {
       const currentSeasonStr = String(currentSeason);
-      const resolvedSeasonStats = savedSeasonStats
-        ? {
-            matches: savedSeasonStats.matches,
-            runs: savedSeasonStats.runs,
-            balls: savedSeasonStats.balls ?? 0,
-            wickets: savedSeasonStats.wickets,
-            runsConceded: savedSeasonStats.runsConceded ?? 0,
-            oversBowled: savedSeasonStats.oversBowled ?? 0,
-            battingInnings: savedSeasonStats.battingInnings,
-            dismissals: savedSeasonStats.dismissals,
-            highestScore: savedSeasonStats.highestScore,
-            bestBowling: savedSeasonStats.bestBowling,
-            fours: savedSeasonStats.fours,
-            sixes: savedSeasonStats.sixes,
-            dotBalls: savedSeasonStats.dotBalls,
-            catches: savedSeasonStats.catches,
-            stumpings: savedSeasonStats.stumpings,
-            runOuts: savedSeasonStats.runOuts,
-            maidens: savedSeasonStats.maidens,
-            powerplayWickets: savedSeasonStats.powerplayWickets,
-          }
-        : {
-            matches: seasonStats!.matches,
-            runs: seasonStats!.runs,
-            balls: 0,
-            wickets: seasonStats!.bowlWickets,
-            runsConceded: 0,
-            oversBowled: 0,
-          };
+      const resolvedSeasonStats = {
+        ...currentIplHistoryStats,
+        balls: 0,
+        runsConceded: 0,
+        oversBowled: 0,
+      };
       if (!history.some((entry) => entry.season === currentSeasonStr)) {
         history = upsertPlayerIplHistory(history, {
           teamId: detailedPlayer.currentTeamId ?? "UNSOLD",
@@ -505,19 +488,14 @@ export function PlayerProfileModal({
     }
 
     return protectCompletedSeasonTeamsFromTrades(history, detailedPlayer.id, tradeRecords);
-  }, [currentSeasonHistoryByPlayer, currentSeason, currentSeasonStats, detailedPlayer, seasonStats, tradeRecords]);
+  }, [currentSeasonHistoryByPlayer, currentIplHistoryStats, currentSeason, detailedPlayer, tradeRecords]);
 
   const teamHistoryIplStats = useMemo(() => {
     const bySeason = new Map<string, { matches: number; runs: number; wickets: number }>();
     if (!detailedPlayer) return bySeason;
     detailedPlayerHistory.forEach((entry) => {
       if (entry.season === String(currentSeason)) {
-        const live = currentSeasonStats && currentSeasonStats.matches > 0
-          ? currentSeasonStats
-          : seasonStats && seasonStats.matches > 0
-            ? { matches: seasonStats.matches, runs: seasonStats.runs, wickets: seasonStats.bowlWickets }
-            : null;
-        if (live) bySeason.set(entry.season, { matches: live.matches, runs: live.runs, wickets: live.wickets });
+        if (currentIplHistoryStats) bySeason.set(entry.season, currentIplHistoryStats);
         return;
       }
       const archive = careerSeasonArchives.find((record) => String(record.season) === entry.season);
@@ -530,56 +508,37 @@ export function PlayerProfileModal({
       }
     });
     return bySeason;
-  }, [careerSeasonArchives, currentSeason, currentSeasonStats, detailedPlayer, detailedPlayerHistory, seasonStats]);
+  }, [careerSeasonArchives, currentIplHistoryStats, currentSeason, detailedPlayer, detailedPlayerHistory]);
 
   if (!detailedPlayer) return null;
 
   const currentTeam = teams[detailedPlayer.currentTeamId ?? ""];
   const isRetired = Boolean(retiredSnapshot);
+  const doesNotBowl = detailedPlayer.currentBowling === 0 && detailedPlayer.potentialBowling === 0;
   const nationalityLabel = detailedPlayer.nationality === "Overseas"
     && detailedPlayer.country
     && detailedPlayer.country !== "Overseas"
     ? detailedPlayer.country
     : detailedPlayer.nationality;
+  const cappedCountry = String(detailedPlayer.internationalDebutCountry ?? detailedPlayer.country ?? nationalityLabel).toLowerCase();
+  const cappedColor = NATIONAL_CAP_COLORS[cappedCountry] ?? "#475569";
 
   return (
     <div
-      ref={viewportRef}
-      className="fixed inset-0 z-[120] flex items-center justify-center overflow-hidden bg-black/70 p-2 backdrop-blur-sm animate-in fade-in duration-200"
+      className="fixed inset-0 z-[120] flex items-center justify-center overflow-hidden bg-black/70 p-1 backdrop-blur-sm animate-in fade-in duration-200"
       onMouseDown={onClose}
     >
       <div
-        ref={profileRef}
-        className="flex w-[calc(100%-1rem)] max-w-[1560px] shrink-0 flex-col overflow-hidden rounded-lg border-2 border-border bg-surface text-text-primary shadow-2xl animate-in zoom-in-95 duration-200"
-        style={{ transform: `scale(${profileScale})`, transformOrigin: "center" }}
+        className="flex h-[calc(100vh-0.5rem)] w-[calc(100%-0.5rem)] max-w-[1800px] min-h-0 flex-col overflow-hidden rounded-lg border-2 border-border bg-surface text-text-primary shadow-2xl animate-in zoom-in-95 duration-200"
         onMouseDown={(event) => event.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex shrink-0 items-start justify-between border-b-2 border-border bg-surface px-4 py-3">
-          <div className="min-w-0">
-            <div className="mb-1 flex items-center gap-2">
-              <span className="font-space-mono text-[9px] font-bold uppercase tracking-widest text-text-secondary">Player Profile</span>
-              {detailedPlayer.nationality === "Overseas" && (
-                <span
-                  className="rounded-[2px] px-1.5 py-0.5 font-space-mono text-[8px] font-bold text-white"
-                  style={{ backgroundColor: currentTeam?.primaryColor ?? "var(--accent)" }}
-                >
-                  OS
-                </span>
-              )}
-              {detailedPlayer.isT20IRetired && (
-                <span
-                  className="rounded-[2px] border border-slate-400/40 bg-slate-500/15 px-1.5 py-0.5 font-space-mono text-[8px] font-bold uppercase text-text-secondary"
-                  title="Retired from T20 international cricket; still eligible for franchise cricket"
-                >
-                  T20I Retired
-                </span>
-              )}
-            </div>
-            <h3 className={`${isRetired ? "whitespace-normal" : "truncate"} font-anton text-[25px] uppercase leading-none text-text-primary`}>{detailedPlayer.name}</h3>
-            <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1">
-              <p className="font-space-mono text-[9px] uppercase text-text-secondary">
-                {detailedPlayer.role} · Age {detailedPlayer.age} · {currentTeam?.name
+        <header className="max-h-[45vh] shrink-0 overflow-y-auto border-b-2 border-border bg-surface px-4 py-3">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-stretch lg:justify-between">
+          <div className="min-w-0 flex-1">
+            <div className="mb-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1">
+              <p className="font-space-mono text-[12px] font-bold uppercase text-text-secondary sm:text-[13px]">
+                {detailedPlayer.role} · {currentTeam?.name
                   ?? (retiredSnapshot ? `Retired ${retiredSnapshot.retirementSeason}` : "No current club")}
               </p>
               {(() => {
@@ -628,49 +587,42 @@ export function PlayerProfileModal({
                 );
               })()}
             </div>
-          </div>
-          <div className="ml-4 flex shrink-0 items-center gap-2">
-            {!isRetired && (
-              <button
-                type="button"
-                onClick={handleToggleShortlist}
-                className={`flex h-9 items-center gap-1.5 rounded border px-3 font-space-mono text-[9px] font-bold uppercase tracking-wider transition-all ${
-                  isPlayerShortlisted
-                    ? "border-amber-500/60 bg-amber-500/15 text-amber-600 dark:text-amber-400 hover:bg-amber-500/25"
-                    : "border-border bg-surface text-text-primary hover:border-accent hover:text-accent hover:bg-accent/5"
-                }`}
-                title={isPlayerShortlisted ? "Remove from auction shortlist" : "Add to auction shortlist"}
-              >
-                <Bookmark size={13} className={isPlayerShortlisted ? "fill-current" : ""} />
-                <span>{isPlayerShortlisted ? "Shortlisted" : "Add to Shortlist"}</span>
-              </button>
-            )}
-            <button
-              onClick={onClose}
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded border border-border bg-surface text-text-primary transition-colors hover:bg-black/5 dark:hover:bg-white/10"
-              aria-label="Close player profile"
-            >
-              <X size={17} />
-            </button>
-          </div>
-        </div>
-
-        {/* Content Body */}
-        <div className="bg-surface p-3">
-          <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.8fr)_minmax(300px,0.95fr)] gap-2.5">
-            {/* Player Details */}
-            <section className={`col-start-1 row-start-1 rounded border border-border bg-bg p-3 ${isRetired ? "col-span-2" : ""}`}>
-              <h4 className="mb-2 border-b border-border pb-1.5 font-anton text-[12px] uppercase text-text-primary">Player Details</h4>
-              <div className={`${isRetired ? "grid grid-cols-4 sm:grid-cols-7 gap-2" : "space-y-1.5"} font-space-mono text-[9px]`}>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <h3 className={`${isRetired ? "whitespace-normal" : "truncate"} font-anton text-[32px] uppercase leading-none text-text-primary sm:text-[38px]`}>{detailedPlayer.name}</h3>
+              <div className="relative -top-0.5 grid h-8 grid-rows-2 self-end font-space-mono text-[12px] font-bold uppercase leading-none tracking-wider text-text-secondary sm:h-[38px] sm:text-[13px]">
+                <span className="flex items-center gap-2 whitespace-nowrap">
+                  {nationalityLabel}{detailedPlayer.state?.trim() ? ` (${detailedPlayer.state.trim()})` : ""}
+                  {detailedPlayer.nationality === "Overseas" && (
+                    <span className="rounded-[2px] px-1.5 py-0.5 text-[8px] font-bold text-white" style={{ backgroundColor: currentTeam?.primaryColor ?? "var(--accent)" }}>OS</span>
+                  )}
+                  {detailedPlayer.isT20IRetired && (
+                    <span className="rounded-[2px] border border-slate-400/40 bg-slate-500/15 px-1.5 py-0.5 text-[8px] font-bold text-text-secondary" title="Retired from T20 international cricket; still eligible for franchise cricket">T20I Retired</span>
+                  )}
+                  <span
+                    className="rounded-[2px] border px-1.5 py-0.5 text-[8px] font-bold"
+                    style={detailedPlayer.isCapped
+                      ? { color: cappedColor, borderColor: `${cappedColor}80`, backgroundColor: `${cappedColor}1f` }
+                      : { color: "#64748b", borderColor: "#94a3b880", backgroundColor: "#94a3b81f" }}
+                  >
+                    {detailedPlayer.isCapped ? "Capped" : "Uncapped"}
+                  </span>
+                  {detailedPlayer.isCapped && detailedPlayer.internationalDebutDate
+                    && detailedPlayer.internationalDebutDate <= currentDate && (
+                    <span className="rounded-[2px] border border-border bg-bg px-1.5 py-0.5 text-[8px] font-bold text-text-secondary">
+                      Intl debut · {formatDateOfBirth(detailedPlayer.internationalDebutDate)}
+                    </span>
+                  )}
+                </span>
+                <span className="flex items-end">Age {detailedPlayer.age} · {formatDateOfBirth(detailedPlayer.dateOfBirth)}</span>
+              </div>
+            </div>
+          {/* Player details across the header */}
+          <section className="mt-3">
+              <div className="flex flex-wrap gap-x-4 gap-y-1.5 font-space-mono text-[9px]">
                 {[
-                  ["Nationality", nationalityLabel],
-                  ["Date of Birth", formatDateOfBirth(detailedPlayer.dateOfBirth)],
-                  ["State", detailedPlayer.state?.trim() || "Not available"],
-                  ["Status", detailedPlayer.isCapped ? "Capped" : "Uncapped"],
-                  ["International Debut Date", formatDateOfBirth(detailedPlayer.internationalDebutDate)],
                   ["Batting", detailedPlayer.battingStyle],
                   ["Bats at", formatTopSevenBattingPositions(detailedPlayer)],
-                  ["Bowling", (() => {
+                  ...(!doesNotBowl ? [["Bowling", (() => {
                     if (!detailedPlayer.bowlingStyle) return "DNB";
                     const hand = detailedPlayer.bowlingHand === "Left-hand" ? "Left-arm" : detailedPlayer.bowlingHand === "Right-hand" ? "Right-arm" : "";
                     if (detailedPlayer.bowlingStyle === "Pacer") {
@@ -701,66 +653,104 @@ export function PlayerProfileModal({
                     if (usage === "part_time") return "Part-time";
                     if (usage === "emergency") return "Emergency";
                     return "Does Not Bowl";
-                  })()],
+                  })()]] : []),
                 ].map(([label, value]) => (
-                  <div key={label} className={`flex gap-2 border-b border-border/60 pb-1 ${isRetired ? "min-w-0 flex-col items-start justify-start" : "items-center justify-between"}`}>
-                    <span className="shrink-0 whitespace-nowrap uppercase text-text-secondary">{label}</span>
-                    <span className={`${isRetired ? "whitespace-normal text-left" : "whitespace-nowrap text-right"} font-bold text-text-primary`}>{value}</span>
-                  </div>
+                  <span key={label} className="inline-flex items-baseline gap-1.5 leading-snug">
+                    <span className="whitespace-nowrap uppercase text-text-secondary">{label}</span>
+                    <span className="font-bold text-text-primary">{value}</span>
+                  </span>
                 ))}
               </div>
-            </section>
+          </section>
 
-            {/* Ability */}
-            {!isRetired && <section className="col-start-2 row-start-1 rounded border border-border bg-bg p-3">
-              <h4 className="mb-2 border-b border-border pb-1.5 font-anton text-[12px] uppercase text-text-primary">Ability & Phase Ratings</h4>
-              <div className="grid grid-cols-4 gap-2">
+          </div>
+          <div className="flex w-full flex-wrap items-start justify-end gap-2 lg:ml-4 lg:w-auto lg:shrink-0 lg:flex-nowrap lg:items-stretch">
+            {!isRetired && (
+              <div className="flex w-full max-w-[19rem] shrink-0 border-l-2 border-accent/50 bg-bg/60 lg:w-[19rem] lg:self-stretch">
                 {[
-                  ["Batting CA", detailedPlayer.currentBatting],
-                  ["Batting PA", detailedPlayer.potentialBatting],
-                  ["Bowling CA", detailedPlayer.currentBowling],
-                  ["Bowling PA", detailedPlayer.potentialBowling],
-                ].map(([label, value]) => (
-                  <div key={label} className="rounded border border-border bg-surface p-2 text-center">
-                    <div className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">{label}</div>
-                    <div className="mt-0.5 font-anton text-[21px] text-text-primary">{value}</div>
+                  ["BAT", detailedPlayer.currentBatting, detailedPlayer.potentialBatting],
+                  ...(doesNotBowl
+                    ? [] : [["BOWL", detailedPlayer.currentBowling, detailedPlayer.potentialBowling]]),
+                ].map(([label, current, potential]) => (
+                  <div key={label} className="flex min-w-0 flex-1 flex-col justify-between border-r border-border/50 px-3 py-2 last:border-r-0" aria-label={`${label} current ability ${current}, potential ability ${potential}`}>
+                    <div className="flex items-start gap-1.5">
+                      <span className="font-anton text-[48px] leading-none text-text-primary">{current}</span>
+                      <span className="flex flex-col pt-1 font-space-mono text-text-secondary">
+                        <span className="text-[7px] font-bold uppercase leading-none">PA</span>
+                        <span className="font-anton text-lg leading-tight">{potential}</span>
+                      </span>
+                    </div>
+                    <span className="font-anton text-[14px] uppercase tracking-wide text-text-secondary">{label}</span>
                   </div>
                 ))}
               </div>
+            )}
+            {!isRetired && (
+              <button
+                type="button"
+                onClick={handleToggleShortlist}
+                className={`flex h-9 w-36 shrink-0 items-center justify-center gap-1.5 self-start rounded border px-3 font-space-mono text-[9px] font-bold uppercase tracking-wider transition-all ${
+                  isPlayerShortlisted
+                    ? "border-amber-500/60 bg-amber-500/15 text-amber-600 dark:text-amber-400 hover:bg-amber-500/25"
+                    : "border-border bg-surface text-text-primary hover:border-accent hover:text-accent hover:bg-accent/5"
+                }`}
+                title={isPlayerShortlisted ? "Remove from auction shortlist" : "Add to auction shortlist"}
+              >
+                <Bookmark size={13} className={isPlayerShortlisted ? "fill-current" : ""} />
+                <span>{isPlayerShortlisted ? "Shortlisted" : "Add to Shortlist"}</span>
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="flex h-9 w-9 shrink-0 items-center justify-center self-start rounded border border-border bg-surface text-text-primary transition-colors hover:bg-black/5 dark:hover:bg-white/10"
+              aria-label="Close player profile"
+            >
+              <X size={17} />
+            </button>
+          </div>
+          </div>
+        </header>
 
+        {/* Content Body */}
+        <div className="min-h-0 flex-1 overflow-x-auto overflow-y-hidden bg-surface p-3">
+          <div className="grid h-full min-h-0 min-w-[900px] grid-cols-[minmax(0,2.8fr)_minmax(300px,0.95fr)] gap-2.5">
+            <div className="grid min-h-0 content-start gap-2 overflow-y-auto overscroll-contain pr-1">
+            {/* Ability */}
+            {!isRetired && <section className="order-3 rounded border border-border bg-bg p-2.5">
+              <h4 className="mb-1.5 border-b border-border pb-1 font-anton text-[11px] uppercase text-text-primary">Phase Ratings & Match Traits</h4>
               {/* Phase Breakdown */}
               {(detailedPlayer.powerplayBatting != null || detailedPlayer.powerplayBowling != null) && (
-                <div className="mt-2.5 grid grid-cols-2 gap-2">
-                  <div className="rounded border border-border/70 bg-surface/60 p-2">
+                <div className="mt-2 grid grid-cols-2 gap-1.5">
+                  <div className="rounded border border-border/70 bg-surface/60 p-1">
                     <div className="mb-1 text-center font-space-mono text-[7.5px] font-bold uppercase tracking-wider text-text-secondary">Batting Phases</div>
                     <div className="grid grid-cols-3 gap-1 text-center">
                       <div className="rounded bg-bg p-1">
-                        <div className="font-space-mono text-[6.5px] uppercase text-text-secondary">PP (1-6)</div>
+                        <div className="font-space-mono text-[7px] uppercase text-text-secondary">PP (1-6)</div>
                         <div className="font-anton text-[14px] text-text-primary">{detailedPlayer.powerplayBatting ?? "-"}</div>
                       </div>
                       <div className="rounded bg-bg p-1">
-                        <div className="font-space-mono text-[6.5px] uppercase text-text-secondary">MID (7-15)</div>
+                        <div className="font-space-mono text-[7px] uppercase text-text-secondary">MID (7-15)</div>
                         <div className="font-anton text-[14px] text-text-primary">{detailedPlayer.middleOversBatting ?? "-"}</div>
                       </div>
                       <div className="rounded bg-bg p-1">
-                        <div className="font-space-mono text-[6.5px] uppercase text-text-secondary">DTH (16-20)</div>
+                        <div className="font-space-mono text-[7px] uppercase text-text-secondary">DTH (16-20)</div>
                         <div className="font-anton text-[14px] text-text-primary">{detailedPlayer.deathBatting ?? "-"}</div>
                       </div>
                     </div>
                   </div>
-                  <div className="rounded border border-border/70 bg-surface/60 p-2">
+                  <div className="rounded border border-border/70 bg-surface/60 p-1">
                     <div className="mb-1 text-center font-space-mono text-[7.5px] font-bold uppercase tracking-wider text-text-secondary">Bowling Phases</div>
                     <div className="grid grid-cols-3 gap-1 text-center">
                       <div className="rounded bg-bg p-1">
-                        <div className="font-space-mono text-[6.5px] uppercase text-text-secondary">PP (1-6)</div>
+                        <div className="font-space-mono text-[7px] uppercase text-text-secondary">PP (1-6)</div>
                         <div className="font-anton text-[14px] text-text-primary">{detailedPlayer.powerplayBowling ?? "-"}</div>
                       </div>
                       <div className="rounded bg-bg p-1">
-                        <div className="font-space-mono text-[6.5px] uppercase text-text-secondary">MID (7-15)</div>
+                        <div className="font-space-mono text-[7px] uppercase text-text-secondary">MID (7-15)</div>
                         <div className="font-anton text-[14px] text-text-primary">{detailedPlayer.middleOversBowling ?? "-"}</div>
                       </div>
                       <div className="rounded bg-bg p-1">
-                        <div className="font-space-mono text-[6.5px] uppercase text-text-secondary">DTH (16-20)</div>
+                        <div className="font-space-mono text-[7px] uppercase text-text-secondary">DTH (16-20)</div>
                         <div className="font-anton text-[14px] text-text-primary">{detailedPlayer.deathBowling ?? "-"}</div>
                       </div>
                     </div>
@@ -770,55 +760,55 @@ export function PlayerProfileModal({
 
               {/* Match Traits */}
               {(detailedPlayer.stamina != null || detailedPlayer.consistency != null || detailedPlayer.bigMatchRating != null || detailedPlayer.pressureRating != null || detailedPlayer.battingAggression != null || detailedPlayer.aggression != null || detailedPlayer.fieldingRating != null || detailedPlayer.wicketkeepingRating != null || detailedPlayer.injuryProneness != null || detailedPlayer.paceRating != null || detailedPlayer.spinRating != null) && (
-                <div className="mt-2.5 grid grid-cols-5 gap-1.5 lg:gap-2">
-                  <div className="rounded border border-border/70 bg-surface/60 p-1.5 text-center">
-                    <div className="whitespace-nowrap font-space-mono text-[6px] font-bold uppercase text-text-secondary lg:text-[6.5px]">Bat Cons</div>
-                    <div className="mt-0.5 font-anton text-[15px] text-text-primary">{detailedPlayer.battingConsistency ?? detailedPlayer.stamina ?? "-"}</div>
+                <div className="mt-2 grid grid-cols-5 gap-1 lg:gap-1.5">
+                  <div className="rounded border border-border/70 bg-surface/60 p-1 text-center">
+                    <div className="whitespace-nowrap font-space-mono text-[7px] font-bold uppercase text-text-secondary">Bat Cons</div>
+                    <div className="mt-0.5 font-anton text-[14px] text-text-primary">{detailedPlayer.battingConsistency ?? detailedPlayer.stamina ?? "-"}</div>
                   </div>
-                  <div className="rounded border border-border/70 bg-surface/60 p-1.5 text-center">
-                    <div className="whitespace-nowrap font-space-mono text-[6px] font-bold uppercase text-text-secondary lg:text-[6.5px]">Bowl Cons</div>
-                    <div className="mt-0.5 font-anton text-[15px] text-text-primary">{detailedPlayer.bowlingConsistency ?? detailedPlayer.consistency ?? "-"}</div>
+                  <div className="rounded border border-border/70 bg-surface/60 p-1 text-center">
+                    <div className="whitespace-nowrap font-space-mono text-[7px] font-bold uppercase text-text-secondary">Bowl Cons</div>
+                    <div className="mt-0.5 font-anton text-[14px] text-text-primary">{detailedPlayer.bowlingConsistency ?? detailedPlayer.consistency ?? "-"}</div>
                   </div>
-                  <div className="rounded border border-border/70 bg-surface/60 p-1.5 text-center">
-                    <div className="whitespace-nowrap font-space-mono text-[6px] font-bold uppercase text-text-secondary lg:text-[6.5px]">Aggression</div>
-                    <div className="mt-0.5 font-anton text-[15px] text-text-primary">{detailedPlayer.battingAggression ?? detailedPlayer.aggression ?? "-"}</div>
+                  <div className="rounded border border-border/70 bg-surface/60 p-1 text-center">
+                    <div className="whitespace-nowrap font-space-mono text-[7px] font-bold uppercase text-text-secondary">Aggression</div>
+                    <div className="mt-0.5 font-anton text-[14px] text-text-primary">{detailedPlayer.battingAggression ?? detailedPlayer.aggression ?? "-"}</div>
                   </div>
-                  <div className="rounded border border-border/70 bg-surface/60 p-1.5 text-center">
-                    <div className="whitespace-nowrap font-space-mono text-[6px] font-bold uppercase text-text-secondary lg:text-[6.5px]">Big Match</div>
-                    <div className="mt-0.5 font-anton text-[15px] text-text-primary">{detailedPlayer.bigMatchRating ?? "-"}</div>
+                  <div className="rounded border border-border/70 bg-surface/60 p-1 text-center">
+                    <div className="whitespace-nowrap font-space-mono text-[7px] font-bold uppercase text-text-secondary">Big Match</div>
+                    <div className="mt-0.5 font-anton text-[14px] text-text-primary">{detailedPlayer.bigMatchRating ?? "-"}</div>
                   </div>
-                  <div className="rounded border border-border/70 bg-surface/60 p-1.5 text-center">
-                    <div className="whitespace-nowrap font-space-mono text-[6px] font-bold uppercase text-text-secondary lg:text-[6.5px]">Pressure</div>
-                    <div className="mt-0.5 font-anton text-[15px] text-text-primary">{detailedPlayer.pressureRating ?? "-"}</div>
+                  <div className="rounded border border-border/70 bg-surface/60 p-1 text-center">
+                    <div className="whitespace-nowrap font-space-mono text-[7px] font-bold uppercase text-text-secondary">Pressure</div>
+                    <div className="mt-0.5 font-anton text-[14px] text-text-primary">{detailedPlayer.pressureRating ?? "-"}</div>
                   </div>
-                  <div className="rounded border border-border/70 bg-surface/60 p-1.5 text-center">
-                    <div className="whitespace-nowrap font-space-mono text-[6px] font-bold uppercase text-text-secondary lg:text-[6.5px]">Fielding</div>
-                    <div className="mt-0.5 font-anton text-[15px] text-text-primary">{detailedPlayer.fieldingRating ?? "-"}</div>
+                  <div className="rounded border border-border/70 bg-surface/60 p-1 text-center">
+                    <div className="whitespace-nowrap font-space-mono text-[7px] font-bold uppercase text-text-secondary">Fielding</div>
+                    <div className="mt-0.5 font-anton text-[14px] text-text-primary">{detailedPlayer.fieldingRating ?? "-"}</div>
                   </div>
-                  <div className="rounded border border-border/70 bg-surface/60 p-1.5 text-center">
-                    <div className="whitespace-nowrap font-space-mono text-[6px] font-bold uppercase text-text-secondary lg:text-[6.5px]">Keeping</div>
-                    <div className="mt-0.5 font-anton text-[15px] text-text-primary">{detailedPlayer.wicketkeepingRating ?? "-"}</div>
+                  <div className="rounded border border-border/70 bg-surface/60 p-1 text-center">
+                    <div className="whitespace-nowrap font-space-mono text-[7px] font-bold uppercase text-text-secondary">Keeping</div>
+                    <div className="mt-0.5 font-anton text-[14px] text-text-primary">{detailedPlayer.wicketkeepingRating ?? "-"}</div>
                   </div>
-                  <div className="rounded border border-border/70 bg-surface/60 p-1.5 text-center">
-                    <div className="whitespace-nowrap font-space-mono text-[6px] font-bold uppercase text-text-secondary lg:text-[6.5px]">Injury Risk</div>
-                    <div className="mt-0.5 font-anton text-[15px] text-text-primary">{detailedPlayer.injuryProneness ?? "-"}</div>
+                  <div className="rounded border border-border/70 bg-surface/60 p-1 text-center">
+                    <div className="whitespace-nowrap font-space-mono text-[7px] font-bold uppercase text-text-secondary">Injury Risk</div>
+                    <div className="mt-0.5 font-anton text-[14px] text-text-primary">{detailedPlayer.injuryProneness ?? "-"}</div>
                   </div>
-                  <div className="rounded border border-border/70 bg-surface/60 p-1.5 text-center">
-                    <div className="whitespace-nowrap font-space-mono text-[6px] font-bold uppercase text-text-secondary lg:text-[6.5px]">Vs Pace</div>
-                    <div className="mt-0.5 font-anton text-[15px] text-text-primary">{detailedPlayer.paceRating ?? "-"}</div>
+                  <div className="rounded border border-border/70 bg-surface/60 p-1 text-center">
+                    <div className="whitespace-nowrap font-space-mono text-[7px] font-bold uppercase text-text-secondary">Vs Pace</div>
+                    <div className="mt-0.5 font-anton text-[14px] text-text-primary">{detailedPlayer.paceRating ?? "-"}</div>
                   </div>
-                  <div className="rounded border border-border/70 bg-surface/60 p-1.5 text-center">
-                    <div className="whitespace-nowrap font-space-mono text-[6px] font-bold uppercase text-text-secondary lg:text-[6.5px]">Vs Spin</div>
-                    <div className="mt-0.5 font-anton text-[15px] text-text-primary">{detailedPlayer.spinRating ?? "-"}</div>
+                  <div className="rounded border border-border/70 bg-surface/60 p-1 text-center">
+                    <div className="whitespace-nowrap font-space-mono text-[7px] font-bold uppercase text-text-secondary">Vs Spin</div>
+                    <div className="mt-0.5 font-anton text-[14px] text-text-primary">{detailedPlayer.spinRating ?? "-"}</div>
                   </div>
                 </div>
               )}
             </section>}
 
             {/* Career T20 Stats */}
-            <section className="col-span-2 col-start-1 row-start-2 self-start rounded border border-border bg-bg p-3">
-              <h4 className="mb-2 border-b border-border pb-1.5 font-anton text-[12px] uppercase text-text-primary">Career T20 Stats</h4>
-              <div className="grid grid-cols-8 gap-2">
+            <section className="order-4 self-start rounded border border-border bg-bg p-2.5">
+              <h4 className="mb-1.5 border-b border-border pb-1 font-anton text-[11px] uppercase text-text-primary">Career T20 Stats</h4>
+              <div className="grid grid-cols-8 gap-1.5">
                 {[
                   ["Matches", careerT20Matches],
                   ["Bat Inns", careerT20Innings],
@@ -829,17 +819,17 @@ export function PlayerProfileModal({
                   ["Wickets", careerT20Wickets],
                   ["Bowl Avg", careerT20BowlingAverage > 0 ? formatStatValue(careerT20BowlingAverage) : "-"],
                 ].map(([label, value]) => (
-                  <div key={label} className="rounded border border-border bg-surface px-1 py-2 text-center">
+                  <div key={label} className="rounded border border-border bg-surface px-1 py-1 text-center">
                     <div className="whitespace-nowrap font-space-mono text-[7px] font-bold uppercase leading-none text-text-secondary">{label}</div>
-                    <div className="mt-1 font-anton text-[17px] leading-tight text-text-primary">{value}</div>
+                    <div className="mt-0.5 font-anton text-[14px] leading-tight text-text-primary">{value}</div>
                   </div>
                 ))}
               </div>
             </section>
 
-            <section className="col-span-2 col-start-1 self-start rounded border border-border bg-bg p-3">
-              <h4 className="mb-2 border-b border-border pb-1.5 font-anton text-[12px] uppercase text-text-primary">International T20</h4>
-              <div className="grid grid-cols-8 gap-2">
+            <section className="order-5 self-start rounded border border-border bg-bg p-2.5">
+              <h4 className="mb-1.5 border-b border-border pb-1 font-anton text-[11px] uppercase text-text-primary">International T20</h4>
+              <div className="grid grid-cols-8 gap-1.5">
                 {[
                   ["Matches", effectiveInternationalStats?.matches ?? 0], ["Innings", effectiveInternationalStats?.innings ?? 0],
                   ["Runs", effectiveInternationalStats?.runs ?? 0], ["Highest", effectiveInternationalStats?.highestScore ?? 0],
@@ -847,17 +837,17 @@ export function PlayerProfileModal({
                   ["Wickets", effectiveInternationalStats?.wickets ?? 0],
                   ["Economy", effectiveInternationalStats?.bowlingBalls ? formatStatValue(effectiveInternationalStats.runsConceded * 6 / effectiveInternationalStats.bowlingBalls) : "-"],
                   ["Best", effectiveInternationalStats?.bowlingInnings && effectiveInternationalStats.bestBowlingWickets > 0 ? `${effectiveInternationalStats.bestBowlingWickets}/${effectiveInternationalStats.bestBowlingRuns}` : "-"],
-                ].map(([label, value]) => <div key={label} className="rounded border border-border bg-surface px-1 py-2 text-center"><div className="font-space-mono text-[6px] uppercase text-text-secondary">{label}</div><div className="font-anton text-[15px] text-text-primary">{value}</div></div>)}
+                ].map(([label, value]) => <div key={label} className="rounded border border-border bg-surface px-1 py-1 text-center"><div className="font-space-mono text-[7px] uppercase text-text-secondary">{label}</div><div className="font-anton text-[14px] text-text-primary">{value}</div></div>)}
               </div>
             </section>
 
             {/* All-Time IPL Stats */}
-            <section className="col-span-2 col-start-1 row-start-3 self-start rounded border border-border bg-bg p-3">
-              <h4 className="mb-2 border-b border-border pb-1.5 font-anton text-[12px] uppercase text-text-primary">IPL All-Time Stats</h4>
-              <div className="space-y-2">
+            <section className="order-1 self-start rounded border border-border bg-bg p-2.5">
+              <h4 className="mb-1.5 border-b border-border pb-1 font-anton text-[11px] uppercase text-text-primary">IPL All-Time Stats</h4>
+              <div className="space-y-1.5">
                 <div>
                   <div className="mb-1 font-space-mono text-[7px] font-bold uppercase tracking-wider text-accent">Batting</div>
-                  <div className="grid grid-cols-[0.8fr_0.7fr_0.75fr_0.85fr_0.85fr_1fr_1fr_0.6fr_0.65fr_0.7fr_0.7fr_0.9fr] gap-1.5 lg:gap-2">
+                  <div className="grid grid-cols-[0.8fr_0.7fr_0.75fr_0.85fr_0.85fr_1fr_1fr_0.6fr_0.65fr_0.7fr_0.7fr_0.9fr] gap-1 lg:gap-1.5">
                     {[
                       ["Matches", detailedPlayer.iplStats?.matches ?? 0],
                       ["Innings", detailedPlayer.iplStats?.innings ?? 0],
@@ -872,17 +862,17 @@ export function PlayerProfileModal({
                       ["Sixes", detailedPlayer.iplStats?.sixes ?? 0],
                       ["H. Score", detailedPlayer.iplStats?.highScore || "-"],
                     ].map(([label, value]) => (
-                      <div key={label} className="flex min-w-0 flex-col rounded border border-border bg-surface px-1 py-1.5 text-center">
-                        <div className="flex h-5 items-center justify-center whitespace-nowrap font-space-mono text-[6px] font-bold uppercase leading-none text-text-secondary lg:text-[7px]">{label}</div>
-                        <div className="mt-0.5 font-anton text-[16px] leading-tight text-text-primary">{value}</div>
+                      <div key={label} className="flex min-w-0 flex-col rounded border border-border bg-surface px-1 py-1 text-center">
+                        <div className="flex h-5 items-center justify-center whitespace-nowrap font-space-mono text-[7px] font-bold uppercase leading-none text-text-secondary">{label}</div>
+                        <div className="mt-0.5 font-anton text-[14px] leading-tight text-text-primary">{value}</div>
                       </div>
                     ))}
                   </div>
                 </div>
 
-                <div>
+                {!doesNotBowl && <div>
                   <div className="mb-1 font-space-mono text-[7px] font-bold uppercase tracking-wider text-accent">Bowling</div>
-                  <div className="grid grid-cols-[0.72fr_0.7fr_1.15fr_0.82fr_0.9fr_0.9fr_1fr_0.8fr_0.8fr] gap-1.5 lg:gap-2">
+                  <div className="grid grid-cols-[0.72fr_0.7fr_1.15fr_0.82fr_0.9fr_0.9fr_1fr_0.8fr_0.8fr] gap-1 lg:gap-1.5">
                     {[
                       ["Innings", detailedPlayer.iplStats?.bowlingInnings ?? 0],
                       ["Overs", (() => {
@@ -920,13 +910,13 @@ export function PlayerProfileModal({
                       ["4W Hauls", detailedPlayer.iplStats?.fourWickets ?? 0],
                       ["5W Hauls", detailedPlayer.iplStats?.fiveWickets ?? 0],
                     ].map(([label, value]) => (
-                      <div key={label} className="flex min-w-0 flex-col rounded border border-border bg-surface px-1 py-1.5 text-center">
-                        <div className="flex h-5 items-center justify-center whitespace-nowrap font-space-mono text-[6px] font-bold uppercase leading-none text-text-secondary lg:text-[7px]">{label}</div>
-                        <div className="mt-0.5 font-anton text-[16px] leading-tight text-text-primary">{value}</div>
+                      <div key={label} className="flex min-w-0 flex-col rounded border border-border bg-surface px-1 py-1 text-center">
+                        <div className="flex h-5 items-center justify-center whitespace-nowrap font-space-mono text-[7px] font-bold uppercase leading-none text-text-secondary">{label}</div>
+                        <div className="mt-0.5 font-anton text-[14px] leading-tight text-text-primary">{value}</div>
                       </div>
                     ))}
                   </div>
-                </div>
+                </div>}
 
                 <div>
                   <div className="mb-1 font-space-mono text-[7px] font-bold uppercase tracking-wider text-accent">Fielding</div>
@@ -936,9 +926,9 @@ export function PlayerProfileModal({
                       ["Stumpings", detailedPlayer.iplStats?.stumpings ?? 0],
                       ["Run Outs", detailedPlayer.iplStats?.runOuts ?? 0],
                     ].map(([label, value]) => (
-                      <div key={label} className="rounded border border-border bg-surface px-1 py-1.5 text-center">
+                      <div key={label} className="rounded border border-border bg-surface px-1 py-1 text-center">
                         <div className="font-space-mono text-[7px] font-bold uppercase leading-none text-text-secondary">{label}</div>
-                        <div className="mt-0.5 font-anton text-[16px] leading-tight text-text-primary">{value}</div>
+                        <div className="mt-0.5 font-anton text-[14px] leading-tight text-text-primary">{value}</div>
                       </div>
                     ))}
                   </div>
@@ -948,75 +938,75 @@ export function PlayerProfileModal({
 
             {/* Current Season Stats */}
             {!isRetired && seasonStats && (
-              <section className="col-span-2 col-start-1 row-start-4 self-start rounded border border-border bg-bg p-3">
-                <div className="mb-2 flex items-center justify-between border-b border-border pb-1.5">
-                  <h4 className="font-anton text-[12px] uppercase text-text-primary">Current Season Stats ('{rosterSeason.slice(-2)})</h4>
+              <section className="order-2 self-start rounded border border-border bg-bg p-2.5">
+                <div className="mb-1.5 flex items-center justify-between border-b border-border pb-1">
+                  <h4 className="font-anton text-[11px] uppercase text-text-primary">Current Season Stats ('{rosterSeason.slice(-2)})</h4>
                   <span className="font-space-mono text-[9px] font-bold text-accent uppercase">{seasonStats.matches} Matches Played</span>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-2 gap-1.5">
                   {/* Batting Season Stats */}
-                  <div className="space-y-1 rounded border border-border/80 bg-surface p-2">
+                  <div className="space-y-1 rounded border border-border/80 bg-surface p-1.5">
                     <div className="font-anton text-[11px] uppercase text-accent border-b border-border/40 pb-1">Batting Figures</div>
-                    <div className="grid grid-cols-7 gap-2 text-center">
+                    <div className="grid grid-cols-7 gap-1.5 text-center">
                       <div>
                         <div className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Matches</div>
-                        <div className="font-anton text-[16px] text-text-primary mt-0.5">{seasonStats.matches}</div>
+                        <div className="font-anton text-[14px] text-text-primary mt-0.5">{seasonStats.matches}</div>
                       </div>
                       <div>
                         <div className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Runs</div>
-                        <div className="font-anton text-[16px] text-text-primary mt-0.5">{seasonStats.runs}</div>
+                        <div className="font-anton text-[14px] text-text-primary mt-0.5">{seasonStats.runs}</div>
                       </div>
                       <div>
                         <div className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">SR</div>
-                        <div className="font-anton text-[16px] text-text-primary mt-0.5">{seasonStats.batSR}</div>
+                        <div className="font-anton text-[14px] text-text-primary mt-0.5">{seasonStats.batSR}</div>
                       </div>
                       <div>
                         <div className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Average</div>
-                        <div className="font-anton text-[16px] text-text-primary mt-0.5">{seasonStats.batAvg}</div>
+                        <div className="font-anton text-[14px] text-text-primary mt-0.5">{seasonStats.batAvg}</div>
                       </div>
                       <div>
                         <div className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">4s</div>
-                        <div className="font-anton text-[16px] text-text-primary mt-0.5">{seasonStats.fours}</div>
+                        <div className="font-anton text-[14px] text-text-primary mt-0.5">{seasonStats.fours}</div>
                       </div>
                       <div>
                         <div className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">6s</div>
-                        <div className="font-anton text-[16px] text-text-primary mt-0.5">{seasonStats.sixes}</div>
+                        <div className="font-anton text-[14px] text-text-primary mt-0.5">{seasonStats.sixes}</div>
                       </div>
                       <div>
                         <div className="font-space-mono text-[7px] font-bold uppercase text-text-secondary whitespace-nowrap">H. Score</div>
-                        <div className="font-anton text-[16px] text-accent mt-0.5">{seasonStats.highScore}</div>
+                        <div className="font-anton text-[14px] text-accent mt-0.5">{seasonStats.highScore}</div>
                       </div>
                     </div>
                   </div>
 
                   {/* Bowling Season Stats */}
-                  <div className="space-y-1 rounded border border-border/80 bg-surface p-2">
+                  <div className="space-y-1 rounded border border-border/80 bg-surface p-1.5">
                     <div className="font-anton text-[11px] uppercase text-accent border-b border-border/40 pb-1">Bowling Figures</div>
-                    <div className="grid grid-cols-6 gap-2 text-center">
+                    <div className="grid grid-cols-6 gap-1.5 text-center">
                       <div>
                         <div className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Matches</div>
-                        <div className="font-anton text-[16px] text-text-primary mt-0.5">{seasonStats.bowlMatches}</div>
+                        <div className="font-anton text-[14px] text-text-primary mt-0.5">{seasonStats.bowlMatches}</div>
                       </div>
                       <div>
                         <div className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Wickets</div>
-                        <div className="font-anton text-[16px] text-text-primary mt-0.5">{seasonStats.bowlWickets}</div>
+                        <div className="font-anton text-[14px] text-text-primary mt-0.5">{seasonStats.bowlWickets}</div>
                       </div>
                       <div>
                         <div className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Bowl Avg</div>
-                        <div className="font-anton text-[16px] text-text-primary mt-0.5">{seasonStats.bowlAvg}</div>
+                        <div className="font-anton text-[14px] text-text-primary mt-0.5">{seasonStats.bowlAvg}</div>
                       </div>
                       <div>
                         <div className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Bowl SR</div>
-                        <div className="font-anton text-[16px] text-text-primary mt-0.5">{seasonStats.bowlSR}</div>
+                        <div className="font-anton text-[14px] text-text-primary mt-0.5">{seasonStats.bowlSR}</div>
                       </div>
                       <div>
                         <div className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">3fers</div>
-                        <div className="font-anton text-[16px] text-text-primary mt-0.5">{seasonStats.threeFers}</div>
+                        <div className="font-anton text-[14px] text-text-primary mt-0.5">{seasonStats.threeFers}</div>
                       </div>
                       <div>
                         <div className="font-space-mono text-[7px] font-bold uppercase text-text-secondary whitespace-nowrap">B. Figs</div>
-                        <div className="font-anton text-[16px] text-accent mt-0.5">{seasonStats.bestFiguresStr}</div>
+                        <div className="font-anton text-[14px] text-accent mt-0.5">{seasonStats.bestFiguresStr}</div>
                       </div>
                     </div>
                   </div>
@@ -1024,8 +1014,9 @@ export function PlayerProfileModal({
               </section>
             )}
 
+            </div>
             {/* Team History */}
-            <section className="col-start-3 row-span-4 row-start-1 min-h-0 self-start overflow-hidden rounded border border-border bg-bg p-3">
+            <section className="min-h-0 overflow-y-auto overscroll-contain rounded border border-border bg-bg p-3">
               <h4 className="mb-2 border-b border-border pb-1.5 font-anton text-[12px] uppercase text-text-primary">Team History</h4>
               <div className="grid grid-cols-[3rem_minmax(0,1fr)_auto_auto] gap-2 border-b border-border pb-1.5 font-space-mono text-[7px] font-bold uppercase text-text-secondary">
                 <span>Season</span>

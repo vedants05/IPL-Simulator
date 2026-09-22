@@ -24,6 +24,7 @@ import type { AiLeagueLeadership, AiTeamLeadership } from "@/lib/logic/aiLeaders
 import { dateKeyToLocalDate, getSeasonScheduleAnnouncementDate } from "@/lib/logic/careerCalendar";
 import { isRainAffectedMatch } from "@/lib/logic/matchWeather";
 import { getPlayerSeasonHistory } from "@/lib/logic/playerHistory";
+import { deriveIplSeasonRosterStats } from "@/lib/logic/iplSeasonRosterStats";
 import { careerSnapshotStorageKey, parseCareerSnapshot, readCareerSnapshot, writeCareerSnapshot } from "@/lib/logic/careerSnapshotStorage";
 import { cacheTeamProfileCareer, getCachedTeamProfileCareer } from "@/lib/logic/teamProfileCareerCache";
 import { useGameStore } from "@/lib/store/gameStore";
@@ -989,8 +990,11 @@ function MountedTeamProfilePage() {
   const fixturesAnnounced = currentDate >= fixtureAnnouncementDate;
   const nextFixtures = fixturesAnnounced ? upcomingFixtures.slice(0, visibleNextFixtureCount) : [];
 
-  const teamSeasonStats = useMemo(() => Object.values(career.playerStats)
-    .filter((stat) => stat.teamId === teamId), [career.playerStats, teamId]);
+  const seasonStats = useMemo(() => deriveIplSeasonRosterStats(
+    career.fixtures, currentSeason, new Set(Object.keys(teams)),
+  ), [career.fixtures, currentSeason, teams]);
+  const teamSeasonStats = useMemo(() => Object.values(seasonStats)
+    .filter((stat) => stat.teamId === teamId), [seasonStats, teamId]);
   const leadingRunScorer = [...teamSeasonStats].sort((left, right) => right.runs - left.runs)[0];
   const leadingWicketTaker = [...teamSeasonStats].sort((left, right) => right.wickets - left.wickets)[0];
 
@@ -1016,7 +1020,7 @@ function MountedTeamProfilePage() {
       .map((sale) => [sale.playerId, sale.price]),
   );
   const squadSeason = String(auction?.season ?? currentSeason);
-  const squadSeasonStats = (player: Player) => career.playerStats[player.id];
+  const squadSeasonStats = (player: Player) => seasonStats[player.id];
   const acquisitionPrice = (player: Player) => {
     const salePrice = seasonSales.get(player.id);
     if (salePrice !== undefined) return salePrice;
@@ -1736,7 +1740,6 @@ function MountedTeamProfilePage() {
           playerId={detailedPlayerId}
           onClose={() => setDetailedPlayerId(null)}
           customFixtures={career.fixtures}
-          currentSeasonStats={career.playerStats[detailedPlayerId]}
           isShortlisted={shortlist.includes(detailedPlayerId)}
           onToggleShortlist={toggleShortlist}
         />

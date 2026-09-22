@@ -5473,6 +5473,10 @@ export const useGameStore = create<Store>()(
         Object.entries(migratedPlayers).forEach(([id, player]) => {
           if (player.name.trim().toLocaleLowerCase("en-GB") === "ajinkya rahane") {
             delete migratedPlayers[id];
+          } else if (player.name === "MS Dhoni" && player.isCapped) {
+            migratedPlayers[id] = { ...player, isCapped: false };
+          } else if (!player.isCapped && (player.internationalDebutDate || (player.t20iStats?.matches ?? 0) > 0)) {
+            migratedPlayers[id] = { ...player, isCapped: true };
           }
         });
         const cleanedTeams = Object.fromEntries(Object.entries(migratedTeams).map(([id, team]) => [

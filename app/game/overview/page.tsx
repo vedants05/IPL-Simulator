@@ -440,6 +440,10 @@ function deriveIplSeasonStatsRecord(
     if (fixture.scorecard) {
       addInnings(fixture.scorecard.inningsA, fixture.teamA, fixture.teamB);
       addInnings(fixture.scorecard.inningsB, fixture.teamB, fixture.teamA);
+    } else if (fixture.simulation?.innings) {
+      fixture.simulation.innings.forEach((innings) => {
+        addInnings({ batting: innings.batting, bowling: innings.bowling, extras: innings.extras.total }, innings.battingTeamId, innings.bowlingTeamId);
+      });
     }
 
     if (fixture.simulation) {
@@ -5538,14 +5542,17 @@ This record has been officially verified and added to the IPL Minor Records arch
         return protectCompletedSeasonTeamsFromTrades(history, detailedPlayer.id, tradeRecords);
       })()
     : [];
+  const iplSeasonStats = useMemo(() => deriveIplSeasonStatsRecord(
+    fixtures.filter((fixture) => !fixture.date || Number(fixture.date.slice(0, 4)) === currentSeason), players,
+  ), [currentSeason, fixtures, players]);
   const sortedRosterPlayers = useMemo(() => {
     const rosterPlayers = (userTeam?.squad ?? []).map((id) => players[id]).filter((player): player is Player => Boolean(player));
     const directionMultiplier = rosterSort.direction === "asc" ? 1 : -1;
 
     return rosterPlayers.sort((left, right) => {
       let comparison = 0;
-      const leftSeason = playerStats[left.id];
-      const rightSeason = playerStats[right.id];
+      const leftSeason = iplSeasonStats[left.id];
+      const rightSeason = iplSeasonStats[right.id];
       const numericValue = (player: Player, stats: PlayerStats | undefined, key: RosterSortKey) => {
         if (key === "age") return player.age;
         if (key === "rating") return getPlayerRating(player);
@@ -5593,7 +5600,7 @@ This record has been officially verified and added to the IPL Minor Records arch
         ? left.name.localeCompare(right.name)
         : comparison * directionMultiplier;
     });
-  }, [currentSeasonHistoryByPlayer, playerStats, players, rosterSort, userTeam?.squad]);
+  }, [currentSeasonHistoryByPlayer, iplSeasonStats, players, rosterSort, userTeam?.squad]);
 
   const toggleRosterSort = (key: RosterSortKey) => {
     setRosterSort((current) => ({
@@ -5618,7 +5625,7 @@ This record has been officially verified and added to the IPL Minor Records arch
     key: RosterSortKey; label: string; align?: "left" | "center" | "right";
     render: (player: Player) => React.ReactNode;
   }> = (() => {
-    const season = (player: Player) => playerStats[player.id];
+    const season = (player: Player) => iplSeasonStats[player.id];
     const number = (value: number | undefined, digits = 0) => value === undefined || !Number.isFinite(value) ? "—" : value.toFixed(digits);
     if (rosterView === "general") return [
       { key: "name", label: "Name", render: renderRosterPlayerName },
@@ -5983,7 +5990,6 @@ This record has been officially verified and added to the IPL Minor Records arch
 
   // Derive tournament cap and award tables exclusively from this season's played IPL scorecards & matches.
   // The persisted playerStats object may contain stale totals or non-IPL stats in older saves.
-  const iplSeasonStats = useMemo(() => deriveIplSeasonStatsRecord(fixtures, players), [fixtures, players]);
   const iplSeasonStatsList = useMemo(() => Object.values(iplSeasonStats), [iplSeasonStats]);
 
   const orangeCapLeaders = useMemo(() => {
@@ -6215,7 +6221,7 @@ This record has been officially verified and added to the IPL Minor Records arch
     return [...tradeEvents, ...staffEvents, ...injuries, ...recruitmentEvents];
   }, [activeInjuries, careerStaff.contracts, careerStaff.employmentHistory, careerStaff.generatedProfiles, injuryHistory, players, tradeRecords, userTeam?.squad, userTeamId]);
 
-  const supporterPlayerStats = useMemo(() => Object.fromEntries(Object.entries(playerStats).map(([playerId, stats]) => [playerId, {
+  const supporterPlayerStats = useMemo(() => Object.fromEntries(Object.entries(iplSeasonStats).map(([playerId, stats]) => [playerId, {
     matches: stats.matches,
     runs: stats.runs,
     wickets: stats.wickets,
@@ -6226,7 +6232,7 @@ This record has been officially verified and added to the IPL Minor Records arch
     catches: stats.catches,
     stumpings: stats.stumpings,
     runOuts: stats.runOuts,
-  }])), [playerStats]);
+  }])), [iplSeasonStats]);
   const supporterDepartmentReviews = useMemo(() => careerStaff.performanceReviews
     .filter((review) => review.teamId === userTeamId)
     .map((review) => ({ season: review.season, expectedPosition: review.expectedPosition, finalPosition: review.finalPosition, wonTitle: review.wonTitle, batting: review.departments.batting, bowling: review.departments.bowling, fielding: review.departments.fielding })), [careerStaff.performanceReviews, userTeamId]);
@@ -6311,7 +6317,7 @@ This record has been officially verified and added to the IPL Minor Records arch
       players,
       fixtures,
       standings,
-      playerStats,
+      playerStats: iplSeasonStats,
       leadership: teamLeadership,
       captainChangeGamesRemaining: getCaptainChangeGamesRemaining(teamLeadership, userGamesPlayed),
       lineup: emailLineupStatus,
@@ -6325,7 +6331,7 @@ This record has been officially verified and added to the IPL Minor Records arch
     fixtures,
     formattedAnnouncementDate,
     isFixturesAnnounced,
-    playerStats,
+    iplSeasonStats,
     players,
     standings,
     teamLeadership,
@@ -7316,7 +7322,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                 <SocialMediaPage
                   team={userTeam}
                   players={players}
-                  playerStats={playerStats}
+                  playerStats={iplSeasonStats}
                   battingFirstXI={battingFirstXI}
                   bowlingFirstXI={bowlingFirstXI}
                   fixtures={detailedFixtures}
@@ -7332,7 +7338,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                   userTeamId={userTeamId}
                   players={players}
                   teams={teams}
-                  playerStats={playerStats}
+                  playerStats={iplSeasonStats}
                   standings={standings}
                   retirements={lastCareerRetirements}
                   retirementHistory={careerRetirementHistory}
@@ -8149,7 +8155,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                   fixtures={supporterFixtures}
                   standingPosition={Math.max(0, standings.findIndex((standing) => standing.teamId === userTeamId)) + 1}
                   squadPlayers={userTeam.squad.map((playerId) => players[playerId]).filter((player): player is Player => Boolean(player))}
-                  playerStats={Object.fromEntries(Object.entries(playerStats).map(([playerId, stats]) => [playerId, {
+                  playerStats={Object.fromEntries(Object.entries(iplSeasonStats).map(([playerId, stats]) => [playerId, {
                     matches: stats.matches,
                     runs: stats.runs,
                     wickets: stats.wickets,
@@ -9224,7 +9230,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                   teams={teams}
                   userTeamId={userTeamId}
                   currentSeason={currentSeason}
-                  currentSeasonStats={playerStats}
+                  currentSeasonStats={iplSeasonStats}
                   seasonArchives={careerSeasonArchives}
                   scoutingReports={scoutingReports}
                   shortlist={shortlist}
@@ -10813,7 +10819,6 @@ This record has been officially verified and added to the IPL Minor Records arch
         playerId={detailedPlayerId}
         onClose={() => setDetailedPlayerId(null)}
         customFixtures={fixtures}
-        currentSeasonStats={detailedPlayerId ? iplSeasonStats[detailedPlayerId] : undefined}
         additionalCareerT20Stats={detailedPlayerId ? smatCareerT20ByFullPlayerId[`full:${detailedPlayerId}`] : undefined}
         internationalStats={detailedPlayerId && internationalCareer ? internationalCareerStatsForPlayer(internationalCareer, detailedPlayerId) : undefined}
         isShortlisted={detailedPlayerId ? shortlist.includes(detailedPlayerId) : false}

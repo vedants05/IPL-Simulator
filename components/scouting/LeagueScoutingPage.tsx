@@ -143,7 +143,9 @@ export default function LeagueScoutingPage(props: LeagueScoutingPageProps) {
         .filter((entry) => Number(entry.season) === applied.season && entry.seasonStats)
         .map((entry) => entry.seasonStats as LeagueScoutingPageStat);
       const matchLogStats = resolveArchivedMatchLogs(archive?.playerMatchLogs?.[player.id]);
-      seasonStats = mergeSeasonStatSources([archivedStats, ...historyStats, matchLogStats]);
+      seasonStats = archive
+        ? (archivedStats || matchLogStats ? { ...archivedStats, ...matchLogStats } : undefined)
+        : mergeSeasonStatSources(historyStats);
     }
 
     const stats = applied.scope === "season"
