@@ -130,6 +130,7 @@ for (const { roleGroup, player } of generated) {
 }
 
 const allPlayers = generated.map(({ player }) => player);
+assert.ok(allPlayers.every((player) => !player.isCapped && !player.internationalDebutDate && player.internationalDebutSeason === undefined), "a generated player must not be capped before an international appearance");
 const ageOnSeasonStart = (dateOfBirth: string, season: number): number => {
   const [year, month, day] = dateOfBirth.split("-").map(Number);
   return season - year - (month > 4 || (month === 4 && day > 1) ? 1 : 0);

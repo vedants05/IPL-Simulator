@@ -1527,6 +1527,7 @@ export const useGameStore = create<Store>()(
         if (Object.keys(state.players).length === 0) return;
 
         const retiredPlayerIds = getRetiredPlayerIds(state);
+        const refreshedRetiredSnapshots = { ...state.retiredPlayerSnapshots };
         const refreshedPlayers = Object.fromEntries(
           Object.entries(state.players).filter(([playerId]) => !retiredPlayerIds.has(playerId)),
         );
@@ -1537,7 +1538,13 @@ export const useGameStore = create<Store>()(
         fetchedPlayers.forEach((freshPlayer) => {
           // Missing from the active map can mean retired, not newly added to
           // the database. Retirement history is authoritative for this save.
-          if (retiredPlayerIds.has(freshPlayer.id)) return;
+          if (retiredPlayerIds.has(freshPlayer.id)) {
+            const snapshot = refreshedRetiredSnapshots[freshPlayer.id];
+            if (snapshot && (snapshot.t20iStats?.matches ?? 0) === 0 && (freshPlayer.t20iStats?.matches ?? 0) > 0) {
+              refreshedRetiredSnapshots[freshPlayer.id] = { ...snapshot, t20iStats: freshPlayer.t20iStats };
+            }
+            return;
+          }
           const savedPlayer = state.players[freshPlayer.id];
           if (!savedPlayer) {
             refreshedPlayers[freshPlayer.id] = freshPlayer;
@@ -1704,6 +1711,7 @@ export const useGameStore = create<Store>()(
         ));
         set({
           players: refreshedMarketPlayers,
+          retiredPlayerSnapshots: refreshedRetiredSnapshots,
           teams: Object.fromEntries(Object.entries(state.teams).map(([teamId, team]) => [teamId, {
             ...team,
             squad: team.squad.filter((id) => !retiredPlayerIds.has(id)),

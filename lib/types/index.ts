@@ -225,7 +225,7 @@ export interface Player {
   internationalDebutCountry?: string;
   /** Season in which the player earned a national call-up, before making a debut. */
   internationalCallUpSeason?: number;
-  /** Match date of the player's first international appearance. Capped status begins the following day. */
+  /** Match date of the player's first international appearance. Capped status begins when that match is completed. */
   internationalDebutDate?: string;
   /** Player has retired from T20 internationals but may remain active in franchise cricket. */
   isT20IRetired?: boolean;

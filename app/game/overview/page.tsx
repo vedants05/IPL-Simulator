@@ -1327,13 +1327,13 @@ function OverviewPageContent() {
         // IndexedDB read completes. Superseded effects must stop here rather
         // than each cloning and simulating the same career in parallel.
         if (cancelled) return;
-        if (saved && !internationalCareerNeedsReconcile(saved, currentSeason, currentDate)) {
+        const livePlayers = useGameStore.getState().players;
+        if (saved && !internationalCareerNeedsReconcile(saved, currentSeason, currentDate, livePlayers)) {
           loadedInternationalKeyRef.current = internationalCareerKey;
           internationalCareerRef.current = saved;
           setInternationalCareer((current) => current === saved ? current : saved);
           return;
         }
-        const livePlayers = useGameStore.getState().players;
         const result = reconcileInternationalCareer(saved, currentSeason, currentDate, livePlayers);
         if (cancelled) return;
 
@@ -1358,7 +1358,7 @@ function OverviewPageContent() {
 
     void reconcileAndPersist();
     return () => { cancelled = true; };
-  }, [currentDate, currentSeason, internationalCareerKey]);
+  }, [currentDate, currentSeason, internationalCareerKey, players]);
 
   useEffect(() => {
     minorRecordsRef.current = minorRecords;
@@ -1489,9 +1489,10 @@ function OverviewPageContent() {
   
   // Local state for interactive tools
   const [searchQuery, setSearchQuery] = useState("");
-  const [filterNationality, setFilterNationality] = useState<"all" | "indian_capped" | "indian_uncapped" | "overseas">("all");
+  const [filterNationality, setFilterNationality] = useState<"all" | "indian_capped" | "indian_uncapped" | "overseas_capped" | "overseas_uncapped">("all");
   const [filterRole, setFilterRole] = useState<"all" | "Batsman" | "WK-Batsman" | "All-Rounder" | "Pace Bowler" | "Spin Bowler">("all");
   const [minRating, setMinRating] = useState<number>(60);
+  const [maxRating, setMaxRating] = useState<number>(100);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const userGamesPlayed = useMemo(() => fixtures.filter((fixture) => (
     fixture.played && (fixture.teamA === userTeamId || fixture.teamB === userTeamId)
@@ -5940,7 +5941,8 @@ This record has been officially verified and added to the IPL Minor Records arch
         return true;
       })
       .filter(p => {
-        if (filterNationality === "overseas") return p.nationality === "Overseas";
+        if (filterNationality === "overseas_capped") return p.nationality === "Overseas" && p.isCapped;
+        if (filterNationality === "overseas_uncapped") return p.nationality === "Overseas" && !p.isCapped;
         if (filterNationality === "indian_capped") return p.nationality === "Indian" && p.isCapped;
         if (filterNationality === "indian_uncapped") return p.nationality === "Indian" && !p.isCapped;
         return true;
@@ -5949,10 +5951,10 @@ This record has been officially verified and added to the IPL Minor Records arch
         if (filterRole !== "all") return p.role === filterRole;
         return true;
       })
-      .filter(p => getPlayerRating(p) >= minRating)
+      .filter(p => getPlayerRating(p) >= minRating && getPlayerRating(p) <= maxRating)
       .sort((a,b) => getPlayerRating(b) - getPlayerRating(a))
       .slice(0, 15); // Show top 15 results
-  }, [players, searchQuery, filterNationality, filterRole, minRating, userTeamId, currentSeason]);
+  }, [players, searchQuery, filterNationality, filterRole, minRating, maxRating, userTeamId, currentSeason]);
 
   const bestScoutingPlayers = useMemo(() => Object.values(players)
     .filter((player): player is Player => !!player && (player.careerState?.generatedSeason ?? currentSeason) <= currentSeason)
@@ -8196,7 +8198,7 @@ This record has been officially verified and added to the IPL Minor Records arch
               )}
 
               {activeSubTab === "staffmanagement" && (
-                <StaffManagementPage teams={Object.values(teams)} mode="club" />
+                <StaffManagementPage teams={Object.values(teams)} mode="club" customFixtures={fixtures} />
               )}
 
               {activeSubTab === "pitchcurator" && (
@@ -9130,7 +9132,8 @@ This record has been officially verified and added to the IPL Minor Records arch
                         <option value="all">All Talents</option>
                         <option value="indian_capped">Indian Capped</option>
                         <option value="indian_uncapped">Indian Uncapped</option>
-                        <option value="overseas">Overseas</option>
+                        <option value="overseas_capped">Overseas Capped</option>
+                        <option value="overseas_uncapped">Overseas Uncapped</option>
                       </select>
                     </div>
                     <div>
@@ -9149,15 +9152,30 @@ This record has been officially verified and added to the IPL Minor Records arch
                       </select>
                     </div>
                     <div>
-                      <label className="block font-space-mono text-[9px] tracking-widest text-text-secondary uppercase mb-2">Minimum Rating: {minRating}</label>
-                      <input
-                        type="range"
-                        min="50"
-                        max="90"
-                        value={minRating}
-                        onChange={(e) => setMinRating(parseInt(e.target.value))}
-                        className="w-full accent-[var(--ink)]"
-                      />
+                      <div className="font-space-mono text-[9px] tracking-widest text-text-secondary uppercase mb-2">Rating: {minRating}–{maxRating}</div>
+                      <div className="player-search-rating-range relative h-8">
+                        <div className="absolute inset-x-[9px] top-3.5 h-1 rounded-full bg-border" />
+                        <div
+                          className="absolute top-3.5 h-1 rounded-full bg-[var(--ink)]"
+                          style={{ left: `calc(9px + (100% - 18px) * ${minRating / 100})`, right: `calc(9px + (100% - 18px) * ${(100 - maxRating) / 100})` }}
+                        />
+                        <input
+                          aria-label="Minimum rating"
+                          type="range"
+                          min="0"
+                          max="100"
+                          value={minRating}
+                          onChange={(e) => setMinRating(Math.min(Number(e.target.value), maxRating - 1))}
+                        />
+                        <input
+                          aria-label="Maximum rating"
+                          type="range"
+                          min="0"
+                          max="100"
+                          value={maxRating}
+                          onChange={(e) => setMaxRating(Math.max(Number(e.target.value), minRating + 1))}
+                        />
+                      </div>
                     </div>
                   </div>
 
@@ -10247,7 +10265,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                 />
               )}
               {activeSubTab === "staff" && (
-                <StaffManagementPage teams={Object.values(teams)} mode="league" initialStaffSlug={legacyStaffSlug} />
+                <StaffManagementPage teams={Object.values(teams)} mode="league" initialStaffSlug={legacyStaffSlug} customFixtures={fixtures} />
               )}
               {activeSubTab === "seasonanalysis" && (
                 <SeasonDataAnalysisPage fixtures={detailedFixtures} teams={teams} players={players} seasonStartBattingAbilities={seasonStartBattingAbilities} seasonStartBowlingAbilities={seasonStartBowlingAbilities} userTeamId={userTeamId} />
@@ -10817,10 +10835,12 @@ This record has been officially verified and added to the IPL Minor Records arch
           ================================================================== */}
       <PlayerProfileModal
         playerId={detailedPlayerId}
+        onOpenPlayer={setDetailedPlayerId}
         onClose={() => setDetailedPlayerId(null)}
         customFixtures={fixtures}
         additionalCareerT20Stats={detailedPlayerId ? smatCareerT20ByFullPlayerId[`full:${detailedPlayerId}`] : undefined}
         internationalStats={detailedPlayerId && internationalCareer ? internationalCareerStatsForPlayer(internationalCareer, detailedPlayerId) : undefined}
+        internationalCareer={internationalCareer}
         isShortlisted={detailedPlayerId ? shortlist.includes(detailedPlayerId) : false}
         onToggleShortlist={toggleShortlist}
       />

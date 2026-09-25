@@ -1738,6 +1738,7 @@ function MountedTeamProfilePage() {
       {detailedPlayerId && (
         <PlayerProfileModal
           playerId={detailedPlayerId}
+          onOpenPlayer={setDetailedPlayerId}
           onClose={() => setDetailedPlayerId(null)}
           customFixtures={career.fixtures}
           isShortlisted={shortlist.includes(detailedPlayerId)}

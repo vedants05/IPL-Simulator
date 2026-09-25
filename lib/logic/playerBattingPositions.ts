@@ -56,7 +56,7 @@ export function getTopSevenBattingPositions(player: BattingPositionPlayer): numb
 
 export function formatTopSevenBattingPositions(player: BattingPositionPlayer): string {
   const positions = getTopSevenBattingPositions(player);
-  if (positions.length === 0) return "Not specified";
+  if (positions.length === 0) return player.currentBatting > 55 ? "Lower order batter" : "Tailender";
 
   const labels: string[] = [];
   if (positions.includes(1) || positions.includes(2)) labels.push("Opener");
