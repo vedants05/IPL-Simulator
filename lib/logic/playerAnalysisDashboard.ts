@@ -1,7 +1,29 @@
 import type { Player } from "../types";
 import type { PlayerAnalysisFixture, PlayerAnalysisTotals } from "./playerAnalysisMetrics";
+import { metricByKey } from "./playerAnalysisMetrics";
 
 export type PlayerDashboardStructure = "bowling" | "bowling-with-batting" | "balanced" | "batting-with-bowling" | "batting";
+
+export function playerDashboardRankings(stats: PlayerAnalysisTotals, structure: PlayerDashboardStructure): Array<string | undefined> {
+  const bowling = structure === "bowling" || structure === "bowling-with-batting";
+  const balanced = structure === "balanced";
+  const phases = Array.from(["powerplay", "middle", "death"] as const).sort((a, b) => stats.phase[b].bowlBalls - stats.phase[a].bowlBalls);
+  const battingPhases = Array.from(["powerplay", "middle", "death"] as const).sort((a, b) => stats.phase[b].balls - stats.phase[a].balls);
+  const bowlingKeys = ["wickets", "economy", ...phases.map((phase) => `${phase}Wickets`), ...phases.map((phase) => `${phase}Economy`), "dotRate", "bowlAverage", "wicketsPerMatch"];
+  const battingKeys = ["sixes", "runs", "batAverage", "boundaryRate", "fours", "strikeRate", ...battingPhases.map((phase) => `${phase}Runs`), ...battingPhases.map((phase) => `${phase}StrikeRate`)];
+  const fallback = bowling ? bowlingKeys : balanced ? [...bowlingKeys, ...battingKeys] : battingKeys;
+  const preferred = [bowling || balanced ? "wickets" : "sixes", bowling ? "economy" : "runs"];
+  const third = structure === "bowling-with-batting" ? ["runs", ...bowlingKeys]
+    : structure === "batting-with-bowling" ? ["wickets", ...battingKeys]
+    : bowling ? [...phases.map((phase) => `${phase}Wickets`), "dotRate", "bowlAverage", "wicketsPerMatch"]
+    : balanced ? ["sixes", "batAverage", "strikeRate"] : ["batAverage", "boundaryRate", "fours"];
+  const used = new Set<string>();
+  return [[preferred[0]], [preferred[1]], third].map((priorities) => {
+    const key = [...priorities, ...fallback].find((key) => !used.has(key) && metricByKey[key].qualifies(stats) && metricByKey[key].value(stats) !== null);
+    if (key) used.add(key);
+    return key;
+  });
+}
 
 export type PlayerMatchPerformance = {
   id: string; date: string; label: string; rank: number; opponentTeamId?: string;

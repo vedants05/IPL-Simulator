@@ -120,7 +120,7 @@ export function buildPlayerAnalysisTotals(fixtures: readonly PlayerAnalysisFixtu
         if (ball.wicket?.bowlerCredited) bowler.phase[phase].wickets += 1;
         const keys = overSegments(ball.overNumber);
         const position = battingPosition[ball.strikerId];
-        const battingKeys = position ? [...keys, ...positionGroups(position).filter((key) => key !== `position:${position}`).flatMap((group) => keys.filter((key) => key.startsWith("overs:")).map((key) => `${group}:${key}`))] : keys;
+        const battingKeys = position ? [...keys, ...positionGroups(position).flatMap((group) => keys.filter((key) => key.startsWith("over:") || key.startsWith("overs:")).map((key) => `${group}:${key}`))] : keys;
         const bowlerType = players[ball.bowlerId]?.bowlingStyle;
         if (bowlerType === "Pacer" || bowlerType === "Spinner") battingKeys.push(`vs:${bowlerType === "Pacer" ? "pace" : "spin"}`);
         const batterHand = players[ball.strikerId]?.battingStyle;
@@ -242,3 +242,15 @@ PLAYER_METRICS.push(...segmentMetrics("vs:left", "Bowling to left-hand batters",
 PLAYER_METRICS.push(...segmentMetrics("vs:right", "Bowling to right-hand batters", "over").filter((metric) => metric.group.endsWith("bowling")));
 
 export const metricByKey = Object.fromEntries(PLAYER_METRICS.map((metric) => [metric.key, metric])) as Record<PlayerMetricKey, MetricDefinition>;
+
+export function groupPlayerAnalysisMetrics(keys: readonly PlayerMetricKey[]): PlayerMetricKey[] {
+  const groups = new Map<string, PlayerMetricKey[]>();
+  for (const key of keys) {
+    const phase = key.match(/^(powerplay|middle|death)(?=[A-Z])/)?.[1];
+    const category = phase ?? (key.includes(":") ? key.slice(0, key.lastIndexOf(":")) : metricByKey[key]?.group ?? key);
+    const group = groups.get(category) ?? [];
+    group.push(key);
+    groups.set(category, group);
+  }
+  return Array.from(groups.values()).flat();
+}

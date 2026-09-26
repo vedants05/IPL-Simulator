@@ -8,8 +8,10 @@ import { formatDisplayDate } from "@/lib/logic/displayDate";
 import { playerDashboardStructure } from "@/lib/logic/playerAnalysisDashboard";
 import { chartAxis } from "@/lib/logic/playerAnalysisChart";
 import PlayerAnalysisDashboard from "./PlayerAnalysisDashboard";
+import PlayerAnalysisBuilder, { PlayerAnalysisContent } from "./PlayerAnalysisBuilder";
+import { MAX_CUSTOM_ANALYSES, saveTemporaryAnalysis, type TemporaryAnalysisLayout, type AnalysisBuilderConfig } from "@/lib/logic/playerAnalysisBuilder";
 import {
-  buildPlayerAnalysisTotals, emptyPlayerAnalysisTotals, metricByKey, PLAYER_METRICS,
+  buildPlayerAnalysisTotals, emptyPlayerAnalysisTotals, metricByKey,
   type PlayerAnalysisFixture, type PlayerAnalysisTotals, type PlayerMetricKey,
 } from "@/lib/logic/playerAnalysisMetrics";
 
@@ -81,17 +83,7 @@ const paired: Partial<Record<PlayerMetricKey, PlayerMetricKey>> = {
   wickets: "economy", economy: "wickets", dotRate: "wickets", deathWickets: "deathEconomy", deathEconomy: "deathWickets", powerplayWickets: "powerplayEconomy",
 };
 
-function MetricPicker({ label, value, onChange }: { label: string; value: PlayerMetricKey; onChange: (key: PlayerMetricKey) => void }) {
-  const [query, setQuery] = useState("");
-  const [open, setOpen] = useState(false);
-  const root = useRef<HTMLDivElement>(null);
-  useEffect(() => { const close = (event: MouseEvent) => { if (root.current && !root.current.contains(event.target as Node)) setOpen(false); }; document.addEventListener("mousedown", close); return () => document.removeEventListener("mousedown", close); }, []);
-  const matches = PLAYER_METRICS.filter((metric) => `${metric.label} ${metric.group}`.toLowerCase().includes(query.toLowerCase())).slice(0, 35);
-  return <div ref={root} className="relative min-w-0"><label className="text-[10px] font-bold uppercase text-text-secondary">{label}<input value={open ? query : metricByKey[value].label} onFocus={() => { setOpen(true); setQuery(""); }} onChange={(event) => { setQuery(event.target.value); setOpen(true); }} onKeyDown={(event) => { if (event.key === "Enter" && matches[0]) { onChange(matches[0].key); setOpen(false); } if (event.key === "Escape") setOpen(false); }} className="mt-1 h-9 w-full rounded border border-border bg-bg px-2 text-xs font-normal normal-case text-text-primary outline-none focus:border-accent" placeholder="Search metrics" /></label>{open && <div className="absolute inset-x-0 top-full z-40 mt-1 max-h-64 overflow-y-auto rounded border border-border bg-bg shadow-xl">{matches.map((metric) => <button key={metric.key} type="button" onClick={() => { onChange(metric.key); setOpen(false); }} className="block w-full border-b border-border/50 px-2 py-1.5 text-left hover:bg-accent/10"><span className="block text-[11px] font-semibold">{metric.label}</span><span className="text-[9px] text-text-secondary">{metric.group} · {metric.minimum}</span></button>)}{matches.length === 0 && <p className="p-3 text-[11px] text-text-secondary">No matching metric</p>}</div>}</div>;
-}
-
 const breakdownSuffix = (key: string) => key.split(":").at(-1);
-const canBreakdown = (key: string) => ["runs", "wickets", "fours", "sixes"].includes(key) || /^position:(1-2|3-5|6plus):(runs|fours|sixes)$/.test(key);
 function Breakdown({ stats, keyName }: { stats: PlayerAnalysisTotals; keyName: PlayerMetricKey }) {
   const suffix = breakdownSuffix(keyName) as "runs" | "wickets" | "fours" | "sixes";
   const positionPrefix = keyName.startsWith("position:") ? keyName.slice(0, keyName.lastIndexOf(":")) + ":" : "";
@@ -170,7 +162,9 @@ export default function PlayerAnalysisPage(props: PlayerAnalysisPageProps) {
   const [query, setQuery] = useState(""), [searchOpen, setSearchOpen] = useState(false);
   const [finder, setFinder] = useState<FinderFilters>(emptyFinderFilters);
   const [builderOpen, setBuilderOpen] = useState(false);
-  const [draft, setDraft] = useState<Config>({ x: "runs", y: "strikeRate", group: "all", kind: "chart" });
+  const [editingTile, setEditingTile] = useState<string | null>(null);
+  const [expandedCustom, setExpandedCustom] = useState<AnalysisBuilderConfig | null>(null);
+  const [layouts, setLayouts] = useState<Record<string, TemporaryAnalysisLayout>>({});
   const [expanded, setExpanded] = useState<Config | null>(null);
   const [detailTab, setDetailTab] = useState<"chart" | "table" | "matches">("chart");
   const searchRef = useRef<HTMLDivElement>(null);
@@ -178,6 +172,18 @@ export default function PlayerAnalysisPage(props: PlayerAnalysisPageProps) {
   useEffect(() => { const close = (event: MouseEvent) => { if (searchRef.current && !searchRef.current.contains(event.target as Node)) setSearchOpen(false); }; document.addEventListener("mousedown", close); return () => document.removeEventListener("mousedown", close); }, []);
   const totals = useMemo(() => buildPlayerAnalysisTotals(props.fixtures, props.players), [props.fixtures, props.players]);
   const selected = selectedId ? props.players[selectedId] : undefined;
+  const layout = layouts[selectedId] ?? { hidden: [], custom: [] };
+  const removeTile = (id: string) => setLayouts((previous) => {
+    const current = previous[selectedId] ?? { hidden: [], custom: [] };
+    return { ...previous, [selectedId]: id.startsWith("custom-") ? { ...current, custom: current.custom.filter((tile) => tile.id !== id) } : { ...current, hidden: [...current.hidden, id] } };
+  });
+  const saveAnalysis = (config: AnalysisBuilderConfig) => {
+    setLayouts((previous) => {
+      const current = previous[selectedId] ?? { hidden: [], custom: [] };
+      return { ...previous, [selectedId]: saveTemporaryAnalysis(current, editingTile ?? `custom-${crypto.randomUUID()}`, config, Boolean(editingTile)) };
+    });
+    setBuilderOpen(false); setEditingTile(null);
+  };
   const stats = selected ? totals[selected.id] ?? emptyPlayerAnalysisTotals() : emptyPlayerAnalysisTotals();
   const structure = selected ? playerDashboardStructure(selected, stats, props.fixtures) : null;
   const countries = Array.from(new Set(players.map((player) => player.country).filter((country): country is string => Boolean(country)))).sort();
@@ -209,8 +215,8 @@ export default function PlayerAnalysisPage(props: PlayerAnalysisPageProps) {
     setDetailTab(view);
   };
 
-  return <div className="flex h-full min-h-0 flex-col overflow-y-auto p-4 lg:overflow-hidden sm:p-6"><div className="mx-auto flex h-full w-full max-w-[1500px] min-h-0 flex-col gap-3">
-    <div className="flex h-11 items-center gap-1.5 rounded-lg border border-border bg-surface px-2">
+  return <div className="flex h-full min-h-0 flex-col overflow-hidden px-4 pb-4 pt-1 sm:px-6 sm:pb-6"><div className="mx-auto flex h-full w-full max-w-[1500px] min-h-0 flex-col gap-3">
+    <div className="-mb-2 flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-border bg-surface px-2">
       <div ref={searchRef} className="relative min-w-[170px] flex-1">
         <Search size={14} className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-text-secondary" />
         <input value={query} onChange={(event) => { setQuery(event.target.value); setSearchOpen(true); }} onFocus={() => setSearchOpen(true)} onClick={() => setSearchOpen(true)}
@@ -235,25 +241,18 @@ export default function PlayerAnalysisPage(props: PlayerAnalysisPageProps) {
       <button type="button" onClick={() => { setFinder(emptyFinderFilters()); setQuery(""); }} title="Clear player filters" aria-label="Clear player filters" className="h-8 shrink-0 rounded border border-border px-2 text-[10px] text-text-secondary hover:text-accent">Clear</button>
     </div>
     {selected ? <>
-    <div className="flex flex-wrap items-center gap-x-6 gap-y-3 rounded-lg border border-border bg-surface px-4 py-4">
+    <div className="flex shrink-0 items-stretch gap-2">
+    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-6 gap-y-3 rounded-lg border border-border bg-surface px-4 py-4">
       <div className="min-w-[165px]"><button type="button" onClick={() => props.onOpenProfile(selected.id)} className="font-anton text-xl uppercase text-text-primary hover:text-accent">{selected.name}</button><p className="mt-0.5 text-[11px] text-text-secondary">{selected.role} · {props.teams[selected.currentTeamId ?? ""]?.shortName ?? "Former / unsold"} · {props.currentSeason}</p></div>
       <div className="flex flex-1 flex-wrap items-center gap-x-5 gap-y-2">{seasonSummary(selected, stats).map((item) => <span key={item.label} className="flex min-w-[52px] flex-col whitespace-nowrap"><span className="text-[10px] uppercase text-text-secondary">{item.label}</span><strong className="text-sm text-text-primary">{item.value}</strong></span>)}</div>
       <button type="button" onClick={() => props.onToggleShortlist(selected.id)} className="h-8 shrink-0 rounded border border-border bg-bg px-3 text-[10px] font-bold uppercase text-text-primary">{props.shortlist.includes(selected.id) ? "Shortlisted ✓" : "+ Shortlist"}</button>
     </div>
-    <div className="flex shrink-0 justify-end"><button type="button" onClick={() => setBuilderOpen(true)} className="rounded bg-[var(--ink)] px-4 py-1.5 text-[11px] font-bold text-bg">+ Create chart or table</button></div>
-    {stats.innings > 0 || stats.bowlBalls > 0 ? <PlayerAnalysisDashboard player={selected} players={players} playerMap={props.players} teams={props.teams} totals={totals} fixtures={props.fixtures} structure={structure!} onExplore={openMetric} /> : <div className="grid min-h-0 flex-1 place-items-center rounded-lg border border-dashed border-border bg-surface text-xs text-text-secondary">No batting or bowling performance has been recorded for this player this season.</div>}
-    {builderOpen && <div role="dialog" aria-modal="true" aria-label="Create an analysis" className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-3" onKeyDown={(event) => { if (event.key === "Escape") setBuilderOpen(false); }}>
-      <section className="w-full max-w-4xl rounded-xl border border-border bg-surface p-5 shadow-2xl">
-        <div className="mb-3 flex items-start justify-between gap-3"><div><h3 className="font-anton text-xl uppercase">Create an analysis</h3><p className="text-[11px] text-text-secondary">Search {PLAYER_METRICS.length} precise season factors. Rankings include only players who meet each factor's sample requirement.</p></div><button type="button" onClick={() => setBuilderOpen(false)} aria-label="Close analysis builder" className="rounded border border-border p-1"><X size={16} /></button></div>
-        <div className="grid gap-3 sm:grid-cols-2">
-          {draft.kind !== "ranking" && draft.kind !== "breakdown" && <MetricPicker label="Horizontal factor" value={draft.x} onChange={(key) => setDraft({ ...draft, x: key })} />}
-          <MetricPicker label={draft.kind === "ranking" || draft.kind === "breakdown" ? "Factor" : "Vertical factor"} value={draft.y} onChange={(key) => setDraft({ ...draft, y: key })} />
-          {draft.kind !== "breakdown" && <label className="text-[10px] font-bold uppercase text-text-secondary">Players<select value={draft.group} onChange={(event) => setDraft({ ...draft, group: event.target.value as Group })} className="mt-1 h-9 w-full rounded border border-border bg-bg px-2 text-xs text-text-primary"><option value="all">All players</option><option value="batters">Batters and keepers</option><option value="all-rounders">All-rounders</option><option value="pacers">Pace bowlers</option><option value="spinners">Spin bowlers</option></select></label>}
-          <label className="text-[10px] font-bold uppercase text-text-secondary">View<select value={draft.kind} onChange={(event) => setDraft({ ...draft, kind: event.target.value as Config["kind"] })} className="mt-1 h-9 w-full rounded border border-border bg-bg px-2 text-xs text-text-primary"><option value="chart">Two axis chart</option><option value="table">Two factor table</option><option value="ranking">One factor ranking</option><option value="breakdown">Player over split</option></select></label>
-        </div>
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-2"><p className="text-[10px] text-text-secondary">{metricByKey[draft.y].label}: {metricByKey[draft.y].minimum}</p><button type="button" disabled={draft.kind === "breakdown" && !canBreakdown(draft.y)} onClick={() => { setExpanded({ ...draft }); setDetailTab(draft.kind === "ranking" || draft.kind === "table" ? "table" : "chart"); setBuilderOpen(false); }} className="rounded bg-accent px-4 py-2 text-[11px] font-bold text-white disabled:opacity-40">Create view</button></div>
-        {draft.kind === "breakdown" && !canBreakdown(draft.y) && <p className="mt-2 text-[10px] text-warning">An over split requires a count such as runs, wickets, boundaries or balls.</p>}
-      </section>
+    <button type="button" onClick={() => { setEditingTile(null); setBuilderOpen(true); }} disabled={layout.custom.length >= MAX_CUSTOM_ANALYSES} title={layout.custom.length >= MAX_CUSTOM_ANALYSES ? "Remove a custom analysis to add another" : "Create Player Data Analysis"} className="w-[160px] shrink-0 rounded-lg bg-[var(--ink)] px-4 py-3 text-[11px] font-bold text-bg disabled:opacity-40">Create Player Data Analysis<span className="mt-1 block text-[9px] font-normal">{layout.custom.length}/{MAX_CUSTOM_ANALYSES} custom analyses{layout.custom.length >= MAX_CUSTOM_ANALYSES ? " · remove one to add more" : ""}</span></button>
+    </div>
+    <PlayerAnalysisDashboard player={selected} players={players} playerMap={props.players} teams={props.teams} totals={totals} fixtures={props.fixtures} structure={structure!} onExplore={openMetric} hiddenTiles={layout.hidden} customTiles={layout.custom} onRemoveTile={removeTile} onEditTile={(id) => { setEditingTile(id); setBuilderOpen(true); }} onExpandTile={(id) => setExpandedCustom(layout.custom.find((tile) => tile.id === id)?.config ?? null)} season={props.currentSeason} />
+    {expandedCustom && <div role="dialog" aria-modal="true" aria-label="Expanded player analysis" className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-3" onMouseDown={(event) => { if (event.target === event.currentTarget) setExpandedCustom(null); }} onKeyDown={(event) => { if (event.key === "Escape") setExpandedCustom(null); }}><div className="flex h-[85vh] w-full max-w-6xl flex-col rounded-lg border border-border bg-bg p-4"><div className="mb-3 flex items-center justify-between border-b border-border pb-2"><h2 className="font-anton text-lg uppercase">{selected.name} · Player Analysis</h2><button autoFocus type="button" onClick={() => setExpandedCustom(null)} aria-label="Close expanded analysis" className="rounded border border-border p-2"><X size={16} /></button></div><PlayerAnalysisContent teams={props.teams} config={expandedCustom} player={selected} players={players} totals={totals} fixtures={props.fixtures} season={props.currentSeason} onClose={() => setExpandedCustom(null)} /></div></div>}
+    {builderOpen && <div role="dialog" aria-modal="true" aria-label="Create Player Data Analysis" className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-3" onMouseDown={(event) => { if (event.target === event.currentTarget) setBuilderOpen(false); }}>
+      <div className="flex h-[90vh] max-h-[950px] w-full max-w-6xl overflow-hidden rounded-xl shadow-2xl"><PlayerAnalysisBuilder teams={props.teams} key={`${selected.id}-${editingTile ?? "new"}`} initialConfig={layout.custom.find((tile) => tile.id === editingTile)?.config} player={selected} players={players} totals={totals} fixtures={props.fixtures} season={props.currentSeason} onClose={() => setBuilderOpen(false)} onSave={saveAnalysis} saveLabel={editingTile ? "Update Analysis" : "Add to Player Analysis"} /></div>
     </div>}
     </> : <div className="rounded-lg border border-dashed border-border bg-surface px-6 py-12 text-center text-xs text-text-secondary">Choose a player above to view this season's analysis.</div>}
     </div>{expanded && selected && <div role="dialog" aria-modal="true" aria-label={`${metricByKey[expanded.y].label} analysis`} className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-3" onKeyDown={(event) => { if (event.key === "Escape") setExpanded(null); }}>

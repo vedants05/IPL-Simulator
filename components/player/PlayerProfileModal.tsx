@@ -3,7 +3,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import dynamic from "next/dynamic";
-import { Award, Bookmark, X } from "lucide-react";
+import Link from "next/link";
+import { Award, BarChart3, Bookmark, X } from "lucide-react";
 import { INITIAL_ACTIVE_SEASON, useGameStore } from "@/lib/store/gameStore";
 import { formatPrice } from "@/lib/logic/auctionRules";
 import { formatDisplayDate } from "@/lib/logic/displayDate";
@@ -957,6 +958,17 @@ export function PlayerProfileModal({
                   </div>
                 ))}
               </div>
+            )}
+            {!isRetired && (
+              <Link
+                href={`/game/overview?tab=scouting&subtab=playeranalysis&player=${encodeURIComponent(detailedPlayer.id)}`}
+                onClick={onClose}
+                className="flex h-9 w-9 shrink-0 items-center justify-center self-start rounded border border-border bg-surface text-text-primary transition-all hover:border-accent hover:text-accent hover:bg-accent/5"
+                title="View player analysis"
+                aria-label="View player analysis"
+              >
+                <BarChart3 size={17} />
+              </Link>
             )}
             {!isRetired && (
               <button

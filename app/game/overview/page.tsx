@@ -1228,6 +1228,13 @@ function OverviewPageContent() {
   const searchParams = useSearchParams();
   const tabParam = searchParams.get("tab");
   const subtabParam = searchParams.get("subtab");
+  const analysisPlayerParam = searchParams.get("player");
+
+  useEffect(() => {
+    if (tabParam === "scouting" && subtabParam === "playeranalysis" && analysisPlayerParam) {
+      setAnalysisPlayerId(analysisPlayerParam);
+    }
+  }, [tabParam, subtabParam, analysisPlayerParam]);
 
   // Read URL params reactively whenever they change
   useEffect(() => {
