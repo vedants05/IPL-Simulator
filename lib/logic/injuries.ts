@@ -1,5 +1,6 @@
 import type { Player } from "@/lib/types";
 import { dateKeyToLocalDate } from "@/lib/logic/careerCalendar";
+import { formatDisplayDate } from "@/lib/logic/displayDate";
 
 export type InjuryCategory = "minor" | "major";
 export type InjuryWorseningRisk = "mild" | "moderate" | "severe";
@@ -583,12 +584,7 @@ export function getInjuryReturnLabel(injury: PlayerInjury, seasonFinalDate?: str
   if (seasonFinalDate && injury.actualReturnDate > seasonFinalDate) {
     return "Will return after the season concludes";
   }
-  const format = (dateKey: string) => new Date(`${dateKey}T00:00:00Z`).toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    timeZone: "UTC",
-  });
+  const format = formatDisplayDate;
   if (injury.estimatedReturnEarliest === injury.estimatedReturnLatest) {
     return `Expected ${format(injury.estimatedReturnEarliest)}`;
   }

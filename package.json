@@ -21,6 +21,8 @@
     "test:regen-attributes": "tsx calibration/regenAttributesVerification.ts",
     "test:league-records": "tsx calibration/leagueRecordTrackerVerification.ts",
     "test:batting-order": "tsx calibration/battingOrderVerification.ts",
+    "test:orange-cap-seasons": "node --env-file=.env.local ./node_modules/tsx/dist/cli.mjs calibration/orangeCapSeasons.ts",
+    "test:player-analysis": "tsx calibration/playerAnalysisMetricsVerification.ts",
     "test:fastest-season-runs": "tsx calibration/fastestSeasonRunsVerification.ts",
     "test:minor-records": "tsx calibration/minorRecordsVerification.ts",
     "test:batting-aggression": "tsx calibration/battingAggressionVerification.ts",

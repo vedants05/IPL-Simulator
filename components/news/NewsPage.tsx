@@ -1,4 +1,5 @@
 "use client";
+import { formatDisplayDate } from "@/lib/logic/displayDate";
 
 import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
@@ -391,24 +392,15 @@ export default function NewsPage({
     const fixtureAnnouncementDateKey = getDaysBeforeDate(seasonStartDateKey, 21);
 
     const formatDate = (dateKey: string) => {
-      if (!dateKey) return "April 3, " + currentSeason;
-      const parts = dateKey.split("-");
-      if (parts.length < 3) return dateKey;
-      const year = parseInt(parts[0]);
-      const month = parseInt(parts[1]) - 1;
-      const day = parseInt(parts[2]);
-      const d = new Date(year, month, day);
-      const options: Intl.DateTimeFormatOptions = { month: 'long', day: 'numeric', year: 'numeric' };
-      return d.toLocaleDateString('en-US', options);
+      return formatDisplayDate(dateKey || `${currentSeason}-04-03`);
     };
 
     const formattedCurrentDate = formatDate(currentDate);
     const formattedPostAuctionDate = (() => {
-      if (!auctionDateKey) return "December 16, " + (currentSeason - 1);
+      if (!auctionDateKey) return formatDisplayDate(`${currentSeason - 1}-12-16`);
       const parts = auctionDateKey.split("-");
       const d = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]) + 1);
-      const options: Intl.DateTimeFormatOptions = { month: 'long', day: 'numeric', year: 'numeric' };
-      return d.toLocaleDateString('en-US', options);
+      return formatDisplayDate(d);
     })();
 
     const getPlayerMatches = (playerId: string) => {
@@ -4359,7 +4351,7 @@ export default function NewsPage({
                     <span className="text-[8px] font-sans font-medium text-slate-500 italic">
                       {fixture.played 
                         ? `${teams[fixture.winner!]?.shortName || fixture.winner} won`
-                        : `Scheduled: ${fixture.date || "TBD"}`
+                        : `Scheduled: ${fixture.date ? formatDisplayDate(fixture.date) : "TBD"}`
                       }
                     </span>
                     {fixture.played && (
@@ -4432,7 +4424,7 @@ export default function NewsPage({
                     <span className="text-[8px] font-sans font-medium text-[#b0b0b0] italic">
                       {fixture.played 
                         ? `${teams[fixture.winner!]?.shortName || fixture.winner} won`
-                        : `Scheduled: ${fixture.date || "TBD"}`
+                        : `Scheduled: ${fixture.date ? formatDisplayDate(fixture.date) : "TBD"}`
                       }
                     </span>
                     {fixture.played && (

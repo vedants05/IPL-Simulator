@@ -1,4 +1,5 @@
 "use client";
+import { formatDisplayDate } from "@/lib/logic/displayDate";
 import { useState, useEffect, useLayoutEffect, useMemo, useRef, Suspense, Fragment, useCallback, type CSSProperties, type ReactNode } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
@@ -1517,7 +1518,8 @@ function OverviewPageContent() {
   useEffect(() => {
     const needsLeagueDetails = activeSubTab === "social"
       || activeSubTab === "news"
-      || activeSubTab === "seasonanalysis";
+      || activeSubTab === "seasonanalysis"
+      || activeSubTab === "playeranalysis";
     if (!needsLeagueDetails) {
       setDetailedFixtureSimulations((current) => Object.keys(current).length > 0 ? {} : current);
       return;
@@ -1714,11 +1716,7 @@ function OverviewPageContent() {
   const announcementDate = new Date(expectedStartDateObj);
   announcementDate.setDate(expectedStartDateObj.getDate() - 21); // 3 weeks before
 
-  const userFriendlyAnnouncementDate = announcementDate.toLocaleDateString("en-US", {
-    month: "long",
-    day: "numeric",
-    year: "numeric"
-  });
+  const userFriendlyAnnouncementDate = formatDisplayDate(announcementDate);
 
   const formattedAnnouncementDate = `${announcementDate.getFullYear()}-${String(announcementDate.getMonth() + 1).padStart(2, "0")}-${String(announcementDate.getDate()).padStart(2, "0")}`;
   const seasonStartDateString = `${expectedStartDateObj.getFullYear()}-${String(expectedStartDateObj.getMonth() + 1).padStart(2, "0")}-${String(expectedStartDateObj.getDate()).padStart(2, "0")}`;
@@ -6664,7 +6662,7 @@ This record has been officially verified and added to the IPL Minor Records arch
           aria-label="Day-by-day simulation calendar"
         >
           <p className="sr-only" aria-live="polite" aria-atomic="true">
-            Current simulation date: {dateKeyToLocalDate(currentDate).toLocaleDateString("en-GB", { dateStyle: "full" })}
+            Current simulation date: {formatDisplayDate(currentDate)}
           </p>
           {/* Yesterday, today, and the next five days. */}
           <div className="min-w-0 flex-1 overflow-x-auto px-1 py-1">
@@ -6699,13 +6697,13 @@ This record has been officially verified and added to the IPL Minor Records arch
                     <div className="flex w-full items-start justify-between gap-1">
                       <time
                         dateTime={tileDateString}
-                        aria-label={tileDate.toLocaleDateString("en-GB", { dateStyle: "full" })}
+                        aria-label={formatDisplayDate(tileDate)}
                         className="font-space-mono text-[10px] font-bold leading-tight text-text-primary sm:text-[11px]"
                       >
                         <span className="block text-[7px] uppercase tracking-wide text-text-secondary sm:text-[8px]">
                           {tileDate.toLocaleDateString("en-GB", { weekday: "short" })}
                         </span>
-                        {tileDate.getDate()} {tileDate.toLocaleDateString("en-GB", { month: "short" })}
+                        <span className="text-[8px] sm:text-[9px]">{formatDisplayDate(tileDate)}</span>
                       </time>
                       {hasUserMatch && <span className="mt-1 size-1.5 rounded-full bg-accent animate-pulse" aria-hidden="true" />}
                     </div>
@@ -6905,7 +6903,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                               <div className="mt-0.5 truncate text-[10px] leading-snug text-text-secondary">{thread.latest.preview}</div>
                               <div className="mt-1 flex items-center justify-between gap-2 font-space-mono text-[8px] uppercase tracking-wide text-text-secondary/80">
                                 <span className="truncate">{thread.latest.sender}</span>
-                                <span className="shrink-0">{thread.latest.date}</span>
+                                <span className="shrink-0">{formatDisplayDate(thread.latest.date)}</span>
                               </div>
                             </div>
                           </div>
@@ -6979,7 +6977,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                             </div>
                             <div className="shrink-0 text-right">
                               <p className="font-anton text-[20px] uppercase leading-none text-text-primary">
-                                {nextUserFixture.date ? dateKeyToLocalDate(nextUserFixture.date).toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "TBC"}
+                                {nextUserFixture.date ? formatDisplayDate(nextUserFixture.date) : "TBC"}
                               </p>
                               <p className="mt-1 font-space-mono text-[9px] font-bold uppercase text-text-secondary">{nextUserFixture.time ?? "Time TBC"} · Match {nextUserFixture.matchNumber}</p>
                               <p className="mt-1 max-w-40 truncate text-[10px] font-medium text-text-secondary" title={nextFixtureVenue ?? "Venue TBC"}>{nextFixtureVenue ?? "Venue TBC"}</p>
@@ -7244,7 +7242,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                             return (
                               <div
                                 key={`next-fixture-${fixture.id}`}
-                                className={`relative grid h-full min-h-0 w-full grid-cols-[2.75rem_minmax(0,1fr)_auto] items-center gap-2 border-b border-[#16130f]/10 px-1.5 py-0.5 text-text-primary ${
+                                className={`relative grid h-full min-h-0 w-full grid-cols-[5rem_minmax(0,1fr)_auto] items-center gap-2 border-b border-[#16130f]/10 px-1.5 py-0.5 text-text-primary ${
                                   isNextFixture
                                     ? "bg-[#2d6bb5]/10"
                                     : index % 2 === 0
@@ -7252,11 +7250,8 @@ This record has been officially verified and added to the IPL Minor Records arch
                                       : "bg-black/[0.015] dark:bg-white/[0.025]"
                                 }`}
                               >
-                                <div className="flex h-full min-h-0 flex-col items-center justify-center leading-none">
-                                  <span className="font-space-mono text-[12px] font-bold">{fixtureDate?.getDate() ?? "-"}</span>
-                                  <span className="mt-0.5 font-space-mono text-[6px] uppercase text-text-secondary">
-                                    {fixtureDate?.toLocaleDateString("en-GB", { month: "short" }) ?? ""}
-                                  </span>
+                                <div className="flex h-full min-h-0 items-center justify-center leading-none">
+                                  <span className="font-space-mono text-[8px] font-bold">{fixtureDate ? formatDisplayDate(fixtureDate) : "-"}</span>
                                 </div>
                                 <span className="truncate text-[10px] font-medium">vs {opponent?.shortName ?? opponentId}</span>
                                 {fixture.played && outcome ? (
@@ -7425,7 +7420,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                                   <span className={`min-w-0 flex-1 truncate font-space-mono text-[9px] uppercase tracking-wide ${thread.unreadCount > 0 ? "font-extrabold text-text-primary" : "font-bold text-text-secondary"}`}>
                                     {thread.latest.sender}
                                   </span>
-                                  <span className="shrink-0 font-space-mono text-[8px] text-text-secondary/80">{thread.latest.date}</span>
+                                  <span className="shrink-0 font-space-mono text-[8px] text-text-secondary/80">{formatDisplayDate(thread.latest.date)}</span>
                                 </span>
                                 <span className={`mt-1 block truncate text-[12px] leading-snug text-text-primary ${thread.unreadCount > 0 ? "font-extrabold" : "font-semibold"}`}>
                                   {thread.latest.subject}
@@ -7491,11 +7486,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                                       dateTime={msg.date}
                                       className="shrink-0 rounded-md border border-border/80 bg-surface px-2.5 py-1.5 text-right font-space-mono text-[8px] font-bold uppercase tracking-wide text-text-secondary"
                                     >
-                                      {dateKeyToLocalDate(msg.date).toLocaleDateString("en-GB", {
-                                        day: "numeric",
-                                        month: "short",
-                                        year: "numeric",
-                                      })}
+                                      {formatDisplayDate(msg.date)}
                                     </time>
                                   </div>
                                   <h2 className="mt-5 max-w-4xl font-anton text-[25px] uppercase leading-tight tracking-[0.015em] text-text-primary">{msg.subject}</h2>
@@ -7931,8 +7922,8 @@ This record has been officially verified and added to the IPL Minor Records arch
                                 countUserFixturesBeforeCalendarDate(pendingSkipTargetDate) === 1 ? "match" : "matches"
                               } will take place before this date. Continuing will automatically simulate ${
                                 countUserFixturesBeforeCalendarDate(pendingSkipTargetDate) === 1 ? "it" : "them"
-                              } with the same pitch-aware selection and tactics preparation used by AI teams before continuing to ${dateKeyToLocalDate(pendingSkipTargetDate).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}.`
-                            : `Simulate to ${dateKeyToLocalDate(pendingSkipTargetDate).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}?`}
+                              } with the same pitch-aware selection and tactics preparation used by AI teams before continuing to ${formatDisplayDate(pendingSkipTargetDate)}.`
+                            : `Simulate to ${formatDisplayDate(pendingSkipTargetDate)}?`}
                         </span>
                         <button
                           type="button"
@@ -9014,7 +9005,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                             const remainingDays = Math.max(daysBetweenDateKeys(currentDate, assignment.completesOn), 0);
                             const progress = Math.min(100, Math.max(0, ((totalDays - remainingDays) / totalDays) * 100));
                             const assignmentLabel = assignment.kind === "deep-scout" ? "In-depth player scout" : option?.label ?? "Scouting assignment";
-                            const formattedDueDate = assignment.completesOn.split("-").reverse().join("-");
+                            const formattedDueDate = formatDisplayDate(assignment.completesOn);
                             return <div key={slot} className="flex min-w-0 flex-col rounded border border-border bg-bg/40 px-2.5 py-2"><div className="flex items-center justify-between gap-1 font-space-mono text-[7px] font-bold uppercase"><span className="truncate text-accent">Slot {slot} · {assignment.market === "india" ? "India" : "International"}</span><span className="shrink-0 text-text-primary">{remainingDays}d</span></div><div className="mt-1 font-anton text-[12px] uppercase leading-tight text-text-primary">{targetPlayer?.name ?? region?.name ?? assignment.regionId}</div><div className="mt-1 font-space-mono text-[7px] font-bold uppercase leading-tight text-text-secondary">{assignmentLabel}</div><div className="mt-2 flex min-w-0 items-center justify-between gap-1 font-space-mono text-[7px] uppercase text-text-secondary"><span>{region?.depth ?? "Player"} depth</span><span>{option?.reportCount ?? 1} report{option?.reportCount === 1 ? "" : "s"}</span></div><div className="mt-auto"><div className="mb-1 flex items-center justify-between gap-1 font-space-mono text-[7px] uppercase text-text-secondary"><span>{totalDays} days</span><span className="whitespace-nowrap">Due {formattedDueDate}</span></div><div className="h-1 shrink-0 overflow-hidden rounded bg-border"><div className="h-full bg-accent" style={{ width: `${progress}%` }} /></div></div></div>;
                           })}
                         </div>
@@ -9232,8 +9223,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                   teams={teams}
                   userTeamId={userTeamId}
                   currentSeason={currentSeason}
-                  fixtures={fixtures}
-                  seasonArchives={careerSeasonArchives}
+                  fixtures={detailedFixtures}
                   scoutingReports={scoutingReports}
                   shortlist={shortlist}
                   onToggleShortlist={toggleShortlist}
@@ -9431,7 +9421,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                                       } : undefined}
                                     >
                                       <div className="truncate font-space-mono text-[11px] font-medium uppercase text-text-secondary">
-                                        {fixtureDate?.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" }) ?? "Date TBD"}
+                                        {fixtureDate ? formatDisplayDate(fixtureDate) : "Date TBD"}
                                         {" · "}{fixture.time ?? "Time TBD"}{" · "}Match {fixture.matchNumber}
                                       </div>
                                       <div className="my-1.5 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 font-anton text-[16px] uppercase leading-none text-text-primary">
@@ -9722,7 +9712,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                               {Array.from(fixturesByDay.entries()).map(([date, dayFixtures]) => {
                                 const dateLabel = date === "Date TBD"
                                   ? date
-                                  : dateKeyToLocalDate(date).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+                                  : formatDisplayDate(date);
                                 return (
                                   <section key={date}>
                                     <div className="mb-2 flex items-center gap-3">

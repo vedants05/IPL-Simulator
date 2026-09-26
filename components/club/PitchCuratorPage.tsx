@@ -1,4 +1,5 @@
 "use client";
+import { formatDisplayDate } from "@/lib/logic/displayDate";
 
 import { useMemo, useState } from "react";
 import {
@@ -81,11 +82,7 @@ const METRIC_LABELS: Array<[keyof CustomCuratorPitch["metrics"], string]> = [
   ["deterioration", "Wear"],
 ];
 
-const formatDate = (date: string) => dateKeyToLocalDate(date).toLocaleDateString("en-GB", {
-  day: "numeric",
-  month: "short",
-  year: "numeric",
-});
+const formatDate = (date: string) => formatDisplayDate(date);
 
 const daysRemaining = (currentDate: string, completesOn: string) => {
   const current = dateKeyToLocalDate(currentDate).getTime();

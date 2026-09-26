@@ -7,6 +7,7 @@ import { SOCIAL_OPINION_TEMPLATES, type SocialOpinionTrigger } from "@/lib/data/
 import { getTriggeredTeamSocialComments } from "@/lib/data/socialMediaTeamComments";
 import { SOCIAL_COMMENTS, matchesEligibility, type SocialPlatform } from "@/lib/data/socialComments";
 import type { MatchSimulationRecord } from "@/lib/logic/matchSimulation";
+import { formatDisplayDate } from "@/lib/logic/displayDate";
 import {
   formatPerformanceFooter,
   commentRequiresStatEvidence,
@@ -107,11 +108,7 @@ const fanAccountName = (teamCode: string, index: number) => {
 const legacyCommentsEnabled = () => false;
 
 const displayGameDate = (value: string) => {
-  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
-  if (!match) return value;
-  const [, year, month, day] = match;
-  return new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" })
-    .format(new Date(Date.UTC(Number(year), Number(month) - 1, Number(day))));
+  return formatDisplayDate(value);
 };
 
 const sortPostsChronologically = (posts: FanPost[]) => [...posts].sort((left, right) => (

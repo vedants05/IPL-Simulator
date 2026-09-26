@@ -1,4 +1,5 @@
 "use client";
+import { formatDisplayDate } from "@/lib/logic/displayDate";
 
 import { useMemo, useState } from "react";
 import { Activity, AlertTriangle, CheckCircle2, Clock3, ShieldAlert } from "lucide-react";
@@ -33,12 +34,7 @@ interface InjuryHubPageProps {
 }
 
 const displayDate = (dateKey?: string) => dateKey
-  ? new Date(`${dateKey}T00:00:00Z`).toLocaleDateString("en-GB", {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-      timeZone: "UTC",
-    })
+  ? formatDisplayDate(dateKey)
   : "—";
 
 const categoryClass = (category: InjuryCategory) => category === "major"

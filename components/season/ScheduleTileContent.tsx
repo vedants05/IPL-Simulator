@@ -4,6 +4,7 @@ import React from "react";
 import Link from "next/link";
 import { Check } from "lucide-react";
 import { dateKeyToLocalDate } from "@/lib/logic/careerCalendar";
+import { formatDisplayDate } from "@/lib/logic/displayDate";
 import { PLAYOFF_TBD_TEAM_ID, LEAGUE_FIXTURE_COUNT } from "@/lib/logic/leagueSchedule";
 import { appendRainAffectedResultLabel, isRainAffectedMatch } from "@/lib/logic/matchWeather";
 import type { Player, Team } from "@/lib/types";
@@ -353,7 +354,7 @@ function PlayoffFixturesContent({
                 </div>
                 {showDateTime && (
                   <div className="truncate font-space-mono text-[7px] uppercase text-text-secondary">
-                    {fixtureDate?.toLocaleDateString("en-GB", { day: "numeric", month: "short" }) ?? "Date TBD"}
+                    {fixtureDate ? formatDisplayDate(fixtureDate) : "Date TBD"}
                     {" · "}{fixture.time ?? "TBD"}
                   </div>
                 )}
@@ -513,7 +514,7 @@ export function ScheduleTileContent({
                         } : undefined}
                       >
                         <div className="truncate font-space-mono text-[11px] font-medium uppercase text-text-secondary">
-                          {fixtureDate?.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" }) ?? "Date TBD"}
+                          {fixtureDate ? formatDisplayDate(fixtureDate) : "Date TBD"}
                           {" · "}{fixture.time ?? "Time TBD"}{" · "}Match {fixture.matchNumber}
                         </div>
                         <div className="my-1.5 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 font-anton text-[16px] uppercase leading-none text-text-primary">
@@ -582,13 +583,10 @@ export function ScheduleTileContent({
               return (
                 <div
                   key={`next-fixture-${fixture.id}`}
-                  className={`grid h-6 grid-cols-[2.75rem_minmax(0,1fr)_auto] items-center gap-2 border-b border-[#16130f]/10 px-1.5 text-text-primary ${isNextFixture ? "bg-accent/15 ring-1 ring-inset ring-accent/30" : ""}`}
+                  className={`grid h-6 grid-cols-[5rem_minmax(0,1fr)_auto] items-center gap-2 border-b border-[#16130f]/10 px-1.5 text-text-primary ${isNextFixture ? "bg-accent/15 ring-1 ring-inset ring-accent/30" : ""}`}
                 >
-                  <div className="flex flex-col items-center justify-center leading-none">
-                    <span className="font-space-mono text-[14px] font-bold">{fixtureDate?.getDate() ?? "-"}</span>
-                    <span className="mt-0.5 font-space-mono text-[7px] uppercase text-text-secondary">
-                      {fixtureDate?.toLocaleDateString("en-GB", { month: "short" }) ?? ""}
-                    </span>
+                  <div className="flex items-center justify-center leading-none">
+                    <span className="font-space-mono text-[8px] font-bold">{fixtureDate ? formatDisplayDate(fixtureDate) : "-"}</span>
                   </div>
                   <span className="truncate text-[10px] font-medium">vs {opponent?.shortName ?? opponentId}</span>
                   <span className="font-space-mono text-[8px] font-bold uppercase text-text-secondary">

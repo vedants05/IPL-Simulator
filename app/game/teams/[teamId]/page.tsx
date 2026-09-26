@@ -21,7 +21,8 @@ import { getTeamAuctionDescriptor } from "@/lib/constants/auctionDescriptors";
 import { formatPrice } from "@/lib/logic/auctionRules";
 import type { AiLineupPlan } from "@/lib/logic/aiLineupSelector";
 import type { AiLeagueLeadership, AiTeamLeadership } from "@/lib/logic/aiLeadership";
-import { dateKeyToLocalDate, getSeasonScheduleAnnouncementDate } from "@/lib/logic/careerCalendar";
+import { getSeasonScheduleAnnouncementDate } from "@/lib/logic/careerCalendar";
+import { formatDisplayDate } from "@/lib/logic/displayDate";
 import { isRainAffectedMatch } from "@/lib/logic/matchWeather";
 import { getPlayerSeasonHistory } from "@/lib/logic/playerHistory";
 import { deriveIplSeasonRosterStats } from "@/lib/logic/iplSeasonRosterStats";
@@ -217,17 +218,9 @@ const ROLE_LABELS: Record<Player["role"], string> = {
 
 const playerRating = (player: Player) => Math.max(player.currentBatting ?? 0, player.currentBowling ?? 0);
 
-function safeDateLabel(date?: string, options?: Intl.DateTimeFormatOptions) {
+function safeDateLabel(date?: string) {
   if (!date) return "Date TBC";
-  try {
-    return dateKeyToLocalDate(date).toLocaleDateString("en-GB", options ?? {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-    });
-  } catch {
-    return date;
-  }
+  return formatDisplayDate(date);
 }
 
 function MetricCard({
@@ -1442,7 +1435,7 @@ function MountedTeamProfilePage() {
                     const venue = fixture.teamA === teamId ? "Home" : "Away";
                     return (
                       <div key={fixture.id} className="grid h-6 grid-cols-[4rem_minmax(0,1fr)_3rem] items-center gap-2 text-[9px]">
-                        <span className="font-space-mono text-[8px] uppercase text-text-secondary">{safeDateLabel(fixture.date, { day: "numeric", month: "short" })}</span>
+                        <span className="font-space-mono text-[8px] uppercase text-text-secondary">{safeDateLabel(fixture.date)}</span>
                         <span className="truncate font-semibold text-text-primary">{opponent?.name ?? opponentId}</span>
                         <span className="text-right font-space-mono text-[8px] font-bold uppercase text-accent">{venue}</span>
                       </div>
@@ -1580,7 +1573,7 @@ function MountedTeamProfilePage() {
                     >
                       <div className="absolute inset-x-0 top-0 h-1" style={{ backgroundColor: team.primaryColor }} />
                       <div className="flex items-center justify-between gap-4 font-space-mono text-[8px] font-bold uppercase text-text-secondary">
-                        <span>Match {fixture.matchNumber} · {safeDateLabel(fixture.date, { weekday: "short", day: "numeric", month: "short" })} · {fixture.time ?? "TBC"}</span>
+                        <span>Match {fixture.matchNumber} · {safeDateLabel(fixture.date)} · {fixture.time ?? "TBC"}</span>
                         <span className={fixture.played ? (won ? "text-success font-bold hover:underline" : "text-danger font-bold hover:underline") : "text-accent"}>
                           {fixture.played
                             ? `${won ? "Won" : "Lost"}${rainAffected ? " · Rain affected" : ""} · View Scorecard ➔`

@@ -1,4 +1,5 @@
 "use client";
+import { formatDisplayDate } from "@/lib/logic/displayDate";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -1573,7 +1574,7 @@ export default function StaffManagementPage({ teams, mode = "club", initialStaff
                       ))
                       : <span>None</span>}
                   </span>
-                  <span className="min-w-0"><span className="block font-space-mono text-[7px] font-bold uppercase" style={{ color: interestColor }}>{interest.label}</span><span className="mt-1 block h-1.5 overflow-hidden rounded-sm border border-border bg-bg"><span className="block h-full" style={{ width: `${interest.score}%`, backgroundColor: interestColor }} /></span>{cooldownUntil && currentDate < cooldownUntil && <span className="mt-0.5 block whitespace-nowrap font-space-mono text-[6px] uppercase text-danger">Unavailable until {cooldownUntil}</span>}</span>
+                  <span className="min-w-0"><span className="block font-space-mono text-[7px] font-bold uppercase" style={{ color: interestColor }}>{interest.label}</span><span className="mt-1 block h-1.5 overflow-hidden rounded-sm border border-border bg-bg"><span className="block h-full" style={{ width: `${interest.score}%`, backgroundColor: interestColor }} /></span>{cooldownUntil && currentDate < cooldownUntil && <span className="mt-0.5 block whitespace-nowrap font-space-mono text-[6px] uppercase text-danger">Unavailable until {formatDisplayDate(cooldownUntil)}</span>}</span>
                   <span className="text-right font-space-mono text-[8px] font-bold text-text-primary">{formatSalary(demand)}</span>
                   <span className={`text-center font-space-mono text-[7px] font-bold uppercase ${withinBudget ? "text-success" : "text-danger"}`}>{withinBudget ? "Within" : "Over"}</span>
                   <span className={`text-right font-space-mono text-[7px] font-bold uppercase ${marketScope === "free_agents" ? "text-success" : "text-gold"}`}>{marketScope === "free_agents" ? "Available" : teams.find((team) => team.id === contract?.teamId)?.shortName ?? nationalEmployer(contract) ?? "Contracted"}</span>
@@ -1692,7 +1693,7 @@ export default function StaffManagementPage({ teams, mode = "club", initialStaff
                   const roleChange = event.kind === "role_changed";
                   return (
                     <button key={event.id} type="button" onClick={() => member && setSelectedStaffId(member.id)} disabled={!member} className="block w-full border-b border-hairline px-4 py-3 text-left hover:bg-black/[0.025] disabled:cursor-default dark:hover:bg-white/[0.025]">
-                      <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate text-xs font-bold text-text-primary">{member?.full_name ?? event.staffId}</p><p className={`mt-1 font-space-mono text-[7px] font-bold uppercase ${departure ? "text-danger" : "text-success"}`}>{personnelChangeLabel(event)}</p></div><span className="shrink-0 font-space-mono text-[7px] text-text-secondary">{event.displayDate}</span></div>
+                      <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate text-xs font-bold text-text-primary">{member?.full_name ?? event.staffId}</p><p className={`mt-1 font-space-mono text-[7px] font-bold uppercase ${departure ? "text-danger" : "text-success"}`}>{personnelChangeLabel(event)}</p></div><span className="shrink-0 font-space-mono text-[7px] text-text-secondary">{formatDisplayDate(event.displayDate)}</span></div>
                       <p className="mt-2 truncate font-space-mono text-[7px] uppercase text-text-secondary">{roleChange && event.previousRoles?.length ? `${event.previousRoles.map(roleLabel).join(" + ")} → ` : ""}{event.roles.length ? event.roles.map(roleLabel).join(" + ") : event.reason ? humanizeValue(event.reason) : "No role recorded"}</p>
                     </button>
                   );

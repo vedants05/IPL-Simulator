@@ -2,6 +2,7 @@ import type { Player, Team } from "@/lib/types";
 import type { TeamLeadership } from "./captaincy";
 import { appointAiTeamLeadership } from "./aiLeadership";
 import { PITCH_SELECTION_EMAIL_DAYS } from "./pitchCreator";
+import { formatDisplayDate } from "./displayDate";
 
 export type CareerEmailCategory = "task" | "fixture" | "match" | "squad" | "captaincy" | "league" | "season";
 export type CareerEmailPriority = "normal" | "important" | "urgent";
@@ -149,14 +150,7 @@ const draft = (input: DraftInput, daySequence: number): CareerEmail => ({
 
 const formatDate = (date: string | undefined) => {
   if (!date) return "Date TBC";
-  const [year, month, day] = date.split("-").map(Number);
-  if (!year || !month || !day) return date;
-  return new Date(Date.UTC(year, month - 1, day)).toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-    timeZone: "UTC",
-  });
+  return formatDisplayDate(date);
 };
 
 const daysBetween = (from: string, to: string) => {

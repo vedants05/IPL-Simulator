@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import { useGameStore } from "@/lib/store/gameStore";
+import { formatDisplayDate } from "@/lib/logic/displayDate";
 import { useShallow } from "zustand/react/shallow";
 import { switchColorMode } from "./TeamThemeProvider";
 import ThemeSelector from "./ThemeSelector";
@@ -46,11 +47,6 @@ const NAV_ITEMS = [
   { label: "History", href: "/game/overview?tab=history" },
   { label: "Auction", href: "/game/auction" },
 ];
-
-const formatDisplayDate = (date: string) => {
-  const [year, month, day] = date.split("-");
-  return year && month && day ? `${day}-${month}-${year}` : date;
-};
 
 export default function NavBar() {
   const pathname = usePathname();

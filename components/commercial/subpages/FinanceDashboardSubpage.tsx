@@ -1,4 +1,5 @@
 "use client";
+import { formatDisplayDate } from "@/lib/logic/displayDate";
 
 import { useState } from "react";
 import {
@@ -346,7 +347,7 @@ export default function FinanceDashboardSubpage({
             <tbody className="divide-y divide-border/50">
               {filteredTransactions.map((tx) => (
                 <tr key={tx.id} className="hover:bg-surface-secondary/30 transition-colors">
-                  <td className="py-2.5 px-3 font-mono text-text-secondary whitespace-nowrap">{tx.date}</td>
+                  <td className="py-2.5 px-3 font-mono text-text-secondary whitespace-nowrap">{formatDisplayDate(tx.date)}</td>
                   <td className="py-2.5 px-3 whitespace-nowrap">
                     <span className="px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider bg-surface-secondary border border-border text-text-primary capitalize">
                       {tx.category}

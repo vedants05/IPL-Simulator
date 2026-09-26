@@ -6,6 +6,7 @@ import dynamic from "next/dynamic";
 import { Award, Bookmark, X } from "lucide-react";
 import { INITIAL_ACTIVE_SEASON, useGameStore } from "@/lib/store/gameStore";
 import { formatPrice } from "@/lib/logic/auctionRules";
+import { formatDisplayDate } from "@/lib/logic/displayDate";
 import { formatStatValue } from "@/lib/logic/statFormatting";
 import { formatTopSevenBattingPositions } from "@/lib/logic/playerBattingPositions";
 import { classifyBowlingUsage } from "@/lib/logic/playerBowlingUsage";
@@ -88,19 +89,7 @@ export function retiredSnapshotPlayer(snapshot: HistoricalPlayerSnapshot): Playe
 }
 
 function formatDateOfBirth(dateStr?: string | null): string {
-  try {
-    if (!dateStr || typeof dateStr !== "string" || !dateStr.trim()) return "Not available";
-    const date = new Date(`${dateStr.trim()}T00:00:00Z`);
-    if (Number.isNaN(date.getTime())) return dateStr;
-    return date.toLocaleDateString("en-GB", {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-      timeZone: "UTC",
-    });
-  } catch {
-    return typeof dateStr === "string" ? dateStr : "Not available";
-  }
+  return dateStr?.trim() ? formatDisplayDate(dateStr.trim()) : "Not available";
 }
 
 const NATIONAL_CAP_COLORS: Record<string, string> = {

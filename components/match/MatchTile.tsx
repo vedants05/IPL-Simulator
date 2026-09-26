@@ -1,6 +1,7 @@
 "use client";
 
 import { Calendar, Clock, ChevronRight } from "lucide-react";
+import { formatDisplayDate } from "@/lib/logic/displayDate";
 import { appendRainAffectedResultLabel, isRainAffectedMatch } from "@/lib/logic/matchWeather";
 import type { Team } from "@/lib/types";
 import type { UnifiedMatchRecord } from "./MatchScorecardModal";
@@ -103,7 +104,7 @@ export default function MatchTile({
             {match.label || `Match ${match.matchNumber}`}
           </span>
           <span className="flex items-center gap-1 font-space-mono text-[9px] uppercase text-text-secondary">
-            <Calendar size={11} /> {match.date ?? "Date TBD"}
+            <Calendar size={11} /> {match.date ? formatDisplayDate(match.date) : "Date TBD"}
           </span>
         </div>
 
