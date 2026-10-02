@@ -99,24 +99,13 @@ function evaluateHallOfFameSource(
   const awardLegacy = Math.min(18, orangeCaps * 6 + purpleCaps * 6 + seasonMvps * 5);
   const score = Math.round(Math.min(100, longevity + production + peak + sustainedExcellence + reputationLegacy + careerMilestones + awardLegacy) * 10) / 10;
   const minimumCareer = stats.matches >= 50 && (
-    stats.runs >= 3500
-    || stats.wickets >= 120
-    || (stats.runs >= 1800 && stats.wickets >= 75)
+    stats.runs >= 5000
+    || stats.wickets >= 150
+    || (stats.runs >= 2000 && stats.wickets >= 90)
   );
   const foundingMember = foundingMemberNames.has(normalizeName(source.name));
   const qualificationReasons: string[] = [];
   if (foundingMember) qualificationReasons.push("Existing Hall of Fame member");
-  if (stats.runs >= 4500) qualificationReasons.push("4,500+ IPL runs");
-  if (stats.wickets >= 175) qualificationReasons.push("175+ IPL wickets");
-  if (stats.wickets >= 150 && bowlingAverage > 0 && bowlingAverage <= 32) qualificationReasons.push("150+ wickets at a strong average");
-  if (stats.matches >= 200 && (stats.runs >= 3000 || stats.wickets >= 100)) qualificationReasons.push("200+ matches with elite production");
-  if (stats.runs >= 2000 && stats.wickets >= 100) qualificationReasons.push("Landmark all-round career");
-  if (orangeCaps >= 2 && stats.matches >= 50 && stats.runs >= 2000) qualificationReasons.push("Multiple Orange Caps");
-  if (purpleCaps >= 2 && stats.matches >= 50 && stats.wickets >= 75) qualificationReasons.push("Multiple Purple Caps");
-  if (orangeCaps >= 1 && stats.runs >= 3500) qualificationReasons.push("Orange Cap and 3,500+ runs");
-  if (purpleCaps >= 1 && stats.wickets >= 120) qualificationReasons.push("Purple Cap and 120+ wickets");
-  // The fallback remains stricter for active players, while landmark paths
-  // are career-complete achievements and apply regardless of retirement.
   const threshold = isRetired ? 55 : 65;
   if (minimumCareer && score >= threshold) qualificationReasons.push(`${score.toFixed(1)} Hall of Fame score`);
 

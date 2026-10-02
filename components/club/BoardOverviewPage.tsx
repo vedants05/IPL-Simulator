@@ -76,18 +76,18 @@ export default function BoardOverviewPage({ teamId: initialTeamId, mode = "club"
   const emergencyTopUpChance = useMemo(() => Math.round(activeRecord.staff_budget_flexibility * 5), [activeRecord.staff_budget_flexibility]);
 
   return (
-    <div className="flex flex-col gap-4 p-4 lg:p-6">
+    <div className="flex h-full min-h-0 flex-col gap-2 overflow-hidden p-3 lg:p-4">
       {/* ==================================================================
           TOP HEADER BAR: Consortium, Principal Owner, CEO & CEO Stats
           ================================================================== */}
-      <div className="flex flex-col gap-3 border-2 border-border bg-surface p-4 shadow-sm lg:p-5">
-        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border/60 pb-3">
+      <div className="flex shrink-0 flex-col gap-2 border-2 border-border bg-surface p-3 shadow-sm">
+        <div className="flex flex-wrap items-start justify-between gap-2 border-b border-border/60 pb-2">
           <div>
             <div className="flex items-center gap-2 font-space-mono text-[9px] font-bold uppercase tracking-[0.2em] text-accent">
               <Building2 className="size-3.5" />
               <span>{mode === "club" ? "Franchise Ownership & Executive Board" : "League Ownership Intelligence"}</span>
             </div>
-            <h1 className="mt-1 font-anton text-2xl uppercase leading-none text-text-primary lg:text-3xl">
+            <h1 className="mt-1 font-anton text-xl uppercase leading-none text-text-primary lg:text-2xl">
               {activeRecord.consortium_name}
             </h1>
             <div className="mt-1 flex flex-wrap items-center gap-3 font-space-mono text-[10px] text-text-secondary">
@@ -147,21 +147,21 @@ export default function BoardOverviewPage({ teamId: initialTeamId, mode = "club"
       {/* ==================================================================
           MAIN BOARD DETAILS & GOVERNANCE CARDS
           ================================================================== */}
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid min-h-0 flex-1 grid-cols-2 gap-2">
         {/* Card 1: Board Vision & Historical Culture */}
-        <section className="flex flex-col justify-between border-2 border-border bg-surface p-4 shadow-sm">
+        <section className="flex min-h-0 flex-col justify-between overflow-hidden border-2 border-border bg-surface p-3 shadow-sm">
           <div>
             <div className="flex items-center gap-1.5 font-space-mono text-[9px] font-bold uppercase tracking-wider text-accent">
               <Building2 className="size-3.5" />
               <span>Board Vision & Identity</span>
             </div>
-            <h3 className="mt-1 font-anton text-lg uppercase text-text-primary">Official Mission Statement</h3>
-            <p className="mt-2 rounded border border-border/60 bg-background/50 p-3 font-barlow text-sm font-medium italic text-text-primary">
+            <h3 className="mt-1 font-anton text-base uppercase text-text-primary">Official Mission Statement</h3>
+            <p className="mt-2 rounded border border-border/60 bg-background/50 p-2 font-barlow text-xs font-medium italic text-text-primary">
               &ldquo;{activeRecord.vision_statement}&rdquo;
             </p>
           </div>
 
-          <div className="mt-4 border-t border-border/60 pt-3">
+          <div className="mt-2 border-t border-border/60 pt-2">
             <span className="font-space-mono text-[8px] font-bold uppercase text-text-secondary">Historical Ownership Rationale</span>
             <p className="mt-0.5 font-barlow text-xs text-text-secondary leading-snug">
               {activeRecord.rationale}
@@ -170,39 +170,39 @@ export default function BoardOverviewPage({ teamId: initialTeamId, mode = "club"
         </section>
 
         {/* Card 2: Staff Security & Contract Governance */}
-        <section className="flex flex-col justify-between border-2 border-border bg-surface p-4 shadow-sm">
+        <section className="flex min-h-0 flex-col justify-between overflow-hidden border-2 border-border bg-surface p-3 shadow-sm">
           <div>
             <div className="flex items-center gap-1.5 font-space-mono text-[9px] font-bold uppercase tracking-wider text-accent">
               <ShieldCheck className="size-3.5" />
               <span>Staff Security & Contract Governance</span>
             </div>
-            <h3 className="mt-1 font-anton text-lg uppercase text-text-primary">Board Patience Parameters</h3>
+            <h3 className="mt-1 font-anton text-base uppercase text-text-primary">Board Patience Parameters</h3>
 
-            <dl className="mt-3 grid grid-cols-2 gap-2.5 rounded border border-border/80 bg-background/50 p-3.5 text-[10px]">
+            <dl className="mt-2 grid grid-cols-2 gap-1.5 rounded border border-border/80 bg-background/50 p-2 text-[10px]">
               <div>
                 <dt className="font-space-mono uppercase text-text-secondary">Patience Modifier</dt>
-                <dd className={`font-anton text-lg uppercase ${activeRecord.patience_modifier >= 0 ? "text-emerald-500" : "text-rose-500"}`}>
+                <dd className={`font-anton text-base uppercase ${activeRecord.patience_modifier >= 0 ? "text-emerald-500" : "text-rose-500"}`}>
                   {activeRecord.patience_modifier > 0 ? `+${activeRecord.patience_modifier}` : activeRecord.patience_modifier} pts
                 </dd>
               </div>
 
               <div>
                 <dt className="font-space-mono uppercase text-text-secondary">Offered Contract Max</dt>
-                <dd className="font-anton text-lg uppercase text-text-primary">
+                <dd className="font-anton text-base uppercase text-text-primary">
                   {maxContractYears} Year{maxContractYears > 1 ? "s" : ""}
                 </dd>
               </div>
 
               <div>
                 <dt className="font-space-mono uppercase text-text-secondary">Trophy Obsession</dt>
-                <dd className="font-anton text-lg uppercase text-accent">
+                <dd className="font-anton text-base uppercase text-accent">
                   {activeRecord.trophy_obsession_level} / 20
                 </dd>
               </div>
             </dl>
           </div>
 
-          <p className="mt-3 font-space-mono text-[9px] text-text-secondary">
+          <p className="mt-2 font-space-mono text-[9px] text-text-secondary">
             * High trophy obsession boards demand Finals/Title appearances to grant full confidence.
           </p>
         </section>
@@ -211,20 +211,20 @@ export default function BoardOverviewPage({ teamId: initialTeamId, mode = "club"
       {/* ==================================================================
           FINANCIAL & SCOUTING GOVERNANCE CARDS
           ================================================================== */}
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid min-h-0 flex-1 grid-cols-2 gap-2">
         {/* Card 3: Financial & Budget Allocation */}
-        <section className="flex flex-col justify-between border-2 border-border bg-surface p-4 shadow-sm">
+        <section className="flex min-h-0 flex-col justify-between overflow-hidden border-2 border-border bg-surface p-3 shadow-sm">
           <div>
             <div className="flex items-center gap-1.5 font-space-mono text-[9px] font-bold uppercase tracking-wider text-accent">
               <DollarSign className="size-3.5" />
               <span>Financial & Budget Governance</span>
             </div>
-            <h3 className="mt-1 font-anton text-lg uppercase text-text-primary">Staff Wage & Extension Caps</h3>
+            <h3 className="mt-1 font-anton text-base uppercase text-text-primary">Staff Wage & Extension Caps</h3>
 
-            <dl className="mt-3 grid grid-cols-2 gap-2.5 rounded border border-border/80 bg-background/50 p-3.5 text-[10px]">
+            <dl className="mt-2 grid grid-cols-3 gap-1.5 rounded border border-border/80 bg-background/50 p-2 text-[10px]">
               <div>
                 <dt className="font-space-mono uppercase text-text-secondary">Annual Staff Wage Cap</dt>
-                <dd className="font-anton text-lg uppercase text-accent">
+                <dd className="font-anton text-base uppercase text-accent">
                   ₹{staffWageCapCr} Cr
                 </dd>
               </div>
@@ -235,21 +235,21 @@ export default function BoardOverviewPage({ teamId: initialTeamId, mode = "club"
 
               <div>
                 <dt className="font-space-mono uppercase text-text-secondary">Financial Generosity</dt>
-                <dd className="font-anton text-lg uppercase text-text-primary">
+                <dd className="font-anton text-base uppercase text-text-primary">
                   {activeRecord.financial_generosity} / 20
                 </dd>
               </div>
 
               <div>
                 <dt className="font-space-mono uppercase text-text-secondary">Budget Flexibility</dt>
-                <dd className="font-anton text-lg uppercase text-text-primary">
+                <dd className="font-anton text-base uppercase text-text-primary">
                   {activeRecord.staff_budget_flexibility} / 20
                 </dd>
               </div>
 
               <div>
                 <dt className="font-space-mono uppercase text-text-secondary">Emergency Top-Up Approval</dt>
-                <dd className="font-anton text-lg uppercase text-emerald-500">
+                <dd className="font-anton text-base uppercase text-emerald-500">
                   {emergencyTopUpChance}%
                 </dd>
               </div>
@@ -258,7 +258,7 @@ export default function BoardOverviewPage({ teamId: initialTeamId, mode = "club"
         </section>
 
         {/* Card 4: Youth Scouting & AI Recruitment Floor */}
-        <section className="flex flex-col justify-between border-2 border-border bg-surface p-4 shadow-sm">
+        <section className="flex min-h-0 flex-col justify-between overflow-hidden border-2 border-border bg-surface p-3 shadow-sm">
           <div>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5 font-space-mono text-[9px] font-bold uppercase tracking-wider text-accent">
@@ -271,33 +271,33 @@ export default function BoardOverviewPage({ teamId: initialTeamId, mode = "club"
               </div>
             </div>
 
-            <h3 className="mt-1 font-anton text-lg uppercase text-text-primary">Youth & Network Capacity</h3>
+            <h3 className="mt-1 font-anton text-base uppercase text-text-primary">Youth & Network Capacity</h3>
 
-            <dl className="mt-3 grid grid-cols-2 gap-2.5 rounded border border-border/80 bg-background/50 p-3.5 text-[10px]">
+            <dl className="mt-2 grid grid-cols-2 gap-1.5 rounded border border-border/80 bg-background/50 p-2 text-[10px]">
               <div>
                 <dt className="font-space-mono uppercase text-text-secondary">Scouting Assignment Slots</dt>
-                <dd className="font-anton text-lg uppercase text-accent">
+                <dd className="font-anton text-base uppercase text-accent">
                   {maxScoutingSlots} Active Slots
                 </dd>
               </div>
 
               <div>
                 <dt className="font-space-mono uppercase text-text-secondary">Scouting Investment</dt>
-                <dd className="font-anton text-lg uppercase text-text-primary">
+                <dd className="font-anton text-base uppercase text-text-primary">
                   {activeRecord.scouting_investment_level} / 20
                 </dd>
               </div>
 
               <div>
                 <dt className="font-space-mono uppercase text-text-secondary">AI Youth Floor Quota</dt>
-                <dd className="font-anton text-lg uppercase text-emerald-500">
+                <dd className="font-anton text-base uppercase text-emerald-500">
                   At least {activeRecord.youth_regen_target_count} U-21 / Regens
                 </dd>
               </div>
 
               <div>
                 <dt className="font-space-mono uppercase text-text-secondary">Target Standing</dt>
-                <dd className="font-anton text-lg uppercase text-text-primary">
+                <dd className="font-anton text-base uppercase text-text-primary">
                   Top {activeRecord.expected_position_baseline}
                 </dd>
               </div>

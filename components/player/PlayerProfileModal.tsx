@@ -11,7 +11,7 @@ import { formatDisplayDate } from "@/lib/logic/displayDate";
 import { formatStatValue } from "@/lib/logic/statFormatting";
 import { formatTopSevenBattingPositions } from "@/lib/logic/playerBattingPositions";
 import { classifyBowlingUsage } from "@/lib/logic/playerBowlingUsage";
-import { supabase } from "@/lib/supabase/client";
+import { relationshipLabel, relationshipsForPerson } from "@/lib/logic/careerRelationships";
 import { evaluateCareerHallOfFame } from "@/lib/logic/hallOfFame";
 import { getClubFigures, type ClubFigureTier } from "@/lib/data/clubFigures";
 import { RecentInjuriesTile } from "@/components/player/RecentInjuriesTile";
@@ -265,8 +265,6 @@ export function PlayerProfileModal({
   const [linkedPlayerId, setLinkedPlayerId] = useState<string | null>(null);
   useEffect(() => setProfileTab("info"), [playerId, linkedPlayerId]);
   const [linkedStaffId, setLinkedStaffId] = useState<string | null>(null);
-  const [relationships, setRelationships] = useState<PlayerPersonnelRelationship[]>([]);
-  const [relationshipsStatus, setRelationshipsStatus] = useState<"loading" | "ready" | "error">("loading");
   const [relationshipTooltip, setRelationshipTooltip] = useState<{ text: string; left: number; top: number; below: boolean } | null>(null);
   const showRelationshipTooltip = (element: HTMLElement, text: string) => {
     const bounds = element.getBoundingClientRect();
@@ -287,6 +285,8 @@ export function PlayerProfileModal({
   });
   useEffect(() => setRelationshipTooltip(null), [playerId, linkedPlayerId, linkedStaffId, profileTab]);
   const players = useGameStore((state) => state.players);
+  const careerStaff = useGameStore((state) => state.careerStaff);
+  const careerRelationships = useGameStore((state) => state.careerRelationships);
   const teams = useGameStore((state) => state.teams);
   const currentSeason = useGameStore((state) => state.currentSeason);
   const currentDate = useGameStore((state) => state.currentDate);
@@ -304,7 +304,6 @@ export function PlayerProfileModal({
   const retiredSnapshot = viewedPlayerId && !activePlayer
     ? retiredPlayerSnapshots[viewedPlayerId] ?? null
     : null;
-  const relationshipSubjectName = activePlayer?.name ?? retiredSnapshot?.name;
   const hallOfFameEvaluation = useMemo(() => viewedPlayerId == null ? null : evaluateCareerHallOfFame(
     players,
     retiredPlayerSnapshots,
@@ -351,32 +350,32 @@ export function PlayerProfileModal({
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [onClose, playerId, linkedStaffId]);
 
-  useEffect(() => {
-    if (!relationshipSubjectName || profileTab !== "info") return;
-    let cancelled = false;
-    setRelationships([]);
-    setRelationshipsStatus("loading");
-    void (async () => {
-      try {
-        const { data, error } = await supabase
-          .from("person_dynamics_view")
-          .select("dynamic_id,dynamic_type_name,rating,partner_name,partner_type,partner_id,partner_role,subject_reason")
-          .eq("subject_type", "player")
-          .eq("subject_name", relationshipSubjectName)
-          .order("rating", { ascending: false });
-        if (cancelled) return;
-        if (error) throw error;
-        setRelationships((data ?? []) as PlayerPersonnelRelationship[]);
-        setRelationshipsStatus("ready");
-      } catch {
-        if (!cancelled) setRelationshipsStatus("error");
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [relationshipSubjectName, profileTab]);
   const detailedPlayer: Player | null = viewedPlayerId
     ? activePlayer ?? (retiredSnapshot ? retiredSnapshotPlayer(retiredSnapshot) : null)
     : null;
+  const savedRelationships: PlayerPersonnelRelationship[] = detailedPlayer
+    ? relationshipsForPerson(careerRelationships, players, careerStaff, { kind: "player", id: detailedPlayer.id, name: detailedPlayer.name }).map(({ record, partner }, index) => ({
+      dynamic_id: index,
+      dynamic_type_name: relationshipLabel(record.type),
+      rating: record.rating,
+      partner_name: partner.name,
+      partner_type: partner.kind,
+      partner_id: partner.kind === "staff" ? Object.values(careerStaff.contracts).find((contract) => contract.staffSlug === partner.id)?.staffId ?? "" : partner.id,
+      partner_role: partner.kind === "staff" ? "Staff" : "Player",
+      subject_reason: `${record.source === "documented" ? "Documented starting relationship" : "Formed in this career"}. ${record.status === "active" ? "" : `${record.status === "historical" ? "Historical" : "Dormant"} relationship. `}${record.reason}`,
+    })) : [];
+  const profileRelationships: PlayerPersonnelRelationship[] = detailedPlayer?.idol
+    ? [...savedRelationships, {
+      dynamic_id: -1,
+      dynamic_type_name: "Idol",
+      rating: detailedPlayer.idol.rating,
+      partner_name: detailedPlayer.idol.name,
+      partner_type: "player" as const,
+      partner_id: detailedPlayer.idol.playerId,
+      partner_role: "Player",
+      subject_reason: `Generated inspiration. ${detailedPlayer.idol.reason}`,
+    }].sort((a, b) => b.rating - a.rating)
+    : savedRelationships;
   const careerT20Matches = (detailedPlayer?.careerStats?.batting.matches ?? 0) + (additionalCareerT20Stats?.matches ?? 0);
   const careerT20Innings = (detailedPlayer?.careerStats?.batting.innings ?? 0) + (additionalCareerT20Stats?.matches ?? 0);
   const careerT20Runs = (detailedPlayer?.careerStats?.batting.runs ?? 0) + (additionalCareerT20Stats?.runs ?? 0);
@@ -1192,17 +1191,16 @@ export function PlayerProfileModal({
               <div className="col-start-1 row-start-3 flex h-full items-start">
               <section className="flex h-full w-[260px] shrink-0 flex-col overflow-hidden rounded border border-border bg-bg p-2.5">
                 <h4 className="mb-2 shrink-0 border-b border-border pb-1 font-space-mono text-[10px] font-bold uppercase text-text-primary">Personnel Relationships</h4>
-                {relationshipsStatus === "loading" && <p className="font-space-mono text-[9px] text-text-secondary">Loading relationships...</p>}
-                {relationshipsStatus === "error" && <p className="font-space-mono text-[9px] text-text-secondary">Relationships unavailable.</p>}
-                {relationshipsStatus === "ready" && relationships.length === 0 && <p className="font-space-mono text-[9px] text-text-secondary">No personnel relationships recorded.</p>}
-                {relationshipsStatus === "ready" && relationships.length > 0 && (
+                {profileRelationships.length === 0 && <p className="font-space-mono text-[9px] text-text-secondary">No personnel relationships recorded.</p>}
+                {profileRelationships.length > 0 && (
                   <div className="grid min-h-0 flex-1 content-start gap-1 overflow-y-auto pr-1" style={{ gridAutoRows: "calc((100% - 16px) / 5)" }}>
-                    {relationships.map((relationship) => {
+                    {profileRelationships.map((relationship) => {
                       const targetPlayerId = relationship.partner_type === "player"
-                        ? Object.values(players).find((player) => player.name === relationship.partner_name)?.id
+                        ? players[relationship.partner_id]?.id
+                          ?? Object.values(players).find((player) => player.name === relationship.partner_name)?.id
                           ?? Object.values(retiredPlayerSnapshots).find((snapshot) => snapshot.name === relationship.partner_name)?.id
                         : null;
-                      const canOpen = relationship.partner_type === "staff" || Boolean(targetPlayerId);
+                      const canOpen = relationship.partner_type === "staff" ? Boolean(relationship.partner_id) : Boolean(targetPlayerId);
                       return (
                       <button
                         key={relationship.dynamic_id}

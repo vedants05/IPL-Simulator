@@ -289,7 +289,7 @@ export default function LeagueHallOfFame({ players, teams, onOpenPlayer }: Leagu
         type="button"
         disabled={!linkedPlayerId}
         onClick={() => linkedPlayerId && onOpenPlayer(linkedPlayerId)}
-        className="group relative flex min-h-36 overflow-hidden border border-border bg-surface p-4 text-left shadow-sm transition-all enabled:hover:-translate-y-0.5 enabled:hover:border-[#b68a32] enabled:hover:shadow-md disabled:cursor-default"
+        className="group relative flex min-h-36 overflow-hidden border border-border bg-surface p-4 text-left shadow-sm transition-colors enabled:hover:border-accent disabled:cursor-default"
         title={linkedPlayerId ? `Open ${member.name}'s player profile` : `${member.name} is not in the current player database`}
       >
         <span
@@ -332,7 +332,7 @@ export default function LeagueHallOfFame({ players, teams, onOpenPlayer }: Leagu
                 </span>
               )}
               {linkedPlayerId && (
-                <ChevronRight size={14} className="shrink-0 text-text-secondary transition-transform group-hover:translate-x-0.5 group-hover:text-[#b68a32]" />
+                <ChevronRight size={14} className="shrink-0 text-text-secondary" />
               )}
             </div>
           </span>
@@ -428,7 +428,7 @@ export default function LeagueHallOfFame({ players, teams, onOpenPlayer }: Leagu
                       type="button"
                       disabled={!linkedPlayerId}
                       onClick={() => linkedPlayerId && onOpenPlayer(linkedPlayerId)}
-                      className="group relative min-h-44 overflow-hidden border border-[#d2b873]/60 p-4 text-left text-text-primary shadow-sm transition-all enabled:hover:-translate-y-0.5 enabled:hover:border-[#a9781e] enabled:hover:shadow-lg disabled:cursor-default dark:border-[#d6ad55]/35 dark:enabled:hover:border-[#d6ad55]"
+                      className="group relative min-h-44 overflow-hidden border border-[#d2b873]/60 p-4 text-left text-text-primary shadow-sm transition-colors enabled:hover:border-accent disabled:cursor-default dark:border-[#d6ad55]/35 dark:enabled:hover:border-accent"
                       style={{ background: "linear-gradient(145deg, color-mix(in srgb, var(--surface2) 94%, #d6ad55 6%), var(--surface))" }}
                       title={linkedPlayerId ? `Open ${member.name}'s player profile` : `${member.name} is not in the current player database`}
                     >

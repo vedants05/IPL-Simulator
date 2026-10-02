@@ -369,6 +369,7 @@ export function reconcileCompletedScoutingAssignments(input: {
   assignments: ScoutingAssignment[];
   reports: ScoutingReport[];
   networks: Record<string, ScoutingNetwork>;
+  commercialConfidenceBonus?: number;
 }): {
   players: Record<string, Player>;
   assignments: ScoutingAssignment[];
@@ -407,7 +408,7 @@ export function reconcileCompletedScoutingAssignments(input: {
     const option = SCOUTING_ASSIGNMENT_OPTIONS.find((candidate) => candidate.kind === assignment.kind);
     if (!region || !option) return;
     const network = networks[region.id] ?? { regionId: region.id, level: 0, completedAssignments: 0 };
-    const confidence = Math.min(96, option.baseConfidence + network.level * 4 - Math.max(0, region.difficulty - 2) * 2);
+    const confidence = Math.min(96, option.baseConfidence + network.level * 4 - Math.max(0, region.difficulty - 2) * 2 + Math.max(0, Math.min(12, input.commercialConfidenceBonus ?? 0)));
     const random = seededRandom(assignment.seed);
     const alreadyReported = new Set(reports.map((report) => report.playerId));
     const targetSeason = assignment.scheduledAuctionSeason;

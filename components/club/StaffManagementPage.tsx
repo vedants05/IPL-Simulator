@@ -12,7 +12,7 @@ import { calculateInitialStaffNegotiationPatience, calculateStaffMoveInterest, c
 import { getStaffClubAffinity, type StaffAffinityProfile } from "@/lib/data/staffAffinities";
 import { addDaysToDateKey } from "@/lib/logic/careerCalendar";
 import { loadStaffDirectory } from "@/lib/logic/staffDirectoryClient";
-import { supabase } from "@/lib/supabase/client";
+import { relationshipLabel, relationshipsForPerson } from "@/lib/logic/careerRelationships";
 import { getStaffPreferenceColor, getStaffRatingColor } from "@/lib/theme/staffRatingColors";
 import { internationalTeamName } from "@/lib/logic/international";
 import type { CareerStaffContract } from "@/lib/logic/staffContracts";
@@ -177,6 +177,7 @@ function StaffProfileModal({
   onClose: () => void;
 }) {
   const careerStaff = useGameStore((state) => state.careerStaff);
+  const careerRelationships = useGameStore((state) => state.careerRelationships);
   const players = useGameStore((state) => state.players);
   const retiredPlayerSnapshots = useGameStore((state) => state.retiredPlayerSnapshots);
   const userTeamId = useGameStore((state) => state.userTeamId);
@@ -189,6 +190,21 @@ function StaffProfileModal({
   const setStaffNegotiationCooldown = useGameStore((state) => state.setStaffNegotiationCooldown);
   const setStaffNegotiationSession = useGameStore((state) => state.setStaffNegotiationSession);
   const careerContract = careerStaff.contracts[member.id];
+  const relationshipSlug = careerContract?.staffSlug ?? String(member.slug ?? member.id);
+  const relationships: PersonnelRelationship[] = relationshipsForPerson(
+    careerRelationships, players, careerStaff,
+    { kind: "staff", id: relationshipSlug, name: String(member.full_name ?? relationshipSlug) },
+  ).map(({ record, partner }, index) => ({
+    dynamic_id: index,
+    dynamic_type_name: relationshipLabel(record.type),
+    rating: record.rating,
+    partner_name: partner.name,
+    partner_type: partner.kind,
+    partner_id: partner.kind === "staff" ? Object.values(careerStaff.contracts).find((contract) => contract.staffSlug === partner.id)?.staffId ?? "" : partner.id,
+    partner_role: partner.kind === "staff" ? "Staff" : "Player",
+    subject_reason: `${record.source === "documented" ? "Documented starting relationship" : "Formed in this career"}. ${record.status === "active" ? "" : `${record.status === "historical" ? "Historical" : "Dormant"} relationship. `}${record.reason}`,
+    story: null,
+  }));
   const negotiationCooldownUntil = careerStaff.negotiationCooldowns[member.id];
   const negotiationCoolingDown = Boolean(negotiationCooldownUntil && currentDate < negotiationCooldownUntil);
   const isFreeAgent = careerContract?.status === "free_agent";
@@ -209,8 +225,6 @@ function StaffProfileModal({
   const traitsRowRef = useRef<HTMLDivElement>(null);
   const traitsContentRef = useRef<HTMLDivElement>(null);
   const [traitsScale, setTraitsScale] = useState(1);
-  const [relationships, setRelationships] = useState<PersonnelRelationship[]>([]);
-  const [relationshipsStatus, setRelationshipsStatus] = useState<"loading" | "ready" | "error">("loading");
   const [linkedStaffId, setLinkedStaffId] = useState<string | null>(null);
   const [linkedPlayerId, setLinkedPlayerId] = useState<string | null>(null);
   const [relationshipTooltip, setRelationshipTooltip] = useState<{ text: string; left: number; top: number; below: boolean } | null>(null);
@@ -224,27 +238,6 @@ function StaffProfileModal({
     });
   };
   useEffect(() => setRelationshipTooltip(null), [member.id, linkedStaffId, linkedPlayerId]);
-  useEffect(() => {
-    let cancelled = false;
-    setRelationships([]);
-    setRelationshipsStatus("loading");
-    void (async () => {
-      const { data, error } = await supabase
-        .from("person_dynamics_view")
-        .select("dynamic_id,dynamic_type_name,rating,partner_name,partner_type,partner_id,partner_role,subject_reason,story")
-        .eq("subject_type", "staff")
-        .eq("subject_id", member.id)
-        .order("rating", { ascending: false });
-      if (cancelled) return;
-      if (error) {
-        setRelationshipsStatus("error");
-        return;
-      }
-      setRelationships((data ?? []) as PersonnelRelationship[]);
-      setRelationshipsStatus("ready");
-    })();
-    return () => { cancelled = true; };
-  }, [member.id]);
   const persistedNegotiation = careerStaff.activeNegotiations[member.id];
   useEffect(() => {
     if (!contractAction || persistedNegotiation?.status !== "active" || persistedNegotiation.action !== contractAction) return;
@@ -622,19 +615,18 @@ function StaffProfileModal({
 
             <div className="rounded-lg border border-border bg-surface p-4">
               <h3 className="mb-2 font-anton text-xs uppercase text-text-primary">Personnel relationships</h3>
-              {relationshipsStatus === "loading" && <p className="text-xs text-text-secondary">Loading relationships...</p>}
-              {relationshipsStatus === "error" && <p className="text-xs text-danger">Unable to load relationships.</p>}
-              {relationshipsStatus === "ready" && relationships.length === 0 && (
+              {relationships.length === 0 && (
                 <p className="text-xs text-text-secondary">No personnel relationships recorded.</p>
               )}
-              {relationshipsStatus === "ready" && relationships.length > 0 && (
+              {relationships.length > 0 && (
                 <div className="space-y-1">
                   {relationships.map((relationship) => {
                     const targetPlayerId = relationship.partner_type === "player"
-                      ? Object.values(players).find((player) => player.name === relationship.partner_name)?.id
+                      ? players[relationship.partner_id]?.id
+                        ?? Object.values(players).find((player) => player.name === relationship.partner_name)?.id
                         ?? Object.values(retiredPlayerSnapshots).find((snapshot) => snapshot.name === relationship.partner_name)?.id
                       : null;
-                    const canOpen = relationship.partner_type === "staff" || Boolean(targetPlayerId);
+                    const canOpen = relationship.partner_type === "staff" ? Boolean(relationship.partner_id) : Boolean(targetPlayerId);
                     return (
                       <button
                         key={relationship.dynamic_id}
@@ -1369,13 +1361,14 @@ export default function StaffManagementPage({ teams, mode = "club", initialStaff
       <button
         type="button"
         onClick={() => toggleStaffMarketSort(sortKey)}
-        className={`flex items-center gap-1 hover:text-accent ${align === "center" ? "justify-center" : align === "right" ? "justify-end" : "justify-start"} ${active ? "text-accent" : ""}`}
+        className={`flex min-w-0 items-center gap-1 hover:text-accent ${align === "center" ? "justify-center" : align === "right" ? "justify-end" : "justify-start"} ${active ? "text-accent" : ""}`}
         aria-label={`Sort by ${label} ${active ? staffMarketSort.direction === "asc" ? "descending" : "ascending" : ""}`.trim()}
       >
-        <span>{label}</span><Icon size={9} />
+        <span className="truncate">{label}</span><Icon size={9} className="shrink-0" />
       </button>
     );
   };
+  const recruitmentMarketColumns = "grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_2.25rem_2.25rem_minmax(0,1fr)_minmax(0,.85fr)_minmax(0,.75fr)_minmax(0,.5fr)_minmax(0,.65fr)]";
 
   const selectedMember = selectedStaffId ? memberById.get(selectedStaffId) : undefined;
   const selectedAssignment = displayData?.assignments.find((assignment) => (
@@ -1508,10 +1501,10 @@ export default function StaffManagementPage({ teams, mode = "club", initialStaff
           </aside>
         </div>
 
-        <section className="flex min-h-0 flex-[1.12] flex-col overflow-hidden rounded-lg border-2 border-border bg-surface">
-          <div className="flex shrink-0 items-center justify-between gap-4 border-b-2 border-border px-4 py-2.5">
+        <section className="flex min-h-0 min-w-0 flex-[1.12] flex-col overflow-hidden rounded-lg border-2 border-border bg-surface">
+          <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b-2 border-border px-4 py-2.5">
             <div className="shrink-0"><p className="font-space-mono text-[7px] font-bold uppercase tracking-[0.18em] text-accent">Recruitment workspace</p><h3 className="font-anton text-base uppercase text-text-primary">Staff Market</h3></div>
-            <div className="flex min-w-0 flex-1 flex-nowrap items-center justify-end gap-1.5">
+            <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-1.5">
               <div className="flex shrink-0 overflow-hidden rounded border border-border bg-bg p-0.5">
                 <button type="button" onClick={() => setMarketScope("free_agents")} className={`whitespace-nowrap px-1.5 py-1 font-space-mono text-[6.5px] font-bold uppercase ${marketScope === "free_agents" ? "bg-accent text-white" : "text-text-secondary"}`}>Free agents · {freeAgents.length}</button>
                 <button type="button" onClick={() => setMarketScope("contracted")} className={`whitespace-nowrap px-1.5 py-1 font-space-mono text-[6.5px] font-bold uppercase ${marketScope === "contracted" ? "bg-accent text-white" : "text-text-secondary"}`}>Contracted · {contractedRecruitmentTargets.length}</button>
@@ -1535,8 +1528,8 @@ export default function StaffManagementPage({ teams, mode = "club", initialStaff
               <select value={budgetFilter} onChange={(event) => setBudgetFilter(event.target.value as typeof budgetFilter)} className="w-[6.75rem] min-w-0 shrink rounded border border-border bg-bg px-1.5 py-1.5 font-space-mono text-[7px] text-text-primary"><option value="all">Any budget</option><option value="within">Within budget</option><option value="over">Over budget</option></select>
             </div>
           </div>
-          <div className="min-h-0 flex-1 overflow-auto">
-          <div className="sticky top-0 z-10 grid min-w-[94rem] shrink-0 grid-cols-[minmax(16rem,1.5fr)_15rem_4rem_4rem_16rem_11rem_9rem_7rem_8rem] gap-3 border-b border-border bg-surface px-4 py-1.5 font-space-mono text-[7px] font-bold uppercase text-text-secondary">
+          <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
+          <div className={`sticky top-0 z-10 grid w-full min-w-0 shrink-0 ${recruitmentMarketColumns} gap-1.5 border-b border-border bg-surface px-3 py-1.5 font-space-mono text-[7px] font-bold uppercase text-text-secondary`}>
             <StaffMarketSortHeader sortKey="staff_member" label="Staff member" />
             <StaffMarketSortHeader sortKey="role_fit" label="Role / fit" />
             <StaffMarketSortHeader sortKey="ca" label="CA" align="center" />
@@ -1547,7 +1540,7 @@ export default function StaffManagementPage({ teams, mode = "club", initialStaff
             <StaffMarketSortHeader sortKey="budget" label="Budget" align="center" />
             <StaffMarketSortHeader sortKey="status" label="Status" align="right" />
           </div>
-          <div className="min-w-[94rem]">
+          <div className="w-full min-w-0">
             {filteredRecruitmentPool.map((member) => {
               const contract = careerStaff.contracts[member.id];
               const displayRole = roleFilter === "all" ? member.primary_role : roleFilter;
@@ -1561,11 +1554,11 @@ export default function StaffManagementPage({ teams, mode = "club", initialStaff
               const interestColor = interest.score >= 80 ? "#22c55e" : interest.score >= 65 ? "#3b82f6" : interest.score >= 50 ? "#facc15" : interest.score >= 35 ? "#f97316" : "#ef4444";
               const cooldownUntil = careerStaff.negotiationCooldowns[member.id];
               return (
-                <button type="button" key={member.id} onClick={() => setSelectedStaffId(member.id)} className="grid w-full grid-cols-[minmax(16rem,1.5fr)_15rem_4rem_4rem_16rem_11rem_9rem_7rem_8rem] items-center gap-3 border-b border-hairline px-4 py-2 text-left hover:bg-accent/[0.04]">
-                  <span className="min-w-0"><span className="block text-xs font-bold text-text-primary">{member.full_name}</span><span className="block font-space-mono text-[6px] uppercase text-text-secondary">{String(member.country ?? "Unknown")} · Age {ageFromDateOfBirth(member.date_of_birth) ?? "–"}</span></span>
-                  <span className="font-space-mono text-[7px] font-bold uppercase text-text-primary">{roleLabel(displayRole)} <strong className="text-accent">{ratingForRole(member, displayRole) ?? "–"}</strong></span>
+                <button type="button" key={member.id} onClick={() => setSelectedStaffId(member.id)} className={`grid w-full min-w-0 ${recruitmentMarketColumns} items-center gap-1.5 border-b border-hairline px-3 py-2 text-left hover:bg-accent/[0.04]`}>
+                  <span className="min-w-0"><span className="block truncate text-xs font-bold text-text-primary">{member.full_name}</span><span className="block truncate font-space-mono text-[6px] uppercase text-text-secondary">{String(member.country ?? "Unknown")} · Age {ageFromDateOfBirth(member.date_of_birth) ?? "–"}</span></span>
+                  <span className="min-w-0 truncate font-space-mono text-[7px] font-bold uppercase text-text-primary">{roleLabel(displayRole)} <strong className="text-accent">{ratingForRole(member, displayRole) ?? "–"}</strong></span>
                   <span className="text-center font-anton text-sm text-text-primary">{member.current_ability ?? "–"}</span><span className="text-center font-anton text-sm text-text-primary">{member.potential_ability ?? "–"}</span>
-                  <span className="flex flex-wrap gap-1 font-space-mono text-[7px] font-bold uppercase text-text-secondary">
+                  <span className="flex min-w-0 flex-wrap gap-1 overflow-hidden font-space-mono text-[7px] font-bold uppercase text-text-secondary">
                     {visibleAffinities.length > 0
                       ? visibleAffinities.map((affinity) => (
                         <span key={affinity.teamId} className="whitespace-nowrap rounded border border-border bg-bg px-1.5 py-0.5">
@@ -1574,10 +1567,10 @@ export default function StaffManagementPage({ teams, mode = "club", initialStaff
                       ))
                       : <span>None</span>}
                   </span>
-                  <span className="min-w-0"><span className="block font-space-mono text-[7px] font-bold uppercase" style={{ color: interestColor }}>{interest.label}</span><span className="mt-1 block h-1.5 overflow-hidden rounded-sm border border-border bg-bg"><span className="block h-full" style={{ width: `${interest.score}%`, backgroundColor: interestColor }} /></span>{cooldownUntil && currentDate < cooldownUntil && <span className="mt-0.5 block whitespace-nowrap font-space-mono text-[6px] uppercase text-danger">Unavailable until {formatDisplayDate(cooldownUntil)}</span>}</span>
-                  <span className="text-right font-space-mono text-[8px] font-bold text-text-primary">{formatSalary(demand)}</span>
+                  <span className="min-w-0"><span className="block truncate font-space-mono text-[7px] font-bold uppercase" style={{ color: interestColor }}>{interest.label}</span><span className="mt-1 block h-1.5 overflow-hidden rounded-sm border border-border bg-bg"><span className="block h-full" style={{ width: `${interest.score}%`, backgroundColor: interestColor }} /></span>{cooldownUntil && currentDate < cooldownUntil && <span className="mt-0.5 block truncate font-space-mono text-[6px] uppercase text-danger">Unavailable until {formatDisplayDate(cooldownUntil)}</span>}</span>
+                  <span className="min-w-0 truncate text-right font-space-mono text-[8px] font-bold text-text-primary">{formatSalary(demand)}</span>
                   <span className={`text-center font-space-mono text-[7px] font-bold uppercase ${withinBudget ? "text-success" : "text-danger"}`}>{withinBudget ? "Within" : "Over"}</span>
-                  <span className={`text-right font-space-mono text-[7px] font-bold uppercase ${marketScope === "free_agents" ? "text-success" : "text-gold"}`}>{marketScope === "free_agents" ? "Available" : teams.find((team) => team.id === contract?.teamId)?.shortName ?? nationalEmployer(contract) ?? "Contracted"}</span>
+                  <span className={`min-w-0 truncate text-right font-space-mono text-[7px] font-bold uppercase ${marketScope === "free_agents" ? "text-success" : "text-gold"}`}>{marketScope === "free_agents" ? "Available" : teams.find((team) => team.id === contract?.teamId)?.shortName ?? nationalEmployer(contract) ?? "Contracted"}</span>
                 </button>
               );
             })}

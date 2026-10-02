@@ -144,6 +144,7 @@ export type RetirementReason =
   | "player-pool-cap";
 
 export interface CareerRetirementRecord {
+  announcedOn?: string;
   playerId: string;
   name: string;
   season: number;
@@ -502,6 +503,19 @@ export function initializeCareerPlayers(
             ...playerWithConsistency.careerState!,
             phaseRatingsGenerationVersion: 1,
           },
+        };
+      }
+      if ((player.careerState.idolGenerationVersion ?? 0) < 1) {
+        const generationSeason = player.careerState.generatedSeason ?? baselineSeason;
+        const birthYear = Number(playerWithConsistency.dateOfBirth?.slice(0, 4));
+        const cohort = Number.isFinite(birthYear) && birthYear > 1900
+          ? Math.floor(birthYear / 3)
+          : Math.floor((generationSeason - playerWithConsistency.age) / 3);
+        playerWithConsistency = {
+          ...playerWithConsistency,
+          idol: playerWithConsistency.idol ?? chooseGeneratedIdol(playerWithConsistency, players, `legacy:${player.id}`, generationSeason),
+          youthPathwayId: playerWithConsistency.youthPathwayId ?? (playerWithConsistency.state ? `${playerWithConsistency.state}:${cohort}` : undefined),
+          careerState: { ...playerWithConsistency.careerState!, idolGenerationVersion: 1 },
         };
       }
     }
@@ -1909,10 +1923,11 @@ export function calculateCareerContinuationScore(player: Player, projectedAge: n
   return score;
 }
 
-function retirementRecord(player: Player, season: number, age: number, reason: RetirementReason): CareerRetirementRecord {
+function retirementRecord(player: Player, season: number, age: number, reason: RetirementReason, announcedOn?: string): CareerRetirementRecord {
   return {
     playerId: player.id,
     name: player.name,
+    announcedOn,
     season,
     age,
     rating: Math.max(player.currentBatting ?? 0, player.currentBowling ?? 0),
@@ -2293,6 +2308,7 @@ export function isMandatoryVeteranRetirement(player: Player, age = player.age): 
 }
 
 export function processPostAuctionCareer(input: {
+  announcementDate?: string;
   players: Record<string, Player>;
   teams: Record<string, Team>;
   auctionedPlayerIds: string[];
@@ -2338,19 +2354,19 @@ export function processPostAuctionCareer(input: {
       isMandatoryVeteranRetirement(player)
       && !hasOpeningSeasonDhoniRetirementGrace(player)
     ) {
-      mandatory.push({ player, record: retirementRecord(player, input.season, player.age, "natural") });
+      mandatory.push({ player, record: retirementRecord(player, input.season, player.age, "natural", input.announcementDate) });
       return;
     }
     const streak = player.careerState?.unsoldAuctionStreak ?? 0;
     const belowStandardSeasons = player.careerState?.belowAuctionStandardSeasons ?? 0;
     if (belowStandardSeasons >= CAREER_POLICY.belowAuctionStandardRetirementSeasons) {
-      const record = retirementRecord(player, input.season, player.age, "below-auction-standard");
+      const record = retirementRecord(player, input.season, player.age, "below-auction-standard", input.announcementDate);
       discretionary.push({ player, record, priority: discretionaryRetirementPriority(player, record.reason) });
       return;
     }
     const requiredUnsoldAuctions = requiredUnsoldAuctionsForRetirement(player, rating);
     if (requiredUnsoldAuctions !== null && streak >= requiredUnsoldAuctions) {
-      const record = retirementRecord(player, input.season, player.age, "persistent-unsold");
+      const record = retirementRecord(player, input.season, player.age, "persistent-unsold", input.announcementDate);
       discretionary.push({ player, record, priority: discretionaryRetirementPriority(player, record.reason) });
     }
   });
@@ -3082,6 +3098,53 @@ function generatedPhaseRatings(
   };
 }
 
+function chooseGeneratedIdol(
+  player: Player,
+  existingPlayers: Record<string, Player>,
+  seed: string,
+  season: number,
+): Player["idol"] {
+  const random = seededRandom(`${seed}:${season}:${player.id}:idol`);
+  // Most generated players have no named idol. This roll is independent of
+  // ability generation, so adding relationships cannot change regen talent.
+  if (random() >= 0.2) return undefined;
+  const roleFamily = (candidate: Player) => candidate.role === "WK-Batsman" ? "keeper"
+    : candidate.role === "Pace Bowler" ? "pace"
+      : candidate.role === "Spin Bowler" ? "spin"
+        : candidate.role === "All-Rounder" ? "allrounder" : "bat";
+  const family = roleFamily(player);
+  const candidates = Object.values(existingPlayers).filter((candidate) =>
+    candidate.id !== player.id
+    && roleFamily(candidate) === family
+    && (candidate.age ?? 0) >= player.age + 5
+    && Math.max(candidate.currentBatting, candidate.currentBowling) >= 80
+    && (candidate.reputation ?? 0) >= 7
+    && ((candidate.iplStats?.matches ?? 0) >= 25 || (candidate.careerStats?.batting.matches ?? 0) >= 100),
+  );
+  if (candidates.length === 0) return undefined;
+  const weighted = candidates.map((candidate) => ({
+    candidate,
+    weight: 1
+      + Math.max(0, Math.max(candidate.currentBatting, candidate.currentBowling) - 78) * 0.12
+      + Math.max(0, (candidate.reputation ?? 0) - 6) * 0.65
+      + (candidate.country === player.country ? 1.5 : 0)
+      + (candidate.battingStyle === player.battingStyle ? 0.3 : 0)
+      + (candidate.bowlingStyle && candidate.bowlingStyle === player.bowlingStyle ? 1.5 : 0)
+      + (family === "allrounder" ? Math.max(0, 1.5 - Math.abs((candidate.currentBatting - candidate.currentBowling) - (player.currentBatting - player.currentBowling)) / 18) : 0),
+  })).sort((a, b) => a.candidate.id.localeCompare(b.candidate.id));
+  const totalWeight = weighted.reduce((sum, item) => sum + item.weight, 0);
+  let selection = random() * totalWeight;
+  const chosen = weighted.find((item) => (selection -= item.weight) <= 0)?.candidate
+    ?? weighted[weighted.length - 1].candidate;
+  const rating = 80 + Math.floor(random() * 16);
+  return {
+    playerId: chosen.id,
+    name: chosen.name,
+    rating,
+    reason: `${player.name} drew inspiration from ${chosen.name}'s ${family === "keeper" ? "wicketkeeping" : family === "bat" ? "batting" : family === "allrounder" ? "all-round game" : "bowling"} before entering the professional game.`,
+  };
+}
+
 function createGeneratedPlayer(input: {
   index: number;
   season: number;
@@ -3301,6 +3364,7 @@ function createGeneratedPlayer(input: {
     nationality,
     country,
     state: generatedState,
+    youthPathwayId: generatedState ? `${generatedState}:${Math.floor((input.season - age) / 3)}` : undefined,
     role,
     battingStyle,
     bowlingStyle,
@@ -3345,8 +3409,10 @@ function createGeneratedPlayer(input: {
     generatedSeason: input.season,
     secondaryAttributesGenerationVersion: 1,
     phaseRatingsGenerationVersion: 1,
+    idolGenerationVersion: 1,
     lastAgedSeason: input.season,
   };
+  player.idol = chooseGeneratedIdol(player, input.players, input.seed, input.season);
   return enforceBattingPositionEligibility(player);
 }
 
@@ -3506,6 +3572,7 @@ function hasAuctionHighPotentialPlayer(
 }
 
 export function prepareRetentionPlayerPool(input: {
+  announcementDate?: string;
   players: Record<string, Player>;
   teams: Record<string, Team>;
   season: number;
@@ -3527,7 +3594,7 @@ export function prepareRetentionPlayerPool(input: {
       isMandatoryVeteranRetirement(player)
       && !hasOpeningSeasonDhoniRetirementGrace(player)
     ) {
-      return [{ player, record: retirementRecord(player, input.season, player.age, "natural") }];
+      return [{ player, record: retirementRecord(player, input.season, player.age, "natural", input.announcementDate) }];
     }
     return [];
   });
@@ -3545,7 +3612,7 @@ export function prepareRetentionPlayerPool(input: {
     }).slice(0, excess);
     const capped = removePlayers(result.players, result.teams, candidates.map((player) => ({
       player,
-      record: retirementRecord(player, input.season, player.age, "player-pool-cap"),
+      record: retirementRecord(player, input.season, player.age, "player-pool-cap", input.announcementDate),
     })));
     result = {
       ...capped,
@@ -3707,7 +3774,7 @@ export function prepareRetentionPlayerPool(input: {
       .slice(0, excess)
       .map((player) => ({
         player,
-        record: retirementRecord(player, input.season, player.age, "player-pool-cap"),
+        record: retirementRecord(player, input.season, player.age, "player-pool-cap", input.announcementDate),
       }));
     const trimmed = removePlayers(expanded, result.teams, trimCandidates);
     expanded = trimmed.players;

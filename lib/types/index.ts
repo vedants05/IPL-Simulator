@@ -156,6 +156,8 @@ export interface PlayerCareerState {
   secondaryAttributesGenerationVersion?: number;
   /** Version of the role-aware batting and bowling phase generator. */
   phaseRatingsGenerationVersion?: number;
+  /** Prevents a regen with no idol from being rerolled on every save load. */
+  idolGenerationVersion?: number;
   unsoldAuctionStreak: number;
   belowAuctionStandardSeasons: number;
   lastRetirementEvaluationSeason?: number;
@@ -246,6 +248,10 @@ export interface Player {
   auctionBowlingRating?: number;
   auctionPotentialRating?: number;
   careerState?: PlayerCareerState;
+  /** Fixed inspiration assigned when a generated player enters the career. */
+  idol?: { playerId: string; name: string; rating: number; reason: string };
+  /** Shared state youth cohort for generated players; assigned once at generation. */
+  youthPathwayId?: string;
   reputation?: number;
   captaincy?: number;
   isIplCaptaincyUnavailable?: boolean;

@@ -215,7 +215,7 @@ export default function PlayerAnalysisPage(props: PlayerAnalysisPageProps) {
     setDetailTab(view);
   };
 
-  return <div className="flex h-full min-h-0 flex-col overflow-hidden px-4 pb-4 pt-1 sm:px-6 sm:pb-6"><div className="mx-auto flex h-full w-full max-w-[1500px] min-h-0 flex-col gap-3">
+  return <div className="flex h-full min-h-0 flex-col overflow-hidden px-4 pb-4 pt-1 sm:px-6 sm:pb-6"><div className="season-page-width mx-auto flex h-full w-full max-w-[1500px] min-h-0 flex-col gap-3">
     <div className="-mb-2 flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-border bg-surface px-2">
       <div ref={searchRef} className="relative min-w-[170px] flex-1">
         <Search size={14} className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-text-secondary" />

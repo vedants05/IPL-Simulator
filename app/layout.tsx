@@ -1,7 +1,12 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
 import ViewportScaler from "@/components/shared/ViewportScaler";
+import { CUSTOM_THEME_INIT_SCRIPT } from "@/lib/theme/custom";
+import { UI_DESIGN_INIT_SCRIPT } from "@/lib/theme/uiDesign";
 import "./globals.css";
+import "./modern-ui.css";
+import "./sidebar-ui.css";
+import "./commercial-ui.css";
 
 const anton = localFont({
   src: "./fonts/anton-latin.woff2",
@@ -59,13 +64,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <script
           dangerouslySetInnerHTML={{
             __html: `
+              ${UI_DESIGN_INIT_SCRIPT}
               try {
                 var savedTheme = localStorage.getItem('theme');
-                var theme = savedTheme === 'dark' || savedTheme === 'retro' || savedTheme === 'team' ? savedTheme : 'light';
+                var theme = savedTheme === 'dark' || savedTheme === 'retro' || savedTheme === 'team' || savedTheme === 'custom' ? savedTheme : 'light';
                 document.documentElement.classList.toggle('dark', theme === 'dark');
                 document.documentElement.classList.toggle('retro', theme === 'retro');
                 document.documentElement.classList.toggle('team', theme === 'team');
+                document.documentElement.classList.toggle('custom', theme === 'custom');
                 document.documentElement.setAttribute('data-theme', theme);
+                ${CUSTOM_THEME_INIT_SCRIPT}
               } catch (_) {}
             `,
           }}

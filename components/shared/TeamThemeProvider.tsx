@@ -2,6 +2,7 @@
 import { useEffect } from "react";
 import { useGameStore } from "@/lib/store/gameStore";
 import { TEAM_THEMES, readableAccentOn, readableOn } from "@/lib/theme/teams";
+import { CUSTOM_VARIABLE_NAMES, customThemeVariables, getStoredCustomPalette } from "@/lib/theme/custom";
 import {
   APPEARANCE_THEME_STORAGE_KEY,
   getStoredAppearanceTheme,
@@ -107,6 +108,14 @@ export function applyTeamTheme(teamCode: string) {
 
   root.setAttribute("data-team", theme.code);
   document.body.style.backgroundColor = "var(--surface)";
+  if (root.classList.contains("custom")) {
+    const palette = getStoredCustomPalette();
+    Object.entries(customThemeVariables(palette)).forEach(([key, value]) => root.style.setProperty(key, value));
+    const dark = readableOn(palette.background) === "#ffffff";
+    root.classList.toggle("dark", dark);
+    root.style.colorScheme = dark ? "dark" : "light";
+    document.body.style.backgroundColor = "var(--background)";
+  }
 }
 
 let themeTransitionTimer: ReturnType<typeof setTimeout> | null = null;
@@ -119,13 +128,16 @@ export function switchColorMode(mode: AppearanceTheme, teamCode?: string) {
 
   // Activate the shared transition before changing any theme values.
   void root.offsetWidth;
+  CUSTOM_VARIABLE_NAMES.forEach((key) => root.style.removeProperty(key));
+  root.style.removeProperty("color-scheme");
   root.classList.toggle("dark", mode === "dark" || mode === "team");
   root.classList.toggle("retro", mode === "retro");
   root.classList.toggle("team", mode === "team");
+  root.classList.toggle("custom", mode === "custom");
   root.setAttribute("data-theme", mode);
-  localStorage.setItem(APPEARANCE_THEME_STORAGE_KEY, mode);
+  try { localStorage.setItem(APPEARANCE_THEME_STORAGE_KEY, mode); } catch { /* Session-only when storage is unavailable. */ }
 
-  if (teamCode || mode === "team") applyTeamTheme(teamCode || root.getAttribute("data-team") || "MI");
+  applyTeamTheme(teamCode || root.getAttribute("data-team") || "MI");
 
   themeTransitionTimer = setTimeout(() => {
     root.classList.remove("theme-changing");

@@ -43,6 +43,7 @@ interface SupportersPageProps {
   departmentReviews?: SupporterDepartmentReview[];
   boardContext?: SupporterBoardContext;
   currentSeason?: number;
+  commercial?: { pricing: number; service: number; outreach: number; cashDiscipline: number };
   onOpenPlayer?: (playerId: string) => void;
 }
 

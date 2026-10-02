@@ -1209,7 +1209,7 @@ function MountedTeamProfilePage() {
   const topBorderColor = isDarkPrimary ? (team.secondaryColor || "var(--accent)") : team.primaryColor;
 
   return (
-    <div className="app-theme-background flex h-[calc(100vh-3rem)] min-h-0 flex-col overflow-hidden bg-bg">
+    <div className="season-team-page app-theme-background flex h-[calc(100vh-3rem)] min-h-0 flex-col overflow-hidden bg-bg">
       <header
         className="relative shrink-0 overflow-hidden border-b-2 border-border"
         style={{

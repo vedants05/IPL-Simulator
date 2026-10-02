@@ -8,6 +8,7 @@ import { Team } from "@/lib/types";
 import { Settings } from "lucide-react";
 import { applyTeamTheme, switchColorMode } from "@/components/shared/TeamThemeProvider";
 import ThemeSelector from "@/components/shared/ThemeSelector";
+import UIDesignSelector from "@/components/shared/UIDesignSelector";
 import {
   getStoredAppearanceTheme,
   type AppearanceTheme,
@@ -130,6 +131,7 @@ export default function SetupPage() {
                   </span>
                   <ThemeSelector value={appearanceTheme} onChange={handleThemeChange} />
                 </div>
+                <UIDesignSelector />
               </div>
             </>
           )}
