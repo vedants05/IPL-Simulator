@@ -6,13 +6,34 @@ import { Lock, RotateCcw, Unlock, X } from "lucide-react";
 import { useGameStore } from "@/lib/store/gameStore";
 import { canReceiveBattingPositions, MIN_NON_BATTER_POSITION_RATING } from "@/lib/logic/playerBattingPositions";
 import { INDIAN_REGEN_STATE_DISTRIBUTION } from "@/lib/data/indianStateRegenNames";
+import { classifyBowlingUsage } from "@/lib/logic/playerBowlingUsage";
 import { INJURY_CATALOGUE } from "@/lib/logic/injuries";
 import { getPlayerSeasonHistory } from "@/lib/logic/playerHistory";
 import { formatPrice } from "@/lib/logic/auctionRules";
-import type { BattingStyle, BowlingType, Nationality, Player, Potential, Role } from "@/lib/types";
+import type { BattingStyle, BowlingType, BowlingUsage, Nationality, PaceSpeedBand, Player, Potential, Role, SpinStyle } from "@/lib/types";
 
 const ROLES: Role[] = ["Batsman", "WK-Batsman", "All-Rounder", "Pace Bowler", "Spin Bowler"];
 const POTENTIALS: Potential[] = ["Established", "Promising", "World Class", "Wonderkid"];
+const BOWLING_USAGES: Array<[BowlingUsage, string]> = [
+  ["frontline", "Frontline"],
+  ["regular", "Regular"],
+  ["part_time", "Part-time"],
+  ["emergency", "Emergency only"],
+  ["does_not_bowl", "Does not bowl"],
+];
+const PACE_SPEED_BANDS: Array<[PaceSpeedBand, string]> = [
+  ["express", "Express"],
+  ["fast", "Fast"],
+  ["fast_medium", "Fast-medium"],
+  ["medium", "Medium"],
+];
+const SPIN_STYLES: Array<[SpinStyle, string]> = [
+  ["off_spin", "Off-spin"],
+  ["leg_spin", "Leg-spin"],
+  ["left_arm_orthodox", "Left-arm orthodox"],
+  ["left_arm_wrist_spin", "Left-arm wrist spin"],
+  ["mystery_spin", "Mystery spin"],
+];
 
 type RatingKey =
   | "currentBatting" | "potentialBatting" | "currentBowling" | "potentialBowling"
@@ -26,7 +47,7 @@ type RatingKey =
 type FlagKey =
   | "isWicketkeeper" | "isPartTimeWk" | "isOpener"
   | "hasBattedAt3" | "hasBattedAt4" | "hasBattedAt5" | "hasBattedAt6" | "hasBattedAt7"
-  | "isFinisher";
+  | "isFinisher" | "isCoreBatter" | "onlyOpensOrBenched";
 
 const CORE_RATINGS: Array<[RatingKey, string]> = [
   ["currentBatting", "Batting CA"],
@@ -76,6 +97,8 @@ const POSITION_FLAGS: Array<[FlagKey, string]> = [
   ["hasBattedAt6", "Bats #6"],
   ["hasBattedAt7", "Bats #7"],
   ["isFinisher", "Finisher"],
+  ["isCoreBatter", "Core batter"],
+  ["onlyOpensOrBenched", "Only opens or benched"],
 ];
 
 const KEEPING_FLAGS: Array<[FlagKey, string]> = [
@@ -94,6 +117,9 @@ interface Draft {
   battingStyle: BattingStyle;
   bowlingStyle: BowlingType | "";
   bowlingHand: "Right-hand" | "Left-hand";
+  bowlingUsage: BowlingUsage;
+  paceSpeedBand: PaceSpeedBand | "";
+  spinStyle: SpinStyle | "";
   isCapped: boolean;
   potential: Potential;
   ratings: Record<RatingKey, string>;
@@ -146,6 +172,9 @@ function buildDraft(
     battingStyle: player.battingStyle,
     bowlingStyle: player.bowlingStyle ?? "",
     bowlingHand: player.bowlingHand ?? "Right-hand",
+    bowlingUsage: player.bowlingUsage ?? classifyBowlingUsage(player),
+    paceSpeedBand: player.paceSpeedBand ?? "",
+    spinStyle: player.spinStyle ?? "",
     isCapped: player.isCapped,
     potential: player.potential,
     ratings: {
@@ -182,6 +211,8 @@ function buildDraft(
       hasBattedAt6: Boolean(player.hasBattedAt6),
       hasBattedAt7: Boolean(player.hasBattedAt7),
       isFinisher: Boolean(player.isFinisher),
+      isCoreBatter: Boolean(player.isCoreBatter),
+      onlyOpensOrBenched: Boolean(player.onlyOpensOrBenched),
     },
   };
 }
@@ -211,6 +242,9 @@ function buildPatch(player: Player, draft: Draft): Partial<Player> {
   assign("battingStyle", draft.battingStyle);
   assign("bowlingStyle", draft.bowlingStyle === "" ? null : draft.bowlingStyle);
   assign("bowlingHand", draft.bowlingStyle === "" ? null : draft.bowlingHand);
+  if (draft.bowlingUsage !== (player.bowlingUsage ?? classifyBowlingUsage(player))) patch.bowlingUsage = draft.bowlingUsage;
+  assign("paceSpeedBand", draft.bowlingStyle === "Pacer" && draft.paceSpeedBand ? draft.paceSpeedBand : undefined);
+  assign("spinStyle", draft.bowlingStyle === "Spinner" && draft.spinStyle ? draft.spinStyle : undefined);
   assign("isCapped", draft.isCapped);
   assign("potential", draft.potential);
   assign("setForRelease", draft.setForRelease);
@@ -521,6 +555,27 @@ export function PlayerEditorModal({ player, onClose }: PlayerEditorModalProps) {
                   <option value="Left-hand">Left-hand</option>
                 </select>
               </Field>
+              <Field label="Bowling Usage">
+                <select value={draft.bowlingUsage} onChange={(event) => update({ bowlingUsage: event.target.value as BowlingUsage })} className={inputClass}>
+                  {BOWLING_USAGES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                </select>
+              </Field>
+              {draft.bowlingStyle === "Pacer" && (
+                <Field label="Pace Speed">
+                  <select value={draft.paceSpeedBand} onChange={(event) => update({ paceSpeedBand: event.target.value as PaceSpeedBand | "" })} className={inputClass}>
+                    <option value="">Not set</option>
+                    {PACE_SPEED_BANDS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                  </select>
+                </Field>
+              )}
+              {draft.bowlingStyle === "Spinner" && (
+                <Field label="Spin Style">
+                  <select value={draft.spinStyle} onChange={(event) => update({ spinStyle: event.target.value as SpinStyle | "" })} className={inputClass}>
+                    <option value="">Not set</option>
+                    {SPIN_STYLES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                  </select>
+                </Field>
+              )}
               <Field label="Potential Tier">
                 <select value={draft.potential} onChange={(event) => update({ potential: event.target.value as Potential })} className={inputClass}>
                   {POTENTIALS.map((tier) => <option key={tier} value={tier}>{tier}</option>)}

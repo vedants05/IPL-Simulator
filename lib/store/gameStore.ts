@@ -650,6 +650,7 @@ const SAVE_OWNED_PLAYER_FIELDS = new Set<keyof Player>([
 // Everything the editor can change and a database reset should restore.
 const DATABASE_RESETTABLE_PLAYER_FIELDS: Array<keyof Player> = [
   "name", "age", "dateOfBirth", "nationality", "country", "state", "role", "battingStyle", "bowlingStyle", "bowlingHand",
+  "bowlingUsage", "paceSpeedBand", "spinStyle",
   "isCapped", "potential", "currentBatting", "potentialBatting", "currentBowling", "potentialBowling", "captaincy", "reputation",
   "isIplCaptaincyUnavailable", "setForRelease",
   "isWicketkeeper", "isPartTimeWk", "isOpener", "isFinisher", "isCoreBatter", "onlyOpensOrBenched",
