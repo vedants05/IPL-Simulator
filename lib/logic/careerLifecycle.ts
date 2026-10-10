@@ -145,6 +145,7 @@ export type RetirementReason =
   | "player-pool-cap";
 
 export interface CareerRetirementRecord {
+  announcedOn?: string;
   playerId: string;
   name: string;
   season: number;
@@ -474,7 +475,9 @@ export function initializeCareerPlayers(
           )).name,
         };
       }
-      if (!playerWithConsistency.isCapped && !playerWithConsistency.dateOfBirth) {
+      if ((!playerWithConsistency.isCapped || (playerWithConsistency.internationalDebutSeason !== undefined
+        && !playerWithConsistency.internationalDebutDate
+        && (playerWithConsistency.t20iStats?.matches ?? 0) === 0)) && !playerWithConsistency.dateOfBirth) {
         const referenceSeason = player.careerState.lastAgedSeason
           ?? player.careerState.generatedSeason
           ?? baselineSeason;
@@ -503,38 +506,47 @@ export function initializeCareerPlayers(
           },
         };
       }
+      if ((player.careerState.idolGenerationVersion ?? 0) < 1) {
+        const generationSeason = player.careerState.generatedSeason ?? baselineSeason;
+        const birthYear = Number(playerWithConsistency.dateOfBirth?.slice(0, 4));
+        const cohort = Number.isFinite(birthYear) && birthYear > 1900
+          ? Math.floor(birthYear / 3)
+          : Math.floor((generationSeason - playerWithConsistency.age) / 3);
+        playerWithConsistency = {
+          ...playerWithConsistency,
+          idol: playerWithConsistency.idol ?? chooseGeneratedIdol(playerWithConsistency, players, `legacy:${player.id}`, generationSeason),
+          youthPathwayId: playerWithConsistency.youthPathwayId ?? (playerWithConsistency.state ? `${playerWithConsistency.state}:${cohort}` : undefined),
+          careerState: { ...playerWithConsistency.careerState!, idolGenerationVersion: 1 },
+        };
+      }
     }
     const ability = Math.max(playerWithConsistency.currentBatting ?? 0, playerWithConsistency.currentBowling ?? 0);
     const startingReputation = playerWithConsistency.reputation ?? 5;
     const reputation = Math.max(startingReputation, ability >= 87 ? 9 : 0);
-    const newlyAutoCapped = !playerWithConsistency.isCapped && ability >= 86;
+    const syntheticCapWithoutAppearance = playerWithConsistency.isCapped
+      && playerWithConsistency.internationalDebutSeason !== undefined
+      && !playerWithConsistency.internationalDebutDate
+      && (playerWithConsistency.t20iStats?.matches ?? 0) === 0;
+    const hasInternationalAppearance = Boolean(playerWithConsistency.internationalDebutDate)
+      || (playerWithConsistency.t20iStats?.matches ?? 0) > 0;
     const normalizedPlayer = {
       ...playerWithConsistency,
       country: playerWithConsistency.country ?? (playerWithConsistency.nationality === "Indian" ? "India" : "Overseas"),
       reputation,
-      isCapped: playerWithConsistency.isCapped || ability >= 86,
-      internationalDebutSeason: playerWithConsistency.internationalDebutSeason
-        ?? (newlyAutoCapped ? baselineSeason + 1 : undefined),
-      internationalDebutCountry: playerWithConsistency.internationalDebutCountry
-        ?? (playerWithConsistency.isCapped || ability >= 86
-          ? (playerWithConsistency.country ?? (playerWithConsistency.nationality === "Indian" ? "India" : "Overseas"))
-          : undefined),
+      isCapped: hasInternationalAppearance || (playerWithConsistency.isCapped && !syntheticCapWithoutAppearance),
+      internationalCallUpSeason: playerWithConsistency.internationalCallUpSeason
+        ?? (syntheticCapWithoutAppearance || (!playerWithConsistency.isCapped && ability >= 86) ? baselineSeason : undefined),
+      internationalDebutSeason: syntheticCapWithoutAppearance ? undefined : playerWithConsistency.internationalDebutSeason,
+      internationalDebutCountry: syntheticCapWithoutAppearance ? undefined : playerWithConsistency.internationalDebutCountry,
       bowlingUsage: playerWithConsistency.bowlingUsage ?? classifyBowlingUsage(playerWithConsistency),
     };
     const careerState = initializePlayerCareerState(normalizedPlayer, baselineSeason);
     const reputationCareerState = reputation > startingReputation
       ? { ...careerState, reputationDevelopmentBank: Math.max(0, careerState.reputationDevelopmentBank) }
       : careerState;
-    const cappedCareerState = newlyAutoCapped && reputation < 10
-      ? {
-          ...reputationCareerState,
-          reputationDevelopmentBank: Math.min(99, reputationCareerState.reputationDevelopmentBank + 25),
-          lastSeasonReputationPoints: reputationCareerState.lastSeasonReputationPoints + 25,
-        }
-      : reputationCareerState;
     return [id, enforceBattingPositionEligibility({
       ...normalizedPlayer,
-      careerState: cappedCareerState,
+      careerState: reputationCareerState,
     })];
   }));
 }
@@ -1917,10 +1929,11 @@ export function calculateCareerContinuationScore(player: Player, projectedAge: n
   return score;
 }
 
-function retirementRecord(player: Player, season: number, age: number, reason: RetirementReason): CareerRetirementRecord {
+function retirementRecord(player: Player, season: number, age: number, reason: RetirementReason, announcedOn?: string): CareerRetirementRecord {
   return {
     playerId: player.id,
     name: player.name,
+    announcedOn,
     season,
     age,
     rating: Math.max(player.currentBatting ?? 0, player.currentBowling ?? 0),
@@ -2008,33 +2021,19 @@ function internationalRoleNeedBonus(players: Player[], country: string, role: Au
   return clamp((INTERNATIONAL_ROLE_TARGETS[role] - actualShare) * 16, 0, 4);
 }
 
-function capInternationalPlayer(
+function callUpInternationalPlayer(
   player: Player,
   completedSeason: number,
 ): Player {
-  const state = initializePlayerCareerState(player, completedSeason - 1);
-  const reputation = Math.round(clamp(player.reputation ?? 5, 1, 10));
   return {
     ...player,
-    isCapped: true,
-    internationalDebutSeason: player.internationalDebutSeason ?? completedSeason,
-    internationalDebutCountry: player.internationalDebutCountry ?? player.country
-      ?? (player.nationality === "Indian" ? "India" : "Overseas"),
-    careerState: {
-      ...state,
-      // A debut improves reputation progress without imposing a reputation floor.
-      reputationDevelopmentBank: reputation >= 10
-        ? state.reputationDevelopmentBank
-        : Math.min(99, state.reputationDevelopmentBank + 25),
-      lastSeasonReputationPoints: state.lastSeasonReputationPoints + (reputation >= 10 ? 0 : 25),
-    },
+    internationalCallUpSeason: player.internationalCallUpSeason ?? completedSeason,
   };
 }
 
 /**
- * Applies permanent international status at the post-season career break.
- * Automatic ability/performance selections are intentionally resolved before
- * peer filters and country limits.
+ * Identifies post-season international call-ups. A cap and debut date are
+ * awarded only when the player appears in a simulated international match.
  */
 export function applyInternationalCappingAfterSeason(input: {
   players: Record<string, Player>;
@@ -2050,13 +2049,13 @@ export function applyInternationalCappingAfterSeason(input: {
     reason: InternationalCappingReason,
     selectionScore?: number,
   ) => {
-    if (players[player.id]?.isCapped) return;
-    const cappedPlayer = capInternationalPlayer(players[player.id], input.completedSeason);
-    players[player.id] = cappedPlayer;
+    if (players[player.id]?.isCapped || players[player.id]?.internationalCallUpSeason !== undefined) return;
+    const calledUpPlayer = callUpInternationalPlayer(players[player.id], input.completedSeason);
+    players[player.id] = calledUpPlayer;
     selections.push({
       playerId: player.id,
       name: player.name,
-      country: cappedPlayer.internationalDebutCountry ?? cappedPlayer.country ?? "Unknown",
+      country: calledUpPlayer.country ?? "Unknown",
       season: input.completedSeason,
       role: getAuctionRoleGroup(player),
       reason,
@@ -2316,6 +2315,7 @@ export function isMandatoryVeteranRetirement(player: Player, age = player.age): 
 }
 
 export function processPostAuctionCareer(input: {
+  announcementDate?: string;
   players: Record<string, Player>;
   teams: Record<string, Team>;
   auctionedPlayerIds: string[];
@@ -2361,19 +2361,19 @@ export function processPostAuctionCareer(input: {
       isMandatoryVeteranRetirement(player)
       && !hasOpeningSeasonDhoniRetirementGrace(player)
     ) {
-      mandatory.push({ player, record: retirementRecord(player, input.season, player.age, "natural") });
+      mandatory.push({ player, record: retirementRecord(player, input.season, player.age, "natural", input.announcementDate) });
       return;
     }
     const streak = player.careerState?.unsoldAuctionStreak ?? 0;
     const belowStandardSeasons = player.careerState?.belowAuctionStandardSeasons ?? 0;
     if (belowStandardSeasons >= CAREER_POLICY.belowAuctionStandardRetirementSeasons) {
-      const record = retirementRecord(player, input.season, player.age, "below-auction-standard");
+      const record = retirementRecord(player, input.season, player.age, "below-auction-standard", input.announcementDate);
       discretionary.push({ player, record, priority: discretionaryRetirementPriority(player, record.reason) });
       return;
     }
     const requiredUnsoldAuctions = requiredUnsoldAuctionsForRetirement(player, rating);
     if (requiredUnsoldAuctions !== null && streak >= requiredUnsoldAuctions) {
-      const record = retirementRecord(player, input.season, player.age, "persistent-unsold");
+      const record = retirementRecord(player, input.season, player.age, "persistent-unsold", input.announcementDate);
       discretionary.push({ player, record, priority: discretionaryRetirementPriority(player, record.reason) });
     }
   });
@@ -3105,6 +3105,53 @@ function generatedPhaseRatings(
   };
 }
 
+function chooseGeneratedIdol(
+  player: Player,
+  existingPlayers: Record<string, Player>,
+  seed: string,
+  season: number,
+): Player["idol"] {
+  const random = seededRandom(`${seed}:${season}:${player.id}:idol`);
+  // Most generated players have no named idol. This roll is independent of
+  // ability generation, so adding relationships cannot change regen talent.
+  if (random() >= 0.2) return undefined;
+  const roleFamily = (candidate: Player) => candidate.role === "WK-Batsman" ? "keeper"
+    : candidate.role === "Pace Bowler" ? "pace"
+      : candidate.role === "Spin Bowler" ? "spin"
+        : candidate.role === "All-Rounder" ? "allrounder" : "bat";
+  const family = roleFamily(player);
+  const candidates = Object.values(existingPlayers).filter((candidate) =>
+    candidate.id !== player.id
+    && roleFamily(candidate) === family
+    && (candidate.age ?? 0) >= player.age + 5
+    && Math.max(candidate.currentBatting, candidate.currentBowling) >= 80
+    && (candidate.reputation ?? 0) >= 7
+    && ((candidate.iplStats?.matches ?? 0) >= 25 || (candidate.careerStats?.batting.matches ?? 0) >= 100),
+  );
+  if (candidates.length === 0) return undefined;
+  const weighted = candidates.map((candidate) => ({
+    candidate,
+    weight: 1
+      + Math.max(0, Math.max(candidate.currentBatting, candidate.currentBowling) - 78) * 0.12
+      + Math.max(0, (candidate.reputation ?? 0) - 6) * 0.65
+      + (candidate.country === player.country ? 1.5 : 0)
+      + (candidate.battingStyle === player.battingStyle ? 0.3 : 0)
+      + (candidate.bowlingStyle && candidate.bowlingStyle === player.bowlingStyle ? 1.5 : 0)
+      + (family === "allrounder" ? Math.max(0, 1.5 - Math.abs((candidate.currentBatting - candidate.currentBowling) - (player.currentBatting - player.currentBowling)) / 18) : 0),
+  })).sort((a, b) => a.candidate.id.localeCompare(b.candidate.id));
+  const totalWeight = weighted.reduce((sum, item) => sum + item.weight, 0);
+  let selection = random() * totalWeight;
+  const chosen = weighted.find((item) => (selection -= item.weight) <= 0)?.candidate
+    ?? weighted[weighted.length - 1].candidate;
+  const rating = 80 + Math.floor(random() * 16);
+  return {
+    playerId: chosen.id,
+    name: chosen.name,
+    rating,
+    reason: `${player.name} drew inspiration from ${chosen.name}'s ${family === "keeper" ? "wicketkeeping" : family === "bat" ? "batting" : family === "allrounder" ? "all-round game" : "bowling"} before entering the professional game.`,
+  };
+}
+
 function createGeneratedPlayer(input: {
   index: number;
   season: number;
@@ -3257,7 +3304,8 @@ function createGeneratedPlayer(input: {
   const generatedState = nationality === "Indian"
     ? input.forcedState ?? generatedStateAllocation?.name
     : undefined;
-  const isCapped = generatedAbility >= 86 || (mature && (ratings.current >= 82 || nationality === "Overseas"));
+  // Generated players enter the career before any simulated international appearance.
+  const isCapped = false;
   const dateOfBirth = generatedRegenDateOfBirth(
     input.season,
     age,
@@ -3323,6 +3371,7 @@ function createGeneratedPlayer(input: {
     nationality,
     country,
     state: generatedState,
+    youthPathwayId: generatedState ? `${generatedState}:${Math.floor((input.season - age) / 3)}` : undefined,
     role,
     battingStyle,
     bowlingStyle,
@@ -3335,8 +3384,8 @@ function createGeneratedPlayer(input: {
     iplHistory: [],
     basePrice: calculateBasePrice(isCapped, nationality, generatedAbility, reputation),
     isCapped,
-    internationalDebutSeason: isCapped ? input.season : undefined,
-    internationalDebutCountry: isCapped ? country : undefined,
+    internationalDebutSeason: undefined,
+    internationalDebutCountry: undefined,
     isRetained: false,
     retainedByTeamId: null,
     currentTeamId: null,
@@ -3367,8 +3416,10 @@ function createGeneratedPlayer(input: {
     generatedSeason: input.season,
     secondaryAttributesGenerationVersion: 1,
     phaseRatingsGenerationVersion: 1,
+    idolGenerationVersion: 1,
     lastAgedSeason: input.season,
   };
+  player.idol = chooseGeneratedIdol(player, input.players, input.seed, input.season);
   return enforceBattingPositionEligibility(player);
 }
 
@@ -3528,6 +3579,7 @@ function hasAuctionHighPotentialPlayer(
 }
 
 export function prepareRetentionPlayerPool(input: {
+  announcementDate?: string;
   players: Record<string, Player>;
   teams: Record<string, Team>;
   season: number;
@@ -3549,7 +3601,7 @@ export function prepareRetentionPlayerPool(input: {
       isMandatoryVeteranRetirement(player)
       && !hasOpeningSeasonDhoniRetirementGrace(player)
     ) {
-      return [{ player, record: retirementRecord(player, input.season, player.age, "natural") }];
+      return [{ player, record: retirementRecord(player, input.season, player.age, "natural", input.announcementDate) }];
     }
     return [];
   });
@@ -3567,7 +3619,7 @@ export function prepareRetentionPlayerPool(input: {
     }).slice(0, excess);
     const capped = removePlayers(result.players, result.teams, candidates.map((player) => ({
       player,
-      record: retirementRecord(player, input.season, player.age, "player-pool-cap"),
+      record: retirementRecord(player, input.season, player.age, "player-pool-cap", input.announcementDate),
     })));
     result = {
       ...capped,
@@ -3729,7 +3781,7 @@ export function prepareRetentionPlayerPool(input: {
       .slice(0, excess)
       .map((player) => ({
         player,
-        record: retirementRecord(player, input.season, player.age, "player-pool-cap"),
+        record: retirementRecord(player, input.season, player.age, "player-pool-cap", input.announcementDate),
       }));
     const trimmed = removePlayers(expanded, result.teams, trimCandidates);
     expanded = trimmed.players;
@@ -3794,6 +3846,7 @@ export function createHistoricalPlayerSnapshot(
     finalRating: record.rating,
     careerStats: player.careerStats,
     iplStats: player.iplStats,
+    t20iStats: player.t20iStats,
     iplHistory: player.iplHistory,
   };
 }

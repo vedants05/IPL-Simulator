@@ -188,6 +188,14 @@ body {
 }
 
 /* News outlets and social networks deliberately keep their own real-world UI. */
+.custom .app-navbar {
+  background: var(--custom-nav);
+  border-bottom-color: var(--custom-border) !important;
+}
+.custom .app-navbar-link[data-active="true"],
+.custom .app-navbar-link:hover { background: var(--custom-selection); }
+.custom .border-border { border-color: var(--custom-border); }
+.custom .fixed-external-ui,
 .retro .fixed-external-ui,
 .team .fixed-external-ui {
   --background: #f4f1ea;
@@ -361,9 +369,7 @@ body {
   container-type: size;
 }
 
-/* The league dashboard gives this tile five short grid rows on laptop-height
-   screens. Compact its internals from the tile height so every section remains
-   visible without introducing an internal scrollbar. */
+/* Keep the staff summary legible as the league grid changes height and width. */
 .league-personnel-tile {
   container-name: league-personnel;
   container-type: size;
@@ -371,57 +377,76 @@ body {
 
 @container league-personnel (max-height: 15rem) {
   .league-personnel-header {
-    padding-bottom: 0.35rem;
+    padding-bottom: 0.3rem;
   }
 
   .league-personnel-icon {
-    width: 1.75rem;
-    height: 1.75rem;
+    width: 1.6rem;
+    height: 1.6rem;
   }
 
-  .league-personnel-kicker,
-  .league-personnel-label,
-  .league-personnel-link {
-    font-size: 0.42rem;
+  .league-personnel-kicker {
+    font-size: 0.45rem;
   }
 
   .league-personnel-title {
-    margin-top: 0.15rem;
     font-size: 1rem;
   }
 
   .league-personnel-stats {
-    margin-top: 0.4rem;
-    gap: 0.35rem;
+    margin-top: 0.35rem;
+    gap: 0.4rem;
   }
 
   .league-personnel-stat {
-    padding: 0.4rem 0.5rem;
+    padding: 0.3rem 0.5rem;
   }
 
   .league-personnel-value {
-    font-size: 1.35rem;
+    font-size: 1.3rem;
   }
 
   .league-personnel-label {
-    margin-top: 0.15rem;
+    font-size: 0.48rem;
   }
 
   .league-personnel-events {
-    margin-top: 0.35rem;
+    margin-top: 0.25rem;
   }
 
   .league-personnel-event {
-    padding-top: 0.2rem;
-    font-size: 0.56rem;
+    padding-block: 0.2rem;
+    font-size: 0.58rem;
   }
 
   .league-personnel-event-meta {
-    font-size: 0.4rem;
+    font-size: 0.45rem;
+  }
+
+  .league-personnel-event:nth-child(n + 2) {
+    display: none;
   }
 
   .league-personnel-link {
-    margin-top: 0.25rem;
+    margin-top: 0.15rem;
+    font-size: 0.45rem;
+  }
+}
+
+@container league-personnel (max-height: 10rem) {
+  .league-personnel-events {
+    display: none;
+  }
+}
+
+@container league-personnel (max-width: 20rem) {
+  .league-personnel-stat {
+    gap: 0.3rem;
+    padding-inline: 0.4rem;
+  }
+
+  .league-personnel-label {
+    font-size: 0.45rem;
   }
 }
 
@@ -660,4 +685,45 @@ html.theme-changing *::after {
   animation: ticking-calendar-pull-up 420ms cubic-bezier(0.7, 0, 0.84, 0) both;
   pointer-events: none;
   will-change: transform, opacity;
+}
+
+.player-search-rating-range input[type="range"] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 32px;
+  margin: 0;
+  appearance: none;
+  background: transparent;
+  pointer-events: none;
+}
+
+.player-search-rating-range input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--ink);
+  border-radius: 50%;
+  background: var(--surface, white);
+  cursor: ew-resize;
+  pointer-events: auto;
+}
+
+.player-search-rating-range input[type="range"]::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--ink);
+  border-radius: 50%;
+  background: var(--surface, white);
+  cursor: ew-resize;
+  pointer-events: auto;
+}
+
+.player-search-rating-range input[type="range"]::-moz-range-track {
+  background: transparent;
+}
+
+.player-search-rating-range input[type="range"]:focus-visible::-webkit-slider-thumb {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
 }

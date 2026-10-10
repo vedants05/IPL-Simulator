@@ -77,7 +77,10 @@ export function mapRowsToPlayers(data: any[]): Player[] {
     const age = parseInt(row.age) || 0;
     const openingContractPrice = Math.round((parseFloat(row.ipl_2026_salary) || 0) * 100);
     const nat = row.overseas_status === "Overseas" ? "Overseas" : "Indian";
-    const isCapped = row.status === "Capped" || name === "Yash Thakur";
+    const isCapped = name !== "MS Dhoni" && (row.status === "Capped"
+      || Boolean(typeof row.international_debut_date === "string" && row.international_debut_date.trim())
+      || (parseInt(row.t20i_matches) || 0) > 0
+      || name === "Yash Thakur");
     const role = (ROLE_MAP[row.primary_role] ?? "Batsman") as Role;
     const bowlType = row.bowling_type || "NA";
     const batHand = (row.batting_hand || "").includes("LHB") || (row.batting_hand || "").toLowerCase().includes("left") ? "Left-hand" : "Right-hand";

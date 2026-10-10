@@ -167,7 +167,7 @@ export default function AuctionPage() {
 
       {/* Header bar */}
       <div
-        className="flex items-center justify-between px-[22px] py-[14px] shrink-0"
+        className="app-subnav app-auction-subnav flex items-center justify-between px-[22px] py-[14px] shrink-0"
         style={{ borderBottom: "2px solid var(--ink)" }}
       >
         <div className="flex items-center gap-[14px]">
@@ -1679,11 +1679,11 @@ function TeamSquadCard({
   const isLeftCol = positionIndex % 2 === 0;
 
   return (
-    <div className="relative flex flex-col items-stretch gap-y-4 lg:gap-y-0">
+    <div className="auction-squad-layout relative flex flex-col items-stretch gap-y-4 lg:gap-y-0">
       {/* Main Squad Card (Takes full column width) */}
       <div
         style={{ border: isUser ? "3px solid var(--ink)" : "2px solid var(--ink)" }}
-        className="w-full flex flex-col bg-surface2 z-0 relative"
+        className="auction-squad-card w-full flex flex-col bg-surface2 z-0 relative"
       >
         {/* Team header — franchise colours */}
         <div
@@ -1736,7 +1736,7 @@ function TeamSquadCard({
                 <span className="font-space-mono font-bold text-[9px] tracking-wider text-text-secondary uppercase w-[34px] shrink-0 pt-1">
                   {label}
                 </span>
-                <div className="flex flex-wrap gap-1 flex-1">
+                <div className="auction-squad-role-players flex flex-wrap gap-1 flex-1">
                   {group.map((p) => {
                     const wasRetained = team.retainedPlayers.includes(p.id);
                     const sale = p.iplHistory.find((h) => h.season === getActiveSeasonYear());
@@ -1809,7 +1809,7 @@ function TeamSquadCard({
                       <span
                         key={p.id}
                         style={bgStyle}
-                        className="font-barlow text-[11px] leading-tight px-1.5 py-0.5 rounded-[3px] border inline-flex items-center gap-1"
+                        className="auction-squad-player font-barlow text-[11px] leading-tight px-1.5 py-0.5 rounded-[3px] border inline-flex items-center gap-1"
                         title={`${p.role} · rating ${playerRating(p)}${wasRetained ? " · retained" : ""}${isRtm ? " · bought via RTM" : ""}`}
                       >
                         <span className="font-semibold text-text-primary">{p.name}</span>
@@ -1831,7 +1831,7 @@ function TeamSquadCard({
       {lineup.length > 0 && (
         <div
           style={{ backgroundColor: "var(--surface)" }}
-          className={`w-full lg:w-[170px] shrink-0 p-2.5 border-2 border-[var(--ink)] shadow-xl flex flex-col gap-1.5 transition-all duration-200 lg:hover:-translate-y-1 hover:shadow-2xl z-10
+          className={`auction-potential-xii w-full lg:w-[170px] shrink-0 p-2.5 border-2 border-[var(--ink)] shadow-xl flex flex-col gap-1.5 transition-all duration-200 lg:hover:-translate-y-1 hover:shadow-2xl z-10
             ${isLeftCol 
               ? "lg:absolute lg:right-full lg:mr-5 lg:top-0 rounded lg:rounded-r-none" 
               : "lg:absolute lg:left-full lg:ml-5 lg:top-0 rounded lg:rounded-l-none"}
@@ -1966,8 +1966,8 @@ function AuctionComplete() {
   const userOverseas = userSquad.filter((p) => p.nationality === "Overseas").length;
 
   return (
-    <div className="app-theme-background min-h-screen bg-bg overflow-y-auto">
-      <div className="max-w-6xl mx-auto p-8">
+    <div className="auction-summary app-theme-background min-h-screen bg-bg overflow-y-auto">
+      <div className="auction-summary-content max-w-6xl mx-auto p-8">
         <div className="mb-8 flex flex-col sm:flex-row justify-between items-center border-b-2 border-hairline pb-6 gap-4">
           <div className="text-center sm:text-left">
             <div className="font-space-mono font-bold text-[10px] tracking-[.16em] text-success mb-2 uppercase">
@@ -2212,7 +2212,7 @@ function AuctionComplete() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-y-10 gap-x-16">
+        <div className="auction-squads-grid grid grid-cols-1 lg:grid-cols-2 gap-y-10 gap-x-16">
           {ordered.map((team, idx) => (
             <TeamSquadCard
               key={team.id}

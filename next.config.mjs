@@ -1,8 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Keep production verification builds away from a running development
-  // server's .next cache. The pre-push check sets NEXT_DIST_DIR explicitly.
-  distDir: process.env.NEXT_DIST_DIR || ".next",
+  // Keep development chunks separate from production builds, including
+  // builds run without NEXT_DIST_DIR while the dev server is running.
+  distDir: process.env.NEXT_DIST_DIR || (process.env.NODE_ENV === "development" ? ".next-dev" : ".next"),
 };
 
 export default nextConfig;

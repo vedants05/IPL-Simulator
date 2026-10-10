@@ -1,4 +1,5 @@
 "use client";
+import { formatDateKeysInText } from "@/lib/logic/displayDate";
 
 import { ChevronRight, CircleDot, Medal, Sparkles, Trophy } from "lucide-react";
 
@@ -298,7 +299,7 @@ export default function LeagueRecords({
                   <span className="min-w-0 overflow-hidden">
                     <span className="block truncate font-space-mono text-[7px] font-bold uppercase tracking-wide text-text-secondary">{record.label}</span>
                     <span className="mt-0.5 block truncate text-[10px] font-semibold text-text-primary">{record.holder}</span>
-                    <span className="mt-0.5 block truncate font-space-mono text-[7px] text-text-secondary">{record.detail}</span>
+                    <span className="mt-0.5 block truncate font-space-mono text-[7px] text-text-secondary">{formatDateKeysInText(record.detail)}</span>
                   </span>
                   <span className="min-w-0 text-right">
                     <span className="block whitespace-nowrap font-anton text-[clamp(13px,1.15vw,17px)] leading-none text-[#9b6823]">{record.value}</span>

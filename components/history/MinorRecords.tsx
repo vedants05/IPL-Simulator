@@ -1,6 +1,7 @@
 "use client";
 import { useMemo, useState } from "react";
 import { MINOR_RECORDS, type MinorRecord, type MinorRecordBreak } from "@/lib/data/minorRecords";
+import { formatDateKeysInText } from "@/lib/logic/displayDate";
 import { LEAGUE_HISTORY_TEAMS } from "@/lib/data/leagueHistory";
 import { isActualMinorRecordBenchmark } from "@/lib/logic/minorRecordTracker";
 
@@ -79,7 +80,7 @@ function displayRecordContext(notes?: string) {
   const opponent = displayOpponent(notes);
   if (opponent !== "—") return opponent;
   const firstDetail = notes?.split(/[·|]/)[0]?.trim();
-  return firstDetail || "—";
+  return formatDateKeysInText(firstDetail || "—");
 }
 
 function RankedRecordTable({ title, description, records }: { title: string; description: string; records: MinorRecord[] }) {

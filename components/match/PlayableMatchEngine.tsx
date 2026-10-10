@@ -1,4 +1,5 @@
 "use client";
+import { formatDisplayDate } from "@/lib/logic/displayDate";
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { Activity, ChevronDown, Gauge, Pause, Play, Shield, SkipForward, Target, UserPlus, Users, X, Zap } from "lucide-react";
@@ -1263,7 +1264,7 @@ export default function PlayableMatchEngine({ input, userTeamId, session, onSess
         <div className="flex items-center gap-4">
           <div className={styles.brand}><span className={styles.liveDot}/><span className="font-space-mono text-xs font-bold tracking-widest text-yellow-500">MATCH CENTRE</span></div>
           <div className="flex flex-col gap-0.5 rounded-md border border-white/15 bg-[#111622] px-3 py-1 font-space-mono text-[9.5px] leading-tight text-slate-300">
-            <span>🏟️ {input.conditions.stadiumName} · 📅 {input.date ?? "Matchday"} ({input.time ?? "TBD"})</span>
+            <span>🏟️ {input.conditions.stadiumName} · 📅 {input.date ? formatDisplayDate(input.date) : "Matchday"} ({input.time ?? "TBD"})</span>
             <span className="text-slate-400">🌱 {input.conditions.pitch.name} · Expected {input.conditions.adjustedExpectedScore.min}–{input.conditions.adjustedExpectedScore.max} · 🌧️ {progress.simulation?.conditions.weather.kind ?? "Live conditions"}</span>
           </div>
           <div className={styles.headerActions}>

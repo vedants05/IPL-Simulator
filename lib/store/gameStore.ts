@@ -2,6 +2,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { gameStatePersistStorage } from "@/lib/storage/gameStateStorage";
+import { loadBusiness, serviceEffects } from "@/lib/logic/commercial/engine";
 import { v4 as uuidv4 } from "uuid";
 import {
   GameState,
@@ -24,6 +25,7 @@ import { calculateStaffRoleRatings, isStaffRatingRole, type StaffRatingAttribute
 import { loadStaffDirectory } from "@/lib/logic/staffDirectoryClient";
 import type { ClubFigureProgression, ClubFigureTier, ClubFigureTierOverrides } from "@/lib/data/clubFigures";
 import { processClubFigureSeason } from "@/lib/logic/clubFigureProgression";
+import { applyCareerRelationshipEvent, documentedRelationships, emptyCareerRelationshipState, progressCareerRelationships, relationshipId, type CareerRelationshipState, type RelationshipEvent, type RelationshipMatch } from "@/lib/logic/careerRelationships";
 import { applyOffseasonStatsToCareer, generateOffseasonStats, offseasonPeriodKey, type OffseasonStatsPeriod } from "@/lib/logic/offseasonStats";
 import type { LeagueHistorySeason } from "@/lib/data/leagueHistory";
 import { HISTORICAL_LEAGUE_HISTORY } from "@/lib/data/leagueHistory";
@@ -299,6 +301,7 @@ interface GameStateAdditions {
     playerMatchLogs?: Record<string, unknown[]>;
     leagueRecords?: OtherLeagueRecord[];
   }>;
+  careerRelationships: CareerRelationshipState;
   careerIplProcessedMatchKeys: string[];
   careerT20ProcessedMatchKeys: string[];
   careerIplTrackingSeason: number | null;
@@ -442,9 +445,11 @@ interface GameActions {
     standings: unknown[];
     playerStats: Record<string, unknown>;
     playerMatchLogs?: Record<string, unknown[]>;
+    relationshipMatches?: RelationshipMatch[];
     leagueRecords?: OtherLeagueRecord[];
     reputationAchievements?: CareerReputationAchievements;
   }, onStage?: (stage: string) => void) => Promise<void>;
+  recordRelationshipEvent: (event: RelationshipEvent) => void;
   setCareerFastForwardTarget: (targetDate: string | null) => void;
   completeOffseasonAutomatically: () => Promise<boolean>;
   setHomePitchSelection: (teamId: string, pitchId: string) => void;
@@ -1464,6 +1469,7 @@ export const useGameStore = create<Store>()(
       simulatedLeagueHistory: [],
       lastRolledOverSeason: null,
       careerSeasonArchives: [],
+      careerRelationships: emptyCareerRelationshipState(),
       careerIplProcessedMatchKeys: [],
       careerT20ProcessedMatchKeys: [],
       careerIplTrackingSeason: null,
@@ -1578,6 +1584,7 @@ export const useGameStore = create<Store>()(
         const initializedPlayers = initializeCareerPlayers(playersMap, INITIAL_ACTIVE_SEASON - 1);
         const auctionMarketProfile = createAuctionMarketProfile(Object.values(initializedPlayers));
         const preparedPool = prepareRetentionPlayerPool({
+          announcementDate: getSeasonDates(INITIAL_ACTIVE_SEASON).retentionDate,
           players: initializedPlayers,
           teams: teamsMap,
           season: INITIAL_ACTIVE_SEASON,
@@ -1659,6 +1666,7 @@ export const useGameStore = create<Store>()(
           simulatedLeagueHistory: [],
           lastRolledOverSeason: null,
           careerSeasonArchives: [],
+          careerRelationships: emptyCareerRelationshipState(),
           careerIplProcessedMatchKeys: [],
           careerT20ProcessedMatchKeys: [],
           careerIplTrackingSeason: INITIAL_ACTIVE_SEASON,
@@ -1735,6 +1743,7 @@ export const useGameStore = create<Store>()(
         if (Object.keys(state.players).length === 0) return;
 
         const retiredPlayerIds = getRetiredPlayerIds(state);
+        const refreshedRetiredSnapshots = { ...state.retiredPlayerSnapshots };
         const refreshedPlayers = Object.fromEntries(
           Object.entries(state.players).filter(([playerId]) => !retiredPlayerIds.has(playerId)),
         );
@@ -1745,7 +1754,13 @@ export const useGameStore = create<Store>()(
         fetchedPlayers.forEach((freshPlayer) => {
           // Missing from the active map can mean retired, not newly added to
           // the database. Retirement history is authoritative for this save.
-          if (retiredPlayerIds.has(freshPlayer.id)) return;
+          if (retiredPlayerIds.has(freshPlayer.id)) {
+            const snapshot = refreshedRetiredSnapshots[freshPlayer.id];
+            if (snapshot && (snapshot.t20iStats?.matches ?? 0) === 0 && (freshPlayer.t20iStats?.matches ?? 0) > 0) {
+              refreshedRetiredSnapshots[freshPlayer.id] = { ...snapshot, t20iStats: freshPlayer.t20iStats };
+            }
+            return;
+          }
           const savedPlayer = state.players[freshPlayer.id];
           if (!savedPlayer) {
             refreshedPlayers[freshPlayer.id] = freshPlayer;
@@ -1916,6 +1931,7 @@ export const useGameStore = create<Store>()(
         ));
         set({
           players: refreshedMarketPlayers,
+          retiredPlayerSnapshots: refreshedRetiredSnapshots,
           teams: Object.fromEntries(Object.entries(state.teams).map(([teamId, team]) => [teamId, {
             ...team,
             squad: team.squad.filter((id) => !retiredPlayerIds.has(id)),
@@ -4517,6 +4533,7 @@ export const useGameStore = create<Store>()(
             assignments: state.scoutingAssignments,
             reports: state.scoutingReports,
             networks: state.scoutingNetworks,
+            commercialConfidenceBonus: state.userTeamId ? serviceEffects(loadBusiness(state.saveId, state.userTeamId, state.currentSeason)).scoutingConfidence : 0,
           });
           completedCount = result.completedCount;
           if (completedCount === 0) return state;
@@ -4834,7 +4851,26 @@ export const useGameStore = create<Store>()(
             effectiveOn: input.effectiveOn ?? state.currentDate,
           });
           renewed = next !== state.careerStaff;
-          return renewed ? { careerStaff: next } : state;
+          if (!renewed) return state;
+          const member = next.contracts[input.staffId];
+          const head = member?.teamId && !member.roles.includes("head_coach")
+            ? Object.values(next.contracts).find((contract) => contract.status === "contracted" && contract.teamId === member.teamId && contract.roles.includes("head_coach"))
+            : null;
+          if (!member || !head) return { careerStaff: next };
+          const leader = { kind: "staff" as const, id: head.staffSlug, name: head.fullName };
+          const colleague = { kind: "staff" as const, id: member.staffSlug, name: member.fullName };
+          const records = { ...documentedRelationships(state.players, next), ...state.careerRelationships.records };
+          const trusted = ["preferred_assistant", "inner_circle_assistant"].some((type) => (records[relationshipId(type, leader, colleague)]?.rating ?? 0) >= 65);
+          if (!trusted) return { careerStaff: next };
+          const careerRelationships = applyCareerRelationshipEvent({ ...state.careerRelationships, records }, {
+            id: `essential-retention:${next.employmentHistory[next.employmentHistory.length - 1]?.id ?? `${state.currentSeason}:${member.staffId}`}`,
+            season: state.currentSeason,
+            type: "essential_staff",
+            subject: leader,
+            partner: colleague,
+            reason: "A trusted colleague was explicitly retained in the head coach's staff structure.",
+          });
+          return { careerStaff: next, careerRelationships };
         });
         return renewed;
       },
@@ -4936,6 +4972,7 @@ export const useGameStore = create<Store>()(
           );
           await stage(`Retention 6/10 · Generating season ${nextSeason} player pool and retirement intake...`);
           const preparedPool = prepareRetentionPlayerPool({
+            announcementDate: getSeasonDates(nextSeason).retentionDate,
             players: fallbackPlayersWithT20,
             teams: fallbackPostseason.teams,
             season: nextSeason,
@@ -5160,7 +5197,7 @@ export const useGameStore = create<Store>()(
             }];
           }));
           await stage(`Archive 2/14 · Building compact archive from ${archive.fixtures.length} playoff fixtures...`);
-          const { reputationAchievements, ...archiveForHistory } = archive;
+          const { reputationAchievements, relationshipMatches, ...archiveForHistory } = archive;
           const previousArchive = state.careerSeasonArchives.find((record) => record.season === archive.season);
           // Aggregated season totals are tiny compared with delivery archives
           // and are the authoritative repair source for player profile history.
@@ -5368,6 +5405,16 @@ export const useGameStore = create<Store>()(
             season: archive.season,
             seed: state.saveId || state.fixtureSeed,
           }).state;
+          const careerRelationships = progressCareerRelationships({
+            state: state.careerRelationships,
+            season: archive.season,
+            players: normalizedPlayers,
+            developedPlayers: developedPlayersWithSeasonStats,
+            seasonPlayerStats: typedArchivedStats,
+            teamRanks: Object.fromEntries((archive.standings as Array<{ teamId: string }>).map((row, index) => [row.teamId, index + 1])),
+            staff: careerStaff,
+            matches: relationshipMatches ?? [],
+          });
           await stage(`Archive 14/14 · Persisting ${playerCount} players and ${careerSeasonArchives.length} season archives...`);
           set({
             careerSeasonArchives,
@@ -5393,8 +5440,16 @@ export const useGameStore = create<Store>()(
               ...lifecycle.retirements,
             ].filter((record, index, records) => records.findIndex((candidate) => candidate.playerId === record.playerId && candidate.season === record.season) === index),
             careerStaff,
+            careerRelationships,
           });
       },
+
+      recordRelationshipEvent: (event) => set((state) => ({
+        careerRelationships: applyCareerRelationshipEvent({
+          ...state.careerRelationships,
+          records: { ...documentedRelationships(state.players, state.careerStaff), ...state.careerRelationships.records },
+        }, event),
+      })),
 
       processMatchInjuries: (input) => {
         let result: InjuryProcessingResult = { created: [], worsened: [], recovered: [] };
@@ -5883,6 +5938,7 @@ export const useGameStore = create<Store>()(
             || state.lastCareerAuctionProcessedSeason === auction.season
           ) return state;
           const lifecycle = processPostAuctionCareer({
+            announcementDate: state.currentDate,
             players: state.players,
             teams: state.teams,
             auctionedPlayerIds: auction.allPlayerIds,
@@ -6001,6 +6057,7 @@ export const useGameStore = create<Store>()(
           simulatedLeagueHistory: [],
           lastRolledOverSeason: null,
           careerSeasonArchives: [],
+          careerRelationships: emptyCareerRelationshipState(),
           careerIplProcessedMatchKeys: [],
           careerT20ProcessedMatchKeys: [],
           careerIplTrackingSeason: null,
@@ -6074,6 +6131,7 @@ export const useGameStore = create<Store>()(
         simulatedLeagueHistory: state.simulatedLeagueHistory,
         lastRolledOverSeason: state.lastRolledOverSeason,
         careerSeasonArchives: state.careerSeasonArchives,
+        careerRelationships: state.careerRelationships,
         careerIplProcessedMatchKeys: state.careerIplProcessedMatchKeys,
         careerT20ProcessedMatchKeys: state.careerT20ProcessedMatchKeys,
         careerIplTrackingSeason: state.careerIplTrackingSeason,
@@ -6145,6 +6203,10 @@ export const useGameStore = create<Store>()(
         Object.entries(migratedPlayers).forEach(([id, player]) => {
           if (player.name.trim().toLocaleLowerCase("en-GB") === "ajinkya rahane") {
             delete migratedPlayers[id];
+          } else if (player.name === "MS Dhoni" && player.isCapped) {
+            migratedPlayers[id] = { ...player, isCapped: false };
+          } else if (!player.isCapped && (player.internationalDebutDate || (player.t20iStats?.matches ?? 0) > 0)) {
+            migratedPlayers[id] = { ...player, isCapped: true };
           }
         });
         const cleanedTeams = Object.fromEntries(Object.entries(migratedTeams).map(([id, team]) => [
@@ -6317,6 +6379,7 @@ export const useGameStore = create<Store>()(
           simulatedLeagueHistory: repairedLeagueHistoryRecords,
           lastRolledOverSeason: p.lastRolledOverSeason ?? null,
           careerSeasonArchives: repairedSeasonArchives,
+          careerRelationships: p.careerRelationships ?? emptyCareerRelationshipState(),
           careerIplProcessedMatchKeys: p.careerIplProcessedMatchKeys ?? [],
           careerT20ProcessedMatchKeys: p.careerT20ProcessedMatchKeys ?? [],
           careerIplTrackingSeason: p.careerIplTrackingSeason ?? null,

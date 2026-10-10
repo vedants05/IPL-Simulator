@@ -403,6 +403,7 @@ export interface MatchLineupSnapshot {
   plan: "battingFirst" | "bowlingFirst";
   startingXI: string[];
   finalXI: string[];
+  impactSubs?: string[];
   captainId?: string | null;
   viceCaptainId?: string | null;
 }
@@ -5543,6 +5544,7 @@ function simulateMatchToCompletion(
         plan: "battingFirst",
         startingXI: [...battingFirstState.startingXI],
         finalXI: [...battingFirstState.finalXI],
+        impactSubs: [...battingFirstState.plan.impactSubs],
         captainId: battingFirstState.plan.captainId,
         viceCaptainId: battingFirstState.plan.viceCaptainId,
       },
@@ -5551,6 +5553,7 @@ function simulateMatchToCompletion(
         plan: "bowlingFirst",
         startingXI: [...bowlingFirstState.startingXI],
         finalXI: [...bowlingFirstState.finalXI],
+        impactSubs: [...bowlingFirstState.plan.impactSubs],
         captainId: bowlingFirstState.plan.captainId,
         viceCaptainId: bowlingFirstState.plan.viceCaptainId,
       },

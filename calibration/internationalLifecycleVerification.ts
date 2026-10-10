@@ -10,6 +10,7 @@ import {
   reconcileInternationalCareer,
 } from "../lib/logic/international";
 import { generateOffseasonStats } from "../lib/logic/offseasonStats";
+import { initializeCareerPlayers } from "../lib/logic/careerLifecycle";
 
 const captains: Array<[string, string, string]> = [
   ["IND", "India", "Shreyas Iyer"], ["AUS", "Australia", "Mitchell Marsh"],
@@ -42,6 +43,15 @@ captains.forEach(([id, country, name], countryIndex) => {
 });
 players["IND-prospect"] = player("IND-prospect", "India Uncapped Prospect", "India", "Batsman", 96, false);
 players["IND-prospect"].internationalCallUpSeason = 2025;
+const prematureCaps = initializeCareerPlayers({
+  elite: player("elite", "Elite Uncapped", "India", "Batsman", 88, false),
+  legacy: { ...player("legacy", "Prematurely Capped", "India", "Pace Bowler", 88), internationalDebutSeason: 2028 },
+  historical: player("historical", "Historical International", "India", "Batsman", 82),
+}, 2029);
+assert.equal(prematureCaps.elite.isCapped, false, "Ability alone must not award an international cap");
+assert.equal(prematureCaps.legacy.isCapped, false, "A saved synthetic cap without an appearance must be reversed");
+assert.equal(prematureCaps.legacy.internationalDebutSeason, undefined, "A pre-debut player must not retain a debut season marker");
+assert.equal(prematureCaps.historical.isCapped, true, "Historical internationals must retain their known capped status");
 players["IND-keeper-role"] = {
   ...player("IND-keeper-role", "Prabhsimran Singh", "India", "All-Rounder", 88),
   isWicketkeeper: true,
@@ -58,6 +68,73 @@ players["IND-batting-ar"] = {
 };
 
 const state = createInternationalCareer(2026, players);
+const lateIndiaPlayer = {
+  ...player("IND-late-callup", "Late India Call-Up", "India", "Batsman", 80, false),
+  careerState: { lastSeasonMatches: 14, lastSeasonRuns: 430, lastSeasonWickets: 0 } as Player["careerState"],
+};
+const lateIndiaPlayers = { ...players, [lateIndiaPlayer.id]: lateIndiaPlayer };
+assert.ok(internationalCareerNeedsReconcile(state, 2026, "2025-05-01", lateIndiaPlayers), "New IPL performance must refresh international selection before a fixture is due");
+const lateCallUp = reconcileInternationalCareer(state, 2026, "2025-05-01", lateIndiaPlayers);
+assert.ok(lateCallUp.state.teams.IND.pendingDebuts[`full:${lateIndiaPlayer.id}`], "An eligible Indian must receive a pending call-up as soon as the squad refreshes");
+assert.equal(lateCallUp.playerUpdates[lateIndiaPlayer.id]?.isCapped, false, "A call-up must not award a cap");
+assert.ok(!internationalCareerNeedsReconcile(lateCallUp.state, 2026, "2025-05-01", { ...lateIndiaPlayers, ...lateCallUp.playerUpdates }), "A completed call-up refresh must settle without repeated reconciliation");
+const youthPlayers = {
+  ...players,
+  "IND-prospect": { ...players["IND-prospect"], isCapped: true, internationalCallUpSeason: undefined },
+  "IND-youth": { ...player("IND-youth", "India Youth Batter", "India", "Batsman", 90, false), age: 22 },
+  "IND-form": {
+    ...player("IND-form", "India In-Form Batter", "India", "Batsman", 80, false),
+    age: 30,
+    careerState: { lastSeasonMatches: 14, lastSeasonRuns: 430, lastSeasonWickets: 0 } as Player["careerState"],
+  },
+};
+const youthCareer = createInternationalCareer(2026, youthPlayers);
+assert.ok(youthCareer.teams.IND.squad.includes("full:IND-youth"), "A strong uncapped Indian prospect must reach the national squad");
+assert.ok(youthCareer.teams.IND.preferredXI.includes("full:IND-youth"), "A selected development prospect must have a debut route into the XI");
+assert.ok(youthCareer.teams.IND.squad.includes("full:IND-form"), "A productive uncapped player over 27 must also be eligible for an India call-up");
+const legacyYouthCareer = structuredClone(youthCareer);
+legacyYouthCareer.lineupRevision = 3;
+legacyYouthCareer.teams.IND.developmentDebutSeason = 2026;
+legacyYouthCareer.teams.IND.pendingDebuts = {};
+const repairedYouthCareer = reconcileInternationalCareer(legacyYouthCareer, 2026, "2025-05-01", youthPlayers);
+assert.ok(repairedYouthCareer.state.teams.IND.pendingDebuts["full:IND-youth"], "An older save must restore a lost uncapped call-up");
+assert.ok(repairedYouthCareer.state.teams.IND.pendingDebuts["full:IND-form"], "An older save must call up an eligible IPL performer");
+const firstIndiaFixture = repairedYouthCareer.state.fixtures.filter((fixture) => fixture.teamA === "IND" || fixture.teamB === "IND")
+  .sort((a, b) => a.date.localeCompare(b.date))[0];
+const youthDebut = reconcileInternationalCareer(repairedYouthCareer.state, 2026, firstIndiaFixture.date, youthPlayers);
+const newIndiaDebut = ["IND-youth", "IND-form"].find((id) => youthDebut.playerUpdates[id]?.internationalDebutDate === firstIndiaFixture.date);
+assert.ok(newIndiaDebut, "A restored Indian call-up must become an actual debut on the next India fixture");
+assert.ok(youthDebut.playerUpdates[newIndiaDebut!].internationalDebutDate, "The debut date must be persisted for the new India player");
+assert.equal(youthDebut.playerUpdates[newIndiaDebut!]?.isCapped, true, "The cap and debut date must be awarded by the same first appearance");
+const manyProspectPlayers = {
+  ...youthPlayers,
+  "IND-angkrish": {
+    ...player("IND-angkrish", "Angkrish Raghuvanshi", "India", "Batsman", 80, false),
+    internationalCallUpSeason: 2028,
+    careerState: { lastSeasonMatches: 14, lastSeasonRuns: 430, lastSeasonWickets: 0 } as Player["careerState"],
+  },
+  "IND-new-pace": player("IND-new-pace", "India New Pace", "India", "Pace Bowler", 88, false),
+  "IND-new-spin": player("IND-new-spin", "India New Spin", "India", "Spin Bowler", 87, false),
+  "IND-new-keeper": player("IND-new-keeper", "India New Keeper", "India", "WK-Batsman", 86, false),
+};
+const manyProspectCareer = reconcileInternationalCareer(createInternationalCareer(2030, manyProspectPlayers), 2030, "2029-11-01", manyProspectPlayers);
+const freshIndiaIds = ["IND-angkrish", "IND-youth", "IND-form", "IND-new-pace", "IND-new-spin", "IND-new-keeper"];
+assert.ok(freshIndiaIds.every((id) => Boolean(manyProspectCareer.playerUpdates[id]?.internationalDebutDate)), "Pending India selections must all receive a bilateral debut across available series");
+const first2030IndiaFixture = manyProspectCareer.state.fixtures.filter((fixture) => fixture.teamA === "IND" || fixture.teamB === "IND")
+  .sort((a, b) => a.date.localeCompare(b.date))[0];
+assert.equal(manyProspectCareer.playerUpdates["IND-angkrish"]?.internationalDebutDate, first2030IndiaFixture.date, "An older pending India selection must be placed in the next bilateral XI");
+manyProspectCareer.state.fixtures.filter((fixture) => fixture.played && fixture.stage === "bilateral" && (fixture.teamA === "IND" || fixture.teamB === "IND"))
+  .forEach((fixture) => {
+    const xi = fixture.teamA === "IND" ? fixture.xiA ?? [] : fixture.xiB ?? [];
+    const profiles = xi.map((id) => manyProspectCareer.state.profiles[id]);
+    assert.ok(profiles.slice(0, 2).every((profile) => profile.isOpener || profile.battingPositions.some((position) => position <= 2)), "A debut rotation must retain two India openers");
+    assert.ok(profiles.some((profile) => profile.isWicketkeeper), "A debut rotation must retain an India keeper");
+    assert.ok(profiles.filter((profile) => ["Pace Bowler", "Spin Bowler", "All-Rounder"].includes(profile.role) && profile.bowling >= 70).length >= 5, "A debut rotation must retain five credible India bowlers");
+  });
+const seriesSquads = Object.entries(manyProspectCareer.state.teams.IND.seriesSquads ?? {})
+  .filter(([id]) => id.startsWith("intl:"))
+  .map(([, ids]) => ids.join(","));
+assert.ok(new Set(seriesSquads).size > 1, "India must select different squads for different bilateral series");
 assert.equal(INTERNATIONAL_TEAMS.length, 27, "The international pool must contain 27 countries");
 assert.equal(state.qualifiers.length, 13, "A World Cup year must select 13 lightweight qualifiers");
 captains.forEach(([id, country, name]) => {
@@ -113,7 +190,7 @@ assert.ok(completed.state.fixtures.every((fixture) => fixture.played), "All elap
 assert.equal(completed.state.fixtures.filter((fixture) => fixture.stage === "final").length, 1, "World Cup must reach a final");
 completed.state.fixtures.forEach((fixture) => {
   [fixture.xiA ?? [], fixture.xiB ?? []].forEach((xi) => {
-    assert.ok(xi.slice(0, 2).every((id) => completed.state.profiles[id].isOpener || completed.state.profiles[id].battingPositions.includes(1) || completed.state.profiles[id].battingPositions.includes(2)), "Every batting order must begin with two recognised openers");
+    assert.ok(xi.slice(0, 2).every((id) => completed.state.profiles[id].isOpener || completed.state.profiles[id].battingPositions.includes(1) || completed.state.profiles[id].battingPositions.includes(2)), `Every batting order must begin with two recognised openers: ${fixture.id} ${xi.slice(0, 2).join(", ")}`);
     assert.ok(xi.slice(0, 7).some((id) => completed.state.profiles[id].isWicketkeeper), "The selected wicketkeeper must bat in the top seven");
     assert.ok(xi.slice(5, 7).every((id) => {
       const profile = completed.state.profiles[id];
@@ -155,9 +232,13 @@ const indiaSpecialistWickets = Object.entries(completed.state.seasonStats)
   .map(([, stats]) => stats.wickets);
 assert.ok((completed.state.seasonStats["full:IND-batting-ar"]?.wickets ?? 0) <= Math.max(...indiaSpecialistWickets), "A 68-rated batting all-rounder must not be favoured over India's specialist wicket-takers");
 assert.equal(completed.playerUpdates["IND-prospect"]?.isCapped, true, "A selected uncapped player must become capped on appearance");
+assert.ok(/^\d{4}-\d{2}-\d{2}$/.test(completed.playerUpdates["IND-prospect"]?.internationalDebutDate ?? ""), "A debuting player must receive the date of their first appearance");
 assert.equal(completed.playerUpdates["IND-prospect"]?.currentBatting, originalProspect.currentBatting, "International cricket must not change batting ability");
 assert.equal(completed.playerUpdates["IND-prospect"]?.battingConsistency, originalProspect.battingConsistency, "International cricket must not change hidden attributes");
 const indiaMatches = completed.state.fixtures.filter((fixture) => fixture.played && (fixture.teamA === "IND" || fixture.teamB === "IND")).length;
+const indiaBilateralXIs = completed.state.fixtures.filter((fixture) => fixture.played && fixture.stage === "bilateral" && (fixture.teamA === "IND" || fixture.teamB === "IND"))
+  .map((fixture) => fixture.teamA === "IND" ? fixture.xiA ?? [] : fixture.xiB ?? []);
+assert.ok(new Set(indiaBilateralXIs.flat()).size > 11, "Bilateral selection must rotate at least one India squad player into the XI");
 assert.ok(Object.entries(completed.state.seasonStats).filter(([id]) => completed.state.profiles[id]?.countryId === "IND").every(([, row]) => row.matches <= indiaMatches), "A player appearance must be counted once per match even when they bat and bowl");
 
 const alreadyCappedPlayers = structuredClone(players);
@@ -168,9 +249,17 @@ alreadyCappedPlayers["IND-prospect"] = {
   internationalDebutCountry: "India",
 };
 const externalCapState = createInternationalCareer(2026, alreadyCappedPlayers);
+const beforeExternalDebut = reconcileInternationalCareer(externalCapState, 2026, "2025-05-01", alreadyCappedPlayers);
+assert.equal(beforeExternalDebut.playerUpdates["IND-prospect"]?.isCapped, false, "A saved synthetic cap must be removed before the player appears");
+assert.equal(beforeExternalDebut.playerUpdates["IND-prospect"]?.internationalDebutDate, undefined, "A squad place must not invent a debut date");
 const externalCapResult = reconcileInternationalCareer(externalCapState, 2026, "2026-05-31", alreadyCappedPlayers);
 assert.ok((externalCapResult.state.seasonStats["full:IND-prospect"]?.matches ?? 0) >= 1, "A player capped by career progression must be forced to make an international appearance");
+assert.ok(externalCapResult.playerUpdates["IND-prospect"]?.internationalDebutDate, "An already capped player's first appearance must still receive a debut date");
 assert.equal(externalCapResult.state.teams.IND.pendingDebuts["full:IND-prospect"], undefined, "A forced debut must remain pending only until the player actually appears");
+const legacyAppearance = structuredClone(externalCapResult.state);
+legacyAppearance.lineupRevision = 2;
+const repairedAppearance = reconcileInternationalCareer(legacyAppearance, 2026, "2026-05-31", alreadyCappedPlayers);
+assert.equal(repairedAppearance.playerUpdates["IND-prospect"]?.internationalDebutDate, externalCapResult.playerUpdates["IND-prospect"]?.internationalDebutDate, "Existing saves must recover the date from their first recorded appearance");
 
 const next = reconcileInternationalCareer(completed.state, 2027, "2027-01-01", { ...players, ...completed.playerUpdates });
 captains.forEach(([id, , name]) => assert.equal(internationalProfileName(next.state, next.state.teams[id].captainId), name, "Captaincy must persist into the next season"));

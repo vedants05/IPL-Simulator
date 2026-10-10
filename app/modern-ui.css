@@ -1,0 +1,189 @@
+/* UI geometry is independent of the selected colour palette.
+   Original has no overrides, preserving the existing interface. */
+html:is([data-ui-design="modern"], [data-ui-design="sidebar"]) .app-theme-shell {
+  --modern-primary-height: 38px;
+  --modern-secondary-height: 36px;
+  --modern-history-width: 64px;
+}
+
+html:is([data-ui-design="modern"], [data-ui-design="sidebar"]) .app-navbar {
+  position: relative;
+  height: var(--modern-primary-height);
+  padding-left: calc(var(--modern-history-width) + 12px);
+  padding-right: 12px;
+  border-bottom-width: 1px;
+}
+
+html:is([data-ui-design="modern"], [data-ui-design="sidebar"]) .app-navbar-identity { margin-right: 8px; gap: 0; }
+html:is([data-ui-design="modern"], [data-ui-design="sidebar"]) .app-navbar-team-name { display: none; }
+html:is([data-ui-design="modern"], [data-ui-design="sidebar"]) .app-navbar-initials { height: 25px; min-width: 28px; padding-inline: 6px; }
+html:is([data-ui-design="modern"], [data-ui-design="sidebar"]) .app-navbar-links { min-width: 0; flex-shrink: 0; }
+html:is([data-ui-design="modern"], [data-ui-design="sidebar"]) .app-navbar-link {
+  height: var(--modern-primary-height);
+  padding-inline: 10px;
+  font-family: var(--font-barlow-condensed), sans-serif;
+  font-size: 16px !important;
+  line-height: 1;
+  font-weight: 700;
+  letter-spacing: .015em;
+  white-space: nowrap;
+}
+
+html:is([data-ui-design="modern"], [data-ui-design="sidebar"]) .app-navbar-actions { gap: 9px; flex-shrink: 0; }
+html:is([data-ui-design="modern"], [data-ui-design="sidebar"]) .app-navbar-date { font-family: var(--font-barlow-condensed), sans-serif; font-size: 15px; letter-spacing: .01em; white-space: nowrap; }
+html:is([data-ui-design="modern"], [data-ui-design="sidebar"]) .app-navbar-actions [data-tour="auction-top-controls"] { gap: 8px; }
+html:is([data-ui-design="modern"], [data-ui-design="sidebar"]) .app-navbar-actions > div:first-child > button,
+html:is([data-ui-design="modern"], [data-ui-design="sidebar"]) .app-navbar-actions > [data-tour="auction-top-controls"] > div > button {
+  font-family: var(--font-barlow-condensed), sans-serif;
+  font-size: 14px !important;
+  letter-spacing: .01em;
+  padding-inline: 8px;
+}
+
+/* These are real, reserved gutters in BOTH rows. History buttons never sit
+   over subnavigation links, auction counters or the continue controls. */
+html:is([data-ui-design="modern"], [data-ui-design="sidebar"]) .app-history-navigation {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: var(--modern-history-width);
+  height: var(--modern-primary-height);
+  gap: 0;
+  margin: 0;
+  align-items: stretch;
+  border-bottom: 1px solid var(--ink);
+}
+html:is([data-ui-design="modern"], [data-ui-design="sidebar"]) .app-theme-shell:has(.app-subnav) .app-history-navigation {
+  height: calc(var(--modern-primary-height) + var(--modern-secondary-height));
+}
+html:is([data-ui-design="modern"], [data-ui-design="sidebar"]) .app-history-navigation > button {
+  width: 50%;
+  height: 100%;
+  border: 0;
+  border-right: 1px solid var(--ink);
+  border-radius: 0;
+  transform: none;
+}
+html:is([data-ui-design="modern"], [data-ui-design="sidebar"]) .app-history-navigation > button:hover { filter: brightness(.94); transform: none; }
+html:is([data-ui-design="modern"], [data-ui-design="sidebar"]) .app-history-navigation > button:active { filter: brightness(.88); transform: none; }
+html:is([data-ui-design="modern"], [data-ui-design="sidebar"]) .app-history-navigation > button:focus-visible { outline: 2px solid var(--accent-readable); outline-offset: -4px; }
+html:is([data-ui-design="modern"], [data-ui-design="sidebar"]) .app-history-navigation svg { width: 17px; height: 23px; }
+
+html:is([data-ui-design="modern"], [data-ui-design="sidebar"]) .app-subnav {
+  height: var(--modern-secondary-height);
+  min-height: var(--modern-secondary-height);
+  padding: 0 12px 0 calc(var(--modern-history-width) + 12px);
+  gap: 12px;
+  border-bottom-width: 1px;
+}
+html:is([data-ui-design="modern"], [data-ui-design="sidebar"]) .app-subnav-tabs { padding-block: 0; }
+html:is([data-ui-design="modern"], [data-ui-design="sidebar"]) .app-subnav-tabs > div { gap: 2px; }
+html:is([data-ui-design="modern"], [data-ui-design="sidebar"]) .app-subnav-link {
+  padding: 4px 9px;
+  border-width: 1px;
+  border-radius: 3px;
+  font-family: var(--font-barlow-condensed), sans-serif;
+  font-size: 15px !important;
+  line-height: 18px;
+  font-weight: 600;
+  letter-spacing: .01em;
+  white-space: nowrap;
+}
+html:is([data-ui-design="modern"], [data-ui-design="sidebar"]) .app-subnav > div:last-child > button {
+  padding: 4px 9px;
+  font-family: var(--font-barlow-condensed), sans-serif;
+  font-size: 14px !important;
+  line-height: 18px;
+  letter-spacing: .01em;
+}
+html:is([data-ui-design="modern"], [data-ui-design="sidebar"]) .app-auction-subnav { border-bottom-width: 1px !important; }
+html:is([data-ui-design="modern"], [data-ui-design="sidebar"]) .app-auction-subnav > div:first-child { gap: 10px; }
+html:is([data-ui-design="modern"], [data-ui-design="sidebar"]) .app-auction-subnav > div:first-child > div { padding: 2px 6px; }
+html:is([data-ui-design="modern"], [data-ui-design="sidebar"]) .app-auction-subnav > div:first-child > span { font-size: 19px; }
+html:is([data-ui-design="modern"], [data-ui-design="sidebar"]) .app-auction-subnav button > span { font-family: var(--font-barlow-condensed), sans-serif; font-size: 14px !important; letter-spacing: .01em; }
+
+/* Keep the page canvas flush with the shorter primary bar. */
+html:is([data-ui-design="modern"], [data-ui-design="sidebar"]) .app-canvas .app-theme-shell [class~="h-[calc(100vh-3rem)]"] {
+  height: calc(var(--app-viewport-height) - var(--modern-primary-height)) !important;
+}
+
+/* Season pages share the same available-height chain. Dashboard sizing comes
+   from the space beneath both bars, rather than the Original UI's 200px inset. */
+html:is([data-ui-design="modern"], [data-ui-design="sidebar"]) .app-canvas .app-theme-shell:has(.overview-page) {
+  height: var(--app-viewport-height);
+  min-height: 0 !important;
+  overflow: hidden;
+}
+html:is([data-ui-design="modern"], [data-ui-design="sidebar"]) .app-theme-shell:has(.overview-page) > .game-main {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+html:is([data-ui-design="modern"], [data-ui-design="sidebar"]) .app-canvas .app-theme-shell .overview-page {
+  height: 100% !important;
+  min-height: 0;
+  min-width: 0;
+  flex: 1;
+}
+html:is([data-ui-design="modern"], [data-ui-design="sidebar"]) .season-content-column {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+html:is([data-ui-design="modern"], [data-ui-design="sidebar"]) .season-page-content {
+  --modern-page-gap: 8px;
+  min-width: 0;
+  min-height: 0;
+  padding: var(--modern-page-gap);
+}
+
+/* Covers every overview, commercial viewport, supporters, stadium builder,
+   records and history page. Long record lists retain their own scrolling. */
+html:is([data-ui-design="modern"], [data-ui-design="sidebar"]) .season-page-content > :is(
+  [class~="h-[calc(100vh-200px)]"], .h-full
+):not(.fixed) {
+  height: 100% !important;
+  min-height: 0 !important;
+  min-width: 0;
+  width: 100%;
+  max-width: none;
+  flex-shrink: 0;
+}
+html:is([data-ui-design="modern"], [data-ui-design="sidebar"]) .season-page-content > [class~="min-h-[calc(100vh-200px)]"] {
+  min-height: 100% !important;
+  flex-shrink: 0;
+}
+
+/* The shared gutter replaces page-level padding, without removing padding
+   inside bordered panels, article layouts, or dialogs. */
+html:is([data-ui-design="modern"], [data-ui-design="sidebar"]) .season-page-content > .h-full:not(.border, .border-2, .fixed, .fixed-external-ui) {
+  padding: 0;
+}
+html:is([data-ui-design="modern"], [data-ui-design="sidebar"]) .season-page-content .season-page-width {
+  width: 100%;
+  max-width: none;
+}
+html:is([data-ui-design="modern"], [data-ui-design="sidebar"]) .season-team-page > main { padding: 8px; }
+html:is([data-ui-design="modern"], [data-ui-design="sidebar"]) .season-page-content[data-season-view="smat"] > .h-full > main { padding: 8px 0 0; }
+html:is([data-ui-design="modern"], [data-ui-design="sidebar"]) .season-page-content[data-season-view="smat"] > .h-full > main > [class~="max-w-[1500px]"] {
+  width: 100%;
+  max-width: none;
+  min-height: 100%;
+}
+
+/* Thin panel frames and compact grid gutters apply across all season tabs.
+   Overlay dialogs and embedded news/social designs retain their own geometry. */
+html:is([data-ui-design="modern"], [data-ui-design="sidebar"]) :is(.season-page-content, .season-team-page) :where(.border-2):not(.fixed, .fixed *, [role="dialog"], [role="dialog"] *, .fixed-external-ui, .fixed-external-ui *) {
+  border-width: 1px !important;
+}
+html:is([data-ui-design="modern"], [data-ui-design="sidebar"]) :is(.season-page-content, .season-team-page) :where(.border-t-2):not(.fixed *, [role="dialog"] *, .fixed-external-ui *) { border-top-width: 1px; }
+html:is([data-ui-design="modern"], [data-ui-design="sidebar"]) :is(.season-page-content, .season-team-page) :where(.border-b-2):not(.fixed *, [role="dialog"] *, .fixed-external-ui *) { border-bottom-width: 1px; }
+html:is([data-ui-design="modern"], [data-ui-design="sidebar"]) :is(.season-page-content, .season-team-page) :where(.border-l-2):not(.fixed *, [role="dialog"] *, .fixed-external-ui *) { border-left-width: 1px; }
+html:is([data-ui-design="modern"], [data-ui-design="sidebar"]) :is(.season-page-content, .season-team-page) :where(.border-r-2):not(.fixed *, [role="dialog"] *, .fixed-external-ui *) { border-right-width: 1px; }
+html:is([data-ui-design="modern"], [data-ui-design="sidebar"]) :is(.season-page-content, .season-team-page) :where(.gap-3, .gap-4, .gap-5, .gap-6):not(.fixed, .fixed *, [role="dialog"], [role="dialog"] *, .fixed-external-ui, .fixed-external-ui *) {
+  gap: 8px;
+}
+html:is([data-ui-design="modern"], [data-ui-design="sidebar"]) :is(.season-page-content, .season-team-page) :where(.border, .border-2):is(.p-5, .p-6, .p-8):not(.fixed, .fixed *, [role="dialog"], [role="dialog"] *, .fixed-external-ui, .fixed-external-ui *) {
+  padding: 12px;
+}

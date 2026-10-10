@@ -1,6 +1,9 @@
 "use client";
+import { formatDisplayDate } from "@/lib/logic/displayDate";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import dynamic from "next/dynamic";
 import { ArrowDown, ArrowUp, ArrowUpDown, Bot, BriefcaseBusiness, Lock, Pencil, RefreshCw, UserMinus, UserPlus, UsersRound, X } from "lucide-react";
 
 import { StaffEditorModal } from "@/components/club/StaffEditorModal";
@@ -10,10 +13,11 @@ import { calculateInitialStaffNegotiationPatience, calculateStaffMoveInterest, c
 import { getStaffClubAffinity, type StaffAffinityProfile } from "@/lib/data/staffAffinities";
 import { addDaysToDateKey } from "@/lib/logic/careerCalendar";
 import { loadStaffDirectory } from "@/lib/logic/staffDirectoryClient";
-import { supabase } from "@/lib/supabase/client";
+import { relationshipLabel, relationshipsForPerson } from "@/lib/logic/careerRelationships";
 import { getStaffPreferenceColor, getStaffRatingColor } from "@/lib/theme/staffRatingColors";
 import { internationalTeamName } from "@/lib/logic/international";
 import type { CareerStaffContract } from "@/lib/logic/staffContracts";
+import type { ProfileModalMatch } from "@/components/player/PlayerProfileModal";
 
 const nationalEmployer = (contract?: CareerStaffContract) => contract?.nationalTeamId
   ? `${internationalTeamName(contract.nationalTeamId)} ${contract.nationalFormat === "test" ? "Test" : "T20"}`
@@ -52,15 +56,19 @@ interface PersonnelRelationship {
   rating: number;
   partner_name: string;
   partner_type: "player" | "staff";
+  partner_id: string;
   partner_role: string;
   subject_reason: string;
   story: string | null;
 }
 
+const LinkedPlayerProfile = dynamic(() => import("@/components/player/PlayerProfileModal").then((module) => module.PlayerProfileModal), { ssr: false });
+
 interface StaffManagementPageProps {
   teams: Team[];
   mode?: "club" | "league";
   initialStaffSlug?: string | null;
+  customFixtures?: ProfileModalMatch[];
 }
 
 type StaffMarketSortKey = "staff_member" | "role_fit" | "ca" | "pa" | "interest" | "demand" | "club_link" | "budget" | "status";
@@ -159,15 +167,20 @@ function StaffProfileModal({
   assignment,
   team,
   allowContractActions,
+  customFixtures,
   onClose,
 }: {
   member: StaffMember;
   assignment: StartingAssignment;
   team?: Team;
   allowContractActions: boolean;
+  customFixtures?: ProfileModalMatch[];
   onClose: () => void;
 }) {
   const careerStaff = useGameStore((state) => state.careerStaff);
+  const careerRelationships = useGameStore((state) => state.careerRelationships);
+  const players = useGameStore((state) => state.players);
+  const retiredPlayerSnapshots = useGameStore((state) => state.retiredPlayerSnapshots);
   const userTeamId = useGameStore((state) => state.userTeamId);
   const currentSeason = useGameStore((state) => state.currentSeason);
   const currentDate = useGameStore((state) => state.currentDate);
@@ -185,6 +198,21 @@ function StaffProfileModal({
     || (frozenStaffAttributes && Object.keys(frozenStaffAttributes).length > 0),
   );
   const [isEditing, setIsEditing] = useState(false);
+  const relationshipSlug = careerContract?.staffSlug ?? String(member.slug ?? member.id);
+  const relationships: PersonnelRelationship[] = relationshipsForPerson(
+    careerRelationships, players, careerStaff,
+    { kind: "staff", id: relationshipSlug, name: String(member.full_name ?? relationshipSlug) },
+  ).map(({ record, partner }, index) => ({
+    dynamic_id: index,
+    dynamic_type_name: relationshipLabel(record.type),
+    rating: record.rating,
+    partner_name: partner.name,
+    partner_type: partner.kind,
+    partner_id: partner.kind === "staff" ? Object.values(careerStaff.contracts).find((contract) => contract.staffSlug === partner.id)?.staffId ?? "" : partner.id,
+    partner_role: partner.kind === "staff" ? "Staff" : "Player",
+    subject_reason: `${record.source === "documented" ? "Documented starting relationship" : "Formed in this career"}. ${record.status === "active" ? "" : `${record.status === "historical" ? "Historical" : "Dormant"} relationship. `}${record.reason}`,
+    story: null,
+  }));
   const negotiationCooldownUntil = careerStaff.negotiationCooldowns[member.id];
   const negotiationCoolingDown = Boolean(negotiationCooldownUntil && currentDate < negotiationCooldownUntil);
   const isFreeAgent = careerContract?.status === "free_agent";
@@ -205,29 +233,19 @@ function StaffProfileModal({
   const traitsRowRef = useRef<HTMLDivElement>(null);
   const traitsContentRef = useRef<HTMLDivElement>(null);
   const [traitsScale, setTraitsScale] = useState(1);
-  const [relationships, setRelationships] = useState<PersonnelRelationship[]>([]);
-  const [relationshipsStatus, setRelationshipsStatus] = useState<"loading" | "ready" | "error">("loading");
-  useEffect(() => {
-    let cancelled = false;
-    setRelationships([]);
-    setRelationshipsStatus("loading");
-    void (async () => {
-      const { data, error } = await supabase
-        .from("person_dynamics_view")
-        .select("dynamic_id,dynamic_type_name,rating,partner_name,partner_type,partner_role,subject_reason,story")
-        .eq("subject_type", "staff")
-        .eq("subject_id", member.id)
-        .order("rating", { ascending: false });
-      if (cancelled) return;
-      if (error) {
-        setRelationshipsStatus("error");
-        return;
-      }
-      setRelationships((data ?? []) as PersonnelRelationship[]);
-      setRelationshipsStatus("ready");
-    })();
-    return () => { cancelled = true; };
-  }, [member.id]);
+  const [linkedStaffId, setLinkedStaffId] = useState<string | null>(null);
+  const [linkedPlayerId, setLinkedPlayerId] = useState<string | null>(null);
+  const [relationshipTooltip, setRelationshipTooltip] = useState<{ text: string; left: number; top: number; below: boolean } | null>(null);
+  const showRelationshipTooltip = (element: HTMLElement, text: string) => {
+    const bounds = element.getBoundingClientRect();
+    setRelationshipTooltip({
+      text,
+      left: Math.max(12, Math.min(bounds.left, window.innerWidth - 332)),
+      top: bounds.top >= 100 ? bounds.top - 6 : bounds.bottom + 6,
+      below: bounds.top < 100,
+    });
+  };
+  useEffect(() => setRelationshipTooltip(null), [member.id, linkedStaffId, linkedPlayerId]);
   const persistedNegotiation = careerStaff.activeNegotiations[member.id];
   useEffect(() => {
     if (!contractAction || persistedNegotiation?.status !== "active" || persistedNegotiation.action !== contractAction) return;
@@ -489,6 +507,9 @@ function StaffProfileModal({
   ];
   const clubAffinities = (member.affinity_profile?.clubs ?? []).filter((c) => Boolean(c.teamId) && c.teamId !== "UNSOLD");
 
+  if (linkedStaffId) return <LinkedStaffProfile staffId={linkedStaffId} customFixtures={customFixtures} onClose={() => setLinkedStaffId(null)} />;
+  if (linkedPlayerId) return <LinkedPlayerProfile playerId={linkedPlayerId} customFixtures={customFixtures} onClose={() => setLinkedPlayerId(null)} />;
+
   return (
     <div
       className="fixed inset-0 z-[130] flex items-center justify-center bg-black/70 p-3 backdrop-blur-sm sm:p-5"
@@ -623,22 +644,45 @@ function StaffProfileModal({
 
             <div className="rounded-lg border border-border bg-surface p-4">
               <h3 className="mb-2 font-anton text-xs uppercase text-text-primary">Personnel relationships</h3>
-              {relationshipsStatus === "loading" && <p className="text-xs text-text-secondary">Loading relationships...</p>}
-              {relationshipsStatus === "error" && <p className="text-xs text-danger">Unable to load relationships.</p>}
-              {relationshipsStatus === "ready" && relationships.length === 0 && (
+              {relationships.length === 0 && (
                 <p className="text-xs text-text-secondary">No personnel relationships recorded.</p>
               )}
-              {relationshipsStatus === "ready" && relationships.length > 0 && (
-                <div className="flex flex-wrap gap-1.5">
-                  {relationships.map((relationship) => (
-                    <span
-                      key={relationship.dynamic_id}
-                      title={`${relationship.partner_type} · ${relationship.partner_role}\n${relationship.subject_reason}`}
-                      className="rounded border border-border bg-bg px-2.5 py-1 font-space-mono text-[8px] font-bold uppercase text-text-primary"
-                    >
-                      {relationship.partner_name} <span className="text-text-secondary">· {relationship.dynamic_type_name}</span> <span className="text-accent">{relationship.rating}</span>
-                    </span>
-                  ))}
+              {relationships.length > 0 && (
+                <div className="space-y-1">
+                  {relationships.map((relationship) => {
+                    const targetPlayerId = relationship.partner_type === "player"
+                      ? players[relationship.partner_id]?.id
+                        ?? Object.values(players).find((player) => player.name === relationship.partner_name)?.id
+                        ?? Object.values(retiredPlayerSnapshots).find((snapshot) => snapshot.name === relationship.partner_name)?.id
+                      : null;
+                    const canOpen = relationship.partner_type === "staff" ? Boolean(relationship.partner_id) : Boolean(targetPlayerId);
+                    return (
+                      <button
+                        key={relationship.dynamic_id}
+                        type="button"
+                        disabled={!canOpen}
+                        className="flex min-h-7 w-full items-center gap-2 rounded border border-border/70 bg-bg px-2 py-0.5 text-left enabled:cursor-pointer enabled:hover:border-accent/60 enabled:hover:bg-accent/5 enabled:focus-visible:outline enabled:focus-visible:outline-2 enabled:focus-visible:outline-accent"
+                        aria-label={`${relationship.partner_name}, ${relationship.dynamic_type_name}. ${relationship.subject_reason || "No reason recorded."}`}
+                        onClick={() => {
+                          setRelationshipTooltip(null);
+                          if (relationship.partner_type === "staff") setLinkedStaffId(relationship.partner_id);
+                          else if (targetPlayerId) setLinkedPlayerId(targetPlayerId);
+                        }}
+                        onMouseEnter={(event) => showRelationshipTooltip(event.currentTarget, relationship.subject_reason || "No reason recorded.")}
+                        onMouseLeave={() => setRelationshipTooltip(null)}
+                        onFocus={(event) => showRelationshipTooltip(event.currentTarget, relationship.subject_reason || "No reason recorded.")}
+                        onBlur={() => setRelationshipTooltip(null)}
+                      >
+                        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-accent/70 bg-accent/10 font-anton text-[10px] leading-none text-accent" aria-label={`Relationship strength ${relationship.rating}`}>
+                          {relationship.rating}
+                        </span>
+                        <span className="flex min-w-0 flex-col leading-tight">
+                          <span className="truncate font-space-mono text-[10px] font-bold text-text-primary">{relationship.partner_name}</span>
+                          <span className="truncate font-space-mono text-[8px] uppercase text-accent">{relationship.dynamic_type_name}</span>
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -1012,11 +1056,58 @@ function StaffProfileModal({
           )}
 
       </div>
+      {relationshipTooltip && createPortal(
+        <div
+          role="tooltip"
+          className="pointer-events-none fixed z-[200] max-w-[320px] rounded border border-accent/50 bg-surface px-3 py-2 font-space-mono text-[10px] leading-snug text-text-primary shadow-xl"
+          style={{ left: relationshipTooltip.left, top: relationshipTooltip.top, transform: relationshipTooltip.below ? undefined : "translateY(-100%)" }}
+        >
+          {relationshipTooltip.text}
+        </div>,
+        document.body
+      )}
     </div>
   );
 }
 
-export default function StaffManagementPage({ teams, mode = "club", initialStaffSlug = null }: StaffManagementPageProps) {
+export function LinkedStaffProfile({ staffId, customFixtures, onClose }: { staffId: string; customFixtures?: ProfileModalMatch[]; onClose: () => void }) {
+  const [directory, setDirectory] = useState<StaffResponse | null>(null);
+  const [error, setError] = useState(false);
+  const careerStaff = useGameStore((state) => state.careerStaff);
+  const teams = useGameStore((state) => state.teams);
+  const initializeCareerStaff = useGameStore((state) => state.initializeCareerStaff);
+
+  useEffect(() => {
+    let active = true;
+    loadStaffDirectory().then((result) => {
+      if (!active) return;
+      const data = result as unknown as StaffResponse;
+      initializeCareerStaff(data.members, data.assignments);
+      setDirectory(data);
+    }).catch(() => { if (active) setError(true); });
+    return () => { active = false; };
+  }, [initializeCareerStaff]);
+
+  const member = directory?.members.find((entry) => entry.id === staffId);
+  const contract = careerStaff.contracts[staffId];
+  const assignment = directory?.assignments.find((entry) => entry.staff_id === staffId && entry.role === member?.primary_role)
+    ?? directory?.assignments.find((entry) => entry.staff_id === staffId)
+    ?? (member ? { staff_id: staffId, team_id: contract?.teamId ?? "Free agent", role: member.primary_role, start_season: 2026 } : undefined);
+
+  if (member && assignment) {
+    return <StaffProfileModal member={member} assignment={assignment} team={teams[assignment.team_id]} allowContractActions={false} customFixtures={customFixtures} onClose={onClose} />;
+  }
+  return (
+    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/70 p-4" onMouseDown={onClose}>
+      <div className="rounded border border-border bg-surface p-5 text-sm text-text-primary" onMouseDown={(event) => event.stopPropagation()}>
+        {error || directory ? "Staff profile unavailable." : "Loading staff profile..."}
+        <button type="button" className="ml-4 text-accent" onClick={onClose}>Close</button>
+      </div>
+    </div>
+  );
+}
+
+export default function StaffManagementPage({ teams, mode = "club", initialStaffSlug = null, customFixtures }: StaffManagementPageProps) {
   const [data, setData] = useState<StaffResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
@@ -1314,13 +1405,14 @@ export default function StaffManagementPage({ teams, mode = "club", initialStaff
       <button
         type="button"
         onClick={() => toggleStaffMarketSort(sortKey)}
-        className={`flex items-center gap-1 hover:text-accent ${align === "center" ? "justify-center" : align === "right" ? "justify-end" : "justify-start"} ${active ? "text-accent" : ""}`}
+        className={`flex min-w-0 items-center gap-1 hover:text-accent ${align === "center" ? "justify-center" : align === "right" ? "justify-end" : "justify-start"} ${active ? "text-accent" : ""}`}
         aria-label={`Sort by ${label} ${active ? staffMarketSort.direction === "asc" ? "descending" : "ascending" : ""}`.trim()}
       >
-        <span>{label}</span><Icon size={9} />
+        <span className="truncate">{label}</span><Icon size={9} className="shrink-0" />
       </button>
     );
   };
+  const recruitmentMarketColumns = "grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_2.25rem_2.25rem_minmax(0,1fr)_minmax(0,.85fr)_minmax(0,.75fr)_minmax(0,.5fr)_minmax(0,.65fr)]";
 
   const selectedMember = selectedStaffId ? memberById.get(selectedStaffId) : undefined;
   const selectedAssignment = displayData?.assignments.find((assignment) => (
@@ -1453,10 +1545,10 @@ export default function StaffManagementPage({ teams, mode = "club", initialStaff
           </aside>
         </div>
 
-        <section className="flex min-h-0 flex-[1.12] flex-col overflow-hidden rounded-lg border-2 border-border bg-surface">
-          <div className="flex shrink-0 items-center justify-between gap-4 border-b-2 border-border px-4 py-2.5">
+        <section className="flex min-h-0 min-w-0 flex-[1.12] flex-col overflow-hidden rounded-lg border-2 border-border bg-surface">
+          <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b-2 border-border px-4 py-2.5">
             <div className="shrink-0"><p className="font-space-mono text-[7px] font-bold uppercase tracking-[0.18em] text-accent">Recruitment workspace</p><h3 className="font-anton text-base uppercase text-text-primary">Staff Market</h3></div>
-            <div className="flex min-w-0 flex-1 flex-nowrap items-center justify-end gap-1.5">
+            <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-1.5">
               <div className="flex shrink-0 overflow-hidden rounded border border-border bg-bg p-0.5">
                 <button type="button" onClick={() => setMarketScope("free_agents")} className={`whitespace-nowrap px-1.5 py-1 font-space-mono text-[6.5px] font-bold uppercase ${marketScope === "free_agents" ? "bg-accent text-white" : "text-text-secondary"}`}>Free agents · {freeAgents.length}</button>
                 <button type="button" onClick={() => setMarketScope("contracted")} className={`whitespace-nowrap px-1.5 py-1 font-space-mono text-[6.5px] font-bold uppercase ${marketScope === "contracted" ? "bg-accent text-white" : "text-text-secondary"}`}>Contracted · {contractedRecruitmentTargets.length}</button>
@@ -1480,8 +1572,8 @@ export default function StaffManagementPage({ teams, mode = "club", initialStaff
               <select value={budgetFilter} onChange={(event) => setBudgetFilter(event.target.value as typeof budgetFilter)} className="w-[6.75rem] min-w-0 shrink rounded border border-border bg-bg px-1.5 py-1.5 font-space-mono text-[7px] text-text-primary"><option value="all">Any budget</option><option value="within">Within budget</option><option value="over">Over budget</option></select>
             </div>
           </div>
-          <div className="min-h-0 flex-1 overflow-auto">
-          <div className="sticky top-0 z-10 grid min-w-[94rem] shrink-0 grid-cols-[minmax(16rem,1.5fr)_15rem_4rem_4rem_16rem_11rem_9rem_7rem_8rem] gap-3 border-b border-border bg-surface px-4 py-1.5 font-space-mono text-[7px] font-bold uppercase text-text-secondary">
+          <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
+          <div className={`sticky top-0 z-10 grid w-full min-w-0 shrink-0 ${recruitmentMarketColumns} gap-1.5 border-b border-border bg-surface px-3 py-1.5 font-space-mono text-[7px] font-bold uppercase text-text-secondary`}>
             <StaffMarketSortHeader sortKey="staff_member" label="Staff member" />
             <StaffMarketSortHeader sortKey="role_fit" label="Role / fit" />
             <StaffMarketSortHeader sortKey="ca" label="CA" align="center" />
@@ -1492,7 +1584,7 @@ export default function StaffManagementPage({ teams, mode = "club", initialStaff
             <StaffMarketSortHeader sortKey="budget" label="Budget" align="center" />
             <StaffMarketSortHeader sortKey="status" label="Status" align="right" />
           </div>
-          <div className="min-w-[94rem]">
+          <div className="w-full min-w-0">
             {filteredRecruitmentPool.map((member) => {
               const contract = careerStaff.contracts[member.id];
               const displayRole = roleFilter === "all" ? member.primary_role : roleFilter;
@@ -1506,11 +1598,11 @@ export default function StaffManagementPage({ teams, mode = "club", initialStaff
               const interestColor = interest.score >= 80 ? "#22c55e" : interest.score >= 65 ? "#3b82f6" : interest.score >= 50 ? "#facc15" : interest.score >= 35 ? "#f97316" : "#ef4444";
               const cooldownUntil = careerStaff.negotiationCooldowns[member.id];
               return (
-                <button type="button" key={member.id} onClick={() => setSelectedStaffId(member.id)} className="grid w-full grid-cols-[minmax(16rem,1.5fr)_15rem_4rem_4rem_16rem_11rem_9rem_7rem_8rem] items-center gap-3 border-b border-hairline px-4 py-2 text-left hover:bg-accent/[0.04]">
-                  <span className="min-w-0"><span className="block text-xs font-bold text-text-primary">{member.full_name}</span><span className="block font-space-mono text-[6px] uppercase text-text-secondary">{String(member.country ?? "Unknown")} · Age {ageFromDateOfBirth(member.date_of_birth) ?? "–"}</span></span>
-                  <span className="font-space-mono text-[7px] font-bold uppercase text-text-primary">{roleLabel(displayRole)} <strong className="text-accent">{ratingForRole(member, displayRole) ?? "–"}</strong></span>
+                <button type="button" key={member.id} onClick={() => setSelectedStaffId(member.id)} className={`grid w-full min-w-0 ${recruitmentMarketColumns} items-center gap-1.5 border-b border-hairline px-3 py-2 text-left hover:bg-accent/[0.04]`}>
+                  <span className="min-w-0"><span className="block truncate text-xs font-bold text-text-primary">{member.full_name}</span><span className="block truncate font-space-mono text-[6px] uppercase text-text-secondary">{String(member.country ?? "Unknown")} · Age {ageFromDateOfBirth(member.date_of_birth) ?? "–"}</span></span>
+                  <span className="min-w-0 truncate font-space-mono text-[7px] font-bold uppercase text-text-primary">{roleLabel(displayRole)} <strong className="text-accent">{ratingForRole(member, displayRole) ?? "–"}</strong></span>
                   <span className="text-center font-anton text-sm text-text-primary">{member.current_ability ?? "–"}</span><span className="text-center font-anton text-sm text-text-primary">{member.potential_ability ?? "–"}</span>
-                  <span className="flex flex-wrap gap-1 font-space-mono text-[7px] font-bold uppercase text-text-secondary">
+                  <span className="flex min-w-0 flex-wrap gap-1 overflow-hidden font-space-mono text-[7px] font-bold uppercase text-text-secondary">
                     {visibleAffinities.length > 0
                       ? visibleAffinities.map((affinity) => (
                         <span key={affinity.teamId} className="whitespace-nowrap rounded border border-border bg-bg px-1.5 py-0.5">
@@ -1519,10 +1611,10 @@ export default function StaffManagementPage({ teams, mode = "club", initialStaff
                       ))
                       : <span>None</span>}
                   </span>
-                  <span className="min-w-0"><span className="block font-space-mono text-[7px] font-bold uppercase" style={{ color: interestColor }}>{interest.label}</span><span className="mt-1 block h-1.5 overflow-hidden rounded-sm border border-border bg-bg"><span className="block h-full" style={{ width: `${interest.score}%`, backgroundColor: interestColor }} /></span>{cooldownUntil && currentDate < cooldownUntil && <span className="mt-0.5 block whitespace-nowrap font-space-mono text-[6px] uppercase text-danger">Unavailable until {cooldownUntil}</span>}</span>
-                  <span className="text-right font-space-mono text-[8px] font-bold text-text-primary">{formatSalary(demand)}</span>
+                  <span className="min-w-0"><span className="block truncate font-space-mono text-[7px] font-bold uppercase" style={{ color: interestColor }}>{interest.label}</span><span className="mt-1 block h-1.5 overflow-hidden rounded-sm border border-border bg-bg"><span className="block h-full" style={{ width: `${interest.score}%`, backgroundColor: interestColor }} /></span>{cooldownUntil && currentDate < cooldownUntil && <span className="mt-0.5 block truncate font-space-mono text-[6px] uppercase text-danger">Unavailable until {formatDisplayDate(cooldownUntil)}</span>}</span>
+                  <span className="min-w-0 truncate text-right font-space-mono text-[8px] font-bold text-text-primary">{formatSalary(demand)}</span>
                   <span className={`text-center font-space-mono text-[7px] font-bold uppercase ${withinBudget ? "text-success" : "text-danger"}`}>{withinBudget ? "Within" : "Over"}</span>
-                  <span className={`text-right font-space-mono text-[7px] font-bold uppercase ${marketScope === "free_agents" ? "text-success" : "text-gold"}`}>{marketScope === "free_agents" ? "Available" : teams.find((team) => team.id === contract?.teamId)?.shortName ?? nationalEmployer(contract) ?? "Contracted"}</span>
+                  <span className={`min-w-0 truncate text-right font-space-mono text-[7px] font-bold uppercase ${marketScope === "free_agents" ? "text-success" : "text-gold"}`}>{marketScope === "free_agents" ? "Available" : teams.find((team) => team.id === contract?.teamId)?.shortName ?? nationalEmployer(contract) ?? "Contracted"}</span>
                 </button>
               );
             })}
@@ -1530,7 +1622,7 @@ export default function StaffManagementPage({ teams, mode = "club", initialStaff
           </div>
           </div>
         </section>
-        {selectedMember && selectedAssignment && <StaffProfileModal member={selectedMember} assignment={selectedAssignment} team={selectedTeam} allowContractActions={!delegateStaffToCeo} onClose={() => setSelectedStaffId(null)} />}
+        {selectedMember && selectedAssignment && <StaffProfileModal member={selectedMember} assignment={selectedAssignment} team={selectedTeam} allowContractActions={!delegateStaffToCeo} customFixtures={customFixtures} onClose={() => setSelectedStaffId(null)} />}
       </div>
     );
   }
@@ -1638,7 +1730,7 @@ export default function StaffManagementPage({ teams, mode = "club", initialStaff
                   const roleChange = event.kind === "role_changed";
                   return (
                     <button key={event.id} type="button" onClick={() => member && setSelectedStaffId(member.id)} disabled={!member} className="block w-full border-b border-hairline px-4 py-3 text-left hover:bg-black/[0.025] disabled:cursor-default dark:hover:bg-white/[0.025]">
-                      <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate text-xs font-bold text-text-primary">{member?.full_name ?? event.staffId}</p><p className={`mt-1 font-space-mono text-[7px] font-bold uppercase ${departure ? "text-danger" : "text-success"}`}>{personnelChangeLabel(event)}</p></div><span className="shrink-0 font-space-mono text-[7px] text-text-secondary">{event.displayDate}</span></div>
+                      <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate text-xs font-bold text-text-primary">{member?.full_name ?? event.staffId}</p><p className={`mt-1 font-space-mono text-[7px] font-bold uppercase ${departure ? "text-danger" : "text-success"}`}>{personnelChangeLabel(event)}</p></div><span className="shrink-0 font-space-mono text-[7px] text-text-secondary">{formatDisplayDate(event.displayDate)}</span></div>
                       <p className="mt-2 truncate font-space-mono text-[7px] uppercase text-text-secondary">{roleChange && event.previousRoles?.length ? `${event.previousRoles.map(roleLabel).join(" + ")} → ` : ""}{event.roles.length ? event.roles.map(roleLabel).join(" + ") : event.reason ? humanizeValue(event.reason) : "No role recorded"}</p>
                     </button>
                   );
@@ -1658,7 +1750,7 @@ export default function StaffManagementPage({ teams, mode = "club", initialStaff
             </div>
           </section>
         </main>
-        {selectedMember && selectedAssignment && <StaffProfileModal member={selectedMember!} assignment={selectedAssignment!} team={selectedTeam} allowContractActions={false} onClose={() => setSelectedStaffId(null)} />}
+        {selectedMember && selectedAssignment && <StaffProfileModal member={selectedMember!} assignment={selectedAssignment!} team={selectedTeam} allowContractActions={false} customFixtures={customFixtures} onClose={() => setSelectedStaffId(null)} />}
       </div>
     );
   }
@@ -1759,7 +1851,7 @@ export default function StaffManagementPage({ teams, mode = "club", initialStaff
             </section>
           </div>
         </div>
-        {selectedMember && selectedAssignment && <StaffProfileModal member={selectedMember!} assignment={selectedAssignment!} team={selectedTeam} allowContractActions={false} onClose={() => setSelectedStaffId(null)} />}
+        {selectedMember && selectedAssignment && <StaffProfileModal member={selectedMember!} assignment={selectedAssignment!} team={selectedTeam} allowContractActions={false} customFixtures={customFixtures} onClose={() => setSelectedStaffId(null)} />}
       </div>
     );
   }
@@ -2039,6 +2131,7 @@ export default function StaffManagementPage({ teams, mode = "club", initialStaff
       </section>}
       {selectedMember && selectedAssignment && (
         <StaffProfileModal
+          customFixtures={customFixtures}
           member={selectedMember}
           assignment={selectedAssignment}
           team={selectedTeam}

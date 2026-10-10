@@ -1,4 +1,5 @@
 "use client";
+import { formatDisplayDate } from "@/lib/logic/displayDate";
 
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -54,11 +55,7 @@ interface StadiumManagementPageProps {
 }
 
 const formatCapacity = (capacity: number) => new Intl.NumberFormat("en-GB").format(capacity);
-const formatDate = (dateKey: string) => new Date(`${dateKey}T12:00:00`).toLocaleDateString("en-GB", {
-  day: "numeric",
-  month: "short",
-  year: "numeric",
-});
+const formatDate = (dateKey: string) => formatDisplayDate(dateKey);
 
 function BoundaryControl({
   label,

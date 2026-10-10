@@ -3,9 +3,11 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import { useGameStore } from "@/lib/store/gameStore";
+import { formatDisplayDate } from "@/lib/logic/displayDate";
 import { useShallow } from "zustand/react/shallow";
 import { switchColorMode } from "./TeamThemeProvider";
 import ThemeSelector from "./ThemeSelector";
+import UIDesignSelector from "./UIDesignSelector";
 import {
   getStoredAppearanceTheme,
   type AppearanceTheme,
@@ -33,24 +35,27 @@ import {
   TrendingUp,
   ArrowLeft,
   ArrowRight,
+  Home,
+  Building2,
+  BriefcaseBusiness,
+  Compass,
+  CalendarDays,
+  Trophy,
+  History,
+  Gavel,
 } from "lucide-react";
 
 const NAV_ITEMS = [
-  { label: "Home", href: "/game/overview?tab=home" },
-  { label: "Squad", href: "/game/overview?tab=squad" },
-  { label: "Club", href: "/game/overview?tab=club" },
-  { label: "Commercial", href: "/game/overview?tab=commercial" },
-  { label: "Scouting", href: "/game/overview?tab=scouting" },
-  { label: "Season", href: "/game/overview?tab=season" },
-  { label: "League", href: "/game/overview?tab=league" },
-  { label: "History", href: "/game/overview?tab=history" },
-  { label: "Auction", href: "/game/auction" },
+  { label: "Home", href: "/game/overview?tab=home", icon: Home },
+  { label: "Squad", href: "/game/overview?tab=squad", icon: Users },
+  { label: "Club", href: "/game/overview?tab=club", icon: Building2 },
+  { label: "Commercial", href: "/game/overview?tab=commercial", icon: BriefcaseBusiness },
+  { label: "Scouting", href: "/game/overview?tab=scouting", icon: Compass },
+  { label: "Season", href: "/game/overview?tab=season", icon: CalendarDays },
+  { label: "League", href: "/game/overview?tab=league", icon: Trophy },
+  { label: "History", href: "/game/overview?tab=history", icon: History },
+  { label: "Auction", href: "/game/auction", icon: Gavel },
 ];
-
-const formatDisplayDate = (date: string) => {
-  const [year, month, day] = date.split("-");
-  return year && month && day ? `${day}-${month}-${year}` : date;
-};
 
 export default function NavBar() {
   const pathname = usePathname();
@@ -238,9 +243,9 @@ export default function NavBar() {
   const userTeam = teams[userTeamId];
 
   return (
-    <nav className="app-navbar h-12 border-b-2 border-border flex items-center px-5 gap-0 shrink-0 z-50">
+    <nav aria-label="Main navigation" className="app-navbar h-12 border-b-2 border-border flex items-center px-5 gap-0 shrink-0 z-50">
       {/* Navigation history back/forward buttons */}
-      <div className="flex items-center gap-1.5 mr-4 shrink-0">
+      <div className="app-history-navigation flex items-center gap-1.5 mr-4 shrink-0" role="group" aria-label="Navigation history">
         <button
           onClick={() => router.back()}
           className="w-[28px] h-[28px] rounded border-[1.5px] border-[var(--ink)] hover:bg-[var(--ink)]/5 flex items-center justify-center cursor-pointer transition-all duration-150 hover:scale-105 active:scale-95"
@@ -249,6 +254,7 @@ export default function NavBar() {
             color: "var(--ink)",
           }}
           title="Go Back"
+          aria-label="Go back"
         >
           <ArrowLeft size={13} />
         </button>
@@ -260,28 +266,35 @@ export default function NavBar() {
             color: "var(--ink)",
           }}
           title="Go Forward"
+          aria-label="Go forward"
         >
           <ArrowRight size={13} />
         </button>
       </div>
 
       {userTeam ? (
-        <div className="flex items-center gap-2.5 mr-5 shrink-0">
+        <div className="app-navbar-identity flex items-center gap-2.5 mr-5 shrink-0" title={userTeam.name}>
           <div
-            className="h-7 min-w-[28px] px-2 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 transition-all duration-200 shadow-sm"
+            className="app-navbar-initials h-7 min-w-[28px] px-2 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 transition-all duration-200 shadow-sm"
+            aria-label={userTeam.name}
             style={{ backgroundColor: userTeam.primaryColor, color: userTeam.secondaryColor }}
           >
             {userTeam.shortName}
           </div>
+          {!isAuctionPage && (
+            <span className="app-sidebar-date">
+              {formatDisplayDate(currentDate).replace(/-/g, "/")}
+            </span>
+          )}
           <span
-            className="font-space-mono font-bold text-[11px] tracking-widest uppercase transition-colors duration-200"
+            className="app-navbar-team-name font-space-mono font-bold text-[11px] tracking-widest uppercase transition-colors duration-200"
             style={{ color: "var(--chrome-nav-active, var(--ink))" }}
           >
             {userTeam.name}
           </span>
         </div>
       ) : (
-        <div className="flex items-center gap-2.5 mr-5 shrink-0">
+        <div className="app-navbar-brand flex items-center gap-2.5 mr-5 shrink-0">
           <span
             className="font-anton text-[18px] uppercase tracking-wider"
             style={{ color: "var(--chrome-nav-active, var(--ink))" }}
@@ -291,8 +304,9 @@ export default function NavBar() {
         </div>
       )}
 
-      <div className="flex items-center gap-0">
-        {(showSeasonNavigation ? NAV_ITEMS : [{ label: "Auction", href: "/game/auction" }]).map((item) => {
+      <div className="app-navbar-links flex items-center gap-0">
+        {(showSeasonNavigation ? NAV_ITEMS : [NAV_ITEMS[NAV_ITEMS.length - 1]]).map((item) => {
+          const Icon = item.icon;
           let active = false;
           if (item.href === "/game/auction") {
             active = pathname.startsWith("/game/auction");
@@ -305,6 +319,7 @@ export default function NavBar() {
               key={item.href}
               href={item.href}
               data-active={active ? "true" : "false"}
+              aria-current={active ? "page" : undefined}
               onClick={(e) => {
                 e.preventDefault();
                 if (item.href.includes("tab=")) {
@@ -325,6 +340,7 @@ export default function NavBar() {
                 borderBottomColor: active ? "var(--team-accent, var(--ink))" : "transparent",
               }}
             >
+              <Icon className="app-navbar-link-icon" size={16} aria-hidden="true" />
               {item.label}
             </Link>
           );
@@ -333,10 +349,10 @@ export default function NavBar() {
 
       <div className="flex-1" />
 
-      <div className="flex items-center gap-4 font-space-mono text-[10px]">
+      <div className="app-navbar-actions flex items-center gap-4 font-space-mono text-[10px]">
         {!isAuctionPage && (
           <>
-            <div className="flex items-center gap-1">
+            <div className="app-career-skip-controls flex items-center gap-1">
               {[
                 ["season", "End season"],
                 ["retention", "Skip to retention"],
@@ -352,7 +368,7 @@ export default function NavBar() {
                 </button>
               ))}
             </div>
-            <span className="tracking-wider" style={{ color: "var(--chrome-nav-muted)" }}>{formatDisplayDate(currentDate)}</span>
+            <span className="app-navbar-date tracking-wider" style={{ color: "var(--chrome-nav-muted)" }}>{formatDisplayDate(currentDate)}</span>
           </>
         )}
         {isAuctionPage && auction && auction.phase === "live" && (
@@ -588,7 +604,7 @@ export default function NavBar() {
             </div>
             {/* Speed Controls */}
             <div
-              className="flex items-center gap-0 rounded select-none h-[28px] overflow-hidden transition-colors duration-200"
+              className="app-speed-controls flex items-center gap-0 rounded select-none h-[28px] overflow-hidden transition-colors duration-200"
               style={{
                 backgroundColor: "var(--team-bid-bg, #111622)",
                 backgroundImage: "var(--team-bid-tinge)",
@@ -638,7 +654,7 @@ export default function NavBar() {
         )}
 
         {/* Settings Button */}
-        <div className="relative flex items-center">
+        <div className="app-settings-anchor relative flex items-center">
           <button
             onClick={handleSettingsClick}
             className="w-[28px] h-[28px] rounded border-[1.5px] border-[var(--ink)] hover:bg-[#1d55c4] hover:text-white flex items-center justify-center cursor-pointer transition-all duration-150 hover:scale-105 active:scale-95"
@@ -650,6 +666,7 @@ export default function NavBar() {
             title="Open Settings"
           >
             <Settings size={14} />
+            <span className="app-settings-label">Settings</span>
           </button>
 
           {showSettings && (
@@ -677,6 +694,7 @@ export default function NavBar() {
                   </span>
                   <ThemeSelector value={appearanceTheme} onChange={handleThemeChange} />
                 </div>
+                <UIDesignSelector />
                 {(isAuctionPage || isTradeHubPage) && <div className="flex flex-col gap-2 border-t border-[var(--ink)]/15 pt-2">
                   <span className="text-[9px] font-bold text-text-secondary uppercase tracking-wider">
                     Guides

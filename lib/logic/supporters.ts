@@ -318,6 +318,7 @@ export function buildTeamSupporterView(input: {
   departmentReviews?: SupporterDepartmentReview[];
   boardContext?: SupporterBoardContext;
   currentSeason?: number;
+  commercial?: { pricing: number; service: number; outreach: number; cashDiscipline: number };
 }): TeamSupporterView {
   const { team, standingPosition, squadPlayers, playerStats, staff, ownership } = input;
   const culture = TEAM_SUPPORTER_CULTURES[team.id] ?? fallbackCulture(team.id);
@@ -418,7 +419,7 @@ export function buildTeamSupporterView(input: {
   const boardApproval = rounded(boardBase * 0.55 + resultsApproval * 0.2 + budgetDiscipline * 0.1
     + (input.boardContext?.activeProjects ?? 0) * 3
     + boardEvents.slice(-8).reduce((sum, event) => sum + event.impact, 0) * 0.45
-    - compensationPenalty - culture.boardScepticism * 0.16);
+    - compensationPenalty - culture.boardScepticism * 0.16 + (input.commercial?.cashDiscipline ?? 0));
   const categories = { results: resultsApproval, squad: squadApproval, staff: staffApproval, board: boardApproval, leadership: leadershipApproval };
 
   const performanceMomentum = (recentWinRate - 0.5) * 24;
@@ -448,7 +449,9 @@ export function buildTeamSupporterView(input: {
       + (squadApproval - 50) * (group.id === "starDriven" ? 0.35 : 0.14)
       + (boardApproval - 50) * (group.id === "traditional" ? 0.18 : 0.08)
       + identityModifier
-      + groupEventImpact * 0.24,
+      + groupEventImpact * 0.24
+      + (input.commercial?.pricing ?? 0) * (group.id === "traditional" || group.id === "hardcore" ? 1.3 : .7)
+      + (input.commercial?.service ?? 0) + (input.commercial?.outreach ?? 0),
     );
     return {
       ...group,

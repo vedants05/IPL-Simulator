@@ -1,4 +1,5 @@
 "use client";
+import { formatDisplayDate, formatDisplayDateTime } from "@/lib/logic/displayDate";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useGameStore } from "@/lib/store/gameStore";
@@ -170,7 +171,7 @@ export default function SavesPage() {
               <div key={save.id} className="flex items-center justify-between gap-4 border-2 border-border bg-surface p-4">
                 <div>
                   <div className="font-anton text-[20px] uppercase leading-none">{save.user_team_id} · {save.current_season}</div>
-                  <div className="mt-1 font-space-mono text-[10px] text-text-secondary">{save.game_date} · {formatStorageSize(save.size_bytes)} · saved {new Date(save.updated_at).toLocaleString()}</div>
+                  <div className="mt-1 font-space-mono text-[10px] text-text-secondary">{formatDisplayDate(save.game_date)} · {formatStorageSize(save.size_bytes)} · saved {formatDisplayDateTime(save.updated_at)}</div>
                 </div>
                 <div className="flex gap-2">
                   <button onClick={() => loadBrowserSave(save.id)} disabled={busyId !== null} className="border-2 border-border px-4 py-2 font-anton text-[14px] tracking-wide hover:bg-surface2 disabled:opacity-50">{busyId === save.id ? "…" : "Load"}</button>
@@ -225,7 +226,7 @@ export default function SavesPage() {
                   {save.id === localSaveId && <span className="ml-3 font-space-mono text-[10px] text-text-secondary tracking-widest">ON THIS DEVICE</span>}
                 </div>
                 <div className="font-space-mono text-[10px] text-text-secondary mt-1">
-                  {save.game_date} · {formatStorageSize(save.size_bytes)} · synced {new Date(save.updated_at).toLocaleString()}
+                  {formatDisplayDate(save.game_date)} · {formatStorageSize(save.size_bytes)} · synced {formatDisplayDateTime(save.updated_at)}
                 </div>
               </div>
               <div className="flex gap-2">

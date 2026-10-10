@@ -2,6 +2,8 @@
 
 import { Moon, Palette, Radio, Sun } from "lucide-react";
 import type { AppearanceTheme } from "@/lib/theme/appearance";
+import { useState } from "react";
+import CustomThemeModal from "./CustomThemeModal";
 
 const OPTIONS: Array<{
   value: AppearanceTheme;
@@ -20,7 +22,9 @@ type ThemeSelectorProps = {
 };
 
 export default function ThemeSelector({ value, onChange }: ThemeSelectorProps) {
+  const [showCustom, setShowCustom] = useState(false);
   return (
+    <div className="flex flex-col gap-2">
     <div
       role="radiogroup"
       aria-label="Interface theme"
@@ -47,6 +51,13 @@ export default function ThemeSelector({ value, onChange }: ThemeSelectorProps) {
           </button>
         );
       })}
+    </div>
+    <button type="button" onClick={() => setShowCustom(true)} aria-haspopup="dialog"
+      className={`flex w-full items-center justify-center gap-2 rounded border border-[var(--ink)] px-3 py-2 font-space-mono text-[10px] font-bold uppercase tracking-wide transition-colors ${value === "custom" ? "bg-[var(--ink)] text-[var(--surface)]" : "bg-surface text-text-primary hover:bg-surface2"}`}>
+      <Palette size={13} aria-hidden="true" /> Custom
+      {value === "custom" && <span className="h-1.5 w-1.5 rounded-full bg-current" aria-label="Active" />}
+    </button>
+    {showCustom && <CustomThemeModal onClose={() => setShowCustom(false)} onApply={() => { onChange("custom"); setShowCustom(false); }} />}
     </div>
   );
 }

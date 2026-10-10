@@ -1,0 +1,274 @@
+/* Original and Modern retain text-only horizontal navigation. */
+.app-navbar-link-icon,
+.app-sidebar-date,
+.app-settings-label { display: none; }
+
+/* The sidebar is a real grid column, never an overlay on the page. Its main
+   navigation replaces the primary bar, returning that height to the content. */
+html[data-ui-design="sidebar"] .app-canvas .app-theme-shell {
+  --sidebar-width: 128px;
+  --sidebar-nav-background: var(--surface);
+  --sidebar-nav-selected: var(--surface2);
+  --sidebar-nav-hover: var(--surface2);
+  --modern-primary-height: 0px;
+  display: grid;
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  height: var(--app-viewport-height);
+  min-height: 0 !important;
+  overflow: hidden;
+}
+html[data-ui-design="sidebar"] .app-theme-shell > .game-main {
+  grid-column: 2;
+  grid-row: 1;
+  min-width: 0;
+  min-height: 0;
+}
+html[data-ui-design="sidebar"] .app-navbar,
+html[data-ui-design="sidebar"] .app-navbar-placeholder {
+  grid-column: 1;
+  grid-row: 1;
+  width: var(--sidebar-width);
+  height: 100%;
+  min-height: 0;
+  border-bottom: 0;
+  border-right: 1px solid var(--hairline);
+}
+html[data-ui-design="sidebar"] .app-navbar {
+  flex-direction: column;
+  align-items: stretch;
+  padding: 6px;
+  gap: 8px;
+}
+/* Both navigation surfaces share a full-canvas background, so gradients meet
+   at the corner without restarting at the edge of the top bar. */
+html.retro[data-ui-design="sidebar"] .app-canvas .app-theme-shell {
+  --sidebar-nav-background: linear-gradient(180deg, #285244 0%, #173d34 52%, #102e28 100%);
+  --sidebar-nav-selected: #0d2d27;
+  --sidebar-nav-hover: #234a3f;
+}
+html.team[data-ui-design="sidebar"] .app-canvas .app-theme-shell {
+  --sidebar-nav-background: linear-gradient(115deg, var(--team-skin-nav-start), var(--team-skin-nav-end));
+  --sidebar-nav-selected: var(--team-skin-selected);
+  --sidebar-nav-hover: color-mix(in srgb, var(--team-skin-selected) 92%, white 8%);
+}
+html.custom[data-ui-design="sidebar"] .app-canvas .app-theme-shell {
+  --sidebar-nav-background: var(--custom-nav);
+  --sidebar-nav-selected: var(--custom-selection);
+  --sidebar-nav-hover: var(--custom-selection);
+}
+html[data-ui-design="sidebar"] .app-theme-shell :is(.app-navbar, .app-subnav) {
+  background: var(--sidebar-nav-background);
+  background-size: var(--app-viewport-width) var(--app-viewport-height);
+  background-position: 0 0;
+  background-repeat: no-repeat;
+  color: var(--chrome-nav-active);
+  box-shadow: none;
+}
+html[data-ui-design="sidebar"] .app-theme-shell .app-subnav {
+  background-position: calc(0px - var(--sidebar-width)) 0;
+  border-bottom: 1px solid var(--hairline) !important;
+}
+/* Start the page divider below the shared top row, leaving the join open. */
+html[data-ui-design="sidebar"] .app-theme-shell:has(.app-subnav) .app-navbar {
+  border-right-color: transparent;
+}
+html[data-ui-design="sidebar"] .app-theme-shell:has(.app-subnav) .app-navbar::after {
+  content: "";
+  position: absolute;
+  top: var(--modern-secondary-height);
+  right: -1px;
+  bottom: 0;
+  width: 1px;
+  background: var(--hairline);
+  pointer-events: none;
+}
+html[data-ui-design="sidebar"] .app-theme-shell .app-navbar .app-history-navigation {
+  position: static;
+  width: 100%;
+  height: 32px;
+  flex-shrink: 0;
+  border: 1px solid var(--hairline);
+  border-radius: 3px;
+  overflow: hidden;
+}
+html[data-ui-design="sidebar"] .app-history-navigation > button:last-child { border-right: 0; }
+html[data-ui-design="sidebar"] .app-history-navigation svg { height: 16px; width: 16px; }
+html[data-ui-design="sidebar"] .app-navbar-identity {
+  justify-content: center;
+  gap: 6px;
+  margin: 0;
+  padding: 8px 0 12px;
+  border-bottom: 1px solid var(--hairline);
+}
+html[data-ui-design="sidebar"] .app-navbar-initials { height: 32px; min-width: 36px; flex-shrink: 0; }
+html[data-ui-design="sidebar"] .app-sidebar-date {
+  display: inline;
+  color: var(--chrome-nav-muted);
+  font-family: var(--font-barlow-condensed), sans-serif;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+html[data-ui-design="sidebar"] .app-navbar-brand { margin: 0; justify-content: center; padding: 8px 0; }
+html[data-ui-design="sidebar"] .app-navbar-brand > span { font-size: 14px; letter-spacing: 0; }
+html[data-ui-design="sidebar"] .app-navbar-links {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 3px;
+}
+html[data-ui-design="sidebar"] .app-navbar-link {
+  height: 34px;
+  padding-inline: 6px;
+  gap: 6px;
+  border-bottom: 0;
+  border-radius: 3px;
+  font-size: 15px !important;
+  flex-shrink: 0;
+}
+html[data-ui-design="sidebar"] .app-navbar-link[data-active="true"] { box-shadow: inset 3px 0 0 var(--team-accent); }
+html[data-ui-design="sidebar"] .app-navbar-link-icon { display: block; width: 14px; height: 14px; flex-shrink: 0; opacity: .85; }
+html[data-ui-design="sidebar"] .app-navbar > .flex-1 { min-height: 0; }
+html[data-ui-design="sidebar"] .app-navbar-actions {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--hairline);
+}
+html[data-ui-design="sidebar"] .app-navbar:has(.app-sidebar-date) .app-navbar-date { display: none; }
+html[data-ui-design="sidebar"] .app-career-skip-controls { flex-direction: column; align-items: stretch; }
+html[data-ui-design="sidebar"] .app-navbar-actions > [data-tour="auction-top-controls"] { flex-direction: column; align-items: stretch; gap: 6px; }
+html[data-ui-design="sidebar"] [data-tour="auction-top-controls"] > div.relative > button { width: 100%; }
+html[data-ui-design="sidebar"] .app-career-skip-controls > button,
+html[data-ui-design="sidebar"] [data-tour="auction-top-controls"] > div.relative > button {
+  min-height: 28px;
+  height: auto;
+  padding: 5px 6px;
+  white-space: normal;
+  line-height: 1.15;
+}
+html[data-ui-design="sidebar"] [data-tour="auction-top-controls"] > div.relative > button > svg { flex-shrink: 0; }
+html[data-ui-design="sidebar"] .app-speed-controls > button { flex: 1; width: auto; }
+html[data-ui-design="sidebar"] .app-settings-anchor > button { width: 100%; gap: 8px; color: var(--team-bid-text) !important; }
+html[data-ui-design="sidebar"] .app-settings-label { display: inline; font-family: var(--font-barlow-condensed), sans-serif; font-size: 14px; text-transform: uppercase; }
+
+/* Settings and auction confirmations open beside the sidebar, within the
+   viewport even when their trigger sits at the bottom of the navigation. */
+html[data-ui-design="sidebar"] .app-navbar-actions :is([class~="absolute"][class~="right-0"][class~="top-full"]) {
+  left: calc(100% + 12px);
+  right: auto;
+  top: auto;
+  bottom: 0;
+  margin-top: 0;
+  max-height: calc(var(--app-viewport-height) - 24px);
+  overflow-y: auto;
+}
+
+/* The existing Continue / Play fixture / Simulate fixture actions remain in
+   their original component, pinned to the right of this single top row. */
+html[data-ui-design="sidebar"] .app-theme-shell .app-subnav { padding-inline: 12px; }
+html[data-ui-design="sidebar"] .app-season-actions { margin-left: auto; flex: 0 0 auto; }
+html[data-ui-design="sidebar"] .app-subnav-tabs { min-width: 0; }
+html[data-ui-design="sidebar"] .app-subnav-link[data-subtab="overview"] { display: none; }
+html[data-ui-design="sidebar"] .app-theme-shell .app-subnav-link {
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--chrome-nav-muted) !important;
+  font-size: 15px !important;
+  font-weight: 700;
+  letter-spacing: .015em;
+}
+html[data-ui-design="sidebar"] .app-theme-shell :is(.app-navbar-link, .app-subnav-link):hover {
+  background: var(--sidebar-nav-hover);
+}
+html[data-ui-design="sidebar"] .app-theme-shell :is(.app-navbar-link, .app-subnav-link)[data-active="true"] {
+  background: var(--sidebar-nav-selected);
+  color: var(--chrome-nav-active) !important;
+  box-shadow: inset 3px 0 0 var(--team-accent);
+}
+html[data-ui-design="sidebar"] .app-auction-subnav > div:first-child > span,
+html[data-ui-design="sidebar"] .app-auction-subnav [data-tour="auction-player-counts"] > button:last-child > span {
+  color: var(--chrome-nav-active);
+}
+html[data-ui-design="sidebar"] .season-page-content[data-season-section="league"][data-season-view="overview"] { container: sidebar-page / inline-size; }
+html[data-ui-design="sidebar"] .season-page-content > :is(.grid, .flex) > * { min-width: 0; }
+
+/* Fluid columns use the narrower page width; row heights continue to fill the
+   taller page area inherited from the compact page layout. */
+html[data-ui-design="sidebar"] .season-page-content[data-season-section="home"][data-season-view="overview"] > .grid {
+  grid-template-columns: minmax(0, .9fr) minmax(0, 1.3fr) minmax(0, .9fr);
+}
+html[data-ui-design="sidebar"] .season-page-content[data-season-section="squad"][data-season-view="overview"] > .grid {
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+}
+html[data-ui-design="sidebar"] .season-page-content[data-season-section="club"][data-season-view="overview"] > .grid {
+  grid-template-columns: minmax(0, 2fr) minmax(250px, .85fr);
+}
+html[data-ui-design="sidebar"] .league-history-columns {
+  grid-template-columns: 4rem minmax(14rem, 1.7fr) repeat(4, minmax(6.75rem, .75fr)) 2rem;
+}
+
+/* Auction results reserve space for each Potential XII inside the page.
+   The original floating tiles otherwise extend behind the sidebar or offscreen. */
+html[data-ui-design="sidebar"] .app-canvas .auction-summary {
+  height: 100%;
+  min-height: 0 !important;
+  min-width: 0;
+  overflow: auto;
+}
+html[data-ui-design="sidebar"] .auction-summary-content {
+  width: 100%;
+  max-width: none;
+  padding: 12px;
+}
+html[data-ui-design="sidebar"] .auction-squads-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 500px), 1fr));
+  gap: 16px;
+  align-items: start;
+}
+html[data-ui-design="sidebar"] .auction-squad-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 180px;
+  align-items: start;
+  gap: 10px;
+  min-width: 0;
+}
+html[data-ui-design="sidebar"] .auction-squad-card {
+  min-width: 0;
+  border-width: 1px !important;
+}
+html[data-ui-design="sidebar"] .auction-squad-role-players { min-width: 0; }
+html[data-ui-design="sidebar"] .auction-squad-player {
+  max-width: 100%;
+  flex-wrap: wrap;
+  overflow-wrap: anywhere;
+}
+html[data-ui-design="sidebar"] .auction-potential-xii {
+  position: static;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  border-width: 1px;
+  border-radius: 3px;
+  box-shadow: none;
+  transform: none;
+}
+
+/* Respond to actual content width, rather than the full browser width that
+   includes the sidebar. Keep all cards accessible when the league grid reflows. */
+@container sidebar-page (max-width: 1160px) {
+  html[data-ui-design="sidebar"] .season-page-content[data-season-section="league"][data-season-view="overview"] > .grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: repeat(3, minmax(0, 1fr));
+    overflow: auto;
+  }
+  html[data-ui-design="sidebar"] .season-page-content[data-season-section="league"][data-season-view="overview"] > .grid > * {
+    grid-column: auto;
+    grid-row: auto;
+    min-height: 0;
+    overflow-y: auto;
+  }
+}

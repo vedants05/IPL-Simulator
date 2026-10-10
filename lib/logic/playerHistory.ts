@@ -82,6 +82,52 @@ export function summarizeIplSeasonMatchLogs(logs: unknown): Pick<NonNullable<IPL
   return matchIds.size > 0 ? { matches: matchIds.size, runs, wickets } : undefined;
 }
 
+/** Count one player's IPL appearances and figures from the supplied IPL fixtures. */
+export function summarizeIplPlayerFixtures(
+  fixtures: readonly {
+    id: string;
+    played?: boolean;
+    date?: string;
+    teamA?: string;
+    teamB?: string;
+    simulation?: {
+      lineups?: Record<string, { startingXI?: readonly string[]; finalXI?: readonly string[] }>;
+      innings?: readonly {
+        batting: readonly { id: string; runs?: number }[];
+        bowling: readonly { id: string; wickets?: number }[];
+      }[];
+    };
+    scorecard?: {
+      inningsA: { batting: readonly { id: string; runs?: number }[]; bowling: readonly { id: string; wickets?: number }[] };
+      inningsB: { batting: readonly { id: string; runs?: number }[]; bowling: readonly { id: string; wickets?: number }[] };
+    };
+  }[] | undefined,
+  playerId: string,
+  options?: { season?: number; teamIds?: ReadonlySet<string> },
+): Pick<NonNullable<IPLHistoryEntry["seasonStats"]>, "matches" | "runs" | "wickets"> | undefined {
+  if (!fixtures) return undefined;
+  const matchIds = new Set<string>();
+  let runs = 0;
+  let wickets = 0;
+  for (const fixture of fixtures) {
+    if (!fixture.played || matchIds.has(fixture.id)) continue;
+    if (options?.season && fixture.date && Number(fixture.date.slice(0, 4)) !== options.season) continue;
+    if (options?.teamIds && (!fixture.teamA || !fixture.teamB || !options.teamIds.has(fixture.teamA) || !options.teamIds.has(fixture.teamB))) continue;
+    const innings = fixture.simulation?.innings
+      ?? (fixture.scorecard ? [fixture.scorecard.inningsA, fixture.scorecard.inningsB] : []);
+    const batting = innings.flatMap((entry) => entry.batting).filter((entry) => entry.id === playerId);
+    const bowling = innings.flatMap((entry) => entry.bowling).filter((entry) => entry.id === playerId);
+    const inLineup = Object.values(fixture.simulation?.lineups ?? {}).some((lineup) => (
+      lineup.startingXI?.includes(playerId) || lineup.finalXI?.includes(playerId)
+    ));
+    if (batting.length === 0 && bowling.length === 0 && !inLineup) continue;
+    matchIds.add(fixture.id);
+    runs += batting.reduce((total, entry) => total + (entry.runs ?? 0), 0);
+    wickets += bowling.reduce((total, entry) => total + (entry.wickets ?? 0), 0);
+  }
+  return matchIds.size > 0 ? { matches: matchIds.size, runs, wickets } : undefined;
+}
+
 export function protectCompletedSeasonTeamsFromTrades(
   history: IPLHistoryEntry[] = [],
   playerId: string,

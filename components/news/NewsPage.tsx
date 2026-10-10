@@ -1,4 +1,5 @@
 "use client";
+import { formatDisplayDate } from "@/lib/logic/displayDate";
 
 import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
@@ -45,7 +46,8 @@ import {
 import type { OffseasonPlayerStats, OffseasonStatsPeriod } from "@/lib/logic/offseasonStats";
 import { getSeasonScheduleAnnouncementDate } from "@/lib/logic/careerCalendar";
 import { LEAGUE_HISTORY_TEAMS } from "@/lib/data/leagueHistory";
-import { addNewsDays, getNewsArticleExpiry, NEWS_REPEAT_COOLDOWN_DAYS } from "@/lib/logic/newsArticlePolicy";
+import { addNewsDays, getNewsArticleExpiry, NEWS_REPEAT_COOLDOWN_DAYS, newsWindowEnd, isNewsPublished, isNewsActive, isNewsBreaking, compareNewsArticles } from "@/lib/logic/newsArticlePolicy";
+import { buildStaffNewsArticles } from "@/lib/logic/staffNewsArticles";
 import { selectTeamOfSeason } from "@/lib/logic/teamOfSeason";
 import type { ClubFigureProgression } from "@/lib/data/clubFigures";
 import type { InternationalCareerState } from "@/lib/logic/international";
@@ -128,9 +130,10 @@ export interface NewsArticle {
   readTime: string;
   brand?: "cricinfo" | "cricbuzz" | "newsletter";
   isBreaking?: boolean;
+  priority?: number;
 }
 
-const newsArticleIdentity = (article: NewsArticle) => [
+const newsArticleIdentity = (article: Pick<NewsArticle, "id" | "publishedAt" | "associatedEntityIds" | "teamId" | "playerId">) => [
   article.id,
   article.publishedAt || "undated",
   article.associatedEntityIds?.teamId || article.associatedEntityIds?.playerId || article.teamId || article.playerId || "general",
@@ -169,7 +172,7 @@ export default function NewsPage({
   const saveId = useGameStore((state) => state.saveId);
   useEffect(() => {
     if (typeof window === "undefined" || !saveId) return;
-    const prefix = `ipl-news-article-cache-v35-${saveId}-`;
+    const prefix = `ipl-news-article-cache-v36-${saveId}-`;
     const activeKey = `${prefix}${currentSeason}`;
     const staleKeys: string[] = [];
     for (let index = 0; index < window.localStorage.length; index += 1) {
@@ -186,10 +189,13 @@ export default function NewsPage({
   const [selectedArticleId, setSelectedArticleId] = useState<string | null>(null);
   const [activeScorecard, setActiveScorecard] = useState<any | null>(null);
   const [pinnedArticleIds, setPinnedArticleIds] = useState<string[]>([]);
+  const [pinnedSnapshots, setPinnedSnapshots] = useState<NewsArticle[]>([]);
+  const [loadedPinKey, setLoadedPinKey] = useState("");
   const [offseasonSearch, setOffseasonSearch] = useState("");
   const [offseasonNationality, setOffseasonNationality] = useState<"all" | "Indian" | "Overseas">("all");
   const [offseasonLevel, setOffseasonLevel] = useState<"all" | "International" | "Domestic">("all");
   const pinStorageKey = `ipl-news-pins-v1-${saveId || "unsaved"}`;
+  const pinSnapshotKey = `ipl-news-pinned-stories-v2-${saveId || "unsaved"}`;
 
   const combinedOffseasonPeriod = useMemo<OffseasonStatsPeriod | null>(() => {
     if (!internationalCareer) return offseasonStatsPeriod;
@@ -249,21 +255,42 @@ export default function NewsPage({
     if (typeof window === "undefined") return;
     try {
       const stored = JSON.parse(window.localStorage.getItem(pinStorageKey) || "[]");
-      setPinnedArticleIds(Array.isArray(stored) ? stored.filter((item): item is string => typeof item === "string").slice(0, 3) : []);
+      const snapshots = JSON.parse(window.localStorage.getItem(pinSnapshotKey) || "[]");
+      const valid: NewsArticle[] = Array.isArray(snapshots) ? snapshots.filter((item) => item && typeof item.id === "string" && typeof item.title === "string" && typeof item.publishedAt === "string").slice(0, 3) : [];
+      // Recover old ID-only pins before switching to independent saved copies.
+      const legacyIds = Array.isArray(stored) ? stored.filter((item): item is string => typeof item === "string").slice(0, 3) : [];
+      for (let index = 0; index < window.localStorage.length && valid.length < 3; index += 1) {
+        const key = window.localStorage.key(index);
+        if (!key?.startsWith("ipl-news-article-cache-v") || !key.includes(`-${saveId || "unsaved"}-`)) continue;
+        try {
+          const cached = JSON.parse(window.localStorage.getItem(key) || "[]");
+          if (!Array.isArray(cached)) continue;
+          for (const article of cached) {
+            if (valid.length >= 3) break;
+            if (article && typeof article.id === "string" && typeof article.title === "string" && typeof article.publishedAt === "string"
+              && legacyIds.includes(newsArticleIdentity(article))
+              && !valid.some((item) => newsArticleIdentity(item) === newsArticleIdentity(article))) valid.push(article);
+          }
+        } catch { /* A corrupt old cache must not prevent restoring other pins. */ }
+      }
+      setPinnedSnapshots(valid);
+      setPinnedArticleIds(Array.from(new Set([...valid.map(newsArticleIdentity), ...(Array.isArray(stored) ? stored.filter((item): item is string => typeof item === "string") : [])])).slice(0, 3));
     } catch {
       setPinnedArticleIds([]);
+      setPinnedSnapshots([]);
     }
-  }, [pinStorageKey]);
+    setLoadedPinKey(pinSnapshotKey);
+  }, [pinStorageKey, pinSnapshotKey, saveId]);
 
   const toggleArticlePin = (article: NewsArticle) => {
     const identity = newsArticleIdentity(article);
-    setPinnedArticleIds((current) => {
-      const next = current.includes(identity)
-        ? current.filter((item) => item !== identity)
-        : current.length < 3 ? [...current, identity] : current;
-      try { window.localStorage.setItem(pinStorageKey, JSON.stringify(next)); } catch { /* Storage can be unavailable. */ }
-      return next;
-    });
+    if (pinnedArticleIds.includes(identity)) {
+      setPinnedArticleIds((current) => current.filter((item) => item !== identity));
+      setPinnedSnapshots((current) => current.filter((item) => newsArticleIdentity(item) !== identity));
+    } else if (pinnedArticleIds.length < 3) {
+      setPinnedArticleIds((current) => [...current, identity]);
+      setPinnedSnapshots((current) => [...current, article]);
+    }
   };
 
   const userTeam = teams[userTeamId];
@@ -391,24 +418,15 @@ export default function NewsPage({
     const fixtureAnnouncementDateKey = getDaysBeforeDate(seasonStartDateKey, 21);
 
     const formatDate = (dateKey: string) => {
-      if (!dateKey) return "April 3, " + currentSeason;
-      const parts = dateKey.split("-");
-      if (parts.length < 3) return dateKey;
-      const year = parseInt(parts[0]);
-      const month = parseInt(parts[1]) - 1;
-      const day = parseInt(parts[2]);
-      const d = new Date(year, month, day);
-      const options: Intl.DateTimeFormatOptions = { month: 'long', day: 'numeric', year: 'numeric' };
-      return d.toLocaleDateString('en-US', options);
+      return formatDisplayDate(dateKey || `${currentSeason}-04-03`);
     };
 
     const formattedCurrentDate = formatDate(currentDate);
     const formattedPostAuctionDate = (() => {
-      if (!auctionDateKey) return "December 16, " + (currentSeason - 1);
+      if (!auctionDateKey) return formatDisplayDate(`${currentSeason - 1}-12-16`);
       const parts = auctionDateKey.split("-");
       const d = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]) + 1);
-      const options: Intl.DateTimeFormatOptions = { month: 'long', day: 'numeric', year: 'numeric' };
-      return d.toLocaleDateString('en-US', options);
+      return formatDisplayDate(d);
     })();
 
     const getPlayerMatches = (playerId: string) => {
@@ -915,33 +933,15 @@ export default function NewsPage({
       || String(triggerType || "").startsWith("playoff_")
       || String(triggerType || "").startsWith("elimination_");
     const addDays = addNewsDays;
-    const retirementReleaseCacheKey = `ipl-news-retirement-releases-v1-${saveId || "unsaved"}`;
     const retirementRelease = (template: ArticleTemplate): { date: string; season: number } => {
-      const playerId = template.retirementTargetId;
-      if (!playerId) return { date: currentDate, season: currentSeason };
-      try {
-        const releases = JSON.parse(window.localStorage.getItem(retirementReleaseCacheKey) || "{}") as Record<string, { date: string; season: number }>;
-        if (releases[playerId]?.date) return releases[playerId];
-        const release = { date: currentDate, season: currentSeason };
-        releases[playerId] = release;
-        window.localStorage.setItem(retirementReleaseCacheKey, JSON.stringify(releases));
-        return release;
-      } catch {
-        return { date: currentDate, season: currentSeason };
-      }
-    };
-    const publicationOffset = (template: ArticleTemplate) => {
-      const recurring = teamFormArticleTriggers.has(template.triggerType)
-        || template.triggerType === "league_standing"
-        || template.triggerType === "mid_season"
-        || template.triggerType === "player_milestone"
-        || template.triggerType === "player_season_benchmark"
-        || template.triggerType === "player_century"
-        || template.triggerType === "player_fivefer"
-        || template.triggerType === "player_rookie_spotlight";
-      if (!recurring) return 0;
-      const hash = Array.from(template.id).reduce((sum, character) => sum + character.charCodeAt(0), 0);
-      return hash % 3;
+      const record = finalRetirees.find((item) => item.playerId === template.retirementTargetId);
+      const season = record?.season ?? currentSeason;
+      // Old saves have no announcement date. Anchor them to the relevant career
+      // phase rather than making the first visit to News their publication date.
+      const phaseDates = getSeasonDates(season);
+      const fallback = record?.reason === "persistent-unsold" || record?.reason === "below-auction-standard"
+        ? phaseDates.auctionDate : phaseDates.retentionDate;
+      return { date: record?.announcedOn || fallback, season };
     };
     const articlePublicationDate = (template: ArticleTemplate) => {
       if (matchArticleTriggers.has(template.triggerType)) return lastMatch?.date || currentDate;
@@ -996,8 +996,12 @@ export default function NewsPage({
         || template.triggerType === "player_century"
         || template.triggerType === "player_fivefer"
         || template.triggerType === "player_rookie_spotlight") {
-        const eventDate = lastMatch?.date || currentDate;
-        return eventDate ? addDays(eventDate, publicationOffset(template)) : currentDate;
+        const focusTeamId = template.triggerType.includes("surge") ? surgingTeamId
+          : template.triggerType.includes("freefall") ? strugglingTeamId : undefined;
+        const eventDate = playedFixtures
+          .filter((fixture) => !focusTeamId || fixture.teamA === focusTeamId || fixture.teamB === focusTeamId)
+          .map((fixture) => fixture.date || "").filter(Boolean).sort().at(-1);
+        return eventDate || currentDate;
       }
       return lastMatch?.date || currentDate;
     };
@@ -1011,7 +1015,7 @@ export default function NewsPage({
       if (teamFormArticleTriggers.has(template.triggerType)) return 7;
       return 5;
     };
-    const articleCacheKey = `ipl-news-article-cache-v35-${saveId || "unsaved"}-${currentSeason}`;
+    const articleCacheKey = `ipl-news-article-cache-v36-${saveId || "unsaved"}-${currentSeason}`;
     const articleMatchesLayout = (article: NewsArticle) => !article.brand || article.brand === layout;
 
     const isPlayoffStageFixture = (fixture: any, stage?: ArticleTemplate["playoffSummaryStage"]) => {
@@ -1153,6 +1157,11 @@ export default function NewsPage({
     });
     const expandedTemplates = [...nonRetirementTemplates, ...expandedRetirementTemplates];
 
+    let articleCache: NewsArticle[] = [];
+    try {
+      const stored = JSON.parse(window.localStorage.getItem(articleCacheKey) || "[]");
+      if (Array.isArray(stored)) articleCache = stored;
+    } catch { /* Regenerate when the cache is unavailable. */ }
     const freshArticles = expandedTemplates.map((template) => {
       const sim = lastMatch?.simulation;
 
@@ -3609,7 +3618,7 @@ export default function NewsPage({
         article.associatedEntityIds = isTeamEntity ? { teamId: articleEntityId } : { playerId: articleEntityId };
       }
       try {
-        const cached = JSON.parse(window.localStorage.getItem(articleCacheKey) || "[]") as NewsArticle[];
+        const cached = articleCache;
         const identity = `${article.id}:${article.publishedAt}:${articleEntityId || ""}`;
         const existing = cached.find((item) => articleMatchesLayout(item)
           && `${item.id}:${item.publishedAt}:${item.associatedEntityIds?.teamId || item.associatedEntityIds?.playerId || ""}` === identity);
@@ -3636,7 +3645,7 @@ export default function NewsPage({
             && !isRetirementArticleTrigger((item as any).triggerType)
             && !matchArticleTriggers.has((item as any).triggerType)));
         active.push(article);
-        window.localStorage.setItem(articleCacheKey, JSON.stringify(active));
+        articleCache = active;
       } catch {
         // Storage may be unavailable or full; live generation remains functional.
       }
@@ -3644,7 +3653,7 @@ export default function NewsPage({
     }).filter((art): art is NewsArticle => art !== null);
     let cachedArticles: NewsArticle[] = [];
     try {
-      cachedArticles = (JSON.parse(window.localStorage.getItem(articleCacheKey) || "[]") as NewsArticle[])
+      cachedArticles = articleCache
         .filter((article) => articleMatchesLayout(article)
           && !matchArticleTriggers.has((article as ArticleTemplate).triggerType)
           && (!isRetirementArticleTrigger((article as any).triggerType)
@@ -3663,7 +3672,7 @@ export default function NewsPage({
             && (article as any).triggerType !== "post_season"
             && !isRetirementArticleTrigger((article as any).triggerType)
             && !matchArticleTriggers.has((article as any).triggerType)));
-      window.localStorage.setItem(articleCacheKey, JSON.stringify(cachedArticles));
+
     } catch {
       cachedArticles = [];
     }
@@ -3673,19 +3682,10 @@ export default function NewsPage({
     // Build match news from every completed fixture, not merely whichever
     // user match happened to be latest when the News page was opened.
     const chronologicalFixtures = [...fixtures]
-      .filter((fixture) => fixture.played && fixture.date)
+      .filter((fixture) => fixture.played && fixture.date && fixture.date <= currentDate)
       .sort((left, right) => String(left.date).localeCompare(String(right.date)) || left.matchNumber - right.matchNumber);
     const runningPlayerTotals = new Map<string, { runs: number; wickets: number }>();
-    const nextTeamMatchDate = (teamId: string, after: string) => chronologicalFixtures
-      .concat(fixtures.filter((fixture) => !fixture.played && fixture.date))
-      .filter((fixture) => String(fixture.date) > after && (fixture.teamA === teamId || fixture.teamB === teamId))
-      .map((fixture) => String(fixture.date))
-      .sort()[0];
-    const matchExpiry = (teamId: string, publishedAt: string, days: number) => {
-      const fixedExpiry = addDays(publishedAt, days);
-      const nextMatch = nextTeamMatchDate(teamId, publishedAt);
-      return nextMatch && nextMatch < fixedExpiry ? addDays(nextMatch, -1) : fixedExpiry;
-    };
+    const matchExpiry = (_teamId: string, publishedAt: string, days: number) => newsWindowEnd(publishedAt, days);
     chronologicalFixtures.forEach((fixture) => {
       const publishedAt = String(fixture.date);
       const teamA = teams[fixture.teamA];
@@ -3800,94 +3800,10 @@ export default function NewsPage({
         articleByIdentity.set(newsArticleIdentity(article), article);
       });
     });
-    careerStaff.newsEvents.forEach((event) => {
-      const eventYear = Number(event.publishedOn.slice(0, 4));
-      const relatedVacancy = event.kind === "head_coach_sacked"
-        ? careerStaff.newsEvents.find((candidate) => (
-            candidate.kind === "head_coach_vacancy"
-            && candidate.teamId === event.teamId
-            && Number(candidate.publishedOn.slice(0, 4)) === eventYear
-          ))
-        : null;
-      // The vacancy report below contains the dismissal and interim details;
-      // do not publish a second, incomplete article for the same decision.
-      if (event.kind === "head_coach_sacked" && relatedVacancy) return;
-      const team = teams[event.teamId];
-      const teamName = team?.name ?? event.teamId;
-      const staffNameForId = (staffId: string | null | undefined) => staffId
-        ? careerStaff.contracts[staffId]?.fullName ?? careerStaff.generatedProfiles[staffId]?.fullName ?? null
-        : null;
-      const staffName = staffNameForId(event.staffId);
-      const isAppointment = event.kind === "head_coach_appointed";
-      const isPoaching = event.kind === "staff_poached";
-      const isSacking = event.kind === "head_coach_sacked";
-      const isVacancy = event.kind === "head_coach_vacancy";
-      const relatedSacking = isVacancy
-        ? [...careerStaff.newsEvents]
-            .filter((candidate) => (
-              candidate.kind === "head_coach_sacked"
-              && candidate.teamId === event.teamId
-              && Number(candidate.publishedOn.slice(0, 4)) === eventYear
-              && candidate.publishedOn <= event.publishedOn
-            ))
-            .sort((left, right) => right.publishedOn.localeCompare(left.publishedOn))[0]
-        : null;
-      const dismissedCoachName = staffNameForId(relatedSacking?.staffId ?? (isSacking ? event.staffId : null));
-      const interimCoachName = isVacancy ? staffName : null;
-      const dismissalReview = [...(careerStaff.performanceReviews ?? [])]
-        .filter((review) => review.teamId === event.teamId && review.headCoachDismissed && review.season <= eventYear)
-        .sort((left, right) => right.season - left.season)[0];
-      const positionLabel = (position: number) => {
-        const mod100 = position % 100;
-        const suffix = mod100 >= 11 && mod100 <= 13
-          ? "th"
-          : position % 10 === 1 ? "st" : position % 10 === 2 ? "nd" : position % 10 === 3 ? "rd" : "th";
-        return `${position}${suffix}`;
-      };
-      const dismissalReason = dismissalReview
-        ? `${teamName} finished ${positionLabel(dismissalReview.finalPosition)} after being expected to finish ${positionLabel(dismissalReview.expectedPosition)}, producing a job-pressure rating of ${Math.round(dismissalReview.effectivePressure)}/100.`
-        : `${teamName}'s end-of-season review concluded that results had fallen below the board's expectations.`;
-      const formerTeamName = event.sourceTeamId ? teams[event.sourceTeamId]?.name ?? event.sourceTeamId : null;
-      const article: NewsArticle = {
-        id: relatedSacking?.id ?? event.id,
-        title: isVacancy && relatedSacking
-          ? `${teamName} sack ${dismissedCoachName ?? "head coach"}${interimCoachName ? `; ${interimCoachName} takes interim charge` : ""}`
-          : isSacking ? `${teamName} sack ${staffName ?? "head coach"}`
-          : isPoaching ? `${teamName} prise ${staffName ?? "coach"} away${formerTeamName ? ` from ${formerTeamName}` : ""}`
-          : isAppointment ? `${teamName} appoint ${staffName ?? "new head coach"}`
-          : interimCoachName ? `${teamName} name ${interimCoachName} interim head coach` : `${teamName} open head-coach search`,
-        subheading: isVacancy && relatedSacking
-          ? `${dismissedCoachName ?? "The head coach"} has departed after the season review${interimCoachName ? `, with ${interimCoachName} placed in temporary charge` : ""}.`
-          : isSacking
-          ? `The franchise has acted after its end-of-season performance review.`
-          : isPoaching
-          ? `${staffName ?? "The coach"} has agreed terms after the clubs settled contractual compensation.`
-          : isAppointment
-          ? `${staffName ?? "The new appointment"} takes charge for the remainder of the campaign.`
-          : staffName ? `${staffName} will oversee the team on an interim basis.` : "The franchise has opened an urgent recruitment process.",
-        content: isVacancy && relatedSacking
-          ? `${teamName} have dismissed head coach ${dismissedCoachName ?? "their incumbent head coach"} following the club's end-of-season performance review. ${dismissalReason} The board also considered the coach's two-season performance record and the franchise's established patience policy.${interimCoachName ? ` ${interimCoachName} has been appointed interim head coach and will oversee first-team operations while the club conducts its permanent recruitment process.` : " The existing coaching staff will share interim responsibility while the club conducts its permanent recruitment process."}`
-          : isSacking
-          ? `${teamName} have dismissed ${staffName ?? "their head coach"} following an end-of-season review. ${dismissalReason}`
-          : isPoaching
-          ? `${teamName} have completed the appointment of ${staffName ?? "a new coach"}${formerTeamName ? ` from ${formerTeamName}` : ""}. The move reflects the coach's career ambitions, contractual terms and ties to the new club, with compensation paid for the remaining contract.`
-          : isAppointment
-          ? `${teamName} have confirmed the appointment of ${staffName ?? "a new head coach"}. The deal was completed after a mid-season recruitment process and takes effect immediately.`
-          : `${teamName} have opened a mid-season search for a permanent head coach.${staffName ? ` ${staffName} has been given interim responsibility while the process is completed.` : " Existing staff will share interim responsibility while candidates are assessed."}`,
-        category: event.teamId === userTeamId ? "user_team" : "transfers_auctions",
-        tag: "Staff Market",
-        timestamp: formatDate(event.publishedOn),
-        publishedAt: event.publishedOn,
-        expiresAt: addDays(event.publishedOn, isSacking || isAppointment || Boolean(relatedSacking) ? 21 : 14),
-        teamId: event.teamId,
-        associatedEntityIds: { teamId: event.teamId },
-        imagePlaceholder: `${teamName} coaching announcement`,
-        author: "IPL News Desk",
-        readTime: "2 min read",
-        isBreaking: true,
-      };
-      articleByIdentity.set(article.id, article);
-    });
+    buildStaffNewsArticles(careerStaff, (id) => teams[id]?.name ?? (id === "league" ? "the league" : id), userTeamId, currentDate)
+      .forEach((article) => articleByIdentity.set(newsArticleIdentity(article), {
+        ...article, timestamp: formatDate(article.publishedAt),
+      }));
     retirementCohorts.forEach(({ season, additional }) => {
       if (additional.length === 0) return;
       const names = additional.map((record) => record.name);
@@ -4014,36 +3930,50 @@ export default function NewsPage({
       };
       articleByIdentity.set(article.id, article);
     });
-    return Array.from(articleByIdentity.values()).filter((article) => (
-      pinnedArticleIds.includes(newsArticleIdentity(article))
-      || !article.expiresAt
-      || !currentDate
-      || currentDate <= article.expiresAt
-    ));
+    return Array.from(articleByIdentity.values()).filter((article) =>
+      isNewsPublished(article, currentDate) && (pinnedArticleIds.includes(newsArticleIdentity(article)) || isNewsActive(article, currentDate))
+    );
   }, [userTeamId, players, teams, playerStats, standings, retirements, retirementHistory, retiredPlayerSnapshots, currentSeason, fixtures, topScorer, topWicketTaker, layout, currentDate, saveId, isSeasonConcluded, clubFigureProgression, careerStaff, pinnedArticleIds]);
+
+  useEffect(() => {
+    try {
+      // One write per generation; storage is never mutated during rendering.
+      const key = `ipl-news-article-cache-v36-${saveId || "unsaved"}-${currentSeason}`;
+      const stored = JSON.parse(window.localStorage.getItem(key) || "[]");
+      const otherPublications = Array.isArray(stored) ? stored.filter((article: NewsArticle) =>
+        article.brand && article.brand !== layout && isNewsActive(article, currentDate)) : [];
+      window.localStorage.setItem(key,
+        JSON.stringify([...otherPublications, ...generatedArticles.filter((article) => "triggerType" in article)]));
+    } catch { /* News still works when browser storage is unavailable. */ }
+  }, [generatedArticles, saveId, currentSeason, layout, currentDate]);
+
+  useEffect(() => {
+    if (loadedPinKey !== pinSnapshotKey) return;
+    const available = new Map([...generatedArticles, ...pinnedSnapshots].map((article) => [newsArticleIdentity(article), article]));
+    const snapshots = pinnedArticleIds.flatMap((id) => available.has(id) ? [available.get(id)!] : []);
+    const ids = snapshots.map(newsArticleIdentity);
+    if (ids.join("|") !== pinnedArticleIds.join("|")) setPinnedArticleIds(ids);
+    if (ids.join("|") !== pinnedSnapshots.map(newsArticleIdentity).join("|")) setPinnedSnapshots(snapshots);
+    try {
+      window.localStorage.setItem(pinSnapshotKey, JSON.stringify(snapshots));
+      window.localStorage.setItem(pinStorageKey, JSON.stringify(ids));
+    } catch { /* Keep the current session's pins when storage is unavailable. */ }
+  }, [generatedArticles, pinnedArticleIds, pinnedSnapshots, loadedPinKey, pinSnapshotKey, pinStorageKey]);
 
   // Filter articles based on selected tab
   const filteredArticles = useMemo(() => {
     const articles = (activeTab === "all"
       ? generatedArticles
       : generatedArticles.filter((article) => article.category === activeTab))
-      .filter((article) => !article.expiresAt || !currentDate || currentDate <= article.expiresAt);
-    // News is chronological. Breaking status only resolves ties between
-    // stories published on the same day; it must not pin stale coverage above
-    // newer reporting.
-    return [...articles].sort((a, b) => {
-      const dateOrder = String(b.publishedAt || "").localeCompare(String(a.publishedAt || ""));
-      if (dateOrder !== 0) return dateOrder;
-      if (Boolean(a.isBreaking) !== Boolean(b.isBreaking)) return Number(Boolean(b.isBreaking)) - Number(Boolean(a.isBreaking));
-      return a.id.localeCompare(b.id);
-    });
+      .filter((article) => isNewsActive(article, currentDate));
+    return [...articles].sort((a, b) => compareNewsArticles(a, b, currentDate))
+      .map((article) => ({ ...article, isBreaking: isNewsBreaking(article, currentDate) }));
   }, [activeTab, currentDate, generatedArticles]);
 
-  const expiredPinnedArticles = useMemo(() => generatedArticles
-    .filter((article) => pinnedArticleIds.includes(newsArticleIdentity(article))
-      && Boolean(article.expiresAt && currentDate && currentDate > article.expiresAt))
-    .sort((left, right) => String(right.expiresAt || "").localeCompare(String(left.expiresAt || ""))),
-  [currentDate, generatedArticles, pinnedArticleIds]);
+  const savedPinnedArticles = useMemo(() => pinnedSnapshots
+    .filter((article) => pinnedArticleIds.includes(newsArticleIdentity(article)) && isNewsPublished(article, currentDate))
+    .sort((a, b) => String(b.publishedAt).localeCompare(String(a.publishedAt))),
+  [currentDate, pinnedSnapshots, pinnedArticleIds]);
 
   const heroArticle = useMemo(() => {
     return filteredArticles[0];
@@ -4054,8 +3984,8 @@ export default function NewsPage({
   }, [filteredArticles, heroArticle]);
 
   const selectedArticle = useMemo(() => {
-    return generatedArticles.find((article) => newsArticleIdentity(article) === selectedArticleId);
-  }, [selectedArticleId, generatedArticles]);
+    return [...pinnedSnapshots, ...generatedArticles].find((article) => newsArticleIdentity(article) === selectedArticleId);
+  }, [selectedArticleId, generatedArticles, pinnedSnapshots]);
 
   const fixturesAnnounced = Boolean(currentDate)
     && currentDate >= getSeasonScheduleAnnouncementDate(currentSeason);
@@ -4359,7 +4289,7 @@ export default function NewsPage({
                     <span className="text-[8px] font-sans font-medium text-slate-500 italic">
                       {fixture.played 
                         ? `${teams[fixture.winner!]?.shortName || fixture.winner} won`
-                        : `Scheduled: ${fixture.date || "TBD"}`
+                        : `Scheduled: ${fixture.date ? formatDisplayDate(fixture.date) : "TBD"}`
                       }
                     </span>
                     {fixture.played && (
@@ -4432,7 +4362,7 @@ export default function NewsPage({
                     <span className="text-[8px] font-sans font-medium text-[#b0b0b0] italic">
                       {fixture.played 
                         ? `${teams[fixture.winner!]?.shortName || fixture.winner} won`
-                        : `Scheduled: ${fixture.date || "TBD"}`
+                        : `Scheduled: ${fixture.date ? formatDisplayDate(fixture.date) : "TBD"}`
                       }
                     </span>
                     {fixture.played && (
@@ -4489,7 +4419,7 @@ export default function NewsPage({
 
       {/* 3. Main content workspace */}
       <div className="min-h-0 flex-1 overflow-y-auto px-4 pr-2">
-        {filteredArticles.length === 0 && expiredPinnedArticles.length === 0 ? (
+        {filteredArticles.length === 0 && savedPinnedArticles.length === 0 ? (
           <div className="flex h-full min-h-[300px] flex-col items-center justify-center rounded-xl border border-dashed border-border bg-surface p-6 text-center">
             <Newspaper size={32} className="text-text-secondary/40" />
             <h3 className="mt-2 font-anton text-[16px] uppercase text-text-primary">No stories found</h3>
@@ -4871,13 +4801,13 @@ export default function NewsPage({
               </div>
             )}
 
-            {expiredPinnedArticles.length > 0 && (
+            {savedPinnedArticles.length > 0 && (
               <section className="mb-8 border-t-2 border-border px-1 pt-5">
                 <div className="mb-3 flex items-center gap-2 font-space-mono text-[9px] font-extrabold uppercase tracking-[0.18em] text-text-secondary">
                   <Pin size={12} /> Pinned stories
                 </div>
                 <div className="grid gap-3 md:grid-cols-3">
-                  {expiredPinnedArticles.map((article) => (
+                  {savedPinnedArticles.map((article) => (
                     <button
                       key={newsArticleIdentity(article)}
                       type="button"

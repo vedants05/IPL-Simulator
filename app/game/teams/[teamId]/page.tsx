@@ -21,9 +21,11 @@ import { getTeamAuctionDescriptor } from "@/lib/constants/auctionDescriptors";
 import { formatPrice } from "@/lib/logic/auctionRules";
 import type { AiLineupPlan } from "@/lib/logic/aiLineupSelector";
 import type { AiLeagueLeadership, AiTeamLeadership } from "@/lib/logic/aiLeadership";
-import { dateKeyToLocalDate, getSeasonScheduleAnnouncementDate } from "@/lib/logic/careerCalendar";
+import { getSeasonScheduleAnnouncementDate } from "@/lib/logic/careerCalendar";
+import { formatDisplayDate } from "@/lib/logic/displayDate";
 import { isRainAffectedMatch } from "@/lib/logic/matchWeather";
 import { getPlayerSeasonHistory } from "@/lib/logic/playerHistory";
+import { deriveIplSeasonRosterStats } from "@/lib/logic/iplSeasonRosterStats";
 import { careerSnapshotStorageKey, parseCareerSnapshot, readCareerSnapshot, writeCareerSnapshot } from "@/lib/logic/careerSnapshotStorage";
 import { cacheTeamProfileCareer, getCachedTeamProfileCareer } from "@/lib/logic/teamProfileCareerCache";
 import { useGameStore } from "@/lib/store/gameStore";
@@ -216,17 +218,9 @@ const ROLE_LABELS: Record<Player["role"], string> = {
 
 const playerRating = (player: Player) => Math.max(player.currentBatting ?? 0, player.currentBowling ?? 0);
 
-function safeDateLabel(date?: string, options?: Intl.DateTimeFormatOptions) {
+function safeDateLabel(date?: string) {
   if (!date) return "Date TBC";
-  try {
-    return dateKeyToLocalDate(date).toLocaleDateString("en-GB", options ?? {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-    });
-  } catch {
-    return date;
-  }
+  return formatDisplayDate(date);
 }
 
 function MetricCard({
@@ -989,8 +983,11 @@ function MountedTeamProfilePage() {
   const fixturesAnnounced = currentDate >= fixtureAnnouncementDate;
   const nextFixtures = fixturesAnnounced ? upcomingFixtures.slice(0, visibleNextFixtureCount) : [];
 
-  const teamSeasonStats = useMemo(() => Object.values(career.playerStats)
-    .filter((stat) => stat.teamId === teamId), [career.playerStats, teamId]);
+  const seasonStats = useMemo(() => deriveIplSeasonRosterStats(
+    career.fixtures, currentSeason, new Set(Object.keys(teams)),
+  ), [career.fixtures, currentSeason, teams]);
+  const teamSeasonStats = useMemo(() => Object.values(seasonStats)
+    .filter((stat) => stat.teamId === teamId), [seasonStats, teamId]);
   const leadingRunScorer = [...teamSeasonStats].sort((left, right) => right.runs - left.runs)[0];
   const leadingWicketTaker = [...teamSeasonStats].sort((left, right) => right.wickets - left.wickets)[0];
 
@@ -1016,7 +1013,7 @@ function MountedTeamProfilePage() {
       .map((sale) => [sale.playerId, sale.price]),
   );
   const squadSeason = String(auction?.season ?? currentSeason);
-  const squadSeasonStats = (player: Player) => career.playerStats[player.id];
+  const squadSeasonStats = (player: Player) => seasonStats[player.id];
   const acquisitionPrice = (player: Player) => {
     const salePrice = seasonSales.get(player.id);
     if (salePrice !== undefined) return salePrice;
@@ -1212,7 +1209,7 @@ function MountedTeamProfilePage() {
   const topBorderColor = isDarkPrimary ? (team.secondaryColor || "var(--accent)") : team.primaryColor;
 
   return (
-    <div className="app-theme-background flex h-[calc(100vh-3rem)] min-h-0 flex-col overflow-hidden bg-bg">
+    <div className="season-team-page app-theme-background flex h-[calc(100vh-3rem)] min-h-0 flex-col overflow-hidden bg-bg">
       <header
         className="relative shrink-0 overflow-hidden border-b-2 border-border"
         style={{
@@ -1438,7 +1435,7 @@ function MountedTeamProfilePage() {
                     const venue = fixture.teamA === teamId ? "Home" : "Away";
                     return (
                       <div key={fixture.id} className="grid h-6 grid-cols-[4rem_minmax(0,1fr)_3rem] items-center gap-2 text-[9px]">
-                        <span className="font-space-mono text-[8px] uppercase text-text-secondary">{safeDateLabel(fixture.date, { day: "numeric", month: "short" })}</span>
+                        <span className="font-space-mono text-[8px] uppercase text-text-secondary">{safeDateLabel(fixture.date)}</span>
                         <span className="truncate font-semibold text-text-primary">{opponent?.name ?? opponentId}</span>
                         <span className="text-right font-space-mono text-[8px] font-bold uppercase text-accent">{venue}</span>
                       </div>
@@ -1576,7 +1573,7 @@ function MountedTeamProfilePage() {
                     >
                       <div className="absolute inset-x-0 top-0 h-1" style={{ backgroundColor: team.primaryColor }} />
                       <div className="flex items-center justify-between gap-4 font-space-mono text-[8px] font-bold uppercase text-text-secondary">
-                        <span>Match {fixture.matchNumber} · {safeDateLabel(fixture.date, { weekday: "short", day: "numeric", month: "short" })} · {fixture.time ?? "TBC"}</span>
+                        <span>Match {fixture.matchNumber} · {safeDateLabel(fixture.date)} · {fixture.time ?? "TBC"}</span>
                         <span className={fixture.played ? (won ? "text-success font-bold hover:underline" : "text-danger font-bold hover:underline") : "text-accent"}>
                           {fixture.played
                             ? `${won ? "Won" : "Lost"}${rainAffected ? " · Rain affected" : ""} · View Scorecard ➔`
@@ -1734,9 +1731,9 @@ function MountedTeamProfilePage() {
       {detailedPlayerId && (
         <PlayerProfileModal
           playerId={detailedPlayerId}
+          onOpenPlayer={setDetailedPlayerId}
           onClose={() => setDetailedPlayerId(null)}
           customFixtures={career.fixtures}
-          currentSeasonStats={career.playerStats[detailedPlayerId]}
           isShortlisted={shortlist.includes(detailedPlayerId)}
           onToggleShortlist={toggleShortlist}
         />

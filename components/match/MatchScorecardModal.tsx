@@ -1,4 +1,5 @@
 "use client";
+import { formatDisplayDate } from "@/lib/logic/displayDate";
 
 import { useState } from "react";
 import { X, Award, MapPin, Calendar, Clock, Shield } from "lucide-react";
@@ -449,7 +450,7 @@ export default function MatchScorecardModal({
                     <Calendar size={16} /> Date & Time
                   </div>
                   <div className="mt-2 font-barlow text-sm text-text-primary">
-                    Date: {match.date ?? "Matchday"}
+                    Date: {match.date ? formatDisplayDate(match.date) : "Matchday"}
                   </div>
                   <div className="mt-1 font-space-mono text-xs text-text-secondary flex items-center gap-1">
                     <Clock size={12} /> Time: {match.time ?? "19:30"} IST
