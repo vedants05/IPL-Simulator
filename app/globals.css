@@ -374,80 +374,39 @@ body {
   container-name: league-personnel;
   container-type: size;
 }
+.league-personnel-event + .league-personnel-event {
+  border-top: 1px solid var(--border);
+  padding-top: 0.25rem;
+}
 
 @container league-personnel (max-height: 15rem) {
-  .league-personnel-header {
-    padding-bottom: 0.3rem;
-  }
-
-  .league-personnel-icon {
-    width: 1.6rem;
-    height: 1.6rem;
-  }
-
-  .league-personnel-kicker {
-    font-size: 0.45rem;
-  }
-
-  .league-personnel-title {
-    font-size: 1rem;
-  }
-
-  .league-personnel-stats {
-    margin-top: 0.35rem;
-    gap: 0.4rem;
-  }
-
-  .league-personnel-stat {
-    padding: 0.3rem 0.5rem;
-  }
-
-  .league-personnel-value {
-    font-size: 1.3rem;
-  }
-
-  .league-personnel-label {
-    font-size: 0.48rem;
-  }
-
-  .league-personnel-events {
-    margin-top: 0.25rem;
-  }
-
-  .league-personnel-event {
-    padding-block: 0.2rem;
-    font-size: 0.58rem;
-  }
-
-  .league-personnel-event-meta {
-    font-size: 0.45rem;
-  }
-
-  .league-personnel-event:nth-child(n + 2) {
-    display: none;
-  }
-
-  .league-personnel-link {
-    margin-top: 0.15rem;
-    font-size: 0.45rem;
-  }
+  .league-personnel-header { padding-bottom: 0.3rem; align-items: center; }
+  .league-personnel-icon { width: 1.6rem; height: 1.6rem; }
+  .league-personnel-kicker { font-size: 0.45rem; }
+  .league-personnel-title { font-size: 1rem; }
+  .league-personnel-body { margin-top: 0.35rem; gap: 0.65rem; grid-template-columns: 7.4rem minmax(0, 1fr); }
+  .league-personnel-stats { gap: 0.35rem; padding-right: 0.65rem; }
+  .league-personnel-value { font-size: 1.5rem; }
+  .league-personnel-label { font-size: 0.48rem; }
+  .league-personnel-events { gap: 0.25rem; }
+  .league-personnel-event-name { font-size: 0.8rem; }
 }
 
-@container league-personnel (max-height: 10rem) {
-  .league-personnel-events {
-    display: none;
-  }
+@container league-personnel (max-height: 8rem) {
+  .league-personnel-kicker, .league-personnel-events-heading { display: none; }
+  .league-personnel-icon { width: 1.25rem; height: 1.25rem; }
+  .league-personnel-title { margin-top: 0; font-size: 0.9rem; }
+  .league-personnel-body { margin-top: 0.25rem; }
+  .league-personnel-stats { gap: 0.2rem; }
+  .league-personnel-value { font-size: 1.25rem; }
+  .league-personnel-event-name { font-size: 0.75rem; }
 }
 
-@container league-personnel (max-width: 20rem) {
-  .league-personnel-stat {
-    gap: 0.3rem;
-    padding-inline: 0.4rem;
-  }
-
-  .league-personnel-label {
-    font-size: 0.45rem;
-  }
+@container league-personnel (max-width: 22rem) {
+  .league-personnel-body { grid-template-columns: 6rem minmax(0, 1fr); gap: 0.5rem; }
+  .league-personnel-stats { padding-right: 0.5rem; }
+  .league-personnel-stat { gap: 0.35rem; }
+  .league-personnel-label { font-size: 0.45rem; }
 }
 
 @container club-profile-summary (max-height: 31rem) {

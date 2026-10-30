@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { readDesktopData } from "@/lib/server/desktopData";
 import { mapRowsToPlayers } from "@/lib/supabase/fetchPlayers";
 import { supabase } from "@/lib/supabase/client";
 
@@ -8,6 +9,8 @@ export const fetchCache = "force-no-store";
 
 export async function GET() {
   try {
+    const bundled = await readDesktopData("players");
+    if (bundled) return NextResponse.json(bundled);
     const { data, error } = await supabase
       .from("players")
       .select("*")

@@ -3,6 +3,7 @@ import { calculateStaffPotentialAbility, calculateStaffRoleRatings, isStaffRatin
 import { recalculateStaffFinances, releaseCareerStaff, type CareerStaffContract, type CareerStaffState } from "./staffContracts";
 import { calculateStaffSalaryDemand } from "./staffNegotiations";
 import type { StaffSeasonReview } from "./staffPerformanceReview";
+import { worldRules } from "./worldRules";
 
 const ATTRIBUTE_KEYS = [
   "batting_coaching", "pace_bowling_coaching", "spin_bowling_coaching", "fielding_coaching",
@@ -104,7 +105,8 @@ function developContract(contract: CareerStaffContract, review: StaffSeasonRevie
     const exposure = attributeExposure(contract, key);
     const variance = 0.88 + hashUnit(`${seed}:${season}:${contract.staffId}:${key}:development`) * 0.24;
     const performanceFactor = clamp(1 + performance * 0.32, 0.62, 1.32);
-    let delta = phaseGrowth * employedFactor * learningFactor * potentialHeadroom * difficulty * exposure * performanceFactor * variance;
+    let delta = phaseGrowth * employedFactor * learningFactor * potentialHeadroom * difficulty * exposure * performanceFactor * variance
+      * (worldRules().staffDevelopmentPercent / 100);
     if (phase === "veteran" && veteranYears > 0) {
       const knowledgeProtected = key === "tactical_knowledge" || key === "judging_ability" || key === "judging_potential" || key === "man_management";
       const decline = (0.045 + veteranYears * 0.028) * (knowledgeProtected ? 0.45 : 1);

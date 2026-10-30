@@ -1,6 +1,7 @@
 "use client";
 import { formatDisplayDate, formatDisplayDateTime } from "@/lib/logic/displayDate";
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useGameStore } from "@/lib/store/gameStore";
 import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
@@ -49,6 +50,7 @@ export default function SavesPage() {
   }, []);
   useEffect(() => {
     listLocalSaves().then(setLocalSaves).catch(() => setLocalSaves([]));
+    if (isGuest()) { setGuest(true); setSaves([]); return; }
     getSupabaseBrowserClient().auth.getUser().then(({ data }) => {
       const name = data.user?.user_metadata?.username ?? data.user?.email ?? "";
       setEmail(name);
@@ -64,7 +66,7 @@ export default function SavesPage() {
     });
   }, []);
 
-  const continueLocal = () => router.push("/");
+  const continueLocal = () => router.push("/resume");
 
   const loadBrowserSave = async (id: string) => {
     setBusyId(id);
@@ -74,7 +76,7 @@ export default function SavesPage() {
       const payload = await loadLocalSave(id);
       if (!payload) throw new Error("Browser save not found.");
       await useGameStore.persist.rehydrate();
-      router.push("/");
+      router.push("/resume");
     } catch (e: any) {
       setError(e?.message ?? "Failed to load browser save.");
       setBusyId(null);
@@ -98,7 +100,7 @@ export default function SavesPage() {
       restoreSideStorage(payload.local_storage, state.saveId, state.userTeamId);
       await gameStatePersistStorage.setItem(PERSIST_KEY, payload.state);
       await useGameStore.persist.rehydrate();
-      router.push("/");
+      router.push("/resume");
     } catch (e: any) {
       setError(e?.message ?? "Failed to load save.");
       setBusyId(null);
@@ -136,7 +138,12 @@ export default function SavesPage() {
   return (
     <div className="min-h-screen bg-bg text-text-primary">
       <div className="border-b-2 border-hairline px-8 py-5 flex items-center justify-between bg-surface">
-        <span className="font-anton text-[28px] leading-none uppercase">Your saves</span>
+        <div className="flex items-center gap-4">
+          <Link href="/" className="shrink-0 border-2 border-border px-3 py-2 font-space-mono text-[11px] font-bold uppercase tracking-wide hover:bg-surface2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2">
+            ← Back to Home
+          </Link>
+          <span className="font-anton text-[28px] leading-none uppercase">Your saves</span>
+        </div>
         <div className="flex items-center gap-4 font-space-mono text-[11px] uppercase tracking-widest text-text-secondary">
           <span>{guest ? "Guest" : email}</span>
           <button onClick={signOut} className="underline underline-offset-4 hover:text-text-primary">{guest ? "Sign in" : "Sign out"}</button>

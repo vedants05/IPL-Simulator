@@ -1,4 +1,5 @@
 import { supabase } from "./client";
+import { sourceT20IRetirement } from '../data/t20iRetirementStatus';
 import { Player, Nationality, Role, Potential, BowlingType, IPLStats, T20IStats } from "../types";
 import { calculateBasePrice } from "../logic/playerBasePrice";
 import { enforceBattingPositionEligibility } from "../logic/playerBattingPositions";
@@ -256,7 +257,7 @@ export function mapRowsToPlayers(data: any[]): Player[] {
         internationalDebutDate: typeof row.international_debut_date === "string" && row.international_debut_date.trim()
           ? row.international_debut_date.trim()
           : undefined,
-        isT20IRetired: readBoolean(row.is_t20i_retired ?? row.t20i_retired ?? row.international_t20_retired),
+        ...sourceT20IRetirement(id, readBoolean(row.is_t20i_retired ?? row.t20i_retired ?? row.international_t20_retired), row.t20i_retirement_date || undefined),
         role,
         battingStyle: batHand as any,
         bowlingStyle: bowlStyle(bowlType),

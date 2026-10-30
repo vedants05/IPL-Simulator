@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, type DragEvent } from "react";
+import { useGameStore } from "@/lib/store/gameStore";
 import {
   Check,
   Copy,
@@ -173,6 +174,7 @@ export default function TacticsLineupBuilder({
   const activeValidation = validateLineup(activeXI, candidates, activePlan);
   const battingValidation = validateLineup(battingFirstXI, candidates, "battingFirst");
   const bowlingValidation = validateLineup(bowlingFirstXI, candidates, "bowlingFirst");
+  const maxOverseasInXI = useGameStore((state) => state.worldRules.maxOverseasInXI);
   const activePlayers = activeXI.map((id) => playerById.get(id)).filter((player): player is Player => Boolean(player));
   const activeImpactPlayers = activeImpactSubs.map((id) => playerById.get(id)).filter((player): player is Player => Boolean(player));
   const autoBattingFirstOutgoingPlayer = useMemo(() => (
@@ -184,9 +186,9 @@ export default function TacticsLineupBuilder({
   const autoImpactPosition = useMemo(() => {
     if (activePlan !== "bowlingFirst") return null;
     const startersOverseas = activePlayers.filter((p) => p.nationality === "Overseas").length;
-    const legalImpactPlayers = activeImpactPlayers.filter((p) => p.nationality !== "Overseas" || startersOverseas < 4);
+    const legalImpactPlayers = activeImpactPlayers.filter((p) => p.nationality !== "Overseas" || startersOverseas < maxOverseasInXI);
     const impactCandidate = currentImpactPlayerId ? playerById.get(currentImpactPlayerId) : null;
-    const impactPlayer = (impactCandidate && (impactCandidate.nationality !== "Overseas" || startersOverseas < 4))
+    const impactPlayer = (impactCandidate && (impactCandidate.nationality !== "Overseas" || startersOverseas < maxOverseasInXI))
       ? impactCandidate
       : [...legalImpactPlayers].sort((left, right) => (
         (right.currentBatting ?? 0) - (left.currentBatting ?? 0)
@@ -482,7 +484,7 @@ export default function TacticsLineupBuilder({
                 const injury = player ? activeInjuries[player.id] : undefined;
                 const preview = dragPreview?.zone === "impact" && dragPreview.targetIndex === index;
                 const startersOverseas = activePlayers.filter((p) => p.nationality === "Overseas").length;
-                const isPlayerIneligibleOS = Boolean(player && player.nationality === "Overseas" && startersOverseas >= 4);
+                const isPlayerIneligibleOS = Boolean(player && player.nationality === "Overseas" && startersOverseas >= maxOverseasInXI);
                 return player ? (
                   <div
                     key={player.id}
@@ -514,7 +516,7 @@ export default function TacticsLineupBuilder({
                     <button type="button" onClick={() => onOpenPlayer(player.id)} className="flex h-full min-h-0 min-w-0 flex-1 flex-col justify-center overflow-visible text-left"><span className="flex items-center gap-1 text-[13px] font-bold leading-none text-text-primary"><span className="truncate hover:underline">{player.name}</span>{player.nationality === "Overseas" && <OverseasMarker />}</span><span className="mt-0.5 font-space-mono text-[9px] font-bold uppercase leading-none text-text-primary/75 [@media(max-height:800px)]:hidden">{roleLabel(player.role)}{keeper ? ` · ${keeper}` : ""}</span></button>
                     <InjuryStatusMarker injury={injury} />
                     {isPlayerIneligibleOS && (
-                      <span className="shrink-0 rounded border border-red-500/30 bg-red-500/15 px-1.5 py-0.5 font-space-mono text-[7px] font-bold text-red-600 dark:text-red-400" title="Starting XI already has 4 Overseas players; this player cannot be subbed in">
+                      <span className="shrink-0 rounded border border-red-500/30 bg-red-500/15 px-1.5 py-0.5 font-space-mono text-[7px] font-bold text-red-600 dark:text-red-400" title={`Starting XI already has ${maxOverseasInXI} Overseas players; this player cannot be subbed in`}>
                         Ineligible (4 OS)
                       </span>
                     )}
@@ -673,7 +675,7 @@ export default function TacticsLineupBuilder({
               {[
                 [activeValidation.playerCount === 11, `XI (${activeValidation.playerCount}/11)`],
                 [activeImpactSubs.length === 5, `Impact (${activeImpactSubs.length}/5)`],
-                [activeValidation.overseasCount <= 4, `Overseas (${activeValidation.overseasCount}/4)`],
+                [activeValidation.overseasCount <= maxOverseasInXI, `Overseas (${activeValidation.overseasCount}/${maxOverseasInXI})`],
                 [activeValidation.wicketkeeperCount >= 1, fullTimeKeepers.length > 0 ? `Keeper (${fullTimeKeepers.length})` : partTimeKeepers.length > 0 ? `PT keeper (${partTimeKeepers.length})` : "Keeper (0)"],
                 [activeValidation.bowlingOptionCount >= 5, `Bowling (${activeValidation.bowlingOptionCount}/5)`],
               ].map(([valid, label]) => (

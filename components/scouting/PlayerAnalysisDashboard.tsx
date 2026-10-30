@@ -59,10 +59,10 @@ function ScatterTile({ props, x, y, title }: { props: Props; x: string; y: strin
   const selfX = mx.value(selfStats), selfY = my.value(selfStats);
   if (selfX !== null && selfY !== null && !points.some((point) => point.player.id === props.player.id)) points.push({ player: props.player, x: selfX, y: selfY, qualified: false });
   return <Tile title={title} className="lg:col-span-5 lg:row-span-2">
-    <button type="button" onClick={() => props.onExplore(y, "chart", x)} className="flex min-h-0 w-full flex-1 flex-col text-left" aria-label={`Open ${title} comparison`}>
+    <div className="flex min-h-0 w-full flex-1 flex-col text-left">
       <PlayerScatterPlot points={points} selectedId={props.player.id} teams={props.teams} xMetric={mx} yMetric={my} />
-      <p className="mt-1 shrink-0 truncate font-space-mono text-[9px] text-accent">{props.player.name}: {shown(selfX, x)} / {shown(selfY, y)} · expand ↗</p>
-    </button>
+      <button type="button" onClick={() => props.onExplore(y, "chart", x)} aria-label={`Open ${title} comparison`} className="mt-1 shrink-0 truncate text-left font-space-mono text-[9px] text-accent">{props.player.name}: {shown(selfX, x)} / {shown(selfY, y)} · expand ↗</button>
+    </div>
   </Tile>;
 }
 function PhaseTile({ props, bowling }: { props: Props; bowling: boolean }) {

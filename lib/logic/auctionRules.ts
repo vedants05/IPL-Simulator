@@ -2,26 +2,19 @@ import { Player, Team, AuctionSet } from "@/lib/types";
 import { getAuctionBowlingRating, getAuctionRating } from "./auctionMarket";
 import { getPlayerSeasonHistory } from "./playerHistory";
 
-export const TOTAL_PURSE_LAKHS = 12000; // ₹120 crore in lakhs
-export const MAX_AUCTION_TARGETS = 5;
+import { getCappedRetentionSlabsForCount, worldRules } from "./worldRules";
 
-// IPL 2026 mega-auction retention costs
-export const CAPPED_RETENTION_COSTS = [1800, 1400, 1100, 1800, 1400];
-export const UNCAPPED_RETENTION_COST = 400;
-export const MAX_CAPPED_RETENTIONS = 5;
-export const MAX_UNCAPPED_RETENTIONS = 2;
-export const MAX_TOTAL_RETENTIONS = 6;
+export { getCappedRetentionSlabsForCount };
+
+export const getTotalPurseLakhs = () => worldRules().megaAuctionPurseLakhs;
+export const getMaxAuctionTargets = () => worldRules().maxAuctionTargets;
+export const getUncappedRetentionCost = () => worldRules().uncappedRetentionCostLakhs;
+export const getMaxCappedRetentions = () => worldRules().maxCappedRetentions;
+export const getMaxUncappedRetentions = () => worldRules().maxUncappedRetentions;
+export const getMaxTotalRetentions = () => worldRules().maxTotalRetentions;
 
 function isPlayerCapped(player: Player): boolean {
   return player.isCapped || player.nationality === "Overseas";
-}
-
-export function getCappedRetentionSlabsForCount(count: number): number[] {
-  if (count <= 1) return [1800];
-  if (count === 2) return [1800, 1400];
-  if (count === 3) return [1800, 1400, 1100];
-  if (count === 4) return [1800, 1800, 1400, 1100];
-  return [1800, 1800, 1400, 1400, 1100]; // count >= 5
 }
 
 export function getPlayerRetentionCost(
@@ -31,7 +24,7 @@ export function getPlayerRetentionCost(
 ): number {
   const player = players[playerId];
   if (!player) return 0;
-  if (!isPlayerCapped(player)) return UNCAPPED_RETENTION_COST;
+  if (!isPlayerCapped(player)) return getUncappedRetentionCost();
 
   const retainedList = alreadyRetained.includes(playerId)
     ? alreadyRetained
@@ -81,7 +74,7 @@ export function calculateTotalRetentionCost(
   });
 
   const uncappedCount = retainedIds.length - cappedPlayers.length;
-  total += uncappedCount * UNCAPPED_RETENTION_COST;
+  total += uncappedCount * getUncappedRetentionCost();
 
   return total;
 }

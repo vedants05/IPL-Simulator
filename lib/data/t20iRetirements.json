@@ -1,0 +1,68 @@
+[
+  {
+    "id": "virat-kohli",
+    "name": "Virat Kohli",
+    "effectiveOn": "2024-06-29",
+    "sourceUrl": "https://www.icc-cricket.com/news/it-was-now-or-never-departing-kohli-celebrates-india-s-triumph"
+  },
+  {
+    "id": "rohit-sharma",
+    "name": "Rohit Sharma",
+    "effectiveOn": "2024-06-29",
+    "sourceUrl": "https://www.icc-cricket.com/tournaments/t20cricketworldcup/news/title-winning-skipper-rohit-sharma-confirms-retirement-from-t20-internationals"
+  },
+  {
+    "id": "ravindra-jadeja",
+    "name": "Ravindra Jadeja",
+    "effectiveOn": "2024-06-30",
+    "sourceUrl": "https://www.icc-cricket.com/news/ravindra-jadeja-announces-t20i-retirement-after-t20-world-cup-victory"
+  },
+  {
+    "id": "david-warner",
+    "name": "David Warner",
+    "effectiveOn": "2024-06-25",
+    "sourceUrl": "https://www.icc-cricket.com/news/you-ll-struggle-to-find-a-guy-that-s-had-as-big-an-impact-legend-s-touching-warner-tribute"
+  },
+  {
+    "id": "ms-dhoni",
+    "name": "MS Dhoni",
+    "effectiveOn": "2020-08-15",
+    "sourceUrl": "https://www.bcci.tv/news/article/ms-dhoni-retires-from-international-cricket"
+  },
+  {
+    "id": "ravichandran-ashwin",
+    "name": "Ravichandran Ashwin",
+    "effectiveOn": "2024-12-18",
+    "sourceUrl": "https://www.icc-cricket.com/news/retirement-shock-as-india-all-rounder-calls-time-on-international-career"
+  },
+  {
+    "id": "moeen-ali",
+    "name": "Moeen Ali",
+    "effectiveOn": "2024-09-08",
+    "sourceUrl": "https://www.icc-cricket.com/news/moeen-ali-announces-retirement-from-international-cricket"
+  },
+  {
+    "id": "sunil-narine",
+    "name": "Sunil Narine",
+    "effectiveOn": "2023-11-05",
+    "sourceUrl": "https://www.windiescricket.com/news/cwi-thanks-sunil-narine-for-his-contribution-to-west-indies-cricket/"
+  },
+  {
+    "id": "nicholas-pooran",
+    "name": "Nicholas Pooran",
+    "effectiveOn": "2025-06-09",
+    "sourceUrl": "https://www.windiescricket.com/news/cricket-west-indies-thanks-nicholas-pooran-for-his-service/"
+  },
+  {
+    "id": "andre-russell",
+    "name": "Andre Russell",
+    "effectiveOn": "2025-07-23",
+    "sourceUrl": "https://www.windiescricket.com/news/andre-russells-farewell-a-legends-final-stand-at-sabina-park/"
+  },
+  {
+    "id": "heinrich-klaasen",
+    "name": "Heinrich Klaasen",
+    "effectiveOn": "2025-06-02",
+    "sourceUrl": "https://www.icc-cricket.com/news/klaasen-announces-shock-exit-from-international-cricket"
+  }
+]

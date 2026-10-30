@@ -1,3 +1,4 @@
+import { isT20IRetiredOn, isT20IEligible } from "./internationalRetirements";
 import type { Player } from "@/lib/types";
 import type { InternationalCareerState, InternationalPlayerProfile } from "@/lib/logic/international";
 import { INTERNATIONAL_TEAMS } from "@/lib/logic/international";
@@ -53,7 +54,7 @@ export function getInternationalCareerStatus(
   players: Record<string, Player>,
   performance: Record<string, SelectionPerformance>,
 ): InternationalCareerStatus {
-  if (player.isT20IRetired) return "T20I Retired";
+  if (isT20IRetiredOn(player, career?.reconciledOn ?? `${(career?.season ?? 9999) - 1}-06-01`)) return "T20I Retired";
   const nation = INTERNATIONAL_TEAMS.find((team) => team.name === (player.country ?? (player.nationality === "Indian" ? "India" : "")));
   if (!nation?.core || !career?.teams[nation.id]) return "Selection Untracked";
   const team = career.teams[nation.id];
@@ -67,7 +68,7 @@ export function getInternationalCareerStatus(
   const role = roleOf(profile);
   const score = merit(profile, player, performance[player.id]);
   const peers = Object.values(career.profiles).filter((candidate) =>
-    candidate.countryId === nation.id && !candidate.isT20IRetired && roleOf(candidate) === role);
+    candidate.countryId === nation.id && isT20IEligible(candidate, career.reconciledOn ?? `${career.season - 1}-06-01`) && roleOf(candidate) === role);
   const outside = peers.filter((candidate) => !team.squad.includes(candidate.id))
     .sort((a, b) => merit(b, b.fullPlayerId ? players[b.fullPlayerId] : undefined, b.fullPlayerId ? performance[b.fullPlayerId] : undefined)
       - merit(a, a.fullPlayerId ? players[a.fullPlayerId] : undefined, a.fullPlayerId ? performance[a.fullPlayerId] : undefined));

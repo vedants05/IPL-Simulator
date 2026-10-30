@@ -9,6 +9,7 @@ import {
   getRawAuctionRating,
   isPlayerAuctionEligible,
 } from "./auctionMarket";
+import { worldRules } from "./worldRules";
 
 // ---------------------------------------------------------------------------
 // Per-lot valuation cache — computed once per team per player lot
@@ -282,10 +283,13 @@ interface SquadComp {
   indianBowlers: number;
 }
 
-// IPL structural rules — these are fixed (league rules, not preferences)
+// IPL structural rules; squad limits follow the save's world rules.
 const RULES = {
   batters: 5, wks: 2, allrounders: 2, spinners: 2, pacers: 3,
-  minTotal: 18, maxTotal: 25, maxOverseas: 8, minSalaryPerSlot: 30,
+  get minTotal() { return worldRules().minSquadSize; },
+  get maxTotal() { return worldRules().maxSquadSize; },
+  get maxOverseas() { return worldRules().maxOverseasInSquad; },
+  minSalaryPerSlot: 30,
 };
 
 function getBattingSlotsCoverage(squad: Player[]): {
@@ -1696,6 +1700,9 @@ export function getLotValuation(
 
     // Apply discount if this player is in the team's backups list
     const state = (globalThis as any).__getGameStoreState ? (globalThis as any).__getGameStoreState() : null;
+    if (!state || state.userTeamId !== team.id) {
+      value = Math.round(value * (worldRules().aiBiddingAggressionPercent / 100));
+    }
     if (state && state.aiAcceleratedBackups && state.aiAcceleratedBackups[team.id]?.includes(player.id)) {
       const mainTargets = state.aiAcceleratedTargets[team.id] ?? [];
       const hasBoughtMainTarget = mainTargets.some((targetId: string) => {
@@ -1782,7 +1789,7 @@ export function canAIBidAtAmount(
   const isMandatoryPlayer = isPriorityAuctionSale(player);
   const isPriorityOpeningBid = isMandatoryPlayer && nextBid <= getNextBidAmount(player.basePrice);
   const planningReserve = isPriorityOpeningBid
-    ? Math.max(0, (team.minSquadSize ?? 18) - team.squad.length - 1) * 50
+    ? Math.max(0, (team.minSquadSize ?? worldRules().minSquadSize) - team.squad.length - 1) * 50
     : minimumReserveLakhs(team, allPlayers);
   if (team.remainingPurse - nextBid < planningReserve) return reject("reserve");
   if (nextBid > 50 && !canTeamAffordBid(
@@ -1973,15 +1980,10 @@ export function pickBiddingTeam(
 // AI retention decisions (pre-auction) — replaces the naive "top 3 capped +
 // top 1 uncapped by stars" heuristic. Each candidate's estimated market worth
 // (skill, age curve, potential, reputation, leadership, finishing) is weighed
-// against the explicit slab costs (18/14/11/18/14 Cr capped, 4 Cr uncapped).
+// against the save's retention slab costs (world rules).
 // Loyalty DNA lowers the retention bar and can override a modest deficit for
 // iconic high-reputation stars; stochastic noise varies outcomes per run.
 // ---------------------------------------------------------------------------
-const RETENTION_SLABS = [1800, 1400, 1100, 1800, 1400];
-const UNCAPPED_SLAB = 400;
-const MAX_CAPPED = 5;
-const MAX_UNCAPPED = 2;
-const MAX_TOTAL = 6;
 
 /** Estimated market worth in lakhs — used only for retention decisions. */
 export function estimateRetentionWorth(player: Player, team: Team): number {
@@ -2102,9 +2104,11 @@ export function decideAIRetentions(
     return b.worth - a.worth;
   });
 
+  const { maxCappedRetentions, maxUncappedRetentions, maxTotalRetentions, uncappedRetentionCostLakhs: UNCAPPED_SLAB } = worldRules();
+
   // 2. Perform trial evaluations to find a stable capped player count
-  // We try targeting 5 down to 0 capped players, and select the first target that is fully satisfied.
-  for (let targetCapped = MAX_CAPPED; targetCapped >= 0; targetCapped--) {
+  // We try the max capped count down to 0, and select the first target that is fully satisfied.
+  for (let targetCapped = maxCappedRetentions; targetCapped >= 0; targetCapped--) {
     const slabs = getCappedRetentionSlabsForCount(targetCapped);
     const retainedList: string[] = [];
     let cappedUsed = 0;
@@ -2112,16 +2116,16 @@ export function decideAIRetentions(
     let totalSpend = 0;
 
     for (const { p, worth, isCapped, cornerstone, isRep10 } of allCandidates) {
-      if (retainedList.length >= MAX_TOTAL) break;
+      if (retainedList.length >= maxTotalRetentions) break;
 
       // Check slot limits
       if (isCapped) {
         if (cappedUsed >= targetCapped) continue;
       } else {
-        if (uncappedUsed >= MAX_UNCAPPED) continue;
+        if (uncappedUsed >= maxUncappedRetentions) continue;
       }
 
-      const slabCost = isCapped ? slabs[cappedUsed] : UNCAPPED_SLAB;
+      const slabCost = isCapped ? (slabs[cappedUsed] ?? slabs[slabs.length - 1] ?? 0) : UNCAPPED_SLAB;
       const spendCap = cornerstone ? cornerstoneSpendCap : maxRetentionSpend;
 
       if (totalSpend + slabCost > spendCap && !isRep10) {

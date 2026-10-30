@@ -8,13 +8,13 @@ import { useShallow } from "zustand/react/shallow";
 import { switchColorMode } from "./TeamThemeProvider";
 import ThemeSelector from "./ThemeSelector";
 import UIDesignSelector from "./UIDesignSelector";
+import EditorAccessSettings from "./EditorAccessSettings";
 import {
   getStoredAppearanceTheme,
   type AppearanceTheme,
 } from "@/lib/theme/appearance";
 import AuctionGuidedTour from "@/components/auction/AuctionGuidedTour";
 import CloudAccountPanel from "./CloudAccountPanel";
-import { clearSideStorageForSave } from "@/lib/supabase/cloudSaves";
 import {
   getSeasonAccessStorageKey,
   hasSeasonAccess,
@@ -76,7 +76,6 @@ export default function NavBar() {
     skipCurrentSet,
     skipAllAuction,
     skipToAcceleratedAuction,
-    resetGame,
   } = useGameStore(useShallow((state) => ({
     teams: state.teams,
     saveId: state.saveId,
@@ -93,7 +92,6 @@ export default function NavBar() {
     skipCurrentSet: state.skipCurrentSet,
     skipAllAuction: state.skipAllAuction,
     skipToAcceleratedAuction: state.skipToAcceleratedAuction,
-    resetGame: state.resetGame,
   })));
 
   const [showConfirm, setShowConfirm] = useState(false);
@@ -107,7 +105,6 @@ export default function NavBar() {
   const [wasPausedBeforeConfirmAll, setWasPausedBeforeConfirmAll] = useState(false);
   const [isSkippingAll, setIsSkippingAll] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [showRestartConfirm, setShowRestartConfirm] = useState(false);
   const [showHowToPlay, setShowHowToPlay] = useState(false);
   const [activeTile, setActiveTile] = useState(0);
   const [appearanceTheme, setAppearanceTheme] = useState<AppearanceTheme>("light");
@@ -165,13 +162,11 @@ export default function NavBar() {
     switchColorMode(theme, userTeamId || undefined);
   };
 
-  const handleRestartGame = () => {
-    clearSideStorageForSave(saveId, userTeamId);
-    resetGame();
-    setShowRestartConfirm(false);
+  const handleExitToHome = () => {
+    setPaused(true);
+    useGameStore.getState().setCareerFastForwardTarget(null);
     setShowSettings(false);
-    router.replace("/setup");
-    router.refresh();
+    router.push("/");
   };
 
   const handleSettingsClick = () => {
@@ -243,7 +238,7 @@ export default function NavBar() {
   const userTeam = teams[userTeamId];
 
   return (
-    <nav aria-label="Main navigation" className="app-navbar h-12 border-b-2 border-border flex items-center px-5 gap-0 shrink-0 z-50">
+    <nav aria-label="Main navigation" className="app-navbar h-12 border-b-2 border-border flex items-center px-5 gap-0 shrink-0 z-[60]">
       {/* Navigation history back/forward buttons */}
       <div className="app-history-navigation flex items-center gap-1.5 mr-4 shrink-0" role="group" aria-label="Navigation history">
         <button
@@ -678,7 +673,7 @@ export default function NavBar() {
               />
               {/* Settings Dropdown Panel */}
               <div
-                className="absolute right-0 top-full mt-2 w-56 p-4 z-50 rounded shadow-xl text-left border-2 flex flex-col gap-3 font-space-mono animate-in fade-in slide-in-from-top-2 duration-150"
+                className="absolute right-0 top-full mt-2 max-h-[calc(100dvh-5rem)] w-56 max-w-[calc(100vw-1rem)] overflow-y-auto p-4 z-50 rounded shadow-xl text-left border-2 flex flex-col gap-3 font-space-mono animate-in fade-in slide-in-from-top-2 duration-150"
                 style={{
                   backgroundColor: "var(--surface, var(--surface))",
                   color: "var(--ink, var(--ink))",
@@ -695,6 +690,7 @@ export default function NavBar() {
                   <ThemeSelector value={appearanceTheme} onChange={handleThemeChange} />
                 </div>
                 <UIDesignSelector />
+                <EditorAccessSettings />
                 {(isAuctionPage || isTradeHubPage) && <div className="flex flex-col gap-2 border-t border-[var(--ink)]/15 pt-2">
                   <span className="text-[9px] font-bold text-text-secondary uppercase tracking-wider">
                     Guides
@@ -718,18 +714,12 @@ export default function NavBar() {
                 </div>}
                 <CloudAccountPanel onNavigate={() => setShowSettings(false)} />
                 <div className="flex flex-col gap-2 border-t border-[var(--ink)]/15 pt-2">
-                  <span className="text-[9px] font-bold text-red-600 uppercase tracking-wider">
-                    Danger Zone
-                  </span>
                   <button
-                    onClick={() => {
-                      setShowSettings(false);
-                      setShowRestartConfirm(true);
-                    }}
-                    className="w-full flex items-center justify-between px-3 py-1.5 rounded border border-red-600 text-red-600 hover:bg-red-600 hover:text-white text-[10px] font-bold cursor-pointer transition-all active:scale-[0.98]"
+                    onClick={handleExitToHome}
+                    className="w-full flex items-center justify-between px-3 py-1.5 rounded border border-[var(--ink)] hover:bg-[var(--ink)]/5 text-[10px] font-bold cursor-pointer transition-all active:scale-[0.98]"
                   >
                     <span className="flex items-center gap-1.5">
-                      <RefreshCw size={11} className="inline" /> Restart Game
+                      <Home size={11} className="inline" /> Exit to Home Page
                     </span>
                   </button>
                 </div>
@@ -738,53 +728,6 @@ export default function NavBar() {
           )}
         </div>
       </div>
-
-      {showRestartConfirm && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-          <div
-            role="alertdialog"
-            aria-modal="true"
-            aria-labelledby="restart-game-title"
-            aria-describedby="restart-game-description"
-            className="w-full max-w-sm rounded border-2 border-[var(--ink)] p-5 font-barlow"
-            style={{
-              backgroundColor: "var(--surface, #ffffff)",
-              color: "var(--ink, #111622)",
-              boxShadow: "7px 7px 0 var(--ink)",
-            }}
-          >
-            <div className="flex items-start gap-3">
-              <div className="mt-0.5 rounded bg-red-600 p-2 text-white">
-                <AlertTriangle size={18} />
-              </div>
-              <div>
-                <h2 id="restart-game-title" className="font-anton text-xl uppercase tracking-wide">
-                  Restart game?
-                </h2>
-                <p id="restart-game-description" className="mt-2 text-sm leading-relaxed text-text-secondary">
-                  This permanently removes the current career, auction, squads, fixtures and season progress. This action cannot be undone.
-                </p>
-              </div>
-            </div>
-            <div className="mt-5 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setShowRestartConfirm(false)}
-                className="rounded border-2 border-[var(--ink)] px-4 py-2 font-space-mono text-[10px] font-bold uppercase transition-colors hover:bg-[var(--ink)]/5"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleRestartGame}
-                className="rounded border-2 border-red-700 bg-red-600 px-4 py-2 font-space-mono text-[10px] font-bold uppercase text-white transition-colors hover:bg-red-700"
-              >
-                Restart Game
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {false && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">

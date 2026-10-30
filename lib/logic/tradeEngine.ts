@@ -2,18 +2,19 @@ import type { Player, Team, TradeOffer, TradeRecord, TradeWillingness } from "@/
 import { addDaysToDateKey } from "./careerCalendar";
 import { getPlayerSeasonHistory } from "./playerHistory";
 import { getNextBidAmount, roundDownToLegalBid } from "./auctionRules";
+import { worldRules } from "./worldRules";
 
 export const TRADE_WINDOW_START_OFFSET_DAYS = 7;
 export const TRADE_WINDOW_END_MONTH = 10;
 export const TRADE_WINDOW_END_DAY = 31;
 export const MAX_TRADE_COUNTER_OFFERS = 20;
-export const MINI_TRADE_OVERDRAFT_LAKHS = 500;
+export const getMiniTradeOverdraftLakhs = () => worldRules().miniTradeOverdraftLakhs;
 export const REPUTATION_TEN_TRADE_PREMIUM = 1.45;
 
 /** A trade may preserve, but must not worsen, an existing overseas overflow. */
 export function getTradeOverseasLimit(team: Team, players: Record<string, Player>): number {
   const startingCount = team.squad.filter((id) => players[id]?.nationality === "Overseas").length;
-  return Math.max(team.overseasPlayersMax ?? 8, startingCount);
+  return Math.max(team.overseasPlayersMax ?? worldRules().maxOverseasInSquad, startingCount);
 }
 
 export interface TradeWindowDates {

@@ -38,7 +38,8 @@
     ".next-ui-live-check/types/**/*.ts",
     ".next-minor-records-check/types/**/*.ts",
     ".next-stadium-integration-check/types/**/*.ts",
-    ".next-dev/types/**/*.ts"
+    ".next-dev/types/**/*.ts",
+    ".next-browser-recovery/types/**/*.ts"
   ],
   "exclude": [
     "node_modules"

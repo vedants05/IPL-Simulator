@@ -1,7 +1,12 @@
-import type { Player } from "@/lib/types";
+import type { T20IRetirement, Player } from "@/lib/types";
 import { generateInternationalName } from "@/lib/data/internationalNames";
 import { bilateralVenue, worldCupVenue } from "@/lib/data/internationalVenues";
 import { getRelativePhaseSignal } from "@/lib/logic/matchSimulation";
+
+import { isT20IEligible, isT20IRetiredOn, mergeT20IRetirement, retirementRoll, t20iRetirementProbability } from './internationalRetirements';
+import { worldRules } from './worldRules';
+import { sourceT20IRetirement } from '../data/t20iRetirementStatus';
+export const INTERNATIONAL_SELECTION_REVISION = 8;
 
 export type InternationalRole = Player["role"];
 
@@ -39,6 +44,9 @@ export interface InternationalPlayerProfile {
   spinRating: number;
   battingPositions: number[];
   isT20IRetired?: boolean;
+  t20iRetirement?: T20IRetirement;
+  lastRetirementEvaluationSeason?: number;
+  unavailable?: boolean;
 }
 
 export interface InternationalPlayerStats {
@@ -118,9 +126,19 @@ export interface InternationalSeasonArchive {
   profileNames?: Record<string, string>;
 }
 
+export interface InternationalRetirementEvent {
+  id: string; profileId: string; playerId?: string; name: string; countryId: string;
+  age: number; effectiveOn: string; season: number; retirement: T20IRetirement;
+  hadInternationalCareer: boolean;
+}
 export interface InternationalCareerState {
   version: 1;
   lineupRevision?: number;
+  seed?: string;
+  reconciledOn?: string;
+  retirements?: InternationalRetirementEvent[];
+  /** Appearance counts for fixtures older than the retained archive. */
+  archivedAppearanceCounts?: Record<string, number>;
   season: number;
   teams: Record<string, NationalTeamState>;
   profiles: Record<string, InternationalPlayerProfile>;
@@ -281,7 +299,7 @@ function fullProfile(player: Player, id: string): InternationalPlayerProfile {
     powerplayBowling: player.powerplayBowling ?? 50, middleOversBowling: player.middleOversBowling ?? 50, deathBowling: player.deathBowling ?? 50,
     paceRating: player.paceRating ?? 50, spinRating: player.spinRating ?? 50,
     battingPositions: listedPositions.length > 0 ? listedPositions : normalizedRole === "WK-Batsman" || normalizedRole === "Batsman" ? [3, 4, 5] : normalizedRole === "All-Rounder" ? [6, 7] : [8, 9, 10, 11],
-    isT20IRetired: player.isT20IRetired,
+    isT20IRetired: player.isT20IRetired, t20iRetirement: player.t20iRetirement,
   };
 }
 
@@ -307,8 +325,8 @@ function lightweightProfile(country: InternationalTeamDefinition, season: number
   };
 }
 
-function selectSquad(country: InternationalTeamDefinition, profiles: InternationalPlayerProfile[], captainId?: string, standing: Record<string, number> = {}, forcedIds: string[] = []): string[] {
-  const sorted = profiles.filter((profile) => !profile.isT20IRetired).sort((a, b) => (roleValue(b) + (standing[b.id] ?? 0)) - (roleValue(a) + (standing[a.id] ?? 0)));
+function selectSquad(country: InternationalTeamDefinition, profiles: InternationalPlayerProfile[], captainId?: string, standing: Record<string, number> = {}, forcedIds: string[] = [], date = "9999-12-31"): string[] {
+  const sorted = profiles.filter((profile) => isT20IEligible(profile, date)).sort((a, b) => (roleValue(b) + (standing[b.id] ?? 0)) - (roleValue(a) + (standing[a.id] ?? 0)));
   const picked: InternationalPlayerProfile[] = [];
   const add = (rows: InternationalPlayerProfile[], count: number) => rows.forEach((row) => {
     if (picked.length < 17 && count > 0 && !picked.some((item) => item.id === row.id)) { picked.push(row); count -= 1; }
@@ -332,7 +350,7 @@ function selectSquad(country: InternationalTeamDefinition, profiles: Internation
 }
 
 function qualifiesForInternationalCallUp(player: Player, country: InternationalTeamDefinition, rating: number): boolean {
-  if (player.isCapped || player.internationalDebutDate || player.isT20IRetired || player.age > 39) return false;
+  if (player.isCapped || player.internationalDebutDate || player.isT20IRetired || player.age >= 40 + worldRules().retirementAgeShift) return false;
   const matches = player.careerState?.lastSeasonMatches ?? 0;
   const runs = player.careerState?.lastSeasonRuns ?? 0;
   const wickets = player.careerState?.lastSeasonWickets ?? 0;
@@ -358,8 +376,8 @@ function orderedPendingDebuts(pending: Record<string, number>, profiles: Record<
     pending[a] - pending[b] || roleValue(profiles[b]) - roleValue(profiles[a]) || a.localeCompare(b));
 }
 
-function selectXI(squad: string[], profiles: Record<string, InternationalPlayerProfile>, captainId: string, pending: Record<string, number>, season: number, standing: Record<string, number> = {}): string[] {
-  const rows = squad.map((id) => profiles[id]).filter(Boolean).sort((a, b) => (roleValue(b) + (standing[b.id] ?? 0)) - (roleValue(a) + (standing[a.id] ?? 0)));
+function selectXI(squad: string[], profiles: Record<string, InternationalPlayerProfile>, captainId: string, pending: Record<string, number>, season: number, standing: Record<string, number> = {}, date = "9999-12-31"): string[] {
+  const rows = squad.map((id) => profiles[id]).filter((profile) => profile && isT20IEligible(profile, date)).sort((a, b) => (roleValue(b) + (standing[b.id] ?? 0)) - (roleValue(a) + (standing[a.id] ?? 0)));
   const dueDebut = orderedPendingDebuts(pending, profiles)
     .map((id) => rows.find((row) => row.id === id))
     .find((row) => row && pending[row.id] <= season);
@@ -404,11 +422,11 @@ function selectXI(squad: string[], profiles: Record<string, InternationalPlayerP
   return [...optimized.order, ...lowerOrder].slice(0, 11).map((row) => row.id);
 }
 
-function chooseCaptain(definition: InternationalTeamDefinition, profiles: InternationalPlayerProfile[], previous?: NationalTeamState): InternationalPlayerProfile {
-  const eligibleProfiles = profiles.filter((profile) => !profile.isT20IRetired);
+function chooseCaptain(definition: InternationalTeamDefinition, profiles: InternationalPlayerProfile[], previous?: NationalTeamState, date = "9999-12-31"): InternationalPlayerProfile {
+  const eligibleProfiles = profiles.filter((profile) => isT20IEligible(profile, date));
   if (previous) {
     const incumbent = eligibleProfiles.find((row) => row.id === previous.captainId);
-    if (incumbent && !incumbent.isT20IRetired && incumbent.age < 39 && roleValue(incumbent) >= definition.strength - 18) return incumbent;
+    if (incumbent && incumbent.age < 40 + worldRules().retirementAgeShift && roleValue(incumbent) >= definition.strength - 18) return incumbent;
   }
   const named = definition.startingCaptainName
     ? eligibleProfiles.find((row) => row.name.toLowerCase() === definition.startingCaptainName!.toLowerCase())
@@ -416,26 +434,46 @@ function chooseCaptain(definition: InternationalTeamDefinition, profiles: Intern
   return named ?? [...eligibleProfiles].sort((a, b) => (roleValue(b) + b.captaincy * 0.18) - (roleValue(a) + a.captaincy * 0.18))[0];
 }
 
-function buildTeams(players: Record<string, Player>, season: number, previous?: InternationalCareerState): Pick<InternationalCareerState, "teams" | "profiles"> {
+function ensureInternationalReserves(state: Pick<InternationalCareerState, 'profiles' | 'season'>, definition: InternationalTeamDefinition, date: string) {
+  let pool = Object.values(state.profiles).filter(p => p.countryId === definition.id && isT20IEligible(p, date));
+  const requirements = [
+    { count: 2, slot: 2, matches: (p: InternationalPlayerProfile) => Boolean(p.isWicketkeeper) },
+    { count: 3, slot: 0, matches: isInternationalOpener },
+    { count: 7, slot: 3, matches: isInternationalBattingOption },
+    { count: 3, slot: 6, matches: (p: InternationalPlayerProfile) => p.role === 'Pace Bowler' && isCredibleInternationalBowlingOption(p) },
+    { count: 2, slot: 9, matches: (p: InternationalPlayerProfile) => p.role === 'Spin Bowler' && isCredibleInternationalBowlingOption(p) },
+    { count: 7, slot: 4, matches: isCredibleInternationalBowlingOption },
+    { count: 22, slot: 3, matches: (_p: InternationalPlayerProfile) => true },
+  ];
+  let index = 1000;
+  for (const requirement of requirements) while (pool.filter(requirement.matches).length < requirement.count) {
+    while (state.profiles[`intl:${definition.id}:${state.season}:${index}`]) index++;
+    const profile = lightweightProfile(definition, state.season, index++, requirement.slot);
+    state.profiles[profile.id] = profile; pool.push(profile);
+  }
+  return pool;
+}
+
+function buildTeams(players: Record<string, Player>, season: number, previous?: InternationalCareerState, date = `${season - 1}-06-01`): Pick<InternationalCareerState, "teams" | "profiles"> {
   const profiles: Record<string, InternationalPlayerProfile> = {};
   const teams: Record<string, NationalTeamState> = {};
   INTERNATIONAL_TEAMS.forEach((definition) => {
     const available = definition.core
-      ? Object.values(players).filter((player) => countryId(player) === definition.id && player.age <= 39).map((player) => fullProfile(player, definition.id))
+      ? Object.values(players).filter((player) => countryId(player) === definition.id).map((player) => fullProfile(player, definition.id))
       : [];
-    const priorLightweights = Object.values(previous?.profiles ?? {}).filter((profile) => profile.countryId === definition.id && !profile.fullPlayerId && profile.age < 38).map((profile) => ({ ...profile, age: profile.age + Math.max(0, season - (previous?.season ?? season)) }));
+    const priorLightweights = Object.values(previous?.profiles ?? {}).filter((profile) => profile.countryId === definition.id && !profile.fullPlayerId ).map((profile) => ({ ...profile, age: profile.age + Math.max(0, season - (previous?.season ?? season)) }));
     const pool = [...available, ...priorLightweights];
-    const existingCount = pool.filter((profile) => !profile.isT20IRetired).length;
+    const existingCount = pool.filter((profile) => isT20IEligible(profile, date)).length;
     for (let index = existingCount; index < 22; index += 1) pool.push(lightweightProfile(definition, season, index, index - existingCount));
     const bowlingSlots = [6, 7, 8, 9, 10, 12, 13, 14, 16];
     let bowlingSlotIndex = 0;
-    while (pool.filter((profile) => !profile.isT20IRetired && isCredibleInternationalBowlingOption(profile)).length < 7) {
+    while (pool.filter((profile) => isT20IEligible(profile, date) && isCredibleInternationalBowlingOption(profile)).length < 7) {
       const index = 100 + bowlingSlotIndex;
       pool.push(lightweightProfile(definition, season, index, bowlingSlots[bowlingSlotIndex % bowlingSlots.length]));
       bowlingSlotIndex += 1;
     }
     pool.forEach((profile) => { profiles[profile.id] = profile; });
-    const captain = chooseCaptain(definition, pool, previous?.teams[definition.id]);
+    const captain = chooseCaptain(definition, pool, previous?.teams[definition.id], date);
     const priorStanding = previous?.teams[definition.id]?.internationalStanding ?? {};
     const pendingDebuts = { ...(previous?.teams[definition.id]?.pendingDebuts ?? {}) };
     const prospectIds = developmentProspects(pool, players, definition);
@@ -443,13 +481,13 @@ function buildTeams(players: Record<string, Player>, season: number, previous?: 
       const callUpSeason = players[profiles[id].fullPlayerId!]?.internationalCallUpSeason ?? season;
       pendingDebuts[id] = Math.min(pendingDebuts[id] ?? callUpSeason, callUpSeason);
     });
-    const squad = selectSquad(definition, pool, captain.id, priorStanding, orderedPendingDebuts(pendingDebuts, profiles).slice(0, 5));
+    const squad = selectSquad(definition, pool, captain.id, priorStanding, orderedPendingDebuts(pendingDebuts, profiles).slice(0, 5), date);
     squad.forEach((id) => {
       const profile = profiles[id];
       const player = profile?.fullPlayerId ? players[profile.fullPlayerId] : undefined;
       if (player && !player.isCapped && !player.internationalDebutDate && player.internationalCallUpSeason !== undefined) pendingDebuts[id] ??= season;
     });
-    const preferredXI = selectXI(squad, profiles, captain.id, pendingDebuts, season, priorStanding);
+    const preferredXI = selectXI(squad, profiles, captain.id, pendingDebuts, season, priorStanding, date);
     const vice = squad.map((id) => profiles[id]).filter((row) => row.id !== captain.id).sort((a, b) => b.captaincy - a.captaincy)[0];
     teams[definition.id] = {
       countryId: definition.id, squad, preferredXI, captainId: captain.id, viceCaptainId: vice?.id,
@@ -459,6 +497,7 @@ function buildTeams(players: Record<string, Player>, season: number, previous?: 
       seriesSquads: {},
     };
   });
+  Object.values(previous?.profiles ?? {}).filter(profile => profile.isT20IRetired || profile.unavailable).forEach(profile => { profiles[profile.id] ??= profile; });
   return { teams, profiles };
 }
 
@@ -656,8 +695,8 @@ function mergeStats(target: Record<string, InternationalPlayerStats>, additions:
   });
 }
 
-function repairAppearanceCounts(stats: Record<string, InternationalPlayerStats>, fixtures: InternationalFixture[]): void {
-  const appearances: Record<string, number> = {};
+function repairAppearanceCounts(stats: Record<string, InternationalPlayerStats>, fixtures: InternationalFixture[], carried: Record<string, number> = {}): void {
+  const appearances: Record<string, number> = { ...carried };
   fixtures.forEach((fixture) => {
     if (!fixture.played) return;
     new Set([...(fixture.xiA ?? []), ...(fixture.xiB ?? [])]).forEach((id) => {
@@ -669,16 +708,37 @@ function repairAppearanceCounts(stats: Record<string, InternationalPlayerStats>,
   });
 }
 
+function repairInternationalEligibility(career: InternationalCareerState, date: string) {
+  for (const nationalTeam of Object.values(career.teams)) {
+    const definition = team(nationalTeam.countryId);
+    const pool = ensureInternationalReserves(career, definition, date);
+    const eligible = (id: string) => Boolean(career.profiles[id] && isT20IEligible(career.profiles[id], date));
+    if (!eligible(nationalTeam.captainId)) {
+      nationalTeam.captainId = chooseCaptain(definition, pool, nationalTeam, date).id;
+      nationalTeam.captainAppointedSeason = career.season;
+      nationalTeam.captainReviewSeason = career.season + 2;
+    }
+    if (!nationalTeam.viceCaptainId || !eligible(nationalTeam.viceCaptainId) || nationalTeam.viceCaptainId === nationalTeam.captainId)
+      nationalTeam.viceCaptainId = [...pool].filter(p => p.id !== nationalTeam.captainId).sort((a,b) => b.captaincy-a.captaincy)[0]?.id;
+    Object.keys(nationalTeam.pendingDebuts).filter(id => !eligible(id)).forEach(id => delete nationalTeam.pendingDebuts[id]);
+    for (const [key, squad] of Object.entries(nationalTeam.seriesSquads ?? {})) if (!squad.every(eligible)) delete nationalTeam.seriesSquads![key];
+    if (!nationalTeam.squad.every(eligible)) nationalTeam.squad = selectSquad(definition, pool, nationalTeam.captainId, nationalTeam.internationalStanding, [], date);
+    if (!nationalTeam.preferredXI.every(eligible)) nationalTeam.preferredXI = selectXI(nationalTeam.squad, career.profiles, nationalTeam.captainId, nationalTeam.pendingDebuts, career.season, nationalTeam.internationalStanding, date);
+  }
+}
+
 function squadForFixture(fixture: InternationalFixture, state: InternationalCareerState, countryId: string, players: Record<string, Player>): string[] {
   const nationalTeam = state.teams[countryId];
+  const definition = team(countryId);
+  const eligiblePool = ensureInternationalReserves(state, definition, fixture.date);
+  if (!eligiblePool.some(p => p.id === nationalTeam.captainId)) nationalTeam.captainId = chooseCaptain(definition, eligiblePool, nationalTeam, fixture.date).id;
   nationalTeam.seriesSquads ??= {};
   const squadKey = fixture.stage === "bilateral" ? fixture.seriesId : `wc:${state.season}`;
-  if (nationalTeam.seriesSquads[squadKey]) {
+  if (nationalTeam.seriesSquads[squadKey]?.every(id => state.profiles[id] && isT20IEligible(state.profiles[id], fixture.date))) {
     nationalTeam.squad = nationalTeam.seriesSquads[squadKey];
     return nationalTeam.squad;
   }
-  const definition = team(countryId);
-  const pool = Object.values(state.profiles).filter((profile) => profile.countryId === countryId && !profile.isT20IRetired && profile.age <= 39);
+  const pool = eligiblePool;
   const worldCup = fixture.stage !== "bilateral";
   const opponentId = fixture.teamA === countryId ? fixture.teamB : fixture.teamA;
   const lowerStakes = !worldCup && definition.strength - team(opponentId).strength >= 6;
@@ -713,7 +773,7 @@ function squadForFixture(fixture: InternationalFixture, state: InternationalCare
       selectionStanding[profile.id] = (selectionStanding[profile.id] ?? 0) - 8;
     }
   });
-  const squad = selectSquad(definition, eligible, nationalTeam.captainId, selectionStanding, pending);
+  const squad = selectSquad(definition, eligible, nationalTeam.captainId, selectionStanding, pending, fixture.date);
   nationalTeam.seriesSquads[squadKey] = squad;
   nationalTeam.squad = squad;
   return squad;
@@ -733,8 +793,8 @@ function simulateFixture(fixture: InternationalFixture, state: InternationalCare
     });
     return adjusted;
   };
-  const xiA = selectXI(homeSquad, state.profiles, home.captainId, fixture.stage === "bilateral" ? home.pendingDebuts : {}, state.season, rotationStanding(home));
-  const xiB = selectXI(awaySquad, state.profiles, away.captainId, fixture.stage === "bilateral" ? away.pendingDebuts : {}, state.season, rotationStanding(away));
+  const xiA = selectXI(homeSquad, state.profiles, home.captainId, fixture.stage === "bilateral" ? home.pendingDebuts : {}, state.season, rotationStanding(home), fixture.date);
+  const xiB = selectXI(awaySquad, state.profiles, away.captainId, fixture.stage === "bilateral" ? away.pendingDebuts : {}, state.season, rotationStanding(away), fixture.date);
   home.preferredXI = xiA;
   away.preferredXI = xiB;
   const inningsA = simulateInnings(xiA.map((id) => state.profiles[id]), xiB.map((id) => state.profiles[id]), `${fixture.id}:a`);
@@ -777,9 +837,9 @@ function simulateFixture(fixture: InternationalFixture, state: InternationalCare
   return { fixture: { ...fixture, played: true, winner, scoreA: inningsA.score, scoreB: inningsB.score, xiA, xiB, captainA: home.captainId, captainB: away.captainId, playerOfTheMatchId: potm, scorecard: [inningsA.card, inningsB.card] }, playerUpdates: updates };
 }
 
-export function createInternationalCareer(season: number, players: Record<string, Player>): InternationalCareerState {
+export function createInternationalCareer(season: number, players: Record<string, Player>, seed = "international"): InternationalCareerState {
   const roster = buildTeams(players, season); const schedule = createSeasonSchedule(season);
-  return { version: 1, lineupRevision: 7, season, ...roster, ...schedule, careerStats: {}, seasonStats: {}, rankings: Object.fromEntries(INTERNATIONAL_TEAMS.map((row) => [row.id, row.strength])), history: [] };
+  return { version: 1, lineupRevision: INTERNATIONAL_SELECTION_REVISION, seed, retirements: [], season, ...roster, ...schedule, careerStats: {}, seasonStats: {}, rankings: Object.fromEntries(INTERNATIONAL_TEAMS.map((row) => [row.id, row.strength])), history: [] };
 }
 
 /**
@@ -794,11 +854,16 @@ export function internationalCareerNeedsReconcile(
   currentDate: string,
   players?: Record<string, Player>,
 ): boolean {
-  if (state.lineupRevision !== 7) return true;
+  if (state.lineupRevision !== INTERNATIONAL_SELECTION_REVISION) return true;
   if (state.season < internationalSeasonForDate(season, currentDate)) return true;
   if (state.fixtures.some((fixture) => !fixture.played && fixture.date <= currentDate)) return true;
   if (!players) return false;
   return Object.values(players).some((player) => {
+    if (!player.t20iRetirement && sourceT20IRetirement(player.id, false).t20iRetirement) return true;
+    const profile = state.profiles[`full:${player.id}`];
+    if (profile && (JSON.stringify([profile.isT20IRetired, profile.t20iRetirement]) !== JSON.stringify([player.isT20IRetired, player.t20iRetirement])
+      || profile.age !== player.age + state.season - season
+      || isT20IRetiredOn(profile, currentDate) !== isT20IRetiredOn(profile, state.reconciledOn ?? `${state.season - 1}-06-01`))) return true;
     if (player.isCapped && player.internationalDebutSeason !== undefined && !player.internationalDebutDate
       && (player.t20iStats?.matches ?? 0) === 0) return true;
     const id = countryId(player);
@@ -815,7 +880,7 @@ export function internationalCareerNeedsReconcile(
   });
 }
 
-export function reconcileInternationalCareer(state: InternationalCareerState | null, season: number, currentDate: string, players: Record<string, Player>): { state: InternationalCareerState; playerUpdates: Record<string, Player> } {
+function reconcileInternationalWindow(state: InternationalCareerState | null, season: number, currentDate: string, players: Record<string, Player>): { state: InternationalCareerState; playerUpdates: Record<string, Player> } {
   const playerUpdates: Record<string, Player> = {};
   Object.values(players).forEach((player) => {
     if (!player.isCapped || player.internationalDebutSeason === undefined || player.internationalDebutDate
@@ -830,10 +895,9 @@ export function reconcileInternationalCareer(state: InternationalCareerState | n
   });
   const activePlayers = { ...players, ...playerUpdates };
   let career = state?.version === 1 ? structuredClone(state) : createInternationalCareer(season, activePlayers);
-  if (career.lineupRevision !== 7) {
+  if (career.lineupRevision !== INTERNATIONAL_SELECTION_REVISION) {
     Object.values(career.teams).forEach((nationalTeam) => { nationalTeam.seriesSquads = {}; });
   }
-  const targetSeason = internationalSeasonForDate(season, currentDate);
   // Migrate schedules produced before international years were aligned to IPL
   // season boundaries. Scores and scorecards remain untouched.
   career.fixtures = career.fixtures.map((fixture) => fixture.stage === "bilateral" && fixture.date.startsWith(`${career.season}-`)
@@ -848,32 +912,39 @@ export function reconcileInternationalCareer(state: InternationalCareerState | n
   });
   Object.entries(career.profiles).forEach(([id, profile]) => {
     if (profile.fullPlayerId && activePlayers[profile.fullPlayerId]) {
-      career.profiles[id] = fullProfile(activePlayers[profile.fullPlayerId], profile.countryId);
+      career.profiles[id] = { ...fullProfile(activePlayers[profile.fullPlayerId], profile.countryId), lastRetirementEvaluationSeason: profile.lastRetirementEvaluationSeason };
       return;
     }
-    career.profiles[id] = { ...profile, battingPositions: profileBattingPositions(profile) };
+    career.profiles[id] = { ...profile, unavailable: Boolean(profile.fullPlayerId), battingPositions: profileBattingPositions(profile) };
   });
   Object.values(activePlayers).forEach((player) => {
     const id = countryId(player);
-    if (!id || !team(id)?.core || player.age > 39 || career.profiles[`full:${player.id}`]) return;
+    if (!id || !team(id)?.core || career.profiles[`full:${player.id}`]) return;
     career.profiles[`full:${player.id}`] = fullProfile(player, id);
   });
+  const selectionDate = career.fixtures.filter(f => !f.played && f.date <= currentDate).reduce((date, f) => f.date < date ? f.date : date, currentDate);
   // Career progression can add eligible players before the next fixture.
   // Keep their call-ups pending until they actually appear in an XI.
   Object.values(career.teams).forEach((nationalTeam) => {
     nationalTeam.pendingDebuts ??= {};
     const definition = team(nationalTeam.countryId);
-    const pool = Object.values(career.profiles).filter((profile) => profile.countryId === nationalTeam.countryId && !profile.isT20IRetired);
+    const pool = ensureInternationalReserves(career, definition, selectionDate);
     if (!pool.some((profile) => profile.id === nationalTeam.captainId)) {
-      const replacement = chooseCaptain(definition, pool, nationalTeam);
+      const replacement = chooseCaptain(definition, pool, nationalTeam, selectionDate);
       nationalTeam.captainId = replacement.id;
       nationalTeam.captainAppointedSeason = career.season;
       nationalTeam.captainReviewSeason = career.season + 2;
     }
+    if (!pool.some(p => p.id === nationalTeam.viceCaptainId && p.id !== nationalTeam.captainId)) {
+      nationalTeam.viceCaptainId = [...pool].filter(p => p.id !== nationalTeam.captainId).sort((a, b) => b.captaincy - a.captaincy)[0]?.id;
+    }
+    for (const [key, squad] of Object.entries(nationalTeam.seriesSquads ?? {})) {
+      if (squad.some(id => !career.profiles[id] || !isT20IEligible(career.profiles[id], selectionDate))) delete nationalTeam.seriesSquads![key];
+    }
     Object.keys(nationalTeam.pendingDebuts).forEach((id) => {
       const profile = career.profiles[id];
       const player = profile?.fullPlayerId ? activePlayers[profile.fullPlayerId] : undefined;
-      if (!profile || profile.isT20IRetired || (player && player.internationalDebutDate)) delete nationalTeam.pendingDebuts[id];
+      if (!profile || !isT20IEligible(profile, selectionDate) || (player && player.internationalDebutDate)) delete nationalTeam.pendingDebuts[id];
     });
     pool.forEach((profile) => {
       if (!profile.fullPlayerId) return;
@@ -900,56 +971,24 @@ export function reconcileInternationalCareer(state: InternationalCareerState | n
       pool,
       nationalTeam.captainId,
       nationalTeam.internationalStanding,
-      orderedPendingDebuts(nationalTeam.pendingDebuts, career.profiles).slice(0, 5),
+      orderedPendingDebuts(nationalTeam.pendingDebuts, career.profiles).slice(0, 5), selectionDate,
     );
   });
   Object.values(career.teams).forEach((nationalTeam) => {
-    nationalTeam.preferredXI = selectXI(nationalTeam.squad, career.profiles, nationalTeam.captainId, nationalTeam.pendingDebuts, career.season, nationalTeam.internationalStanding);
+    nationalTeam.preferredXI = selectXI(nationalTeam.squad, career.profiles, nationalTeam.captainId, nationalTeam.pendingDebuts, career.season, nationalTeam.internationalStanding, selectionDate);
   });
-  career.lineupRevision = 7;
-  if (career.season < targetSeason) {
-    // Catch up the closing reporting window before archiving it. This matters
-    // when the international page has not been opened since before its World
-    // Cup or final bilateral block.
-    let closingWindowHasWork = true;
-    while (closingWindowHasWork) {
-      let played = false;
-      career.fixtures = career.fixtures.map((fixture) => {
-        if (fixture.played || fixture.date > currentDate) return fixture;
-        played = true;
-        const result = simulateFixture(fixture, career, { ...players, ...playerUpdates });
-        Object.assign(playerUpdates, result.playerUpdates);
-        return result.fixture;
-      });
-      const stageAdded = addWorldCupStages(career);
-      closingWindowHasWork = stageAdded || (played && career.fixtures.some((fixture) => !fixture.played && fixture.date <= currentDate));
-    }
-    career.series = career.series.map((series) => {
-      const matches = series.fixtureIds.map((id) => career.fixtures.find((fixture) => fixture.id === id)).filter(Boolean) as InternationalFixture[];
-      return { ...series, homeWins: matches.filter((match) => match.winner === series.hostCountry).length, awayWins: matches.filter((match) => match.winner === series.touringCountry).length, completed: matches.length === series.matchCount && matches.every((match) => match.played) };
-    });
-    const worldCupFinal = career.fixtures.find((fixture) => fixture.stage === "final" && fixture.played);
-    career.history = [...career.history, {
-      season: career.season,
-      series: career.series,
-      fixtures: career.fixtures,
-      worldCupChampion: worldCupFinal?.winner,
-      seasonStats: career.seasonStats,
-      profileNames: Object.fromEntries(Object.entries(career.profiles).map(([id, profile]) => [id, profile.name])),
-    }].slice(-12);
-    const roster = buildTeams({ ...players, ...playerUpdates }, targetSeason, career); const schedule = createSeasonSchedule(targetSeason);
-    career = { ...career, season: targetSeason, ...roster, ...schedule, seasonStats: {} };
-  }
+  career.lineupRevision = INTERNATIONAL_SELECTION_REVISION;
   let more = true;
   while (more) {
     let played = false;
-    career.fixtures = career.fixtures.map((fixture) => {
+    career.fixtures = career.fixtures.sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id)).map((fixture) => {
       if (fixture.played || fixture.date > currentDate) return fixture;
       played = true; const result = simulateFixture(fixture, career, { ...players, ...playerUpdates }); Object.assign(playerUpdates, result.playerUpdates); return result.fixture;
     });
     const stageAdded = addWorldCupStages(career);
     more = stageAdded || (played && career.fixtures.some((fixture) => !fixture.played && fixture.date <= currentDate));
   }
+  repairInternationalEligibility(career, currentDate);
   career.series = career.series.map((series) => {
     const matches = series.fixtureIds.map((id) => career.fixtures.find((fixture) => fixture.id === id)).filter(Boolean) as InternationalFixture[];
     return { ...series, homeWins: matches.filter((match) => match.winner === series.hostCountry).length, awayWins: matches.filter((match) => match.winner === series.touringCountry).length, completed: matches.length === series.matchCount && matches.every((match) => match.played) };
@@ -958,7 +997,7 @@ export function reconcileInternationalCareer(state: InternationalCareerState | n
     if (archive.seasonStats) repairAppearanceCounts(archive.seasonStats, archive.fixtures);
   });
   repairAppearanceCounts(career.seasonStats, career.fixtures);
-  repairAppearanceCounts(career.careerStats, [...career.history.flatMap((archive) => archive.fixtures), ...career.fixtures]);
+  repairAppearanceCounts(career.careerStats, [...career.history.flatMap((archive) => archive.fixtures), ...career.fixtures], career.archivedAppearanceCounts);
   // Older saves recorded appearances but skipped the debut date for players
   // already capped by career progression. Recover the first actual match.
   [...career.history.flatMap((archive) => archive.fixtures.map((fixture) => ({ fixture, season: archive.season }))),
@@ -997,6 +1036,106 @@ export function reconcileInternationalCareer(state: InternationalCareerState | n
       }
     });
   });
+  return { state: career, playerUpdates };
+}
+
+function evaluateInternationalRetirements(career: InternationalCareerState, date: string, season: number, players: Record<string, Player>, ageIncrement = 0, mandatoryOnly = false) {
+  career.retirements ??= [];
+  for (const profile of Object.values(career.profiles)) {
+    const age = profile.age + ageIncrement;
+    if (!isT20IEligible(profile, date) || (mandatoryOnly && age - worldRules().retirementAgeShift < 40)
+      || (!mandatoryOnly && profile.lastRetirementEvaluationSeason === season)) continue;
+    profile.lastRetirementEvaluationSeason = season;
+    const nationalTeam = career.teams[profile.countryId];
+    if (!nationalTeam || profile.unavailable) continue;
+    // A single missed series/season is not sustained exclusion: retain some
+    // protection for an appearance in either of the last two reporting years.
+    const previousYear = career.history.find(archive => archive.season === career.season - 1);
+    const recentMatches = (career.seasonStats[profile.id]?.matches ?? 0) + (previousYear?.seasonStats?.[profile.id]?.matches ?? 0);
+    const probability = t20iRetirementProbability({ age, ageShift: worldRules().retirementAgeShift,
+      ability: roleValue(profile), nationalStrength: team(profile.countryId).strength,
+      inXI: nationalTeam.preferredXI.includes(profile.id), inSquad: nationalTeam.squad.includes(profile.id),
+      recentMatches, captain: nationalTeam.captainId === profile.id });
+    if (retirementRoll(career.seed ?? 'international', profile.id, season) >= probability) continue;
+    const retirement: T20IRetirement = { effectiveOn: date, season, source: 'simulated',
+      reason: age - worldRules().retirementAgeShift >= 40 || recentMatches > 0 ? 'age' : 'selection' };
+    profile.isT20IRetired = true; profile.t20iRetirement = retirement;
+    const player = profile.fullPlayerId ? players[profile.fullPlayerId] : undefined;
+    career.retirements.push({ id: `t20i-retirement:${profile.id}`, profileId: profile.id, playerId: profile.fullPlayerId,
+      name: profile.name, countryId: profile.countryId, age, effectiveOn: date, season, retirement,
+      hadInternationalCareer: Boolean((career.careerStats[profile.id]?.matches ?? 0) > 0 || player?.internationalDebutDate || (player?.t20iStats?.matches ?? 0) > 0 || player?.isCapped) });
+  }
+}
+
+/** Replay each international window in order, evaluating retirements at the
+ * June boundary before the next year's roster is selected. Never replay results.
+ */
+export function reconcileInternationalCareer(state: InternationalCareerState | null, season: number, currentDate: string, players: Record<string, Player>, seed = state?.seed ?? 'international') {
+  let career = state?.version === 1 ? structuredClone(state) : createInternationalCareer(season, players, seed);
+  career.seed ??= seed; career.retirements ??= [];
+  if (!career.archivedAppearanceCounts) {
+    career.archivedAppearanceCounts = {};
+    if (career.history.length >= 12) {
+      const visible: Record<string, number> = {};
+      for (const fixture of [...career.history.flatMap(a => a.fixtures), ...career.fixtures].filter(f => f.played))
+        for (const id of Array.from(new Set([...(fixture.xiA ?? []), ...(fixture.xiB ?? [])]))) visible[id] = (visible[id] ?? 0) + 1;
+      for (const [id, stats] of Object.entries(career.careerStats)) career.archivedAppearanceCounts[id] = Math.max(0, stats.matches - (visible[id] ?? 0));
+    }
+  }
+  const playerUpdates: Record<string, Player> = {};
+  const mergedPlayers = { ...players };
+  for (const p of Object.values(players)) {
+    const fact = sourceT20IRetirement(p.id, false);
+    const canonical = fact.t20iRetirement ? { ...p, ...mergeT20IRetirement(p, fact) } : p;
+    const migrated = canonical.isT20IRetired && !canonical.t20iRetirement
+      ? { ...canonical, t20iRetirement: { source: 'legacy' as const, reason: 'legacy' as const } } : canonical;
+    if (migrated !== p) playerUpdates[p.id] = mergedPlayers[p.id] = migrated;
+  }
+  // A save's simulated decisions are authoritative, including after source sync.
+  for (const profile of Object.values(career.profiles)) if (profile.fullPlayerId && mergedPlayers[profile.fullPlayerId] && profile.t20iRetirement?.source === 'simulated') {
+    const p = mergedPlayers[profile.fullPlayerId];
+    const merged = { ...p, ...mergeT20IRetirement(profile, p) };
+    if (JSON.stringify(p.t20iRetirement) !== JSON.stringify(merged.t20iRetirement) || p.isT20IRetired !== merged.isT20IRetired) playerUpdates[p.id] = mergedPlayers[p.id] = merged;
+  }
+  const targetSeason = internationalSeasonForDate(season, currentDate);
+  const playersForWindow = (window: number) => Object.fromEntries(Object.values({ ...mergedPlayers, ...playerUpdates }).map(p => [p.id, { ...p, age: p.age + window - season }]));
+  const runWindow = (date: string) => {
+    const projectedPlayers = playersForWindow(career.season);
+    if (career.reconciledOn === date && !internationalCareerNeedsReconcile(career, career.season, date, projectedPlayers)) return;
+    const result = reconcileInternationalWindow(career, career.season, date, projectedPlayers);
+    career = result.state;
+    career.reconciledOn = date;
+    for (const p of Object.values(result.playerUpdates)) playerUpdates[p.id] = { ...p, age: players[p.id]?.age ?? p.age };
+  };
+  while (career.season < targetSeason) {
+    runWindow(`${career.season}-05-31`);
+    const nextSeason = career.season + 1;
+    const date = `${career.season}-06-01`;
+    evaluateInternationalRetirements(career, date, nextSeason, mergedPlayers, 1);
+    for (const profile of Object.values(career.profiles)) if (profile.fullPlayerId && profile.t20iRetirement?.source === 'simulated' && mergedPlayers[profile.fullPlayerId]) {
+      const p = playerUpdates[profile.fullPlayerId] ?? mergedPlayers[profile.fullPlayerId];
+      playerUpdates[p.id] = { ...p, isT20IRetired: true, t20iRetirement: profile.t20iRetirement };
+    }
+    const roster = buildTeams(playersForWindow(nextSeason), nextSeason, career, date);
+    const archives = [...career.history, { season: career.season, series: career.series, fixtures: career.fixtures,
+      worldCupChampion: career.fixtures.find(f => f.stage === 'final' && f.played)?.winner,
+      seasonStats: career.seasonStats, profileNames: Object.fromEntries(Object.values(career.profiles).map(p => [p.id, p.name])) }];
+    for (const archive of archives.slice(0, -12)) for (const fixture of archive.fixtures.filter(f => f.played))
+      for (const id of Array.from(new Set([...(fixture.xiA ?? []), ...(fixture.xiB ?? [])]))) career.archivedAppearanceCounts![id] = (career.archivedAppearanceCounts![id] ?? 0) + 1;
+    career.history = archives.slice(-12);
+    career = { ...career, season: nextSeason, ...roster, ...createSeasonSchedule(nextSeason), seasonStats: {} };
+  }
+  const finalPlayers = playersForWindow(career.season);
+  for (const profile of Object.values(career.profiles)) if (profile.fullPlayerId && finalPlayers[profile.fullPlayerId]) profile.age = finalPlayers[profile.fullPlayerId].age;
+  const priorEvents = career.retirements?.length ?? 0;
+  evaluateInternationalRetirements(career, currentDate, career.season, mergedPlayers, 0, true);
+  if ((career.retirements?.length ?? 0) !== priorEvents) {
+    for (const event of career.retirements!.slice(priorEvents)) if (event.playerId && players[event.playerId]) {
+      playerUpdates[event.playerId] = { ...(playerUpdates[event.playerId] ?? players[event.playerId]), isT20IRetired: true, t20iRetirement: event.retirement };
+    }
+  }
+  runWindow(currentDate);
+  career.reconciledOn = currentDate;
   return { state: career, playerUpdates };
 }
 

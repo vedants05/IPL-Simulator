@@ -159,14 +159,19 @@ const simulated = simulateInstantMatch({
 });
 const chasingSquad = simulated.bowlingFirstTeamId === "A" ? squadA : squadB;
 const chasingImpact = simulated.impactDecisions.find((decision) => decision.teamId === simulated.bowlingFirstTeamId)!;
-assert.equal(chasingImpact.used, true, "the bowling-first plan must activate before the chase");
-assert.equal(chasingImpact.incomingPlayerId, chasingSquad.incomingId);
-assert.equal(chasingImpact.outgoingPlayerId, chasingSquad.outgoingId);
-assert.equal(chasingImpact.battingPosition, 5);
-assert.equal(
-  simulated.innings[1].batting[4]?.id,
-  chasingSquad.incomingId,
-  "the batting Impact Player must replace the top-order bowling placeholder at number five",
-);
+const recommendedImpact = simulated.impactRecommendations!.find((decision) => decision.teamId === simulated.bowlingFirstTeamId)!;
+assert.equal(recommendedImpact.used, true, "the bowling-first plan must recommend the configured substitution");
+assert.equal(recommendedImpact.incomingPlayerId, chasingSquad.incomingId);
+assert.equal(recommendedImpact.outgoingPlayerId, chasingSquad.outgoingId);
+assert.equal(recommendedImpact.battingPosition, 5);
+if (chasingImpact.used) {
+  assert.equal(chasingImpact.incomingPlayerId, chasingSquad.incomingId);
+  assert.equal(chasingImpact.outgoingPlayerId, chasingSquad.outgoingId);
+  assert.equal(simulated.innings[1].batting[4]?.id, chasingSquad.incomingId,
+    "the batting Impact Player must replace the top-order bowling placeholder at number five");
+} else {
+  assert.ok(simulated.innings[1].wickets < 3, "an unused number-five Impact player must not have been needed");
+  assert.equal(chasingImpact.reason, "not-used");
+}
 
 console.log("Bowling-first Impact-plan verification passed.");

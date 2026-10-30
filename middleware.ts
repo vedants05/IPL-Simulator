@@ -6,6 +6,11 @@ const PROTECTED_PREFIXES = ["/game", "/setup", "/saves", "/retentions"];
 export async function middleware(request: NextRequest) {
   let response = NextResponse.next({ request });
 
+  // The bundled desktop guest never needs an online auth refresh.
+  if (process.env.IPL_DESKTOP === "1" && request.cookies.get("ipl-guest")?.value === "1") {
+    return response;
+  }
+
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,

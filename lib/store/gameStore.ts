@@ -1,5 +1,8 @@
 "use client";
 import { create } from "zustand";
+import { mergeT20IRetirement } from '@/lib/logic/internationalRetirements';
+import { hasEditorAccess, refreshEditorAccess } from "@/lib/store/editorAccessStore";
+import { normalizeEditorUsage, recordEditorUsage } from "@/lib/logic/editorUsage";
 import { persist } from "zustand/middleware";
 import { gameStatePersistStorage } from "@/lib/storage/gameStateStorage";
 import { loadBusiness, serviceEffects } from "@/lib/logic/commercial/engine";
@@ -19,6 +22,10 @@ import {
 } from "@/lib/types";
 import { calculateBasePrice, fetchPlayersFromSupabase } from "@/lib/supabase/fetchPlayers";
 import { fetchTeamsFromSupabase } from "@/lib/supabase/fetchTeams";
+import { enforceBattingPositionEligibility } from "@/lib/logic/playerBattingPositions";
+import { addInjuryDays, createPlayerInjury, INJURY_CATALOGUE } from "@/lib/logic/injuries";
+import { calculateStaffRoleRatings, isStaffRatingRole, type StaffRatingAttributes } from "@/lib/logic/staffRatings";
+import { loadStaffDirectory } from "@/lib/logic/staffDirectoryClient";
 import type { ClubFigureProgression, ClubFigureTier, ClubFigureTierOverrides } from "@/lib/data/clubFigures";
 import { processClubFigureSeason } from "@/lib/logic/clubFigureProgression";
 import { applyCareerRelationshipEvent, documentedRelationships, emptyCareerRelationshipState, progressCareerRelationships, relationshipId, type CareerRelationshipState, type RelationshipEvent, type RelationshipMatch } from "@/lib/logic/careerRelationships";
@@ -71,6 +78,7 @@ import {
 import {
   getPlayerSeasonHistory,
   mergePlayerIplHistory,
+  upsertPlayerContractHistory,
   upsertPlayerIplHistory,
   wasPlayerAcquiredViaRtm,
 } from "@/lib/logic/playerHistory";
@@ -80,17 +88,23 @@ import {
   roundDownToLegalBid,
   canTeamBidOnPlayer,
   canTeamAffordBid,
-  TOTAL_PURSE_LAKHS,
-  MAX_AUCTION_TARGETS,
+  getTotalPurseLakhs,
+  getMaxAuctionTargets,
   calculateTotalRetentionCost,
   getPlayerRetentionCost,
-  MAX_CAPPED_RETENTIONS,
-  MAX_UNCAPPED_RETENTIONS,
-  MAX_TOTAL_RETENTIONS,
-  CAPPED_RETENTION_COSTS,
-  UNCAPPED_RETENTION_COST,
+  getMaxCappedRetentions,
+  getMaxUncappedRetentions,
+  getMaxTotalRetentions,
   findRTMEligibleTeam,
 } from "@/lib/logic/auctionRules";
+import {
+  DEFAULT_WORLD_RULES,
+  getRtmCardsForRetentions,
+  normalizeWorldRules,
+  setActiveWorldRules,
+  worldRules,
+  type WorldRules,
+} from "@/lib/logic/worldRules";
 import {
   buildInitialTeamPurses,
   processBid,
@@ -129,7 +143,7 @@ import {
   type InjurySystemModifiers,
 } from "@/lib/logic/injuries";
 import {
-  MAX_INJURY_REPLACEMENTS_PER_TEAM,
+  getMaxInjuryReplacementsPerTeam,
   eligibleInjuryReplacementCandidates,
   getInjuryReplacementPoolIds,
   injuryQualifiesForReplacement,
@@ -148,7 +162,7 @@ import {
   isTradeWindowOpen,
   getTradeSalaryBand,
   isLegalTradeSalary,
-  MINI_TRADE_OVERDRAFT_LAKHS,
+  getMiniTradeOverdraftLakhs,
   tradeRecordForOffer,
 } from "@/lib/logic/tradeEngine";
 import {
@@ -175,7 +189,7 @@ import {
   type ScoutingReport,
 } from "@/lib/logic/scoutingAssignments";
 import {
-  MINI_AUCTION_PURSE_LAKHS,
+  getMiniAuctionPurseLakhs,
   calculateMiniAuctionKeptSalary,
   enforceMiniAuctionRetentionLimits,
   getMiniAuctionContractPrice,
@@ -209,6 +223,9 @@ import {
   releaseCareerStaff,
   renewCareerStaffContract,
   synchronizeCareerStaffProfiles,
+  recalculateStaffFinances,
+  MAX_STAFF_CONTRACT_ROLES,
+  type CareerStaffContract,
   type CareerStaffState,
   type StaffDepartureReason,
   type StaffDirectoryMember,
@@ -252,6 +269,9 @@ export function getActiveSeasonYear(): string {
 // Store actions interface
 // ---------------------------------------------------------------------------
 interface GameStateAdditions {
+  /** Permanent history for this career, independent of the browser's editor unlock. */
+  editorUsed: boolean;
+  editorFirstUsedAt: string | null;
   isPaused: boolean;
   speed: number;
   skipSetSummary: SkipSetSummary | null;
@@ -259,6 +279,16 @@ interface GameStateAdditions {
   auctionTargetPriorities: Record<string, AuctionTargetPriority>;
   /** User scouting/auction shortlist. Unlike season UI state, this persists across seasons. */
   playerShortlist: string[];
+  /** Manual player edits for this save, re-applied whenever the roster is rebuilt from the database. */
+  playerOverrides: Record<string, Partial<Player>>;
+  /** Attribute values pinned per player; re-applied on every state update so development never moves them. */
+  frozenPlayerAttributes: Record<string, Partial<Player>>;
+  /** Manual staff edits for this save, re-applied after every directory sync. */
+  staffOverrides: Record<string, Partial<CareerStaffContract>>;
+  /** Frozen staff values keyed by field, or "attr:<coaching attribute>"; pinned on every state update. */
+  frozenStaffAttributes: Record<string, Record<string, number>>;
+  /** Save-wide league rules (purses, retention limits, squad caps). */
+  worldRules: WorldRules;
   acceleratedPlanningState: 'nominating' | 'results' | null;
   userAcceleratedTargets: string[];
   aiAcceleratedTargets: Record<string, string[]>;
@@ -399,6 +429,11 @@ interface GameActions {
   setAuctionTarget: (playerId: string, maxBidLakhs: number, priority?: AuctionTargetPriority) => void;
   removeAuctionTarget: (playerId: string) => void;
   setPlayerShortlist: (playerIds: string[]) => void;
+  applyPlayerEdit: (playerId: string, patch: Partial<Player>, frozenKeys?: Array<keyof Player>) => void;
+  resetPlayerToDatabase: (playerId: string) => Promise<"reset" | "not-in-database" | "unavailable">;
+  setPlayerInjury: (playerId: string, injury: { conditionId: string; daysOut: number } | null) => void;
+  setPlayerContractPrice: (playerId: string, priceLakhs: number) => void;
+  transferPlayer: (playerId: string, toTeamId: string | null, salaryLakhs?: number) => boolean;
   confirmUserAcceleratedTargets: (targets: string[]) => void;
   startAcceleratedAuctionFromPlanning: () => void;
   setClubFigureTierOverride: (figureId: string, tier: ClubFigureTier) => void;
@@ -503,6 +538,17 @@ interface GameActions {
   reconcileScoutingAssignments: (date?: string) => number;
   reconcileAIStaffRecruitment: (date?: string) => { searchesStarted: number; appointments: number; retries: number };
   setDelegateStaffToCeo: (delegated: boolean) => void;
+  setWorldRules: (patch: Partial<WorldRules>) => void;
+  resetWorldRules: () => void;
+  setTeamFinances: (teamId: string, finances: { totalPurse?: number; remainingPurse?: number }) => void;
+  setTeamStaffBudget: (teamId: string, annualBudget: number) => void;
+  applyStaffEdit: (staffId: string, patch: Partial<CareerStaffContract>, frozenKeys?: string[]) => void;
+  resetStaffToDatabase: (staffId: string) => Promise<"reset" | "not-in-database" | "unavailable">;
+  transferStaffMember: (
+    staffId: string,
+    toTeamId: string | null,
+    terms: { roles: string[]; primaryRole: string; annualSalary: number; endSeason: number | null },
+  ) => boolean;
   initializeCareerStaff: (
     members: StaffDirectoryMember[],
     assignments: StaffStartingAssignment[],
@@ -591,6 +637,149 @@ async function fetchStartingStaffDirectory(): Promise<{
   };
   if (!result.members?.length) throw new Error(result.error || "The staff directory is empty.");
   return { members: result.members, assignments: result.assignments ?? [] };
+}
+
+// Fields refreshPlayersFromSupabase already keeps from the save and which career
+// development legitimately changes, so an edit must not pin them permanently.
+const SAVE_OWNED_PLAYER_FIELDS = new Set<keyof Player>([
+  "age",
+  "currentBatting",
+  "currentBowling",
+  "potentialBatting",
+  "potentialBowling",
+  "potential",
+  "captaincy",
+  "reputation",
+  "country",
+]);
+
+// Everything the editor can change and a database reset should restore.
+const DATABASE_RESETTABLE_PLAYER_FIELDS: Array<keyof Player> = [
+  "name", "age", "dateOfBirth", "nationality", "country", "state", "role", "battingStyle", "bowlingStyle", "bowlingHand",
+  "bowlingUsage", "paceSpeedBand", "spinStyle",
+  "isCapped", "potential", "currentBatting", "potentialBatting", "currentBowling", "potentialBowling", "captaincy", "reputation",
+  "isIplCaptaincyUnavailable", "setForRelease",
+  "isWicketkeeper", "isPartTimeWk", "isOpener", "isFinisher", "isCoreBatter", "onlyOpensOrBenched",
+  "hasBattedAt3", "hasBattedAt4", "hasBattedAt5", "hasBattedAt6", "hasBattedAt7",
+  "powerplayBatting", "middleOversBatting", "deathBatting", "powerplayBowling", "middleOversBowling", "deathBowling",
+  "stamina", "consistency", "battingConsistency", "bowlingConsistency", "battingAggression", "aggression",
+  "bigMatchRating", "pressureRating", "fieldingRating", "wicketkeepingRating", "injuryProneness", "paceRating", "spinRating",
+];
+
+function withEditedPlayer(
+  state: Pick<Store, "players" | "auctionMarketProfile" | "careerRetirementHistory" | "lastCareerRetirements" | "retiredPlayerSnapshots">,
+  playerId: string,
+  patch: Partial<Player>,
+): Record<string, Player> {
+  const editedPlayers = {
+    ...state.players,
+    [playerId]: enforceBattingPositionEligibility({ ...state.players[playerId], ...patch }),
+  };
+  const retiredPlayerIds = getRetiredPlayerIds(state);
+  const activePlayers = Object.fromEntries(
+    Object.entries(editedPlayers).filter(([id]) => !retiredPlayerIds.has(id)),
+  );
+  return {
+    ...editedPlayers,
+    ...applyAuctionMarketRatings(
+      activePlayers,
+      state.auctionMarketProfile ?? createAuctionMarketProfile(Object.values(activePlayers)),
+    ),
+  };
+}
+
+function getPlayerCurrentContractPrice(
+  state: Pick<Store, "auction" | "currentSeason">,
+  player: Player,
+): number {
+  const season = String(state.auction?.season ?? state.currentSeason);
+  const sale = state.auction?.saleHistory.find((entry) => entry.playerId === player.id);
+  if (sale) return sale.price;
+  return getPlayerSeasonHistory(player.iplHistory, season)?.price ?? 0;
+}
+
+// Fields the directory sync always rewrites from the database, so edits to them must be re-applied.
+const STAFF_SYNC_OWNED_FIELDS = new Set<keyof CareerStaffContract>([
+  "fullName", "country", "loyalty", "ambition", "adaptability", "coachingPhilosophy", "preferredTeamStrategy", "traits",
+]);
+const STAFF_RATING_FIELDS = new Set<keyof CareerStaffContract>([
+  "coachingAttributes", "reputation", "currentAbility", "potentialAbility", "roleRatings",
+]);
+
+function deriveStaffContractRatings(contract: CareerStaffContract): CareerStaffContract {
+  const roleRatings = calculateStaffRoleRatings({ ...contract.coachingAttributes, reputation: contract.reputation });
+  const primary = isStaffRatingRole(contract.primaryRole) ? contract.primaryRole : "coach";
+  const currentAbility = roleRatings[primary];
+  return {
+    ...contract,
+    coachingAttributes: { ...contract.coachingAttributes, reputation: contract.reputation },
+    roleRatings,
+    currentAbility,
+    potentialAbility: Math.max(currentAbility, Math.min(95, Math.round(contract.potentialAbility))),
+  };
+}
+
+function applyStaffOverrides(
+  careerStaff: CareerStaffState,
+  overrides: Record<string, Partial<CareerStaffContract>>,
+): CareerStaffState {
+  let contracts = careerStaff.contracts;
+  Object.entries(overrides).forEach(([staffId, override]) => {
+    const contract = contracts[staffId];
+    if (!contract) return;
+    const changed = Object.entries(override).filter(([key, value]) => (
+      JSON.stringify(contract[key as keyof CareerStaffContract]) !== JSON.stringify(value)
+    ));
+    if (changed.length === 0) return;
+    if (contracts === careerStaff.contracts) contracts = { ...contracts };
+    contracts[staffId] = { ...contract, ...Object.fromEntries(changed) };
+  });
+  return contracts === careerStaff.contracts ? careerStaff : { ...careerStaff, contracts };
+}
+
+function pinFrozenStaffAttributes(
+  careerStaff: CareerStaffState,
+  freezes: Record<string, Record<string, number>>,
+): CareerStaffState {
+  let contracts = careerStaff.contracts;
+  Object.entries(freezes).forEach(([staffId, frozen]) => {
+    const contract = contracts[staffId];
+    if (!contract) return;
+    let next = contract;
+    let ratingsChanged = false;
+    Object.entries(frozen).forEach(([key, value]) => {
+      if (key.startsWith("attr:")) {
+        const attribute = key.slice(5) as keyof StaffRatingAttributes;
+        if (next.coachingAttributes[attribute] === value) return;
+        next = { ...next, coachingAttributes: { ...next.coachingAttributes, [attribute]: value } };
+        ratingsChanged = true;
+      } else if (next[key as keyof CareerStaffContract] !== value) {
+        next = { ...next, [key]: value };
+        if (key === "reputation") ratingsChanged = true;
+      }
+    });
+    if (next === contract) return;
+    if (ratingsChanged) next = deriveStaffContractRatings(next);
+    if (contracts === careerStaff.contracts) contracts = { ...contracts };
+    contracts[staffId] = next;
+  });
+  return contracts === careerStaff.contracts ? careerStaff : { ...careerStaff, contracts };
+}
+
+function pinFrozenPlayerAttributes(
+  players: Record<string, Player>,
+  freezes: Record<string, Partial<Player>>,
+): Record<string, Player> {
+  let next = players;
+  Object.entries(freezes).forEach(([playerId, frozen]) => {
+    const player = next[playerId];
+    if (!player) return;
+    const changed = Object.entries(frozen).filter(([key, value]) => player[key as keyof Player] !== value);
+    if (changed.length === 0) return;
+    if (next === players) next = { ...players };
+    next[playerId] = { ...player, ...Object.fromEntries(changed) };
+  });
+  return next;
 }
 
 function getRetiredPlayerIds(state: Pick<Store, "careerRetirementHistory" | "lastCareerRetirements" | "retiredPlayerSnapshots">): Set<string> {
@@ -713,7 +902,7 @@ function applyInjuryReplacementSigning(input: {
     seasonFinalDate: input.seasonFinalDate,
     teamFinalLeagueDate: input.teamFinalLeagueDate,
   })) return null;
-  if (teamReplacementCount(input.records, team.id, input.season) >= MAX_INJURY_REPLACEMENTS_PER_TEAM) return null;
+  if (teamReplacementCount(input.records, team.id, input.season) >= getMaxInjuryReplacementsPerTeam()) return null;
   const eligible = eligibleInjuryReplacementCandidates({
     injury: input.injury,
     players: input.players,
@@ -724,11 +913,11 @@ function applyInjuryReplacementSigning(input: {
   const replacement = eligible.find((candidate) => candidate.id === input.replacementPlayerId);
   if (!replacement) return null;
   const availableSquad = team.squad.filter((playerId) => !input.activeInjuries[playerId]);
-  if (availableSquad.length >= (team.maxSquadSize ?? 25)) return null;
+  if (availableSquad.length >= (team.maxSquadSize ?? worldRules().maxSquadSize)) return null;
   const activeOverseas = availableSquad.filter(
     (playerId) => input.players[playerId]?.nationality === "Overseas",
   ).length;
-  if (replacement.nationality === "Overseas" && activeOverseas >= (team.overseasPlayersMax ?? 8)) return null;
+  if (replacement.nationality === "Overseas" && activeOverseas >= (team.overseasPlayersMax ?? worldRules().maxOverseasInSquad)) return null;
 
   const record: InjuryReplacementRecord = {
     id: `injury-replacement:${input.season}:${input.injury.id}:${replacement.id}`,
@@ -1039,7 +1228,7 @@ function canTeamBidDuringSkip(
 ): boolean {
   if (t.id === userTeamId) {
     if (isSkipAll) {
-      if (t.squad.length >= (t.maxSquadSize ?? 25)) return false;
+      if (t.squad.length >= (t.maxSquadSize ?? worldRules().maxSquadSize)) return false;
       const { canBid } = canTeamBidOnPlayer(t, p, newPlayers, false);
       if (!canBid) return false;
       if (!canTeamAffordBid(t, nextBid, newPlayers)) return false;
@@ -1055,7 +1244,7 @@ function canTeamBidDuringSkip(
       // hard floor for every skipped purchase; manual bidding remains untouched.
       if (t.squad.length >= 24) return false;
       if (t.remainingPurse - nextBid < 50) return false;
-      if (t.squad.length >= (t.minSquadSize ?? 18) && t.remainingPurse >= 200 && t.remainingPurse - nextBid < 200) return false;
+      if (t.squad.length >= (t.minSquadSize ?? worldRules().minSquadSize) && t.remainingPurse >= 200 && t.remainingPurse - nextBid < 200) return false;
       const { canBid } = canTeamBidOnPlayer(t, p, newPlayers, false);
       if (!canBid) return false;
       if (!canTeamAffordBid(t, nextBid, newPlayers)) return false;
@@ -1091,7 +1280,7 @@ function canTeamBidDuringSkip(
     }
 
     const currentSquadSize = squad.length;
-    const minSquad = t.minSquadSize ?? 18;
+    const minSquad = t.minSquadSize ?? worldRules().minSquadSize;
     if (currentSquadSize >= minSquad) {
       if (currentSquadSize >= t.maxSquadSize) return false;
     } else {
@@ -1238,10 +1427,31 @@ function getAIAcceleratedNominationsAndBackups(
 // ---------------------------------------------------------------------------
 export const useGameStore = create<Store>()(
   persist(
-    (set, get) => ({
+    (rawSet, get) => {
+    const set: typeof rawSet = (partial, replace) => rawSet((state) => {
+      let next = typeof partial === "function" ? partial(state) : partial;
+      if (!next) return next;
+      if (next.players) {
+        const pinned = pinFrozenPlayerAttributes(next.players, next.frozenPlayerAttributes ?? state.frozenPlayerAttributes);
+        if (pinned !== next.players) next = { ...next, players: pinned };
+      }
+      if (next.careerStaff) {
+        const pinned = pinFrozenStaffAttributes(next.careerStaff, next.frozenStaffAttributes ?? state.frozenStaffAttributes);
+        if (pinned !== next.careerStaff) next = { ...next, careerStaff: pinned };
+      }
+      return next;
+    }, replace as false);
+    const setEditorState: typeof rawSet = (partial, replace) => set((state) => {
+      const next = typeof partial === "function" ? partial(state) : partial;
+      if (!next || !state.saveId) return next;
+      return { ...next, ...recordEditorUsage(state) };
+    }, replace as false);
+    return ({
       // ----- State -----
       saveId: "",
       saveCreatedAt: "",
+      editorUsed: false,
+      editorFirstUsedAt: null,
       fixtureSeed: "",
       currentDate: "2026-11-15",
       currentSeason: INITIAL_ACTIVE_SEASON,
@@ -1257,6 +1467,11 @@ export const useGameStore = create<Store>()(
       auctionTargets: {},
       auctionTargetPriorities: {},
       playerShortlist: [],
+      playerOverrides: {},
+      frozenPlayerAttributes: {},
+      staffOverrides: {},
+      frozenStaffAttributes: {},
+      worldRules: DEFAULT_WORLD_RULES,
       acceleratedPlanningState: null,
       userAcceleratedTargets: [],
       aiAcceleratedTargets: {},
@@ -1362,9 +1577,11 @@ export const useGameStore = create<Store>()(
             ...t,
             squad: teamPlayers.map((p: Player) => p.id),
             retainedPlayers: [],
-            remainingPurse: TOTAL_PURSE_LAKHS,
+            remainingPurse: getTotalPurseLakhs(),
             spentAmount: 0,
-            minSquadSize: 18,
+            minSquadSize: worldRules().minSquadSize,
+            maxSquadSize: worldRules().maxSquadSize,
+            overseasPlayersMax: worldRules().maxOverseasInSquad,
             softSquadTarget: t.id === userTeamId ? 24 : pickSoftSquadTarget(),
           };
         });
@@ -1420,10 +1637,10 @@ export const useGameStore = create<Store>()(
           return [id, {
             ...team,
             retainedPlayers,
-            totalPurse: openingAuctionType === "mini" ? MINI_AUCTION_PURSE_LAKHS : TOTAL_PURSE_LAKHS,
+            totalPurse: openingAuctionType === "mini" ? getMiniAuctionPurseLakhs() : getTotalPurseLakhs(),
             spentAmount,
-            remainingPurse: Math.max(0, (openingAuctionType === "mini" ? MINI_AUCTION_PURSE_LAKHS : TOTAL_PURSE_LAKHS) - spentAmount),
-            rtmCardsTotal: openingAuctionType === "mini" ? 0 : MAX_TOTAL_RETENTIONS,
+            remainingPurse: Math.max(0, (openingAuctionType === "mini" ? getMiniAuctionPurseLakhs() : getTotalPurseLakhs()) - spentAmount),
+            rtmCardsTotal: openingAuctionType === "mini" ? 0 : getRtmCardsForRetentions(0),
           }];
         }));
         if (openingAuctionType === "mini") {
@@ -1437,6 +1654,8 @@ export const useGameStore = create<Store>()(
         set({
           saveId: newSaveId,
           saveCreatedAt: new Date().toISOString(),
+          editorUsed: false,
+          editorFirstUsedAt: null,
           fixtureSeed: uuidv4(),
           currentDate: getSeasonDates(INITIAL_ACTIVE_SEASON).retentionDate,
           currentSeason: INITIAL_ACTIVE_SEASON,
@@ -1446,6 +1665,11 @@ export const useGameStore = create<Store>()(
           userTeamId,
           auctionTargets: {},
           auctionTargetPriorities: {},
+          playerOverrides: {},
+          frozenPlayerAttributes: {},
+          staffOverrides: {},
+          frozenStaffAttributes: {},
+          worldRules: setActiveWorldRules(DEFAULT_WORLD_RULES),
           playerShortlist: [],
           acceleratedPlanningState: null,
           userAcceleratedTargets: [],
@@ -1608,6 +1832,7 @@ export const useGameStore = create<Store>()(
 
           refreshedPlayers[freshPlayer.id] = {
             ...freshPlayer,
+            ...mergeT20IRetirement(savedPlayer, freshPlayer),
             age: savedPlayer.age,
             currentBatting: savedPlayer.currentBatting,
             currentBowling: savedPlayer.currentBowling,
@@ -1699,6 +1924,10 @@ export const useGameStore = create<Store>()(
             spinRating: freshPlayer.spinRating,
           };
         });
+        Object.entries(state.playerOverrides).forEach(([playerId, override]) => {
+          const player = refreshedPlayers[playerId];
+          if (player) refreshedPlayers[playerId] = enforceBattingPositionEligibility({ ...player, ...override });
+        });
         const currentPlayerId = state.auction?.currentPlayer?.id;
         const refreshedCurrentPlayer = currentPlayerId
           ? refreshedPlayers[currentPlayerId] ?? state.auction?.currentPlayer ?? null
@@ -1770,7 +1999,7 @@ export const useGameStore = create<Store>()(
               [userTeamId]: {
                 ...team,
                 retainedPlayers: newRetained,
-                totalPurse: MINI_AUCTION_PURSE_LAKHS,
+                totalPurse: getMiniAuctionPurseLakhs(),
                 remainingPurse: validation.remainingPurse,
                 spentAmount: validation.totalSalary,
               },
@@ -1782,7 +2011,7 @@ export const useGameStore = create<Store>()(
           }));
           return;
         }
-        if (team.retainedPlayers.length >= MAX_TOTAL_RETENTIONS) return;
+        if (team.retainedPlayers.length >= getMaxTotalRetentions()) return;
         if (!isPlayerAuctionEligible(player)) return;
 
         const isPlayerCapped = player.isCapped || player.nationality === "Overseas";
@@ -1792,8 +2021,8 @@ export const useGameStore = create<Store>()(
         }).length;
         const uncappedCount = team.retainedPlayers.length - cappedCount;
 
-        if (isPlayerCapped && cappedCount >= MAX_CAPPED_RETENTIONS) return;
-        if (!isPlayerCapped && uncappedCount >= MAX_UNCAPPED_RETENTIONS) return;
+        if (isPlayerCapped && cappedCount >= getMaxCappedRetentions()) return;
+        if (!isPlayerCapped && uncappedCount >= getMaxUncappedRetentions()) return;
 
         const newRetained = [...team.retainedPlayers, playerId];
         const newTotalCost = calculateTotalRetentionCost(newRetained, players);
@@ -1804,7 +2033,7 @@ export const useGameStore = create<Store>()(
             [userTeamId]: {
               ...team,
               retainedPlayers: newRetained,
-              remainingPurse: TOTAL_PURSE_LAKHS - newTotalCost,
+              remainingPurse: getTotalPurseLakhs() - newTotalCost,
               spentAmount: newTotalCost,
             },
           },
@@ -1826,7 +2055,7 @@ export const useGameStore = create<Store>()(
         const newTotalCost = auction?.type === "mini"
           ? calculateMiniAuctionKeptSalary(newRetained, userTeamId, players, currentSeason)
           : calculateTotalRetentionCost(newRetained, players);
-        const totalPurse = auction?.type === "mini" ? MINI_AUCTION_PURSE_LAKHS : TOTAL_PURSE_LAKHS;
+        const totalPurse = auction?.type === "mini" ? getMiniAuctionPurseLakhs() : getTotalPurseLakhs();
 
         set((state) => ({
           teams: {
@@ -1872,7 +2101,7 @@ export const useGameStore = create<Store>()(
               [userTeamId]: {
                 ...team,
                 retainedPlayers: autoRetainedIds,
-                totalPurse: MINI_AUCTION_PURSE_LAKHS,
+                totalPurse: getMiniAuctionPurseLakhs(),
                 remainingPurse: validation.remainingPurse,
                 spentAmount: validation.totalSalary,
                 rtmCardsTotal: 0,
@@ -1894,7 +2123,7 @@ export const useGameStore = create<Store>()(
         resetTeams[userTeamId] = {
           ...team,
           retainedPlayers: [],
-          remainingPurse: TOTAL_PURSE_LAKHS,
+          remainingPurse: getTotalPurseLakhs(),
           spentAmount: 0,
         };
 
@@ -1913,7 +2142,7 @@ export const useGameStore = create<Store>()(
             [userTeamId]: {
               ...team,
               retainedPlayers: autoRetainedIds,
-              remainingPurse: TOTAL_PURSE_LAKHS - newTotalCost,
+              remainingPurse: getTotalPurseLakhs() - newTotalCost,
               spentAmount: newTotalCost,
             },
           },
@@ -2009,7 +2238,7 @@ export const useGameStore = create<Store>()(
             );
             return [team.id, {
               ...team,
-              totalPurse: MINI_AUCTION_PURSE_LAKHS,
+              totalPurse: getMiniAuctionPurseLakhs(),
               retainedPlayers: keptIds,
               squad: keptIds,
               captainContinuityId: keptIds.includes(team.captainContinuityId ?? "")
@@ -2019,7 +2248,7 @@ export const useGameStore = create<Store>()(
                 ? team.viceCaptainContinuityId
                 : null,
               spentAmount: totalSalary,
-              remainingPurse: Math.max(0, MINI_AUCTION_PURSE_LAKHS - totalSalary),
+              remainingPurse: Math.max(0, getMiniAuctionPurseLakhs() - totalSalary),
               overseasPlayersCurrent: keptIds.filter(
                 (playerId) => updatedPlayers[playerId]?.nationality === "Overseas",
               ).length,
@@ -2120,7 +2349,7 @@ export const useGameStore = create<Store>()(
             viceCaptainContinuityId: retainedIds.includes(team.viceCaptainContinuityId ?? "")
               ? team.viceCaptainContinuityId
               : null,
-            remainingPurse: TOTAL_PURSE_LAKHS - totalCost,
+            remainingPurse: getTotalPurseLakhs() - totalCost,
             spentAmount: totalCost,
             squad: retainedIds,
             // The previous season's full-squad counter must not survive the
@@ -2129,7 +2358,7 @@ export const useGameStore = create<Store>()(
               (playerId) => updatedPlayers[playerId]?.nationality === "Overseas",
             ).length,
             // RTM cards = 6 minus number of retentions (per IPL rules)
-            rtmCardsTotal: Math.max(0, MAX_TOTAL_RETENTIONS - retainedIds.length),
+            rtmCardsTotal: getRtmCardsForRetentions(retainedIds.length),
           };
         });
 
@@ -2179,7 +2408,7 @@ export const useGameStore = create<Store>()(
           overseasPlayersCurrent: validUserRetainedPlayers.filter(
             (playerId) => updatedPlayers[playerId]?.nationality === "Overseas",
           ).length,
-          rtmCardsTotal: Math.max(0, MAX_TOTAL_RETENTIONS - validUserRetainedPlayers.length),
+          rtmCardsTotal: getRtmCardsForRetentions(validUserRetainedPlayers.length),
         };
 
         const sets = buildAuctionSets(
@@ -2526,7 +2755,7 @@ export const useGameStore = create<Store>()(
         if (!userTeam) return;
         if (!canTeamBidOnPlayer(userTeam, player, players, false).canBid) return;
         if (!canTeamAffordBid(userTeam, player.basePrice, players)) return;
-        if (auctionTargets[playerId] === undefined && Object.keys(auctionTargets).length >= MAX_AUCTION_TARGETS) return;
+        if (auctionTargets[playerId] === undefined && Object.keys(auctionTargets).length >= getMaxAuctionTargets()) return;
         const legalMaxBid = roundDownToLegalBid(player.basePrice, maxBidLakhs);
         set((state) => ({
           auctionTargets: { ...state.auctionTargets, [playerId]: legalMaxBid },
@@ -3359,6 +3588,232 @@ export const useGameStore = create<Store>()(
         playerShortlist: Array.from(new Set(playerIds)).filter((playerId) => Boolean(state.players[playerId])),
       })),
 
+      applyPlayerEdit: (playerId, patch, frozenKeys) => {
+        if (!hasEditorAccess()) return;
+        const state = get();
+        const player = state.players[playerId];
+        if (!player) return;
+
+        const players = withEditedPlayer(state, playerId, patch);
+
+        const persistedPatch = Object.fromEntries(
+          Object.entries(patch).filter(([key]) => !SAVE_OWNED_PLAYER_FIELDS.has(key as keyof Player)),
+        ) as Partial<Player>;
+
+        const nextFreezes = { ...state.frozenPlayerAttributes };
+        if (frozenKeys) {
+          if (frozenKeys.length === 0) delete nextFreezes[playerId];
+          else nextFreezes[playerId] = Object.fromEntries(frozenKeys.map((key) => [key, players[playerId][key]])) as Partial<Player>;
+        } else if (nextFreezes[playerId]) {
+          nextFreezes[playerId] = Object.fromEntries(
+            Object.keys(nextFreezes[playerId]).map((key) => [key, players[playerId][key as keyof Player]]),
+          ) as Partial<Player>;
+        }
+
+        setEditorState({
+          players,
+          playerOverrides: {
+            ...state.playerOverrides,
+            [playerId]: { ...state.playerOverrides[playerId], ...persistedPatch },
+          },
+          frozenPlayerAttributes: nextFreezes,
+          auction: state.auction?.currentPlayer?.id === playerId
+            ? { ...state.auction, currentPlayer: players[playerId] }
+            : state.auction,
+        });
+      },
+
+      resetPlayerToDatabase: async (playerId) => {
+        if (!await refreshEditorAccess()) return "unavailable";
+        const fetchedPlayers = await fetchPlayersFromSupabase();
+        if (!hasEditorAccess()) return "unavailable";
+        if (fetchedPlayers.length === 0) return "unavailable";
+        const freshPlayer = fetchedPlayers.find((candidate) => candidate.id === playerId);
+        const state = get();
+        if (!freshPlayer || !state.players[playerId]) return "not-in-database";
+
+        const patch = Object.fromEntries(
+          DATABASE_RESETTABLE_PLAYER_FIELDS.map((key) => [key, freshPlayer[key]]),
+        ) as Partial<Player>;
+        const { [playerId]: _override, ...playerOverrides } = state.playerOverrides;
+        const { [playerId]: _frozen, ...frozenPlayerAttributes } = state.frozenPlayerAttributes;
+        const players = withEditedPlayer(state, playerId, patch);
+
+        setEditorState({
+          players,
+          playerOverrides,
+          frozenPlayerAttributes,
+          auction: state.auction?.currentPlayer?.id === playerId
+            ? { ...state.auction, currentPlayer: players[playerId] }
+            : state.auction,
+        });
+        return "reset";
+      },
+
+      setPlayerInjury: (playerId, injury) => {
+        if (!hasEditorAccess()) return;
+        const state = get();
+        const player = state.players[playerId];
+        if (!player) return;
+
+        const { [playerId]: existing, ...activeInjuries } = state.activeInjuries;
+        const injuryHistory = existing
+          ? [{ ...existing, endedOn: state.currentDate, resolution: "recovered" as const }, ...state.injuryHistory]
+          : state.injuryHistory;
+
+        if (!injury) {
+          setEditorState({ activeInjuries, injuryHistory });
+          return;
+        }
+
+        const definition = INJURY_CATALOGUE.find((candidate) => candidate.id === injury.conditionId);
+        if (!definition) return;
+        const daysOut = Math.max(1, Math.round(injury.daysOut));
+        const created = createPlayerInjury({
+          player,
+          teamId: player.currentTeamId ?? "UNSOLD",
+          season: state.currentSeason,
+          date: state.currentDate,
+          source: "background",
+          seed: `editor:${state.currentDate}:${playerId}:${injury.conditionId}`,
+          category: definition.category,
+          conditionId: injury.conditionId,
+        });
+        const returnDate = addInjuryDays(state.currentDate, daysOut);
+        setEditorState({
+          activeInjuries: {
+            ...activeInjuries,
+            [playerId]: {
+              ...created,
+              actualReturnDate: returnDate,
+              estimatedReturnEarliest: returnDate,
+              estimatedReturnLatest: returnDate,
+            },
+          },
+          injuryHistory,
+        });
+      },
+
+      setPlayerContractPrice: (playerId, priceLakhs) => {
+        if (!hasEditorAccess()) return;
+        const state = get();
+        const player = state.players[playerId];
+        if (!player || !player.currentTeamId) return;
+        const season = String(state.auction?.season ?? state.currentSeason);
+        const price = Math.max(0, Math.round(priceLakhs));
+        const previousPrice = getPlayerCurrentContractPrice(state, player);
+        const team = state.teams[player.currentTeamId];
+        const delta = price - previousPrice;
+
+        setEditorState({
+          players: {
+            ...state.players,
+            [playerId]: {
+              ...player,
+              iplHistory: upsertPlayerContractHistory(player.iplHistory, { teamId: player.currentTeamId, season, price }),
+              openingContractPrice: player.openingContractSeason === Number(season) ? price : player.openingContractPrice,
+            },
+          },
+          teams: team
+            ? {
+                ...state.teams,
+                [team.id]: {
+                  ...team,
+                  remainingPurse: team.remainingPurse - delta,
+                  spentAmount: Math.max(0, team.spentAmount + delta),
+                },
+              }
+            : state.teams,
+          auction: state.auction
+            ? {
+                ...state.auction,
+                saleHistory: state.auction.saleHistory.map((sale) => (
+                  sale.playerId === playerId ? { ...sale, price } : sale
+                )),
+              }
+            : state.auction,
+        });
+      },
+
+      transferPlayer: (playerId, toTeamId, salaryLakhs) => {
+        if (!hasEditorAccess()) return false;
+        const state = get();
+        const player = state.players[playerId];
+        if (!player) return false;
+        if (state.auction?.phase === "live") return false;
+        const fromTeamId = player.currentTeamId;
+        if (fromTeamId === toTeamId) return false;
+        if (toTeamId && !state.teams[toTeamId]) return false;
+
+        const season = String(state.auction?.season ?? state.currentSeason);
+        const previousPrice = getPlayerCurrentContractPrice(state, player);
+        const salary = toTeamId ? Math.max(0, Math.round(salaryLakhs ?? previousPrice)) : 0;
+        const overseasCount = (squad: string[]) => squad.filter((id) => state.players[id]?.nationality !== "Indian").length;
+
+        const teams = { ...state.teams };
+        const fromTeam = fromTeamId ? teams[fromTeamId] : undefined;
+        if (fromTeam) {
+          const squad = fromTeam.squad.filter((id) => id !== playerId);
+          const remainingPurse = fromTeam.remainingPurse + previousPrice;
+          teams[fromTeam.id] = {
+            ...fromTeam,
+            squad,
+            retainedPlayers: fromTeam.retainedPlayers.filter((id) => id !== playerId),
+            remainingPurse,
+            spentAmount: Math.max(0, fromTeam.totalPurse - remainingPurse),
+            overseasPlayersCurrent: overseasCount(squad),
+            captainContinuityId: fromTeam.captainContinuityId === playerId ? null : fromTeam.captainContinuityId,
+            viceCaptainContinuityId: fromTeam.viceCaptainContinuityId === playerId ? null : fromTeam.viceCaptainContinuityId,
+          };
+        }
+        const toTeam = toTeamId ? teams[toTeamId] : undefined;
+        if (toTeam) {
+          const squad = toTeam.squad.includes(playerId) ? toTeam.squad : [...toTeam.squad, playerId];
+          const remainingPurse = toTeam.remainingPurse - salary;
+          teams[toTeam.id] = {
+            ...toTeam,
+            squad,
+            remainingPurse,
+            spentAmount: Math.max(0, toTeam.totalPurse - remainingPurse),
+            overseasPlayersCurrent: overseasCount(squad),
+          };
+        }
+
+        const players = {
+          ...state.players,
+          [playerId]: {
+            ...player,
+            currentTeamId: toTeamId,
+            isRetained: false,
+            retainedByTeamId: null,
+            iplHistory: upsertPlayerContractHistory(player.iplHistory, { teamId: toTeamId ?? "UNSOLD", season, price: salary }),
+          },
+        };
+        const existingInjury = state.activeInjuries[playerId];
+
+        setEditorState({
+          players,
+          teams,
+          activeInjuries: existingInjury && toTeamId
+            ? { ...state.activeInjuries, [playerId]: { ...existingInjury, teamId: toTeamId } }
+            : state.activeInjuries,
+          auction: state.auction
+            ? {
+                ...state.auction,
+                saleHistory: toTeamId
+                  ? state.auction.saleHistory.map((sale) => (
+                      sale.playerId === playerId ? { ...sale, teamId: toTeamId, price: salary } : sale
+                    ))
+                  : state.auction.saleHistory.filter((sale) => sale.playerId !== playerId),
+                soldPlayerIds: toTeamId
+                  ? state.auction.soldPlayerIds
+                  : state.auction.soldPlayerIds.filter((id) => id !== playerId),
+              }
+            : state.auction,
+        });
+        return true;
+      },
+
       skipToAcceleratedAuction: (preserveUserPurse = false) => {
         const state = get();
         const { auction, players, teams, userTeamId, auctionTargets, auctionTargetPriorities } = state;
@@ -3548,8 +4003,8 @@ export const useGameStore = create<Store>()(
         // squad. Prefer the cheapest unsold legal backups and preserve ₹2 Cr
         // whenever the available purse makes that possible.
         const userTeam = newTeams[userTeamId];
-        if (!preserveUserPurse && userTeam && userTeam.squad.length < (userTeam.minSquadSize ?? 18)) {
-          const minimum = userTeam.minSquadSize ?? 18;
+        if (!preserveUserPurse && userTeam && userTeam.squad.length < (userTeam.minSquadSize ?? worldRules().minSquadSize)) {
+          const minimum = userTeam.minSquadSize ?? worldRules().minSquadSize;
           const required = minimum - userTeam.squad.length;
           const candidates = Array.from(new Set(newUnsoldIds))
             .map(id => newPlayers[id])
@@ -4142,11 +4597,245 @@ export const useGameStore = create<Store>()(
         if (delegated) get().reconcileAIStaffRecruitment();
       },
 
+      setWorldRules: (patch) => {
+        if (!hasEditorAccess()) return;
+        const state = get();
+        const rules = setActiveWorldRules({ ...state.worldRules, ...patch });
+        const teams = Object.fromEntries(Object.entries(state.teams).map(([teamId, team]) => [teamId, {
+          ...team,
+          maxSquadSize: rules.maxSquadSize,
+          minSquadSize: rules.minSquadSize,
+          overseasPlayersMax: rules.maxOverseasInSquad,
+          rtmCardsTotal: state.auction?.type === "mega" && state.auction.phase !== "completed"
+            ? getRtmCardsForRetentions(team.retainedPlayers.length, rules)
+            : team.rtmCardsTotal,
+        }]));
+        const staffBudgetChanged = rules.staffBudgetPercent !== state.worldRules.staffBudgetPercent;
+        setEditorState({
+          worldRules: rules,
+          teams,
+          careerStaff: staffBudgetChanged && state.careerStaff.initialized
+            ? {
+                ...state.careerStaff,
+                financesByTeam: recalculateStaffFinances(state.careerStaff.contracts, state.careerStaff.financesByTeam, true),
+              }
+            : state.careerStaff,
+        });
+      },
+
+      setTeamStaffBudget: (teamId, annualBudget) => {
+        if (!hasEditorAccess()) return;
+        const state = get();
+        const finance = state.careerStaff.financesByTeam[teamId];
+        if (!state.teams[teamId]) return;
+        setEditorState({
+          careerStaff: {
+            ...state.careerStaff,
+            financesByTeam: {
+              ...state.careerStaff.financesByTeam,
+              [teamId]: {
+                annualBudget: Math.max(0, Math.round(annualBudget)),
+                committedSalary: finance?.committedSalary ?? 0,
+                compensationPaid: finance?.compensationPaid ?? 0,
+                compensationReceived: finance?.compensationReceived ?? 0,
+              },
+            },
+          },
+        });
+      },
+
+      resetWorldRules: () => {
+        if (!hasEditorAccess()) return;
+        get().setWorldRules(DEFAULT_WORLD_RULES);
+      },
+
+      setTeamFinances: (teamId, finances) => {
+        if (!hasEditorAccess()) return;
+        const state = get();
+        const team = state.teams[teamId];
+        if (!team) return;
+        const totalPurse = Math.max(0, Math.round(finances.totalPurse ?? team.totalPurse));
+        const remainingPurse = Math.round(finances.remainingPurse ?? (team.remainingPurse + (totalPurse - team.totalPurse)));
+        setEditorState({
+          teams: {
+            ...state.teams,
+            [teamId]: {
+              ...team,
+              totalPurse,
+              remainingPurse,
+              spentAmount: Math.max(0, totalPurse - remainingPurse),
+            },
+          },
+        });
+      },
+
+      applyStaffEdit: (staffId, patch, frozenKeys) => {
+        if (!hasEditorAccess()) return;
+        const state = get();
+        const contract = state.careerStaff.contracts[staffId];
+        if (!contract) return;
+
+        const touchesRatings = Object.keys(patch).some((key) => STAFF_RATING_FIELDS.has(key as keyof CareerStaffContract))
+          || "primaryRole" in patch;
+        let next: CareerStaffContract = { ...contract, ...patch };
+        if (touchesRatings) {
+          next = deriveStaffContractRatings(next);
+          // Marks the profile as career-owned so the directory sync keeps these ratings.
+          if (next.lastDevelopedSeason === null) next = { ...next, lastDevelopedSeason: state.currentSeason - 1 };
+        }
+
+        const persistedPatch = Object.fromEntries(
+          Object.entries(patch).filter(([key]) => STAFF_SYNC_OWNED_FIELDS.has(key as keyof CareerStaffContract)),
+        ) as Partial<CareerStaffContract>;
+        const staffOverrides = { ...state.staffOverrides };
+        if (Object.keys(persistedPatch).length > 0) {
+          staffOverrides[staffId] = { ...staffOverrides[staffId], ...persistedPatch };
+        }
+
+        const frozenValue = (key: string) => (
+          key.startsWith("attr:")
+            ? Number(next.coachingAttributes[key.slice(5) as keyof StaffRatingAttributes] ?? 1)
+            : Number(next[key as keyof CareerStaffContract] ?? 0)
+        );
+        const frozenStaffAttributes = { ...state.frozenStaffAttributes };
+        const keys = frozenKeys ?? Object.keys(frozenStaffAttributes[staffId] ?? {});
+        if (keys.length === 0) delete frozenStaffAttributes[staffId];
+        else frozenStaffAttributes[staffId] = Object.fromEntries(keys.map((key) => [key, frozenValue(key)]));
+
+        const contracts = { ...state.careerStaff.contracts, [staffId]: next };
+        setEditorState({
+          careerStaff: {
+            ...state.careerStaff,
+            contracts,
+            financesByTeam: "annualSalary" in patch
+              ? recalculateStaffFinances(contracts, state.careerStaff.financesByTeam)
+              : state.careerStaff.financesByTeam,
+          },
+          staffOverrides,
+          frozenStaffAttributes,
+        });
+      },
+
+      resetStaffToDatabase: async (staffId) => {
+        if (!await refreshEditorAccess()) return "unavailable";
+        let members: Array<Record<string, unknown> & { id: string }>;
+        try {
+          members = (await loadStaffDirectory()).members;
+        } catch {
+          return "unavailable";
+        }
+        if (!hasEditorAccess()) return "unavailable";
+        const member = members.find((candidate) => candidate.id === staffId);
+        const state = get();
+        const contract = state.careerStaff.contracts[staffId];
+        if (!member || !contract) return "not-in-database";
+
+        const { [staffId]: _override, ...staffOverrides } = state.staffOverrides;
+        const { [staffId]: _frozen, ...frozenStaffAttributes } = state.frozenStaffAttributes;
+        // Clearing the development marker lets the sync take ratings from the database again.
+        const resetSource: CareerStaffState = {
+          ...state.careerStaff,
+          contracts: { [staffId]: { ...contract, lastDevelopedSeason: null } },
+        };
+        const synced = synchronizeCareerStaffProfiles(resetSource, [member as StaffDirectoryMember], [], state.currentSeason);
+        const restored = deriveStaffContractRatings({
+          ...synced.contracts[staffId],
+          dateOfBirth: typeof member.date_of_birth === "string" ? member.date_of_birth : contract.dateOfBirth,
+        });
+
+        setEditorState({
+          careerStaff: {
+            ...state.careerStaff,
+            contracts: { ...state.careerStaff.contracts, [staffId]: restored },
+          },
+          staffOverrides,
+          frozenStaffAttributes,
+        });
+        return "reset";
+      },
+
+      transferStaffMember: (staffId, toTeamId, terms) => {
+        if (!hasEditorAccess()) return false;
+        const state = get();
+        const contract = state.careerStaff.contracts[staffId];
+        if (!contract || contract.status === "retired") return false;
+        if (toTeamId && !state.teams[toTeamId]) return false;
+        const fromTeamId = contract.status === "contracted" ? contract.teamId : null;
+
+        const primaryRole = terms.primaryRole || contract.primaryRole;
+        const roles = Array.from(new Set([primaryRole, ...terms.roles])).slice(0, MAX_STAFF_CONTRACT_ROLES);
+        const annualSalary = Math.max(0, Math.round(terms.annualSalary));
+        const moved: CareerStaffContract = toTeamId
+          ? {
+              ...contract,
+              teamId: toTeamId,
+              roles,
+              primaryRole,
+              startSeason: state.currentSeason,
+              endSeason: terms.endSeason,
+              contractType: terms.endSeason == null ? "rolling" : "fixed_term",
+              annualSalary,
+              status: "contracted",
+              joinedOn: state.currentDate,
+              releasedOn: null,
+            }
+          : {
+              ...contract,
+              teamId: null,
+              roles: [],
+              primaryRole,
+              startSeason: null,
+              endSeason: null,
+              contractType: null,
+              status: "free_agent",
+              releasedOn: state.currentDate,
+            };
+        const contracts = { ...state.careerStaff.contracts, [staffId]: deriveStaffContractRatings(moved) };
+        const historyBase = state.careerStaff.employmentHistory.length;
+        const employmentHistory = [
+          ...state.careerStaff.employmentHistory,
+          ...(fromTeamId ? [{
+            id: `${staffId}:${state.currentSeason}:editor-released:${historyBase}`,
+            staffId,
+            teamId: fromTeamId,
+            roles: contract.roles,
+            season: state.currentSeason,
+            effectiveOn: state.currentDate,
+            kind: "released" as const,
+            reason: "mutual_termination" as const,
+            compensation: 0,
+          }] : []),
+          ...(toTeamId ? [{
+            id: `${staffId}:${state.currentSeason}:editor-appointed:${historyBase + 1}`,
+            staffId,
+            teamId: toTeamId,
+            roles,
+            season: state.currentSeason,
+            effectiveOn: state.currentDate,
+            kind: "appointed" as const,
+            compensation: 0,
+          }] : []),
+        ];
+
+        setEditorState({
+          careerStaff: {
+            ...state.careerStaff,
+            contracts,
+            employmentHistory,
+            financesByTeam: recalculateStaffFinances(contracts, state.careerStaff.financesByTeam),
+          },
+        });
+        return true;
+      },
+
       initializeCareerStaff: (members, assignments) => {
         let changed = false;
         set((state) => {
           const next = state.careerStaff.initialized
-            ? synchronizeCareerStaffProfiles(state.careerStaff, members, assignments, state.currentSeason)
+            ? applyStaffOverrides(
+                synchronizeCareerStaffProfiles(state.careerStaff, members, assignments, state.currentSeason),
+                state.staffOverrides,
+              )
             : initializeCareerStaffState(members, assignments, state.currentSeason);
           changed = next !== state.careerStaff;
           return changed ? { careerStaff: next } : state;
@@ -4410,12 +5099,12 @@ export const useGameStore = create<Store>()(
                   && eligibleSquadIdSet.has(incumbentViceCaptainId)
                 ? incumbentViceCaptainId
                 : null,
-              totalPurse: nextAuctionType === "mini" ? MINI_AUCTION_PURSE_LAKHS : TOTAL_PURSE_LAKHS,
+              totalPurse: nextAuctionType === "mini" ? getMiniAuctionPurseLakhs() : getTotalPurseLakhs(),
               remainingPurse: nextAuctionType === "mini"
-                ? Math.max(0, MINI_AUCTION_PURSE_LAKHS - miniKeptSalary)
-                : TOTAL_PURSE_LAKHS,
+                ? Math.max(0, getMiniAuctionPurseLakhs() - miniKeptSalary)
+                : getTotalPurseLakhs(),
               spentAmount: miniKeptSalary,
-              rtmCardsTotal: nextAuctionType === "mini" ? 0 : MAX_TOTAL_RETENTIONS,
+              rtmCardsTotal: nextAuctionType === "mini" ? 0 : getRtmCardsForRetentions(0),
               // RTM usage belongs to one auction only. Carrying this counter
               // across seasons is invisible in the first 2028 mega auction,
               // but leaves later mega auctions (2031, 2034, ...) with cards
@@ -4905,10 +5594,10 @@ export const useGameStore = create<Store>()(
               season: state.currentSeason,
             }).filter((candidate) => {
               const availableSquad = team.squad.filter((playerId) => !state.activeInjuries[playerId]);
-              if (availableSquad.length >= (team.maxSquadSize ?? 25)) return false;
+              if (availableSquad.length >= (team.maxSquadSize ?? worldRules().maxSquadSize)) return false;
               if (candidate.nationality !== "Overseas") return true;
               return availableSquad.filter((playerId) => players[playerId]?.nationality === "Overseas").length
-                < (team.overseasPlayersMax ?? 8);
+                < (team.overseasPlayersMax ?? worldRules().maxOverseasInSquad);
             });
             const selected = candidates.sort((left, right) => (
               scoreInjuryReplacementCandidate({ candidate: right, injuredPlayer, team, players, activeInjuries: state.activeInjuries })
@@ -4978,7 +5667,7 @@ export const useGameStore = create<Store>()(
           const recipientSquad = projectedSquad(recipient, input.requestedPlayerIds, input.offeredPlayerIds);
           const overseasCount = (ids: string[]) => ids.filter((id) => state.players[id]?.nationality !== "Indian").length;
           const tradeOverseasLimit = (team: Team) => Math.max(
-            team.overseasPlayersMax ?? 8,
+            team.overseasPlayersMax ?? worldRules().maxOverseasInSquad,
             overseasCount(team.squad),
           );
           if (overseasCount(proposerSquad) > tradeOverseasLimit(proposer) || overseasCount(recipientSquad) > tradeOverseasLimit(recipient)) return state;
@@ -5027,7 +5716,7 @@ export const useGameStore = create<Store>()(
           const proposedRecipientPurse = recipient.remainingPurse
             + requestedPlayers.reduce((sum, player) => sum + currentSalary(player), 0)
             - offeredPlayers.reduce((sum, player) => sum + salaryFor(player), 0);
-          if (auctionType === "mini" && (proposedProposerPurse < -MINI_TRADE_OVERDRAFT_LAKHS || proposedRecipientPurse < -MINI_TRADE_OVERDRAFT_LAKHS)) return state;
+          if (auctionType === "mini" && (proposedProposerPurse < -getMiniTradeOverdraftLakhs() || proposedRecipientPurse < -getMiniTradeOverdraftLakhs())) return state;
 
           const tradeId = `trade-${state.currentSeason}-${state.tradeRecords.length + 1}-${input.date}`;
           const nextPlayers = { ...state.players };
@@ -5368,6 +6057,8 @@ export const useGameStore = create<Store>()(
         set({
           saveId: "",
           saveCreatedAt: "",
+          editorUsed: false,
+          editorFirstUsedAt: null,
           fixtureSeed: "",
           currentDate: "2026-11-15",
           currentSeason: INITIAL_ACTIVE_SEASON,
@@ -5383,6 +6074,11 @@ export const useGameStore = create<Store>()(
           auctionTargets: {},
           auctionTargetPriorities: {},
           playerShortlist: [],
+          playerOverrides: {},
+          frozenPlayerAttributes: {},
+          staffOverrides: {},
+          frozenStaffAttributes: {},
+          worldRules: setActiveWorldRules(DEFAULT_WORLD_RULES),
           acceleratedPlanningState: null,
           userAcceleratedTargets: [],
           aiAcceleratedTargets: {},
@@ -5431,13 +6127,16 @@ export const useGameStore = create<Store>()(
           delegateStaffToCeo: false,
         });
       },
-    }),
+    });
+    },
     {
       name: "ipl-simulator-save-v5",
       storage: gameStatePersistStorage,
       partialize: (state) => ({
         saveId: state.saveId,
         saveCreatedAt: state.saveCreatedAt,
+        editorUsed: state.editorUsed,
+        editorFirstUsedAt: state.editorFirstUsedAt,
         fixtureSeed: state.fixtureSeed,
         currentDate: state.currentDate,
         currentSeason: state.currentSeason,
@@ -5455,6 +6154,11 @@ export const useGameStore = create<Store>()(
         auctionTargets: state.auctionTargets,
         auctionTargetPriorities: state.auctionTargetPriorities,
         playerShortlist: state.playerShortlist,
+        playerOverrides: state.playerOverrides,
+        frozenPlayerAttributes: state.frozenPlayerAttributes,
+        staffOverrides: state.staffOverrides,
+        frozenStaffAttributes: state.frozenStaffAttributes,
+        worldRules: state.worldRules,
         clubFigureTierOverrides: state.clubFigureTierOverrides,
         clubFigureProgression: state.clubFigureProgression,
         offseasonStats: state.offseasonStats,
@@ -5497,7 +6201,7 @@ export const useGameStore = create<Store>()(
         delegateStaffToCeo: state.delegateStaffToCeo,
       }),
       merge: (persisted, current) => {
-        const p = persisted as Partial<Store>;
+        const p = (persisted ?? {}) as Partial<Store>;
         const persistedCurrentSeason = p.currentSeason ?? current.currentSeason;
         const migratedCurrentSeason = persistedCurrentSeason === 2026
           ? INITIAL_ACTIVE_SEASON
@@ -5509,12 +6213,15 @@ export const useGameStore = create<Store>()(
             }
           : p.auction;
         const migratedFixtureSeed = p.fixtureSeed || p.saveId || current.fixtureSeed;
+        const mergedWorldRules = setActiveWorldRules(p.worldRules);
         const migratedTeams = p.teams
           ? Object.fromEntries(Object.entries(p.teams).map(([id, team]) => [
               id,
               {
                 ...team,
-                minSquadSize: 18,
+                minSquadSize: mergedWorldRules.minSquadSize,
+                maxSquadSize: mergedWorldRules.maxSquadSize,
+                overseasPlayersMax: mergedWorldRules.maxOverseasInSquad,
                 softSquadTarget: id === p.userTeamId ? 24 : (team.softSquadTarget ?? pickSoftSquadTarget()),
               },
             ]))
@@ -5685,14 +6392,20 @@ export const useGameStore = create<Store>()(
         return {
           ...current,
           ...p,
+          ...normalizeEditorUsage(p),
           currentSeason: migratedCurrentSeason,
           fixtureSeed: migratedFixtureSeed,
           auction: cycleAuction ?? null,
           teams: cycleTeams,
-          players: migratedCyclePlayers,
+          players: pinFrozenPlayerAttributes(migratedCyclePlayers, p.frozenPlayerAttributes ?? {}),
           auctionTargets: removeResolvedAuctionTargets(p.auctionTargets ?? {}, persistedRetiredPlayerIds),
           auctionTargetPriorities: removeResolvedAuctionTargets(p.auctionTargetPriorities ?? {}, persistedRetiredPlayerIds),
           playerShortlist: Array.from(new Set(p.playerShortlist ?? [])).filter((playerId) => Boolean(migratedCyclePlayers[playerId])),
+          playerOverrides: p.playerOverrides ?? {},
+          frozenPlayerAttributes: p.frozenPlayerAttributes ?? {},
+          staffOverrides: p.staffOverrides ?? {},
+          frozenStaffAttributes: p.frozenStaffAttributes ?? {},
+          worldRules: mergedWorldRules,
           clubFigureTierOverrides: p.clubFigureTierOverrides ?? {},
           clubFigureProgression: p.clubFigureProgression ?? {},
           offseasonStats: migratedOffseasonStats,
@@ -5982,7 +6695,7 @@ function hammerFall() {
   if (
     !winningTeam
     || playerAlreadyContracted
-    || winningTeam.squad.length >= (winningTeam.maxSquadSize ?? 25)
+    || winningTeam.squad.length >= (winningTeam.maxSquadSize ?? worldRules().maxSquadSize)
   ) {
     // Bid eligibility is normally enough, but the hammer is asynchronous. A
     // final invariant check prevents stale bids or duplicate lots from taking

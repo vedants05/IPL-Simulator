@@ -184,6 +184,12 @@ export async function loadLocalSave(id: string): Promise<StorageValue<unknown> |
   return slot.state;
 }
 
+/** Inspect a career without activating it or restoring its side storage. */
+export async function readLocalSavePreview(id: string): Promise<LocalSaveSlot | null> {
+  const serialized = await readIndexedValue(`${LOCAL_SAVE_SLOT_PREFIX}${id}`);
+  return serialized ? JSON.parse(serialized) as LocalSaveSlot : null;
+}
+
 export async function deleteLocalSave(id: string): Promise<void> {
   await deleteIndexedValue(`${LOCAL_SAVE_SLOT_PREFIX}${id}`);
 }

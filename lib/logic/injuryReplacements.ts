@@ -2,8 +2,9 @@ import type { Player, Team } from "@/lib/types";
 import type { PlayerInjury } from "./injuries";
 import { getPlayerSeasonHistory } from "./playerHistory";
 import { isPlayerAuctionEligible } from "./auctionMarket";
+import { worldRules } from "./worldRules";
 
-export const MAX_INJURY_REPLACEMENTS_PER_TEAM = 5;
+export const getMaxInjuryReplacementsPerTeam = () => worldRules().maxInjuryReplacementsPerTeam;
 
 export interface InjuryReplacementRecord {
   id: string;

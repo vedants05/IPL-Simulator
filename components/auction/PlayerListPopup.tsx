@@ -4,7 +4,7 @@ import { Target, X } from "lucide-react";
 import { useGameStore } from "@/lib/store/gameStore";
 import { useShallow } from "zustand/react/shallow";
 import { AuctionTargetPriority, Player } from "@/lib/types";
-import { MAX_AUCTION_TARGETS, canTeamAffordBid, canTeamBidOnPlayer } from "@/lib/logic/auctionRules";
+import { getMaxAuctionTargets, canTeamAffordBid, canTeamBidOnPlayer } from "@/lib/logic/auctionRules";
 import PlayerCard from "./PlayerCard";
 
 type PopupType = "sold" | "unsold" | "left";
@@ -73,7 +73,7 @@ function PlayerRow({
     : !canAffordOpeningBid
       ? "Insufficient purse or required squad reserve for the opening bid"
       : null;
-  const targetLimitReached = targetMax === undefined && Object.keys(auctionTargets ?? {}).length >= MAX_AUCTION_TARGETS;
+  const targetLimitReached = targetMax === undefined && Object.keys(auctionTargets ?? {}).length >= getMaxAuctionTargets();
   const targetButtonLocked = impossibleTargetReason !== null;
   const targetButtonDisabled = targetButtonLocked || targetLimitReached;
 
@@ -149,7 +149,7 @@ function PlayerRow({
                 targetButtonLocked
                   ? `Cannot mark as target: ${impossibleTargetReason}`
                   : targetLimitReached
-                    ? `Target limit reached (${MAX_AUCTION_TARGETS}/${MAX_AUCTION_TARGETS})`
+                    ? `Target limit reached (${getMaxAuctionTargets()}/${getMaxAuctionTargets()})`
                   : "Set an automatic bid limit for skipped auction simulation"
               }
             >

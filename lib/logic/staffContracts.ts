@@ -3,6 +3,7 @@ import { NATIONAL_STAFF_SEEDS, NATIONAL_STAFF_SEED_REVISION, type NationalStaffF
 import type { StaffSeasonReview } from "./staffPerformanceReview";
 import { calculateStaffMoveInterest, calculateStaffRenewalInterest, calculateStaffSalaryDemand, type StaffNegotiationSession } from "./staffNegotiations";
 import type { StaffRatingAttributes } from "./staffRatings";
+import { worldRules } from "./worldRules";
 
 export const STAFF_SALARY_MODEL_VERSION = 5;
 
@@ -1063,7 +1064,8 @@ export function getTeamStaffSalaryBudgetCap(
     + ownership.staff_budget_flexibility * 425_000;
   const boardMarketAllowance = marketWageBill * (0.94 + ownership.financial_generosity * 0.008)
     + recruitmentReserve;
-  return Math.round(Math.max(committedDemand, boardMarketAllowance, emptyStaffFloor) / 100_000) * 100_000;
+  const scaledAllowance = Math.max(boardMarketAllowance, emptyStaffFloor) * (worldRules().staffBudgetPercent / 100);
+  return Math.round(Math.max(committedDemand, scaledAllowance) / 100_000) * 100_000;
 }
 
 export function getOwnerOfferedContractYears(teamId: string): number {

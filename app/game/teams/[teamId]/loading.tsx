@@ -1,1 +1,5 @@
-export { default } from "@/components/team/TeamProfileLoading";
+import TeamProfileLoading from "@/components/team/TeamProfileLoading";
+
+export default function Loading() {
+  return <TeamProfileLoading />;
+}

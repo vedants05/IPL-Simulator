@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "engines": {
-    "node": ">=22.0.0"
+    "node": ">=22.12.0"
   },
   "scripts": {
     "dev": "next dev",
@@ -30,6 +30,8 @@
     "test:fastest-season-runs": "tsx calibration/fastestSeasonRunsVerification.ts",
     "test:minor-records": "tsx calibration/minorRecordsVerification.ts",
     "test:batting-aggression": "tsx calibration/battingAggressionVerification.ts",
+    "test:aggression-targets": "node scripts/runCalibration.cjs calibration/aggressionTargetVerification.ts",
+    "test:aggression-matches": "node scripts/runCalibration.cjs calibration/aggressionMatchVerification.ts",
     "test:batting-consistency-neutrality": "tsx calibration/battingConsistencyNeutralityVerification.ts",
     "test:venue-ability-budget": "tsx calibration/venueAbilityBudgetVerification.ts",
     "test:persistence-performance": "tsx calibration/gameStatePersistencePerformanceVerification.ts",
@@ -37,8 +39,14 @@
     "test:offseason-stats": "tsx calibration/offseasonStatsCalibration.ts",
     "test:smat-lifecycle": "tsx calibration/smatLifecycleVerification.ts",
     "test:international-lifecycle": "tsx calibration/internationalLifecycleVerification.ts",
+    "test:t20i-retirements": "node scripts/runCalibration.cjs calibration/internationalRetirementVerification.ts",
+    "test:t20i-retirement-tool": "node calibration/t20iRetirementToolVerification.mjs",
     "test:eden-stadium-asset": "tsx calibration/edenGardensAsset.test.ts",
-    "test:eden-modules": "tsx calibration/edenModules.test.ts && tsx calibration/edenRefurbishment.test.ts"
+    "test:eden-modules": "tsx calibration/edenModules.test.ts && tsx calibration/edenRefurbishment.test.ts",
+    "desktop:build": "node desktop/build.mjs",
+    "desktop:start": "electron desktop",
+    "desktop:pack": "node desktop/package.mjs --dir",
+    "desktop:dist": "node desktop/package.mjs"
   },
   "dependencies": {
     "@react-three/fiber": "^8.17.10",
@@ -62,6 +70,8 @@
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
+    "electron": "^44.9.0",
+    "electron-builder": "^26.15.3",
     "postcss": "^8",
     "tailwindcss": "^3.4.1",
     "typescript": "^5"

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { readDesktopData } from "@/lib/server/desktopData";
 
 import { calculateStaffRoleRatings } from "@/lib/logic/staffRatings";
 import { getStaffContractSeed } from "@/lib/data/staffContractSeeds";
@@ -10,6 +11,8 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
+    const bundled = await readDesktopData("staff");
+    if (bundled) return NextResponse.json(bundled);
     const [membersResult, assignmentsResult, traitsResult] = await Promise.all([
       supabase
         .from("staff_members")

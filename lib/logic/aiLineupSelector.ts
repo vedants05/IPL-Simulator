@@ -2,6 +2,7 @@ import type { Player } from "@/lib/types";
 
 import { MIN_BOWLING_OPTION_RATING } from "./lineupPlanner";
 import { findSpecialOpenerPair, SPECIAL_OPENER_PAIRS } from "./openerPairs";
+import { worldRules } from "./worldRules";
 
 export type AiLineupMode = "battingFirst" | "bowlingFirst";
 
@@ -59,7 +60,7 @@ export const isImpactPlayerWithinOverseasLimit = (
   startingXI: readonly Player[],
   impactPlayer: Player,
 ) => (
-  startingXI.filter(isOverseas).length + (isOverseas(impactPlayer) ? 1 : 0) <= 4
+  startingXI.filter(isOverseas).length + (isOverseas(impactPlayer) ? 1 : 0) <= worldRules().maxOverseasInXI
 );
 
 export const isBattingOption = (player: Player) => (
@@ -152,7 +153,7 @@ function sanitizeImpactPlayerOverseasLimit(
 ): Player | null {
   if (!impactPlayer) return null;
   const startersOverseas = startingXI.filter(isOverseas).length;
-  if (startersOverseas < 4 || !isOverseas(impactPlayer)) return impactPlayer;
+  if (startersOverseas < worldRules().maxOverseasInXI || !isOverseas(impactPlayer)) return impactPlayer;
 
   const startingIds = new Set(startingXI.map((p) => p.id));
   const legalBench = squad
@@ -814,7 +815,7 @@ export function sanitizeStartingXIOverseas(
   const pool = squad || startingXI;
   let didReplace = false;
 
-  while (xi.filter(isOverseas).length > 4) {
+  while (xi.filter(isOverseas).length > worldRules().maxOverseasInXI) {
     const overseasInXi = xi.filter(isOverseas);
     const weakestOverseas = [...overseasInXi].sort(
       (a, b) => currentAbility(a) - currentAbility(b)
@@ -940,7 +941,7 @@ function hasBaseBalance(selected: readonly Player[], _mode: AiLineupMode) {
   }
 
   return selected.length === 11
-    && selected.filter(isOverseas).length <= 4
+    && selected.filter(isOverseas).length <= worldRules().maxOverseasInXI
     && selected.some(isKeeper)
     && selected.filter((player) => Boolean(player.onlyOpensOrBenched)).length <= 2
     && selected.filter(isAiBowlingOption).length >= 5
@@ -1063,7 +1064,7 @@ function selectStartingPlayers(
     const nextStates = new Map<string, SelectionSearchState>(states);
     states.forEach((state) => {
       if (state.players.length >= 11) return;
-      if (isOverseas(player) && state.players.filter(isOverseas).length >= 4) return;
+      if (isOverseas(player) && state.players.filter(isOverseas).length >= worldRules().maxOverseasInXI) return;
       if (player.onlyOpensOrBenched && state.players.filter((p) => p.onlyOpensOrBenched).length >= 2) return;
 
       const included: SelectionSearchState = {
@@ -1095,7 +1096,7 @@ function selectStartingPlayers(
     .sort((left, right) => selectionScore(right, mode) - selectionScore(left, mode))
     .forEach((player) => {
       if (fallback.length >= 11) return;
-      if (isOverseas(player) && fallback.filter(isOverseas).length >= 4) return;
+      if (isOverseas(player) && fallback.filter(isOverseas).length >= worldRules().maxOverseasInXI) return;
       fallback.push(player);
     });
   return orderStartingXI(fallback, openingPair, mode, squad, leadershipIds);
@@ -1305,7 +1306,7 @@ export function validateLineupPlan(plan: AiLineupPlan, squad: readonly Player[],
   const overseasCount = starters.filter(isOverseas).length;
   const impactPlayer = plan.impactPlayerId ? squad.find((p) => p.id === plan.impactPlayerId) : null;
   const totalOverseas = overseasCount + (impactPlayer && isOverseas(impactPlayer) ? 1 : 0);
-  if (totalOverseas > 4) return false;
+  if (totalOverseas > worldRules().maxOverseasInXI) return false;
 
   if (!starters.some(isKeeper)) return false;
   if (starters.filter(isAiBowlingOption).length < 5) return false;
@@ -1560,7 +1561,7 @@ interface BowlFirstImpactStructure {
 
 const hasLegalBowlingFirstStartingXI = (startingXI: readonly Player[]) => (
   startingXI.length === 11
-  && startingXI.filter(isOverseas).length <= 4
+  && startingXI.filter(isOverseas).length <= worldRules().maxOverseasInXI
   && startingXI.some(isKeeper)
   && startingXI.filter(isAiBowlingOption).length >= 5
   && startingXI.some((player) => (

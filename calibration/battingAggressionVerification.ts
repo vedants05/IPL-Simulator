@@ -42,12 +42,11 @@ assert.ok(lowComposure.wicketRiskMultiplier > 1);
 assert.ok(highComposure.effectiveAggression < neutralComposure.effectiveAggression);
 assert.ok(highComposure.wicketRiskMultiplier < 1);
 
-// Aggression raises tempo and dismissal probability by the same multiplier.
-// Expected runs per wicket should therefore remain essentially unchanged.
-const production = (aggression: number) => (
-  expectedRuns(applyBattingAggressionOutcomeWeights(base, aggression))
-  / aggressionAdjustedWicketProbability(0.05, aggression)
-);
+// Include zero-run wicket balls in expected productivity.
+const production = (aggression: number) => {
+  const q = aggressionAdjustedWicketProbability(0.05, aggression);
+  return expectedRuns(applyBattingAggressionOutcomeWeights(base, aggression)) * (1 - q) / q;
+};
 const lowProduction = production(45);
 const highProduction = production(90);
 assert.ok(Math.abs(highProduction / lowProduction - 1) < 0.005);

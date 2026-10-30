@@ -31,16 +31,22 @@ const api = {
   },
   measurePreview() {
     const scatter = document.querySelector('[data-player-scatter="true"]')!;
-    const bounds = scatter.querySelector('[role="img"]')!.getBoundingClientRect();
+    const bounds = scatter.querySelector('[role="group"]')!.getBoundingClientRect();
     const labels = Array.from(scatter.querySelectorAll('[data-scatter-label]'));
     const issues: string[] = [];
     if (bounds.height < 150) issues.push("preview plot too short");
-    if (labels.length < 4 || labels.length > 5 || !scatter.querySelector('[data-scatter-label="player-0"]')) issues.push("preview representative labels missing");
+    if (labels.length < 1 || labels.length > 6 || !scatter.querySelector('[data-scatter-label="player-0"]')) issues.push("preview representative labels missing");
     const colours = new Set(Array.from(scatter.querySelectorAll('[data-scatter-point]:not([data-scatter-point="player-0"])')).map((point) => getComputedStyle(point).backgroundColor));
     if (!colours.has('rgb(117, 97, 189)') || !colours.has('rgb(212, 79, 86)')) issues.push("preview team colours missing");
     for (const label of labels) {
       const rect = label.getBoundingClientRect();
       if (rect.left < bounds.left || rect.right > bounds.right || rect.top < bounds.top || rect.bottom > bounds.bottom) issues.push("preview label outside plot");
+      if (label.scrollWidth > label.clientWidth || label.scrollHeight > label.clientHeight) issues.push("preview player name is clipped");
+      const point = Array.from(scatter.querySelectorAll<HTMLElement>('[data-scatter-point]')).find((item) => item.dataset.scatterPoint === (label as HTMLElement).dataset.scatterLabel);
+      if (point) {
+        const dot = point.getBoundingClientRect(), x = (dot.left + dot.right) / 2, y = (dot.top + dot.bottom) / 2;
+        if (Math.hypot(x - Math.max(rect.left, Math.min(x, rect.right)), y - Math.max(rect.top, Math.min(y, rect.bottom))) < dot.width / 2) issues.push("preview label covers its player");
+      }
     }
     return { width: innerWidth, height: innerHeight, issues };
   },
@@ -77,21 +83,26 @@ const api = {
       const isGraph = tile.closest('[data-analysis-region="graphs"]');
       if (isGraph && (rect.width < 300 || rect.height < 200)) issues.push(`${title}: graph squeezed below readable dimensions`);
       for (const scatter of Array.from(tile.querySelectorAll('[data-player-scatter="true"]'))) {
-        const plot = scatter.querySelector('[role="img"]')!.getBoundingClientRect();
+        const plot = scatter.querySelector('[role="group"]')!.getBoundingClientRect();
         const labels = Array.from(scatter.querySelectorAll('[data-scatter-label]'));
-        if (labels.length < 4 || labels.length > 5) issues.push(`${title}: expected endpoints and nearby name bars`);
+        if (labels.length < 1 || labels.length > 6) issues.push(`${title}: unexpected label count`);
         if (!scatter.querySelector('[data-scatter-label="player-0"]')) issues.push(`${title}: selected label missing`);
         const colours = new Set(Array.from(scatter.querySelectorAll('[data-scatter-point]:not([data-scatter-point="player-0"])')).map((point) => getComputedStyle(point).backgroundColor));
         if (!colours.has('rgb(117, 97, 189)') || !colours.has('rgb(212, 79, 86)')) issues.push(`${title}: team colours missing`);
         for (let first = 0; first < labels.length; first++) {
           const a = labels[first].getBoundingClientRect();
           if (a.left < plot.left || a.right > plot.right || a.top < plot.top || a.bottom > plot.bottom) issues.push(`${title}: name bar outside plot`);
+          if (labels[first].scrollWidth > labels[first].clientWidth || labels[first].scrollHeight > labels[first].clientHeight) issues.push(`${title}: player name is clipped`);
+          const point = Array.from(scatter.querySelectorAll<HTMLElement>('[data-scatter-point]')).find((item) => item.dataset.scatterPoint === (labels[first] as HTMLElement).dataset.scatterLabel);
+          if (point) {
+            const dot = point.getBoundingClientRect(), x = (dot.left + dot.right) / 2, y = (dot.top + dot.bottom) / 2;
+            if (Math.hypot(x - Math.max(a.left, Math.min(x, a.right)), y - Math.max(a.top, Math.min(y, a.bottom))) < dot.width / 2) issues.push(`${title}: label covers its player`);
+          }
           for (let second = first + 1; second < labels.length; second++) {
             const b = labels[second].getBoundingClientRect();
             if (Math.min(a.right, b.right) > Math.max(a.left, b.left) && Math.min(a.bottom, b.bottom) > Math.max(a.top, b.top)) issues.push(`${title}: scatter name bars overlap`);
           }
         }
-        if (scatter.querySelectorAll('[data-scatter-connector]').length !== labels.length) issues.push(`${title}: label connector missing`);
       }
       return { title, width: Math.round(rect.width), height: Math.round(rect.height) };
     });

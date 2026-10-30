@@ -1,6 +1,6 @@
 import type { Role } from "../types";
 
-export type ChartPoint = { id: string; name: string; x: number; y: number; lowerEndEligible?: boolean };
+export type ChartPoint = { id: string; name: string; x: number; y: number; radius?: number; lowerEndEligible?: boolean };
 
 export function chartLowerEndRoleMatches(role: Role, metricGroups: string[]): boolean {
   const batting = metricGroups.some((group) => group.toLowerCase().includes("batting"));
@@ -8,13 +8,13 @@ export function chartLowerEndRoleMatches(role: Role, metricGroups: string[]): bo
   return (!batting || role === "Batsman" || role === "WK-Batsman" || role === "All-Rounder")
     && (!bowling || role === "Pace Bowler" || role === "Spin Bowler" || role === "All-Rounder");
 }
-export type ChartLabel = { id: string; name: string; left: number; top: number; width: number; anchorX: number; anchorY: number; connectorX: number; connectorY: number };
+export type ChartLabel = { id: string; name: string; left: number; top: number; width: number; height?: number; anchorX: number; anchorY: number; connectorX: number; connectorY: number };
 
 function connectorTouchesCard(line: ChartLabel, card: ChartLabel): boolean {
   let enter = 0, leave = 1;
   for (const [start, delta, low, high] of [
     [line.anchorX, line.connectorX - line.anchorX, card.left - 2, card.left + card.width + 2],
-    [line.anchorY, line.connectorY - line.anchorY, card.top - 2, card.top + 19],
+    [line.anchorY, line.connectorY - line.anchorY, card.top - 2, card.top + (card.height ?? 17) + 2],
   ]) {
     if (Math.abs(delta) < 1e-8) { if (start < low || start > high) return false; }
     else {
@@ -47,7 +47,7 @@ function connectorsCross(a: ChartLabel, b: ChartLabel): boolean {
 
 export function chartLabelsCollide(a: ChartLabel, b: ChartLabel): boolean {
   const cardsOverlap = a.left < b.left + b.width + 3 && a.left + a.width + 3 > b.left
-    && a.top < b.top + 20 && a.top + 20 > b.top;
+    && a.top < b.top + (b.height ?? 17) + 3 && a.top + (a.height ?? 17) + 3 > b.top;
   return cardsOverlap || connectorTouchesCard(a, b) || connectorTouchesCard(b, a) || connectorsCross(a, b);
 }
 
@@ -65,112 +65,69 @@ export function chartAxis(values: number[], tickCount = 5) {
   return { min, max, ticks };
 }
 
-export function chartLabelPlayers(points: ChartPoint[], selectedId: string, width: number, height: number): ChartPoint[] {
+export function chartLabelPlayers(points: ChartPoint[], selectedId: string, width: number, height: number, limit = 4): ChartPoint[] {
   const selected = points.find((point) => point.id === selectedId);
-  const candidates: ChartPoint[] = [];
-  const add = (point: ChartPoint | undefined) => { if (point && !candidates.some((entry) => entry.id === point.id)) candidates.push(point); };
-  const closest = (x: number, y: number, pool = points) => [...pool].sort((a, b) =>
-    Math.hypot(a.x - x, a.y - y) - Math.hypot(b.x - x, b.y - y)
-    || a.name.localeCompare(b.name) || a.id.localeCompare(b.id)
-  )[0];
-  add(selected);
-  // Coordinates are already oriented with better values toward the top right.
-  add(closest(0, height, points.filter((point) => point.lowerEndEligible !== false)));
-  add(closest(width, 0));
-  if (selected) {
-    const neighbours = points.filter((point) => !candidates.some((entry) => entry.id === point.id)).sort((a, b) =>
-      Math.hypot(a.x - selected.x, a.y - selected.y) - Math.hypot(b.x - selected.x, b.y - selected.y)
-      || a.name.localeCompare(b.name) || a.id.localeCompare(b.id)
-    );
-    neighbours.slice(0, 2).forEach(add);
+  const eligible = points.filter((point) => point.lowerEndEligible !== false);
+  const result: ChartPoint[] = selected ? [selected] : [];
+  const addBest = (score: (point: ChartPoint) => number) => {
+    const point = [...eligible].sort((a, b) => score(b) - score(a) || a.name.localeCompare(b.name) || a.id.localeCompare(b.id))[0];
+    if (point && !result.some((chosen) => chosen.id === point.id)) result.push(point);
+  };
+  // Axes are oriented so better values are right and up. Normalising the
+  // combined score prevents a wide plot from dominating the comparison.
+  addBest((point) => point.x);
+  addBest((point) => -point.y);
+  addBest((point) => point.x / Math.max(width, 1) + (height - point.y) / Math.max(height, 1));
+  const remaining = [...eligible].sort((a, b) =>
+    (b.x - a.x) / Math.max(width, 1) + (a.y - b.y) / Math.max(height, 1)
+    || a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+  if (limit > 4) for (const point of remaining) {
+    if (result.length >= limit) break;
+    if (!result.some((chosen) => chosen.id === point.id)) result.push(point);
   }
-  return candidates;
+  return result;
 }
 
-export function chartLabels(points: ChartPoint[], selectedId: string, width: number, height: number, limit = 5, measuredWidths: Record<string, number> = {}): ChartLabel[] {
-  if (width <= 0 || height <= 0 || points.length === 0) return [];
-  const selected = points.find((point) => point.id === selectedId);
-  const candidates = chartLabelPlayers(points, selectedId, width, height);
+export function chartLabels(points: ChartPoint[], selectedId: string, width: number, height: number, limit = 4, measuredWidths: Record<string, number> = {}, measuredHeights: Record<string, number> = {}): ChartLabel[] {
+  if (width < 12 || height < 21 || points.length === 0) return [];
   const labels: ChartLabel[] = [];
-  const labelHeight = 17;
-  const nudges: number[][] = [];
-  for (let x = -12; x <= 12; x += 2) for (let y = -12; y <= 12; y += 2) nudges.push([x, y]);
-  nudges.sort((a, b) => Math.hypot(a[0], a[1]) - Math.hypot(b[0], b[1]));
-  for (const point of candidates) {
+  for (const point of chartLabelPlayers(points, selectedId, width, height, limit)) {
     if (labels.length >= limit) break;
-    const labelWidth = measuredWidths[point.id] ?? Math.ceil(Array.from(point.name).length * 4.8 + 10);
-    // Keep names next to their dots and on their actual side of the selected player.
-    // Use compact alternatives when the preferred side is crowded or near an edge.
-    const horizontal = selected && point.id !== selectedId ? Math.sign(point.x - selected.x) : 0;
-    const vertical = selected && point.id !== selectedId ? Math.sign(point.y - selected.y) : 0;
-    const side = horizontal < 0 ? -labelWidth - 10 : 10;
-    const above = vertical > 0 ? 10 : -labelHeight - 10;
-    const offsets = [
-      ...(point.id === selectedId ? [[-labelWidth / 2, -labelHeight - 18], [-labelWidth / 2, 18]] : []),
-      [side, -labelHeight / 2],
-      [-labelWidth / 2, above],
-      [side, above],
-      [-labelWidth / 2, vertical > 0 ? -labelHeight - 10 : 10],
-      [horizontal < 0 ? 10 : -labelWidth - 10, -labelHeight / 2],
-      ...[22, 34, 46].flatMap((gap) => [
-        [horizontal < 0 ? -labelWidth - gap : gap, -labelHeight / 2],
-        [-labelWidth / 2, vertical > 0 ? gap : -labelHeight - gap],
-      ]),
-    ];
-    const labelAt = (left: number, top: number): ChartLabel => ({ id: point.id, name: point.name, left, top, width: labelWidth,
+    const labelWidth = Math.min(width - 4, measuredWidths[point.id] ?? Math.ceil(Array.from(point.name).length * 4.8 + 10));
+    const labelHeight = measuredHeights[point.id] ?? 17;
+    const labelAt = (left: number, top: number): ChartLabel => ({ id: point.id, name: point.name, left, top, width: labelWidth, height: labelHeight,
       anchorX: point.x, anchorY: point.y,
       connectorX: Math.max(left, Math.min(point.x, left + labelWidth)),
       connectorY: Math.max(top, Math.min(point.y, top + labelHeight)) });
-    const blocksAnotherAnchor = (label: ChartLabel) => candidates.some((other) => {
-      if (other.id === point.id || Math.hypot(other.x - point.x, other.y - point.y) < 1e-6) return false;
-      const dx = label.connectorX - point.x, dy = label.connectorY - point.y;
-      const fraction = Math.max(0, Math.min(1, ((other.x - point.x) * dx + (other.y - point.y) * dy) / Math.max(1e-8, dx * dx + dy * dy)));
-      return Math.hypot(other.x - point.x - fraction * dx, other.y - point.y - fraction * dy) < 3;
+    const positions: ChartLabel[] = [];
+    // Search locally first. The selected label has a wider fallback so it is
+    // retained even on a dense plot; other labels are omitted when too crowded.
+    const maxDistance = point.id === selectedId ? Math.max(width, height) : 38;
+    for (let top = 2; top + labelHeight <= height - 2; top += 4) {
+      for (let left = 2; left + labelWidth <= width - 2; left += 4) {
+        const candidate = labelAt(left, top);
+        const distance = Math.hypot(candidate.connectorX - point.x, candidate.connectorY - point.y);
+        if (distance < (point.radius ?? 4) + 2 || distance > maxDistance) continue;
+        if (labels.some((other) => {
+          const difference = point.x - other.anchorX;
+          const labelDifference = left + labelWidth / 2 - (other.left + other.width / 2);
+          return (difference > 0 && labelDifference <= 0) || (difference < 0 && labelDifference >= 0) || chartLabelsCollide(candidate, other);
+        })) continue;
+        const coversPoint = points.some((other) => other.id !== point.id && Math.hypot(
+          other.x - Math.max(left, Math.min(other.x, left + labelWidth)),
+          other.y - Math.max(top, Math.min(other.y, top + labelHeight)),
+        ) < (other.radius ?? 4) + 2);
+        if (coversPoint && point.id !== selectedId) continue;
+        positions.push(candidate);
+      }
+    }
+    positions.sort((a, b) => {
+      const score = (item: ChartLabel) => Math.hypot(item.connectorX - point.x, item.connectorY - point.y)
+        + Math.abs(item.left + item.width / 2 - point.x) * 0.05
+        + (points.some((other) => other.id !== point.id && other.x >= item.left - 5 && other.x <= item.left + item.width + 5 && other.y >= item.top - 5 && other.y <= item.top + labelHeight + 5) ? 10000 : 0);
+      return score(a) - score(b) || a.top - b.top || a.left - b.left;
     });
-    for (const [dx, dy] of offsets.flatMap(([x, y]) => nudges.map(([nx, ny]) => [x + nx, y + ny]))) {
-      const left = point.x + dx, top = point.y + dy;
-      if (left < 2 || top < 2 || left + labelWidth > width - 2 || top + labelHeight > height - 2) continue;
-      if (selected && point.id !== selectedId) {
-        if (horizontal < 0 && left + labelWidth / 2 >= selected.x) continue;
-        if (horizontal > 0 && left + labelWidth / 2 <= selected.x) continue;
-        if (vertical < 0 && top + labelHeight / 2 >= selected.y) continue;
-        if (vertical > 0 && top + labelHeight / 2 <= selected.y) continue;
-      }
-      if (points.some((other) => other.id !== point.id && other.x >= left - 6 && other.x <= left + labelWidth + 6 && other.y >= top - 6 && other.y <= top + labelHeight + 6)) continue;
-      const candidate = labelAt(left, top);
-      if (blocksAnotherAnchor(candidate)) continue;
-      if (labels.some((label) => chartLabelsCollide(candidate, label))) continue;
-      // Clamping to the rectangle gives the closest edge (or corner), so a line
-      // never runs across the name to reach an arbitrary side of the bar.
-      labels.push(candidate);
-      break;
-    }
-    if (!labels.some((label) => label.id === point.id)) {
-      // Dense point clouds can block every compact offset. Keep the chosen player
-      // and find the closest available bar position instead of dropping their name.
-      let best: { left: number; top: number; score: number } | undefined;
-      for (let top = 2; top + labelHeight <= height - 2; top += 8) {
-        for (let left = 2; left + labelWidth <= width - 2; left += 8) {
-          const candidate = labelAt(left, top);
-          if (blocksAnotherAnchor(candidate) || labels.some((label) => chartLabelsCollide(candidate, label))) continue;
-          const covered = points.filter((other) => other.x >= left - 6 && other.x <= left + labelWidth + 6 && other.y >= top - 6 && other.y <= top + labelHeight + 6);
-          if (covered.some((other) => candidates.some((candidate) => candidate.id === other.id))) continue;
-          const wrongSide = selected && point.id !== selectedId ?
-            (horizontal !== 0 && Math.sign(left + labelWidth / 2 - selected.x) !== horizontal ? 1 : 0)
-            + (vertical !== 0 && Math.sign(top + labelHeight / 2 - selected.y) !== vertical ? 1 : 0) : 0;
-          const connectorX = Math.max(left, Math.min(point.x, left + labelWidth));
-          const connectorY = Math.max(top, Math.min(point.y, top + labelHeight));
-          const score = wrongSide * 1_000_000 + covered.length * 10_000 + Math.hypot(point.x - connectorX, point.y - connectorY);
-          if (!best || score < best.score) best = { left, top, score };
-        }
-      }
-      if (best) {
-        const { left, top } = best;
-        labels.push({ id: point.id, name: point.name, left, top, width: labelWidth, anchorX: point.x, anchorY: point.y,
-          connectorX: Math.max(left, Math.min(point.x, left + labelWidth)),
-          connectorY: Math.max(top, Math.min(point.y, top + labelHeight)) });
-      }
-    }
+    if (positions[0]) labels.push(positions[0]);
   }
   return labels;
 }

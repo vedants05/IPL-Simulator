@@ -18,6 +18,7 @@ import type { CareerStaffState } from "@/lib/logic/staffContracts";
 import { calculateCoachingStaffModifiers, deriveAITeamTactics } from "@/lib/logic/coachingStrategyImpact";
 import { appendRainAffectedResultLabel, hasRainReducedOvers } from "@/lib/logic/matchWeather";
 import type { Player, Team } from "@/lib/types";
+import { worldRules } from "./worldRules";
 
 export const MATCH_SIMULATION_VERSION = 4;
 export const DEFAULT_CHASING_SCORING_BONUS = 0;
@@ -1333,12 +1334,12 @@ function createActiveTeamState(
     startingXI: [...plan.startingXI],
     finalXI: [...plan.startingXI],
     battingOrder: [...plan.startingXI],
-    impactUsed: false,
+    impactUsed: !worldRules().impactPlayerEnabled,
     impactDecision: {
       teamId: team.id,
       used: false,
       reason: "not-used",
-      explanation: "No Impact Player was used.",
+      explanation: worldRules().impactPlayerEnabled ? "No Impact Player was used." : "The Impact Player rule is disabled.",
     },
   };
 }
@@ -2417,10 +2418,9 @@ export interface BattingAggressionScoringProfile {
 
 /**
  * Converts aggression into tempo, not batting quality. A neutral 65 maps to an
- * indicative 157.5 SR and 95 maps to 185 SR. Extreme intent above 95 has a
- * stronger curve. The innings engine applies the same multiplier to dismissal
- * probability, so aggressive players score their runs
- * faster but also use fewer balls rather than receiving free expected runs.
+ * target 157.5 SR and 95 maps to 185 SR. Extreme intent above 95 has a
+ * stronger curve. Targets include wicket balls and incidental extras; the
+ * innings engine solves scoring and wicket chances together to preserve quality.
  */
 export function battingAggressionScoringProfile(
   battingAggression: number,
@@ -2437,10 +2437,8 @@ export function battingAggressionScoringProfile(
 }
 
 /**
- * Scale dismissal probability by the same factor as scoring tempo. Applying
- * the multiplier to odds made attacking batters slightly more productive per
- * dismissal, especially in finite 120-ball innings. Direct probability
- * scaling keeps aggression a tempo choice rather than a source of free runs.
+ * Relative-tempo helper. Wicket balls score zero, so preserving expected runs
+ * before a wicket requires scaling odds, not the raw probability.
  */
 export function aggressionAdjustedWicketProbability(
   wicketProbability: number,
@@ -2450,7 +2448,7 @@ export function aggressionAdjustedWicketProbability(
   const probability = clamp(wicketProbability, 0.0001, 0.9999);
   const { tempoMultiplier } = battingAggressionScoringProfile(battingAggression);
   return clamp(
-    probability * tempoMultiplier * pressureRiskMultiplier,
+    probability * tempoMultiplier / (1 - probability + probability * tempoMultiplier) * pressureRiskMultiplier,
     0.0001,
     0.9999,
   );
@@ -2518,9 +2516,10 @@ function expectedRunsFromWeights(weights: BattingOutcomeWeights): number {
 export function applyBattingAggressionOutcomeWeights(
   input: BattingOutcomeWeights,
   battingAggression: number,
+  targetRunsPerScoringBall?: number,
 ): BattingOutcomeWeights {
   const profile = battingAggressionScoringProfile(battingAggression);
-  const targetExpectedRuns = expectedRunsFromWeights(input) * profile.tempoMultiplier;
+  const targetExpectedRuns = clamp(targetRunsPerScoringBall ?? expectedRunsFromWeights(input) * profile.tempoMultiplier, 0.01, 5.8);
   const attacking = Math.max(0, profile.boundaryIntent);
   const controlled = Math.max(0, -profile.boundaryIntent);
   const styled: BattingOutcomeWeights = {
@@ -2534,8 +2533,8 @@ export function applyBattingAggressionOutcomeWeights(
 
   // Exponential tilting reaches the requested runs-per-ball target while
   // preserving the boundary-heavy/rotation-heavy identity established above.
-  let low = -1;
-  let high = 1;
+  let low = -12;
+  let high = 12;
   for (let index = 0; index < 32; index += 1) {
     const tilt = (low + high) / 2;
     const candidate: BattingOutcomeWeights = {
@@ -2558,6 +2557,33 @@ export function applyBattingAggressionOutcomeWeights(
     four: styled.four * Math.exp(tilt * 4),
     six: styled.six * Math.exp(tilt * 6),
   };
+}
+
+/** Calibrate complete balls, including zero-run wicket chances and byes.
+ * Existing ability/score/season restraints remain in the neutral run-per-chance
+ * budget. Aggression changes how quickly that budget is spent, once only.
+ * Fielding subsequently decides whether a wicket chance is completed.
+ */
+export function calibrateBattingTempo(
+  neutralWeights: BattingOutcomeWeights,
+  neutralWicketProbability: number,
+  aggression: number,
+  contextMultiplier = 1,
+  scoringChance = 1,
+) {
+  const q = clamp(neutralWicketProbability, 0.0001, 0.8);
+  const s = clamp(scoringChance, 0.01, 1);
+  const neutralRunsPerBall = expectedRunsFromWeights(neutralWeights) * (1 - q) * s;
+  const runsPerWicketChance = Math.max(0.001, neutralRunsPerBall / q);
+  const targetRunsPerBall = battingAggressionScoringProfile(aggression).indicativeStrikeRate / 100
+    * clamp(contextMultiplier, 0.85, 1.15);
+  // Respect the maximum achievable scoring distribution; report any limitation
+  // instead of claiming to reach a target outside the feasible range.
+  const maxWicketProbability = Math.min(0.8, 5.8 * s / (runsPerWicketChance + 5.8 * s));
+  const wicketProbability = clamp(targetRunsPerBall / runsPerWicketChance, 0.0001, maxWicketProbability);
+  const achievedRunsPerBall = runsPerWicketChance * wicketProbability;
+  const weights = applyBattingAggressionOutcomeWeights(neutralWeights, aggression, achievedRunsPerBall / ((1 - wicketProbability) * s));
+  return { weights, wicketProbability, targetRunsPerBall, achievedRunsPerBall, runsPerWicketChance };
 }
 
 /**
@@ -2825,8 +2851,7 @@ function dismissalText(wicket: DeliveryWicket, bowler: Player): string {
   return `hit wicket b ${bowler.name}`;
 }
 
-function sampleBatRuns(
-  rng: SimulationRandom,
+function battingOutcomeWeights(
   scoringFactor: number,
   intent: number,
   conditions: MatchGroundConditions,
@@ -2834,10 +2859,9 @@ function sampleBatRuns(
   boundaryOpportunityMultiplier: number = 1,
   rotationMultiplier: number = 1,
   singleOpportunityMultiplier: number = 1,
-  battingAggression: number = 65,
   playableBattingApproach?: PlayableBattingApproach,
   phaseModifiers: PhaseOutcomeModifiers = NEUTRAL_PHASE_OUTCOME_MODIFIERS,
-): number {
+): BattingOutcomeWeights {
   let boundaryFactor = clamp(
     scoringFactor * (1 + intent * 0.75) * boundaryOpportunityMultiplier,
     0.55,
@@ -2863,20 +2887,7 @@ function sampleBatRuns(
   let twoWeight = 0.09 * rotationMultiplier * twoRunMultiplier * clamp(1.05 - conditions.outfieldSpeedRating * 0.02, 0.82, 1.05);
   let fourWeight = 0.14 * boundaryFactor * clamp(conditions.outfieldSpeedRating / 7.5, 0.72, 1.25);
   let sixWeight = 0.052 * boundaryFactor ** 1.35 * clamp(69 / averageBoundary, 0.8, 1.3);
-  const aggressionWeights = applyBattingAggressionOutcomeWeights({
-    dot: dotWeight,
-    single: singleWeight,
-    two: twoWeight,
-    three: 0.0035 * threeRunFactor,
-    four: fourWeight,
-    six: sixWeight,
-  }, battingAggression);
-  dotWeight = aggressionWeights.dot;
-  singleWeight = aggressionWeights.single;
-  twoWeight = aggressionWeights.two;
-  fourWeight = aggressionWeights.four;
-  sixWeight = aggressionWeights.six;
-
+  const threeWeight = 0.0035 * threeRunFactor;
   ({ dotWeight, fourWeight, sixWeight } = playableBattingApproachScoringWeights(
     playableBattingApproach,
     dotWeight,
@@ -2890,14 +2901,7 @@ function sampleBatRuns(
   fourWeight *= phaseModifiers.four;
   sixWeight *= phaseModifiers.six;
 
-  return rng.weighted([
-    { value: 0, weight: dotWeight },
-    { value: 1, weight: singleWeight },
-    { value: 2, weight: twoWeight },
-    { value: 3, weight: aggressionWeights.three },
-    { value: 4, weight: fourWeight },
-    { value: 6, weight: sixWeight },
-  ]);
+  return { dot: dotWeight, single: singleWeight, two: twoWeight, three: threeWeight, four: fourWeight, six: sixWeight };
 }
 
 function getPlayerPotentialRealization(playerId?: string, seed?: string): number {
@@ -4611,19 +4615,67 @@ function simulateInnings(context: InningsContext): MatchInnings {
           0.018,
           0.16,
         );
-        const tempoAdjustedWicketProbability = aggressionAdjustedWicketProbability(
-          phaseAdjustedWicketProbability,
+        const bowlingHaulMultiplier = lowerRatedBowlingHaulMultiplier(bowler.currentBowling, bowlerEntry.wickets);
+        const byeProbability = clamp(
+          0.007 + (72 - keeperRating) * 0.00045 + partTimeKeeperPenalty
+          - bowlingPressure * attributeSignal(wicketkeeper?.pressureRating) * 0.0015
+          - bowlingBigMatchIntensity * attributeSignal(wicketkeeper?.bigMatchRating) * 0.001,
+          0.003, 0.023,
+        );
+        const nonStrikerEntry = ensureBattingEntry(nonStriker.id);
+        const strikerIsWeak = isPureBowler || striker.currentBatting < 62;
+        const nonStrikerIsWeak = (
+          nonStriker.role === "Pace Bowler"
+          || nonStriker.role === "Spin Bowler"
+          || nonStriker.currentBatting < 62
+        );
+        const strikerIsEstablished = (
+          strikerEntry.balls >= 12
+          && striker.currentBatting >= 75
+        );
+        const nonStrikerIsEstablished = (
+          nonStrikerEntry.balls >= 12
+          && nonStriker.currentBatting >= 75
+        );
+        const neutralWeights = battingOutcomeWeights(
+          runEnvironment,
+          intent + (isNoBall ? 0.12 : 0),
+          conditions,
+          isPureBowler,
+          (isPowerplay ? POWERPLAY_BOUNDARY_MULTIPLIER : 1)
+            * (striker.isFinisher ? FINISHER_BOUNDARY_MULTIPLIER : 1)
+            * (fieldInfluence?.boundaryOpportunityMultiplier ?? 1),
+          (striker.isCoreBatter ? CORE_BATTER_ROTATION_MULTIPLIER : 1)
+            * (fieldInfluence?.rotationMultiplier ?? 1),
+          strikeFarmSingleMultiplier(
+            displayLegalBall,
+            strikerIsEstablished,
+            nonStrikerIsWeak,
+            strikerIsWeak,
+            nonStrikerIsEstablished,
+          ),
+          deliveryControl?.battingApproach,
+          outcomeModifiers,
+        );
+        // Only match context changes pace. Ability and score-based restraints
+        // remain in runEnvironment/neutralWeights and therefore in productivity.
+        const paceContext = clamp(expectedCentre / 159, 0.9, 1.1)
+          * clamp(inningsEnvironment, 0.96, 1.04)
+          * (1 + intent * 0.16)
+          * phaseRunModifier * matchupRunModifier * rrrRunModifier
+          * deteriorationRunModifier * pressureRunModifier
+          * batterBigMatch.runMultiplier * bowlerBigMatch.runMultiplier
+          * dewScoringMultiplier
+          * Math.sqrt(outcomeModifiers.four * outcomeModifiers.six / outcomeModifiers.dot)
+          * (1 + tacticalBowling.scoring);
+        const tempo = calibrateBattingTempo(
+          neutralWeights,
+          phaseAdjustedWicketProbability * aggressionUnderPressure.wicketRiskMultiplier * bowlingHaulMultiplier,
           aggressionUnderPressure.effectiveAggression,
-          aggressionUnderPressure.wicketRiskMultiplier,
+          paceContext,
+          1 - byeProbability - 0.012,
         );
-
-        const bowlingHaulMultiplier = lowerRatedBowlingHaulMultiplier(
-          bowler.currentBowling,
-          bowlerEntry.wickets,
-        );
-        const effectiveWicketProbability = isFreeHit
-          ? 0.002 + runningPressure * 0.001
-          : tempoAdjustedWicketProbability * bowlingHaulMultiplier;
+        const effectiveWicketProbability = isFreeHit ? 0.002 + runningPressure * 0.001 : tempo.wicketProbability;
         const wicketOutcomeRoll = rng.next();
         if (!isNoBall && wicketOutcomeRoll < effectiveWicketProbability) {
           const wicketChance: DeliveryWicket = isFreeHit
@@ -4712,15 +4764,6 @@ function simulateInnings(context: InningsContext): MatchInnings {
           }
         } else {
           const incidentalExtrasRoll = rng.next();
-          const byeProbability = clamp(
-            0.007
-              + (72 - keeperRating) * 0.00045
-              + partTimeKeeperPenalty
-              - bowlingPressure * attributeSignal(wicketkeeper?.pressureRating) * 0.0015
-              - bowlingBigMatchIntensity * attributeSignal(wicketkeeper?.bigMatchRating) * 0.001,
-            0.003,
-            0.023,
-          );
           if (incidentalExtrasRoll < byeProbability) {
             extrasForBall.byes = rng.weighted([
               { value: 1, weight: 78 },
@@ -4736,43 +4779,11 @@ function simulateInnings(context: InningsContext): MatchInnings {
           } else if (incidentalExtrasRoll < byeProbability + 0.012) {
             extrasForBall.legByes = rng.next() < 0.84 ? 1 : 2;
           } else {
-            const nonStrikerEntry = ensureBattingEntry(nonStriker.id);
-            const strikerIsWeak = isPureBowler || striker.currentBatting < 62;
-            const nonStrikerIsWeak = (
-              nonStriker.role === "Pace Bowler"
-              || nonStriker.role === "Spin Bowler"
-              || nonStriker.currentBatting < 62
-            );
-            const strikerIsEstablished = (
-              strikerEntry.balls >= 12
-              && striker.currentBatting >= 75
-            );
-            const nonStrikerIsEstablished = (
-              nonStrikerEntry.balls >= 12
-              && nonStriker.currentBatting >= 75
-            );
-            runsOffBat = sampleBatRuns(
-              rng,
-              runEnvironment,
-              intent + (isNoBall ? 0.12 : 0),
-              conditions,
-              isPureBowler,
-              (isPowerplay ? POWERPLAY_BOUNDARY_MULTIPLIER : 1)
-                * (striker.isFinisher ? FINISHER_BOUNDARY_MULTIPLIER : 1)
-                * (fieldInfluence?.boundaryOpportunityMultiplier ?? 1),
-              (striker.isCoreBatter ? CORE_BATTER_ROTATION_MULTIPLIER : 1)
-                * (fieldInfluence?.rotationMultiplier ?? 1),
-              strikeFarmSingleMultiplier(
-                displayLegalBall,
-                strikerIsEstablished,
-                nonStrikerIsWeak,
-                strikerIsWeak,
-                nonStrikerIsEstablished,
-              ),
-              aggressionUnderPressure.effectiveAggression,
-              deliveryControl?.battingApproach,
-              outcomeModifiers,
-            );
+            runsOffBat = rng.weighted([
+              { value: 0, weight: tempo.weights.dot }, { value: 1, weight: tempo.weights.single },
+              { value: 2, weight: tempo.weights.two }, { value: 3, weight: tempo.weights.three },
+              { value: 4, weight: tempo.weights.four }, { value: 6, weight: tempo.weights.six },
+            ]);
             strikerEntry.runs += runsOffBat;
             if (runsOffBat === 4) strikerEntry.fours += 1;
             if (runsOffBat === 6) strikerEntry.sixes += 1;
@@ -5427,7 +5438,7 @@ function simulateMatchToCompletion(
   ) {
     const unusedIncomingId = chasingImpact.incomingPlayerId;
     bowlingFirstState.finalXI = [...bowlingFirstState.startingXI];
-    bowlingFirstState.impactUsed = false;
+    bowlingFirstState.impactUsed = !worldRules().impactPlayerEnabled;
     bowlingFirstState.impactDecision = {
       teamId: bowlingFirstTeam.id,
       used: false,

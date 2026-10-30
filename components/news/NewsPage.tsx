@@ -48,6 +48,7 @@ import { getSeasonScheduleAnnouncementDate } from "@/lib/logic/careerCalendar";
 import { LEAGUE_HISTORY_TEAMS } from "@/lib/data/leagueHistory";
 import { addNewsDays, getNewsArticleExpiry, NEWS_REPEAT_COOLDOWN_DAYS, newsWindowEnd, isNewsPublished, isNewsActive, isNewsBreaking, compareNewsArticles } from "@/lib/logic/newsArticlePolicy";
 import { buildStaffNewsArticles } from "@/lib/logic/staffNewsArticles";
+import { buildInternationalRetirementNews } from '@/lib/logic/internationalRetirementNews';
 import { selectTeamOfSeason } from "@/lib/logic/teamOfSeason";
 import type { ClubFigureProgression } from "@/lib/data/clubFigures";
 import type { InternationalCareerState } from "@/lib/logic/international";
@@ -3800,6 +3801,8 @@ export default function NewsPage({
         articleByIdentity.set(newsArticleIdentity(article), article);
       });
     });
+    buildInternationalRetirementNews(internationalCareer, players, currentDate).forEach(article =>
+      articleByIdentity.set(newsArticleIdentity(article), { ...article, timestamp: formatDate(article.publishedAt!) }));
     buildStaffNewsArticles(careerStaff, (id) => teams[id]?.name ?? (id === "league" ? "the league" : id), userTeamId, currentDate)
       .forEach((article) => articleByIdentity.set(newsArticleIdentity(article), {
         ...article, timestamp: formatDate(article.publishedAt),
@@ -3933,7 +3936,7 @@ export default function NewsPage({
     return Array.from(articleByIdentity.values()).filter((article) =>
       isNewsPublished(article, currentDate) && (pinnedArticleIds.includes(newsArticleIdentity(article)) || isNewsActive(article, currentDate))
     );
-  }, [userTeamId, players, teams, playerStats, standings, retirements, retirementHistory, retiredPlayerSnapshots, currentSeason, fixtures, topScorer, topWicketTaker, layout, currentDate, saveId, isSeasonConcluded, clubFigureProgression, careerStaff, pinnedArticleIds]);
+  }, [userTeamId, players, teams, playerStats, standings, retirements, retirementHistory, retiredPlayerSnapshots, currentSeason, fixtures, topScorer, topWicketTaker, layout, currentDate, saveId, isSeasonConcluded, clubFigureProgression, careerStaff, pinnedArticleIds, internationalCareer]);
 
   useEffect(() => {
     try {

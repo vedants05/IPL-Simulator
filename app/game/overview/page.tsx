@@ -1,11 +1,10 @@
 "use client";
-import { formatDisplayDate } from "@/lib/logic/displayDate";
+import { formatDisplayDate, formatLongDisplayDate } from "@/lib/logic/displayDate";
 import { useState, useEffect, useLayoutEffect, useMemo, useRef, Suspense, Fragment, useCallback, type CSSProperties, type ReactNode } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useGameStore, getSeasonDates, INITIAL_ACTIVE_SEASON } from "@/lib/store/gameStore";
-import { progressInternationalRelationships } from "@/lib/logic/careerRelationships";
 import { useShallow } from "zustand/react/shallow";
 import { reconcileSmatCareer, smatStorageKey, type SmatCareerState } from "@/lib/logic/smat";
 import { parseSmatCareer, serializeSmatCareer } from "@/lib/logic/smatStorage";
@@ -156,17 +155,16 @@ import {
 const SocialMediaPage = dynamic(() => import("@/components/social/SocialMediaPage"), { ssr: false });
 const NewsPage = dynamic(() => import("@/components/news/NewsPage"), { ssr: false });
 const SmatPage = dynamic(() => import("@/components/home/SmatPage"), { ssr: false });
+const WorldRulesPage = dynamic(() => import("@/components/home/WorldRulesPage"), { ssr: false });
 const InternationalPage = dynamic(() => import("@/components/home/InternationalPage"), { ssr: false });
 import {
-  internationalCareerNeedsReconcile,
   internationalCareerStatsForPlayer,
   internationalStorageKey,
-  reconcileInternationalCareer,
   type InternationalCareerState,
 } from "@/lib/logic/international";
 import {
   loadInternationalCareer,
-  saveInternationalCareer,
+  subscribeInternationalCareer,
 } from "@/lib/storage/internationalStorage";
 import { getClubOwnership } from "@/lib/data/clubOwnership";
 import { buildTeamSupporterView } from "@/lib/logic/supporters";
@@ -266,6 +264,8 @@ import {
   Crown,
   ShieldCheck,
 } from "lucide-react";
+import { worldRules } from "@/lib/logic/worldRules";
+import { useEditorAccess } from "@/lib/store/editorAccessStore";
 
 interface PlayerStats {
   id: string;
@@ -1043,6 +1043,7 @@ function StadiumManagementSummaryTile({
 // Main component
 // ============================================================================
 function OverviewPageContent() {
+  const { enabled: editorEnabled } = useEditorAccess();
   const router = useRouter();
   const {
     teams,
@@ -1346,67 +1347,18 @@ function OverviewPageContent() {
     return totals;
   }, [smatCareer]);
   const [internationalCareer, setInternationalCareer] = useState<InternationalCareerState | null>(null);
-  const internationalCareerRef = useRef<InternationalCareerState | null>(null);
-  const loadedInternationalKeyRef = useRef<string | null>(null);
   const internationalCareerKey = internationalStorageKey(saveId || fixtureSeed || userTeamId || "career");
-
   useEffect(() => {
-    let cancelled = false;
-    if (loadedInternationalKeyRef.current !== internationalCareerKey) {
-      internationalCareerRef.current = null;
-      setInternationalCareer(null);
-    }
-
-    const reconcileAndPersist = async () => {
-      try {
-        const saved = loadedInternationalKeyRef.current === internationalCareerKey
-          ? internationalCareerRef.current
-          : await loadInternationalCareer(internationalCareerKey);
-        // A fast-forward can advance through many dates before the initial
-        // IndexedDB read completes. Superseded effects must stop here rather
-        // than each cloning and simulating the same career in parallel.
-        if (cancelled) return;
-        const livePlayers = useGameStore.getState().players;
-        if (saved && !internationalCareerNeedsReconcile(saved, currentSeason, currentDate, livePlayers)) {
-          loadedInternationalKeyRef.current = internationalCareerKey;
-          internationalCareerRef.current = saved;
-          setInternationalCareer((current) => current === saved ? current : saved);
-          useGameStore.setState((state) => {
-            const careerRelationships = progressInternationalRelationships({
-              state: state.careerRelationships, fixtures: saved.fixtures, players: state.players,
-              staff: state.careerStaff, season: saved.season,
-            });
-            return careerRelationships === state.careerRelationships ? state : { careerRelationships };
-          });
-          return;
-        }
-        const result = reconcileInternationalCareer(saved, currentSeason, currentDate, livePlayers);
-        if (cancelled) return;
-
-        loadedInternationalKeyRef.current = internationalCareerKey;
-        internationalCareerRef.current = result.state;
-        setInternationalCareer(result.state);
-
-        const playerUpdates = Object.entries(result.playerUpdates);
-        useGameStore.setState((state) => {
-          const nextPlayers = playerUpdates.length > 0
-            ? { ...state.players, ...Object.fromEntries(playerUpdates) } : state.players;
-          const careerRelationships = progressInternationalRelationships({
-            state: state.careerRelationships, fixtures: result.state.fixtures, players: nextPlayers,
-            staff: state.careerStaff, season: result.state.season,
-          });
-          return nextPlayers === state.players && careerRelationships === state.careerRelationships
-            ? state : { players: nextPlayers, careerRelationships };
-        });
-        await saveInternationalCareer(internationalCareerKey, result.state);
-      } catch (error) {
-        if (!cancelled) console.error("Unable to load international career data:", error);
-      }
-    };
-
-    void reconcileAndPersist();
-    return () => { cancelled = true; };
-  }, [currentDate, currentSeason, internationalCareerKey, players]);
+    let active = true, received = false;
+    setInternationalCareer(null);
+    const unsubscribe = subscribeInternationalCareer((key, state) => {
+      if (key === internationalCareerKey) { received = true; setInternationalCareer(state); }
+    });
+    void loadInternationalCareer(internationalCareerKey).then(state => {
+      if (active && !received) setInternationalCareer(state);
+    }).catch(error => console.error("Unable to load international career:", error));
+    return () => { active = false; unsubscribe(); };
+  }, [internationalCareerKey]);
 
   useEffect(() => {
     minorRecordsRef.current = minorRecords;
@@ -4098,7 +4050,7 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}${replacementEligible
         } : undefined,
       );
       if (settlement) {
-        showToast(`Home Matchday Settled: +₹${settlement.gateReceiptCr} Cr gate (${settlement.occupancyPercent}% attendance vs ${oppTeam?.shortName ?? simulatedMatch.teamB})`);
+        showToast(`Home Matchday Settled: +₹${settlement.gateReceiptCr.toFixed(2)} Cr gate (${settlement.occupancyPercent}% attendance vs ${oppTeam?.shortName ?? simulatedMatch.teamB})`);
       }
     }
 
@@ -4200,7 +4152,7 @@ This record has been officially verified and added to the IPL Minor Records arch
       const problems: string[] = [];
       if (new Set(ids).size !== ids.length) problems.push(`${label} contains the same player more than once.`);
       if (validation.playerCount !== 11) problems.push(`${label} must contain exactly 11 eligible squad players.`);
-      if (validation.overseasCount > 4) problems.push(`${label} has ${validation.overseasCount} overseas players; the maximum is 4.`);
+      if (validation.overseasCount > worldRules().maxOverseasInXI) problems.push(`${label} has ${validation.overseasCount} overseas players; the maximum is ${worldRules().maxOverseasInXI}.`);
       if (validation.wicketkeeperCount < 1) problems.push(`${label} needs a wicketkeeper.`);
       const requiredBowlers = plan === "bowlingFirst" ? 5 : 4;
       if (validation.bowlingOptionCount < requiredBowlers) {
@@ -4224,7 +4176,7 @@ This record has been officially verified and added to the IPL Minor Records arch
       const overseasStarters = ids.filter((id) => players[id]?.nationality === "Overseas").length;
       if (
         selectedImpact?.nationality === "Overseas"
-        && overseasStarters - Number(selectedOutgoing?.nationality === "Overseas") >= 4
+        && overseasStarters - Number(selectedOutgoing?.nationality === "Overseas") >= worldRules().maxOverseasInXI
       ) {
         problems.push(`${label}'s selected Impact change would introduce a fifth overseas player.`);
       }
@@ -5878,7 +5830,7 @@ This record has been officially verified and added to the IPL Minor Records arch
     home: {
       label: "Home",
       icon: InboxIcon,
-      subtabs: ["overview", "inbox", "social", "news", "calendar", "smat", "international"]
+      subtabs: ["overview", "inbox", "social", "news", "calendar", "smat", "international", ...(editorEnabled ? ["rules"] : [])]
     },
     squad: {
       label: "Squad",
@@ -5963,6 +5915,7 @@ This record has been officially verified and added to the IPL Minor Records arch
     if (subtab === "operations") return "Club Operations";
     if (subtab === "calendar") return "Season Calendar";
     if (subtab === "smat") return "SMAT";
+    if (subtab === "rules") return "World Rules";
     if (subtab === "international") return "International";
     if (subtab === "social") return "Social Media";
     if (subtab === "news") return "News";
@@ -6743,7 +6696,7 @@ This record has been officially verified and added to the IPL Minor Records arch
           aria-label="Day-by-day simulation calendar"
         >
           <p className="sr-only" aria-live="polite" aria-atomic="true">
-            Current simulation date: {formatDisplayDate(currentDate)}
+            Current simulation date: {formatLongDisplayDate(dateKeyToLocalDate(currentDate))}
           </p>
           {/* Yesterday, today, and the next five days. */}
           <div className="min-w-0 flex-1 overflow-x-auto px-1 py-1">
@@ -6765,7 +6718,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                   <div
                     key={tileDateString}
                     aria-current={isCurrentDay ? "date" : undefined}
-                    className={`flex size-20 shrink-0 flex-col justify-between rounded-md border-2 p-1.5 text-left transition-all sm:size-24 sm:p-2
+                    className={`flex h-24 w-32 shrink-0 flex-col justify-between rounded-md border-2 p-1.5 text-left transition-all sm:p-2
                       ${isCurrentDay
                         ? "scale-[1.03] border-accent bg-accent/5 shadow-lg ring-2 ring-accent/25"
                         : isAnnouncement
@@ -6778,13 +6731,16 @@ This record has been officially verified and added to the IPL Minor Records arch
                     <div className="flex w-full items-start justify-between gap-1">
                       <time
                         dateTime={tileDateString}
-                        aria-label={formatDisplayDate(tileDate)}
+                        aria-label={formatLongDisplayDate(tileDate)}
                         className="font-space-mono text-[10px] font-bold leading-tight text-text-primary sm:text-[11px]"
                       >
                         <span className="block text-[7px] uppercase tracking-wide text-text-secondary sm:text-[8px]">
                           {tileDate.toLocaleDateString("en-GB", { weekday: "short" })}
                         </span>
-                        <span className="text-[8px] sm:text-[9px]">{formatDisplayDate(tileDate)}</span>
+                        <span className="block text-[9px] leading-snug sm:text-[10px]">
+                          <span className="whitespace-nowrap">{formatLongDisplayDate(tileDate).replace(/ \d{4}$/, "")}</span>{" "}
+                          <span className="whitespace-nowrap">{tileDate.getFullYear()}</span>
+                        </span>
                       </time>
                       {hasUserMatch && <span className="mt-1 size-1.5 rounded-full bg-accent animate-pulse" aria-hidden="true" />}
                     </div>
@@ -7257,16 +7213,16 @@ This record has been officially verified and added to the IPL Minor Records arch
 
                     <div
                       onClick={() => isFixturesAnnounced && router.push("/game/overview?tab=season&subtab=fixtures")}
-                      className={`flex min-h-0 flex-col overflow-hidden rounded-lg border-2 border-border bg-surface p-5 transition-colors ${isFixturesAnnounced ? "cursor-pointer hover:border-accent" : "cursor-default"}`}
+                      className={`flex min-h-0 flex-col overflow-hidden rounded-lg border-2 border-border bg-surface px-4 py-2 transition-colors ${isFixturesAnnounced ? "cursor-pointer hover:border-accent" : "cursor-default"}`}
                     >
                       <>
-                      <h3 className="mb-0.5 shrink-0 border-b border-[#16130f]/10 pb-2 font-anton text-[14px] uppercase text-text-primary">RESULTS &amp; FIXTURES</h3>
+                      <h3 className="mb-0.5 shrink-0 border-b border-[#16130f]/10 pb-1 font-anton text-[14px] uppercase text-text-primary">RESULTS &amp; FIXTURES</h3>
                       {!isFixturesAnnounced ? (
                         <div className="flex min-h-0 flex-1 items-center justify-center text-center font-space-mono text-xs uppercase text-text-secondary">
                           Fixtures not yet announced
                         </div>
                       ) : (
-                      <div className="grid min-h-0 flex-1 grid-rows-5 gap-1 overflow-hidden">
+                      <div className="grid min-h-0 flex-1 grid-rows-5 gap-0.5 overflow-hidden">
                         {(() => {
                           const userFixtures = fixtures
                             .filter((fixture) => (
@@ -7308,6 +7264,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                             const opponentId = fixture.teamA === userTeamId ? fixture.teamB : fixture.teamA;
                             const opponent = teams[opponentId];
                             const fixtureDate = fixture.date ? dateKeyToLocalDate(fixture.date) : null;
+                            const fixtureMonth = fixtureDate?.toLocaleDateString("en-GB", { month: "long" }) ?? "";
                             const isNextFixture = fixture.id === nextFixtureId;
                             const userScore = fixture.teamA === userTeamId ? fixture.scoreA : fixture.scoreB;
                             const opponentScore = fixture.teamA === userTeamId ? fixture.scoreB : fixture.scoreA;
@@ -7325,7 +7282,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                             return (
                               <div
                                 key={`next-fixture-${fixture.id}`}
-                                className={`relative grid h-full min-h-0 w-full grid-cols-[5rem_minmax(0,1fr)_auto] items-center gap-2 border-b border-[#16130f]/10 px-1.5 py-0.5 text-text-primary ${
+                                className={`relative grid h-full min-h-0 w-full grid-cols-[4rem_minmax(0,1fr)_auto] items-center gap-2 border-b border-[#16130f]/10 px-1.5 text-text-primary ${
                                   isNextFixture
                                     ? "bg-[#2d6bb5]/10"
                                     : index % 2 === 0
@@ -7333,8 +7290,16 @@ This record has been officially verified and added to the IPL Minor Records arch
                                       : "bg-black/[0.015] dark:bg-white/[0.025]"
                                 }`}
                               >
-                                <div className="flex h-full min-h-0 items-center justify-center leading-none">
-                                  <span className="font-space-mono text-[8px] font-bold">{fixtureDate ? formatDisplayDate(fixtureDate) : "-"}</span>
+                                <div className="flex h-full min-h-0 items-center justify-center leading-none [container-type:size]">
+                                  {fixtureDate ? (
+                                    <time dateTime={fixture.date} aria-label={formatLongDisplayDate(fixtureDate)} className="flex flex-col items-center font-space-mono leading-none">
+                                      <span className="text-[11px] font-bold leading-none">{fixtureDate.getDate()}</span>
+                                      <span
+                                        className="font-black uppercase leading-none text-text-primary"
+                                        style={{ fontSize: `min(10px, calc(100cqh - 13px), calc(100cqw / ${Math.max(1, fixtureMonth.length) * 0.625}))` }}
+                                      >{fixtureMonth}</span>
+                                    </time>
+                                  ) : <span className="font-space-mono text-[8px]">-</span>}
                                 </div>
                                 <span className="truncate text-[10px] font-medium">vs {opponent?.shortName ?? opponentId}</span>
                                 {fixture.played && outcome ? (
@@ -8053,6 +8018,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                 </div>
               )}
               {activeSubTab === "smat" && <SmatPage career={smatCareer} onOpenFullPlayer={setDetailedPlayerId} />}
+              {activeSubTab === "rules" && <WorldRulesPage />}
               {activeSubTab === "international" && (
                 internationalCareer
                   ? <InternationalPage career={internationalCareer} onOpenFullPlayer={setDetailedPlayerId} />
@@ -8569,7 +8535,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                                     {plan.label}
                                   </span>
                                   <span className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">
-                                    {plan.ids.length}/11 · {plan.overseas}/4 OS
+                                    {plan.ids.length}/11 · {plan.overseas}/{worldRules().maxOverseasInXI} OS
                                   </span>
                                 </div>
 
@@ -9117,7 +9083,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                         <div className="flex w-44 shrink-0 flex-col font-space-mono text-xs text-text-secondary">
                           <h4 className="mb-3 shrink-0 border-b border-[#16130f]/10 pb-2 font-anton text-[14px] uppercase text-text-primary">AUCTION PLANNER</h4>
                           <div className="space-y-2">
-                        <div>CAP LIMIT: <span className="font-bold text-text-primary">₹120.00 Cr</span></div>
+                        <div>CAP LIMIT: <span className="font-bold text-text-primary">{formatPrice(worldRules().megaAuctionPurseLakhs)}</span></div>
                         <div>SHORTLISTED: <span className="font-bold text-text-primary">{shortlist.length} Players</span></div>
                           </div>
                         </div>
@@ -9341,7 +9307,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                     <div className="space-y-4 font-space-mono text-xs">
                       <div className="flex justify-between border-b border-[#16130f]/5 pb-1">
                         <span className="text-text-secondary">TOTAL SALARY CAP</span>
-                        <span className="font-bold text-text-primary">₹120.00 Cr</span>
+                        <span className="font-bold text-text-primary">{formatPrice(worldRules().megaAuctionPurseLakhs)}</span>
                       </div>
                       <div className="flex justify-between border-b border-[#16130f]/5 pb-1">
                         <span className="text-text-secondary">SPENT PURSE</span>
@@ -10095,9 +10061,16 @@ This record has been officially verified and added to the IPL Minor Records arch
                   contract.status === "contracted" && Boolean(contract.teamId) && contract.teamId !== userTeamId
                 ));
                 const rivalStaffEvents = careerStaff.employmentHistory.filter((event) => (
-                  event.season === currentSeason && Boolean(event.teamId) && event.teamId !== userTeamId
+                  event.season === currentSeason && event.effectiveOn <= currentDate && Boolean(event.teamId) && event.teamId !== userTeamId
                 ));
-                const recentStaffEvents = rivalStaffEvents.slice(-2).reverse();
+                const recentStaffEvents = [...rivalStaffEvents].reverse()
+                  .sort((left, right) => right.effectiveOn.localeCompare(left.effectiveOn)).slice(0, 2);
+                const staffMoveLabel = (event: typeof rivalStaffEvents[number]) => {
+                  if (event.reason === "retired") return "Retired";
+                  if (event.reason === "club_sacked") return "Sacked";
+                  if (event.reason === "staff_resigned") return "Resigned";
+                  return { appointed: "Joined", released: "Left", contract_expired: "Expired", contract_renewed: "Renewed", role_changed: "New role" }[event.kind];
+                };
                 const leagueInjuries = Object.values(activeInjuries);
                 const majorInjuries = leagueInjuries.filter((injury) => injury.category === "major");
                 const injuredClubs = new Set(leagueInjuries.map((injury) => injury.teamId)).size;
@@ -10160,19 +10133,25 @@ This record has been officially verified and added to the IPL Minor Records arch
                         </div>
                         <ArrowUpRight size={15} className="text-accent transition-transform" />
                       </div>
-                      <div className="league-personnel-stats relative mt-2 grid min-w-0 shrink-0 grid-cols-2 gap-2">
-                        <div className="league-personnel-stat flex min-w-0 items-center gap-2 rounded-lg bg-bg/70 px-2 py-1.5"><p className="league-personnel-value shrink-0 font-anton text-2xl leading-none text-text-primary">{rivalContracts.length}</p><p className="league-personnel-label min-w-0 font-space-mono text-[8px] font-bold uppercase leading-tight text-text-secondary">Rival staff in post</p></div>
-                        <div className="league-personnel-stat flex min-w-0 items-center gap-2 rounded-lg bg-bg/70 px-2 py-1.5"><p className="league-personnel-value shrink-0 font-anton text-2xl leading-none text-text-primary">{rivalStaffEvents.length}</p><p className="league-personnel-label min-w-0 font-space-mono text-[8px] font-bold uppercase leading-tight text-text-secondary">Moves this season</p></div>
+                      <div className="league-personnel-body relative mt-2 grid min-h-0 flex-1 grid-cols-[8.5rem_minmax(0,1fr)] gap-3">
+                        <div className="league-personnel-stats flex min-w-0 flex-col justify-center gap-2 border-r border-border/60 pr-3">
+                          <div className="league-personnel-stat flex min-w-0 items-center gap-2"><p className="league-personnel-value shrink-0 font-anton text-2xl leading-none text-text-primary">{rivalContracts.length}</p><p className="league-personnel-label font-space-mono text-[8px] font-bold uppercase leading-tight text-text-secondary">Rival staff<br />in post</p></div>
+                          <div className="league-personnel-stat flex min-w-0 items-center gap-2"><p className="league-personnel-value shrink-0 font-anton text-2xl leading-none text-text-primary">{rivalStaffEvents.length}</p><p className="league-personnel-label font-space-mono text-[8px] font-bold uppercase leading-tight text-text-secondary">Moves this<br />season</p></div>
+                        </div>
+                        <div className="league-personnel-events flex min-h-0 min-w-0 flex-col justify-center gap-1">
+                          <p className="league-personnel-events-heading shrink-0 font-space-mono text-[7px] font-bold uppercase tracking-wider text-text-secondary">Latest changes</p>
+                          {recentStaffEvents.length > 0 ? recentStaffEvents.map((event) => {
+                            const name = careerStaff.contracts[event.staffId]?.fullName ?? "Staff member";
+                            const club = teams[event.teamId ?? ""]?.shortName ?? "League";
+                            const action = staffMoveLabel(event);
+                            const role = event.roles[0]?.replaceAll("_", " ");
+                            return <div key={event.id} className="league-personnel-event min-w-0" title={`${name} · ${club} · ${action} · ${formatDisplayDate(event.effectiveOn)}`}>
+                              <div className="flex min-w-0 items-baseline justify-between gap-2"><span className="league-personnel-event-name min-w-0 truncate text-[11px] font-semibold leading-tight text-text-primary">{name}</span><span className="league-personnel-event-date shrink-0 font-space-mono text-[7px] text-text-secondary">{formatDisplayDate(event.effectiveOn).slice(0, 5)}</span></div>
+                              <span className="league-personnel-event-meta block truncate font-space-mono text-[7px] uppercase leading-tight text-text-secondary"><span className="font-bold text-accent">{club}</span>{role ? ` · ${role}` : ""} · {action}</span>
+                            </div>;
+                          }) : <p className="league-personnel-empty text-[10px] leading-tight text-text-secondary">No rival staff changes this season.</p>}
+                        </div>
                       </div>
-                      <div className="league-personnel-events relative mt-1.5 min-h-0 flex-1 overflow-hidden">
-                        {recentStaffEvents.length > 0 ? recentStaffEvents.map((event) => (
-                          <div key={event.id} className="league-personnel-event grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-center gap-2 border-t border-border/70 py-1 text-[10px] leading-tight">
-                            <span className="min-w-0 truncate font-semibold text-text-primary">{careerStaff.contracts[event.staffId]?.fullName ?? "Staff member"}</span>
-                            <span className="league-personnel-event-meta min-w-0 truncate text-right font-space-mono text-[7px] font-bold uppercase text-text-secondary">{teams[event.teamId ?? ""]?.shortName ?? "League"} · {event.kind.replaceAll("_", " ")}</span>
-                          </div>
-                        )) : <p className="pt-2 text-xs text-text-secondary">No rival appointments or departures this season.</p>}
-                      </div>
-                      <span className="league-personnel-link relative mt-1.5 inline-flex shrink-0 items-center gap-1 font-space-mono text-[8px] font-bold uppercase tracking-wider text-accent">Open league staff <ChevronRight size={12} /></span>
                     </button>
 
                     <button
@@ -11658,109 +11637,6 @@ This record has been officially verified and added to the IPL Minor Records arch
 }
 
 export default function OverviewPage() {
-  const [hydrated, setHydrated] = useState(false);
-  const [bootstrapping, setBootstrapping] = useState(false);
-  const teams = useGameStore((s) => s.teams);
-  const userTeamId = useGameStore((s) => s.userTeamId);
-  const initNewGame = useGameStore((s) => s.initNewGame);
-
-  useEffect(() => {
-    if (useGameStore.persist?.hasHydrated?.()) {
-      setHydrated(true);
-      return;
-    }
-    const unsub = useGameStore.persist?.onFinishHydration?.(() => {
-      setHydrated(true);
-    });
-    return () => {
-      unsub?.();
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!hydrated || bootstrapping) return;
-
-    const currentStore = useGameStore.getState();
-    const currentTeams = currentStore.teams;
-    const currentTeamId = currentStore.userTeamId;
-
-    if (currentTeamId && currentTeams[currentTeamId]) {
-      return;
-    }
-
-    if (typeof window !== "undefined") {
-      let recoveredTeamId: string | null = null;
-      const knownTeamIds = Object.keys(currentTeams);
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key?.startsWith("ipl_career_")) {
-          const candidate = knownTeamIds.find((teamId) => (
-            key === `ipl_career_${teamId}`
-            || key === `ipl_career_${currentStore.saveId}_${teamId}`
-          ));
-          if (candidate) {
-            recoveredTeamId = candidate;
-            break;
-          }
-        }
-      }
-
-      if (recoveredTeamId && currentTeams[recoveredTeamId]) {
-        useGameStore.setState({ userTeamId: recoveredTeamId });
-        localStorage.setItem(getSeasonAccessStorageKey(recoveredTeamId, currentStore.saveId), "true");
-        return;
-      }
-    }
-
-    const targetTeamId = "CSK";
-    let active = true;
-    setBootstrapping(true);
-    initNewGame(targetTeamId)
-      .then(() => {
-        if (!active) return;
-        useGameStore.setState((s) => ({
-          auction: s.auction ? { ...s.auction, phase: "completed" } : null,
-        }));
-        if (typeof window !== "undefined") {
-          localStorage.setItem(getSeasonAccessStorageKey(targetTeamId, useGameStore.getState().saveId), "true");
-        }
-      })
-      .catch((err) => {
-        console.error("Auto-bootstrap career failed:", err);
-      })
-      .finally(() => {
-        if (active) setBootstrapping(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  // `bootstrapping` is deliberately not a dependency: setting it to true is
-  // part of this effect. Re-running here would execute the cleanup, mark the
-  // in-flight bootstrap inactive and leave the loading screen up forever.
-  }, [hydrated, initNewGame]);
-
-  if (!hydrated || bootstrapping) {
-    return (
-      <div className="h-screen w-screen flex items-center justify-center bg-bg">
-        <div className="font-space-mono text-[11px] font-bold text-text-secondary animate-pulse uppercase tracking-widest">
-          Loading IPL Manager...
-        </div>
-      </div>
-    );
-  }
-
-  const userTeam = teams[userTeamId];
-  if (!userTeam) {
-    return (
-      <div className="h-screen w-screen flex items-center justify-center bg-bg">
-        <div className="font-space-mono text-[11px] font-bold text-text-secondary animate-pulse uppercase tracking-widest">
-          Loading Career Hub...
-        </div>
-      </div>
-    );
-  }
-
   return (
     <Suspense
       fallback={

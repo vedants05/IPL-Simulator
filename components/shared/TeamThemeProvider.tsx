@@ -83,6 +83,10 @@ export function applyTeamTheme(teamCode: string) {
   const isTeam = root.classList.contains("team");
   if (isTeam) applyTeamSkinPalette(root, theme.accent, theme.bowlingBar);
   else clearTeamSkinPalette(root);
+  if (isTeam && theme.code === "CSK") {
+    root.style.setProperty("--team-skin-nav-start", theme.accent);
+    root.style.setProperty("--team-skin-nav-end", theme.bowlingBar);
+  }
   root.style.setProperty("--app-base-bg", "var(--surface)");
   root.style.setProperty(
     "--chrome-nav-active",

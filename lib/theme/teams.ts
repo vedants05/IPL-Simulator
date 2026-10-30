@@ -41,7 +41,7 @@ export const TEAM_THEMES: Record<string, TeamTheme> = {
     navActive: "#1a1503",
     navMuted: "#8c856e",
     accent: "#ffc72c",
-    bowlingBar: "#141414",
+    bowlingBar: "#0055a5",
     bidBg: "#12141a",
     bidTinge: "linear-gradient(135deg, rgba(255,199,44,0.14), rgba(233,83,13,0.08))",
     bidText: "#ffc72c",

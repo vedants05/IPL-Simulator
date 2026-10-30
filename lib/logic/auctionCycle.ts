@@ -1,11 +1,14 @@
 import type { AuctionType } from "@/lib/types";
+import { worldRules } from "./worldRules";
 
 /**
- * Career auction calendar: the opening 2027 auction is a mini auction, 2028 is
- * a mega auction, and every mega auction after that follows two mini auctions.
+ * Career auction calendar. By default the opening 2027 auction is a mini
+ * auction, 2028 is a mega auction, and every mega auction after that follows
+ * two mini auctions. The next mega season and the gap are world rules.
  */
 export function getAuctionTypeForSeason(season: number): AuctionType {
-  if (season === 2027) return "mini";
-  if (season >= 2028 && (season - 2028) % 3 === 0) return "mega";
-  return "mini";
+  const { nextMegaAuctionSeason, megaAuctionEveryYears } = worldRules();
+  const gap = Math.max(1, megaAuctionEveryYears);
+  if (season < nextMegaAuctionSeason) return "mini";
+  return (season - nextMegaAuctionSeason) % gap === 0 ? "mega" : "mini";
 }

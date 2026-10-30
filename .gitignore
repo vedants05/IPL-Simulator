@@ -16,6 +16,10 @@
 
 # production
 /build
+/.desktop/
+/release/
+!/package.json
+!/package-lock.json
 
 # misc
 .DS_Store
@@ -76,6 +80,9 @@ simulation_*_report.json
 !/scripts/populatePlayerDatesOfBirth.mjs
 !/scripts/import-stadium-maps.mjs
 !/scripts/derive-stadium-layouts.mjs
+!/scripts/runCalibration.cjs
+!/scripts/populateT20iRetirements.mjs
+!/scripts/addT20iRetirementColumn.sql
 /.tmp/
 
 # Local scratch work and design handoff exports are not part of the game build

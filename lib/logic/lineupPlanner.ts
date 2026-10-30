@@ -1,4 +1,5 @@
 import { findSpecialOpenerPair } from "./openerPairs";
+import { worldRules } from "./worldRules";
 
 export type LineupPlan = "battingFirst" | "bowlingFirst";
 export type LineupDropPlacement = "before" | "swap" | "after";
@@ -161,7 +162,7 @@ export function validateLineup(
     wicketkeeperCount,
     bowlingOptionCount,
     isComplete,
-    isValid: isComplete && overseasCount <= 4 && wicketkeeperCount >= 1 && bowlingOptionCount >= minBowlers,
+    isValid: isComplete && overseasCount <= worldRules().maxOverseasInXI && wicketkeeperCount >= 1 && bowlingOptionCount >= minBowlers,
   };
 }
 
@@ -185,7 +186,7 @@ function sortIntoBattingOrder(players: readonly LineupCandidate[]): string[] {
 }
 
 function canAddToLineup(player: LineupCandidate, selected: readonly LineupCandidate[]): boolean {
-  return !isOverseas(player) || selected.filter(isOverseas).length < 4;
+  return !isOverseas(player) || selected.filter(isOverseas).length < worldRules().maxOverseasInXI;
 }
 
 export function sanitizeLineupBatterAt8OrBelow(
@@ -205,7 +206,7 @@ export function sanitizeLineupBatterAt8OrBelow(
 
     const bench = candidates.filter((c) => (
       !result.some((starter) => starter.id === c.id)
-      && (!isOverseas(c) || overseasCountWithoutP < 4)
+      && (!isOverseas(c) || overseasCountWithoutP < worldRules().maxOverseasInXI)
     ));
 
     const allRounders = bench.filter((c) => c.role === "All-Rounder");

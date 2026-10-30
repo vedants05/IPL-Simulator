@@ -1,3 +1,9 @@
+export interface T20IRetirement {
+  effectiveOn?: string;
+  season?: number;
+  reason: "age" | "selection" | "historical" | "legacy";
+  source: "simulated" | "historical" | "legacy";
+}
 export type Nationality = "Indian" | "Overseas";
 export type Role = "Batsman" | "WK-Batsman" | "All-Rounder" | "Pace Bowler" | "Spin Bowler";
 export type BattingStyle = "Right-hand" | "Left-hand";
@@ -231,6 +237,7 @@ export interface Player {
   internationalDebutDate?: string;
   /** Player has retired from T20 internationals but may remain active in franchise cricket. */
   isT20IRetired?: boolean;
+  t20iRetirement?: T20IRetirement;
   isRetained: boolean;
   retainedByTeamId: string | null;
   currentTeamId: string | null;

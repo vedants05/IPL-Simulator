@@ -2,6 +2,13 @@ import type { InternationalCareerState } from "@/lib/logic/international";
 
 const DB_NAME = "ipl-simulator-international";
 const STORE_NAME = "careers";
+let latest: { key: string; state: InternationalCareerState } | null = null;
+const listeners = new Set<(key: string, state: InternationalCareerState) => void>();
+export function subscribeInternationalCareer(listener: (key: string, state: InternationalCareerState) => void) {
+  listeners.add(listener);
+  if (latest) listener(latest.key, latest.state);
+  return () => { listeners.delete(listener); };
+}
 
 function openDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -34,5 +41,7 @@ export async function saveInternationalCareer(key: string, state: InternationalC
     transaction.oncomplete = () => resolve();
     transaction.onerror = () => reject(transaction.error);
   });
+  latest = { key, state };
+  listeners.forEach(listener => listener(key, state));
 }
 

@@ -2,11 +2,14 @@ import { fetchPlayersFromSupabase } from "../../../lib/supabase/fetchPlayers";
 import { fetchTeamsFromSupabase } from "../../../lib/supabase/fetchTeams";
 import { decideAIRetentions, estimateRetentionWorth } from "../../../lib/logic/auctionEngine";
 import { NextResponse } from "next/server";
+import { readDesktopData } from "@/lib/server/desktopData";
 
 // Reads live data from Supabase — compute per request, don't prerender at build.
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  const bundled = await readDesktopData("retentions");
+  if (bundled) return NextResponse.json(bundled);
   const [players, teams] = await Promise.all([
     fetchPlayersFromSupabase(),
     fetchTeamsFromSupabase(),

@@ -192,24 +192,34 @@ assert.equal(chartLowerEndRoleMatches("WK-Batsman", ["Over batting"]), true);
 assert.equal(chartLowerEndRoleMatches("All-Rounder", ["Batting", "Bowling"]), true);
 assert.equal(chartLowerEndRoleMatches("Batsman", ["Bowling", "Bowling phases"]), false);
 assert.equal(chartLowerEndRoleMatches("Spin Bowler", ["Bowling", "Bowling phases"]), true);
-const roleFiltered = plotted.map((point) => ({ ...point, lowerEndEligible: point.id !== "low" }));
-assert.equal(chartLabelPlayers(roleFiltered, "selected", 400, 230)[1].id, "near-2", "lower-end highlight must come from the relevant roles, even if a qualified specialist is further toward the lower corner");
 const measuredLabels = chartLabels(plotted, "selected", 400, 230, 4, { selected: 93.25 });
-assert.equal(measuredLabels.find((label) => label.id === "selected")?.width, 93.25, "layout and connector geometry must use the rendered name bar width");
-assert.deepEqual(chartLabelPlayers(plotted, "selected", 400, 230).map((point) => point.id), ["selected", "low", "high", "near-1", "near-2"], "label the selected player, both ends, and the two closest neighbours");
-assert.deepEqual(new Set(labels.map((label) => label.id)), new Set(["selected", "low", "high", "near-1", "near-2"]));
-assert.ok(labels.length <= 5);
-assert.ok(labels.some((label) => label.id === "selected"));
-const optimumIsNeighbour = [
-  { id: "selected", name: "Selected", x: 310, y: 40 },
-  { id: "optimum", name: "Optimum", x: 320, y: 30 },
-  { id: "near-1", name: "Near One", x: 290, y: 50 },
-  { id: "near-2", name: "Near Two", x: 280, y: 70 },
-  { id: "low", name: "Low", x: 50, y: 200 },
+assert.equal(measuredLabels.find((label) => label.id === "selected")?.width, 93.25, "layout must use measured label width");
+const wrapped = chartLabels([{ id: "selected", name: "A very long player name that wraps", x: 55, y: 50 }], "selected", 120, 100, 4, { selected: 100 }, { selected: 30 });
+assert.equal(wrapped[0]?.height, 30, "wrapped names reserve their full measured height");
+assert.ok(wrapped[0].top + 30 <= 100, "wrapped names stay within the plot");
+const bubbleLabel = chartLabels([{ id: "selected", name: "Selected", x: 60, y: 50, radius: 22 }], "selected", 180, 120)[0];
+assert.ok(Math.hypot(bubbleLabel.connectorX - bubbleLabel.anchorX, bubbleLabel.connectorY - bubbleLabel.anchorY) >= 24, "labels must clear their own bubble and highlight");
+const leaders = chartLabelPlayers(plotted, "selected", 400, 230);
+assert.deepEqual(leaders.map((point) => point.id), ["selected", "high"], "deduplicate the axis leaders and combined standout");
+const separateLeaders = [
+  { id: "selected", name: "Selected", x: 180, y: 120, lowerEndEligible: false },
+  { id: "x", name: "X Leader", x: 350, y: 180 },
+  { id: "y", name: "Y Leader", x: 70, y: 20 },
+  { id: "both", name: "All Round", x: 300, y: 45 },
+  { id: "unqualified", name: "Unqualified", x: 390, y: 2, lowerEndEligible: false },
 ];
-assert.deepEqual(chartLabelPlayers(optimumIsNeighbour, "selected", 400, 230).map((point) => point.id), ["selected", "low", "optimum", "near-1", "near-2"], "end-player slots must not consume either neighbour slot");
+assert.deepEqual(chartLabelPlayers(separateLeaders, "selected", 400, 230).map((point) => point.id), ["selected", "x", "y", "both"]);
 const crowded = [...plotted, ...Array.from({ length: 90 }, (_, index) => ({ id: `crowd-${index}`, name: "Crowd", x: 90 + index % 10 * 20, y: 50 + Math.floor(index / 10) * 16 }))];
-assert.deepEqual(new Set(chartLabels(crowded, "selected", 400, 230).map((label) => label.id)), new Set(chartLabelPlayers(crowded, "selected", 400, 230).map((point) => point.id)), "crowding must not silently remove a chosen neighbour");
+assert.ok(chartLabels(crowded, "selected", 400, 230).some((label) => label.id === "selected"), "selected player stays labelled in a crowded plot");
+for (const layout of [chartLabels(separateLeaders, "selected", 400, 230), chartLabels(crowded, "selected", 400, 230)]) {
+  for (const label of layout) {
+    assert.ok(label.left >= 0 && label.left + label.width <= 400 && label.top >= 0 && label.top + 17 <= 230);
+    for (const other of layout) {
+      if (label.anchorX < other.anchorX) assert.ok(label.left + label.width / 2 < other.left + other.width / 2, "labels preserve left-to-right dot order");
+    }
+    if (label.id !== "selected") assert.ok(Math.hypot(label.connectorX - label.anchorX, label.connectorY - label.anchorY) <= 38, "secondary labels stay close");
+  }
+}
 const horizontalConnector = { id: "a", name: "A", left: 100, top: 40, width: 40, anchorX: 20, anchorY: 48, connectorX: 100, connectorY: 48 };
 const cardInPath = { id: "b", name: "B", left: 55, top: 40, width: 20, anchorX: 65, anchorY: 20, connectorX: 65, connectorY: 40 };
 assert.equal(chartLabelsCollide(horizontalConnector, cardInPath), true, "a connector must not pass through another player's card");

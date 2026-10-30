@@ -1,0 +1,9 @@
+{
+  "name": "ipl-manager-desktop",
+  "version": "0.1.11",
+  "description": "IPL Manager desktop prototype",
+  "author": "IPL Manager",
+  "private": true,
+  "main": "main.cjs",
+  "dependencies": {}
+}

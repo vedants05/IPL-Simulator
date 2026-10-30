@@ -104,6 +104,7 @@ export async function usernameAvailable(username: string): Promise<boolean> {
 }
 
 export async function getCurrentUserId(): Promise<string | null> {
+  if (isGuest()) return null;
   if (cachedUserId !== undefined) return cachedUserId;
   const supabase = getSupabaseBrowserClient();
   const { data } = await supabase.auth.getUser();

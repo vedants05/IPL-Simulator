@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useGameStore } from "@/lib/store/gameStore";
 import { fetchTeamsFromSupabase } from "@/lib/supabase/fetchTeams";
@@ -83,7 +84,10 @@ export default function SetupPage() {
     <div className="app-theme-shell min-h-screen bg-bg text-text-primary flex flex-col">
       {/* Top bar */}
       <div className="border-b-2 border-hairline px-8 py-5 flex items-center justify-between bg-surface shrink-0">
-        <div className="flex items-baseline gap-4">
+        <div className="flex items-center gap-4">
+          <Link href="/" className="shrink-0 border-2 border-border px-3 py-2 font-space-mono text-[11px] font-bold uppercase tracking-wide hover:bg-surface2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2">
+            ← Back to Home
+          </Link>
           <span className="font-anton text-[28px] leading-none text-text-primary uppercase">
             IPL Manager
           </span>

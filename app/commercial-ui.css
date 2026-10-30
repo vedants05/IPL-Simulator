@@ -101,6 +101,9 @@
 .commercial-empty { flex:1; display:flex; align-items:center; justify-content:center; text-align:center; padding:18px; font-size:11px; line-height:1.5; color:var(--text-secondary); }
 .commercial-tag { display:inline-flex; padding:2px 5px; border:1px solid var(--commercial-divider); border-radius:3px; font:700 7px/1.4 var(--font-space-mono),monospace; text-transform:uppercase; background:var(--surface2); }
 .commercial-service-options { display:grid; grid-template-rows:repeat(3,minmax(0,1fr)); gap:8px; flex:1; min-height:0; }
+.commercial-service-categories { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:4px; }
+.commercial-service-categories>button { white-space:nowrap; }
+.commercial-experience .commercial-service-categories>button[aria-pressed=true] { background:var(--ink); color:var(--background); border-color:var(--ink); }
 .commercial-service-options>button { justify-content:space-between; text-align:left; gap:12px; padding:10px; }
 .commercial-service-options strong { font:400 15px/1.25 var(--font-anton),Impact,sans-serif; }
 .commercial-service-options small { font-size:8px; text-transform:none; letter-spacing:0; font-weight:400; margin-top:4px; }
