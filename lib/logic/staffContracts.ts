@@ -1,11 +1,23 @@
 import { getStaffClubAffinity, type StaffAffinityProfile, type StaffClubAffinity } from "../data/staffAffinities";
 import { NATIONAL_STAFF_SEEDS, NATIONAL_STAFF_SEED_REVISION, type NationalStaffFormat } from "../data/nationalStaffSeeds";
 import type { StaffSeasonReview } from "./staffPerformanceReview";
-import { calculateStaffMoveInterest, calculateStaffRenewalInterest, calculateStaffSalaryDemand, type StaffNegotiationSession } from "./staffNegotiations";
+import { calculateStaffMoveInterest, calculateStaffRenewalInterest, calculateStaffSalaryDemand, type StaffNegotiationPackage, type StaffNegotiationSession } from "./staffNegotiations";
 import type { StaffRatingAttributes } from "./staffRatings";
 import { worldRules } from "./worldRules";
+import { staffRolesAreCompatible } from "./staffRoleRules";
 
 export const STAFF_SALARY_MODEL_VERSION = 5;
+
+function hasAcceptedStaffPackage(state: CareerStaffState, staffId: string, teamId: string, action: "poach" | "renew", offer: StaffNegotiationPackage): boolean {
+  const session = state.activeNegotiations[staffId];
+  const round = session?.rounds.at(-1);
+  const agreed = round?.offered;
+  return Boolean(session?.status === "accepted" && session.staffId === staffId && session.teamId === teamId
+    && session.action === action && round && ["accepted", "exceptional-accepted"].includes(round.outcome)
+    && agreed && agreed.annualSalary === offer.annualSalary && agreed.primaryRole === offer.primaryRole
+    && agreed.endSeason === offer.endSeason && agreed.roles.length === offer.roles.length
+    && agreed.roles.every(role => offer.roles.includes(role)));
+}
 
 export type StaffContractType = "fixed_term" | "rolling";
 export type StaffEmploymentStatus = "contracted" | "free_agent" | "retired";
@@ -181,9 +193,20 @@ const normalizeContractRoles = (roleValues: string[], requestedPrimaryRole: stri
   const primaryRole = distinctRoles.includes("head_coach") ? "head_coach" : requestedPrimaryRole;
   const roles = [primaryRole, ...distinctRoles.filter((role) => role !== primaryRole)]
     .filter(Boolean)
+    .filter(role => staffRolesAreCompatible([primaryRole, role]))
     .slice(0, MAX_STAFF_CONTRACT_ROLES);
   return { roles, primaryRole };
 };
+
+export function enforceHeadCoachSecondaryRoles(state: CareerStaffState): CareerStaffState {
+  let contracts = state.contracts;
+  Object.entries(contracts).forEach(([id, contract]) => {
+    if (staffRolesAreCompatible([contract.primaryRole, ...contract.roles])) return;
+    if (contracts === state.contracts) contracts = { ...contracts };
+    contracts[id] = { ...contract, ...normalizeContractRoles(contract.roles, contract.primaryRole) };
+  });
+  return contracts === state.contracts ? state : { ...state, contracts };
+}
 
 export function normalizeCareerStaffState(state: CareerStaffState | null | undefined): CareerStaffState {
   if (!state) return emptyCareerStaffState();
@@ -274,6 +297,44 @@ const minimumCredibleSalary = (
   });
   return Math.max(demand * 0.9, mode === "renew" ? contract.annualSalary * 0.97 : 0);
 };
+
+export function staffPoachingCompensation(contract: CareerStaffContract, season: number): number {
+  if (!contract.teamId) return 0;
+  const seasons = contract.endSeason == null ? 1 : Math.max(1, contract.endSeason - season + 1);
+  return contract.annualSalary * seasons;
+}
+
+/** Explain completion constraints before consuming a round or saving acceptance. */
+export function staffContractOfferIssue(state: CareerStaffState, input: StaffNegotiationPackage & {
+  staffId: string; teamId: string; action: "hire" | "poach" | "renew"; season: number; date: string;
+}, checkSalaryFloor = false): string | null {
+  const contract = state.contracts[input.staffId];
+  if (!contract) return "This staff member is no longer available.";
+  if (input.action === "hire" && contract.status !== "free_agent") return "This staff member is no longer a free agent.";
+  if (input.action === "renew" && (contract.status !== "contracted" || contract.teamId !== input.teamId)) return "This staff member no longer has a contract with your club.";
+  if (input.action === "poach" && (contract.status !== "contracted" || (!contract.teamId && !contract.nationalTeamId) || contract.teamId === input.teamId)) return "This staff member is no longer available for a transfer.";
+  const cooldown = state.negotiationCooldowns[input.staffId];
+  if (cooldown && input.date < cooldown) return `Negotiations are unavailable until ${cooldown}.`;
+  if (!Number.isFinite(input.annualSalary) || input.annualSalary < 0) return "Enter a valid annual salary.";
+  if (input.endSeason !== null && (!Number.isInteger(input.endSeason) || input.endSeason < input.season)) return "The contract cannot end before the current season.";
+  const requested = unique([input.primaryRole, ...input.roles]);
+  if (!staffRolesAreCompatible(requested)) return "A head coach's secondary role must be batting, pace bowling, spin bowling or fielding coach.";
+  if (!input.primaryRole || requested.length > MAX_STAFF_CONTRACT_ROLES) return `Select a primary role and at most ${MAX_STAFF_CONTRACT_ROLES} roles.`;
+  const { roles, primaryRole } = normalizeContractRoles(requested, input.primaryRole);
+  if (roles.length !== requested.length || primaryRole !== input.primaryRole) return "The proposed roles are not valid contract roles.";
+  const conflict = Object.values(state.contracts).find(other => other.staffId !== input.staffId
+    && other.status === "contracted" && other.teamId === input.teamId && other.roles.some(role => roles.includes(role)));
+  if (conflict) return `${conflict.fullName} already holds one of the proposed roles. Choose another role or release the existing staff member first.`;
+  const finance = state.financesByTeam[input.teamId];
+  const budget = finance?.annualBudget ?? 100_000_000;
+  const committed = finance?.committedSalary ?? (input.action === "renew" ? contract.annualSalary : 0);
+  const available = Math.max(0, budget - committed + (input.action === "renew" ? contract.annualSalary : 0));
+  const compensation = input.action === "poach" ? staffPoachingCompensation(contract, input.season) : 0;
+  const money = (amount: number) => `₹${Math.round(amount).toLocaleString("en-IN")}`;
+  if (input.annualSalary + compensation > available) return `Salary ${money(input.annualSalary)} + transfer compensation ${money(compensation)} = ${money(input.annualSalary + compensation)}. Available staff budget: ${money(available)}. Reduce the salary or free up budget.`;
+  if (checkSalaryFloor && input.annualSalary < minimumCredibleSalary(contract, roles, primaryRole, input.season, input.endSeason, input.action)) return "The salary is below the minimum for these responsibilities. Improve the salary or reduce the proposed roles.";
+  return null;
+}
 
 const moveAffinityToCurrentClub = (profile: StaffAffinityProfile, teamId: string): StaffAffinityProfile => {
   const prior: StaffClubAffinity[] = profile.clubs.map((club): StaffClubAffinity => ({
@@ -650,6 +711,7 @@ export function appointCareerStaff(
   if (!contract || contract.status !== "free_agent") return state;
   if (state.negotiationCooldowns[input.staffId] && input.effectiveOn < state.negotiationCooldowns[input.staffId]) return state;
   const requestedRoles = unique([input.primaryRole, ...(input.roles.length ? input.roles : [input.primaryRole])]);
+  if (!staffRolesAreCompatible(requestedRoles)) return state;
   if (requestedRoles.length > MAX_STAFF_CONTRACT_ROLES || !requestedRoles.includes(input.primaryRole)) return state;
   const { roles, primaryRole } = normalizeContractRoles(requestedRoles, input.primaryRole);
   if (!Number.isFinite(input.annualSalary)
@@ -852,12 +914,13 @@ export function renewCareerStaffContract(
   if (nextCommittedSalary > annualBudget) return state;
   const requestedPrimaryRole = input.primaryRole ?? contract.primaryRole;
   const requestedRoles = unique([requestedPrimaryRole, ...(input.roles ?? contract.roles)]);
+  if (!staffRolesAreCompatible(requestedRoles)) return state;
   if (requestedRoles.length === 0 || requestedRoles.length > MAX_STAFF_CONTRACT_ROLES || !requestedRoles.includes(requestedPrimaryRole)) return state;
   const { roles, primaryRole } = normalizeContractRoles(requestedRoles, requestedPrimaryRole);
   if (!Number.isFinite(input.annualSalary)
     || input.annualSalary < minimumCredibleSalary(contract, roles, primaryRole, input.season, input.endSeason, "renew")) return state;
   const remainingContractSeasons = contract.endSeason == null ? 1 : Math.max(0, contract.endSeason - input.season + 1);
-  if (!calculateStaffRenewalInterest({
+  if (!hasAcceptedStaffPackage(state, input.staffId, contract.teamId, "renew", { annualSalary: input.annualSalary, primaryRole, roles, endSeason: input.endSeason }) && !calculateStaffRenewalInterest({
     loyalty: contract.loyalty, ambition: contract.ambition, adaptability: contract.adaptability,
     clubAffinity: getStaffClubAffinity(contract.affinityProfile, contract.teamId),
     currentSalary: contract.annualSalary, offeredSalary: input.annualSalary, remainingContractSeasons,
@@ -928,8 +991,9 @@ export function poachCareerStaff(
   const remainingSeasons = existing.endSeason == null
     ? 1
     : Math.max(1, existing.endSeason - input.startSeason + 1);
-  const compensation = existing.teamId ? existing.annualSalary * remainingSeasons : 0;
+  const compensation = staffPoachingCompensation(existing, input.startSeason);
   const requestedRoles = unique([input.primaryRole, ...(input.roles.length ? input.roles : [input.primaryRole])]);
+  if (!staffRolesAreCompatible(requestedRoles)) return state;
   const normalizedOffer = normalizeContractRoles(requestedRoles, input.primaryRole);
   if (!Number.isFinite(input.annualSalary) || input.annualSalary < minimumCredibleSalary(
     existing, normalizedOffer.roles, normalizedOffer.primaryRole, input.startSeason, input.endSeason, "poach",
@@ -949,7 +1013,9 @@ export function poachCareerStaff(
     offeredPrimaryRole: input.primaryRole, remainingContractSeasons: remainingSeasons,
     nationalTeamAppointment: Boolean(existing.nationalTeamId),
   });
-  if (!moveInterest.interested) return state;
+  if (!moveInterest.interested && !hasAcceptedStaffPackage(state, input.staffId, input.teamId, "poach", {
+    annualSalary: input.annualSalary, primaryRole: normalizedOffer.primaryRole, roles: normalizedOffer.roles, endSeason: input.endSeason,
+  })) return state;
   const released = releaseCareerStaff(state, input.staffId, "staff_resigned", input.startSeason, input.effectiveOn);
   const appointed = appointCareerStaff(released, input);
   if (appointed === released) return state;
@@ -1012,6 +1078,7 @@ export function validateCareerStaffState(state: CareerStaffState): string[] {
     if (contract.status === "free_agent" && (contract.teamId || contract.nationalTeamId)) errors.push(`${contract.staffId}: free agent still has an employer`);
     if (contract.contractType === "fixed_term" && contract.endSeason == null) errors.push(`${contract.staffId}: fixed contract has no expiry`);
     if (contract.roles.length > MAX_STAFF_CONTRACT_ROLES) errors.push(`${contract.staffId}: more than ${MAX_STAFF_CONTRACT_ROLES} contracted roles`);
+    if (!staffRolesAreCompatible([contract.primaryRole, ...contract.roles])) errors.push(`${contract.staffId}: incompatible head coach secondary role`);
     if (contract.roles.includes("head_coach") && contract.primaryRole !== "head_coach") errors.push(`${contract.staffId}: head coach role is not primary`);
     if (contract.status === "contracted" && contract.teamId && contract.roles.includes("head_coach")) {
       const existing = headCoachByTeam.get(contract.teamId);

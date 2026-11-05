@@ -1,5 +1,10 @@
 # Aggression and batting tempo calibration
 
+Historical calibration record. The league audit identified excessive scoring in
+this version. The current model and validation are documented in
+[League realism calibration](league-realism-calibration.md); the measurements below
+describe the previous model.
+
 Aggression now selects the final batting pace. Current ability, individual-score and season restraints remain in the neutral expected-runs budget; scoring and wicket chances are solved jointly so those restraints affect productivity without silently changing the attacking identity.
 
 ## Target mapping audit

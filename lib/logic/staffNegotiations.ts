@@ -121,6 +121,17 @@ export function createStaffNegotiationSession(input: StaffOfferInput & {
   };
 }
 
+/** Staff must honour the complete counter-package they have just proposed. */
+export function matchesStaffCounterPackage(session: StaffNegotiationSession, offer: StaffNegotiationPackage): boolean {
+  const counter = session.latestCounter;
+  return session.status === "active" && counter !== null
+    && offer.annualSalary >= counter.annualSalary
+    && offer.primaryRole === counter.primaryRole
+    && offer.endSeason === counter.endSeason
+    && new Set(offer.roles).size === new Set(counter.roles).size
+    && counter.roles.every(role => offer.roles.includes(role));
+}
+
 export function evaluateStaffNegotiationRound(
   session: StaffNegotiationSession,
   input: StaffOfferInput & { offeredPackage: StaffNegotiationPackage; currentDate: string },
@@ -129,6 +140,7 @@ export function evaluateStaffNegotiationRound(
     return { accepted: false, outcome: "walked-away", session, counterPackage: null, patienceAfter: session.patience, patienceChange: 0, trustAfter: session.trust, trustChange: 0, signals: ["Talks have already ended"], message: "These negotiations have already ended." };
   }
   const offered = input.offeredPackage;
+  const matchedCounter = matchesStaffCounterPackage(session, offered);
   // Revalue the actual package each round so changing to a more valuable role
   // or adding responsibilities cannot reuse a cheaper opening-round anchor.
   const target = Math.max(1, calculateStaffSalaryDemand({
@@ -152,7 +164,7 @@ export function evaluateStaffNegotiationRound(
   const marketPressure = clamp(((input.reputation + input.roleRating) / 2 - 50) / 220, 0, 0.2);
   const packageScore = salaryRatio * 0.68 + roleScore * 0.13 + securityScore * 0.1 + affinityScore * 0.09;
   const previous = session.rounds.at(-1);
-  const repeated = previous
+  const repeated = previous && !matchedCounter
     ? Math.abs(offered.annualSalary - previous.offered.annualSalary) < target * 0.0125
       && offered.primaryRole === previous.offered.primaryRole
       && offered.endSeason === previous.offered.endSeason
@@ -172,22 +184,23 @@ export function evaluateStaffNegotiationRound(
     target * 0.9,
     input.incumbentRenewal ? Math.max(0, input.salaryExpectation) * 0.97 : 0,
   );
-  const accepted = packageScore >= acceptanceThreshold && offered.annualSalary >= hardSalaryFloor && !roleDowngrade;
+  const accepted = matchedCounter || (packageScore >= acceptanceThreshold && offered.annualSalary >= hardSalaryFloor && !roleDowngrade);
   const exceptional = packageScore >= 1.08;
   const walked = !accepted && (patienceAfter <= 0 || trustAfter <= 8);
   const outcome: StaffNegotiationOutcome = accepted ? (exceptional ? "exceptional-accepted" : "accepted") : walked ? "walked-away" : nonCredible ? "rejected" : "countered";
   const usedConcessions = session.rounds.filter((round) => round.outcome === "countered").length;
   const concession = Math.min(session.concessionBudget, usedConcessions * 0.012 + Math.max(0, trustAfter - 45) * 0.00035);
   const counterSalary = roundTo(Math.max(offered.annualSalary, target * (1 - concession)), 500_000);
+  const counterPrimaryRole = offeredSeniority < currentSeniority ? input.currentPrimaryRole ?? offered.primaryRole : offered.primaryRole;
   const counterPackage = outcome === "countered" ? {
     annualSalary: counterSalary,
-    primaryRole: offeredSeniority < currentSeniority ? input.currentPrimaryRole ?? offered.primaryRole : offered.primaryRole,
-    roles: offered.roles,
+    primaryRole: counterPrimaryRole,
+    roles: Array.from(new Set([counterPrimaryRole, ...offered.roles.filter(role => role !== offered.primaryRole)])),
     endSeason: duration < desiredDuration && offered.endSeason !== null ? input.startSeason + desiredDuration - 1 : offered.endSeason,
   } : null;
   const round: StaffNegotiationRound = { round: session.rounds.length + 1, offered, packageScore, salaryRatio, patienceChange: -patienceLoss, trustChange: -trustLoss, outcome };
   const nextSession: StaffNegotiationSession = { ...session, updatedOn: input.currentDate, patience: accepted ? session.patience : patienceAfter, trust: accepted ? session.trust : trustAfter, rounds: [...session.rounds, round], latestCounter: counterPackage, status: accepted ? "accepted" : walked ? "failed" : "active" };
-  const signals = [
+  const signals = matchedCounter ? ["The agreed salary, roles and contract length have been matched"] : [
     salaryRatio < 0.78 ? "Salary is not yet credible" : salaryRatio < 0.95 ? "Salary remains below expectations" : "Salary is competitive",
     roleScore < 0.9 ? "The proposed role is a concern" : "The role is acceptable",
     securityScore < 0.88 ? "Contract security needs improvement" : "Contract length is acceptable",

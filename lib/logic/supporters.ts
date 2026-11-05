@@ -14,6 +14,7 @@ export interface SupporterGroupDefinition {
   id: SupporterGroupId;
   label: string;
   shortLabel: string;
+  description: string;
   color: string;
   resultSensitivity: number;
 }
@@ -180,13 +181,13 @@ export interface TeamSupporterView {
 }
 
 export const SUPPORTER_GROUPS: SupporterGroupDefinition[] = [
-  { id: "hardcore", label: "Hardcore supporters", shortLabel: "Hardcore", color: "#dc2626", resultSensitivity: 0.7 },
-  { id: "traditional", label: "Traditional and local", shortLabel: "Local", color: "#d97706", resultSensitivity: 0.55 },
-  { id: "family", label: "Family supporters", shortLabel: "Family", color: "#16a34a", resultSensitivity: 0.7 },
-  { id: "fairWeather", label: "Fair-weather followers", shortLabel: "Fair-weather", color: "#0ea5e9", resultSensitivity: 1.45 },
-  { id: "digital", label: "Digital and social", shortLabel: "Digital", color: "#8b5cf6", resultSensitivity: 1.2 },
-  { id: "starDriven", label: "Star-driven followers", shortLabel: "Star-driven", color: "#ec4899", resultSensitivity: 1.05 },
-  { id: "corporate", label: "Corporate and casual", shortLabel: "Corporate", color: "#64748b", resultSensitivity: 1.0 },
+  { id: "hardcore", label: "Hardcore supporters", shortLabel: "Hardcore", description: "Loyal through wins and losses", color: "#dc2626", resultSensitivity: 0.7 },
+  { id: "traditional", label: "Traditional and local", shortLabel: "Local", description: "Rooted in local pride and club history", color: "#d97706", resultSensitivity: 0.55 },
+  { id: "family", label: "Family supporters", shortLabel: "Family", description: "Families sharing matchday experiences", color: "#16a34a", resultSensitivity: 0.7 },
+  { id: "fairWeather", label: "Fair-weather followers", shortLabel: "Fair-weather", description: "Drawn by success and winning runs", color: "#0ea5e9", resultSensitivity: 1.45 },
+  { id: "digital", label: "Digital and social", shortLabel: "Digital", description: "Follow online and shape social buzz", color: "#8b5cf6", resultSensitivity: 1.2 },
+  { id: "starDriven", label: "Star-driven followers", shortLabel: "Star-driven", description: "Follow favourite players and big names", color: "#ec4899", resultSensitivity: 1.05 },
+  { id: "corporate", label: "Corporate and casual", shortLabel: "Corporate", description: "Follow for hospitality and entertainment", color: "#64748b", resultSensitivity: 1.0 },
 ];
 
 const GROUP_CATEGORY_WEIGHTS: Record<SupporterGroupId, Record<SupporterEventCategory, number>> = {

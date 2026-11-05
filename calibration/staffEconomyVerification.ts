@@ -4,6 +4,7 @@ import {
   createStaffNegotiationSession,
   evaluateStaffNegotiationRound,
   evaluateStaffContractOffer,
+  matchesStaffCounterPackage,
 } from "../lib/logic/staffNegotiations";
 
 const profile = {
@@ -97,4 +98,25 @@ const shortWeakPackage = evaluateStaffNegotiationRound(createStaffNegotiationSes
 });
 assert.ok(shortWeakPackage.signals.some((signal) => signal.includes("role") || signal.includes("security")), "role and security must affect feedback independently of salary");
 
-console.log("Staff economy exploit checks passed.");
+// A live counter is a binding complete package, even when patience is nearly gone.
+const promised = credibleRound.counterPackage!;
+const strainedSession = { ...credibleRound.session, patience: 1, trust: 9 };
+const matched = evaluateStaffNegotiationRound(strainedSession, {
+  ...profile, currentDate: "2032-01-02", offeredPackage: { ...promised, roles: [...promised.roles].reverse() },
+});
+assert.equal(matched.accepted, true, "matching the staff's own counter must secure agreement");
+assert.equal(matched.patienceChange, 0);
+assert.equal(matched.trustChange, 0);
+assert.equal(matched.session.status, "accepted");
+assert.ok(!matched.signals.some(signal => signal.includes("damaged trust")));
+for (const offer of [
+  { ...promised, annualSalary: promised.annualSalary - 1 },
+  { ...promised, roles: [...promised.roles, "batting_coach"] },
+  { ...promised, primaryRole: "coach" },
+  { ...promised, endSeason: null },
+]) assert.equal(matchesStaffCounterPackage(strainedSession, offer), false, "changing terms must not reuse a counter's acceptance guarantee");
+const rollingSession = { ...strainedSession, latestCounter: { ...promised, endSeason: null } };
+assert.equal(evaluateStaffNegotiationRound(rollingSession, { ...profile, currentDate: "2032-01-02", offeredPackage: rollingSession.latestCounter }).accepted, true, "a rolling counter must be honoured too");
+assert.equal(evaluateStaffNegotiationRound({ ...strainedSession, status: "failed" }, { ...profile, currentDate: "2032-01-02", offeredPackage: promised }).accepted, false, "ended negotiations must stay ended");
+if (shortWeakPackage.counterPackage) assert.ok(shortWeakPackage.counterPackage.roles.includes(shortWeakPackage.counterPackage.primaryRole), "counter roles must include the requested primary role");
+console.log("Staff economy checks passed, including matching complete counters, rolling terms, changed packages and ended talks.");

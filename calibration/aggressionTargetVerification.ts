@@ -9,8 +9,8 @@ const expectation = (weights: Record<string, number>) => {
 for (let aggression = 2; aggression <= 99; aggression++) {
   assert.ok(battingAggressionScoringProfile(aggression).indicativeStrikeRate > battingAggressionScoringProfile(aggression - 1).indicativeStrikeRate);
 }
-assert.equal(battingAggressionScoringProfile(65).indicativeStrikeRate, 157.5);
-assert.equal(battingAggressionScoringProfile(95).indicativeStrikeRate, 185);
+assert.equal(battingAggressionScoringProfile(65).indicativeStrikeRate, 135);
+assert.equal(battingAggressionScoringProfile(95).indicativeStrikeRate, 175);
 assert.ok(battingAggressionScoringProfile(99).indicativeStrikeRate > 200);
 assert.deepEqual(battingAggressionScoringProfile(100), battingAggressionScoringProfile(99));
 
@@ -36,6 +36,27 @@ for (const profile of profiles) {
       previousRate = fullBallRate; previousBalls = 1 / result.wicketProbability;
       if (context === 1 && scoringChance === 1) output.push({ profile: profile.name, aggression, strikeRate: fullBallRate * 100, runsPerDismissal: baseline, ballsPerDismissal: previousBalls });
     }
+  }
+}
+// Bowling control is separate from batting style/ability restraints: suppressing
+// scoring must also reduce the run budget without buying extra wicket survival.
+// Keep the neutral profile fixed here; full-match tests cover the additional
+// wicket-taking advantage from higher bowling ability.
+for (const profile of profiles) for (const aggression of [40, 65, 85, 99]) {
+  const baseline = calibrateBattingTempo(profile.weights, profile.q, aggression, 1, .975);
+  let previousRate = Infinity, previousBudget = Infinity;
+  for (const bowlingFactor of [1.32, 1, .75, .62]) {
+    const result = calibrateBattingTempo(profile.weights, profile.q, aggression, 1, .975, bowlingFactor);
+    const fullBallRate = expectation(result.weights) * (1 - result.wicketProbability) * .975;
+    assert.ok(Math.abs(fullBallRate / baseline.achievedRunsPerBall - bowlingFactor) < 1e-6,
+      'opposition control must remain in the final scoring distribution');
+    assert.ok(Math.abs(result.runsPerWicketChance / baseline.runsPerWicketChance - bowlingFactor) < 1e-6,
+      'opposition control must reduce scoring productivity as well as pace');
+    assert.ok(Math.abs(result.wicketProbability - baseline.wicketProbability) < 1e-10,
+      'a control-only change must not reduce wicket threat');
+    assert.ok(fullBallRate < previousRate && result.runsPerWicketChance < previousBudget);
+    previousRate = fullBallRate;
+    previousBudget = result.runsPerWicketChance;
   }
 }
 // Score/ability restraints may reduce the run budget, but must not turn a

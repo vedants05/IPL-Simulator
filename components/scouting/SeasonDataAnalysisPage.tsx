@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import type { Player, Team } from "@/lib/types";
 import type { MatchSimulationRecord } from "@/lib/logic/matchSimulation";
 
@@ -334,6 +335,7 @@ export default function SeasonDataAnalysisPage({
   seasonStartBowlingAbilities: Record<string, number>;
   userTeamId: string;
 }) {
+  const [highlightUserTeam, setHighlightUserTeam] = useState(false);
   const completedScorecards = fixtures.filter(
     (fixture) => fixture.played && fixture.simulation,
   );
@@ -1281,6 +1283,12 @@ export default function SeasonDataAnalysisPage({
 
   return (
     <div className="h-full overflow-y-auto p-5">
+      <div className="mb-1 flex justify-end">
+        <label className="inline-flex cursor-pointer items-center gap-1.5 font-space-mono text-[9px] text-text-secondary">
+          <input type="checkbox" checked={highlightUserTeam} onChange={event => setHighlightUserTeam(event.target.checked)} className="size-3 accent-[var(--accent)]" />
+          Highlight user team
+        </label>
+      </div>
       {records.length < completedScorecards.length && (
         <div className="mt-4 border border-warning/40 bg-warning/10 px-3 py-2 font-space-mono text-[9px] font-bold uppercase text-text-primary">
           Loading archived ball-by-ball data. Compact scorecards are excluded
@@ -1361,8 +1369,8 @@ export default function SeasonDataAnalysisPage({
                         ? "grid-cols-[40px_minmax(0,1fr)_72px_72px_92px] gap-3"
                         : "grid-cols-[35px_1fr_60px_74px]"
                     } ${
-                      row.teamId === userTeamId
-                        ? "bg-accent/10"
+                      highlightUserTeam && row.teamId === userTeamId
+                        ? "bg-accent/15 ring-1 ring-inset ring-accent/60"
                         : "hover:bg-surface/5"
                     }`}
                   >
@@ -1517,7 +1525,7 @@ export default function SeasonDataAnalysisPage({
                     <div
                       key={row.teamId}
                       className={`group absolute z-10 flex size-7 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border text-[7px] text-white shadow-md hover:z-50 ${
-                        row.teamId === userTeamId
+                        highlightUserTeam && row.teamId === userTeamId
                           ? "ring-2 ring-accent ring-offset-1 ring-offset-bg"
                           : ""
                       }`}
@@ -1571,7 +1579,7 @@ export default function SeasonDataAnalysisPage({
               key={chart.title}
               chart={chart}
               teams={teams}
-              userTeamId={userTeamId}
+              userTeamId={highlightUserTeam ? userTeamId : ""}
             />
           ))}
           <section className="order-[100] col-span-12 overflow-hidden rounded-lg border border-border bg-bg">
@@ -1594,7 +1602,7 @@ export default function SeasonDataAnalysisPage({
             <PlayerAbilityOutputChart
               points={seasonRunAbilityRows}
               teams={teams}
-              userTeamId={userTeamId}
+              userTeamId={highlightUserTeam ? userTeamId : ""}
               yLabel="Season Runs"
               xLabel="Start-of-Season Batting Ability"
               outputLabel="Season runs"
@@ -1622,7 +1630,7 @@ export default function SeasonDataAnalysisPage({
             <PlayerAbilityOutputChart
               points={spinnerWicketAbilityRows}
               teams={teams}
-              userTeamId={userTeamId}
+              userTeamId={highlightUserTeam ? userTeamId : ""}
               yLabel="Season Wickets"
               xLabel="Start-of-Season Bowling Ability"
               outputLabel="Season wickets"
@@ -1650,7 +1658,7 @@ export default function SeasonDataAnalysisPage({
             <PlayerAbilityOutputChart
               points={pacerWicketAbilityRows}
               teams={teams}
-              userTeamId={userTeamId}
+              userTeamId={highlightUserTeam ? userTeamId : ""}
               yLabel="Season Wickets"
               xLabel="Start-of-Season Bowling Ability"
               outputLabel="Season wickets"

@@ -1,7 +1,7 @@
 "use client";
 import { formatDisplayDate } from "@/lib/logic/displayDate";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Children, cloneElement, isValidElement, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import dynamic from "next/dynamic";
 import { ArrowDown, ArrowUp, ArrowUpDown, Bot, BriefcaseBusiness, Lock, Pencil, RefreshCw, UserMinus, UserPlus, UsersRound, X } from "lucide-react";
@@ -10,14 +10,15 @@ import { StaffEditorModal } from "@/components/club/StaffEditorModal";
 import { useEditorAccess } from "@/lib/store/editorAccessStore";
 import type { Team } from "@/lib/types";
 import { useGameStore } from "@/lib/store/gameStore";
-import { calculateInitialStaffNegotiationPatience, calculateStaffMoveInterest, calculateStaffRecruitmentInterest, calculateStaffRenewalInterest, calculateStaffSalaryDemand, createStaffNegotiationSession, evaluateStaffNegotiationRound } from "@/lib/logic/staffNegotiations";
+import { calculateInitialStaffNegotiationPatience, calculateStaffMoveInterest, calculateStaffRecruitmentInterest, calculateStaffRenewalInterest, calculateStaffSalaryDemand, createStaffNegotiationSession, evaluateStaffNegotiationRound, matchesStaffCounterPackage } from "@/lib/logic/staffNegotiations";
 import { getStaffClubAffinity, type StaffAffinityProfile } from "@/lib/data/staffAffinities";
 import { addDaysToDateKey } from "@/lib/logic/careerCalendar";
 import { loadStaffDirectory } from "@/lib/logic/staffDirectoryClient";
 import { relationshipLabel, relationshipsForPerson } from "@/lib/logic/careerRelationships";
 import { getStaffPreferenceColor, getStaffRatingColor } from "@/lib/theme/staffRatingColors";
 import { internationalTeamName } from "@/lib/logic/international";
-import type { CareerStaffContract } from "@/lib/logic/staffContracts";
+import { staffContractOfferIssue, staffPoachingCompensation, type CareerStaffContract } from "@/lib/logic/staffContracts";
+import { staffRolesAreCompatible } from "@/lib/logic/staffRoleRules";
 import type { ProfileModalMatch } from "@/components/player/PlayerProfileModal";
 
 const nationalEmployer = (contract?: CareerStaffContract) => contract?.nationalTeamId
@@ -73,6 +74,15 @@ interface StaffManagementPageProps {
 }
 
 type StaffMarketSortKey = "staff_member" | "role_fit" | "ca" | "pa" | "interest" | "demand" | "club_link" | "budget" | "status";
+const STAFF_COLUMNS: StaffMarketSortKey[] = ["staff_member", "role_fit", "ca", "pa", "club_link", "interest", "demand", "budget", "status"];
+const DEFAULT_STAFF_COLUMN_ORDER: StaffMarketSortKey[] = ["staff_member", "status", "role_fit", "ca", "pa", "club_link", "interest", "demand", "budget"];
+const STAFF_COLUMN_WIDTHS = ["minmax(0,1fr)", "minmax(0,1fr)", "2.25rem", "2.25rem", "minmax(0,1fr)", "minmax(0,.85fr)", "minmax(0,.75fr)", "minmax(0,.5fr)", "minmax(0,.7fr)"];
+const STAFF_COLUMN_STORAGE = "ipl-staff-market-column-order";
+function StaffMarketCells({ order, children }: { order: StaffMarketSortKey[]; children: ReactNode }) {
+  return Children.toArray(children).map((child, index) => isValidElement<{ style?: CSSProperties }>(child)
+    ? cloneElement(child, { key: STAFF_COLUMNS[index], style: { ...child.props.style, gridColumn: order.indexOf(STAFF_COLUMNS[index]) + 1, gridRow: 1 } })
+    : child);
+}
 type StaffMarketSortDirection = "asc" | "desc";
 
 const TEAM_ORDER = ["CSK", "MI", "RCB", "KKR", "RR", "SRH", "GT", "PBKS", "LSG", "DC"];
@@ -249,7 +259,18 @@ function StaffProfileModal({
     });
   };
   useEffect(() => setRelationshipTooltip(null), [member.id, linkedStaffId, linkedPlayerId]);
-  const persistedNegotiation = careerStaff.activeNegotiations[member.id];
+  const savedNegotiation = careerStaff.activeNegotiations[member.id];
+  const persistedNegotiation = useMemo(() => {
+    const agreed = savedNegotiation?.rounds.at(-1)?.offered;
+    const completed = careerContract?.status === "contracted" && careerContract.teamId === savedNegotiation?.teamId
+      && agreed && careerContract.annualSalary === agreed.annualSalary && careerContract.endSeason === agreed.endSeason
+      && careerContract.primaryRole === agreed.primaryRole && careerContract.roles.length === agreed.roles.length
+      && agreed.roles.every(role => careerContract.roles.includes(role));
+    // Older saves may have recorded acceptance before a transfer failed to complete.
+    return savedNegotiation?.status === "accepted" && agreed && !completed
+      ? { ...savedNegotiation, status: "active" as const, latestCounter: agreed }
+      : savedNegotiation;
+  }, [savedNegotiation, careerContract]);
   useEffect(() => {
     if (!contractAction || persistedNegotiation?.status !== "active" || persistedNegotiation.action !== contractAction) return;
     setNegotiationPatience(persistedNegotiation.patience);
@@ -317,22 +338,22 @@ function StaffProfileModal({
     : null;
   const normalizedOfferRoles = [
     offerPrimaryRole,
-    ...offerRoles.filter((role) => role !== offerPrimaryRole),
+    ...offerRoles.filter((role) => role !== offerPrimaryRole && staffRolesAreCompatible([offerPrimaryRole, role])),
   ].slice(0, 2);
   const offerSecondaryRole = normalizedOfferRoles[1] ?? "";
   const offeredSalaryRupees = Math.max(0, Math.round(Number(offerSalary || 0) * 10_000_000));
-  const selectedRoleRating = Number(member.role_ratings?.[offerPrimaryRole] ?? member.current_ability ?? 50);
+  const selectedRoleRating = Number(careerContract?.roleRatings[offerPrimaryRole] ?? member.role_ratings?.[offerPrimaryRole] ?? careerContract?.currentAbility ?? member.current_ability ?? 50);
   const liveSalaryExpectation = careerContract?.annualSalary ?? Number(member.salary_expectation ?? 0);
   const currentAffinity = careerContract?.teamId ? getStaffClubAffinity(careerContract.affinityProfile, careerContract.teamId) : careerContract?.nationalTeamId ? 45 : 0;
   const destinationAffinity = careerContract ? getStaffClubAffinity(careerContract.affinityProfile, userTeamId) : 0;
   const remainingContractSeasons = careerContract?.endSeason == null ? 1 : Math.max(0, careerContract.endSeason - currentSeason + 1);
   const salaryDemand = calculateStaffSalaryDemand({
     salaryExpectation: liveSalaryExpectation,
-    reputation: Number(member.reputation ?? 0),
+    reputation: careerContract?.reputation ?? Number(member.reputation ?? 0),
     roleRating: selectedRoleRating,
     roleCount: normalizedOfferRoles.length,
     offeredRoles: normalizedOfferRoles,
-    offeredRoleRatings: member.role_ratings,
+    offeredRoleRatings: { ...member.role_ratings, ...careerContract?.roleRatings },
     startSeason: currentSeason,
     endSeason: offerEndSeason === "rolling" ? null : Number(offerEndSeason),
     poaching: contractAction === "poach",
@@ -350,7 +371,7 @@ function StaffProfileModal({
   });
   const negotiationPatienceFor = (action: "hire" | "poach" | "renew") => calculateInitialStaffNegotiationPatience({
     salaryExpectation: liveSalaryExpectation,
-    reputation: Number(member.reputation ?? 0),
+    reputation: careerContract?.reputation ?? Number(member.reputation ?? 0),
     roleRating: selectedRoleRating,
     roleCount: normalizedOfferRoles.length,
     startSeason: currentSeason,
@@ -368,6 +389,7 @@ function StaffProfileModal({
   const userFinance = careerStaff.financesByTeam[userTeamId];
   const availableBudget = Math.max(0, (userFinance?.annualBudget ?? 0) - (userFinance?.committedSalary ?? 0));
   const maximumNegotiationSalary = availableBudget + (contractAction === "renew" ? careerContract?.annualSalary ?? 0 : 0);
+  const transferCompensation = contractAction === "poach" && careerContract ? staffPoachingCompensation(careerContract, currentSeason) : 0;
 
   const submitContractOffer = () => {
     if (!contractAction) return;
@@ -375,14 +397,21 @@ function StaffProfileModal({
       setContractMessage(`Negotiations are unavailable until ${negotiationCooldownUntil}.`);
       return;
     }
+    const proposedPackage = { annualSalary: offeredSalaryRupees, primaryRole: offerPrimaryRole, roles: normalizedOfferRoles, endSeason: offerEndSeason === "rolling" ? null : Number(offerEndSeason) };
+    const validationInput = { ...proposedPackage, staffId: member.id, teamId: userTeamId, action: contractAction, season: currentSeason, date: currentDate };
+    const issue = staffContractOfferIssue(useGameStore.getState().careerStaff, validationInput);
+    if (issue) {
+      setContractMessage(issue);
+      return;
+    }
     setNegotiationHasStarted(true);
     const negotiationProfile = {
       salaryExpectation: liveSalaryExpectation,
-      reputation: Number(member.reputation ?? 0),
+      reputation: careerContract?.reputation ?? Number(member.reputation ?? 0),
       roleRating: selectedRoleRating,
       roleCount: normalizedOfferRoles.length,
       offeredRoles: normalizedOfferRoles,
-      offeredRoleRatings: member.role_ratings,
+      offeredRoleRatings: { ...member.role_ratings, ...careerContract?.roleRatings },
       startSeason: currentSeason,
       endSeason: offerEndSeason === "rolling" ? null : Number(offerEndSeason),
       poaching: contractAction === "poach",
@@ -411,8 +440,16 @@ function StaffProfileModal({
         endSeason: offerEndSeason === "rolling" ? null : Number(offerEndSeason),
       },
     });
+    const matchedCounter = matchesStaffCounterPackage(currentSession, {
+      annualSalary: offeredSalaryRupees, primaryRole: offerPrimaryRole, roles: normalizedOfferRoles,
+      endSeason: offerEndSeason === "rolling" ? null : Number(offerEndSeason),
+    });
+    if (evaluation.accepted) {
+      const completionIssue = staffContractOfferIssue(useGameStore.getState().careerStaff, validationInput, true);
+      if (completionIssue) { setContractMessage(completionIssue); return; }
+    }
     setStaffNegotiationSession(member.id, evaluation.session);
-    if (evaluation.accepted && contractAction === "renew" && careerContract) {
+    if (evaluation.accepted && !matchedCounter && contractAction === "renew" && careerContract) {
       const renewalInterest = calculateStaffRenewalInterest({
         loyalty: careerContract.loyalty, ambition: careerContract.ambition,
         adaptability: careerContract.adaptability, clubAffinity: currentAffinity,
@@ -427,7 +464,7 @@ function StaffProfileModal({
         return;
       }
     }
-    if (evaluation.accepted && contractAction === "poach" && careerContract) {
+    if (evaluation.accepted && !matchedCounter && contractAction === "poach" && careerContract) {
       const moveInterest = calculateStaffMoveInterest({
         loyalty: careerContract.loyalty, ambition: careerContract.ambition,
         adaptability: careerContract.adaptability, currentAffinity, destinationAffinity,
@@ -487,7 +524,13 @@ function StaffProfileModal({
     if (completed) setContractAction(null);
     if (completed) setStaffCounterOffer(null);
     if (completed) setStaffNegotiationSession(member.id, null);
-    if (!completed) setNegotiationHasStarted(false);
+    if (!completed) {
+      setStaffNegotiationSession(member.id, currentSession);
+      setStaffCounterOffer(currentSession.latestCounter?.annualSalary ?? null);
+      setNegotiationHasStarted(currentSession.rounds.length > 0);
+      setContractMessage(staffContractOfferIssue(useGameStore.getState().careerStaff, validationInput, true)
+        ?? "The contract could not be completed. Your agreed package has been kept; check the staff member's current club and role availability before retrying.");
+    }
   };
   const requestNegotiationClose = () => {
     if (negotiationHasStarted && !negotiationEnded) {
@@ -956,7 +999,7 @@ function StaffProfileModal({
                   <select value={offerPrimaryRole} onChange={(event) => {
                     const role = event.target.value;
                     setOfferPrimaryRole(role);
-                    setOfferRoles((current) => [role, ...current.filter((candidate) => candidate !== role)].slice(0, 2));
+                    setOfferRoles((current) => [role, ...current.filter((candidate) => candidate !== role && staffRolesAreCompatible([role, candidate]))].slice(0, 2));
                     setContractMessage(null);
                     setStaffCounterOffer(null);
                   }} className="mt-1.5 block w-full rounded border border-border bg-bg px-3 py-2 text-xs text-text-primary">
@@ -972,7 +1015,7 @@ function StaffProfileModal({
                     setStaffCounterOffer(null);
                   }} className="mt-1.5 block w-full rounded border border-border bg-bg px-3 py-2 text-xs text-text-primary">
                     <option value="">No secondary role</option>
-                    {ROLE_ORDER.filter((role) => role !== offerPrimaryRole).map((role) => <option key={role} value={role}>{roleLabel(role)} · {member.role_ratings?.[role] ?? "–"}</option>)}
+                    {ROLE_ORDER.filter((role) => role !== offerPrimaryRole && staffRolesAreCompatible([offerPrimaryRole, role])).map((role) => <option key={role} value={role}>{roleLabel(role)} · {member.role_ratings?.[role] ?? "–"}</option>)}
                   </select>
                 </label>
                 <label className="font-space-mono text-[8px] font-bold uppercase text-text-secondary">
@@ -992,9 +1035,10 @@ function StaffProfileModal({
                 <div className="rounded border border-border bg-bg p-3"><p className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Offer type</p><p className="mt-1 font-anton text-sm uppercase text-text-primary">{contractAction === "poach" ? (careerContract?.nationalTeamId ? "National team approach" : "Club approach") : contractAction === "renew" ? "Renewal" : "Free-agent offer"}</p></div>
                 <div className="rounded border border-border bg-bg p-3"><p className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Proposed roles</p><p className="mt-1 font-anton text-sm uppercase text-text-primary">{normalizedOfferRoles.map(roleLabel).join(" + ")}</p></div>
                 <div className={`rounded border p-3 ${staffCounterOffer ? "border-gold/50 bg-gold/10" : "border-accent/40 bg-accent/5"}`}><p className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">{staffCounterOffer ? "Proposed package" : "Market position"}</p><p className="mt-1 font-anton text-sm uppercase text-text-primary">{staffCounterOffer ? `${formatSalary(staffCounterOffer)} · ${roleLabel(persistedNegotiation?.latestCounter?.primaryRole ?? offerPrimaryRole)}` : salaryDemand >= maximumNegotiationSalary * 0.85 ? "Premium terms likely" : "Competitive terms likely"}</p></div>
-                <div className="rounded border border-border bg-bg p-3"><p className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Remaining budget</p><p className="mt-1 font-anton text-sm uppercase text-text-primary">{formatSalary(maximumNegotiationSalary)}</p></div>
+                <div className="rounded border border-border bg-bg p-3"><p className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Remaining budget</p><p className="mt-1 font-anton text-sm uppercase text-text-primary">{formatSalary(maximumNegotiationSalary)}</p>{transferCompensation > 0 && <p className="mt-1 text-[10px] text-text-secondary">Salary limit after compensation: {formatSalary(Math.max(0, maximumNegotiationSalary - transferCompensation))}</p>}</div>
               </div>
 
+              {transferCompensation > 0 && <p className={`mx-5 mt-3 rounded border px-3 py-2 text-[11px] ${offeredSalaryRupees + transferCompensation > maximumNegotiationSalary ? "border-danger/30 bg-danger/5 text-danger" : "border-border/20 text-text-secondary"}`}>Annual salary {formatSalary(offeredSalaryRupees)} + transfer compensation {formatSalary(transferCompensation)} = {formatSalary(offeredSalaryRupees + transferCompensation)} required from the available {formatSalary(maximumNegotiationSalary)} staff budget.</p>}
               {contractMessage && <p className="mx-5 mt-4 rounded border border-accent/30 bg-accent/5 px-3 py-2.5 font-space-mono text-[8px] font-bold uppercase leading-relaxed text-text-primary">{contractMessage}</p>}
 
               <div className="flex items-center justify-end gap-3 px-5 py-5">
@@ -1117,6 +1161,33 @@ export default function StaffManagementPage({ teams, mode = "club", initialStaff
   const [selectedStaffId, setSelectedStaffId] = useState<string | null>(null);
   const [marketScope, setMarketScope] = useState<"free_agents" | "contracted">("free_agents");
   const [staffSearch, setStaffSearch] = useState("");
+  const [staffColumnOrder, setStaffColumnOrder] = useState(DEFAULT_STAFF_COLUMN_ORDER);
+  const [movingStaffColumn, setMovingStaffColumn] = useState<StaffMarketSortKey | null>(null);
+  const columnOrderRef = useRef(staffColumnOrder);
+  const columnHold = useRef<{ timer: ReturnType<typeof setTimeout>; key: StaffMarketSortKey; x: number; y: number; original: StaffMarketSortKey[]; active: boolean } | null>(null);
+  const suppressColumnClick = useRef(false);
+  useEffect(() => {
+    try {
+      const saved: unknown = JSON.parse(localStorage.getItem(STAFF_COLUMN_STORAGE) ?? "null");
+      if (Array.isArray(saved) && saved.length === STAFF_COLUMNS.length && new Set(saved).size === STAFF_COLUMNS.length && saved.every(key => STAFF_COLUMNS.includes(key))) {
+        const order = saved.join() === STAFF_COLUMNS.join() ? DEFAULT_STAFF_COLUMN_ORDER : saved;
+        columnOrderRef.current = order;
+        setStaffColumnOrder(order);
+      }
+    } catch { /* Keep the default order if browser storage is unavailable. */ }
+    return () => { if (columnHold.current) clearTimeout(columnHold.current.timer); };
+  }, []);
+  const finishColumnMove = (cancelled = false) => {
+    const hold = columnHold.current;
+    if (!hold) return;
+    clearTimeout(hold.timer);
+    if (hold.active) {
+      if (cancelled) { columnOrderRef.current = hold.original; setStaffColumnOrder(hold.original); }
+      else { try { localStorage.setItem(STAFF_COLUMN_STORAGE, JSON.stringify(columnOrderRef.current)); } catch { /* Reordering still works without persistence. */ } }
+    }
+    columnHold.current = null;
+    setMovingStaffColumn(null);
+  };
   const [roleFilter, setRoleFilter] = useState("all");
   const [minimumCA, setMinimumCA] = useState(0);
   const [minimumPA, setMinimumPA] = useState(0);
@@ -1407,15 +1478,19 @@ export default function StaffManagementPage({ teams, mode = "club", initialStaff
     return (
       <button
         type="button"
-        onClick={() => toggleStaffMarketSort(sortKey)}
-        className={`flex min-w-0 items-center gap-1 hover:text-accent ${align === "center" ? "justify-center" : align === "right" ? "justify-end" : "justify-start"} ${active ? "text-accent" : ""}`}
+        onClick={() => { if (suppressColumnClick.current) { suppressColumnClick.current = false; return; } toggleStaffMarketSort(sortKey); }}
+        data-staff-column={sortKey}
+        style={{ gridColumn: staffColumnOrder.indexOf(sortKey) + 1, gridRow: 1 }}
+        title="Click to sort. Hold for 2 seconds, then drag to move this column. Press Escape to cancel."
+        className={`flex min-w-0 select-none touch-none items-center gap-1 hover:text-accent ${movingStaffColumn === sortKey ? "cursor-grabbing rounded bg-accent/15 ring-2 ring-inset ring-accent" : "cursor-pointer"} ${align === "center" ? "justify-center" : align === "right" ? "justify-end" : "justify-start"} ${active ? "text-accent" : ""}`}
         aria-label={`Sort by ${label} ${active ? staffMarketSort.direction === "asc" ? "descending" : "ascending" : ""}`.trim()}
       >
         <span className="truncate">{label}</span><Icon size={9} className="shrink-0" />
       </button>
     );
   };
-  const recruitmentMarketColumns = "grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_2.25rem_2.25rem_minmax(0,1fr)_minmax(0,.85fr)_minmax(0,.75fr)_minmax(0,.5fr)_minmax(0,.65fr)]";
+  const recruitmentMarketColumns = "";
+  const recruitmentGridStyle = { gridTemplateColumns: staffColumnOrder.map(key => STAFF_COLUMN_WIDTHS[STAFF_COLUMNS.indexOf(key)]).join(" ") };
 
   const selectedMember = selectedStaffId ? memberById.get(selectedStaffId) : undefined;
   const selectedAssignment = displayData?.assignments.find((assignment) => (
@@ -1549,9 +1624,9 @@ export default function StaffManagementPage({ teams, mode = "club", initialStaff
         </div>
 
         <section className="flex min-h-0 min-w-0 flex-[1.12] flex-col overflow-hidden rounded-lg border-2 border-border bg-surface">
-          <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b-2 border-border px-4 py-2.5">
+          <div className="flex min-w-0 shrink-0 flex-nowrap items-center justify-between gap-2 border-b-2 border-border px-4 py-2.5">
             <div className="shrink-0"><p className="font-space-mono text-[7px] font-bold uppercase tracking-[0.18em] text-accent">Recruitment workspace</p><h3 className="font-anton text-base uppercase text-text-primary">Staff Market</h3></div>
-            <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-1.5">
+            <div className="staff-market-filters flex min-w-0 flex-1 flex-nowrap items-center justify-end gap-1">
               <div className="flex shrink-0 overflow-hidden rounded border border-border bg-bg p-0.5">
                 <button type="button" onClick={() => setMarketScope("free_agents")} className={`whitespace-nowrap px-1.5 py-1 font-space-mono text-[6.5px] font-bold uppercase ${marketScope === "free_agents" ? "bg-accent text-white" : "text-text-secondary"}`}>Free agents · {freeAgents.length}</button>
                 <button type="button" onClick={() => setMarketScope("contracted")} className={`whitespace-nowrap px-1.5 py-1 font-space-mono text-[6.5px] font-bold uppercase ${marketScope === "contracted" ? "bg-accent text-white" : "text-text-secondary"}`}>Contracted · {contractedRecruitmentTargets.length}</button>
@@ -1576,7 +1651,46 @@ export default function StaffManagementPage({ teams, mode = "club", initialStaff
             </div>
           </div>
           <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
-          <div className={`sticky top-0 z-10 grid w-full min-w-0 shrink-0 ${recruitmentMarketColumns} gap-1.5 border-b border-border bg-surface px-3 py-1.5 font-space-mono text-[7px] font-bold uppercase text-text-secondary`}>
+          <div style={recruitmentGridStyle} tabIndex={-1}
+            onPointerDown={(event) => {
+              if (event.button !== 0) return;
+              const key = (event.target as HTMLElement).closest<HTMLElement>("[data-staff-column]")?.dataset.staffColumn as StaffMarketSortKey | undefined;
+              if (!key) return;
+              suppressColumnClick.current = false;
+              event.currentTarget.setPointerCapture(event.pointerId);
+              const header = event.currentTarget;
+              const hold = { key, x: event.clientX, y: event.clientY, original: [...columnOrderRef.current], active: false, timer: setTimeout(() => {
+                hold.active = true; suppressColumnClick.current = true; setMovingStaffColumn(key); header.focus();
+              }, 2000) };
+              columnHold.current = hold;
+            }}
+            onPointerMove={(event) => {
+              const hold = columnHold.current;
+              if (!hold) return;
+              if (!hold.active) {
+                if (Math.hypot(event.clientX - hold.x, event.clientY - hold.y) > 6) { suppressColumnClick.current = true; finishColumnMove(true); }
+                return;
+              }
+              const target = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>("[data-staff-column]");
+              const key = target?.dataset.staffColumn as StaffMarketSortKey | undefined;
+              if (!target || !key || key === hold.key || !event.currentTarget.contains(target)) return;
+              const order = columnOrderRef.current.filter(column => column !== hold.key);
+              const bounds = target!.getBoundingClientRect();
+              order.splice(order.indexOf(key) + (event.clientX > bounds.left + bounds.width / 2 ? 1 : 0), 0, hold.key);
+              if (order.join() !== columnOrderRef.current.join()) { columnOrderRef.current = order; setStaffColumnOrder(order); }
+            }}
+            onPointerUp={() => {
+              const hold = columnHold.current;
+              if (!hold) return;
+              if (!hold.active) toggleStaffMarketSort(hold.key);
+              suppressColumnClick.current = true;
+              finishColumnMove();
+              setTimeout(() => { suppressColumnClick.current = false; }, 0);
+            }}
+            onPointerCancel={() => finishColumnMove(true)}
+            onLostPointerCapture={() => finishColumnMove(true)}
+            onKeyDown={(event) => { if (event.key === "Escape") finishColumnMove(true); }}
+            className={`sticky top-0 z-10 grid w-full min-w-0 shrink-0 ${recruitmentMarketColumns} gap-1.5 border-b border-border bg-surface px-3 py-1.5 font-space-mono text-[7px] font-bold uppercase text-text-secondary`}>
             <StaffMarketSortHeader sortKey="staff_member" label="Staff member" />
             <StaffMarketSortHeader sortKey="role_fit" label="Role / fit" />
             <StaffMarketSortHeader sortKey="ca" label="CA" align="center" />
@@ -1585,7 +1699,7 @@ export default function StaffManagementPage({ teams, mode = "club", initialStaff
             <StaffMarketSortHeader sortKey="interest" label="Interest" />
             <StaffMarketSortHeader sortKey="demand" label="Demand" align="right" />
             <StaffMarketSortHeader sortKey="budget" label="Budget" align="center" />
-            <StaffMarketSortHeader sortKey="status" label="Status" align="right" />
+            <StaffMarketSortHeader sortKey="status" label="Status" />
           </div>
           <div className="w-full min-w-0">
             {filteredRecruitmentPool.map((member) => {
@@ -1601,7 +1715,8 @@ export default function StaffManagementPage({ teams, mode = "club", initialStaff
               const interestColor = interest.score >= 80 ? "#22c55e" : interest.score >= 65 ? "#3b82f6" : interest.score >= 50 ? "#facc15" : interest.score >= 35 ? "#f97316" : "#ef4444";
               const cooldownUntil = careerStaff.negotiationCooldowns[member.id];
               return (
-                <button type="button" key={member.id} onClick={() => setSelectedStaffId(member.id)} className={`grid w-full min-w-0 ${recruitmentMarketColumns} items-center gap-1.5 border-b border-hairline px-3 py-2 text-left hover:bg-accent/[0.04]`}>
+                <button type="button" key={member.id} style={recruitmentGridStyle} onClick={() => setSelectedStaffId(member.id)} className={`grid w-full min-w-0 ${recruitmentMarketColumns} items-center gap-1.5 border-b border-hairline px-3 py-2 text-left hover:bg-accent/[0.04]`}>
+                  <StaffMarketCells order={staffColumnOrder}>
                   <span className="min-w-0"><span className="block truncate text-xs font-bold text-text-primary">{member.full_name}</span><span className="block truncate font-space-mono text-[6px] uppercase text-text-secondary">{String(member.country ?? "Unknown")} · Age {ageFromDateOfBirth(member.date_of_birth) ?? "–"}</span></span>
                   <span className="min-w-0 truncate font-space-mono text-[7px] font-bold uppercase text-text-primary">{roleLabel(displayRole)} <strong className="text-accent">{ratingForRole(member, displayRole) ?? "–"}</strong></span>
                   <span className="text-center font-anton text-sm text-text-primary">{member.current_ability ?? "–"}</span><span className="text-center font-anton text-sm text-text-primary">{member.potential_ability ?? "–"}</span>
@@ -1617,7 +1732,8 @@ export default function StaffManagementPage({ teams, mode = "club", initialStaff
                   <span className="min-w-0"><span className="block truncate font-space-mono text-[7px] font-bold uppercase" style={{ color: interestColor }}>{interest.label}</span><span className="mt-1 block h-1.5 overflow-hidden rounded-sm border border-border bg-bg"><span className="block h-full" style={{ width: `${interest.score}%`, backgroundColor: interestColor }} /></span>{cooldownUntil && currentDate < cooldownUntil && <span className="mt-0.5 block truncate font-space-mono text-[6px] uppercase text-danger">Unavailable until {formatDisplayDate(cooldownUntil)}</span>}</span>
                   <span className="min-w-0 truncate text-right font-space-mono text-[8px] font-bold text-text-primary">{formatSalary(demand)}</span>
                   <span className={`text-center font-space-mono text-[7px] font-bold uppercase ${withinBudget ? "text-success" : "text-danger"}`}>{withinBudget ? "Within" : "Over"}</span>
-                  <span className={`min-w-0 truncate text-right font-space-mono text-[7px] font-bold uppercase ${marketScope === "free_agents" ? "text-success" : "text-gold"}`}>{marketScope === "free_agents" ? "Available" : teams.find((team) => team.id === contract?.teamId)?.shortName ?? nationalEmployer(contract) ?? "Contracted"}</span>
+                  <span className={`min-w-0 truncate text-left font-space-mono text-[7px] font-bold uppercase ${marketScope === "free_agents" ? "text-success" : "text-gold"}`}>{marketScope === "free_agents" ? "Available" : teams.find((team) => team.id === contract?.teamId)?.shortName ?? nationalEmployer(contract) ?? "Contracted"}</span>
+                  </StaffMarketCells>
                 </button>
               );
             })}

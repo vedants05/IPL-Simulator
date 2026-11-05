@@ -11,13 +11,13 @@ export function formatDisplayDate(value: string | Date | null | undefined): stri
 }
 
 /** Written calendar date, including the English ordinal day: 31st March 2027. */
-export function formatLongDisplayDate(date: Date): string {
+export function formatLongDisplayDate(date: Date, { month = "long", includeYear = true }: { month?: "long" | "short"; includeYear?: boolean } = {}): string {
   if (Number.isNaN(date.getTime())) return "";
   const day = date.getDate();
   const suffix = day >= 11 && day <= 13
     ? "th"
     : ({ 1: "st", 2: "nd", 3: "rd" } as Record<number, string>)[day % 10] ?? "th";
-  return `${day}${suffix} ${date.toLocaleDateString("en-GB", { month: "long" })} ${date.getFullYear()}`;
+  return `${day}${suffix} ${date.toLocaleDateString("en-GB", { month })}${includeYear ? ` ${date.getFullYear()}` : ""}`;
 }
 
 export function formatDisplayDateTime(value: string | Date | null | undefined): string {

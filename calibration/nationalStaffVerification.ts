@@ -9,9 +9,11 @@ import {
   processStaffContractExpiries,
   synchronizeCareerStaffProfiles,
   validateCareerStaffState,
+  staffContractOfferIssue,
+  staffPoachingCompensation,
   type StaffDirectoryMember,
 } from "../lib/logic/staffContracts";
-import { calculateStaffMoveInterest, calculateStaffSalaryDemand } from "../lib/logic/staffNegotiations";
+import { calculateStaffMoveInterest, calculateStaffSalaryDemand, createStaffNegotiationSession, evaluateStaffNegotiationRound } from "../lib/logic/staffNegotiations";
 import { processAIStaffMarket } from "../lib/logic/aiStaffMarket";
 import { NATIONAL_STAFF_SEEDS } from "../lib/data/nationalStaffSeeds";
 
@@ -143,4 +145,38 @@ assert.equal(poached.contracts["gautam-gambhir"].teamId, "KKR");
 assert.equal(poached.contracts["gautam-gambhir"].nationalTeamId, null);
 assert.deepEqual(validateCareerStaffState(poached), []);
 
-console.log("National staff appointments, migration, recruitment resistance, and replacement verified.");
+const reluctant = structuredClone(initial);
+const reluctantCoach = reluctant.contracts["gautam-gambhir"];
+reluctantCoach.loyalty = 100;
+reluctantCoach.ambition = 0;
+reluctantCoach.adaptability = 0;
+reluctantCoach.affinityProfile.clubs = [];
+reluctant.financesByTeam.KKR = { annualBudget: 1_000_000_000, committedSalary: 0, compensationPaid: 0, compensationReceived: 0 };
+const agreedOffer = { annualSalary: poachingSalary * 3, primaryRole: "head_coach", roles: ["head_coach"], endSeason: 2030 };
+const moveInput = { ...agreedOffer, staffId: reluctantCoach.staffId, teamId: "KKR", startSeason: 2027, effectiveOn: "2027-06-01" };
+assert.equal(poachCareerStaff(reluctant, moveInput), reluctant, "personal resistance should apply before an agreement");
+const agreedProfile = { salaryExpectation: reluctantCoach.annualSalary, reputation: reluctantCoach.reputation, roleRating: 92, roleCount: 1, startSeason: 2027, endSeason: 2030 };
+const liveTalks = createStaffNegotiationSession({ ...agreedProfile, staffId: reluctantCoach.staffId, teamId: "KKR", action: "poach", openedOn: "2027-06-01" });
+const agreement = evaluateStaffNegotiationRound({ ...liveTalks, latestCounter: agreedOffer }, { ...agreedProfile, currentDate: "2027-06-01", offeredPackage: agreedOffer });
+reluctant.activeNegotiations[reluctantCoach.staffId] = agreement.session;
+assert.equal(poachCareerStaff(reluctant, moveInput).contracts[reluctantCoach.staffId].teamId, "KKR", "contract completion must honour a negotiated agreement");
+const overBudget = structuredClone(reluctant);
+overBudget.financesByTeam.KKR.annualBudget = 1;
+assert.equal(poachCareerStaff(overBudget, moveInput), overBudget, "an agreement must not bypass the club budget");
+console.log("National staff checks passed, including accepted package completion and budget protection.");
+
+// A club transfer must budget for compensation as well as the visible annual wage.
+const clubTransfer = structuredClone(reluctant);
+const clubCoach = clubTransfer.contracts["zaheer-khan"];
+clubCoach.annualSalary = 20_000_000;
+clubCoach.endSeason = null;
+clubTransfer.financesByTeam.KKR = { annualBudget: 55_700_000, committedSalary: 0, compensationPaid: 0, compensationReceived: 0 };
+const blockedOffer = { staffId: clubCoach.staffId, teamId: "KKR", action: "poach" as const, season: 2027, date: "2027-06-01", primaryRole: "head_coach", roles: ["head_coach"], annualSalary: 49_000_000, endSeason: null };
+assert.equal(staffPoachingCompensation(clubCoach, 2027), 20_000_000);
+assert.match(staffContractOfferIssue(clubTransfer, blockedOffer) ?? "", /transfer compensation/);
+assert.match(staffContractOfferIssue(clubTransfer, blockedOffer) ?? "", /₹6,90,00,000/);
+assert.equal(staffContractOfferIssue(clubTransfer, { ...blockedOffer, annualSalary: 35_700_000 }), null, "salary plus compensation may exactly equal the budget");
+clubCoach.endSeason = 2029;
+assert.equal(staffPoachingCompensation(clubCoach, 2027), 60_000_000, "fixed contracts charge all remaining seasons");
+assert.equal(staffPoachingCompensation(reluctant.contracts["gautam-gambhir"], 2027), 0, "national appointments have no club compensation");
+console.log("Transfer validation checks passed: hidden-fee reproduction, exact budget boundary, rolling/fixed fees and national appointments.");

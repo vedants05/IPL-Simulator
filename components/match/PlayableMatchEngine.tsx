@@ -29,6 +29,10 @@ import styles from "./PlayableMatchEngine.module.css";
 
 function bowlerSelectionReasonLabel(reason: BowlerSelectionReason | undefined): string {
   switch (reason) {
+    case "planned-over": return "fixed over assignment";
+    case "preferred-over": return "preferred over assignment";
+    case "plan-unavailable": return "plan adjusted for availability / match conditions";
+    case "plan-reserved": return "preserving fixed over assignments";
     case "phase-specialist": return "phase specialist";
     case "death-reserved": return "reserved death bowler";
     case "target-at-risk": return "planned over moved forward — target at risk";

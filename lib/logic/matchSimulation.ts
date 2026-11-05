@@ -19,6 +19,8 @@ import { calculateCoachingStaffModifiers, deriveAITeamTactics } from "@/lib/logi
 import { appendRainAffectedResultLabel, hasRainReducedOvers } from "@/lib/logic/matchWeather";
 import type { Player, Team } from "@/lib/types";
 import { worldRules } from "./worldRules";
+import { BATTING_COVERAGE_INTENTS, activeBattingTarget, applyBattingTarget, applyBowlerOverTargetModes, applySpecialBattingRuleIntent, battingCoveragePhase, canCompleteAssignedOvers, chooseFloater, matchOverAssignments, normalizeTacticalMatchPlan, resolveBattingRule, selectSpecialBattingRule, shapeSpecialBattingRuleRuns, type OverAssignment } from "./tacticalMatchPlan";
+import { getFloaterRules } from "./tacticalMatchPlan";
 
 export const MATCH_SIMULATION_VERSION = 4;
 export const DEFAULT_CHASING_SCORING_BONUS = 0;
@@ -299,6 +301,10 @@ export interface MatchOver {
 }
 
 export type BowlerSelectionReason =
+  | "planned-over"
+  | "preferred-over"
+  | "plan-unavailable"
+  | "plan-reserved"
   | "phase-specialist"
   | "death-reserved"
   | "target-at-risk"
@@ -1631,7 +1637,7 @@ export function bowlingTypeSelectionBonus(
   return clamp(-weightedSignal * 50 * 0.18 * captaincyAccess, -5.5, 5.5);
 }
 
-function battingIntent(
+export function battingIntent(
   tactics: TeamTactics,
   overNumber: number,
   wickets: number,
@@ -1937,6 +1943,7 @@ function chooseBowler(
   matchState: BowlerSelectionMatchState,
   currentBatters: readonly [Player | undefined, Player | undefined],
   rng: SimulationRandom,
+  assignedOvers: readonly (OverAssignment | null)[] = [],
 ): BowlerSelection {
   const { powerplayEnd, deathStart } = inningsPhaseThresholds(inningsOvers);
   const maxBowlerOvers = Math.ceil(inningsOvers / 5);
@@ -1952,7 +1959,7 @@ function chooseBowler(
     (unavailableUntilOver.get(player.id) ?? 0) <= overNumber
   ));
   const remainingOversAfterThis = inningsOvers - overNumber;
-  const feasible = restedWithCapacity.filter((candidate) => {
+  const rotationFeasible = withCapacity.filter((candidate) => {
     const remainingCapacity = new Map(pool.map((player) => [
       player.id,
       Math.max(0, maxBowlerOvers - Math.floor((ballsByBowler.get(player.id) ?? 0) / 6)),
@@ -1968,8 +1975,11 @@ function chooseBowler(
       remainingCapacity,
     );
   });
+  const feasible = rotationFeasible.filter(player => restedWithCapacity.some(rested => rested.id === player.id));
   const eligible = feasible.length > 0
     ? feasible
+    : rotationFeasible.length > 0
+    ? rotationFeasible
     : restedWithCapacity.length > 0
     ? restedWithCapacity
     // A cooldown must never make completing 20 legal overs impossible.
@@ -2022,8 +2032,40 @@ function chooseBowler(
   const captaincyQuality = clamp(captaincyRating / 100, 0, 1);
   const phaseFitMultiplier = 0.94 + captaincyQuality * 0.12;
   const decisionNoise = 1.45 - captaincyQuality * 0.55;
-  const scored = eligible.map((player) => {
+  // Keep each nominated death bowler's planned capacity available. A score
+  // penalty alone can be outweighed by quality and exhaust the best bowler.
+  // Release the reservation when even the slow chase projection ends earlier.
+  const releaseDeathReserve = projectedFinishWindow !== undefined
+    && projectedFinishWindow.slow <= (deathStart - 1) * 6;
+  const protectedEligible = overNumber < deathStart && !releaseDeathReserve
+    ? eligible.filter(player => {
+      const reserved = plannedDeathSlots.get(player.id)?.length ?? 0;
+      const remaining = maxBowlerOvers - Math.floor((ballsByBowler.get(player.id) ?? 0) / 6);
+      return remaining - 1 >= reserved;
+    })
+    : eligible;
+  // Rotation feasibility and completing legal overs take priority if needed.
+  let selectionPool = protectedEligible.length ? protectedEligible : eligible;
+  const assignment = assignedOvers[overNumber - 1];
+  const hasFutureFixed = assignedOvers.slice(overNumber).some(slot => slot?.mode === "fixed");
+  const plannedEligible = (assignment?.mode === "fixed" ? withCapacity : eligible).filter(player => {
+    if (!hasFutureFixed && assignment?.mode !== "fixed") return true;
+    const capacity = new Map(pool.map(candidate => [candidate.id, Math.max(0, maxBowlerOvers - Math.ceil((ballsByBowler.get(candidate.id) ?? 0) / 6) - (candidate.id === player.id ? 1 : 0))]));
+    return canCompleteAssignedOvers(overNumber + 1, inningsOvers, player.id, capacity, assignedOvers);
+  });
+  if (hasFutureFixed && plannedEligible.length) selectionPool = plannedEligible;
+  if (assignment?.mode === "fixed") {
+    const assigned = plannedEligible.find(player => player.id === assignment.playerId);
+    if (assigned) return { player: assigned, reason: "planned-over" };
+  }
+  const scored = selectionPool.map((player) => {
     let score = player.currentBowling + bowlingPitchAdjustment(player, pitch);
+    // A requested matchup is a preference among feasible fielding players.
+    // Fixed overs return above; quotas, consecutive overs and injury availability
+    // have already constrained this pool. Both current batters can influence it.
+    if (currentBatters[0] && tactics.oppositionTargetBowlers?.[currentBatters[0].id] === player.id) score += 14;
+    if (currentBatters[1] && tactics.oppositionTargetBowlers?.[currentBatters[1].id] === player.id) score += 8;
+    if (assignment?.mode === "preferred" && assignment.playerId === player.id) score += 16;
     const ballsBowled = ballsByBowler.get(player.id) ?? 0;
     const phase = getInningsPhase(overNumber, inningsOvers);
     const phaseSelectionBonus = phaseBowlingSelectionBonus(player, phase);
@@ -2123,7 +2165,9 @@ function chooseBowler(
 
   const selected = scored.sort((left, right) => right.score - left.score)[0];
   return selected
-    ? { player: selected.player, reason: selected.reason }
+    ? { player: selected.player, reason: assignment
+      ? selected.player.id === assignment.playerId ? "preferred-over" : "plan-unavailable"
+      : hasFutureFixed && plannedEligible.length ? "plan-reserved" : selected.reason }
     : { player: pool[0], reason: "rotation-required" };
 }
 
@@ -2417,8 +2461,8 @@ export interface BattingAggressionScoringProfile {
 }
 
 /**
- * Converts aggression into tempo, not batting quality. A neutral 65 maps to an
- * target 157.5 SR and 95 maps to 185 SR. Extreme intent above 95 has a
+ * Converts aggression into tempo, not batting quality. A neutral 65 maps to a
+ * target 135 SR and 95 maps to 175 SR. Extreme intent above 95 has a
  * stronger curve. Targets include wicket balls and incidental extras; the
  * innings engine solves scoring and wicket chances together to preserve quality.
  */
@@ -2427,13 +2471,57 @@ export function battingAggressionScoringProfile(
 ): BattingAggressionScoringProfile {
   const aggression = clamp(battingAggression, 1, 99);
   const extremeIntent = Math.max(0, (aggression - 95) / 4);
-  const indicativeStrikeRate = 157.5 + (aggression - 65) * (27.5 / 30)
-    + 20 * extremeIntent * extremeIntent;
+  const indicativeStrikeRate = aggression <= 65
+    ? 135 + (aggression - 65)
+    : 135 + (aggression - 65) * (40 / 30)
+      + (85 / 3) * extremeIntent * extremeIntent;
   return {
-    tempoMultiplier: indicativeStrikeRate / 157.5,
+    tempoMultiplier: indicativeStrikeRate / 135,
     boundaryIntent: clamp((aggression - 65) / 34, -1, 1),
     indicativeStrikeRate,
   };
+}
+
+/** Average specialist opposition is 82 CA. Control changes scoring pace as
+ * well as the existing skill-dependent run-per-wicket budget. Keeping this
+ * separate from batting quality prevents the tempo solver undoing it. */
+export function bowlingTempoMultiplier(bowlingRating: number, economyControl?: number): number {
+  if (economyControl !== undefined && Number.isFinite(economyControl)) {
+    // Control carries most of run restriction; quality still affects wicket
+    // threat and a smaller share of pace. Avoid stacking the old full penalty.
+    return clamp(Math.exp((82 - bowlingRating) * 0.006
+      + (70 - clamp(economyControl, 1, 99)) * 0.012), 0.62, 1.22);
+  }
+  return clamp(Math.exp((82 - bowlingRating) * 0.024), 0.62, 1.32);
+}
+
+/** Stable within a save/season, independent of fixture order or reloads.
+ * Ordinary draws (80%) span -6% to +6%; rare good/bad years span
+ * -24% to -12% / +8% to +24%.
+ * Carryover smooths these draws; consistency scales their spread.
+ */
+export function seasonalEconomyMultiplier(playerId: string, seed?: string, consistency = 50): number {
+  if (!seed) return 1;
+  const [seasonKey, saveKey = ""] = seed.split(":");
+  const draw = (year: string): number => {
+    const key = `${year}:${saveKey}:${playerId}:economy-season-v1`;
+    const roll = deterministicUnit(`${key}:kind`);
+    const amount = deterministicUnit(`${key}:amount`);
+    if (roll < 0.1) return -0.24 + amount * 0.12;
+    if (roll > 0.9) return 0.08 + amount * 0.16;
+    return -0.06 + amount * 0.12;
+  };
+  const year = Number(seasonKey);
+  const previousKey = Number.isInteger(year) ? String(year - 1) : `${seasonKey}:previous`;
+  // Consistency can narrow ordinary variation, but never expand its ±6% cap.
+  const spread = 1 - Math.max(0, (clamp(consistency, 1, 99) - 50) / 49) * 0.25;
+  return 1 + (0.75 * draw(seasonKey) + 0.25 * draw(previousKey)) * spread;
+}
+
+/** The aggression curve is calibrated at a 185-run neutral venue. A flatter
+ * pitch can still be quicker without every ordinary ground hitting a cap. */
+export function venueTempoMultiplier(expectedScore: number): number {
+  return clamp(expectedScore / 185, 0.82, 1.18);
 }
 
 /**
@@ -2570,13 +2658,17 @@ export function calibrateBattingTempo(
   aggression: number,
   contextMultiplier = 1,
   scoringChance = 1,
+  oppositionTempoMultiplier = 1,
 ) {
   const q = clamp(neutralWicketProbability, 0.0001, 0.8);
   const s = clamp(scoringChance, 0.01, 1);
-  const neutralRunsPerBall = expectedRunsFromWeights(neutralWeights) * (1 - q) * s;
+  const oppositionTempo = clamp(oppositionTempoMultiplier, 0.62, 1.32);
+  // Bowling control reduces both scoring pace and the scoring budget. Applying
+  // it only to pace would inadvertently reduce the bowler's wicket threat.
+  const neutralRunsPerBall = expectedRunsFromWeights(neutralWeights) * (1 - q) * s * oppositionTempo;
   const runsPerWicketChance = Math.max(0.001, neutralRunsPerBall / q);
   const targetRunsPerBall = battingAggressionScoringProfile(aggression).indicativeStrikeRate / 100
-    * clamp(contextMultiplier, 0.85, 1.15);
+    * clamp(contextMultiplier, 0.45, 1.8) * oppositionTempo;
   // Respect the maximum achievable scoring distribution; report any limitation
   // instead of claiming to reach a target outside the feasible range.
   const maxWicketProbability = Math.min(0.8, 5.8 * s / (runsPerWicketChance + 5.8 * s));
@@ -2882,11 +2974,13 @@ function battingOutcomeWeights(
   const threeRunFactor = 1 + runningPressure * 3;
   const twoRunMultiplier = 1 + runningPressure * 0.12;
 
-  let dotWeight = 0.34 * dotFactor;
-  let singleWeight = 0.37 * rotationMultiplier * singleOpportunityMultiplier;
-  let twoWeight = 0.09 * rotationMultiplier * twoRunMultiplier * clamp(1.05 - conditions.outfieldSpeedRating * 0.02, 0.82, 1.05);
-  let fourWeight = 0.14 * boundaryFactor * clamp(conditions.outfieldSpeedRating / 7.5, 0.72, 1.25);
-  let sixWeight = 0.052 * boundaryFactor ** 1.35 * clamp(69 / averageBoundary, 0.8, 1.3);
+  // More rotation and a smaller neutral boundary budget keep run production
+  // credible before aggression redistributes it into a particular tempo.
+  let dotWeight = 0.38 * dotFactor;
+  let singleWeight = 0.44 * rotationMultiplier * singleOpportunityMultiplier;
+  let twoWeight = 0.11 * rotationMultiplier * twoRunMultiplier * clamp(1.05 - conditions.outfieldSpeedRating * 0.02, 0.82, 1.05);
+  let fourWeight = 0.11 * boundaryFactor * clamp(conditions.outfieldSpeedRating / 7.5, 0.72, 1.25);
+  let sixWeight = 0.045 * boundaryFactor ** 1.35 * clamp(69 / averageBoundary, 0.8, 1.3);
   const threeWeight = 0.0035 * threeRunFactor;
   ({ dotWeight, fourWeight, sixWeight } = playableBattingApproachScoringWeights(
     playableBattingApproach,
@@ -3014,7 +3108,9 @@ function createPlayerLuck(
     if (!player) return [playerId, 0];
     const ageConsistency = player.age >= 25 && player.age <= 33 ? 0.85 : 1.15;
     
-    const seasonalForm = adjustedSeasonalForm.get(playerId) ?? 0;
+    // Economy has its own season-long form below. Keep bowling ability's
+    // temporary adjustment focused on recent form and match luck.
+    const seasonalForm = discipline === "bowling" ? 0 : adjustedSeasonalForm.get(playerId) ?? 0;
     const baseRating = discipline === "batting" ? player.currentBatting : player.currentBowling;
     const recentForm = formAdjustments[playerId] ?? 0;
     const positivePersistence = player.age <= 33
@@ -3261,20 +3357,23 @@ function activateCollapseImpact(
   return { incomingId: incoming.id, outgoingId: outgoing.id };
 }
 
-function activateStandardBatFirstImpact(
-  teamState: ActiveTeamState,
+export function projectBatFirstImpact(
+  startingXI: readonly string[],
+  finalXI: readonly string[],
+  plan: { impactSubs: readonly string[]; plannedImpactPlayerId?: string | null; plannedOutgoingPlayerId?: string | null; captainId?: string | null; viceCaptainId?: string | null },
   players: Record<string, Player>,
-): void {
-  if (teamState.impactUsed) return;
-  const startingSet = new Set(teamState.startingXI);
-  const candidates = teamState.plan.impactSubs
+) {
+  const legalSwap = (incoming: Player, outgoing: Player) =>
+    finalXI.filter(id => id !== outgoing.id && isOverseas(players[id])).length + Number(isOverseas(incoming)) <= 4;
+  const startingSet = new Set(startingXI);
+  const candidates = plan.impactSubs
     .map((playerId) => players[playerId])
     .filter((player): player is Player => Boolean(
       player
       && !startingSet.has(player.id)
       && isBowlingOption(player),
     ));
-  const planned = candidates.find((player) => player.id === teamState.plan.plannedImpactPlayerId);
+  const planned = candidates.find((player) => player.id === plan.plannedImpactPlayerId);
   const rankedIncoming = [
     ...(planned ? [planned] : []),
     ...[...candidates]
@@ -3284,35 +3383,35 @@ function activateStandardBatFirstImpact(
     || right.currentBatting - left.currentBatting
       )),
   ];
-  if (rankedIncoming.length === 0) return;
+  if (rankedIncoming.length === 0) return null;
 
-  const plannedOutgoing = teamState.plan.plannedOutgoingPlayerId
-    ? players[teamState.plan.plannedOutgoingPlayerId]
+  const plannedOutgoing = plan.plannedOutgoingPlayerId
+    ? players[plan.plannedOutgoingPlayerId]
     : undefined;
-  const outgoingCandidates = teamState.finalXI
+  const outgoingCandidates = finalXI
     .map((playerId) => players[playerId])
     .filter((player): player is Player => Boolean(player));
-  const preferredOutgoing = plannedOutgoing && teamState.finalXI.includes(plannedOutgoing.id)
+  const preferredOutgoing = plannedOutgoing && finalXI.includes(plannedOutgoing.id)
     ? plannedOutgoing
     : selectBattingFirstOutgoingBatter(
         outgoingCandidates,
         new Set([
-          teamState.plan.captainId,
-          teamState.plan.viceCaptainId,
+          plan.captainId,
+          plan.viceCaptainId,
         ].filter((playerId): playerId is string => Boolean(playerId))),
       );
   const pairing = rankedIncoming
     .map((incoming) => ({
       incoming,
-      outgoing: preferredOutgoing && isLegalImpactSwap(teamState, incoming, preferredOutgoing, players)
+      outgoing: preferredOutgoing && legalSwap(incoming, preferredOutgoing)
         ? preferredOutgoing
         : selectBattingFirstOutgoingBatter(
             outgoingCandidates,
             new Set([
-              teamState.plan.captainId,
-              teamState.plan.viceCaptainId,
+              plan.captainId,
+              plan.viceCaptainId,
               ...outgoingCandidates
-                .filter((outgoing) => !isLegalImpactSwap(teamState, incoming, outgoing, players))
+                .filter((outgoing) => !legalSwap(incoming, outgoing))
                 .map((outgoing) => outgoing.id),
             ].filter((playerId): playerId is string => Boolean(playerId))),
           ),
@@ -3320,8 +3419,15 @@ function activateStandardBatFirstImpact(
     .find((candidate) => candidate.outgoing);
   const incoming = pairing?.incoming;
   const outgoing = pairing?.outgoing;
-  if (!incoming || !outgoing) return;
+  return incoming && outgoing ? { incoming, outgoing, planned } : null;
 
+}
+
+function activateStandardBatFirstImpact(teamState: ActiveTeamState, players: Record<string, Player>): void {
+  if (teamState.impactUsed) return;
+  const pairing = projectBatFirstImpact(teamState.startingXI, teamState.finalXI, teamState.plan, players);
+  if (!pairing) return;
+  const { incoming, outgoing, planned } = pairing;
   teamState.finalXI = teamState.finalXI
     .filter((playerId) => playerId !== outgoing.id);
   teamState.finalXI.push(incoming.id);
@@ -3776,6 +3882,19 @@ function simulateInnings(context: InningsContext): MatchInnings {
     target,
   } = context;
   const maxOvers = context.maxOvers ?? 20;
+  const savedBattingPlan = context.tactics.matchPlans?.[context.inningsNumber === 1 ? "battingFirst" : "bowlingFirst"];
+  const battingBase = normalizeTacticalMatchPlan(savedBattingPlan);
+  const battingChanges = context.tactics.opponentPlanChanges?.[bowling.team.id]?.[context.inningsNumber === 1 ? "battingFirst" : "bowlingFirst"];
+  const battingInstructions = { ...battingBase, battingCoverage: { ...battingBase.battingCoverage, ...Object.fromEntries(Object.entries(battingChanges?.batting ?? {}).map(([id, changes]) => [id, { ...battingBase.battingCoverage?.[id], ...changes }])) } };
+  const battingRuleStarts = new Map<string, (number | undefined)[]>();
+  const teamBattingTactics = battingInstructions?.response
+    ? { ...context.tactics, batting: { ...context.tactics.batting, ...battingInstructions.response } }
+    : context.tactics;
+  const bowlingScenario = context.inningsNumber === 1 ? "bowlingFirst" : "battingFirst";
+  const bowlingBase = normalizeTacticalMatchPlan(context.bowlingTactics.matchPlans?.[bowlingScenario]);
+  const bowlingChanges = context.bowlingTactics.opponentPlanChanges?.[batting.team.id]?.[bowlingScenario]?.bowling ?? {};
+  const bowlingInstructions = { ...bowlingBase, overs: bowlingBase.overs.map((assignment, i) => bowlingChanges[String(i)] ?? assignment) };
+  const assignedOvers = matchOverAssignments(bowlingInstructions, maxOvers);
   const { powerplayEnd, deathStart } = inningsPhaseThresholds(maxOvers);
   const isAfternoon = isAfternoonMatch(context.time);
   const dewScoringBonus = context.inningsNumber === 2
@@ -3806,6 +3925,9 @@ function simulateInnings(context: InningsContext): MatchInnings {
     undefined,
     context.seed,
   );
+  const seasonEconomy = new Map(allParticipantIds.map(id => [id, seasonalEconomyMultiplier(
+    id, context.seed, players[id]?.bowlingConsistency ?? players[id]?.consistency ?? 50,
+  )]));
   const battingEntries = new Map<string, MutableBattingEntry>();
   const ensureBattingEntry = (playerId: string) => {
     if (!battingEntries.has(playerId)) {
@@ -4002,6 +4124,7 @@ function simulateInnings(context: InningsContext): MatchInnings {
       },
       [players[strikerId], players[nonStrikerId]],
       rng,
+      assignedOvers,
     );
     const requestedBowlerId = context.playableDecisions?.bowlerByOver[
       `${context.inningsNumber}-${overNumber}`
@@ -4042,6 +4165,7 @@ function simulateInnings(context: InningsContext): MatchInnings {
     const overStartWickets = wickets;
     const overDeliveries: MatchDelivery[] = [];
     const overBatterIds = new Set<string>();
+    let teamBoundariesThisOver = 0;
     let legalBallsThisOver = 0;
     let deliveryInOver = 0;
 
@@ -4128,7 +4252,8 @@ function simulateInnings(context: InningsContext): MatchInnings {
         + heatBatterPenalty
       );
       const deliveryControl = context.playableDecisions?.deliveryControls[deliveryId];
-      const situationalField = chooseSituationalField(
+      const oppositionApproach = context.bowlingTactics.oppositionApproaches?.[striker.id];
+      const automaticField = chooseSituationalField(
         context.bowlingTactics.bowling.field,
         overNumber,
         wickets,
@@ -4136,6 +4261,8 @@ function simulateInnings(context: InningsContext): MatchInnings {
         target,
         maxOvers,
       );
+      const situationalField = !deliveryControl?.fieldPlan && !deliveryControl?.fieldPositions && oppositionApproach && oppositionApproach !== "neutral"
+        ? oppositionApproach : automaticField;
       // Every playable-match field passes through the same legality gate before
       // it can influence an outcome. This also repairs illegal AI controls from
       // an older saved session instead of allowing them to remain in play.
@@ -4164,15 +4291,57 @@ function simulateInnings(context: InningsContext): MatchInnings {
               : 0;
       const isCollapsePhase = (overNumber <= 8 && wickets >= 3) || wickets >= 5;
       const isHighChasePhase = Boolean(target && (target - runs) / Math.max(1, (maxOvers * 6 - (overNumber - 1) * 6)) > 0.16);
-      const intent = battingIntent(
-        context.tactics,
+      const bowlingType = isSpinner(bowler) ? "spin" : isPacer(bowler) ? "pace" : undefined;
+      const recentWickets = fallOfWickets.filter(fall => legalBalls - fall.legalBall <= 12).length;
+      const rules = battingInstructions?.battingRules?.[striker.id];
+      let ruleIntent: number | undefined;
+      if (rules?.length) {
+        const starts = battingRuleStarts.get(striker.id) ?? [];
+        battingRuleStarts.set(striker.id, starts);
+        ruleIntent = resolveBattingRule(rules, starts, {
+          over: overNumber, wickets, recentWickets, bowlingType, batterBalls: strikerEntry.balls,
+          requiredRate: target ? (target - runs) * 6 / Math.max(1, maxOvers * 6 - legalBalls) : undefined,
+        });
+      }
+      const coverage = battingInstructions?.battingCoverage?.[striker.id];
+      const phase = battingCoveragePhase(overNumber, powerplayEnd, deathStart);
+      const chaseUnderPressure = target !== undefined
+        && (target - runs) / Math.max(1, maxOvers * 6 - legalBalls) > target / (maxOvers * 6);
+      const selectedCoverage = (chaseUnderPressure ? coverage?.chase : undefined)
+        ?? coverage?.[phase];
+      const coverageIntent = selectedCoverage ? BATTING_COVERAGE_INTENTS[selectedCoverage] : undefined;
+      const teamIntent = battingIntent(
+        teamBattingTactics,
         overNumber,
         wickets,
         runs,
         target,
         maxOvers,
-      ) + bowlerRespectIntentAdjustment(battingRating, bowlingRating)
-        + battingApproachAdjustment
+      );
+      const specialRules = battingInstructions?.battingTeamRules;
+      const specialRule = deliveryControl?.battingApproach || !specialRules?.length ? undefined : selectSpecialBattingRule(
+        specialRules,
+        {
+          over: overNumber, wickets, inningsBalls: legalBalls,
+          boundariesThisOver: teamBoundariesThisOver,
+          strikerBatting: striker.currentBatting, partnerBatting: nonStriker.currentBatting,
+          partnerPosition: batting.battingOrder.indexOf(nonStriker.id) + 1,
+          requiredRate: target ? (target - runs) * 6 / Math.max(1, maxOvers * 6 - legalBalls) : undefined,
+        },
+      );
+      const activeModes = deliveryControl?.battingApproach ? undefined
+        : activeBattingTarget(battingInstructions?.battingTargets?.[striker.id], bowlingType, overNumber);
+      const plannedIntent = deliveryControl?.battingApproach
+        ? battingApproachAdjustment
+        : applySpecialBattingRuleIntent(applyBattingTarget(coverageIntent ?? ruleIntent ?? teamIntent, activeModes), specialRule);
+      const bowlerInstruction = context.tactics.bowlerBattingInstructions?.[bowler.id];
+      const previousBowlerOvers = oversDetail.filter(over => over.bowlerId === bowler.id);
+      const overTarget = bowlerInstruction?.overs[previousBowlerOvers.length];
+      const effectiveModes = deliveryControl?.battingApproach ? activeModes : applyBowlerOverTargetModes(activeModes, overTarget);
+      const approachAdjustment = bowlerInstruction ? ({ survive: -0.18, normal: 0, exploit: 0.12, "all-out": 0.22 }[bowlerInstruction.approach] ?? 0) : 0;
+      const previousSpellOver = previousBowlerOvers[previousBowlerOvers.length - 1];
+      const targetAdjustment = overTarget === "see-off" ? -0.16 : overTarget === "rotate" ? -0.04 : overTarget === "boundary" ? 0.10 : overTarget === "attack" ? 0.15 : overTarget === "react" && previousSpellOver ? previousSpellOver.runs >= 10 ? 0.10 : previousSpellOver.runs <= 5 ? -0.08 : 0 : 0;
+      const intent = plannedIntent + (deliveryControl?.battingApproach ? 0 : approachAdjustment + targetAdjustment) + bowlerRespectIntentAdjustment(battingRating, bowlingRating)
         + battingStaffModifiers.synergyModifier
         + battingStaffModifiers.battingControlModifier
         + (isCollapsePhase ? battingStaffModifiers.collapseMitigationFactor : 0)
@@ -4345,10 +4514,14 @@ function simulateInnings(context: InningsContext): MatchInnings {
             phaseWicketModifier += 0.004;
           }
         } else if (isMiddleOvers) {
+          // Boundary protection and rotation make the middle phase slower
+          // even when the batter's aggression and quality are unchanged.
+          phaseRunModifier -= 0.06;
           if (bowler.role === "Spin Bowler" && (conditions.pitch.favours.includes("spin-bowlers") || conditions.pitch.type === "turner")) {
             phaseWicketModifier += 0.003;
           }
         } else if (isDeathOvers) {
+          phaseRunModifier += 0.10;
           if (striker.isFinisher || striker.currentBatting >= 82) {
             phaseRunModifier += 0.075;
           }
@@ -4483,7 +4656,7 @@ function simulateInnings(context: InningsContext): MatchInnings {
         const runningPressure = groundRunningPressure(conditions);
         const dewScoringMultiplier = isDewActive ? 1 + dewScoringBonus : 1.0;
         const runEnvironment = clamp(
-          clamp(expectedCentre / 159, 0.84, 1.16)
+          venueTempoMultiplier(expectedCentre)
           * inningsEnvironment
           // Ratings remain decisive, but an uncapped linear multiplier made a
           // strong XI compound the same advantage into unrealistic season NRR.
@@ -4657,10 +4830,11 @@ function simulateInnings(context: InningsContext): MatchInnings {
           deliveryControl?.battingApproach,
           outcomeModifiers,
         );
-        // Only match context changes pace. Ability and score-based restraints
-        // remain in runEnvironment/neutralWeights and therefore in productivity.
-        const paceContext = clamp(expectedCentre / 159, 0.9, 1.1)
-          * clamp(inningsEnvironment, 0.96, 1.04)
+        // Opponent control must reach the final target: altering only neutral
+        // weights otherwise changes dismissals while the tilt restores SR.
+        // Batting quality and score restraints still govern productivity.
+        const paceContext = venueTempoMultiplier(expectedCentre)
+          * clamp(inningsEnvironment, 0.88, 1.12)
           * (1 + intent * 0.16)
           * phaseRunModifier * matchupRunModifier * rrrRunModifier
           * deteriorationRunModifier * pressureRunModifier
@@ -4669,11 +4843,13 @@ function simulateInnings(context: InningsContext): MatchInnings {
           * Math.sqrt(outcomeModifiers.four * outcomeModifiers.six / outcomeModifiers.dot)
           * (1 + tacticalBowling.scoring);
         const tempo = calibrateBattingTempo(
-          neutralWeights,
+          shapeSpecialBattingRuleRuns(neutralWeights, effectiveModes, specialRule, displayLegalBall === 6 && !isNoBall),
           phaseAdjustedWicketProbability * aggressionUnderPressure.wicketRiskMultiplier * bowlingHaulMultiplier,
           aggressionUnderPressure.effectiveAggression,
           paceContext,
           1 - byeProbability - 0.012,
+          bowlingTempoMultiplier(bowlingRating, bowler.bowlingEconomyControl)
+            * (seasonEconomy.get(bowler.id) ?? 1),
         );
         const effectiveWicketProbability = isFreeHit ? 0.002 + runningPressure * 0.001 : tempo.wicketProbability;
         const wicketOutcomeRoll = rng.next();
@@ -4844,6 +5020,7 @@ function simulateInnings(context: InningsContext): MatchInnings {
         consecutiveDotBalls += 1;
       }
       if (runsOffBat === 4 || runsOffBat === 6) {
+        teamBoundariesThisOver += 1;
         consecutiveBoundaries += 1;
       } else if (isLegal) {
         consecutiveBoundaries = 0;
@@ -4934,6 +5111,12 @@ function simulateInnings(context: InningsContext): MatchInnings {
         wicketsAfter: wickets,
       };
       overDeliveries.push(delivery);
+      if (overDeliveries.length === 1 && assignedOvers.some(Boolean)) {
+        const instruction = assignedOvers[overNumber - 1];
+        if (bowlerSelectionReason === "planned-over") delivery.commentary = `Bowling plan: ${bowler.name} takes the fixed over. ${delivery.commentary}`;
+        else if (bowlerSelectionReason === "preferred-over") delivery.commentary = `Bowling plan: preferred bowler ${bowler.name}. ${delivery.commentary}`;
+        else if (bowlerSelectionReason === "plan-unavailable" && instruction) delivery.commentary = `Bowling plan adjusted: ${players[instruction.playerId]?.name ?? "assigned bowler"} replaced by ${bowler.name} for availability, rotation or match conditions. ${delivery.commentary}`;
+      }
 
       if (wicket) {
         if (
@@ -4950,9 +5133,21 @@ function simulateInnings(context: InningsContext): MatchInnings {
             ensureBattingEntry(impact.incomingId);
           }
         }
-        const requestedBatterId = context.playableDecisions?.batterByWicket[
+        const manualBatterId = context.playableDecisions?.batterByWicket[
           `${context.inningsNumber}-${wickets}`
         ];
+        const validManualBatterId = manualBatterId && batting.finalXI.includes(manualBatterId)
+          && manualBatterId !== strikerId && manualBatterId !== nonStrikerId
+          && !fallOfWickets.some(fall => fall.playerId === manualBatterId)
+          && batting.battingOrder.indexOf(manualBatterId) >= nextBatterIndex ? manualBatterId : undefined;
+        const floaterId = wickets < 10 && legalBalls < maxOvers * 6 && (!target || runs < target) ? chooseFloater(
+          getFloaterRules(battingInstructions), batting.battingOrder, nextBatterIndex,
+          batting.finalXI, legalBalls, maxOvers, isSpinner(bowler) ? "spin" : isPacer(bowler) ? "pace" : undefined,
+          target ? (target - runs) * 6 / Math.max(1, maxOvers * 6 - legalBalls) : undefined,
+          wickets,
+        ) : undefined;
+        const requestedBatterId = validManualBatterId ?? floaterId;
+        if (!validManualBatterId && floaterId) delivery.commentary += ` Tactical promotion: ${players[floaterId]?.name} comes in at No. ${nextBatterIndex + 1} under the floater rule.`;
         if (requestedBatterId) {
           if (!batting.battingOrder.includes(requestedBatterId)) {
             if (batting.finalXI.includes(requestedBatterId)) {
@@ -4960,7 +5155,7 @@ function simulateInnings(context: InningsContext): MatchInnings {
             }
           }
           const requestedBatterIndex = batting.battingOrder.indexOf(requestedBatterId);
-          if (requestedBatterIndex >= 0) {
+          if (requestedBatterIndex >= nextBatterIndex) {
             const [requestedBatter] = batting.battingOrder.splice(requestedBatterIndex, 1);
             batting.battingOrder.splice(nextBatterIndex, 0, requestedBatter);
           }

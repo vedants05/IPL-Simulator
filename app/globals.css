@@ -375,7 +375,7 @@ body {
   container-type: size;
 }
 .league-personnel-event + .league-personnel-event {
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--ink);
   padding-top: 0.25rem;
 }
 
@@ -407,6 +407,32 @@ body {
   .league-personnel-stats { padding-right: 0.5rem; }
   .league-personnel-stat { gap: 0.35rem; }
   .league-personnel-label { font-size: 0.45rem; }
+}
+
+/* Highlight only the individual email that the pointer will open. */
+.home-inbox-email:hover {
+  border-color: color-mix(in srgb, var(--ink) 40%, transparent) !important;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ink) 15%, transparent);
+  background-color: color-mix(in srgb, var(--accent) 5%, var(--surface));
+}
+
+/* Keep player updates beside the totals in the compact league medical tile. */
+.league-injury-tile {
+  container-name: league-injury;
+  container-type: size;
+}
+.league-injury-update + .league-injury-update {
+  border-top: 1px solid var(--ink);
+  padding-top: 0.25rem;
+}
+@container league-injury (max-height: 8rem) {
+  .league-injury-kicker { display: none; }
+  .league-injury-icon { width: 1.25rem; height: 1.25rem; }
+  .league-injury-header { padding-bottom: 0.3rem; }
+  .league-injury-body { margin-top: 0.35rem; }
+}
+@container league-injury (max-width: 22rem) {
+  .league-injury-body { grid-template-columns: 6rem minmax(0, 1fr); gap: 0.5rem; }
 }
 
 @container club-profile-summary (max-height: 31rem) {
@@ -685,4 +711,94 @@ html.theme-changing *::after {
 .player-search-rating-range input[type="range"]:focus-visible::-webkit-slider-thumb {
   outline: 2px solid var(--ink);
   outline-offset: 2px;
+}
+/* Season rankings: discipline colours remain readable across all themes. */
+.season-player-stats { --stats-color: #f59e0b; }
+.season-player-stats[data-discipline="bowling"] { --stats-color: #a78bfa; }
+.season-player-stats[data-discipline="fielding"] { --stats-color: #14b8a6; }
+.season-player-stats [data-category="batting"] { --category-color: #f59e0b; }
+.season-player-stats [data-category="bowling"] { --category-color: #a78bfa; }
+.season-player-stats [data-category="fielding"] { --category-color: #14b8a6; }
+.season-player-stats [data-category] {
+  border-bottom: 3px solid color-mix(in srgb, var(--category-color) 60%, transparent);
+  color: color-mix(in srgb, var(--category-color) 40%, var(--ink));
+}
+.season-player-stats [data-category][aria-pressed="true"] {
+  background: color-mix(in srgb, var(--category-color) 18%, var(--surface));
+  border-color: var(--category-color);
+  color: var(--ink);
+}
+.season-player-stats .stats-sidebar-heading,
+.season-player-stats [data-ranking-toolbar] {
+  background: linear-gradient(110deg, color-mix(in srgb, var(--stats-color) 13%, var(--surface)), var(--surface));
+  box-shadow: inset 3px 0 var(--stats-color);
+}
+.season-player-stats [data-statistic][aria-pressed="true"] {
+  background: color-mix(in srgb, var(--stats-color) 13%, var(--surface));
+  border-color: color-mix(in srgb, var(--stats-color) 55%, var(--ink));
+  box-shadow: inset 3px 0 var(--stats-color);
+}
+.season-player-stats [data-statistic] svg,
+.season-player-stats th:last-child,
+.season-player-stats td:last-child {
+  color: color-mix(in srgb, var(--stats-color) 50%, var(--ink));
+}
+.season-player-stats td:last-child {
+  background: color-mix(in srgb, var(--stats-color) 6%, transparent);
+}
+.season-player-stats .stats-rank {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  color: var(--text-secondary);
+}
+.season-player-stats [data-podium="1"] { --podium-color: #eab308; }
+.season-player-stats [data-podium="2"] { --podium-color: #94a3b8; }
+.season-player-stats [data-podium="3"] { --podium-color: #d97706; }
+.season-player-stats [data-podium] .stats-rank {
+  background: color-mix(in srgb, var(--podium-color) 20%, var(--surface));
+  color: color-mix(in srgb, var(--podium-color) 45%, var(--ink));
+  border: 1px solid color-mix(in srgb, var(--podium-color) 65%, var(--ink));
+}
+.season-player-stats tr[data-user-team="true"] {
+  background: color-mix(in srgb, var(--stats-color) 9%, var(--surface));
+  box-shadow: inset 3px 0 var(--stats-color);
+}
+.season-player-stats tbody tr:hover {
+  background: color-mix(in srgb, var(--stats-color) 12%, var(--surface));
+}
+.season-player-stats[data-ranking-mode="teams"] table {
+  height: 100%;
+  table-layout: fixed;
+  font-size: 11px;
+}
+.season-player-stats[data-ranking-mode="teams"] thead { height: 32px; }
+.season-player-stats[data-ranking-mode="teams"] th,
+.season-player-stats[data-ranking-mode="teams"] td {
+  min-width: 0;
+  padding: 3px 8px;
+  overflow-wrap: anywhere;
+}
+.season-player-stats[data-ranking-mode="teams"] th:first-child { width: 7%; }
+.season-player-stats[data-ranking-mode="teams"] th:nth-child(2) { width: 31%; }
+.season-player-stats[data-ranking-mode="teams"] td:nth-child(2) > span {
+  padding: 3px 8px;
+  font-size: 11px;
+}
+.scout-slot-placeholder {
+  /* Explicit equal-length dashes avoid browser-dependent side patterns. */
+  border: 0;
+  background-color: color-mix(in srgb, var(--surface2) 25%, var(--surface));
+  background-image:
+    repeating-linear-gradient(to right, var(--text-secondary) 0 3px, transparent 3px 6px),
+    repeating-linear-gradient(to right, var(--text-secondary) 0 3px, transparent 3px 6px),
+    repeating-linear-gradient(to bottom, var(--text-secondary) 0 3px, transparent 3px 6px),
+    repeating-linear-gradient(to bottom, var(--text-secondary) 0 3px, transparent 3px 6px);
+  background-position: top left, bottom left, top left, top right;
+  background-size: 100% 1px, 100% 1px, 1px 100%, 1px 100%;
+  background-repeat: no-repeat;
+  box-sizing: border-box;
 }

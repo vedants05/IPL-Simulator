@@ -216,8 +216,9 @@ function FittedStatus({ text }: { text: string }) {
     const measure = measureRef.current;
     if (!container || !measure) return;
     const fit = () => {
-      const naturalWidth = measure.getBoundingClientRect().width;
-      const availableWidth = container.clientWidth;
+      // Both widths must use layout pixels; the profile canvas can be scaled.
+      const naturalWidth = measure.scrollWidth;
+      const availableWidth = Math.max(0, container.clientWidth - 4);
       if (naturalWidth > 0 && availableWidth > 0) {
         setFontSize(Math.min(25, 25 * availableWidth / naturalWidth));
       }
@@ -225,11 +226,14 @@ function FittedStatus({ text }: { text: string }) {
     fit();
     const observer = new ResizeObserver(fit);
     observer.observe(container);
-    return () => observer.disconnect();
+    let active = true;
+    document.fonts.ready.then(() => { if (active) fit(); });
+    document.fonts.addEventListener("loadingdone", fit);
+    return () => { active = false; observer.disconnect(); document.fonts.removeEventListener("loadingdone", fit); };
   }, [text]);
 
-  return <div ref={containerRef} className="absolute inset-x-2 bottom-1.5 min-w-0 overflow-visible">
-    <span ref={measureRef} aria-hidden="true" className="pointer-events-none invisible absolute whitespace-nowrap font-barlow-condensed text-[25px] font-bold tracking-tight">{text}</span>
+  return <div ref={containerRef} className="absolute inset-x-2 bottom-1.5 min-w-0 overflow-hidden">
+    <span ref={measureRef} aria-hidden="true" className="pointer-events-none invisible absolute w-max whitespace-nowrap font-barlow-condensed text-[25px] font-bold tracking-tight">{text}</span>
     <p className="whitespace-nowrap pb-0.5 font-barlow-condensed font-bold leading-[1.35] tracking-tight text-accent" style={{ fontSize }}>{text}</p>
   </div>;
 }
@@ -912,7 +916,7 @@ export function PlayerProfileModal({
                     <span className="rounded-[2px] px-1.5 py-0.5 text-[8px] font-bold text-white" style={{ backgroundColor: currentTeam?.primaryColor ?? "var(--accent)" }}>OS</span>
                   )}
                   {isT20IRetiredOn(detailedPlayer, currentDate) && (
-                    <span className="rounded-[2px] border border-slate-400/40 bg-slate-500/15 px-1.5 py-0.5 text-[8px] font-bold text-text-secondary" title={t20iRetirementDescription(detailedPlayer)}>T20I Retired{detailedPlayer.t20iRetirement?.effectiveOn ? ` · ${formatDisplayDate(detailedPlayer.t20iRetirement.effectiveOn)}` : ""}</span>
+                    <span className="inline-flex h-4 items-center rounded-[2px] border border-slate-400/40 bg-slate-500/15 px-1.5 text-[8px] font-bold leading-none text-text-secondary" title={t20iRetirementDescription(detailedPlayer)}>T20I Retired{detailedPlayer.t20iRetirement?.effectiveOn ? ` · ${formatDisplayDate(detailedPlayer.t20iRetirement.effectiveOn)}` : ""}</span>
                   )}
                   <span
                     className="rounded-[2px] border px-1.5 py-0.5 text-[8px] font-bold"
@@ -922,14 +926,16 @@ export function PlayerProfileModal({
                   >
                     {detailedPlayer.isCapped ? "Capped" : "Uncapped"}
                   </span>
+                </span>
+                <span className="flex items-baseline gap-2 whitespace-nowrap">
+                  <span>Age {detailedPlayer.age} · {formatDateOfBirth(detailedPlayer.dateOfBirth)}</span>
                   {detailedPlayer.isCapped && detailedPlayer.internationalDebutDate
                     && detailedPlayer.internationalDebutDate <= currentDate && (
-                    <span className="rounded-[2px] border border-border bg-bg px-1.5 py-0.5 text-[8px] font-bold text-text-secondary">
+                    <span className="inline-flex h-4 items-center rounded-[2px] border border-border bg-bg px-1.5 text-[8px] font-bold leading-none text-text-secondary">
                       Intl debut · {formatDateOfBirth(detailedPlayer.internationalDebutDate)}
                     </span>
                   )}
                 </span>
-                <span className="flex items-end whitespace-nowrap">Age {detailedPlayer.age} · {formatDateOfBirth(detailedPlayer.dateOfBirth)}</span>
               </div>
             </div>
           {/* Player details across the header */}
@@ -1081,11 +1087,11 @@ export function PlayerProfileModal({
           <div className={`grid h-full min-h-0 grid-cols-[minmax(0,2.8fr)_minmax(300px,0.95fr)] grid-rows-[minmax(0,1fr)] gap-2.5 ${isRetired ? "min-w-[1300px]" : profileTab === "info" ? "min-w-[1050px]" : "min-w-[900px]"}`}>
             <div ref={infoViewportRef} className={`relative min-h-0 ${!isRetired && profileTab === "info" ? "overflow-hidden" : "overflow-y-auto overscroll-contain pr-1"}`}>
               {!isRetired && profileTab === "stats" && <span aria-hidden="true" className="pointer-events-none absolute right-1 top-0 z-[1] h-[34px] w-[112px] rounded-bl-lg border-b border-l border-border bg-surface" />}
-              {!isRetired && <div className="absolute right-3 top-1 z-10 inline-flex rounded border border-border bg-surface/95 p-0.5 shadow-sm" role="tablist" aria-label="Player profile view">
+              {!isRetired && <div className={`absolute top-1 z-10 flex rounded border border-border bg-surface/95 p-0.5 shadow-sm ${profileTab === "info" ? "right-0" : "right-3"}`} style={{ width: profileTab === "info" ? 212 * infoLayout.scale : 112 }} role="tablist" aria-label="Player profile view">
                 {(["info", "stats"] as const).map((tab) => (
                   <button key={tab} type="button" role="tab" aria-selected={profileTab === tab}
                     onClick={() => setProfileTab(tab)}
-                    className={`rounded px-2 py-0.5 font-space-mono text-[8px] font-bold uppercase tracking-wide transition-colors ${profileTab === tab ? "bg-accent text-white" : "text-text-secondary hover:text-text-primary"}`}>
+                    className={`min-w-0 flex-1 rounded px-2 py-0.5 font-space-mono text-[8px] font-bold uppercase tracking-wide transition-colors ${profileTab === tab ? "bg-accent text-white" : "text-text-secondary hover:text-text-primary"}`}>
                     {tab}
                   </button>
                 ))}

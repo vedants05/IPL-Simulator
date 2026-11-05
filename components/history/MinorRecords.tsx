@@ -100,7 +100,6 @@ function brokenSeason(on?: string) {
 
 export default function MinorRecords({ minorRecords = MINOR_RECORDS, currentSeason }: MinorRecordsProps) {
   const [category, setCategory] = useState<RecordSection>("all");
-  const [verifiedOnly, setVerifiedOnly] = useState(false);
 
   // Group and sort team highest scores
   const highestScores = useMemo(() => {
@@ -237,7 +236,7 @@ export default function MinorRecords({ minorRecords = MINOR_RECORDS, currentSeas
   }, [minorRecords]);
 
   const rankedFamily = (prefix: string) => minorRecords
-    .filter((record) => record.id.startsWith(prefix) && (!verifiedOnly || record.verified))
+    .filter((record) => record.id.startsWith(prefix))
     .sort((left, right) => Number.parseInt(left.id.split("-").pop() ?? "0", 10) - Number.parseInt(right.id.split("-").pop() ?? "0", 10));
 
 
@@ -279,13 +278,12 @@ export default function MinorRecords({ minorRecords = MINOR_RECORDS, currentSeas
       && (recordBrokenSeason === currentSeason || recordBrokenSeason === currentSeason - 1);
     return (
       (category === "all" || (category === "recently_broken" ? isRecentlyBroken : recordSection(record) === category)) &&
-      (!verifiedOnly || record.verified) &&
       (!(["all", "team", "batting_positions", "partnerships", "age_debut", "milestones", "season_batting", "season_bowling", "career", "fielding"] as RecordSection[]).includes(category) || !isGroupedRecord(record))
     );
   }).sort((left, right) => category === "recently_broken"
     ? (right.lastBrokenOn ?? "").localeCompare(left.lastBrokenOn ?? "")
       || (right.breakSequence ?? 0) - (left.breakSequence ?? 0)
-    : 0), [category, currentSeason, verifiedOnly, minorRecords]);
+    : 0), [category, currentSeason, minorRecords]);
 
   const timelineEvents = useMemo(() => records.flatMap((record) => {
     const history: MinorRecordBreak[] = record.breakHistory ?? (record.lastBrokenOn ? [{
@@ -328,25 +326,14 @@ export default function MinorRecords({ minorRecords = MINOR_RECORDS, currentSeas
 
   return (
     <section className="compact-history min-h-[calc(100vh-200px)] bg-surface px-5 py-5 text-text-primary sm:px-8">
-      <div className="mb-5 flex flex-wrap items-end justify-between gap-4 border-b border-border pb-4">
-        <div>
-          <p className="font-space-mono text-[9px] font-bold uppercase tracking-[0.18em] text-accent">History archive</p>
-          <h1 className="mt-1 font-anton text-2xl uppercase">Minor Records</h1>
-          <p className="mt-1 text-xs text-text-secondary">Small, specialist IPL records. Each entry is editable data.</p>
-        </div>
-        <label className="flex items-center gap-2 text-xs text-text-secondary">
-          <input type="checkbox" checked={verifiedOnly} onChange={(event) => setVerifiedOnly(event.target.checked)} /> Verified only
-        </label>
-      </div>
-
-      <div className="mb-5 flex flex-wrap gap-2">
+      <div aria-label="Record categories" className="mb-4 flex flex-nowrap gap-1 overflow-x-auto pb-1">
         {recordSections.map((section) => (
           <button
             key={section.id}
             type="button"
             onClick={() => setCategory(section.id)}
             title={section.description}
-            className={`rounded border px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide ${category === section.id ? "border-accent bg-accent/10 text-accent" : "border-border text-text-secondary hover:text-text-primary"}`}
+            className={`shrink-0 whitespace-nowrap rounded border px-1.5 py-1.5 font-barlow-condensed text-[11px] font-bold uppercase tracking-wide ${category === section.id ? "border-accent bg-accent/10 text-accent" : "border-border text-text-secondary hover:text-text-primary"}`}
           >
             {section.label}
           </button>

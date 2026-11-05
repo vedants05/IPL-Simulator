@@ -7,6 +7,7 @@ import { useGameStore } from "@/lib/store/gameStore";
 import { refreshEditorAccess, useEditorAccess } from "@/lib/store/editorAccessStore";
 import { STAFF_RATING_ROLES, type StaffRatingAttributes } from "@/lib/logic/staffRatings";
 import type { CareerStaffContract } from "@/lib/logic/staffContracts";
+import { staffRolesAreCompatible } from "@/lib/logic/staffRoleRules";
 
 type AttributeKey = Exclude<keyof StaffRatingAttributes, "reputation">;
 type PersonKey = "reputation" | "potentialAbility" | "loyalty" | "ambition" | "adaptability" | "learningRate";
@@ -381,14 +382,14 @@ export function StaffEditorModal({ contract, onClose }: StaffEditorModalProps) {
                 </select>
               </Field>
               <Field label="Primary Role">
-                <select value={draft.primaryRole} onChange={(event) => update({ primaryRole: event.target.value, secondaryRole: draft.secondaryRole === event.target.value ? "" : draft.secondaryRole })} className={inputClass}>
+                <select value={draft.primaryRole} onChange={(event) => update({ primaryRole: event.target.value, secondaryRole: draft.secondaryRole === event.target.value || !staffRolesAreCompatible([event.target.value, draft.secondaryRole]) ? "" : draft.secondaryRole })} className={inputClass}>
                   {STAFF_RATING_ROLES.map((role) => <option key={role} value={role}>{roleLabel(role)}</option>)}
                 </select>
               </Field>
               <Field label="Secondary Role">
                 <select value={draft.secondaryRole} disabled={draft.teamId === FREE_AGENT} onChange={(event) => update({ secondaryRole: event.target.value })} className={inputClass}>
                   <option value="">None</option>
-                  {STAFF_RATING_ROLES.filter((role) => role !== draft.primaryRole).map((role) => <option key={role} value={role}>{roleLabel(role)}</option>)}
+                  {STAFF_RATING_ROLES.filter((role) => role !== draft.primaryRole && staffRolesAreCompatible([draft.primaryRole, role])).map((role) => <option key={role} value={role}>{roleLabel(role)}</option>)}
                 </select>
               </Field>
               <Field label="Salary (Cr / Year)">

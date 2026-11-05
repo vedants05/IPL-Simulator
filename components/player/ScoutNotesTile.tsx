@@ -84,27 +84,51 @@ function noteParagraph(player: Player, notes: Note[]): Array<{ topic: NoteTopic;
   });
 }
 
+function economyNote(player: Player): string | undefined {
+  const usage = player.bowlingUsage ?? classifyBowlingUsage(player);
+  const control = player.bowlingEconomyControl;
+  if (usage === "does_not_bowl" || usage === "emergency" || control == null || !Number.isFinite(control)) return;
+  const clauses = control >= 78 ? [
+    "keeps scoring opportunities to a minimum",
+    "makes it hard for batters to keep the run rate moving",
+    "gives the captain a strong option for containing runs",
+    "can tie down a batting side with economical overs",
+    "makes batters work for their runs",
+  ] : control <= 62 ? [
+    "can be expensive when batters look to accelerate",
+    "offers batters more scoring chances than most bowlers",
+    "can struggle to keep the scoring rate down",
+    "is vulnerable to conceding runs in clusters",
+    "has room to improve his control of the run rate",
+  ] : undefined;
+  if (!clauses) return;
+  const openings = ["With the ball, he", "When bowling, he", "Over a spell, he", "As a bowling option, he"];
+  const variant = stableIndex(`${player.id}:economy-control`, openings.length * clauses.length);
+  return `${openings[Math.floor(variant / clauses.length)]} ${clauses[variant % clauses.length]}.`;
+}
+
 function FittedImpression({ text }: { text: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const textRef = useRef<HTMLParagraphElement>(null);
-  const measureRef = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
     const container = containerRef.current;
     const paragraph = textRef.current;
-    const measure = measureRef.current;
-    if (!container || !paragraph || !measure) return;
+    if (!container || !paragraph) return;
     const fit = () => {
-      paragraph.style.fontSize = "26px";
-      const availableWidth = Math.max(1, container.clientWidth - 4);
-      const availableHeight = Math.max(1, container.clientHeight - 4);
-      const ratio = Math.min(1, availableWidth / Math.max(1, measure.getBoundingClientRect().width), availableHeight / Math.max(1, paragraph.scrollHeight));
-      paragraph.style.fontSize = `${26 * ratio}px`;
-      let attempts = 0;
-      while (attempts < 12 && (measure.getBoundingClientRect().width > availableWidth || paragraph.scrollHeight > availableHeight)) {
-        paragraph.style.fontSize = `${parseFloat(paragraph.style.fontSize) * 0.98}px`;
-        attempts++;
+      // Use layout pixels throughout: the app's scaled canvas changes client rects.
+      if (!container.clientWidth || !container.clientHeight) return;
+      paragraph.style.width = `${Math.max(1, container.clientWidth - 2)}px`;
+      const availableHeight = Math.max(1, container.clientHeight - 2);
+      let minimum = 1;
+      let maximum = 26;
+      for (let attempt = 0; attempt < 10; attempt++) {
+        const size = (minimum + maximum) / 2;
+        paragraph.style.fontSize = `${size}px`;
+        if (paragraph.scrollWidth <= paragraph.clientWidth && paragraph.scrollHeight <= availableHeight) minimum = size;
+        else maximum = size;
       }
+      paragraph.style.fontSize = `${minimum}px`;
     };
     fit();
     const observer = new ResizeObserver(fit);
@@ -115,7 +139,7 @@ function FittedImpression({ text }: { text: string }) {
   }, [text]);
 
   return <div ref={containerRef} className="flex h-full min-h-0 min-w-0 items-center justify-center overflow-hidden">
-    <p ref={textRef} className="w-full whitespace-nowrap text-center font-space-mono font-bold uppercase leading-[1.15] text-accent"><span ref={measureRef}>{text}</span></p>
+    <p ref={textRef} className="w-full whitespace-normal break-words text-center font-space-mono font-bold uppercase leading-[1.15] text-accent">{text}</p>
   </div>;
 }
 
@@ -327,7 +351,9 @@ export function ScoutNotesTile({ player }: { player: Player }) {
   const bowlingPhases = [player.powerplayBowling, player.middleOversBowling, player.deathBowling];
   const headline = impression(player);
   const notes = additionalNotes(player);
-  const sentences = noteParagraph(player, notes);
+  const economy = economyNote(player);
+  const sentences: Array<{ topic: string; text: string }> = noteParagraph(player, economy ? notes.slice(0, 4) : notes);
+  if (economy) sentences.push({ topic: "economy", text: economy });
   const paragraphText = sentences.map((sentence) => sentence.text).join(" ");
   useEffect(() => {
     const area = noteAreaRef.current;
@@ -370,8 +396,8 @@ export function ScoutNotesTile({ player }: { player: Player }) {
       <div className="mb-1 flex shrink-0 items-center justify-between gap-1">
         <div className="font-space-mono text-[8px] uppercase tracking-wider text-text-secondary">Additional notes</div>
       </div>
-      <div ref={noteAreaRef} className="min-h-0 flex-1 overflow-hidden">
-      {notes.length > 0
+      <div ref={noteAreaRef} className="min-h-0 flex-1 overflow-y-auto">
+      {sentences.length > 0
         ? <p ref={noteTextRef} className="font-space-mono font-bold leading-[1.2] text-text-primary" style={{ fontSize: noteFontSize }}>{sentences.map((sentence) => <span key={sentence.topic}>{sentence.text} </span>)}</p>
         : <p className="font-space-mono text-[9px] leading-snug text-text-secondary">No pronounced secondary tendency stands out.</p>}
       </div>

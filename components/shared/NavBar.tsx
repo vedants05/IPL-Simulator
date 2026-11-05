@@ -363,7 +363,7 @@ export default function NavBar() {
                 </button>
               ))}
             </div>
-            <span className="app-navbar-date tracking-wider" style={{ color: "var(--chrome-nav-muted)" }}>{formatDisplayDate(currentDate)}</span>
+            <span className="app-navbar-date tracking-wider" style={{ color: "var(--chrome-nav-muted)" }}>{formatDisplayDate(currentDate).replace(/-/g, "/")}</span>
           </>
         )}
         {isAuctionPage && auction && auction.phase === "live" && (

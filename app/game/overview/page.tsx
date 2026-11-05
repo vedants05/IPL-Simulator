@@ -1,5 +1,6 @@
 "use client";
 import { formatDisplayDate, formatLongDisplayDate } from "@/lib/logic/displayDate";
+import FittedInboxPreviews from "@/components/home/FittedInboxPreviews";
 import { useState, useEffect, useLayoutEffect, useMemo, useRef, Suspense, Fragment, useCallback, type CSSProperties, type ReactNode } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
@@ -74,6 +75,8 @@ import {
   getSeasonAccessStorageKey,
 } from "@/lib/config/featureFlags";
 import { findClubTeamOutcome, formatClubSeasonOutcome, getClubSeasonHistory, LAST_HISTORICAL_CLUB_SEASON } from "@/lib/data/clubHistory";
+import { estimateAuctionValue } from "@/lib/logic/auctionValueEstimate";
+import { likelyRetentionIds } from "@/lib/logic/retentionOutlook";
 import { getAuctionTypeForSeason } from "@/lib/logic/auctionCycle";
 import { getClubFigures, type ClubFigureTier } from "@/lib/data/clubFigures";
 import { selectTeamOfSeason } from "@/lib/logic/teamOfSeason";
@@ -117,6 +120,7 @@ import {
   calculateBattingPerformanceBonus,
   calculateBowlingPerformanceBonus,
   extractMvpEventStats,
+  oversToBalls,
   rankEmergingPlayerCandidates,
   rankMvpCandidates,
 } from "@/lib/logic/seasonAwards";
@@ -128,6 +132,8 @@ import { isActualMinorRecordBenchmark, reconcileCumulativeMinorRecords, reconcil
 const CaptaincyPage = dynamic(() => import("@/components/squad/CaptaincyPage"), { ssr: false });
 const SquadAnalysisPage = dynamic(() => import("@/components/squad/SquadAnalysisPage"), { ssr: false });
 const InjuryHubPage = dynamic(() => import("@/components/squad/InjuryHubPage"), { ssr: false });
+// Temporarily pause record notifications without affecting the records archive.
+const RECORD_NOTIFICATION_EMAILS_ENABLED = false;
 import { InjuryStatusMarker } from "@/components/squad/InjuryStatusMarker";
 const TradeHubPage = dynamic(() => import("@/components/scouting/TradeHubPage"), { ssr: false });
 const SeasonDataAnalysisPage = dynamic(() => import("@/components/scouting/SeasonDataAnalysisPage"), { ssr: false });
@@ -179,6 +185,7 @@ import { calculateStaffExpectedRanks } from "@/lib/logic/staffPerformanceReview"
 import { PlayerProfileModal, retiredSnapshotPlayer } from "@/components/player/PlayerProfileModal";
 import { PlayoffDiagramContent, ScheduleTileContent } from "@/components/season/ScheduleTileContent";
 import TournamentStatsDashboard from "@/components/season/TournamentStatsDashboard";
+import SeasonPlayerStatsPage from "@/components/season/SeasonPlayerStatsPage";
 import { getCuratorPitch, getDefaultCuratorPitch, getHomeStadium, HOME_STADIUMS } from "@/lib/data/pitchCurator";
 import {
   calculateGroundScoringImpact,
@@ -859,7 +866,7 @@ function ClubProfileSummaryTile({
             {featuredPlayers.map((player) => (
               <div key={player.id} className="min-w-0 text-center">
                 <div className="truncate font-barlow text-[10px] font-bold text-text-primary">{player.name}</div>
-                <div className="mt-0.5 font-space-mono text-[7px] font-bold text-accent">{getPlayerRating(player)}</div>
+                <div className="mt-0.5 font-space-mono text-[20px] font-bold leading-tight text-accent">{getPlayerRating(player)}</div>
               </div>
             ))}
           </div>
@@ -913,8 +920,29 @@ function ManagerOfficeSummaryTile({
   );
 }
 
+function BoardOwnershipSummary({ ownership }: { ownership: ReturnType<typeof getClubOwnership> }) {
+  return (
+    <div className="flex min-h-0 flex-1 flex-col justify-between gap-0.5 pb-1" data-board-ownership-summary>
+      <div className="grid grid-cols-[auto_minmax(0,1fr)] items-baseline gap-3 font-barlow-condensed text-[13px] leading-tight">
+        <div><span className="mr-1 text-text-secondary">CEO</span><span className="font-semibold text-text-primary">{ownership.ceo_name}</span></div>
+        <div className="min-w-0"><span className="mr-1 text-text-secondary">Owner</span><span className="font-semibold text-text-primary">{ownership.owner_name}</span></div>
+      </div>
+      <div className="font-anton text-[18px] uppercase leading-tight tracking-wide text-accent">{ownership.ownership_archetype.replaceAll("_", " ")}</div>
+      <div className="grid grid-cols-4 gap-1 border-t border-border/30 pt-1 text-[8px] leading-none">
+        {[
+          { label: "Ambition", value: `${ownership.ceo_ambition}/20` },
+          { label: "Patience", value: `${ownership.ceo_patience}/20` },
+          { label: "Target", value: `Top ${ownership.expected_position_baseline}` },
+          { label: "Min wins", value: ownership.min_acceptable_wins },
+        ].map(metric => <div key={metric.label} className="min-w-0"><span className="block font-space-mono text-[7px] leading-none text-text-secondary">{metric.label}</span><span className="mt-0.5 block whitespace-nowrap font-anton text-[16px] leading-none text-accent">{metric.value}</span></div>)}
+      </div>
+    </div>
+  );
+}
+
 function ClubSectionSummaryTile({
   title,
+  headerDetail,
   onOpen,
   children,
   contentPosition = "center",
@@ -922,6 +950,7 @@ function ClubSectionSummaryTile({
   compact = false,
 }: {
   title: string;
+  headerDetail?: string;
   onOpen: () => void;
   children: ReactNode;
   contentPosition?: "center" | "start";
@@ -935,10 +964,15 @@ function ClubSectionSummaryTile({
       className={`group flex h-full min-h-0 cursor-pointer flex-col overflow-hidden rounded-lg border-2 border-border bg-surface text-left transition-colors hover:border-accent ${compact ? "p-2.5" : "p-3"}`}
     >
       <div className={`flex shrink-0 items-start justify-between gap-3 ${hideHeaderDivider ? "pb-0.5" : `border-b border-[#16130f]/10 ${compact ? "pb-1" : "pb-2"}`}`}>
-        <div className="font-anton text-[14px] uppercase text-text-primary">{title}</div>
+        <div className="flex min-w-0 flex-1 items-baseline gap-1.5">
+          <div className="min-w-0 whitespace-nowrap text-text-primary">
+            {title.startsWith("BOARD & OWNERSHIP -") ? <><span className="font-anton text-[14px] uppercase">BOARD &amp; OWNERSHIP</span><span className="font-barlow-condensed text-[13px] font-bold">{title.slice("BOARD & OWNERSHIP".length)}</span></> : <span className="font-anton text-[14px] uppercase">{title}</span>}
+          </div>
+          {headerDetail && <span className="min-w-0 font-barlow-condensed text-[12px] font-semibold leading-tight text-text-primary dark:text-white">{headerDetail}</span>}
+        </div>
         <ArrowUpRight size={13} className="shrink-0 text-text-secondary group-hover:text-accent" />
       </div>
-      <div className={`flex min-h-0 flex-1 flex-col overflow-hidden pb-0.5 ${compact ? "pt-1" : "pt-2"} ${contentPosition === "start" ? "justify-start" : "justify-center"}`}>
+      <div className={`flex min-h-0 flex-1 flex-col overflow-hidden pb-0.5 ${title.startsWith("BOARD & OWNERSHIP -") ? "pt-0" : compact ? "pt-1" : "pt-2"} ${contentPosition === "start" ? "justify-start" : "justify-center"}`}>
         {children}
       </div>
     </button>
@@ -975,8 +1009,8 @@ function PitchCuratorSummaryTile({
       </div>
       <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-3">
         <div className="min-w-0">
-          <div className="font-space-mono text-[7px] font-bold uppercase tracking-wider text-text-secondary">Current surface</div>
-          <div className="mt-1 truncate text-[11px] font-bold text-text-primary">{pitchName}</div>
+          <div className="font-space-mono text-[9px] font-bold uppercase tracking-wider text-text-secondary">Current surface</div>
+          <div className="mt-1 font-barlow-condensed text-[17px] font-bold leading-tight text-text-primary">{pitchName}</div>
         </div>
         <div className="text-right">
           <div className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Expected</div>
@@ -1002,38 +1036,45 @@ function StadiumManagementSummaryTile({
   outfieldSpeed: string;
   onOpen: () => void;
 }) {
+  const metresScale = Math.min(108 / Math.max(1, wideMetres), 88 / Math.max(1, straightMetres));
+  const radiusX = Math.max(1, wideMetres) * metresScale;
+  const radiusY = Math.max(1, straightMetres) * metresScale;
+  const originX = 138;
+  const originY = 100;
   return (
     <button
       type="button"
       onClick={onOpen}
-      className="cursor-pointer overflow-hidden rounded-lg border-2 border-border bg-surface p-5 text-left transition-colors hover:border-accent"
+      className="relative cursor-pointer overflow-hidden rounded-lg border-2 border-border bg-surface p-5 text-left transition-colors hover:border-accent"
     >
-      <div className="mb-3 flex items-start justify-between gap-3 border-b border-[#16130f]/10 pb-2">
+      <div className="mb-3 flex w-[48%] items-start gap-2 pb-2">
         <div className="min-w-0">
           <div className="font-anton text-[14px] uppercase text-text-primary">STADIUM MANAGEMENT</div>
           <div className="mt-1 truncate font-space-mono text-[7px] font-bold uppercase text-text-secondary">
             {stadiumName}
           </div>
         </div>
-        <span className="rounded-full bg-success/15 px-2 py-1 font-space-mono text-[7px] font-bold uppercase text-success">
-          {outfieldSpeed}
-        </span>
       </div>
-      <div className="grid grid-cols-3 gap-3">
+      <div className="w-[42%]">
         <div>
-          <div className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Capacity</div>
-          <div className="mt-1 font-anton text-[16px] leading-none text-text-primary">
-            {new Intl.NumberFormat("en-GB").format(capacity)}
+          <div className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Outfield</div>
+          <div className="mt-1 font-anton text-[16px] uppercase leading-none text-success">
+            {outfieldSpeed}
           </div>
         </div>
-        <div>
-          <div className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Straight</div>
-          <div className="mt-1 font-anton text-[16px] leading-none text-text-primary">{straightMetres}M</div>
-        </div>
-        <div>
-          <div className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Wide</div>
-          <div className="mt-1 font-anton text-[16px] leading-none text-text-primary">{wideMetres}M</div>
-        </div>
+      </div>
+      <div className="pointer-events-none absolute inset-y-2 right-2 w-[53%]">
+        <svg viewBox="0 0 170 116" className="h-full w-full" role="img" aria-label={`Quarter ground: straight boundary ${straightMetres} metres, square boundary ${wideMetres} metres. Pitch at bottom right.`}>
+          <path d={`M ${originX} ${originY - radiusY} A ${radiusX} ${radiusY} 0 0 0 ${originX - radiusX} ${originY} L ${originX} ${originY} Z`} fill="var(--custom-success, #1f9d57)" fillOpacity="0.13" stroke="var(--custom-success, #1f9d57)" strokeWidth="1.5" />
+          <path d={`M ${originX} ${originY - radiusY} V ${originY} H ${originX - radiusX}`} fill="none" stroke="var(--text-secondary)" strokeWidth="0.8" strokeDasharray="3 3" />
+          <path d={`M ${originX} ${originY - radiusY * .65} A ${radiusX * .65} ${radiusY * .65} 0 0 0 ${originX - radiusX * .65} ${originY}`} fill="none" stroke="var(--custom-success, #1f9d57)" strokeOpacity="0.4" strokeDasharray="2 3" />
+          <rect x={originX - 8} y={originY - 16} width="8" height="16" rx="1" fill="var(--accent)" fillOpacity="0.65" stroke="var(--ink)" strokeWidth="0.6" />
+          <path d={`M ${originX - 9} ${originY - 12} H ${originX + 1} M ${originX - 9} ${originY - 3} H ${originX + 1}`} stroke="var(--ink)" strokeWidth="0.6" />
+          <g fill="var(--ink)" stroke="var(--surface)" strokeWidth="3" paintOrder="stroke" strokeLinejoin="round" fontFamily="var(--font-barlow-condensed), sans-serif" fontSize="18" fontWeight="700">
+            <text x={originX - radiusX * .55} y={originY - 7} textAnchor="middle">{wideMetres}m</text>
+            <text transform={`translate(${originX - 10} ${originY - radiusY * .62}) rotate(-90)`} textAnchor="middle">{straightMetres}m</text>
+          </g>
+        </svg>
       </div>
     </button>
   );
@@ -1234,6 +1275,19 @@ function OverviewPageContent() {
   const [legacyStaffSlug, setLegacyStaffSlug] = useState<string | null>(null);
   const [analysisPlayerId, setAnalysisPlayerId] = useState<string | null>(null);
   const [stadiumBuilderCapacity, setStadiumBuilderCapacity] = useState<number | null>(null);
+  const [shortlistPageSize, setShortlistPageSize] = useState(4);
+  const shortlistCardsRef = useRef<HTMLDivElement>(null);
+  // Observe the mounted overview, including when navigating back to it.
+  useLayoutEffect(() => {
+    const element = shortlistCardsRef.current;
+    if (!element) return;
+    const measure = () => setShortlistPageSize(Math.max(1, Math.floor((element.clientWidth - 16) / 205)));
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  });
+
 
   useEffect(() => {
     if (!userHomeStadium) return;
@@ -1518,6 +1572,7 @@ function OverviewPageContent() {
     const needsLeagueDetails = activeSubTab === "social"
       || activeSubTab === "news"
       || activeSubTab === "seasonanalysis"
+      || activeSubTab === "playerstats"
       || activeSubTab === "playeranalysis";
     if (!needsLeagueDetails) {
       setDetailedFixtureSimulations((current) => Object.keys(current).length > 0 ? {} : current);
@@ -4086,7 +4141,7 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}${replacementEligible
       minorRecordsRef.current = nextMinorRecords;
       setMinorRecords(nextMinorRecords);
     }
-    if (recordCheck.brokenRecordNotices.length > 0) {
+    if (RECORD_NOTIFICATION_EMAILS_ENABLED && recordCheck.brokenRecordNotices.length > 0) {
       const newEmails = recordCheck.brokenRecordNotices.map((notice, idx) => {
         const recordTitle = notice.split('"')[1] ?? "IPL Record";
         const isExtension = notice.startsWith("Record Extended!");
@@ -4439,7 +4494,7 @@ This record has been officially verified and added to the IPL Minor Records arch
         minorRecordsRef.current = nextMinorRecords;
         setMinorRecords(nextMinorRecords);
       }
-      if (allNotices.length > 0) {
+      if (RECORD_NOTIFICATION_EMAILS_ENABLED && allNotices.length > 0) {
         const newEmails = allNotices.map((notice, idx) => {
           const recordTitle = notice.split('"')[1] ?? "IPL Record";
           const isExtension = notice.startsWith("Record Extended!");
@@ -5855,7 +5910,7 @@ This record has been officially verified and added to the IPL Minor Records arch
     season: {
       label: "Season",
       icon: Trophy,
-      subtabs: ["overview", "fixtures", "standings", "stats"]
+      subtabs: ["overview", "fixtures", "standings", "stats", "playerstats"]
     },
     league: {
       label: "League",
@@ -5892,7 +5947,8 @@ This record has been officially verified and added to the IPL Minor Records arch
     if (subtab === "injuries") return "Injuries";
     if (subtab === "fixtures") return "Fixtures & Results";
     if (subtab === "standings") return "Standings";
-    if (subtab === "stats") return "Tournament Key Players";
+    if (subtab === "stats") return "Season Player Awards";
+    if (subtab === "playerstats") return "Player Stats";
     if (subtab === "office") return "Manager Office";
     if (subtab === "staffmanagement") return "Staff Management";
     if (subtab === "staff") return "Staff";
@@ -6115,7 +6171,7 @@ This record has been officially verified and added to the IPL Minor Records arch
       || left.name.localeCompare(right.name)
     ))
     .slice(0, 5), [players, userTeam?.squad]);
-  const managerBoardConfidence = useMemo(() => {
+  const managerBoardSummary = useMemo(() => {
     const expectedRanks = calculateStaffExpectedRanks({
       teamIds: Object.keys(teams),
       teams,
@@ -6133,8 +6189,9 @@ This record has been officially verified and added to the IPL Minor Records arch
       ownershipPatienceModifier: getClubOwnership(userTeamId).patience_modifier,
     });
 
-    return Math.round(Math.max(0, Math.min(100, 100 - effectivePressure)) * 10) / 10;
+    return { confidence: Math.round(Math.max(0, Math.min(100, 100 - effectivePressure)) * 10) / 10, expectedPosition, actualPosition };
   }, [careerStaff, players, standings, teams, userTeamId]);
+  const managerBoardConfidence = managerBoardSummary.confidence;
   const supporterFixtures = useMemo(() => {
     const byId = new Map<string, Match>();
     careerSeasonArchives.forEach((archive) => {
@@ -6230,7 +6287,7 @@ This record has been officially verified and added to the IPL Minor Records arch
     runs: stats.runs,
     wickets: stats.wickets,
     strikeRate: stats.balls > 0 ? stats.runs / stats.balls * 100 : undefined,
-    economy: stats.oversBowled > 0 ? stats.runsConceded / stats.oversBowled : undefined,
+    economy: stats.oversBowled > 0 ? stats.runsConceded * 6 / oversToBalls(stats.oversBowled) : undefined,
     runsConceded: stats.runsConceded,
     oversBowled: stats.oversBowled,
     catches: stats.catches,
@@ -6393,7 +6450,8 @@ This record has been officially verified and added to the IPL Minor Records arch
     return playerByName;
   }, [players]);
 
-  const inboxThreads = Array.from(inbox.reduce((threads, message) => {
+  const visibleInbox = inbox.filter((message) => RECORD_NOTIFICATION_EMAILS_ENABLED || (message.templateId !== "record_broken" && !message.id.startsWith("record_broken_")));
+  const inboxThreads = Array.from(visibleInbox.reduce((threads, message) => {
     const thread = threads.get(message.threadId) ?? [];
     thread.push(message);
     threads.set(message.threadId, thread);
@@ -6415,7 +6473,7 @@ This record has been officially verified and added to the IPL Minor Records arch
     || right.latest.daySequence - left.latest.daySequence
     || right.latest.id.localeCompare(left.latest.id)
   ));
-  const selectedMessage = selectedMsgId ? inbox.find((message) => message.id === selectedMsgId) ?? null : null;
+  const selectedMessage = selectedMsgId ? visibleInbox.find((message) => message.id === selectedMsgId) ?? null : null;
   const selectedThread = selectedMessage
     ? inboxThreads.find((thread) => thread.threadId === selectedMessage.threadId) ?? null
     : null;
@@ -6432,7 +6490,7 @@ This record has been officially verified and added to the IPL Minor Records arch
   };
 
   const markAllInboxRead = () => {
-    if (!inbox.some((message) => message.unread)) return;
+    if (!visibleInbox.some((message) => message.unread)) return;
     const nextInbox = inbox.map((message) => (
       message.unread ? { ...message, unread: false } : message
     ));
@@ -6822,9 +6880,9 @@ This record has been officially verified and added to the IPL Minor Records arch
                 >
                   <span className="inline-flex items-center gap-1.5">
                     {getSubTabLabel(subtab)}
-                    {subtab === "inbox" && inbox.some((message) => message.unread) && (
+                    {subtab === "inbox" && visibleInbox.some((message) => message.unread) && (
                       <span className="min-w-4 rounded-full bg-danger px-1 py-0.5 text-center text-[8px] leading-none text-white shadow-sm ring-1 ring-white/25">
-                        {inbox.filter((message) => message.unread).length}
+                        {visibleInbox.filter((message) => message.unread).length}
                       </span>
                     )}
                   </span>
@@ -6892,29 +6950,30 @@ This record has been officially verified and added to the IPL Minor Records arch
                   {/* Inbox column */}
                   <div
                     onClick={() => setActiveSubTab("inbox")}
-                    className="group flex min-h-0 cursor-pointer flex-col overflow-hidden rounded-lg border-2 border-border bg-surface p-5 transition-colors hover:border-accent"
+                    className="group flex min-h-0 min-w-0 cursor-pointer flex-col overflow-hidden rounded-lg border-2 border-border bg-surface p-5 transition-colors"
                   >
-                    <div className="flex shrink-0 items-center justify-between border-b border-[#16130f]/10 pb-3">
-                      <div className="flex items-center gap-3">
-                        <span className="flex size-9 items-center justify-center rounded-lg bg-[var(--ink)] text-bg shadow-sm">
+                    <div className="flex shrink-0 items-start gap-3 border-b border-[#16130f]/10 pb-3">
+                        <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-[var(--ink)] text-bg shadow-sm">
                           <Mail size={17} strokeWidth={1.9} aria-hidden="true" />
                         </span>
-                        <div>
+                        <div className="min-w-0 flex flex-col items-start">
                           <div className="font-anton text-[15px] uppercase leading-none text-text-primary">INBOX MESSAGES</div>
                           <div className="mt-1 font-space-mono text-[8px] font-bold uppercase tracking-[0.16em] text-text-secondary">Club communications</div>
-                        </div>
-                      </div>
-                      <span className={`rounded-full px-2 py-1 font-space-mono text-[8px] font-bold uppercase tracking-wide ${inbox.some((message) => message.unread) ? "bg-danger text-white shadow-sm" : "bg-success/10 text-success"}`}>
-                        {inbox.filter(m => m.unread).length} UNREAD
+                      <span className={`mt-2 whitespace-nowrap rounded-full px-2 py-1 font-space-mono text-[8px] font-bold uppercase tracking-wide ${visibleInbox.some((message) => message.unread) ? "bg-danger text-white shadow-sm" : "bg-success/10 text-success"}`}>
+                        {visibleInbox.filter(m => m.unread).length} UNREAD
                       </span>
+                        </div>
                     </div>
-                    <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto py-3">
+                    <FittedInboxPreviews>
                       {inboxThreads.length === 0 ? (
                         <div className="flex h-full flex-col items-center justify-center rounded-lg border border-dashed border-border p-5 text-center">
                           <MailOpen size={22} className="mb-2 text-text-secondary/40" aria-hidden="true" />
                           <p className="text-xs font-barlow text-text-secondary">No messages.</p>
                         </div>
-                      ) : inboxThreads.slice(0, 5).map((thread) => (
+                      ) : inboxThreads.slice(0, 5).map((thread) => {
+                        const daysAgo = daysBetweenDateKeys(thread.latest.date.slice(0, 10), currentDate);
+                        const relativeDate = daysAgo === 0 ? "Today" : daysAgo === 1 ? "Yesterday" : daysAgo > 1 ? `${daysAgo} days ago` : formatDisplayDate(thread.latest.date);
+                        return (
                         <div
                           key={thread.threadId}
                           onClick={(e) => {
@@ -6922,33 +6981,24 @@ This record has been officially verified and added to the IPL Minor Records arch
                             markThreadRead(thread.threadId, thread.latest.id);
                             setActiveSubTab("inbox");
                           }}
-                          className={`rounded-lg border px-3 py-2.5 text-xs transition-colors cursor-pointer hover:border-accent/50 hover:bg-accent/[0.02] ${
+                          className={`home-inbox-email flex min-w-0 max-w-full flex-col justify-between gap-1 rounded-lg border px-3 py-3 text-xs transition-colors cursor-pointer ${
                             thread.unreadCount > 0
                               ? "border-accent/35 bg-accent/[0.055]"
-                              : "border-transparent bg-bg/35 group-hover:border-border/70"
+                              : "border-border/15 bg-bg/35"
                           }`}
                         >
-                          <div className="flex items-start gap-2.5">
-                            <span className={`mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full font-space-mono text-[9px] font-bold uppercase ${thread.unreadCount > 0 ? "bg-[var(--ink)] text-bg" : "bg-black/[0.055] text-text-secondary dark:bg-white/[0.07]"}`}>
-                              {thread.latest.sender.slice(0, 1)}
-                            </span>
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-2">
-                                <div className={`truncate text-[11px] text-text-primary ${thread.unreadCount > 0 ? "font-extrabold" : "font-semibold"}`}>{thread.latest.subject}</div>
+                              <div className="break-words text-[11px] font-extrabold uppercase leading-tight text-text-primary">{thread.latest.sender}</div>
+                              <div className="flex min-w-0 items-center gap-2">
+                                <div className={`min-w-0 break-words text-[11px] leading-snug text-text-primary ${thread.unreadCount > 0 ? "font-extrabold" : "font-semibold"}`}>{thread.latest.subject}</div>
                                 {thread.messages.length > 1 && (
                                   <span className="ml-auto shrink-0 rounded-full bg-black/[0.055] px-1.5 py-0.5 font-space-mono text-[8px] text-text-secondary dark:bg-white/[0.07]">{thread.messages.length}</span>
                                 )}
                               </div>
-                              <div className="mt-0.5 truncate text-[10px] leading-snug text-text-secondary">{thread.latest.preview}</div>
-                              <div className="mt-1 flex items-center justify-between gap-2 font-space-mono text-[8px] uppercase tracking-wide text-text-secondary/80">
-                                <span className="truncate">{thread.latest.sender}</span>
-                                <span className="shrink-0">{formatDisplayDate(thread.latest.date)}</span>
-                              </div>
-                            </div>
-                          </div>
+                              <div className="break-words text-[10px] leading-snug text-text-secondary">{thread.latest.preview}</div>
+                              <time dateTime={thread.latest.date} title={formatDisplayDate(thread.latest.date)} className="shrink-0 font-space-mono text-[8px] leading-snug text-text-secondary/80">{relativeDate}</time>
                         </div>
-                      ))}
-                    </div>
+                      ); })}
+                    </FittedInboxPreviews>
                     <div className="flex shrink-0 items-center justify-between border-t border-[#16130f]/10 pt-2 font-space-mono text-[8px] font-bold uppercase tracking-[0.14em] text-text-secondary">
                       <span>{inboxThreads.length} conversations</span>
                       <span className="inline-flex items-center gap-1 text-text-primary transition-colors group-hover:text-accent">Open inbox <ArrowUpRight size={11} /></span>
@@ -7301,7 +7351,12 @@ This record has been officially verified and added to the IPL Minor Records arch
                                     </time>
                                   ) : <span className="font-space-mono text-[8px]">-</span>}
                                 </div>
-                                <span className="truncate text-[10px] font-medium">vs {opponent?.shortName ?? opponentId}</span>
+                                <span className="flex min-w-0 items-center gap-1 text-[10px] font-medium">
+                                  <span className="truncate">vs {opponent?.shortName ?? opponentId}</span>
+                                  {opponent?.primaryColor && (
+                                    <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full ring-1 ring-text-primary/25" style={{ backgroundColor: opponent.primaryColor }} />
+                                  )}
+                                </span>
                                 {fixture.played && outcome ? (
                                   <div className="whitespace-nowrap text-right font-space-mono text-[8px] font-bold leading-none text-text-secondary">
                                     <span>{scoreline}</span>
@@ -7405,8 +7460,8 @@ This record has been officially verified and added to the IPL Minor Records arch
               {/* Inbox page */}
               {activeSubTab === "inbox" && (
                 <div className="grid h-full flex-1 min-h-0 grid-cols-1 overflow-hidden rounded-xl border border-border bg-surface shadow-[0_18px_50px_rgba(22,19,15,0.08)] lg:grid-cols-[minmax(19rem,0.92fr)_minmax(0,2.2fr)]">
-                  <aside className="flex min-h-0 flex-col border-r border-border bg-bg/45">
-                    <div className="flex shrink-0 items-center justify-between border-b border-border bg-surface px-4 py-3.5">
+                  <aside className="flex min-h-0 min-w-0 flex-col border-r border-border bg-bg/45">
+                    <div className="flex shrink-0 flex-col items-stretch gap-3 border-b border-border bg-surface px-4 py-3.5">
                       <div className="flex min-w-0 items-center gap-3">
                         <span className="flex size-10 items-center justify-center rounded-lg bg-[var(--ink)] text-bg shadow-sm">
                           <InboxIcon size={19} strokeWidth={1.9} aria-hidden="true" />
@@ -7418,17 +7473,17 @@ This record has been officially verified and added to the IPL Minor Records arch
                           </p>
                         </div>
                       </div>
-                      <div className="flex shrink-0 items-center gap-1">
+                      <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
                         <button
                           type="button"
                           onClick={markAllInboxRead}
-                          disabled={!inbox.some((message) => message.unread)}
+                          disabled={!visibleInbox.some((message) => message.unread)}
                           className="whitespace-nowrap rounded border border-border bg-surface px-1.5 py-1.5 font-space-mono text-[6px] font-bold uppercase tracking-normal text-text-secondary transition-colors enabled:hover:border-accent enabled:hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-40"
                         >
                           Mark all as read
                         </button>
-                        <span className={`whitespace-nowrap rounded-full px-1.5 py-1 font-space-mono text-[6px] font-bold uppercase tracking-normal ${inbox.some((message) => message.unread) ? "bg-danger text-white shadow-sm" : "bg-success/10 text-success"}`}>
-                          {inbox.filter((message) => message.unread).length} unread
+                        <span className={`whitespace-nowrap rounded-full px-1.5 py-1 font-space-mono text-[6px] font-bold uppercase tracking-normal ${visibleInbox.some((message) => message.unread) ? "bg-danger text-white shadow-sm" : "bg-success/10 text-success"}`}>
+                          {visibleInbox.filter((message) => message.unread).length} unread
                         </span>
                       </div>
                     </div>
@@ -8046,7 +8101,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                   />
                   <div className="grid gap-4 md:grid-cols-3">
                   {userHomeStadium && (
-                    <button type="button" onClick={() => setActiveSubTab("stadiumbuilder")} className="cursor-pointer overflow-hidden rounded-lg border-2 border-border bg-surface p-5 text-left transition-colors hover:border-accent"><div className="font-anton text-[14px] uppercase text-text-primary">Stadium Builder</div><div className="mt-1 truncate font-space-mono text-[7px] font-bold uppercase text-text-secondary">{userHomeStadium.name} · {userHomeStadium.location}</div><div className="mt-4 grid grid-cols-3 gap-3"><div><div className="font-space-mono text-[6px] font-bold uppercase text-text-secondary">Capacity</div><div className="mt-1 font-anton text-[16px] leading-none text-accent">{new Intl.NumberFormat("en-GB").format(stadiumBuilderCapacity ?? userHomeStadium.capacity)}</div></div><div><div className="font-space-mono text-[6px] font-bold uppercase text-text-secondary">Opened</div><div className="mt-1 font-anton text-[16px] leading-none text-text-primary">{userHomeStadium.opened}</div></div><div><div className="font-space-mono text-[6px] font-bold uppercase text-text-secondary">Pitches</div><div className="mt-1 font-anton text-[16px] leading-none text-text-primary">{userHomeStadium.pitches.length + userCustomPitches.length}</div></div></div></button>
+                    <button type="button" onClick={() => setActiveSubTab("stadiumbuilder")} className="cursor-pointer overflow-hidden rounded-lg border-2 border-border bg-surface p-5 text-left transition-colors hover:border-accent"><div className="font-anton text-[14px] uppercase text-text-primary">Stadium Builder</div><div className="mt-1 truncate font-space-mono text-[7px] font-bold uppercase text-text-secondary">{userHomeStadium.name} · {userHomeStadium.location}</div><div className="mt-4 grid grid-cols-3 gap-3"><div><div className="font-space-mono text-[6px] font-bold uppercase text-text-secondary">Capacity</div><div className="mt-1 font-anton text-[16px] leading-none text-text-primary">{new Intl.NumberFormat("en-GB").format(stadiumBuilderCapacity ?? userHomeStadium.capacity)}</div></div><div><div className="font-space-mono text-[6px] font-bold uppercase text-text-secondary">Opened</div><div className="mt-1 font-anton text-[16px] leading-none text-text-primary">{userHomeStadium.opened}</div></div><div><div className="font-space-mono text-[6px] font-bold uppercase text-text-secondary">Pitches</div><div className="mt-1 font-anton text-[16px] leading-none text-text-primary">{userHomeStadium.pitches.length + userCustomPitches.length}</div></div></div></button>
                   )}
                   {userHomeStadium && (
                     <StadiumManagementSummaryTile
@@ -8063,11 +8118,54 @@ This record has been officially verified and added to the IPL Minor Records arch
                   )}
                   </div>
                   </div>
-                  <div className="grid min-h-0 gap-4 sm:grid-cols-2 lg:grid-cols-1 lg:grid-rows-4">
-                    <ClubSectionSummaryTile title="Board & Ownership" compact contentPosition="start" onOpen={() => setActiveSubTab("board")}><div className="grid w-full grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1"><div className="min-w-0"><div className="font-space-mono text-[6px] font-bold uppercase leading-none text-text-secondary">Ownership group</div><div className="mt-1 text-[9px] font-bold leading-tight text-text-primary">{getClubOwnership(userTeamId).consortium_name}</div></div><div className="shrink-0 text-right"><div className="font-space-mono text-[6px] font-bold uppercase leading-none text-text-secondary">Ambition</div><div className="mt-0.5 font-anton text-[17px] leading-none text-accent">{getClubOwnership(userTeamId).ceo_ambition}/20</div></div><div className="border-t border-border/50 pt-1"><span className="font-space-mono text-[6px] uppercase text-text-secondary">CEO </span><span className="text-[9px] font-semibold">{getClubOwnership(userTeamId).ceo_name}</span></div><div className="border-t border-border/50 pt-1 text-right font-space-mono text-[7px] font-bold uppercase text-accent">{getClubOwnership(userTeamId).ownership_archetype.replaceAll("_", " ")}</div></div></ClubSectionSummaryTile>
-                    <ClubSectionSummaryTile title="Supporters" compact contentPosition="start" hideHeaderDivider onOpen={() => setActiveSubTab("supporters")}><div className="grid grid-cols-3 gap-1.5 text-center"><div className="rounded border border-border/70 bg-background/40 p-1.5"><div className="font-anton text-[16px] leading-none text-text-primary">{supporterPreview?.overallHappiness ?? "–"}</div><div className="mt-0.5 font-space-mono text-[6px] font-bold uppercase text-text-secondary">Happiness</div></div><div className="rounded border border-border/70 bg-background/40 p-1.5"><div className="font-anton text-[16px] leading-none text-text-primary">{supporterPreview?.fanbaseIndex ?? "–"}</div><div className="mt-0.5 font-space-mono text-[6px] font-bold uppercase text-text-secondary">Fanbase</div></div><div className="rounded border border-border/70 bg-background/40 p-1.5"><div className="font-anton text-[16px] leading-none text-text-primary">{supporterPreview?.homeAtmosphere ?? "–"}</div><div className="mt-0.5 font-space-mono text-[6px] font-bold uppercase text-text-secondary">Atmosphere</div></div></div><div className="mt-1 flex items-center justify-between border-t border-border/30 pt-1"><span className="font-space-mono text-[6px] font-bold uppercase text-text-secondary">Overall mood</span><span className="font-anton text-[13px] uppercase text-accent">{supporterPreview?.mood ?? "Assessing"}</span></div></ClubSectionSummaryTile>
-                    <ClubSectionSummaryTile title="Manager's Office" compact contentPosition="start" onOpen={() => setActiveSubTab("office")}><div className="flex items-end justify-between gap-2"><div><div className="font-space-mono text-[6px] font-bold uppercase text-text-secondary">Board confidence</div><div className="mt-0.5 font-anton text-[20px] leading-none text-accent">{managerBoardConfidence}%</div></div><div className="shrink-0 rounded-full border border-border px-1.5 py-0.5 font-space-mono text-[7px] font-bold uppercase">{managerBoardConfidence >= 70 ? "Strong" : managerBoardConfidence >= 50 ? "Stable" : managerBoardConfidence >= 35 ? "Under scrutiny" : "Under pressure"}</div></div><div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-border/60"><div className="h-full bg-accent" style={{ width: `${managerBoardConfidence}%` }} /></div></ClubSectionSummaryTile>
-                    <ClubSectionSummaryTile title="Staff Management" onOpen={() => setActiveSubTab("staffmanagement")}><div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-1"><div className="row-span-2 border-r border-border pr-3 text-center"><div className="font-anton text-[24px] text-accent">{userSupporterStaff.length}</div><div className="font-space-mono text-[6px] uppercase text-text-secondary">Contracted</div></div><div><span className="font-space-mono text-[6px] uppercase text-text-secondary">Head coach </span><span className="text-[9px] font-bold">{userHeadCoach?.fullName ?? "Vacant"}</span></div><div className="border-t border-border/60 pt-1"><span className="font-space-mono text-[6px] uppercase text-text-secondary">Mentor </span><span className="text-[9px] font-bold">{userMentor?.fullName ?? "Vacant"}</span></div></div></ClubSectionSummaryTile>
+                  <div className="grid min-h-0 gap-4 sm:grid-cols-2 lg:grid-cols-1 lg:grid-rows-[1fr_1.1fr_1.05fr_1fr]">
+                    <ClubSectionSummaryTile title={`BOARD & OWNERSHIP - ${getClubOwnership(userTeamId).consortium_name}`} compact contentPosition="start" onOpen={() => setActiveSubTab("board")}>
+                      <BoardOwnershipSummary ownership={getClubOwnership(userTeamId)} />
+                    </ClubSectionSummaryTile>
+                    <ClubSectionSummaryTile title="Supporters" compact contentPosition="start" hideHeaderDivider onOpen={() => setActiveSubTab("supporters")}><div className="grid shrink-0 grid-cols-3 gap-1.5 text-center"><div className="rounded border border-border/70 bg-background/40 px-1.5 py-1"><div className="font-anton text-[15px] leading-none text-text-primary">{supporterPreview?.overallHappiness ?? "–"}</div><div className="mt-0.5 font-space-mono text-[6px] font-bold uppercase text-text-secondary">Happiness</div></div><div className="rounded border border-border/70 bg-background/40 px-1.5 py-1"><div className="font-anton text-[15px] leading-none text-text-primary">{supporterPreview?.fanbaseIndex ?? "–"}</div><div title="Fanbase reach index out of 100; starts at 50 and changes with results, happiness, star appeal and loyalty. This is not a supporter count or percentage." className="mt-0.5 font-space-mono text-[6px] font-bold uppercase text-text-secondary">Fanbase reach</div></div><div className="rounded border border-border/70 bg-background/40 px-1.5 py-1"><div className="font-anton text-[15px] leading-none text-text-primary">{supporterPreview?.homeAtmosphere ?? "–"}</div><div className="mt-0.5 font-space-mono text-[6px] font-bold uppercase text-text-secondary">Atmosphere</div></div></div><div className="mt-1 grid min-h-0 flex-1 grid-cols-2 items-stretch border-t border-border/30 py-1">
+                        <div className="flex min-w-0 flex-col justify-center border-r border-border/30 pr-2"><div className="font-space-mono text-[9px] font-bold uppercase leading-tight text-text-secondary">Overall mood</div><div className="mt-1 font-barlow-condensed text-[18px] font-bold uppercase leading-[1.15] text-text-primary">{supporterPreview?.mood ?? "Assessing"}</div></div>
+                        <div className="flex min-w-0 flex-col justify-center pl-2"><div className="font-space-mono text-[9px] font-bold uppercase leading-tight text-text-secondary">Fanbase type</div><div className="mt-1 font-barlow-condensed text-[18px] font-bold uppercase leading-[1.15] text-text-primary">{supporterPreview?.culture.identity ?? "Developing support"}</div></div>
+                      </div></ClubSectionSummaryTile>
+                    <ClubSectionSummaryTile title="Manager's Office" compact contentPosition="start" onOpen={() => setActiveSubTab("office")}>
+                      <div className="flex min-h-0 flex-1 flex-col justify-between gap-1 pb-1" data-manager-office-summary>
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <div className={`font-anton text-[30px] leading-none ${managerBoardConfidence < 35 ? "text-danger" : "text-accent"}`}>{managerBoardConfidence}%</div>
+                            <div className="font-space-mono text-[7px] font-bold uppercase leading-tight text-text-secondary">Board<br />confidence</div>
+                          </div>
+                          <div className={`rounded border px-2 py-1 font-space-mono text-[7px] font-bold uppercase ${managerBoardConfidence < 35 ? "border-danger/30 bg-danger/5 text-danger" : "border-border text-text-primary"}`}>{managerBoardConfidence >= 70 ? "Strong" : managerBoardConfidence >= 50 ? "Stable" : managerBoardConfidence >= 35 ? "Under scrutiny" : "Under pressure"}</div>
+                        </div>
+                        <div className="h-1.5 shrink-0 overflow-hidden rounded-full bg-border/30"><div className={`h-full ${managerBoardConfidence < 35 ? "bg-danger" : "bg-accent"}`} style={{ width: `${managerBoardConfidence}%` }} /></div>
+                        <div className="grid grid-cols-3 gap-2 border-t border-border/30 pt-1">
+                          <div><div className="font-space-mono text-[6px] font-bold uppercase text-text-secondary">Expected</div><div className="font-anton text-[14px] leading-none text-accent">#{managerBoardSummary.expectedPosition}</div></div>
+                          <div><div className="font-space-mono text-[6px] font-bold uppercase text-text-secondary">Position</div><div className="font-anton text-[14px] leading-none text-text-primary">#{managerBoardSummary.actualPosition}</div></div>
+                          <div><div className="font-space-mono text-[6px] font-bold uppercase text-text-secondary">Gap</div><div className={`font-anton text-[14px] leading-none ${managerBoardSummary.expectedPosition < managerBoardSummary.actualPosition ? "text-danger" : "text-success"}`}>{managerBoardSummary.expectedPosition > managerBoardSummary.actualPosition ? "+" : ""}{managerBoardSummary.expectedPosition - managerBoardSummary.actualPosition} places</div></div>
+                        </div>
+                      </div>
+                    </ClubSectionSummaryTile>
+                    <ClubSectionSummaryTile title="Staff Management" compact contentPosition="start" onOpen={() => setActiveSubTab("staffmanagement")}>
+                      {(() => {
+                        const priority = ["head coach", "batting coach", "pace bowling coach", "spin bowling coach", "fielding coach", "mentor", "assistant coach"];
+                        const featured = [...userSupporterStaff].sort((a, b) => {
+                          const rank = (role: string) => { const i = priority.indexOf(role); return i < 0 ? priority.length : i; };
+                          return rank(a.primaryRole) - rank(b.primaryRole) || b.currentAbility - a.currentAbility;
+                        }).slice(0, 4);
+                        const coreRoles = ["head_coach", "batting_coach", "pace_bowling_coach", "spin_bowling_coach", "fielding_coach"];
+                        const covered = coreRoles.filter(role => userSupporterStaff.some(member => member.roles.includes(role))).length;
+                        return <div className="flex min-h-0 flex-1 flex-col justify-between gap-1 pb-1" data-club-staff-summary>
+                          <div className="grid min-h-0 flex-1 grid-cols-2 auto-rows-fr gap-x-3 gap-y-1">
+                            {featured.map(member => <div key={member.id} className="flex min-w-0 items-center border-l-2 border-accent/30 pl-1.5">
+                              <div className="font-barlow-condensed text-[15px] leading-tight"><span className="font-bold uppercase text-text-secondary">{member.primaryRole.replace(" bowling", "")}</span><span className="text-text-secondary"> - </span><span className="font-semibold text-text-primary">{member.fullName}</span></div>
+                            </div>)}
+                            {!featured.length && <div className="col-span-2 font-barlow text-[11px] text-text-secondary">No staff appointed</div>}
+                          </div>
+                          <div className="flex items-center justify-between gap-2 border-t border-border/30 pt-1 font-space-mono text-[7px] leading-none">
+                            <span className="text-text-secondary"><strong className="text-accent">{userSupporterStaff.length}</strong> contracted{userSupporterStaff.length > 4 ? ` · +${userSupporterStaff.length - 4} others` : ""}</span>
+                            <span className={covered < 5 ? "text-danger" : "text-success"}>Core roles {covered}/5</span>
+                          </div>
+                        </div>;
+                      })()}
+                    </ClubSectionSummaryTile>
                   </div>
                 </div>
               )}
@@ -8203,7 +8301,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                     runs: stats.runs,
                     wickets: stats.wickets,
                     strikeRate: stats.balls > 0 ? stats.runs / stats.balls * 100 : undefined,
-                    economy: stats.oversBowled > 0 ? stats.runsConceded / stats.oversBowled : undefined,
+                    economy: stats.oversBowled > 0 ? stats.runsConceded * 6 / oversToBalls(stats.oversBowled) : undefined,
                     runsConceded: stats.runsConceded,
                     oversBowled: stats.oversBowled,
                     catches: stats.catches,
@@ -8683,9 +8781,9 @@ This record has been officially verified and added to the IPL Minor Records arch
                                     </span>
                                   </div>
                                   {appointment.player ? (
-                                    <div className="mt-2 min-w-0">
-                                      <div className="truncate text-[11px] font-bold leading-none text-text-primary">{appointment.player.name}</div>
-                                      <div className="mt-1 truncate font-space-mono text-[7px] font-bold uppercase text-text-secondary">
+                                    <div className="mt-2 min-w-0 pb-1">
+                                      <div className="break-words font-barlow-condensed text-[22px] font-bold leading-tight text-text-primary">{appointment.player.name}</div>
+                                      <div className="mt-1 font-space-mono text-[7px] font-bold uppercase leading-tight text-text-secondary">
                                         {getCompactPlayerRole(appointment.player.role)} · Captaincy {appointment.player.captaincy ?? 50}
                                       </div>
                                     </div>
@@ -8921,9 +9019,23 @@ This record has been officially verified and added to the IPL Minor Records arch
 
               {activeSubTab === "tactics" && (
                 <TeamTacticsPage
+                  fixtures={fixtures}
                   tactics={teamTactics}
+                  players={players}
+                  battingFirstXI={battingFirstXI}
+                  bowlingFirstXI={bowlingFirstXI}
+                  battingFirstImpactSubs={battingFirstImpactSubs}
+                  bowlingFirstImpactSubs={bowlingFirstImpactSubs}
+                  bowlingFirstImpactPlayerId={bowlingFirstImpactPlayerId}
+                  bowlingFirstOutgoingPlayerId={bowlingFirstOutgoingPlayerId}
+                  bowlingFirstImpactBattingPosition={bowlingFirstImpactBattingPosition}
+                  battingFirstImpactPlayerId={battingFirstImpactPlayerId}
+                  battingFirstOutgoingPlayerId={battingFirstOutgoingPlayerId}
+                  captainId={teamLeadership.captainId}
+                  viceCaptainId={teamLeadership.viceCaptainId}
                   onChange={handleTacticsChange}
                   onOpenPlayingXI={() => setActiveSubTab("playingxi")}
+                  onOpenPlayer={setDetailedPlayerId}
                   coachRecommendation={userTeam && userSelectedPitch && userHeadCoach ? {
                     coachName: userHeadCoach.fullName,
                     tactics: createIntelligentAiTactics(userTeam, userSelectedPitch, careerStaff),
@@ -9043,11 +9155,11 @@ This record has been officially verified and added to the IPL Minor Records arch
                   <div className="contents">
                     <div onClick={() => setActiveSubTab("assignments")} className="col-span-5 flex min-h-0 cursor-pointer flex-col overflow-hidden rounded-lg border-2 border-border bg-surface p-4 transition-colors hover:border-accent">
                       <div className="flex min-h-0 flex-1 flex-col">
-                        <div className="flex items-center justify-between border-b border-[#16130f]/10 pb-2"><h4 className="font-anton text-[14px] uppercase">Scouting assignments</h4><span className="font-space-mono text-[8px] font-bold uppercase text-text-secondary">{scoutingAssignments.filter((assignment) => assignment.status === "active").length}/3 active</span></div>
+                        <div className="flex shrink-0 items-center justify-between pb-2"><h4 className="font-anton text-[14px] uppercase">Scouting assignments</h4><span className="font-space-mono text-[8px] font-bold uppercase text-text-secondary">{scoutingAssignments.filter((assignment) => assignment.status === "active").length}/3 active</span></div>
                         <div className="mt-2 grid min-h-0 flex-1 grid-cols-3 items-stretch gap-2">
                           {[1, 2, 3].map((slot) => {
                             const assignment = scoutingAssignments.find((candidate) => candidate.status === "active" && candidate.slot === slot);
-                            if (!assignment) return <div key={slot} className="flex min-w-0 flex-col items-center justify-center rounded border border-dashed border-border bg-bg/40 px-2 py-3 text-center"><div className="font-space-mono text-[8px] font-bold uppercase text-text-secondary">Scout slot {slot}</div><div className="mt-1 font-space-mono text-[8px] font-bold uppercase text-accent">Available</div></div>;
+                            if (!assignment) return <div key={slot} className="scout-slot-placeholder flex min-h-0 min-w-0 flex-col items-center justify-center rounded px-2 py-3 text-center"><div className="font-space-mono text-[8px] font-bold uppercase text-text-secondary">Scout slot {slot}</div><div className="mt-1 font-space-mono text-[8px] font-bold uppercase text-accent">Available</div></div>;
                             const region = getScoutingRegion(assignment.regionId);
                             const option = SCOUTING_ASSIGNMENT_OPTIONS.find((candidate) => candidate.kind === assignment.kind);
                             const targetReport = assignment.targetReportId ? scoutingReports.find((report) => report.id === assignment.targetReportId) : undefined;
@@ -9080,15 +9192,16 @@ This record has been officially verified and added to the IPL Minor Records arch
                     {/* Auction planner */}
                     <div onClick={() => setActiveSubTab("planner")} className="col-span-12 flex min-h-0 cursor-pointer overflow-hidden rounded-lg border-2 border-border bg-surface p-4 transition-colors hover:border-accent">
                       <div className="flex min-h-0 flex-1 items-stretch gap-4 overflow-hidden">
-                        <div className="flex w-44 shrink-0 flex-col font-space-mono text-xs text-text-secondary">
+                        <div className="flex w-52 shrink-0 flex-col font-space-mono text-xs text-text-secondary">
                           <h4 className="mb-3 shrink-0 border-b border-[#16130f]/10 pb-2 font-anton text-[14px] uppercase text-text-primary">AUCTION PLANNER</h4>
-                          <div className="space-y-2">
+                          <div className="flex min-h-0 flex-1 -translate-y-1 flex-col justify-center gap-1">
                         <div>CAP LIMIT: <span className="font-bold text-text-primary">{formatPrice(worldRules().megaAuctionPurseLakhs)}</span></div>
                         <div>SHORTLISTED: <span className="font-bold text-text-primary">{shortlist.length} Players</span></div>
+                        <div>NEXT: <span className="font-bold uppercase text-text-primary">{currentSeason + 1} {getAuctionTypeForSeason(currentSeason + 1)} auction</span></div>
                           </div>
                         </div>
-                        <div className="flex min-w-0 flex-1 items-stretch justify-start gap-2 overflow-x-auto overflow-y-hidden border-l border-[#16130f]/10 py-1 pl-4">
-                          {shortlist.map((playerId) => players[playerId] ?? (retiredPlayerSnapshots[playerId] ? retiredSnapshotPlayer(retiredPlayerSnapshots[playerId]) : null) ?? Object.values(players).find((c) => String(c.id) === String(playerId))).filter((player): player is Player => Boolean(player)).map((player) => {
+                        <div ref={shortlistCardsRef} className="grid min-w-0 flex-1 items-stretch gap-2 overflow-hidden border-l border-[#16130f]/10 py-1 pl-4" style={{ gridTemplateColumns: `repeat(${shortlistPageSize}, minmax(0, 1fr))` }}>
+                          {shortlist.map((playerId) => players[playerId] ?? (retiredPlayerSnapshots[playerId] ? retiredSnapshotPlayer(retiredPlayerSnapshots[playerId]) : null) ?? Object.values(players).find((c) => String(c.id) === String(playerId))).filter((player): player is Player => Boolean(player)).slice(0, shortlistPageSize).map((player) => {
                             const ability = player.role === "Pace Bowler" || player.role === "Spin Bowler"
                               ? player.currentBowling
                               : player.role === "All-Rounder"
@@ -9109,20 +9222,24 @@ This record has been officially verified and added to the IPL Minor Records arch
                               ? `${scoutingReport.potentialRange[0]}–${scoutingReport.potentialRange[1]}`
                               : String(potential);
 
+                            const club = player.currentTeamId ? teams[player.currentTeamId] : undefined;
+                            const nextAuctionSeason = currentSeason + 1;
+                            const likelyRetained = Boolean(club && likelyRetentionIds(club, players).includes(player.id));
+                            const estimatedValue = likelyRetained ? null : estimateAuctionValue(player, players, teams, auction, nextAuctionSeason);
+
                             return (
                               <div
                                 key={player.id}
-                                className="flex h-full min-h-0 shrink-0 flex-col justify-between rounded border border-border bg-bg/40 px-3 py-2.5"
-                                style={{ width: Math.max(150, player.name.length * 7 + 28) }}
+                                className="flex h-full min-h-0 min-w-0 flex-col justify-between rounded border border-border bg-bg/40 px-3 py-2.5"
                               >
                                 <div className="min-w-0">
-                                  <div className="whitespace-nowrap font-barlow text-[12px] font-bold leading-tight text-text-primary">{player.name}</div>
-                                  <div className="mt-1 font-space-mono text-[7px] font-bold uppercase leading-tight text-text-secondary">{player.role}</div>
+                                  <div className="flex flex-wrap items-baseline gap-x-2 font-barlow text-[12px] font-bold leading-tight text-text-primary"><span>{player.name}</span><span className="font-space-mono text-[9px] font-normal text-text-secondary">{player.age}yo</span></div>
+                                  <div className="mt-1 font-space-mono text-[7px] font-bold uppercase leading-tight text-text-secondary">{player.role} · {club?.shortName ?? ((auction?.season === currentSeason && auction.unsoldPlayerIds.includes(player.id)) || (player.careerState?.unsoldAuctionStreak ?? 0) > 0 ? "Unsold" : "NEW!")}</div>
                                   <div className="mt-1 font-space-mono text-[7px] uppercase text-text-secondary">
-                                    Age {player.age} · {player.nationality === "Overseas" ? "Overseas" : "Indian"} · {player.isCapped ? "Capped" : "Uncapped"}
+                                    {player.nationality === "Overseas" ? "Overseas" : "Indian"} · {player.isCapped ? "Capped" : "Uncapped"}
                                   </div>
                                   <div className="mt-1 whitespace-nowrap font-space-mono text-[6px] font-bold uppercase text-text-secondary">
-                                    Base price {`₹${(player.basePrice / 100).toFixed(2)} Cr`}
+                                    {likelyRetained ? <span className="inline-flex items-center gap-1">Likely retained<span aria-hidden="true" className="inline-flex h-3 w-3 shrink-0 items-center justify-center rounded-full bg-success text-white"><Check size={8} strokeWidth={3} /></span></span> : `Value - ₹${(estimatedValue!.low / 100).toFixed(2)}–${(estimatedValue!.high / 100).toFixed(2)} Cr`}
                                   </div>
                                 </div>
                                 <div className="-mx-1 mt-2 grid w-[calc(100%+0.5rem)] grid-cols-2 items-end border-t border-[#16130f]/10 pt-2">
@@ -9551,7 +9668,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                     </div>
                   </div>
 
-                  {/* Tournament key players */}
+                  {/* Season player awards */}
                   <div
                     onClick={() => setActiveSubTab("stats")}
                     className="group relative flex min-h-0 cursor-pointer flex-col overflow-hidden rounded-xl border-2 border-border bg-surface p-4 shadow-sm transition-all hover:border-accent"
@@ -9560,7 +9677,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                     <div className="relative mb-3 flex shrink-0 items-start justify-between border-b border-border pb-3">
                       <div>
                         <p className="font-space-mono text-[7px] font-bold uppercase tracking-[0.18em] text-text-secondary">{currentSeason} award races</p>
-                        <h4 className="mt-1 font-anton text-[17px] uppercase leading-none text-text-primary">Tournament Key Players</h4>
+                        <h4 className="mt-1 font-anton text-[17px] uppercase leading-none text-text-primary">Season Player Awards</h4>
                       </div>
                       <ArrowUpRight size={16} className="text-accent transition-transform" />
                     </div>
@@ -10017,6 +10134,18 @@ This record has been officially verified and added to the IPL Minor Records arch
                 </div>
               )}
 
+              {activeSubTab === "playerstats" && (
+                <SeasonPlayerStatsPage
+                  fixtures={detailedFixtures}
+                  players={players}
+                  teams={teams}
+                  seasonStats={playerStats}
+                  season={currentSeason}
+                  userTeamId={userTeamId}
+                  onOpenPlayer={setDetailedPlayerId}
+                />
+              )}
+
               {/* Tournament Stats page */}
               {activeSubTab === "stats" && (
                 <TournamentStatsDashboard
@@ -10075,8 +10204,32 @@ This record has been officially verified and added to the IPL Minor Records arch
                 const majorInjuries = leagueInjuries.filter((injury) => injury.category === "major");
                 const injuredClubs = new Set(leagueInjuries.map((injury) => injury.teamId)).size;
                 const featuredInjuries = [...leagueInjuries]
-                  .sort((left, right) => left.estimatedReturnLatest.localeCompare(right.estimatedReturnLatest))
+                  .sort((left, right) => (
+                    Number(right.category === "major") - Number(left.category === "major")
+                    || right.startedOn.localeCompare(left.startedOn)
+                    || left.playerName.localeCompare(right.playerName)
+                  ))
                   .slice(0, 2);
+                const recoveryCutoff = addDaysToDateKey(currentDate, -14);
+                const activeInjuryPlayerIds = new Set(leagueInjuries.map((injury) => injury.playerId));
+                const recoveredPlayerIds = new Set<string>();
+                const recentRecoveries = injuryHistory
+                  .filter((injury) => (
+                    injury.resolution === "recovered" && injury.endedOn
+                    && injury.endedOn >= recoveryCutoff && injury.endedOn <= currentDate
+                    && !activeInjuryPlayerIds.has(injury.playerId)
+                  ))
+                  .sort((left, right) => right.endedOn!.localeCompare(left.endedOn!) || left.playerName.localeCompare(right.playerName))
+                  .filter((injury) => {
+                    if (recoveredPlayerIds.has(injury.playerId)) return false;
+                    recoveredPlayerIds.add(injury.playerId);
+                    return true;
+                  });
+                const injuryUpdates = [
+                  ...featuredInjuries.slice(0, recentRecoveries.length > 0 ? 1 : 2).map((injury) => ({ injury, recovered: false })),
+                  ...recentRecoveries.slice(0, featuredInjuries.length > 0 ? 1 : 2).map((injury) => ({ injury, recovered: true })),
+                ];
+                const shortInjuryDate = (date: string) => dateKeyToLocalDate(date).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
                 const finalDate = getSeasonFinalDate();
                 const tradeWindow = finalDate ? getTradeWindowDates(finalDate, currentSeason) : undefined;
                 const tradeWindowOpen = isTradeWindowOpen(currentDate, finalDate, currentSeason);
@@ -10157,35 +10310,44 @@ This record has been officially verified and added to the IPL Minor Records arch
                     <button
                       type="button"
                       onClick={() => setActiveSubTab("injuries")}
-                      className="group relative col-span-1 flex min-h-[18rem] flex-col overflow-hidden rounded-xl border-2 border-border bg-surface p-4 text-left shadow-sm transition-all hover:border-accent xl:col-span-5 xl:col-start-8 xl:row-span-5 xl:row-start-6 xl:min-h-0"
+                      className="league-injury-tile group relative col-span-1 flex min-h-[18rem] min-w-0 flex-col overflow-hidden rounded-xl border-2 border-border bg-surface p-3 text-left shadow-sm transition-colors hover:border-accent sm:p-4 xl:col-span-5 xl:col-start-8 xl:row-span-5 xl:row-start-6 xl:min-h-0 xl:p-3"
                     >
                       <div className="pointer-events-none absolute -right-12 -top-14 size-36 rounded-full bg-red-500/10 blur-3xl" />
-                      <div className="relative flex items-start justify-between border-b border-border pb-3">
-                        <div className="flex items-center gap-3">
-                          <span className="flex size-9 items-center justify-center rounded-lg bg-danger/10 text-danger"><Activity size={18} aria-hidden="true" /></span>
-                          <div><p className="font-space-mono text-[8px] font-bold uppercase tracking-[0.18em] text-text-secondary">Medical report</p><h3 className="mt-1 font-anton text-lg uppercase leading-none text-text-primary">Active Injuries</h3></div>
+                      <div className="league-injury-header relative flex min-w-0 shrink-0 items-center justify-between gap-2 border-b border-border pb-2">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <span className="league-injury-icon flex size-7 shrink-0 items-center justify-center rounded-lg bg-danger/10 text-danger"><Activity size={18} aria-hidden="true" /></span>
+                          <div className="min-w-0"><p className="league-injury-kicker truncate font-space-mono text-[8px] font-bold uppercase tracking-[0.18em] text-text-secondary">Medical report</p><h3 className="font-anton text-base uppercase leading-none text-text-primary">Active Injuries</h3></div>
                         </div>
                         <ArrowUpRight size={15} className="text-accent transition-transform" />
                       </div>
-                      <div className="relative mt-3 flex items-end gap-5">
-                        <div><p className="font-anton text-4xl leading-none text-text-primary">{leagueInjuries.length}</p><p className="font-space-mono text-[8px] font-bold uppercase text-text-secondary">Active cases</p></div>
-                        <div className="pb-0.5 font-space-mono text-[8px] font-bold uppercase leading-relaxed text-text-secondary"><span className="text-danger">{majorInjuries.length} major</span><br />{injuredClubs} clubs affected</div>
+                      <div className="league-injury-body relative mt-2 grid min-h-0 flex-1 grid-cols-[7.4rem_minmax(0,1fr)] gap-3">
+                        <div className="flex min-w-0 flex-col justify-center gap-1 border-r border-border/60 pr-3">
+                          <div className="flex items-center gap-2"><p className="font-anton text-3xl leading-none text-text-primary">{leagueInjuries.length}</p><p className="font-space-mono text-[8px] font-bold uppercase leading-tight text-text-secondary">Active<br />{leagueInjuries.length === 1 ? "case" : "cases"}</p></div>
+                          <p className="font-space-mono text-[8px] font-bold uppercase leading-tight text-danger">{majorInjuries.length} major</p>
+                          <p className="font-space-mono text-[8px] uppercase leading-tight text-text-secondary">{injuredClubs} {injuredClubs === 1 ? "club" : "clubs"} affected</p>
+                        </div>
+                        <div className="flex min-h-0 min-w-0 flex-col justify-center gap-1">
+                          {injuryUpdates.length > 0 ? injuryUpdates.map(({ injury, recovered }) => {
+                            const club = teams[recovered ? injury.teamId : players[injury.playerId]?.currentTeamId ?? injury.teamId]?.shortName ?? injury.teamId;
+                            const status = recovered ? "Recovered" : injury.category === "major" ? "Out" : "Playable";
+                            const recoveryDays = recovered ? Math.max(0, daysBetweenDateKeys(injury.startedOn, injury.endedOn!)) : 0;
+                            const recoveryDuration = `${recoveryDays} ${recoveryDays === 1 ? "day" : "days"} ${injury.category === "major" ? "out" : "injured"}`;
+                            const dateLabel = recovered
+                              ? `Back ${shortInjuryDate(injury.endedOn!)} · ${recoveryDuration}`
+                              : `Est. ${shortInjuryDate(injury.estimatedReturnEarliest)}${injury.estimatedReturnEarliest === injury.estimatedReturnLatest ? "" : `–${shortInjuryDate(injury.estimatedReturnLatest)}`}`;
+                            return <div key={injury.id} className="league-injury-update min-w-0" title={`${injury.playerName} · ${club} · ${injury.conditionName} · ${status} · ${dateLabel}`}>
+                              <div className="flex min-w-0 items-baseline justify-between gap-2"><span className="min-w-0 truncate text-[12px] font-semibold leading-tight text-text-primary">{injury.playerName}</span><span className={`shrink-0 font-space-mono text-[8px] font-bold uppercase leading-tight ${recovered ? "text-success" : injury.category === "major" ? "text-danger" : "text-amber-700 dark:text-amber-300"}`}>{status}</span></div>
+                              <div className="flex min-w-0 items-baseline justify-between gap-2 font-space-mono text-[8px] leading-tight text-text-secondary"><span className="min-w-0 truncate"><span className="font-bold text-accent">{club}</span> · {injury.conditionName}</span><span className="shrink-0">{dateLabel}</span></div>
+                            </div>;
+                          }) : <p className="text-[11px] leading-tight text-success">No active injuries or recoveries in the past two weeks.</p>}
+                        </div>
                       </div>
-                      <div className="relative mt-2 min-h-0 flex-1 space-y-1 overflow-hidden">
-                        {featuredInjuries.length > 0 ? featuredInjuries.map((injury) => (
-                          <div key={injury.id} className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 rounded-md bg-bg/70 px-3 py-1.5">
-                            <span className="min-w-0"><span className="block truncate text-[11px] font-semibold text-text-primary">{injury.playerName}</span><span className="block truncate font-space-mono text-[8px] uppercase text-text-secondary">{teams[injury.teamId]?.shortName ?? injury.teamId} · {injury.conditionName}</span></span>
-                            <span className="self-center font-space-mono text-[8px] font-bold uppercase text-text-secondary">to {injury.estimatedReturnEarliest}</span>
-                          </div>
-                        )) : <p className="rounded-md bg-success/5 px-3 py-2 text-xs text-success">No active injuries across the league.</p>}
-                      </div>
-                      <span className="relative mb-1 mt-2 inline-flex shrink-0 items-center gap-1 font-space-mono text-[8px] font-bold uppercase tracking-wider text-accent">Open injury report <ChevronRight size={12} /></span>
                     </button>
 
                     <button
                       type="button"
                       onClick={() => setActiveSubTab("trades")}
-                      className={`group relative col-span-1 flex min-h-[18rem] flex-col overflow-hidden rounded-xl border-2 bg-surface p-6 text-left shadow-sm transition-all xl:col-span-7 xl:col-start-1 xl:row-span-10 xl:row-start-1 xl:min-h-0 ${tradeWindowOpen ? "border-success/50 hover:border-success" : "border-border hover:border-accent"}`}
+                      className="group relative col-span-1 flex min-h-[18rem] flex-col overflow-hidden rounded-xl border-2 border-border bg-surface p-6 text-left shadow-sm transition-all hover:border-accent xl:col-span-7 xl:col-start-1 xl:row-span-10 xl:row-start-1 xl:min-h-0"
                     >
                       <div className={`pointer-events-none absolute -right-12 -top-14 size-36 rounded-full blur-3xl ${tradeWindowOpen ? "bg-emerald-500/15" : "bg-slate-500/10"}`} />
                       <div className="relative flex items-start justify-between border-b border-border pb-3">
@@ -10232,9 +10394,9 @@ This record has been officially verified and added to the IPL Minor Records arch
                         <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-border"><div className="h-full rounded-full bg-violet-500" style={{ width: `${seasonProgress}%` }} /></div>
                         <p className="mt-1 font-space-mono text-[8px] font-bold uppercase text-text-secondary">{seasonProgress}% of matches complete</p>
                       </div>
-                      <div className="relative grid min-w-0 flex-1 grid-cols-2 content-center gap-3 pl-5">
-                        <div className="rounded-lg bg-bg/70 p-4"><p className="font-space-mono text-[8px] font-bold uppercase text-text-secondary">Leading runs</p><p className="mt-2 truncate text-sm font-bold text-text-primary">{orangeCapLeaders[0]?.name ?? "Awaiting matches"}</p><p className="mt-1 font-anton text-xl text-orange-500">{orangeCapLeaders[0] ? `${orangeCapLeaders[0].runs} runs` : "—"}</p></div>
-                        <div className="rounded-lg bg-bg/70 p-4"><p className="font-space-mono text-[8px] font-bold uppercase text-text-secondary">Leading wickets</p><p className="mt-2 truncate text-sm font-bold text-text-primary">{purpleCapLeaders[0]?.name ?? "Awaiting matches"}</p><p className="mt-1 font-anton text-xl text-purple-600 dark:text-purple-400">{purpleCapLeaders[0] ? `${purpleCapLeaders[0].wickets} wickets` : "—"}</p></div>
+                      <div className="relative grid min-w-0 flex-1 grid-cols-1 content-center gap-3 pl-4">
+                        <div className="min-w-0 rounded-lg bg-bg/70 px-2 py-1"><p className="font-space-mono text-[8px] font-bold uppercase leading-tight text-text-secondary">Leading runs</p><p className="mt-1 break-words text-base font-bold leading-tight text-text-primary">{orangeCapLeaders[0]?.name ?? "Awaiting matches"}</p><p className="mt-1 whitespace-nowrap font-anton text-xl leading-none text-orange-500">{orangeCapLeaders[0] ? `${orangeCapLeaders[0].runs} runs` : "—"}</p></div>
+                        <div className="min-w-0 rounded-lg bg-bg/70 px-2 py-1"><p className="font-space-mono text-[8px] font-bold uppercase leading-tight text-text-secondary">Leading wickets</p><p className="mt-1 break-words text-base font-bold leading-tight text-text-primary">{purpleCapLeaders[0]?.name ?? "Awaiting matches"}</p><p className="mt-1 whitespace-nowrap font-anton text-xl leading-none text-purple-600 dark:text-purple-400">{purpleCapLeaders[0] ? `${purpleCapLeaders[0].wickets} wickets` : "—"}</p></div>
                       </div>
                     </button>
 

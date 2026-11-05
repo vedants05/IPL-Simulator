@@ -107,6 +107,11 @@ simulation_*_report.json
 # Large local cricket-data archive used only by one-off population tooling
 /ipljsons/
 /t20s_male_json/
+/calibration/data/cricsheet/*.zip
+/calibration/data/cricsheet/people.csv
+/calibration/data/cricsheet/names.csv
+/calibration/data/economy-control/*.pkl
+/calibration/__pycache__/
 /names.csv
 /people.csv
 

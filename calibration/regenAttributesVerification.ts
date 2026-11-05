@@ -25,6 +25,7 @@ const secondaryRatings: Array<keyof Player> = [
   "powerplayBatting", "middleOversBatting", "deathBatting",
   "powerplayBowling", "middleOversBowling", "deathBowling",
   "stamina", "battingConsistency", "consistency", "bowlingConsistency",
+  "bowlingEconomyControl",
   "bigMatchRating", "pressureRating", "fieldingRating", "wicketkeepingRating",
   "injuryProneness", "paceRating", "spinRating", "captaincy", "reputation",
 ];
@@ -36,6 +37,7 @@ const generationRanges: Partial<Record<keyof Player, readonly [number, number]>>
   battingConsistency: [10, 90],
   consistency: [10, 90],
   bowlingConsistency: [10, 90],
+  bowlingEconomyControl: [1, 99],
   injuryProneness: [10, 90],
   pressureRating: [15, 90],
   bigMatchRating: [15, 90],
@@ -331,10 +333,21 @@ const legacyRegens = Object.fromEntries(Array.from({ length: 100 }, (_, index) =
   delete legacy.battingConsistency;
   delete legacy.consistency;
   delete legacy.bowlingConsistency;
+  delete legacy.bowlingEconomyControl;
   return [legacy.id, legacy];
 }));
 const migratedLegacy = initializeCareerPlayers(legacyRegens, 2028);
 const repeatedMigration = initializeCareerPlayers(legacyRegens, 2028);
+const reloadedMigration = initializeCareerPlayers(JSON.parse(JSON.stringify(migratedLegacy)), 2029);
+for (const [id, player] of Object.entries(migratedLegacy)) {
+  assert.ok(Number.isInteger(player.bowlingEconomyControl));
+  assert.ok(player.bowlingEconomyControl! >= 1 && player.bowlingEconomyControl! <= 99);
+  assert.equal(player.bowlingEconomyControl, repeatedMigration[id].bowlingEconomyControl);
+  assert.equal(player.bowlingEconomyControl, reloadedMigration[id].bowlingEconomyControl,
+    "saved economy control must survive reload and later seasons");
+}
+assert.ok(new Set(Object.values(migratedLegacy).map(p => p.bowlingEconomyControl)).size > 15,
+  "economy control must vary between generated players");
 const migratedBattingValues = Object.values(migratedLegacy).map((player) => player.stamina!);
 assert.ok(new Set(migratedBattingValues).size >= 30, "legacy regen batting consistency collapsed to the neutral fallback");
 assert.ok(migratedBattingValues.some((rating) => rating < 40));

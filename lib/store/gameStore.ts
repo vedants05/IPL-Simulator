@@ -1,4 +1,5 @@
 "use client";
+import { staffRolesAreCompatible } from "@/lib/logic/staffRoleRules";
 import { create } from "zustand";
 import { mergeT20IRetirement } from '@/lib/logic/internationalRetirements';
 import { hasEditorAccess, refreshEditorAccess } from "@/lib/store/editorAccessStore";
@@ -219,6 +220,7 @@ import {
   appointCareerStaff,
   initializeCareerStaffState,
   normalizeCareerStaffState,
+  enforceHeadCoachSecondaryRoles,
   poachCareerStaff,
   releaseCareerStaff,
   renewCareerStaffContract,
@@ -642,6 +644,7 @@ async function fetchStartingStaffDirectory(): Promise<{
 // Fields refreshPlayersFromSupabase already keeps from the save and which career
 // development legitimately changes, so an edit must not pin them permanently.
 const SAVE_OWNED_PLAYER_FIELDS = new Set<keyof Player>([
+  "bowlingEconomyControl",
   "age",
   "currentBatting",
   "currentBowling",
@@ -734,7 +737,7 @@ function applyStaffOverrides(
     if (contracts === careerStaff.contracts) contracts = { ...contracts };
     contracts[staffId] = { ...contract, ...Object.fromEntries(changed) };
   });
-  return contracts === careerStaff.contracts ? careerStaff : { ...careerStaff, contracts };
+  return enforceHeadCoachSecondaryRoles(contracts === careerStaff.contracts ? careerStaff : { ...careerStaff, contracts });
 }
 
 function pinFrozenStaffAttributes(
@@ -1913,6 +1916,9 @@ export const useGameStore = create<Store>()(
             consistency: freshPlayer.consistency,
             battingConsistency: freshPlayer.battingConsistency,
             bowlingConsistency: freshPlayer.bowlingConsistency,
+            bowlingEconomyControl: savedPlayer.careerState?.lastDevelopmentSeason !== undefined
+              ? savedPlayer.bowlingEconomyControl ?? freshPlayer.bowlingEconomyControl
+              : freshPlayer.bowlingEconomyControl,
             bigMatchRating: freshPlayer.bigMatchRating,
             pressureRating: freshPlayer.pressureRating,
             battingAggression: freshPlayer.battingAggression ?? freshPlayer.aggression,
@@ -4764,6 +4770,7 @@ export const useGameStore = create<Store>()(
 
         const primaryRole = terms.primaryRole || contract.primaryRole;
         const roles = Array.from(new Set([primaryRole, ...terms.roles])).slice(0, MAX_STAFF_CONTRACT_ROLES);
+        if (!staffRolesAreCompatible(roles)) return false;
         const annualSalary = Math.max(0, Math.round(terms.annualSalary));
         const moved: CareerStaffContract = toTeamId
           ? {
@@ -4976,6 +4983,7 @@ export const useGameStore = create<Store>()(
           const fallbackPostseason = state.lastCareerPostseasonSeason === completedSeason
             ? { players: state.players, teams: state.teams, retirements: [], retiredPlayers: [] }
             : processPostSeasonCareer({
+                careerStaff: state.careerStaff,
                 players: state.players,
                 teams: state.teams,
                 performance: archivedPerformance,
@@ -5380,6 +5388,7 @@ export const useGameStore = create<Store>()(
           }));
           await stage(`Archive 9/14 · Applying postseason development to ${playerCount} players...`);
           const lifecycle = processPostSeasonCareer({
+            careerStaff: state.careerStaff,
             players: normalizedPlayers,
             teams: state.teams,
             performance: developmentPerformance,

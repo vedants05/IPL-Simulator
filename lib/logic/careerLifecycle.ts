@@ -29,6 +29,31 @@ import { enforceBattingPositionEligibility } from "./playerBattingPositions";
 import { classifyBowlingUsage } from "./playerBowlingUsage";
 import { getEmergingPlayerEligibility, rankMvpCandidates } from "./seasonAwards";
 import { worldRules } from "./worldRules";
+import type { CareerStaffState } from "./staffContracts";
+
+/** Annual skill learning: workload is exposure, not a reward for lucky figures.
+ * Workload is converted from cricket overs notation into legal balls.
+ */
+export function calculateEconomyControlDevelopment(input: {
+  age: number; currentRating: number; oversBowled: number; coachRating?: number;
+}): number {
+  const exposure = clamp(cricketOversToBalls(input.oversBowled) / 240, 0, 1);
+  const coaching = input.coachRating === undefined ? 1 : .75 + clamp(input.coachRating, 1, 99) / 198;
+  const learning = input.age < 22 ? 1.8 : input.age < 26 ? 1.2 : input.age < 30 ? .5 : input.age < 34 ? .2 : 0;
+  const headroom = clamp((99 - input.currentRating) / 25, 0, 1);
+  const decline = input.age >= 35 ? Math.min(1.5, .2 + (input.age - 35) * .15) : 0;
+  return learning * exposure * coaching * headroom - decline;
+}
+
+function economyCoachRating(player: Player, staff?: CareerStaffState): number | undefined {
+  if (!staff || !player.currentTeamId) return undefined;
+  const role = player.bowlingStyle === "Spinner" || player.role === "Spin Bowler"
+    ? "spin_bowling_coach" : "pace_bowling_coach";
+  const ratings = Object.values(staff.contracts)
+    .filter(c => c.status === "contracted" && c.teamId === player.currentTeamId && c.roles.includes(role))
+    .map(c => c.roleRatings[role] ?? c.currentAbility).filter(Number.isFinite);
+  return ratings.length ? Math.max(...ratings) : undefined;
+}
 
 export const CAREER_POLICY = {
   auctionEligibilityRating: 67,
@@ -462,6 +487,12 @@ export function initializeCareerPlayers(
         battingConsistency,
         consistency: bowlingConsistency,
         bowlingConsistency,
+        bowlingEconomyControl: Number.isFinite(player.bowlingEconomyControl)
+          ? player.bowlingEconomyControl
+          : generatedEconomyControl(
+            player.currentBowling ?? 0,
+            seededRandom(`regen-economy-control-backfill:${player.id}`),
+          ),
         careerState: {
           ...player.careerState,
           secondaryAttributesGenerationVersion: 1,
@@ -1668,6 +1699,7 @@ export function developPlayerAfterSeason(
   seed: string,
   injuryProtectedAbsence = false,
   injuryAbsenceShare = injuryProtectedAbsence ? 1 : 0,
+  bowlingCoachRating?: number,
 ): Player {
   const state = initializePlayerCareerState(player, season - 1);
   if (state.lastDevelopmentSeason === season) return player;
@@ -1821,6 +1853,11 @@ export function developPlayerAfterSeason(
   const pressure = applyBank(currentPressure, state.pressureDevelopmentBank ?? 0, mentalDeltas.pressureDelta, 15, 90);
   const bigMatch = applyBank(currentBigMatch, state.bigMatchDevelopmentBank ?? 0, mentalDeltas.bigMatchDelta, 15, 90);
 
+  const economyControl = Number.isFinite(player.bowlingEconomyControl)
+    ? applyBank(player.bowlingEconomyControl!, state.bowlingEconomyControlDevelopmentBank ?? 0,
+      calculateEconomyControlDevelopment({ age: player.age, currentRating: player.bowlingEconomyControl!,
+        oversBowled: stats.oversBowled, coachRating: bowlingCoachRating }), 1, 99)
+    : undefined;
   const updated: Player = {
     ...player,
     currentBatting: batting.value,
@@ -1833,6 +1870,7 @@ export function developPlayerAfterSeason(
     battingConsistency: battingConsistency.value,
     consistency: bowlingConsistency.value,
     bowlingConsistency: bowlingConsistency.value,
+    bowlingEconomyControl: economyControl?.value ?? player.bowlingEconomyControl,
     fieldingRating: fielding.value,
     wicketkeepingRating: wicketkeeping.value,
     injuryProneness: injury.value,
@@ -1863,6 +1901,7 @@ export function developPlayerAfterSeason(
       fieldingDevelopmentBank: fielding.bank,
       battingConsistencyDevelopmentBank: battingConsistency.bank,
       bowlingConsistencyDevelopmentBank: bowlingConsistency.bank,
+      bowlingEconomyControlDevelopmentBank: economyControl?.bank ?? 0,
       injuryPronenessDevelopmentBank: injury.bank,
       pressureDevelopmentBank: pressure.bank,
       bigMatchDevelopmentBank: bigMatch.bank,
@@ -1894,6 +1933,7 @@ export function developPlayerAfterSeason(
           injuryProneness: injury.value,
           battingConsistency: battingConsistency.value,
           bowlingConsistency: bowlingConsistency.value,
+          bowlingEconomyControl: economyControl?.value ?? player.bowlingEconomyControl,
           pressureRating: pressure.value,
           bigMatchRating: bigMatch.value,
         },
@@ -2158,6 +2198,7 @@ export function applyInternationalCappingAfterSeason(input: {
 }
 
 export function processPostSeasonCareer(input: {
+  careerStaff?: CareerStaffState;
   players: Record<string, Player>;
   teams: Record<string, Team>;
   performance: Record<string, CareerSeasonPerformance>;
@@ -2225,6 +2266,7 @@ export function processPostSeasonCareer(input: {
       input.seed,
       injuryAbsenceShare > 0,
       injuryAbsenceShare,
+      economyCoachRating(player, input.careerStaff),
     )];
   }));
   return {
@@ -2979,6 +3021,12 @@ function generatedMentalRatings(
   };
 }
 
+// Use the same ability-based prior as unmeasured real players, with a separate
+// skill spread so equally able bowlers can have different run-prevention styles.
+function generatedEconomyControl(bowlingAbility: number, random: () => number): number {
+  return boundedCompositeRating(random, 70 + (bowlingAbility - 82) * 0.65, 9, 1, 99);
+}
+
 function generatedConsistencyAndDurability(
   age: number,
   consistencyRandom: () => number,
@@ -3400,6 +3448,12 @@ function createGeneratedPlayer(input: {
     ...mentalRatings,
     ...consistencyAndDurability,
     ...phaseRatings,
+    // Give every regen a latent rating, including batters who later bowl part-time.
+    // An independent stream preserves all existing generated attributes.
+    bowlingEconomyControl: generatedEconomyControl(
+      skills.currentBowling ?? 0,
+      seededRandom(`${input.seed}:${input.season}:regen:${input.index}:economy-control`),
+    ),
     isWicketkeeper: roleGroup === "WK",
     bowlingUsage: roleGroup === "WK"
       ? "does_not_bowl"

@@ -21,17 +21,18 @@ const attacking = applyBattingAggressionOutcomeWeights(base, 90);
 assert.ok(boundaryShare(attacking) > boundaryShare(neutral));
 assert.ok(boundaryShare(neutral) > boundaryShare(controlled));
 
-const oldGuide95 = 157.5 + (95 - 65) * 27.5 / 30;
-const oldGuide99 = 157.5 + (99 - 65) * 27.5 / 30;
 const newGuide95 = battingAggressionScoringProfile(95).indicativeStrikeRate;
 const newGuide99 = battingAggressionScoringProfile(99).indicativeStrikeRate;
-assert.equal(newGuide95, oldGuide95, "95 remains calibrated to the old tempo");
-assert.ok(newGuide99 - newGuide95 > oldGuide99 - oldGuide95 + 15);
+assert.equal(newGuide95, 175, "95 uses the recalibrated attacking tempo");
+assert.ok(Math.abs(newGuide99 - 208.6666667) < .001, "99 retains the intended extreme attacking tempo");
+assert.ok(newGuide99 - newGuide95 > newGuide95 - battingAggressionScoringProfile(85).indicativeStrikeRate,
+  "extreme aggression must retain a steeper tempo curve");
 assert.ok(battingAggressionScoringProfile(99).boundaryIntent > battingAggressionScoringProfile(95).boundaryIntent);
 assert.ok(aggressionAdjustedWicketProbability(0.05, 99) > aggressionAdjustedWicketProbability(0.05, 95));
-console.log("Aggression before/after", {
-  old: { aggression95: oldGuide95, aggression99: oldGuide99 },
-  new: { aggression95: newGuide95, aggression99: newGuide99 },
+console.log("Aggression target mapping", {
+  aggression65: battingAggressionScoringProfile(65).indicativeStrikeRate,
+  aggression95: newGuide95,
+  aggression99: newGuide99,
 });
 
 const lowComposure = pressureAdjustedAggression(90, 1, 20, 6);

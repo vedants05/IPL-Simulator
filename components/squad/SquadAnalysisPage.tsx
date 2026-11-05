@@ -1,6 +1,9 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
+import { createPortal } from "react-dom";
+import FittedRatingTiers from "./FittedRatingTiers";
+import TacticalRoleCard from "./TacticalRoleCard";
 import { Player, Team } from "@/lib/types";
 import { formatPrice } from "@/lib/logic/auctionRules";
 import {
@@ -484,8 +487,8 @@ export default function SquadAnalysisPage({
   const popoverStyle = useMemo(() => {
     if (!activeBenchmark) return {};
 
-    const popoverWidth = 300;
-    const popoverHeight = 310;
+    const popoverWidth = Math.min(320, window.innerWidth - 24);
+    const popoverHeight = Math.min(120 + rankedTeams.length * 28, window.innerHeight - 24);
     const viewportWidth = typeof window !== "undefined" ? window.innerWidth : 1200;
     const viewportHeight = typeof window !== "undefined" ? window.innerHeight : 800;
 
@@ -509,10 +512,11 @@ export default function SquadAnalysisPage({
     }
 
     return {
+      width: `${popoverWidth}px`,
       left: `${Math.round(left)}px`,
       top: `${Math.round(top)}px`,
     };
-  }, [activeBenchmark]);
+  }, [activeBenchmark, rankedTeams.length]);
 
   return (
     <div className="relative flex h-full flex-1 min-h-0 flex-col overflow-hidden border-2 border-border bg-surface p-2.5 gap-2">
@@ -681,90 +685,86 @@ export default function SquadAnalysisPage({
             </div>
           </div>
 
-          {/* Squad Ability and Potential share the original combined-card footprint */}
+          {/* Matching frames keep CA and PA directly comparable at narrow widths. */}
           <div className="grid h-full min-h-0 grid-cols-2 gap-2 overflow-hidden">
-            <div className="flex h-full min-h-0 flex-col overflow-hidden rounded border border-border bg-black/[0.02] p-2 shadow-sm dark:bg-white/[0.02]">
-              <div className="flex items-center justify-between gap-1 border-b border-border/40 pb-1">
-                <span className="truncate font-space-mono text-[8px] font-bold uppercase tracking-wider text-text-secondary">Squad CA</span>
-                {renderDiffBadge(analysis.ratingDiff, "", false, {
-                  title: "League Overall Squad CA Benchmark",
-                  metricKey: "squadCA",
-                  unit: "CA",
-                })}
-              </div>
-              <div className="flex min-h-0 flex-1 flex-col justify-center py-1 text-center">
-                <span className="font-anton text-[23px] leading-none text-text-primary">{analysis.userAvgRating.toFixed(1)}</span>
-                <span className="mt-0.5 font-space-mono text-[7px] font-bold uppercase tracking-wider text-text-secondary">Current ability</span>
-              </div>
-              <div
-                onMouseEnter={(e) =>
-                  handleTriggerHover(e, {
-                    title: "League Overall Squad CA Benchmark",
-                    metricKey: "squadCA",
-                    unit: "CA",
-                  })
-                }
-                onMouseLeave={handleTriggerLeave}
-                className="flex cursor-help items-center justify-between border-t border-border/30 pt-1 font-space-mono text-[8px] hover:underline"
-              >
-                <span className="text-text-secondary">League Avg:</span>
-                <span className="font-bold text-text-primary">{analysis.leagueAvgSquadRating.toFixed(1)}</span>
-              </div>
-            </div>
-
-            <div className="flex h-full min-h-0 flex-col overflow-hidden rounded border border-border bg-black/[0.02] p-2 shadow-sm dark:bg-white/[0.02]">
-              <div className="flex items-center justify-between gap-1 border-b border-border/40 pb-1">
-                <span className="truncate font-space-mono text-[8px] font-bold uppercase tracking-wider text-text-secondary">Potential</span>
-                {renderDiffBadge(analysis.potentialDiff, "", false, {
-                  title: "League Overall Squad PA Potential Benchmark",
-                  metricKey: "squadPA",
-                  unit: "PA",
-                })}
-              </div>
-              <div className="flex items-baseline justify-between py-1">
-                <span className="font-anton text-[20px] leading-none text-accent">{analysis.userAvgPotential.toFixed(1)}</span>
-                <span className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">PA Avg</span>
-              </div>
-              <div className="flex min-h-0 flex-1 flex-col gap-1 border-t border-border/30 pt-1 font-space-mono text-[8px]">
-                <div
-                  onMouseEnter={(e) =>
-                    handleTriggerHover(e, {
-                      title: "League Overall Squad PA Potential Benchmark",
-                      metricKey: "squadPA",
-                      unit: "PA",
-                    })
-                  }
-                  onMouseLeave={handleTriggerLeave}
-                  className="flex cursor-help items-center justify-between hover:underline"
-                >
-                  <span className="text-text-secondary">League Avg:</span>
-                  <span className="font-bold text-text-primary">{analysis.leagueAvgSquadPotential.toFixed(1)}</span>
+            {([
+              {
+                key: "squadCA" as const,
+                heading: "Current ability",
+                title: "League Overall Squad CA Benchmark",
+                unit: "CA",
+                value: analysis.userAvgRating,
+                leagueAverage: analysis.leagueAvgSquadRating,
+                difference: analysis.ratingDiff,
+                detailLabel: "Squad size",
+                detailValue: `${analysis.userSquadPlayers.length} players`,
+                listHeading: "Top rated players",
+                entries: [...analysis.userSquadPlayers]
+                  .sort((a, b) => Math.max(b.currentBatting ?? 0, b.currentBowling ?? 0) - Math.max(a.currentBatting ?? 0, a.currentBowling ?? 0))
+                  .map(player => ({ player, value: String(Math.max(player.currentBatting ?? 0, player.currentBowling ?? 0)) })),
+                emptyText: "No players in squad",
+              },
+              {
+                key: "squadPA" as const,
+                heading: "Potential",
+                title: "League Overall Squad PA Potential Benchmark",
+                unit: "PA",
+                value: analysis.userAvgPotential,
+                leagueAverage: analysis.leagueAvgSquadPotential,
+                difference: analysis.potentialDiff,
+                detailLabel: "Upside",
+                detailValue: `+${(analysis.userAvgPotential - analysis.userAvgRating).toFixed(1)}`,
+                listHeading: "Top growth players",
+                entries: analysis.topGrowthPlayers.map(({ player, growth }) => ({ player, value: `+${growth}` })),
+                emptyText: "No remaining growth",
+              },
+            ]).map(card => (
+              <div key={card.key} data-squad-rating={card.key} className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded border border-border bg-black/[0.02] p-2 shadow-sm dark:bg-white/[0.02]">
+                <h4 className="shrink-0 border-b border-border/40 pb-1 font-space-mono text-[8px] font-bold uppercase leading-tight tracking-wide text-text-secondary">{card.heading}</h4>
+                <div className="flex shrink-0 items-baseline justify-between gap-1 py-1.5">
+                  <span className="font-anton text-[23px] leading-none text-text-primary">{card.value.toFixed(1)}</span>
+                  <span className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">{card.unit} Avg</span>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-text-secondary">Upside:</span>
-                  <span className="font-bold text-success">+{(analysis.userAvgPotential - analysis.userAvgRating).toFixed(1)}</span>
+                <div
+                  onMouseEnter={e => handleTriggerHover(e, { title: card.title, metricKey: card.key, unit: card.unit })}
+                  onMouseLeave={handleTriggerLeave}
+                  className="shrink-0 cursor-help border-y border-border/30 py-1 font-space-mono text-[8px] hover:bg-accent/5"
+                >
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="text-text-secondary">League Avg:</span>
+                    <span className="font-bold text-text-primary">{card.leagueAverage.toFixed(1)}</span>
+                  </div>
+                  <div className={`mt-0.5 flex items-center justify-between gap-1 text-[7px] font-bold ${card.difference >= 0 ? "text-success" : "text-danger"}`}>
+                    <span>vs League</span>
+                    <span className="inline-flex items-center gap-1">
+                      {card.difference >= 0 ? <TrendingUp className="size-2.5" /> : <TrendingDown className="size-2.5" />}
+                      {card.difference >= 0 ? "+" : ""}{card.difference.toFixed(1)}
+                    </span>
+                  </div>
+                </div>
+                <div className="flex shrink-0 items-center justify-between gap-1 py-1 font-space-mono text-[7px]">
+                  <span className="text-text-secondary">{card.detailLabel}:</span>
+                  <span className={`font-bold ${card.key === "squadPA" ? "text-success" : "text-text-primary"}`}>{card.detailValue}</span>
                 </div>
                 <div className="flex min-h-0 flex-1 flex-col border-t border-border/20 pt-1">
-                  <span className="shrink-0 truncate font-space-mono text-[7px] font-bold uppercase text-text-secondary">Top Growth Players</span>
-                  <div className="mt-0.5 min-h-0 flex-1 overflow-y-auto pr-0.5">
-                    {analysis.topGrowthPlayers.length > 0 ? analysis.topGrowthPlayers.map(({ player, growth }, index) => (
+                  <span className="shrink-0 font-space-mono text-[7px] font-bold uppercase leading-tight text-text-secondary">{card.listHeading}</span>
+                  <div className="mt-0.5 min-h-0 flex-1 overflow-y-auto overflow-x-hidden pr-0.5">
+                    {card.entries.length > 0 ? card.entries.map(({ player, value }, index) => (
                       <button
                         key={player.id}
                         type="button"
-                        className="grid h-4 w-full grid-cols-[0.8rem_minmax(0,1fr)_auto] items-center gap-1 border-t border-border/15 text-left first:border-t-0 hover:underline"
+                        className="grid min-h-4 w-full grid-cols-[0.6rem_minmax(0,1fr)_auto] items-start gap-1 border-t border-border/15 py-0.5 text-left first:border-t-0 hover:underline"
                         onClick={() => onOpenPlayer?.(player.id)}
                       >
                         <span className="font-space-mono text-[7px] font-bold text-text-secondary">{index + 1}</span>
-                        <span className="truncate font-barlow text-[8.5px] font-semibold text-text-primary">{player.name}</span>
-                        <span className="shrink-0 font-space-mono text-[7px] font-bold text-success">+{growth}</span>
+                        <span className="break-words font-barlow text-[8.5px] font-semibold leading-tight text-text-primary">{player.name}</span>
+                        <span className={`font-space-mono text-[7px] font-bold ${card.key === "squadPA" ? "text-success" : "text-accent"}`}>{value}</span>
                       </button>
-                    )) : (
-                      <span className="flex items-center text-[8px] text-text-secondary">No remaining growth</span>
-                    )}
+                    )) : <span className="text-[8px] text-text-secondary">{card.emptyText}</span>}
                   </div>
                 </div>
               </div>
-            </div>
+            ))}
           </div>
         </div>
 
@@ -989,83 +989,12 @@ export default function SquadAnalysisPage({
                 <h4 className="font-anton text-[13px] uppercase text-text-primary">Squad Rating Tiers</h4>
                 <span className="font-space-mono text-[8.5px] text-text-secondary">Ability Pyramid</span>
               </div>
-              <div className="grid flex-1 min-h-0 grid-cols-2 grid-rows-2 gap-1.5 mt-1.5">
-                {/* Elite and established starters (80+) */}
-                <div className="flex h-full min-h-0 flex-col overflow-hidden rounded border border-accent/40 bg-accent/[0.04] p-1.5">
-                  <div className="flex items-center justify-between font-space-mono text-[8.5px] font-bold">
-                    <span className="text-accent flex items-center gap-1"><Sparkles className="size-2.5" /> Elite &amp; Starters (80+)</span>
-                    <span className="text-text-primary font-anton text-[13px]">{analysis.eliteAndStartersTier.length}</span>
-                  </div>
-                  <div className="mt-1 flex min-h-0 flex-1 content-start flex-wrap gap-1 overflow-y-auto">
-                    {analysis.eliteAndStartersTier.length > 0 ? (
-                      analysis.eliteAndStartersTier.map((p) => (
-                        <span key={p.id} onClick={() => onOpenPlayer?.(p.id)} className="max-w-full cursor-pointer truncate rounded bg-accent/20 px-1 py-0.5 font-barlow text-[9px] font-semibold leading-none text-text-primary hover:underline">
-                          {p.name}
-                        </span>
-                      ))
-                    ) : (
-                      <span className="text-[8.5px] text-text-secondary italic">None</span>
-                    )}
-                  </div>
-                </div>
-
-                {/* Remaining youngsters, split by age */}
-                <div className="flex h-full min-h-0 flex-col overflow-hidden rounded border border-border/60 bg-black/[0.02] p-1.5 dark:bg-white/[0.02]">
-                  <div className="flex items-center justify-between font-space-mono text-[8.5px] font-bold">
-                    <span className="text-emerald-500">Youngsters (≤25)</span>
-                    <span className="text-text-primary font-anton text-[13px]">{analysis.youngsterTier.length}</span>
-                  </div>
-                  <div className="mt-1 flex min-h-0 flex-1 content-start flex-wrap gap-1 overflow-y-auto">
-                    {analysis.youngsterTier.length > 0 ? (
-                      analysis.youngsterTier.map((p) => (
-                        <span key={p.id} onClick={() => onOpenPlayer?.(p.id)} className="max-w-full cursor-pointer truncate rounded bg-black/5 px-1 py-0.5 font-barlow text-[9px] font-semibold leading-none text-text-primary hover:underline dark:bg-white/10">
-                          {p.name}
-                        </span>
-                      ))
-                    ) : (
-                      <span className="text-[8.5px] text-text-secondary italic">None</span>
-                    )}
-                  </div>
-                </div>
-
-                {/* Remaining prime-age squad players */}
-                <div className="flex h-full min-h-0 flex-col overflow-hidden rounded border border-border/60 bg-black/[0.02] p-1.5 dark:bg-white/[0.02]">
-                  <div className="flex items-center justify-between font-space-mono text-[8.5px] font-bold">
-                    <span className="text-text-secondary">Squad Players (26–33)</span>
-                    <span className="text-text-primary font-anton text-[13px]">{analysis.squadPlayerTier.length}</span>
-                  </div>
-                  <div className="mt-1 flex min-h-0 flex-1 content-start flex-wrap gap-1 overflow-y-auto">
-                    {analysis.squadPlayerTier.length > 0 ? (
-                      analysis.squadPlayerTier.map((p) => (
-                        <span key={p.id} onClick={() => onOpenPlayer?.(p.id)} className="max-w-full cursor-pointer truncate rounded bg-black/5 px-1 py-0.5 font-barlow text-[9px] leading-none text-text-primary hover:underline dark:bg-white/10">
-                          {p.name}
-                        </span>
-                      ))
-                    ) : (
-                      <span className="text-[8.5px] text-text-secondary italic">None</span>
-                    )}
-                  </div>
-                </div>
-
-                {/* Remaining veterans */}
-                <div className="flex h-full min-h-0 flex-col overflow-hidden rounded border border-border/60 bg-black/[0.02] p-1.5 dark:bg-white/[0.02]">
-                  <div className="flex items-center justify-between font-space-mono text-[8.5px] font-bold">
-                    <span className="text-amber-500">Veterans (34+)</span>
-                    <span className="text-text-primary font-anton text-[13px]">{analysis.veteranTier.length}</span>
-                  </div>
-                  <div className="mt-1 flex min-h-0 flex-1 content-start flex-wrap gap-1 overflow-y-auto">
-                    {analysis.veteranTier.length > 0 ? (
-                      analysis.veteranTier.map((p) => (
-                        <span key={p.id} onClick={() => onOpenPlayer?.(p.id)} className="max-w-full cursor-pointer truncate rounded bg-black/5 px-1 py-0.5 font-barlow text-[9px] leading-none text-text-primary hover:underline dark:bg-white/10">
-                          {p.name}
-                        </span>
-                      ))
-                    ) : (
-                      <span className="text-[8.5px] text-text-secondary italic">None</span>
-                    )}
-                  </div>
-                </div>
-              </div>
+              <FittedRatingTiers onOpenPlayer={onOpenPlayer} tiers={[
+                { label: "Elite & Starters (80+)", players: analysis.eliteAndStartersTier, color: "text-accent", elite: true },
+                { label: "Youngsters (≤25)", players: analysis.youngsterTier, color: "text-emerald-500" },
+                { label: "Squad Players (26–33)", players: analysis.squadPlayerTier, color: "text-text-secondary" },
+                { label: "Veterans (34+)", players: analysis.veteranTier, color: "text-amber-500" },
+              ]} />
             </div>
           </div>
 
@@ -1077,139 +1006,73 @@ export default function SquadAnalysisPage({
                 <span className="font-space-mono text-[8.5px] text-text-secondary">Positional Coverage</span>
               </div>
 
-              <div className="grid flex-1 min-h-0 grid-cols-4 grid-rows-2 gap-1.5 mt-1.5">
-                <div className="rounded border border-border/60 p-1.5 bg-black/[0.01] dark:bg-white/[0.01] flex flex-col justify-between h-full">
-                  <div className="font-space-mono text-[8.5px] font-bold uppercase text-text-secondary truncate">Pace Battery</div>
-                  <div className="font-anton text-[18px] text-text-primary leading-none">{analysis.paceBowlers.length}</div>
-                  <div className="truncate font-barlow text-[9.5px] text-text-secondary">
-                    {analysis.paceBowlers.slice(0, 3).map(p => p.name).join(", ") || "None"}
+              <div className="mt-1.5 grid min-h-0 flex-1 grid-cols-4 grid-rows-2 gap-1.5">
+                {[
+                  { heading: "Pace Battery", players: analysis.paceBowlers, skill: "bowling" },
+                  { heading: "Spin Attack", players: analysis.spinBowlers, skill: "bowling" },
+                  { heading: "Wicketkeepers", players: analysis.wicketkeepers, skill: "keeping" },
+                  { heading: "All-Rounders", players: analysis.impactAllRounders, skill: "allround" },
+                  { heading: "Openers / #3", players: analysis.topOrderBatters, skill: "batting" },
+                  { heading: "Finishers", players: analysis.finishers, skill: "batting" },
+                ].map(role => {
+                  const fullTimeKeeper = (player: Player) => Number(player.role === "WK-Batsman" || Boolean(player.isWicketkeeper));
+                  const score = (player: Player) => role.skill === "keeping" ? player.wicketkeepingRating ?? (fullTimeKeeper(player) ? 75 : 40) : role.skill === "bowling" ? player.currentBowling ?? 0 : role.skill === "allround" ? Math.min(player.currentBatting ?? 0, player.currentBowling ?? 0) : player.currentBatting ?? 0;
+                  return <TacticalRoleCard key={role.heading} heading={role.heading} keeperLabels={role.skill === "keeping"} players={[...role.players].sort((a, b) => (role.skill === "keeping" ? fullTimeKeeper(b) - fullTimeKeeper(a) : 0) || score(b) - score(a) || a.name.localeCompare(b.name))} onOpenPlayer={onOpenPlayer} />;
+                })}
+                <div data-tactical-role="LHB/RHB Ratio" className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded border border-border/40 bg-black/[0.015] px-2 py-1.5 dark:bg-white/[0.02]">
+                  <div className="flex shrink-0 items-center justify-between gap-1 ">
+                    <span className="font-space-mono text-[7.5px] font-bold uppercase tracking-wide leading-tight text-text-secondary">LHB/RHB Ratio</span>
+                    <span className="shrink-0 font-anton text-[19px] leading-none text-accent">{analysis.lhbCount}/{analysis.rhbCount}</span>
+                  </div>
+                  <div className="mt-1 font-barlow text-[10px] leading-tight text-text-secondary">
+                    <div>{analysis.lhbCount} left-handed · {analysis.rhbCount} right-handed</div>
+                    <div className="my-1.5 flex h-1 overflow-hidden rounded-full bg-accent/15"><span className="bg-accent" style={{ width: `${analysis.lhbCount / Math.max(1, analysis.userSquadPlayers.length) * 100}%` }} /></div>
+                    <div>{((analysis.lhbCount / Math.max(1, analysis.userSquadPlayers.length)) * 100).toFixed(0)}% LHB</div>
                   </div>
                 </div>
-
-                <div className="rounded border border-border/60 p-1.5 bg-black/[0.01] dark:bg-white/[0.01] flex flex-col justify-between h-full">
-                  <div className="font-space-mono text-[8.5px] font-bold uppercase text-text-secondary truncate">Spin Attack</div>
-                  <div className="font-anton text-[18px] text-text-primary leading-none">{analysis.spinBowlers.length}</div>
-                  <div className="truncate font-barlow text-[9.5px] text-text-secondary">
-                    {analysis.spinBowlers.slice(0, 3).map(p => p.name).join(", ") || "None"}
-                  </div>
-                </div>
-
-                <div className="rounded border border-border/60 p-1.5 bg-black/[0.01] dark:bg-white/[0.01] flex flex-col justify-between h-full">
-                  <div className="font-space-mono text-[8.5px] font-bold uppercase text-text-secondary truncate">Wicketkeepers</div>
-                  <div className="font-anton text-[18px] text-text-primary leading-none">{analysis.wicketkeepers.length}</div>
-                  <div className="truncate font-barlow text-[9.5px] text-text-secondary">
-                    {analysis.wicketkeepers.slice(0, 3).map(p => p.name).join(", ") || "None"}
-                  </div>
-                </div>
-
-                <div className="rounded border border-border/60 p-1.5 bg-black/[0.01] dark:bg-white/[0.01] flex flex-col justify-between h-full">
-                  <div className="font-space-mono text-[8.5px] font-bold uppercase text-text-secondary truncate">All-Rounders</div>
-                  <div className="font-anton text-[18px] text-text-primary leading-none">{analysis.impactAllRounders.length}</div>
-                  <div className="truncate font-barlow text-[9.5px] text-text-secondary">
-                    {analysis.impactAllRounders.slice(0, 3).map(p => p.name).join(", ") || "None"}
-                  </div>
-                </div>
-
-                <div className="rounded border border-border/60 p-1.5 bg-black/[0.01] dark:bg-white/[0.01] flex flex-col justify-between h-full">
-                  <div className="font-space-mono text-[8.5px] font-bold uppercase text-text-secondary truncate">Openers / #3</div>
-                  <div className="font-anton text-[18px] text-text-primary leading-none">{analysis.topOrderBatters.length}</div>
-                  <div className="truncate font-barlow text-[9.5px] text-text-secondary">
-                    {analysis.topOrderBatters.slice(0, 3).map(p => p.name).join(", ") || "None"}
-                  </div>
-                </div>
-
-                <div className="rounded border border-border/60 p-1.5 bg-black/[0.01] dark:bg-white/[0.01] flex flex-col justify-between h-full">
-                  <div className="font-space-mono text-[8.5px] font-bold uppercase text-text-secondary truncate">Finishers</div>
-                  <div className="font-anton text-[18px] text-text-primary leading-none">{analysis.finishers.length}</div>
-                  <div className="truncate font-barlow text-[9.5px] text-text-secondary">
-                    {analysis.finishers.slice(0, 3).map(p => p.name).join(", ") || "None"}
-                  </div>
-                </div>
-
-                <div className="rounded border border-border/60 p-1.5 bg-black/[0.01] dark:bg-white/[0.01] flex flex-col justify-between h-full">
-                  <div className="font-space-mono text-[8.5px] font-bold uppercase text-text-secondary truncate">LHB/RHB Ratio</div>
-                  <div className="font-anton text-[18px] text-text-primary leading-none">{analysis.lhbCount}/{analysis.rhbCount}</div>
-                  <div className="truncate font-barlow text-[9.5px] text-text-secondary">
-                    {((analysis.lhbCount / Math.max(1, analysis.userSquadPlayers.length)) * 100).toFixed(0)}% LHB
-                  </div>
-                </div>
-
-                <div className="rounded border border-border/60 p-1.5 bg-black/[0.01] dark:bg-white/[0.01] flex flex-col justify-between h-full">
-                  <div className="font-space-mono text-[8.5px] font-bold uppercase text-text-secondary truncate">Leadership</div>
-                  <div className="font-anton text-[18px] text-text-primary leading-none">{analysis.leadershipGroup.length}</div>
-                  <div className="truncate font-barlow text-[9.5px] text-text-secondary" onClick={() => analysis.primaryCaptain && onOpenPlayer?.(analysis.primaryCaptain.id)}>
-                    Capt: {analysis.primaryCaptain?.name ?? "None"}
-                  </div>
-                </div>
+                <TacticalRoleCard heading="Leadership" count={analysis.leadershipGroup.length} captainId={analysis.primaryCaptain?.id}
+                  players={[
+                    ...(analysis.primaryCaptain ? [analysis.primaryCaptain] : []),
+                    ...analysis.leadershipGroup.filter(player => player.id !== analysis.primaryCaptain?.id).sort((a, b) => (b.captaincy ?? 0) - (a.captaincy ?? 0)),
+                  ]} onOpenPlayer={onOpenPlayer} />
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* ================= LEAGUE RANKINGS FLOATING POPOVER (Positioned adjacent to trigger, strictly non-scrolling) ================= */}
-      {activeBenchmark && rankedTeams.length > 0 && (
-        <div
-          style={popoverStyle}
-          className="fixed z-[100] w-[300px] max-h-[calc(100vh-24px)] overflow-hidden rounded-lg border-2 border-accent bg-[var(--surface-dark,rgba(18,18,18,0.96))] p-2.5 text-white shadow-2xl backdrop-blur-md animate-in fade-in zoom-in-95 duration-150 pointer-events-none"
-        >
-          <div className="flex items-center justify-between border-b border-white/15 pb-1.5 mb-1.5">
-            <div>
-              <h4 className="font-anton text-[13px] uppercase tracking-wider text-accent flex items-center gap-1">
-                <Award className="size-3.5 text-accent" /> {activeBenchmark.info.title}
+      {/* Portal keeps viewport coordinates independent of the scaled app canvas. */}
+      {activeBenchmark && rankedTeams.length > 0 && createPortal(
+        <div role="tooltip" style={popoverStyle}
+          className="pointer-events-none fixed z-[100] max-h-[calc(100vh-24px)] overflow-y-auto rounded-lg border-2 border-accent bg-surface p-2.5 text-text-primary shadow-2xl backdrop-blur-md animate-in fade-in zoom-in-95 duration-150">
+          <div className="mb-1.5 flex items-center justify-between gap-2 border-b border-border/40 pb-1.5">
+            <div className="min-w-0">
+              <h4 className="flex items-start gap-1 font-anton text-[13px] uppercase tracking-wider text-accent">
+                <Award className="mt-0.5 size-3.5 shrink-0" /> {activeBenchmark.info.title}
               </h4>
-              <span className="font-space-mono text-[8px] text-white/70">
-                Official 1-10 League Ranking ({activeBenchmark.info.unit})
-              </span>
+              <span className="font-space-mono text-[8px] text-text-secondary">Official 1–10 League Ranking ({activeBenchmark.info.unit})</span>
             </div>
-            <span className="rounded bg-accent/20 px-1 py-0.5 font-space-mono text-[8px] font-bold text-accent">
-              League Table
-            </span>
+            <span className="shrink-0 rounded bg-accent/20 px-1 py-0.5 font-space-mono text-[8px] font-bold text-accent">League Table</span>
           </div>
-
-          <div className="space-y-0.5 font-space-mono text-[9.5px]">
-            <div className="grid grid-cols-[22px_1fr_56px] text-[8px] font-bold text-white/50 uppercase border-b border-white/10 pb-0.5 mb-0.5">
-              <span>#</span>
-              <span>Franchise</span>
-              <span className="text-right">Avg</span>
-            </div>
-
-            {rankedTeams.map((teamItem) => (
-              <div
-                key={teamItem.teamId}
-                className={`grid grid-cols-[22px_1fr_56px] items-center py-0.5 px-1 rounded transition-colors ${
-                  teamItem.isUserTeam
-                    ? "border-2 border-accent bg-accent/15 text-white font-bold shadow-sm"
-                    : "border border-transparent hover:bg-white/5 text-white/90"
-                }`}
-              >
-                <span className="font-anton text-[10px] text-accent-light">
-                  {teamItem.rank === 1 ? "1" : teamItem.rank === 2 ? "2" : teamItem.rank === 3 ? "3" : `${teamItem.rank}`}
-                </span>
-                <div className="flex items-center gap-1 truncate">
-                  <span
-                    className="size-2 rounded-full border border-white/20 shrink-0"
-                    style={{ backgroundColor: teamItem.primaryColor }}
-                  />
-                  <span className="truncate font-semibold text-[10px]">
-                    {teamItem.name} {teamItem.isUserTeam && <span className="ml-0.5 text-accent text-[8px] font-bold uppercase tracking-wider">(YOU)</span>}
-                  </span>
+          <div className="mb-0.5 grid grid-cols-[18px_minmax(0,1fr)_42px] gap-1 border-b border-border/30 pb-0.5 font-space-mono text-[8px] uppercase text-text-secondary">
+            <span>#</span><span>Franchise</span><span className="text-right">Avg</span>
+          </div>
+          <div className="space-y-0.5">
+            {rankedTeams.map(teamItem => (
+              <div key={teamItem.teamId} className={`grid grid-cols-[18px_minmax(0,1fr)_42px] items-center gap-1 rounded border px-1 py-0.5 ${teamItem.isUserTeam ? "border-accent bg-accent/15 font-bold shadow-sm" : "border-transparent text-text-primary"}`}>
+                <span className="font-anton text-[10px] text-accent">{teamItem.rank}</span>
+                <div className="flex min-w-0 items-center gap-1">
+                  <span className="size-2 shrink-0 rounded-full border border-border/40" style={{ backgroundColor: teamItem.primaryColor }} />
+                  <span className="break-words font-barlow text-[10px] font-semibold leading-tight">{teamItem.name}{teamItem.isUserTeam && <span className="ml-0.5 text-[8px] font-bold text-accent">(YOU)</span>}</span>
                 </div>
-                <span className="text-right font-bold text-[9.5px]">
-                  {typeof teamItem.value === "number"
-                    ? activeBenchmark.info.metricKey === "cappedCount"
-                      ? Math.round(teamItem.value)
-                      : teamItem.value.toFixed(1)
-                    : teamItem.value} {activeBenchmark.info.unit}
+                <span className="text-right font-space-mono text-[9px] font-bold">
+                  {activeBenchmark.info.metricKey === "cappedCount" ? Math.round(teamItem.value) : teamItem.value.toFixed(1)}
                 </span>
               </div>
             ))}
           </div>
-
-          <div className="mt-1.5 border-t border-white/10 pt-1 text-center font-space-mono text-[7.5px] text-white/50">
-            Hover off element to close table • Live season snapshot
-          </div>
-        </div>
+          <div className="mt-1.5 border-t border-border/30 pt-1 text-center font-space-mono text-[7.5px] text-text-secondary">Hover off element to close table · Live season snapshot</div>
+        </div>, document.body,
       )}
     </div>
   );

@@ -1,3 +1,5 @@
+import { normalizeMatchPlans, type TacticalMatchPlan } from "./tacticalMatchPlan";
+
 export const TEAM_STRATEGIES = [
   "Ultra Aggressive",
   "Balanced",
@@ -18,8 +20,18 @@ export type FieldSetting = "defensive" | "balanced" | "attacking";
 export type ImpactPolicy = "extra-batter" | "extra-bowler" | "match-situation";
 export type TossPreference = "bat" | "bowl" | "conditions";
 export type OppositionPlan = "neutral" | "target-weak-bowler" | "play-out-stars" | "attack-pace" | "attack-spin";
+export type OppositionApproach = "defensive" | "neutral" | "attacking";
+export type BowlerBattingApproach = "survive" | "normal" | "exploit" | "all-out";
+export type BowlerOverTarget = "follow" | "see-off" | "rotate" | "boundary" | "attack" | "react";
+export interface BowlerBattingInstruction { approach: BowlerBattingApproach; overs: BowlerOverTarget[] }
+export type OpponentPlanChanges = { batting: Record<string, import("./tacticalMatchPlan").BattingCoverage>; bowling: Record<string, import("./tacticalMatchPlan").OverAssignment> };
 
 export interface TeamTactics {
+  opponentPlanChanges?: Record<string, Partial<Record<"battingFirst" | "bowlingFirst", OpponentPlanChanges>>>;
+  bowlerBattingInstructions?: Record<string, BowlerBattingInstruction>;
+  oppositionTargetBowlers?: Record<string, string>;
+  oppositionApproaches?: Record<string, OppositionApproach>;
+  matchPlans?: Partial<Record<"battingFirst" | "bowlingFirst", TacticalMatchPlan>>;
   preset: TeamStrategy;
   batting: {
     powerplay: BattingPowerplayPlan;
@@ -84,8 +96,8 @@ export function createTeamTactics(preset: TeamStrategy = "Balanced"): TeamTactic
   };
 }
 
-export function applyTeamTacticsPreset(_tactics: TeamTactics, preset: TeamStrategy): TeamTactics {
-  return createTeamTactics(preset);
+export function applyTeamTacticsPreset(tactics: TeamTactics, preset: TeamStrategy): TeamTactics {
+  return { ...createTeamTactics(preset), matchPlans: tactics.matchPlans, oppositionApproaches: tactics.oppositionApproaches, oppositionTargetBowlers: tactics.oppositionTargetBowlers, bowlerBattingInstructions: tactics.bowlerBattingInstructions, opponentPlanChanges: tactics.opponentPlanChanges };
 }
 
 const oneOf = <T extends string>(value: unknown, allowed: readonly T[], fallback: T): T => (
@@ -101,6 +113,22 @@ export function normalizeTeamTactics(value: unknown, legacyStrategy?: unknown): 
 
   return {
     preset,
+    opponentPlanChanges: isObject(raw.opponentPlanChanges) ? Object.fromEntries(Object.entries(raw.opponentPlanChanges).filter(([, value]) => isObject(value)).map(([team, value]) => [team, Object.fromEntries(Object.entries(value as Record<string, unknown>).flatMap(([scenario, data]) => {
+      if (!['battingFirst', 'bowlingFirst'].includes(scenario) || !isObject(data)) return [];
+      const candidate = normalizeMatchPlans({ battingFirst: { overs: Array.from({length:20}, (_, i) => isObject(data.bowling) ? data.bowling[String(i)] : null), battingCoverage: data.batting } })?.battingFirst;
+      return [[scenario, { batting: candidate?.battingCoverage ?? {}, bowling: Object.fromEntries((candidate?.overs ?? []).flatMap((entry, i) => entry ? [[String(i), entry]] : [])) }]];
+    }))])) : {},
+    bowlerBattingInstructions: isObject(raw.bowlerBattingInstructions) ? Object.fromEntries(Object.entries(raw.bowlerBattingInstructions).flatMap(([id, entry]) => {
+      if (!isObject(entry)) return [];
+      return [[id, { approach: oneOf(entry.approach, ["survive", "normal", "exploit", "all-out"] as const, "normal"), overs: Array.from({ length: 4 }, (_, i) => oneOf(Array.isArray(entry.overs) && !(i === 0 && entry.overs[i] === "react") ? entry.overs[i] : undefined, ["follow", "see-off", "rotate", "boundary", "attack", "react"] as const, "follow")) }]];
+    })) : {},
+    oppositionTargetBowlers: isObject(raw.oppositionTargetBowlers)
+      ? Object.fromEntries(Object.entries(raw.oppositionTargetBowlers).filter(([, bowlerId]) => typeof bowlerId === "string" && bowlerId.length > 0)) as Record<string, string>
+      : {},
+    oppositionApproaches: isObject(raw.oppositionApproaches)
+      ? Object.fromEntries(Object.entries(raw.oppositionApproaches).filter(([, approach]) => ["defensive", "neutral", "attacking"].includes(approach))) as Record<string, OppositionApproach>
+      : {},
+    matchPlans: normalizeMatchPlans(raw.matchPlans),
     batting: {
       powerplay: oneOf(batting.powerplay, ["cautious", "balanced", "attack"], fallback.batting.powerplay),
       middle: oneOf(batting.middle, ["rebuild", "rotate", "dominate"], fallback.batting.middle),
@@ -130,3 +158,4 @@ export function getTacticsRiskProfile(tactics: TeamTactics): { tempo: number; ri
     + (tactics.bowling.field === "attacking" ? 2 : tactics.bowling.field === "balanced" ? 1 : 0);
   return { tempo, risk, wicketIntent };
 }
+

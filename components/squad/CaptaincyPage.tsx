@@ -108,23 +108,23 @@ export default function CaptaincyPage({
       </header>
 
       <div className="grid min-h-0 flex-1 grid-cols-[minmax(18rem,0.72fr)_minmax(0,1.7fr)]">
-        <aside className="min-h-0 overflow-y-auto border-r border-border bg-black/[0.018] p-4 dark:bg-white/[0.018]">
-          <div className="mb-3">
+        <aside className="flex min-h-0 flex-col gap-2 overflow-hidden border-r border-border bg-black/[0.018] p-3 dark:bg-white/[0.018]">
+          <div className="shrink-0">
             <p className="font-space-mono text-[10px] font-bold uppercase tracking-[0.16em] text-text-secondary">Current appointments</p>
             <h4 className="mt-1 font-anton text-[20px] uppercase text-text-primary">Team leadership</h4>
           </div>
 
-          <div className="space-y-3">
-            <section className={`border-2 bg-surface p-4 ${captain ? "border-accent" : "border-border"}`}>
+          <div className="space-y-2 shrink-0">
+            <section className={`border-2 bg-surface p-3 ${captain ? "border-accent" : "border-border"}`}>
               <div className="flex items-center justify-between gap-3">
-                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-accent text-[#16130f]"><Crown size={17} /></span>
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-accent text-[#16130f]"><Crown size={17} /></span>
                 <span className="font-space-mono text-[10px] font-bold uppercase tracking-[0.14em] text-accent">Captain</span>
               </div>
               {captain ? (
-                <div className="mt-4">
+                <div className="mt-2">
                   <button type="button" onClick={() => onOpenPlayer(captain.id)} className="max-w-full text-left text-[17px] font-bold text-text-primary hover:underline">{captain.name}</button>
                   <p className="mt-1 font-space-mono text-[10px] font-bold uppercase text-text-secondary">{captain.role} · Captaincy {captain.captaincy ?? 50}</p>
-                  <span className={`mt-4 inline-flex items-center gap-1.5 px-2 py-1 font-space-mono text-[9px] font-bold uppercase ${captainChangeGamesRemaining > 0 ? "bg-danger/[0.1] text-danger" : "bg-success/[0.1] text-success"}`}>
+                  <span className={`mt-2 inline-flex items-center gap-1.5 px-2 py-1 font-space-mono text-[9px] font-bold uppercase ${captainChangeGamesRemaining > 0 ? "bg-danger/[0.1] text-danger" : "bg-success/[0.1] text-success"}`}>
                     {captainChangeGamesRemaining > 0 ? <LockKeyhole size={12} /> : <Check size={12} />}
                     {captainChangeGamesRemaining > 0
                       ? `Changes locked · ${captainChangeGamesRemaining} game${captainChangeGamesRemaining === 1 ? "" : "s"}`
@@ -132,26 +132,26 @@ export default function CaptaincyPage({
                   </span>
                 </div>
               ) : (
-                <div className="mt-4">
+                <div className="mt-2">
                   <p className="text-[15px] font-bold text-text-primary">No captain appointed</p>
                   <p className="mt-1 text-[11px] leading-relaxed text-text-secondary">Choose an interested player from the squad list.</p>
                 </div>
               )}
             </section>
 
-            <section className={`border-2 bg-surface p-4 ${viceCaptain ? "border-success/70" : "border-border"}`}>
+            <section className={`border-2 bg-surface p-3 ${viceCaptain ? "border-success/70" : "border-border"}`}>
               <div className="flex items-center justify-between gap-3">
-                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-success/[0.14] text-success"><ShieldCheck size={17} /></span>
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-success/[0.14] text-success"><ShieldCheck size={17} /></span>
                 <span className="font-space-mono text-[10px] font-bold uppercase tracking-[0.14em] text-success">Vice-captain</span>
               </div>
               {viceCaptain ? (
-                <div className="mt-4">
+                <div className="mt-2">
                   <button type="button" onClick={() => onOpenPlayer(viceCaptain.id)} className="max-w-full text-left text-[17px] font-bold text-text-primary hover:underline">{viceCaptain.name}</button>
                   <p className="mt-1 font-space-mono text-[10px] font-bold uppercase text-text-secondary">{viceCaptain.role} · Captaincy {viceCaptain.captaincy ?? 50}</p>
-                  <button type="button" onClick={() => onChange({ ...leadership, viceCaptainId: null })} className="mt-4 font-space-mono text-[9px] font-bold uppercase tracking-wide text-danger hover:underline">Remove appointment</button>
+                  <button type="button" onClick={() => onChange({ ...leadership, viceCaptainId: null })} className="mt-2 font-space-mono text-[9px] font-bold uppercase tracking-wide text-danger hover:underline">Remove appointment</button>
                 </div>
               ) : (
-                <div className="mt-4">
+                <div className="mt-2">
                   <p className="text-[15px] font-bold text-text-primary">No vice-captain appointed</p>
                   <p className="mt-1 text-[11px] leading-relaxed text-text-secondary">Choose a different interested player as deputy.</p>
                 </div>
@@ -159,15 +159,15 @@ export default function CaptaincyPage({
             </section>
           </div>
 
-          <div className="mt-3 border border-border bg-surface p-3">
+          <div className="border border-border bg-surface p-2.5">
             <p className="font-space-mono text-[9px] font-bold uppercase tracking-[0.14em] text-text-secondary">Selection rules</p>
-            <ul className="mt-2 space-y-1.5 text-[11px] leading-relaxed text-text-secondary">
+            <ul className="mt-1.5 space-y-1 text-[10px] leading-snug text-text-secondary">
               <li>Captain and vice-captain must be different players.</li>
-              <li>Replacing an appointed captain always requires confirmation.</li>
-              <li>A confirmed change locks captain changes for the next three games.</li>
-              <li>An outgoing captain under 33 is not interested for now and can recover after the following season.</li>
-              <li>An outgoing captain aged 33 or older becomes permanently uninterested.</li>
-              <li>Players marked not interested cannot hold either appointment.</li>
+              <li>Replacing a captain requires confirmation.</li>
+              <li>A confirmed change locks captain changes for three games.</li>
+              <li>Outgoing captains under 33 may regain interest after the following season.</li>
+              <li>Outgoing captains aged 33+ permanently lose interest.</li>
+              <li>Uninterested players cannot hold either appointment.</li>
             </ul>
           </div>
         </aside>

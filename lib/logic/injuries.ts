@@ -1,7 +1,7 @@
 import type { Player } from "@/lib/types";
 import { dateKeyToLocalDate } from "@/lib/logic/careerCalendar";
 import { worldInjuryModifiers } from "./worldRules";
-import { formatDisplayDate } from "@/lib/logic/displayDate";
+import { formatLongDisplayDate } from "@/lib/logic/displayDate";
 
 export type InjuryCategory = "minor" | "major";
 export type InjuryWorseningRisk = "mild" | "moderate" | "severe";
@@ -585,9 +585,10 @@ export function getInjuryReturnLabel(injury: PlayerInjury, seasonFinalDate?: str
   if (seasonFinalDate && injury.actualReturnDate > seasonFinalDate) {
     return "Will return after the season concludes";
   }
-  const format = formatDisplayDate;
-  if (injury.estimatedReturnEarliest === injury.estimatedReturnLatest) {
-    return `Expected ${format(injury.estimatedReturnEarliest)}`;
-  }
-  return `Expected ${format(injury.estimatedReturnEarliest)} – ${format(injury.estimatedReturnLatest)}`;
+  const earliest = dateKeyToLocalDate(injury.estimatedReturnEarliest);
+  const latest = dateKeyToLocalDate(injury.estimatedReturnLatest);
+  const end = formatLongDisplayDate(latest, { month: "short" });
+  if (injury.estimatedReturnEarliest === injury.estimatedReturnLatest) return `Expected return ${end}`;
+  const start = formatLongDisplayDate(earliest, { month: "short", includeYear: earliest.getFullYear() !== latest.getFullYear() });
+  return `Expected return ${start} - ${end}`;
 }

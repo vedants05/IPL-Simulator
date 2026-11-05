@@ -306,6 +306,7 @@ export function mapRowsToPlayers(data: any[]): Player[] {
         consistency: row.consistency != null ? parseInt(row.consistency) : undefined,
         battingConsistency: row.stamina != null ? parseInt(row.stamina) : undefined,
         bowlingConsistency: row.consistency != null ? parseInt(row.consistency) : undefined,
+        bowlingEconomyControl: readOptionalRating(row.professionalism),
         bigMatchRating: row.big_match_rating != null ? parseInt(row.big_match_rating) : undefined,
         pressureRating: row.pressure_rating != null ? parseInt(row.pressure_rating) : undefined,
         aggression: battingAggression,

@@ -151,6 +151,8 @@ export interface PlayerCareerRatingHistoryEntry {
   injuryProneness?: number;
   battingConsistency?: number;
   bowlingConsistency?: number;
+  /** Run prevention rating; database players temporarily use professionalism. */
+  bowlingEconomyControl?: number;
   pressureRating?: number;
   bigMatchRating?: number;
 }
@@ -184,6 +186,7 @@ export interface PlayerCareerState {
   fieldingDevelopmentBank?: number;
   battingConsistencyDevelopmentBank?: number;
   bowlingConsistencyDevelopmentBank?: number;
+  bowlingEconomyControlDevelopmentBank?: number;
   injuryPronenessDevelopmentBank?: number;
   pressureDevelopmentBank?: number;
   bigMatchDevelopmentBank?: number;
@@ -287,6 +290,8 @@ export interface Player {
   consistency?: number;
   battingConsistency?: number;
   bowlingConsistency?: number;
+  /** Run prevention rating; database players temporarily use professionalism. */
+  bowlingEconomyControl?: number;
   bigMatchRating?: number;
   pressureRating?: number;
   aggression?: number;

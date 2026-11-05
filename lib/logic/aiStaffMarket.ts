@@ -15,6 +15,7 @@ import { getStaffRelationshipRecruitmentBonus } from "../data/staffRelationships
 import { getStaffClubAffinity } from "../data/staffAffinities";
 import { getStaffClubCulture } from "../data/staffClubCulture";
 import { addDaysToDateKey } from "./careerCalendar";
+import { staffRolesAreCompatible } from "./staffRoleRules";
 
 export const AI_CORE_STAFF_ROLES = [
   "head_coach",
@@ -264,6 +265,7 @@ export function processAIStaffMarket(input: {
         .filter((contract) => (vacantRole === "head_coach" || canConsolidateRole)
           && contract.roles.length < 2 && !contract.roles.includes(vacantRole)
           && !newlyHiredStaffIds.has(contract.staffId))
+        .filter(contract => vacantRole === "head_coach" || staffRolesAreCompatible([...contract.roles, vacantRole]))
         .map((contract) => ({ contract, rating: roleRating(contract, vacantRole) }))
         .filter((candidate) => candidate.rating >= (vacantRole === "head_coach" ? 75 : 80))
         .filter((candidate) => isEligibleForAIRole(candidate.contract, vacantRole, candidate.rating))
