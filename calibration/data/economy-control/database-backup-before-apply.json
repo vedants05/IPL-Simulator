@@ -1,0 +1,1740 @@
+{
+  "createdAt": "2026-11-03T00:00:19.072Z",
+  "players": [
+    {
+      "id": 1,
+      "name": "Akash Madhwal",
+      "professionalism": null
+    },
+    {
+      "id": 2,
+      "name": "Akeal Hosein",
+      "professionalism": null
+    },
+    {
+      "id": 3,
+      "name": "Aman Hakim Khan",
+      "professionalism": null
+    },
+    {
+      "id": 4,
+      "name": "Anshul Kamboj",
+      "professionalism": null
+    },
+    {
+      "id": 5,
+      "name": "Ayush Mhatre",
+      "professionalism": null
+    },
+    {
+      "id": 6,
+      "name": "Dewald Brevis",
+      "professionalism": null
+    },
+    {
+      "id": 7,
+      "name": "Gurjapneet Singh",
+      "professionalism": null
+    },
+    {
+      "id": 8,
+      "name": "Jamie Overton",
+      "professionalism": null
+    },
+    {
+      "id": 9,
+      "name": "Kartik Sharma",
+      "professionalism": null
+    },
+    {
+      "id": 10,
+      "name": "Khaleel Ahmed",
+      "professionalism": null
+    },
+    {
+      "id": 11,
+      "name": "Matt Henry",
+      "professionalism": null
+    },
+    {
+      "id": 12,
+      "name": "Matthew Short",
+      "professionalism": null
+    },
+    {
+      "id": 13,
+      "name": "MS Dhoni",
+      "professionalism": null
+    },
+    {
+      "id": 14,
+      "name": "Mukesh Choudhary",
+      "professionalism": null
+    },
+    {
+      "id": 15,
+      "name": "Nathan Ellis",
+      "professionalism": null
+    },
+    {
+      "id": 16,
+      "name": "Noor Ahmad",
+      "professionalism": null
+    },
+    {
+      "id": 17,
+      "name": "Prashant Veer",
+      "professionalism": null
+    },
+    {
+      "id": 18,
+      "name": "Rahul Chahar",
+      "professionalism": null
+    },
+    {
+      "id": 19,
+      "name": "Ramakrishna Ghosh",
+      "professionalism": null
+    },
+    {
+      "id": 20,
+      "name": "Ruturaj Gaikwad",
+      "professionalism": null
+    },
+    {
+      "id": 21,
+      "name": "Sanju Samson",
+      "professionalism": null
+    },
+    {
+      "id": 22,
+      "name": "Sarfaraz Khan",
+      "professionalism": null
+    },
+    {
+      "id": 23,
+      "name": "Shivam Dube",
+      "professionalism": null
+    },
+    {
+      "id": 24,
+      "name": "Shreyas Gopal",
+      "professionalism": null
+    },
+    {
+      "id": 25,
+      "name": "Urvil Patel",
+      "professionalism": null
+    },
+    {
+      "id": 26,
+      "name": "Zak Foulkes",
+      "professionalism": null
+    },
+    {
+      "id": 27,
+      "name": "Abishek Porel",
+      "professionalism": null
+    },
+    {
+      "id": 28,
+      "name": "Ajay Mandal",
+      "professionalism": null
+    },
+    {
+      "id": 29,
+      "name": "Ashutosh Sharma",
+      "professionalism": null
+    },
+    {
+      "id": 30,
+      "name": "Auqib Nabi",
+      "professionalism": null
+    },
+    {
+      "id": 31,
+      "name": "Axar Patel",
+      "professionalism": null
+    },
+    {
+      "id": 32,
+      "name": "Ben Duckett",
+      "professionalism": null
+    },
+    {
+      "id": 33,
+      "name": "David Miller",
+      "professionalism": null
+    },
+    {
+      "id": 34,
+      "name": "Dushmantha Chameera",
+      "professionalism": null
+    },
+    {
+      "id": 35,
+      "name": "Karun Nair",
+      "professionalism": null
+    },
+    {
+      "id": 36,
+      "name": "KL Rahul",
+      "professionalism": null
+    },
+    {
+      "id": 37,
+      "name": "Kyle Jamieson",
+      "professionalism": null
+    },
+    {
+      "id": 38,
+      "name": "Lungi Ngidi",
+      "professionalism": null
+    },
+    {
+      "id": 39,
+      "name": "Madhav Tiwari",
+      "professionalism": null
+    },
+    {
+      "id": 40,
+      "name": "Mitchell Starc",
+      "professionalism": null
+    },
+    {
+      "id": 41,
+      "name": "Mukesh Kumar",
+      "professionalism": null
+    },
+    {
+      "id": 42,
+      "name": "Nitish Rana",
+      "professionalism": null
+    },
+    {
+      "id": 43,
+      "name": "Pathum Nissanka",
+      "professionalism": null
+    },
+    {
+      "id": 44,
+      "name": "Prithvi Shaw",
+      "professionalism": null
+    },
+    {
+      "id": 45,
+      "name": "Rehan Ahmed",
+      "professionalism": null
+    },
+    {
+      "id": 46,
+      "name": "Rishabh Pant",
+      "professionalism": null
+    },
+    {
+      "id": 47,
+      "name": "Sahil Parakh",
+      "professionalism": null
+    },
+    {
+      "id": 48,
+      "name": "Sameer Rizvi",
+      "professionalism": null
+    },
+    {
+      "id": 49,
+      "name": "T. Natarajan",
+      "professionalism": null
+    },
+    {
+      "id": 50,
+      "name": "Tripurana Vijay",
+      "professionalism": null
+    },
+    {
+      "id": 51,
+      "name": "Tristan Stubbs",
+      "professionalism": null
+    },
+    {
+      "id": 52,
+      "name": "Vipraj Nigam",
+      "professionalism": null
+    },
+    {
+      "id": 53,
+      "name": "Anuj Rawat",
+      "professionalism": null
+    },
+    {
+      "id": 54,
+      "name": "Ashok Sharma",
+      "professionalism": null
+    },
+    {
+      "id": 55,
+      "name": "Glenn Phillips",
+      "professionalism": null
+    },
+    {
+      "id": 56,
+      "name": "Gurnoor Singh Brar",
+      "professionalism": null
+    },
+    {
+      "id": 57,
+      "name": "Ishant Sharma",
+      "professionalism": null
+    },
+    {
+      "id": 58,
+      "name": "Jason Holder",
+      "professionalism": null
+    },
+    {
+      "id": 59,
+      "name": "Jayant Yadav",
+      "professionalism": null
+    },
+    {
+      "id": 60,
+      "name": "Jos Buttler",
+      "professionalism": null
+    },
+    {
+      "id": 61,
+      "name": "Kagiso Rabada",
+      "professionalism": null
+    },
+    {
+      "id": 62,
+      "name": "Kumar Kushagra",
+      "professionalism": null
+    },
+    {
+      "id": 63,
+      "name": "Luke Wood",
+      "professionalism": null
+    },
+    {
+      "id": 64,
+      "name": "Manav Suthar",
+      "professionalism": null
+    },
+    {
+      "id": 65,
+      "name": "Mohammed Siraj",
+      "professionalism": null
+    },
+    {
+      "id": 66,
+      "name": "Mohd. Arshad Khan",
+      "professionalism": null
+    },
+    {
+      "id": 67,
+      "name": "Nishant Sindhu",
+      "professionalism": null
+    },
+    {
+      "id": 68,
+      "name": "Prasidh Krishna",
+      "professionalism": null
+    },
+    {
+      "id": 69,
+      "name": "R. Sai Kishore",
+      "professionalism": null
+    },
+    {
+      "id": 70,
+      "name": "Rahul Tewatia",
+      "professionalism": null
+    },
+    {
+      "id": 71,
+      "name": "Rashid Khan",
+      "professionalism": null
+    },
+    {
+      "id": 72,
+      "name": "Sai Sudharsan",
+      "professionalism": null
+    },
+    {
+      "id": 73,
+      "name": "Shahrukh Khan",
+      "professionalism": null
+    },
+    {
+      "id": 74,
+      "name": "Shubman Gill",
+      "professionalism": null
+    },
+    {
+      "id": 75,
+      "name": "Tom Banton",
+      "professionalism": null
+    },
+    {
+      "id": 76,
+      "name": "Washington Sundar",
+      "professionalism": null
+    },
+    {
+      "id": 77,
+      "name": "Yarra Prithvi Raj",
+      "professionalism": null
+    },
+    {
+      "id": 79,
+      "name": "Akash Deep",
+      "professionalism": null
+    },
+    {
+      "id": 80,
+      "name": "Angkrish Raghuvanshi",
+      "professionalism": null
+    },
+    {
+      "id": 81,
+      "name": "Anukul Roy",
+      "professionalism": null
+    },
+    {
+      "id": 82,
+      "name": "Blessing Muzarabani",
+      "professionalism": null
+    },
+    {
+      "id": 83,
+      "name": "Cameron Green",
+      "professionalism": null
+    },
+    {
+      "id": 84,
+      "name": "Daksh Kamra",
+      "professionalism": null
+    },
+    {
+      "id": 85,
+      "name": "Finn Allen",
+      "professionalism": null
+    },
+    {
+      "id": 86,
+      "name": "Harshit Rana",
+      "professionalism": null
+    },
+    {
+      "id": 87,
+      "name": "Kartik Tyagi",
+      "professionalism": null
+    },
+    {
+      "id": 88,
+      "name": "Manish Pandey",
+      "professionalism": null
+    },
+    {
+      "id": 89,
+      "name": "Matheesha Pathirana",
+      "professionalism": null
+    },
+    {
+      "id": 90,
+      "name": "Prashant Solanki",
+      "professionalism": null
+    },
+    {
+      "id": 91,
+      "name": "Rachin Ravindra",
+      "professionalism": null
+    },
+    {
+      "id": 92,
+      "name": "Rahul Tripathi",
+      "professionalism": null
+    },
+    {
+      "id": 93,
+      "name": "Ramandeep Singh",
+      "professionalism": null
+    },
+    {
+      "id": 94,
+      "name": "Rinku Singh",
+      "professionalism": null
+    },
+    {
+      "id": 95,
+      "name": "Rovman Powell",
+      "professionalism": null
+    },
+    {
+      "id": 96,
+      "name": "Sarthak Ranjan",
+      "professionalism": null
+    },
+    {
+      "id": 97,
+      "name": "Sunil Narine",
+      "professionalism": null
+    },
+    {
+      "id": 98,
+      "name": "Tejasvi Singh Dahiya",
+      "professionalism": null
+    },
+    {
+      "id": 99,
+      "name": "Tim Seifert",
+      "professionalism": null
+    },
+    {
+      "id": 100,
+      "name": "Umran Malik",
+      "professionalism": null
+    },
+    {
+      "id": 101,
+      "name": "Vaibhav Arora",
+      "professionalism": null
+    },
+    {
+      "id": 102,
+      "name": "Varun Chakravarthy",
+      "professionalism": null
+    },
+    {
+      "id": 103,
+      "name": "Abdul Samad",
+      "professionalism": null
+    },
+    {
+      "id": 104,
+      "name": "Aiden Markram",
+      "professionalism": null
+    },
+    {
+      "id": 105,
+      "name": "Akash Singh",
+      "professionalism": null
+    },
+    {
+      "id": 106,
+      "name": "Akshat Raghuwanshi",
+      "professionalism": null
+    },
+    {
+      "id": 107,
+      "name": "Anrich Nortje",
+      "professionalism": null
+    },
+    {
+      "id": 108,
+      "name": "Arjun Tendulkar",
+      "professionalism": null
+    },
+    {
+      "id": 109,
+      "name": "Arshin Kulkarni",
+      "professionalism": null
+    },
+    {
+      "id": 110,
+      "name": "Avesh Khan",
+      "professionalism": null
+    },
+    {
+      "id": 111,
+      "name": "Ayush Badoni",
+      "professionalism": null
+    },
+    {
+      "id": 112,
+      "name": "Digvesh Rathi",
+      "professionalism": null
+    },
+    {
+      "id": 113,
+      "name": "Himmat Singh",
+      "professionalism": null
+    },
+    {
+      "id": 114,
+      "name": "Josh Inglis",
+      "professionalism": null
+    },
+    {
+      "id": 115,
+      "name": "Kuldeep Yadav",
+      "professionalism": null
+    },
+    {
+      "id": 116,
+      "name": "Manimaran Siddharth",
+      "professionalism": null
+    },
+    {
+      "id": 117,
+      "name": "Matthew Breetzke",
+      "professionalism": null
+    },
+    {
+      "id": 118,
+      "name": "Mayank Yadav",
+      "professionalism": null
+    },
+    {
+      "id": 119,
+      "name": "Mitchell Marsh",
+      "professionalism": null
+    },
+    {
+      "id": 120,
+      "name": "Mohammed Shami",
+      "professionalism": null
+    },
+    {
+      "id": 121,
+      "name": "Mohsin Khan",
+      "professionalism": null
+    },
+    {
+      "id": 122,
+      "name": "Mukul Choudhary",
+      "professionalism": null
+    },
+    {
+      "id": 123,
+      "name": "Naman Tiwari",
+      "professionalism": null
+    },
+    {
+      "id": 124,
+      "name": "Nicholas Pooran",
+      "professionalism": null
+    },
+    {
+      "id": 125,
+      "name": "Prince Yadav",
+      "professionalism": null
+    },
+    {
+      "id": 126,
+      "name": "Shahbaz Ahmed",
+      "professionalism": null
+    },
+    {
+      "id": 127,
+      "name": "Wanindu Hasaranga",
+      "professionalism": null
+    },
+    {
+      "id": 128,
+      "name": "Allah Ghazanfar",
+      "professionalism": null
+    },
+    {
+      "id": 129,
+      "name": "Ashwani Kumar",
+      "professionalism": null
+    },
+    {
+      "id": 130,
+      "name": "Atharva Ankolekar",
+      "professionalism": null
+    },
+    {
+      "id": 131,
+      "name": "Corbin Bosch",
+      "professionalism": null
+    },
+    {
+      "id": 132,
+      "name": "Danish Malewar",
+      "professionalism": null
+    },
+    {
+      "id": 133,
+      "name": "Deepak Chahar",
+      "professionalism": null
+    },
+    {
+      "id": 134,
+      "name": "Hardik Pandya",
+      "professionalism": null
+    },
+    {
+      "id": 135,
+      "name": "Jasprit Bumrah",
+      "professionalism": null
+    },
+    {
+      "id": 136,
+      "name": "Keshav Maharaj",
+      "professionalism": null
+    },
+    {
+      "id": 137,
+      "name": "Mayank Markande",
+      "professionalism": null
+    },
+    {
+      "id": 138,
+      "name": "Mayank Rawat",
+      "professionalism": null
+    },
+    {
+      "id": 139,
+      "name": "Mitchell Santner",
+      "professionalism": null
+    },
+    {
+      "id": 140,
+      "name": "Mohammad Salahuddin Izhar",
+      "professionalism": null
+    },
+    {
+      "id": 141,
+      "name": "Naman Dhir",
+      "professionalism": null
+    },
+    {
+      "id": 142,
+      "name": "Quinton De Kock",
+      "professionalism": null
+    },
+    {
+      "id": 143,
+      "name": "Raghu Sharma",
+      "professionalism": null
+    },
+    {
+      "id": 144,
+      "name": "Raj Angad Bawa",
+      "professionalism": null
+    },
+    {
+      "id": 145,
+      "name": "Robin Minz",
+      "professionalism": null
+    },
+    {
+      "id": 146,
+      "name": "Rohit Sharma",
+      "professionalism": null
+    },
+    {
+      "id": 147,
+      "name": "Ryan Rickelton",
+      "professionalism": null
+    },
+    {
+      "id": 148,
+      "name": "Shardul Thakur",
+      "professionalism": null
+    },
+    {
+      "id": 149,
+      "name": "Sherfane Rutherford",
+      "professionalism": null
+    },
+    {
+      "id": 150,
+      "name": "Suryakumar Yadav",
+      "professionalism": null
+    },
+    {
+      "id": 151,
+      "name": "Tilak Varma",
+      "professionalism": null
+    },
+    {
+      "id": 152,
+      "name": "Trent Boult",
+      "professionalism": null
+    },
+    {
+      "id": 153,
+      "name": "Will Jacks",
+      "professionalism": null
+    },
+    {
+      "id": 154,
+      "name": "Arshdeep Singh",
+      "professionalism": null
+    },
+    {
+      "id": 155,
+      "name": "Azmatullah Omarzai",
+      "professionalism": null
+    },
+    {
+      "id": 156,
+      "name": "Ben Dwarshuis",
+      "professionalism": null
+    },
+    {
+      "id": 157,
+      "name": "Cooper Connolly",
+      "professionalism": null
+    },
+    {
+      "id": 158,
+      "name": "Harnoor Singh",
+      "professionalism": null
+    },
+    {
+      "id": 159,
+      "name": "Harpreet Brar",
+      "professionalism": null
+    },
+    {
+      "id": 160,
+      "name": "Lockie Ferguson",
+      "professionalism": null
+    },
+    {
+      "id": 161,
+      "name": "Marco Jansen",
+      "professionalism": null
+    },
+    {
+      "id": 162,
+      "name": "Marcus Stoinis",
+      "professionalism": null
+    },
+    {
+      "id": 163,
+      "name": "Mitchell Owen",
+      "professionalism": null
+    },
+    {
+      "id": 164,
+      "name": "Musheer Khan",
+      "professionalism": null
+    },
+    {
+      "id": 165,
+      "name": "Nehal Wadhera",
+      "professionalism": null
+    },
+    {
+      "id": 166,
+      "name": "Prabhsimran Singh",
+      "professionalism": null
+    },
+    {
+      "id": 167,
+      "name": "Pravin Dubey",
+      "professionalism": null
+    },
+    {
+      "id": 168,
+      "name": "Priyansh Arya",
+      "professionalism": null
+    },
+    {
+      "id": 169,
+      "name": "Pyla Avinash",
+      "professionalism": null
+    },
+    {
+      "id": 170,
+      "name": "Shashank Singh",
+      "professionalism": null
+    },
+    {
+      "id": 171,
+      "name": "Shreyas Iyer",
+      "professionalism": null
+    },
+    {
+      "id": 172,
+      "name": "Suryansh Shedge",
+      "professionalism": null
+    },
+    {
+      "id": 173,
+      "name": "Vijaykumar Vyshak",
+      "professionalism": null
+    },
+    {
+      "id": 174,
+      "name": "Vishal Nishad",
+      "professionalism": null
+    },
+    {
+      "id": 175,
+      "name": "Vishnu Vinod",
+      "professionalism": null
+    },
+    {
+      "id": 176,
+      "name": "Xavier Bartlett",
+      "professionalism": null
+    },
+    {
+      "id": 177,
+      "name": "Yash Thakur",
+      "professionalism": null
+    },
+    {
+      "id": 178,
+      "name": "Yuzvendra Chahal",
+      "professionalism": null
+    },
+    {
+      "id": 179,
+      "name": "Adam Milne",
+      "professionalism": null
+    },
+    {
+      "id": 180,
+      "name": "Aman Rao",
+      "professionalism": null
+    },
+    {
+      "id": 181,
+      "name": "Brijesh Sharma",
+      "professionalism": null
+    },
+    {
+      "id": 182,
+      "name": "Dhruv Jurel",
+      "professionalism": null
+    },
+    {
+      "id": 183,
+      "name": "Donovan Ferreira",
+      "professionalism": null
+    },
+    {
+      "id": 184,
+      "name": "Jofra Archer",
+      "professionalism": null
+    },
+    {
+      "id": 185,
+      "name": "Kuldeep Sen",
+      "professionalism": null
+    },
+    {
+      "id": 186,
+      "name": "Kwena Maphaka",
+      "professionalism": null
+    },
+    {
+      "id": 187,
+      "name": "Lhuan-dre Pretorius",
+      "professionalism": null
+    },
+    {
+      "id": 188,
+      "name": "Nandre Burger",
+      "professionalism": null
+    },
+    {
+      "id": 189,
+      "name": "Ravi Bishnoi",
+      "professionalism": null
+    },
+    {
+      "id": 190,
+      "name": "Ravi Singh",
+      "professionalism": null
+    },
+    {
+      "id": 191,
+      "name": "Ravindra Jadeja",
+      "professionalism": null
+    },
+    {
+      "id": 192,
+      "name": "Riyan Parag",
+      "professionalism": null
+    },
+    {
+      "id": 193,
+      "name": "Sam Curran",
+      "professionalism": null
+    },
+    {
+      "id": 194,
+      "name": "Sandeep Sharma",
+      "professionalism": null
+    },
+    {
+      "id": 195,
+      "name": "Shimron Hetmyer",
+      "professionalism": null
+    },
+    {
+      "id": 196,
+      "name": "Shubham Dubey",
+      "professionalism": null
+    },
+    {
+      "id": 197,
+      "name": "Sushant Mishra",
+      "professionalism": null
+    },
+    {
+      "id": 198,
+      "name": "Tushar Deshpande",
+      "professionalism": null
+    },
+    {
+      "id": 199,
+      "name": "Vaibhav Suryavanshi",
+      "professionalism": null
+    },
+    {
+      "id": 200,
+      "name": "Vignesh Puthur",
+      "professionalism": null
+    },
+    {
+      "id": 201,
+      "name": "Yash Raj Punja",
+      "professionalism": null
+    },
+    {
+      "id": 202,
+      "name": "Yashasvi Jaiswal",
+      "professionalism": null
+    },
+    {
+      "id": 203,
+      "name": "Yudhvir Singh",
+      "professionalism": null
+    },
+    {
+      "id": 204,
+      "name": "Abhinandan Singh",
+      "professionalism": null
+    },
+    {
+      "id": 205,
+      "name": "Bhuvneshwar Kumar",
+      "professionalism": null
+    },
+    {
+      "id": 206,
+      "name": "Devdutt Padikkal",
+      "professionalism": null
+    },
+    {
+      "id": 207,
+      "name": "Jacob Bethell",
+      "professionalism": null
+    },
+    {
+      "id": 208,
+      "name": "Jacob Duffy",
+      "professionalism": null
+    },
+    {
+      "id": 209,
+      "name": "Jitesh Sharma",
+      "professionalism": null
+    },
+    {
+      "id": 210,
+      "name": "Jordan Cox",
+      "professionalism": null
+    },
+    {
+      "id": 211,
+      "name": "Josh Hazlewood",
+      "professionalism": null
+    },
+    {
+      "id": 212,
+      "name": "Kanishk Chouhan",
+      "professionalism": null
+    },
+    {
+      "id": 213,
+      "name": "Krunal Pandya",
+      "professionalism": null
+    },
+    {
+      "id": 214,
+      "name": "Mangesh Yadav",
+      "professionalism": null
+    },
+    {
+      "id": 215,
+      "name": "Nuwan Thushara",
+      "professionalism": null
+    },
+    {
+      "id": 216,
+      "name": "Phil Salt",
+      "professionalism": null
+    },
+    {
+      "id": 217,
+      "name": "Rajat Patidar",
+      "professionalism": null
+    },
+    {
+      "id": 218,
+      "name": "Rasikh Salam",
+      "professionalism": null
+    },
+    {
+      "id": 219,
+      "name": "Romario Shepherd",
+      "professionalism": null
+    },
+    {
+      "id": 220,
+      "name": "Satvik Deswal",
+      "professionalism": null
+    },
+    {
+      "id": 221,
+      "name": "Suyash Sharma",
+      "professionalism": null
+    },
+    {
+      "id": 222,
+      "name": "Swapnil Singh",
+      "professionalism": null
+    },
+    {
+      "id": 223,
+      "name": "Tim David",
+      "professionalism": null
+    },
+    {
+      "id": 224,
+      "name": "Venkatesh Iyer",
+      "professionalism": null
+    },
+    {
+      "id": 225,
+      "name": "Vicky Ostwal",
+      "professionalism": null
+    },
+    {
+      "id": 226,
+      "name": "Vihaan Malhotra",
+      "professionalism": null
+    },
+    {
+      "id": 227,
+      "name": "Virat Kohli",
+      "professionalism": null
+    },
+    {
+      "id": 228,
+      "name": "Abhishek Sharma",
+      "professionalism": null
+    },
+    {
+      "id": 229,
+      "name": "Amit Kumar",
+      "professionalism": null
+    },
+    {
+      "id": 230,
+      "name": "Aniket Verma",
+      "professionalism": null
+    },
+    {
+      "id": 231,
+      "name": "Brydon Carse",
+      "professionalism": null
+    },
+    {
+      "id": 232,
+      "name": "David Payne",
+      "professionalism": null
+    },
+    {
+      "id": 233,
+      "name": "Eshan Malinga",
+      "professionalism": null
+    },
+    {
+      "id": 234,
+      "name": "Harsh Dubey",
+      "professionalism": null
+    },
+    {
+      "id": 235,
+      "name": "Harshal Patel",
+      "professionalism": null
+    },
+    {
+      "id": 236,
+      "name": "Heinrich Klaasen",
+      "professionalism": null
+    },
+    {
+      "id": 237,
+      "name": "Ishan Kishan",
+      "professionalism": null
+    },
+    {
+      "id": 238,
+      "name": "Jack Edwards",
+      "professionalism": null
+    },
+    {
+      "id": 239,
+      "name": "Jaydev Unadkat",
+      "professionalism": null
+    },
+    {
+      "id": 240,
+      "name": "Kamindu Mendis",
+      "professionalism": null
+    },
+    {
+      "id": 241,
+      "name": "Krains Fuletra",
+      "professionalism": null
+    },
+    {
+      "id": 242,
+      "name": "Liam Livingstone",
+      "professionalism": null
+    },
+    {
+      "id": 243,
+      "name": "Nitish Kumar Reddy",
+      "professionalism": null
+    },
+    {
+      "id": 244,
+      "name": "Onkar Tarmale",
+      "professionalism": null
+    },
+    {
+      "id": 245,
+      "name": "Pat Cummins",
+      "professionalism": null
+    },
+    {
+      "id": 246,
+      "name": "Praful Hinge",
+      "professionalism": null
+    },
+    {
+      "id": 247,
+      "name": "Sakib Hussain",
+      "professionalism": null
+    },
+    {
+      "id": 248,
+      "name": "Salil Arora",
+      "professionalism": null
+    },
+    {
+      "id": 249,
+      "name": "Shivam Mavi",
+      "professionalism": null
+    },
+    {
+      "id": 250,
+      "name": "Shivang Kumar",
+      "professionalism": null
+    },
+    {
+      "id": 251,
+      "name": "Smaran Ravichandran",
+      "professionalism": null
+    },
+    {
+      "id": 252,
+      "name": "Travis Head",
+      "professionalism": null
+    },
+    {
+      "id": 253,
+      "name": "Zeeshan Ansari",
+      "professionalism": null
+    },
+    {
+      "id": 254,
+      "name": "Ali Naseer",
+      "professionalism": null
+    },
+    {
+      "id": 255,
+      "name": "Alzarri Joseph",
+      "professionalism": null
+    },
+    {
+      "id": 256,
+      "name": "Andile Simelane",
+      "professionalism": null
+    },
+    {
+      "id": 257,
+      "name": "Aneesh KV",
+      "professionalism": null
+    },
+    {
+      "id": 258,
+      "name": "Aravelly Avanish",
+      "professionalism": null
+    },
+    {
+      "id": 259,
+      "name": "Archie Vaughan",
+      "professionalism": null
+    },
+    {
+      "id": 260,
+      "name": "Callum Vidler",
+      "professionalism": null
+    },
+    {
+      "id": 261,
+      "name": "Chetan Sakariya",
+      "professionalism": null
+    },
+    {
+      "id": 262,
+      "name": "Connor Esterhuizen",
+      "professionalism": null
+    },
+    {
+      "id": 263,
+      "name": "Dan Lawrence",
+      "professionalism": null
+    },
+    {
+      "id": 264,
+      "name": "Dan Mousley",
+      "professionalism": null
+    },
+    {
+      "id": 265,
+      "name": "Daryl Mitchell",
+      "professionalism": null
+    },
+    {
+      "id": 266,
+      "name": "Dasun Shanaka",
+      "professionalism": null
+    },
+    {
+      "id": 267,
+      "name": "David Teeger",
+      "professionalism": null
+    },
+    {
+      "id": 268,
+      "name": "Deepak Hooda",
+      "professionalism": null
+    },
+    {
+      "id": 269,
+      "name": "Devon Conway",
+      "professionalism": null
+    },
+    {
+      "id": 270,
+      "name": "Dian Forrester",
+      "professionalism": null
+    },
+    {
+      "id": 271,
+      "name": "Dipjyoti Saikia",
+      "professionalism": null
+    },
+    {
+      "id": 272,
+      "name": "Farhan Ahmed",
+      "professionalism": null
+    },
+    {
+      "id": 273,
+      "name": "Fazalhaq Farooqi",
+      "professionalism": null
+    },
+    {
+      "id": 274,
+      "name": "Gerald Coetzee",
+      "professionalism": null
+    },
+    {
+      "id": 275,
+      "name": "Gus Atkinson",
+      "professionalism": null
+    },
+    {
+      "id": 276,
+      "name": "Hamza Shaikh",
+      "professionalism": null
+    },
+    {
+      "id": 277,
+      "name": "Harry Brook",
+      "professionalism": null
+    },
+    {
+      "id": 278,
+      "name": "Harry Dixon",
+      "professionalism": null
+    },
+    {
+      "id": 279,
+      "name": "Hemchudeshan J",
+      "professionalism": null
+    },
+    {
+      "id": 280,
+      "name": "Hugh Weibgen",
+      "professionalism": null
+    },
+    {
+      "id": 281,
+      "name": "Isai Thorne",
+      "professionalism": null
+    },
+    {
+      "id": 282,
+      "name": "Jamie Smith",
+      "professionalism": null
+    },
+    {
+      "id": 283,
+      "name": "Jewel Andrew",
+      "professionalism": null
+    },
+    {
+      "id": 284,
+      "name": "Jhye Richardson",
+      "professionalism": null
+    },
+    {
+      "id": 285,
+      "name": "Johann Layne",
+      "professionalism": null
+    },
+    {
+      "id": 286,
+      "name": "John Turner",
+      "professionalism": null
+    },
+    {
+      "id": 287,
+      "name": "Jordan Johnson",
+      "professionalism": null
+    },
+    {
+      "id": 288,
+      "name": "Josh Clarkson",
+      "professionalism": null
+    },
+    {
+      "id": 289,
+      "name": "Karim Janat",
+      "professionalism": null
+    },
+    {
+      "id": 290,
+      "name": "Karn Sharma",
+      "professionalism": null
+    },
+    {
+      "id": 291,
+      "name": "Kevin Wickham",
+      "professionalism": null
+    },
+    {
+      "id": 292,
+      "name": "Krish Bhagat",
+      "professionalism": null
+    },
+    {
+      "id": 293,
+      "name": "KS Bharat",
+      "professionalism": null
+    },
+    {
+      "id": 294,
+      "name": "Kuldip Yadav",
+      "professionalism": null
+    },
+    {
+      "id": 295,
+      "name": "Kulwant Khejroliya",
+      "professionalism": null
+    },
+    {
+      "id": 296,
+      "name": "Kumar Kartikeya",
+      "professionalism": null
+    },
+    {
+      "id": 297,
+      "name": "Kusal Mendis",
+      "professionalism": null
+    },
+    {
+      "id": 298,
+      "name": "Lakshya Raichandani",
+      "professionalism": null
+    },
+    {
+      "id": 299,
+      "name": "Macneil Noronha",
+      "professionalism": null
+    },
+    {
+      "id": 300,
+      "name": "Maheesh Theekshana",
+      "professionalism": null
+    },
+    {
+      "id": 301,
+      "name": "Mahipal Lomror",
+      "professionalism": null
+    },
+    {
+      "id": 302,
+      "name": "Mahli Beardman",
+      "professionalism": null
+    },
+    {
+      "id": 303,
+      "name": "Matthew Boast",
+      "professionalism": null
+    },
+    {
+      "id": 304,
+      "name": "Matthew Forde",
+      "professionalism": null
+    },
+    {
+      "id": 305,
+      "name": "Matthew Nandu",
+      "professionalism": null
+    },
+    {
+      "id": 306,
+      "name": "McKenny Clarke",
+      "professionalism": null
+    },
+    {
+      "id": 307,
+      "name": "Michael Bracewell",
+      "professionalism": null
+    },
+    {
+      "id": 308,
+      "name": "Mujeeb Ur Rahman",
+      "professionalism": null
+    },
+    {
+      "id": 309,
+      "name": "Nathan Edward",
+      "professionalism": null
+    },
+    {
+      "id": 310,
+      "name": "Nitya J Pandya",
+      "professionalism": null
+    },
+    {
+      "id": 311,
+      "name": "Nqaba Peter",
+      "professionalism": null
+    },
+    {
+      "id": 312,
+      "name": "Oliver Davies",
+      "professionalism": null
+    },
+    {
+      "id": 313,
+      "name": "Ollie Peake",
+      "professionalism": null
+    },
+    {
+      "id": 314,
+      "name": "P Vidyuth",
+      "professionalism": null
+    },
+    {
+      "id": 315,
+      "name": "R Jashwanth Shreeram",
+      "professionalism": null
+    },
+    {
+      "id": 316,
+      "name": "Rahmanullah Gurbaz",
+      "professionalism": null
+    },
+    {
+      "id": 317,
+      "name": "Raj Limbani",
+      "professionalism": null
+    },
+    {
+      "id": 318,
+      "name": "Richard Gleeson",
+      "professionalism": null
+    },
+    {
+      "id": 319,
+      "name": "Riley Meredith",
+      "professionalism": null
+    },
+    {
+      "id": 320,
+      "name": "Romashan Pillay",
+      "professionalism": null
+    },
+    {
+      "id": 321,
+      "name": "RS Ambrish",
+      "professionalism": null
+    },
+    {
+      "id": 322,
+      "name": "Ruchit Ahir",
+      "professionalism": null
+    },
+    {
+      "id": 323,
+      "name": "Sachin Dhas",
+      "professionalism": null
+    },
+    {
+      "id": 324,
+      "name": "Sam Konstas",
+      "professionalism": null
+    },
+    {
+      "id": 325,
+      "name": "Saumy Pandey",
+      "professionalism": null
+    },
+    {
+      "id": 326,
+      "name": "Saurabh Dubey",
+      "professionalism": null
+    },
+    {
+      "id": 327,
+      "name": "Spencer Johnson",
+      "professionalism": null
+    },
+    {
+      "id": 328,
+      "name": "Steve Smith",
+      "professionalism": null
+    },
+    {
+      "id": 329,
+      "name": "Steve Stolk",
+      "professionalism": null
+    },
+    {
+      "id": 330,
+      "name": "Swastik Chikara",
+      "professionalism": null
+    },
+    {
+      "id": 331,
+      "name": "Taskin Ahmed",
+      "professionalism": null
+    },
+    {
+      "id": 332,
+      "name": "Tazeem Ali",
+      "professionalism": null
+    },
+    {
+      "id": 333,
+      "name": "Teddy Bishop",
+      "professionalism": null
+    },
+    {
+      "id": 334,
+      "name": "Thomas Rew",
+      "professionalism": null
+    },
+    {
+      "id": 335,
+      "name": "Tom Prest",
+      "professionalism": null
+    },
+    {
+      "id": 336,
+      "name": "Tom Straker",
+      "professionalism": null
+    },
+    {
+      "id": 337,
+      "name": "Tristan Luus",
+      "professionalism": null
+    },
+    {
+      "id": 338,
+      "name": "Uday Saharan",
+      "professionalism": null
+    },
+    {
+      "id": 340,
+      "name": "Vishnu Bhardwaj",
+      "professionalism": null
+    },
+    {
+      "id": 341,
+      "name": "Wiaan Mulder",
+      "professionalism": null
+    },
+    {
+      "id": 342,
+      "name": "Will Smeed",
+      "professionalism": null
+    },
+    {
+      "id": 343,
+      "name": "Yashvardhan Dalal",
+      "professionalism": null
+    },
+    {
+      "id": 344,
+      "name": "Adam Zampa",
+      "professionalism": null
+    },
+    {
+      "id": 345,
+      "name": "Ish Sodhi",
+      "professionalism": null
+    },
+    {
+      "id": 346,
+      "name": "Shai Hope",
+      "professionalism": null
+    },
+    {
+      "id": 347,
+      "name": "Charith Asalanka",
+      "professionalism": null
+    },
+    {
+      "id": 348,
+      "name": "Kusal Perera",
+      "professionalism": null
+    },
+    {
+      "id": 349,
+      "name": "George Linde",
+      "professionalism": null
+    }
+  ]
+}

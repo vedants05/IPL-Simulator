@@ -1,0 +1,89 @@
+{
+  "downloadedAt": "2026-11-02T23:53:12.986732+00:00",
+  "files": [
+    {
+      "url": "https://cricsheet.org/downloads/bbl_male_json.zip",
+      "file": "calibration\\data\\cricsheet\\bbl_male_json.zip",
+      "bytes": 2706943,
+      "sha256": "a549fa88605f2ea9ca4333f277321b07cbdd00c1135608358f2d886df8eeae63"
+    },
+    {
+      "url": "https://cricsheet.org/downloads/bpl_male_json.zip",
+      "file": "calibration\\data\\cricsheet\\bpl_male_json.zip",
+      "bytes": 1991174,
+      "sha256": "4b1a314300ca105fa5396c426ac060db6a1db1541f97d9fadcddeb5bb09bd736"
+    },
+    {
+      "url": "https://cricsheet.org/downloads/cpl_male_json.zip",
+      "file": "calibration\\data\\cricsheet\\cpl_male_json.zip",
+      "bytes": 1831626,
+      "sha256": "67752aff53de41e844d16c37de4d3767d8f9e7fbe1e544c5de5e4efaec76c430"
+    },
+    {
+      "url": "https://cricsheet.org/downloads/ipl_male_json.zip",
+      "file": "calibration\\data\\cricsheet\\ipl_male_json.zip",
+      "bytes": 5187774,
+      "sha256": "6fe9142db9e139e4f77a5634ddc61c1c72a26a56bee2fe5affe5921867de04b3"
+    },
+    {
+      "url": "https://cricsheet.org/downloads/lpl_male_json.zip",
+      "file": "calibration\\data\\cricsheet\\lpl_male_json.zip",
+      "bytes": 615201,
+      "sha256": "5dc76095dc40c55c538ac977f500810a3eb20db4aceb30f7f5d39cc1c4b87cbd"
+    },
+    {
+      "url": "https://cricsheet.org/downloads/mlc_male_json.zip",
+      "file": "calibration\\data\\cricsheet\\mlc_male_json.zip",
+      "bytes": 465104,
+      "sha256": "bbf66eb5178dfcea928747efc7801fe75ad71ddca6f1c17962ac34487e2ff90e"
+    },
+    {
+      "url": "https://cricsheet.org/downloads/ntb_male_json.zip",
+      "file": "calibration\\data\\cricsheet\\ntb_male_json.zip",
+      "bytes": 6203985,
+      "sha256": "6b3ce7735187259f481fbafc75c0bd0af89aacf22d1fa63683dfad18b0758e35"
+    },
+    {
+      "url": "https://cricsheet.org/downloads/psl_male_json.zip",
+      "file": "calibration\\data\\cricsheet\\psl_male_json.zip",
+      "bytes": 1501790,
+      "sha256": "e8172deb1f97fa23230bd717a88c8af689fdb374f6f9e2ce5be88a718d909401"
+    },
+    {
+      "url": "https://cricsheet.org/downloads/sat_male_json.zip",
+      "file": "calibration\\data\\cricsheet\\sat_male_json.zip",
+      "bytes": 530442,
+      "sha256": "284adb5fa7f2b510bec440a40fad648c376ecea52781d22e983fc9a8a79c3cb7"
+    },
+    {
+      "url": "https://cricsheet.org/downloads/ssm_male_json.zip",
+      "file": "calibration\\data\\cricsheet\\ssm_male_json.zip",
+      "bytes": 1079676,
+      "sha256": "a9ea24a3f09dd15fab83848d25dd3e99f20c7a7303ac83a219cd022347b8b7d5"
+    },
+    {
+      "url": "https://cricsheet.org/register/people.csv",
+      "file": "calibration\\data\\cricsheet\\people.csv",
+      "bytes": 1186551,
+      "sha256": "ffacf43c141d729ff3a999d6fce9a2777bd462a1bb86c086467dda88946ae990"
+    },
+    {
+      "url": "https://cricsheet.org/register/names.csv",
+      "file": "calibration\\data\\cricsheet\\names.csv",
+      "bytes": 162471,
+      "sha256": "cde5292c15be1cf03e0b366875b5aa2e23c29283ca9d368bb0f768ea85761fb1"
+    },
+    {
+      "url": "https://cricsheet.org/downloads/t20s_male_json.zip",
+      "file": "calibration\\data\\cricsheet\\t20s_male_json.zip",
+      "bytes": 14551021,
+      "sha256": "691f1f42b86c93fbdbc53936ed69479f9306bf39c4c56b4c0729360051075c6d"
+    },
+    {
+      "url": "https://cricsheet.org/downloads/ilt_male_json.zip",
+      "file": "calibration\\data\\cricsheet\\ilt_male_json.zip",
+      "bytes": 582833,
+      "sha256": "5630f1640d8e982f01b6abe2b5449108d9b0c6f11ca88d720b99b7eef485a88d"
+    }
+  ]
+}

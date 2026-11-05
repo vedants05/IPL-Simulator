@@ -1,0 +1,348 @@
+﻿id,name,team,rating,confidence,source,cricsheetId,identityMethod,balls,weightedBalls,iplBalls,economy,adjustedEconomyEffect,seasons,competitions
+1,Akash Madhwal,Chennai Super Kings,65,low,contextual-T20-model,4bd09374,explicit-identity,199,98.7,199,11.186,0.2681,"[2024, 2025]",['ipl']
+2,Akeal Hosein,Chennai Super Kings,81,medium,contextual-T20-model,4d7f517e,explicit-identity,3203,1977.6,148,7.549,-0.6161,"[2024, 2025, 2026]","['bbl', 'cpl', 'ilt', 'ipl', 'mlc', 'psl', 'sat', 't20s']"
+3,Aman Hakim Khan,Chennai Super Kings,61,provisional,ability-based-prior,378daa89,explicit-identity,0,0,0,,,[],[]
+4,Anshul Kamboj,Chennai Super Kings,73,medium,contextual-T20-model,fcc21ace,explicit-identity,491,354.0,491,9.971,-0.1723,"[2024, 2025, 2026]",['ipl']
+5,Ayush Mhatre,Chennai Super Kings,54,provisional,ability-based-prior,b2b4f545,explicit-identity,0,0,0,,,[],[]
+6,Dewald Brevis,Chennai Super Kings,68,low,contextual-T20-model,844e79d1,explicit-identity,42,27.6,0,8.714,0.0854,"[2025, 2026]","['sat', 't20s']"
+7,Gurjapneet Singh,Chennai Super Kings,73,low,contextual-T20-model,cc61ee8f,explicit-identity,151,126.5,151,9.258,-0.1394,[2026],['ipl']
+8,Jamie Overton,Chennai Super Kings,75,high,contextual-T20-model,59559bc2,explicit-identity,1382,857.8,204,8.505,-0.2849,"[2024, 2025, 2026]","['bbl', 'ilt', 'ipl', 'ntb', 't20s']"
+9,Kartik Sharma,Chennai Super Kings,36,provisional,ability-based-prior,7b679de5,explicit-identity,0,0,0,,,[],[]
+10,Khaleel Ahmed,Chennai Super Kings,73,medium,contextual-T20-model,a2f46292,explicit-identity,765,408.7,681,9.216,-0.1816,"[2024, 2025, 2026]","['ipl', 't20s']"
+11,Matt Henry,Chennai Super Kings,74,medium,contextual-T20-model,e84ac20c,explicit-identity,1127,694.0,132,8.47,-0.2381,"[2024, 2025, 2026]","['ipl', 'mlc', 'ntb', 'ssm', 't20s']"
+12,Matthew Short,Chennai Super Kings,76,medium,contextual-T20-model,a90e53ec,explicit-identity,803,519.0,19,8.017,-0.3246,"[2024, 2025, 2026]","['bbl', 'ipl', 'mlc', 't20s']"
+13,MS Dhoni,Chennai Super Kings,36,provisional,ability-based-prior,4a8a2e3b,explicit-identity,0,0,0,,,[],[]
+14,Mukesh Choudhary,Chennai Super Kings,73,low,contextual-T20-model,765a4731,explicit-identity,210,165.1,210,9.914,-0.1941,"[2024, 2025, 2026]",['ipl']
+15,Nathan Ellis,Chennai Super Kings,85,medium,contextual-T20-model,9eb1455b,explicit-identity,1143,691.9,48,7.885,-0.852,"[2024, 2025, 2026]","['bbl', 'ipl', 't20s']"
+16,Noor Ahmad,Chennai Super Kings,88,high,contextual-T20-model,efc04be7,explicit-identity,2107,1254.7,815,7.541,-1.0181,"[2024, 2025, 2026]","['cpl', 'ilt', 'ipl', 'mlc', 'sat']"
+17,Prashant Veer,Chennai Super Kings,68,low,contextual-T20-model,e148e6bd,explicit-identity,12,10.1,12,12.5,0.1353,[2026],['ipl']
+18,Rahul Chahar,Chennai Super Kings,70,low,contextual-T20-model,2ed569a0,explicit-identity,216,100.8,216,9.278,0.0218,"[2024, 2025, 2026]",['ipl']
+19,Ramakrishna Ghosh,Chennai Super Kings,71,low,contextual-T20-model,dee07622,explicit-identity,18,15.1,18,8.0,-0.0527,[2026],['ipl']
+20,Ruturaj Gaikwad,Chennai Super Kings,36,provisional,ability-based-prior,45a43fe2,explicit-identity,0,0,0,,,[],[]
+21,Sanju Samson,Chennai Super Kings,36,provisional,ability-based-prior,a4cc73aa,explicit-identity,0,0,0,,,[],[]
+22,Sarfaraz Khan,Chennai Super Kings,50,provisional,ability-based-prior,f088b960,explicit-identity,0,0,0,,,[],[]
+23,Shivam Dube,Chennai Super Kings,52,medium,contextual-T20-model,a4e37e47,explicit-identity,471,348.4,48,10.229,0.9833,"[2024, 2025, 2026]","['ipl', 't20s']"
+24,Shreyas Gopal,Chennai Super Kings,69,low,contextual-T20-model,7a8bd078,explicit-identity,42,17.3,42,9.571,0.0687,[2024],['ipl']
+25,Urvil Patel,Chennai Super Kings,36,provisional,ability-based-prior,cf59b3f0,explicit-identity,0,0,0,,,[],[]
+26,Zak Foulkes,Chennai Super Kings,73,medium,contextual-T20-model,30f92334,explicit-identity,1110,611.6,0,8.249,-0.1452,"[2024, 2025, 2026]","['ntb', 'ssm', 't20s']"
+27,Abishek Porel,Delhi Capitals,36,provisional,ability-based-prior,ad3b6e95,explicit-identity,0,0,0,,,[],[]
+28,Ajay Mandal,Delhi Capitals,65,provisional,ability-based-prior,31ee319e,explicit-identity,0,0,0,,,[],[]
+29,Ashutosh Sharma,Delhi Capitals,62,provisional,ability-based-prior,84d9c311,explicit-identity,0,0,0,,,[],[]
+30,Auqib Nabi,Delhi Capitals,66,low,contextual-T20-model,7c3c0337,explicit-identity,78,65.4,78,11.462,0.2208,[2026],['ipl']
+31,Axar Patel,Delhi Capitals,78,high,contextual-T20-model,2e171977,explicit-identity,1747,1185.8,744,8.222,-0.4506,"[2024, 2025, 2026]","['ipl', 't20s']"
+32,Ben Duckett,Delhi Capitals,36,provisional,ability-based-prior,5f26f677,explicit-identity,0,0,0,,,[],[]
+33,David Miller,Delhi Capitals,36,provisional,ability-based-prior,d67d5f00,explicit-identity,0,0,0,,,[],[]
+34,Dushmantha Chameera,Delhi Capitals,75,medium,contextual-T20-model,327b58d3,explicit-identity,1437,935.4,132,8.868,-0.2727,"[2024, 2025, 2026]","['ilt', 'ipl', 'lpl', 't20s']"
+35,Karun Nair,Delhi Capitals,36,provisional,ability-based-prior,944533a5,explicit-identity,0,0,0,,,[],[]
+36,KL Rahul,Delhi Capitals,36,provisional,ability-based-prior,b17e2f24,explicit-identity,0,0,0,,,[],[]
+37,Kyle Jamieson,Delhi Capitals,69,medium,contextual-T20-model,68c56d09,explicit-identity,915,597.1,132,8.597,0.0396,"[2024, 2025, 2026]","['ipl', 'psl', 'ssm', 't20s']"
+38,Lungi Ngidi,Delhi Capitals,83,high,contextual-T20-model,f834dcfc,explicit-identity,1351,887.5,296,8.563,-0.7165,"[2024, 2025, 2026]","['ipl', 'mlc', 'sat', 't20s']"
+39,Madhav Tiwari,Delhi Capitals,75,low,contextual-T20-model,fb5f69e4,explicit-identity,66,54.6,66,9.182,-0.2527,"[2025, 2026]",['ipl']
+40,Mitchell Starc,Delhi Capitals,68,medium,contextual-T20-model,3fb19989,explicit-identity,875,502.1,611,9.765,0.1006,"[2024, 2025, 2026]","['bbl', 'ipl', 't20s']"
+41,Mukesh Kumar,Delhi Capitals,68,medium,contextual-T20-model,2cffab74,explicit-identity,699,411.2,638,10.335,0.1262,"[2024, 2025, 2026]","['ipl', 't20s']"
+42,Nitish Rana,Delhi Capitals,69,low,contextual-T20-model,fb2d1dda,explicit-identity,36,26.8,36,12.167,0.0782,"[2025, 2026]",['ipl']
+43,Pathum Nissanka,Delhi Capitals,36,provisional,ability-based-prior,8ee36b18,explicit-identity,0,0,0,,,[],[]
+44,Prithvi Shaw,Delhi Capitals,36,provisional,ability-based-prior,8b3e9c7c,explicit-identity,0,0,0,,,[],[]
+45,Rehan Ahmed,Free agent,69,medium,contextual-T20-model,0ecb4de6,explicit-identity,762,482.3,0,8.488,0.0625,"[2024, 2025, 2026]","['bbl', 'ilt', 'ntb', 't20s']"
+46,Rishabh Pant,Delhi Capitals,36,provisional,ability-based-prior,919a3be2,explicit-identity,0,0,0,,,[],[]
+47,Sahil Parakh,Delhi Capitals,36,provisional,ability-based-prior,926c7443,explicit-identity,0,0,0,,,[],[]
+48,Sameer Rizvi,Delhi Capitals,54,provisional,ability-based-prior,f89d3b11,explicit-identity,0,0,0,,,[],[]
+49,T. Natarajan,Delhi Capitals,72,medium,contextual-T20-model,ce794613,explicit-identity,524,301.9,524,10.008,-0.1375,"[2024, 2025, 2026]",['ipl']
+50,Tripurana Vijay,Delhi Capitals,67,low,contextual-T20-model,51ec3919,explicit-identity,12,10.2,12,14.5,0.1403,[2026],['ipl']
+51,Tristan Stubbs,Delhi Capitals,69,low,contextual-T20-model,85b3fab2,explicit-identity,81,58.7,24,10.0,0.0593,"[2024, 2025, 2026]","['ipl', 'ntb', 'sat', 't20s']"
+52,Vipraj Nigam,Delhi Capitals,67,low,contextual-T20-model,5ffc0565,explicit-identity,288,182.7,288,9.771,0.1453,"[2025, 2026]",['ipl']
+53,Anuj Rawat,Gujarat Titans,36,provisional,ability-based-prior,c8f5f961,explicit-identity,0,0,0,,,[],[]
+54,Ashok Sharma,Gujarat Titans,68,low,contextual-T20-model,50c09020,explicit-identity,174,147.3,126,9.552,0.1065,[2026],"['ipl', 't20s']"
+55,Glenn Phillips,Gujarat Titans,60,low,contextual-T20-model,9a46c4e5,explicit-identity,370,231.6,0,9.389,0.5816,"[2024, 2025, 2026]","['cpl', 'lpl', 'mlc', 'ssm', 't20s']"
+56,Gurnoor Singh Brar,Gujarat Titans,66,provisional,ability-based-prior,99258814,explicit-identity,0,0,0,,,[],[]
+57,Ishant Sharma,Gujarat Titans,65,low,contextual-T20-model,5bb1a1c4,explicit-identity,272,131.5,272,10.368,0.251,"[2024, 2025]",['ipl']
+58,Jason Holder,Gujarat Titans,79,high,contextual-T20-model,0f721006,explicit-identity,2981,2009.6,230,8.586,-0.4878,"[2024, 2025, 2026]","['bpl', 'cpl', 'ilt', 'ipl', 'mlc', 'psl', 't20s']"
+59,Jayant Yadav,Gujarat Titans,65,provisional,ability-based-prior,81049310,explicit-identity,0,0,0,,,[],[]
+60,Jos Buttler,Gujarat Titans,36,provisional,ability-based-prior,99b75528,explicit-identity,0,0,0,,,[],[]
+61,Kagiso Rabada,Gujarat Titans,76,high,contextual-T20-model,e62dd25d,explicit-identity,1733,1065.2,724,8.739,-0.3275,"[2024, 2025, 2026]","['ipl', 'mlc', 'sat', 't20s']"
+62,Kumar Kushagra,Gujarat Titans,36,provisional,ability-based-prior,57ca01b3,explicit-identity,0,0,0,,,[],[]
+63,Luke Wood,Gujarat Titans,72,medium,contextual-T20-model,65b6943c,explicit-identity,1653,931.9,36,8.534,-0.1218,"[2024, 2025, 2026]","['bbl', 'bpl', 'ilt', 'ipl', 'ntb', 'psl', 't20s']"
+64,Manav Suthar,Gujarat Titans,66,low,contextual-T20-model,025c4400,explicit-identity,48,35.1,48,11.75,0.215,"[2024, 2026]",['ipl']
+65,Mohammed Siraj,Gujarat Titans,81,high,contextual-T20-model,2f49c897,explicit-identity,1182,720.5,1038,8.792,-0.6039,"[2024, 2025, 2026]","['ipl', 't20s']"
+66,Mohd. Arshad Khan,Gujarat Titans,65,low,contextual-T20-model,12314277,explicit-identity,291,188.1,291,10.371,0.282,"[2024, 2025, 2026]",['ipl']
+67,Nishant Sindhu,Gujarat Titans,64,provisional,ability-based-prior,3cea23da,explicit-identity,0,0,0,,,[],[]
+68,Prasidh Krishna,Gujarat Titans,75,medium,contextual-T20-model,85e0cf10,explicit-identity,654,463.1,588,9.321,-0.2731,"[2025, 2026]","['ipl', 't20s']"
+69,R. Sai Kishore,Gujarat Titans,72,low,contextual-T20-model,c7a995d3,explicit-identity,369,207.7,369,9.366,-0.1308,"[2024, 2025, 2026]",['ipl']
+70,Rahul Tewatia,Gujarat Titans,62,provisional,ability-based-prior,39a2dfa8,explicit-identity,0,0,0,,,[],[]
+71,Rashid Khan,Gujarat Titans,82,high,contextual-T20-model,5f547c8b,explicit-identity,1569,970.6,933,8.203,-0.6777,"[2024, 2025, 2026]","['ilt', 'ipl', 'mlc', 'sat']"
+72,Sai Sudharsan,Gujarat Titans,36,provisional,ability-based-prior,d5130a30,explicit-identity,0,0,0,,,[],[]
+73,Shahrukh Khan,Gujarat Titans,70,low,contextual-T20-model,7dcb9bc9,explicit-identity,18,8.6,18,9.333,0.0276,"[2024, 2025]",['ipl']
+74,Shubman Gill,Gujarat Titans,50,provisional,ability-based-prior,b4b99816,explicit-identity,0,0,0,,,[],[]
+75,Tom Banton,Gujarat Titans,36,provisional,ability-based-prior,25f7b7d6,explicit-identity,0,0,0,,,[],[]
+76,Washington Sundar,Gujarat Titans,73,medium,contextual-T20-model,f19ccfad,explicit-identity,452,288.7,150,8.124,-0.1581,"[2024, 2025, 2026]","['ipl', 't20s']"
+77,Yarra Prithvi Raj,Gujarat Titans,61,provisional,ability-based-prior,cfa4bd2b,explicit-identity,0,0,0,,,[],[]
+79,Akash Deep,Kolkata Knight Riders,58,low,contextual-T20-model,0a67aec0,explicit-identity,135,75.8,135,12.622,0.6689,"[2024, 2025]",['ipl']
+80,Angkrish Raghuvanshi,Kolkata Knight Riders,36,provisional,ability-based-prior,d7017798,explicit-identity,0,0,0,,,[],[]
+81,Anukul Roy,Kolkata Knight Riders,72,low,contextual-T20-model,e4cdf230,explicit-identity,221,164.3,221,9.448,-0.1095,"[2024, 2025, 2026]",['ipl']
+82,Blessing Muzarabani,Kolkata Knight Riders,88,medium,contextual-T20-model,449f4e3c,explicit-identity,1624,969.6,42,7.252,-0.9888,"[2024, 2025, 2026]","['ilt', 'ipl', 'psl', 't20s']"
+83,Cameron Green,Kolkata Knight Riders,68,medium,contextual-T20-model,eaa76d3c,explicit-identity,454,264.7,343,9.37,0.1117,"[2024, 2026]","['ipl', 't20s']"
+84,Daksh Kamra,Kolkata Knight Riders,62,provisional,ability-based-prior,,unresolved,0,0,0,,,[],[]
+85,Finn Allen,Kolkata Knight Riders,36,provisional,ability-based-prior,bf74b130,explicit-identity,0,0,0,,,[],[]
+86,Harshit Rana,Kolkata Knight Riders,66,medium,contextual-T20-model,77b1aa15,explicit-identity,769,453.2,517,9.667,0.2165,"[2024, 2025, 2026]","['ipl', 't20s']"
+87,Kartik Tyagi,Kolkata Knight Riders,77,medium,contextual-T20-model,5d2eea49,explicit-identity,330,266.0,330,9.982,-0.3877,"[2024, 2026]",['ipl']
+88,Manish Pandey,Kolkata Knight Riders,36,provisional,ability-based-prior,93b4fc78,explicit-identity,0,0,0,,,[],[]
+89,Matheesha Pathirana,Kolkata Knight Riders,73,high,contextual-T20-model,64839cb3,explicit-identity,1366,723.2,391,8.736,-0.1666,"[2024, 2025, 2026]","['ilt', 'ipl', 'lpl', 'sat', 't20s']"
+90,Prashant Solanki,Kolkata Knight Riders,64,provisional,ability-based-prior,c695b423,explicit-identity,0,0,0,,,[],[]
+91,Rachin Ravindra,Kolkata Knight Riders,80,medium,contextual-T20-model,ba5e1069,explicit-identity,511,332.7,12,7.209,-0.5485,"[2024, 2025, 2026]","['ipl', 'mlc', 'ssm', 't20s']"
+92,Rahul Tripathi,Kolkata Knight Riders,50,provisional,ability-based-prior,77255a9e,explicit-identity,0,0,0,,,[],[]
+93,Ramandeep Singh,Kolkata Knight Riders,66,low,contextual-T20-model,be24ead0,explicit-identity,40,25.1,20,12.3,0.2034,"[2024, 2026]","['ipl', 't20s']"
+94,Rinku Singh,Kolkata Knight Riders,71,low,contextual-T20-model,0a509d6b,explicit-identity,16,10.5,0,7.125,-0.0366,"[2024, 2026]",['t20s']
+95,Rovman Powell,Kolkata Knight Riders,59,low,contextual-T20-model,650d5e49,explicit-identity,67,46.2,0,13.343,0.618,"[2024, 2025, 2026]","['cpl', 'mlc', 't20s']"
+96,Sarthak Ranjan,Kolkata Knight Riders,36,provisional,ability-based-prior,d7cdefa9,explicit-identity,0,0,0,,,[],[]
+97,Sunil Narine,Kolkata Knight Riders,99,high,contextual-T20-model,9d430b40,explicit-identity,3091,1965.8,906,6.138,-2.4624,"[2024, 2025, 2026]","['bpl', 'cpl', 'ilt', 'ipl', 'mlc', 'sat']"
+98,Tejasvi Singh Dahiya,Kolkata Knight Riders,36,provisional,ability-based-prior,f12fe2a1,explicit-identity,0,0,0,,,[],[]
+99,Tim Seifert,Kolkata Knight Riders,36,provisional,ability-based-prior,4663bd23,explicit-identity,0,0,0,,,[],[]
+100,Umran Malik,Kolkata Knight Riders,69,low,contextual-T20-model,81c08fa3,explicit-identity,6,2.4,6,15.0,0.0652,[2024],['ipl']
+101,Vaibhav Arora,Kolkata Knight Riders,71,medium,contextual-T20-model,7c3b3b78,explicit-identity,663,413.8,663,9.919,-0.0744,"[2024, 2025, 2026]",['ipl']
+102,Varun Chakravarthy,Kolkata Knight Riders,83,high,contextual-T20-model,5b7ab5a9,explicit-identity,1716,1094.5,846,8.035,-0.7278,"[2024, 2025, 2026]","['ipl', 't20s']"
+103,Abdul Samad,Lucknow Super Giants,68,low,contextual-T20-model,8e514b4c,explicit-identity,3,2.0,3,24.0,0.1168,"[2025, 2026]",['ipl']
+104,Aiden Markram,Lucknow Super Giants,63,medium,contextual-T20-model,6a26221c,explicit-identity,504,289.4,114,9.024,0.4065,"[2024, 2025, 2026]","['ipl', 'sat', 't20s']"
+105,Akash Singh,Lucknow Super Giants,67,low,contextual-T20-model,b483905d,explicit-identity,109,76.1,109,9.853,0.1668,"[2025, 2026]",['ipl']
+106,Akshat Raghuwanshi,Lucknow Super Giants,36,provisional,ability-based-prior,d8d67045,explicit-identity,0,0,0,,,[],[]
+107,Anrich Nortje,Lucknow Super Giants,72,medium,contextual-T20-model,acdc62f5,explicit-identity,1032,584.9,198,8.802,-0.1171,"[2024, 2025, 2026]","['cpl', 'ipl', 'mlc', 'sat', 't20s']"
+108,Arjun Tendulkar,Lucknow Super Giants,71,low,contextual-T20-model,44aac2f0,explicit-identity,38,26.5,38,9.158,-0.0751,"[2024, 2026]",['ipl']
+109,Arshin Kulkarni,Lucknow Super Giants,59,provisional,ability-based-prior,2d140b79,explicit-identity,0,0,0,,,[],[]
+110,Avesh Khan,Lucknow Super Giants,70,medium,contextual-T20-model,eef2536f,explicit-identity,862,473.9,761,9.884,0.027,"[2024, 2025, 2026]","['ipl', 't20s']"
+111,Ayush Badoni,Lucknow Super Giants,69,low,contextual-T20-model,872b03f7,explicit-identity,28,16.0,28,11.143,0.0294,"[2024, 2025, 2026]",['ipl']
+112,Digvesh Rathi,Lucknow Super Giants,75,medium,contextual-T20-model,13fc5c6d,explicit-identity,546,378.3,546,9.077,-0.2635,"[2025, 2026]",['ipl']
+113,Himmat Singh,Lucknow Super Giants,36,provisional,ability-based-prior,ebcfef83,explicit-identity,0,0,0,,,[],[]
+114,Josh Inglis,Lucknow Super Giants,36,provisional,ability-based-prior,989889ff,explicit-identity,0,0,0,,,[],[]
+115,Kuldeep Yadav,Lucknow Super Giants,78,high,contextual-T20-model,8d2c70ad,explicit-identity,1209,758.7,798,8.293,-0.4542,"[2024, 2025, 2026]","['ipl', 't20s']"
+116,Manimaran Siddharth,Lucknow Super Giants,73,low,contextual-T20-model,cf0ccafa,explicit-identity,186,120.7,186,9.129,-0.1861,"[2024, 2025, 2026]",['ipl']
+117,Matthew Breetzke,Lucknow Super Giants,49,provisional,ability-based-prior,35f173a0,explicit-identity,0,0,0,,,[],[]
+118,Mayank Yadav,Lucknow Super Giants,65,medium,contextual-T20-model,b1ad996b,explicit-identity,469,346.5,217,9.262,0.2779,"[2024, 2025, 2026]","['ipl', 't20s']"
+119,Mitchell Marsh,Lucknow Super Giants,68,low,contextual-T20-model,3d8feaf8,explicit-identity,84,33.6,48,10.143,0.1282,[2024],"['ipl', 't20s']"
+120,Mohammed Shami,Lucknow Super Giants,67,medium,contextual-T20-model,8cf9814c,explicit-identity,519,377.7,486,9.78,0.1393,"[2025, 2026]","['ipl', 't20s']"
+121,Mohsin Khan,Lucknow Super Giants,79,low,contextual-T20-model,c33d8116,explicit-identity,396,235.6,396,9.288,-0.5184,"[2024, 2026]",['ipl']
+122,Mukul Choudhary,Lucknow Super Giants,36,provisional,ability-based-prior,,unresolved,0,0,0,,,[],[]
+123,Naman Tiwari,Lucknow Super Giants,73,low,contextual-T20-model,97f44626,explicit-identity,114,50.1,0,6.421,-0.1426,[2024],['t20s']
+124,Nicholas Pooran,Lucknow Super Giants,36,provisional,ability-based-prior,3241e3fd,explicit-identity,0,0,0,,,[],[]
+125,Prince Yadav,Lucknow Super Giants,85,medium,contextual-T20-model,80b2fb19,explicit-identity,643,520.9,449,8.921,-0.8327,"[2025, 2026]","['ipl', 't20s']"
+126,Shahbaz Ahmed,Lucknow Super Giants,59,low,contextual-T20-model,f9e6e7ef,explicit-identity,283,156.1,283,10.643,0.5997,"[2024, 2025, 2026]",['ipl']
+127,Wanindu Hasaranga,Lucknow Super Giants,83,high,contextual-T20-model,a97c8ec2,explicit-identity,2210,1372.5,246,7.575,-0.719,"[2024, 2025, 2026]","['cpl', 'ilt', 'ipl', 'lpl', 't20s']"
+128,Allah Ghazanfar,Mumbai Indians,82,high,contextual-T20-model,9ca68676,explicit-identity,1012,737.4,233,7.927,-0.6904,"[2025, 2026]","['cpl', 'ilt', 'ipl', 'ntb']"
+129,Ashwani Kumar,Mumbai Indians,65,low,contextual-T20-model,d45c29b1,explicit-identity,183,123.2,183,10.951,0.2605,"[2025, 2026]",['ipl']
+130,Atharva Ankolekar,Mumbai Indians,61,provisional,ability-based-prior,d6cd318e,explicit-identity,0,0,0,,,[],[]
+131,Corbin Bosch,Mumbai Indians,80,medium,contextual-T20-model,172dff15,explicit-identity,1104,797.3,163,8.332,-0.5706,"[2024, 2025, 2026]","['ipl', 'mlc', 'sat', 't20s']"
+132,Danish Malewar,Mumbai Indians,36,provisional,ability-based-prior,9e6032fa,explicit-identity,0,0,0,,,[],[]
+133,Deepak Chahar,Mumbai Indians,72,medium,contextual-T20-model,23eeb873,explicit-identity,540,331.2,540,9.367,-0.1159,"[2024, 2025, 2026]",['ipl']
+134,Hardik Pandya,Mumbai Indians,64,high,contextual-T20-model,dbe50b21,explicit-identity,1342,812.5,562,9.469,0.3591,"[2024, 2025, 2026]","['ipl', 't20s']"
+135,Jasprit Bumrah,Mumbai Indians,99,high,contextual-T20-model,462411b3,explicit-identity,1584,1020.2,889,6.924,-1.9621,"[2024, 2025, 2026]","['ipl', 't20s']"
+136,Keshav Maharaj,Mumbai Indians,74,medium,contextual-T20-model,0b60eb09,explicit-identity,1506,849.5,36,7.633,-0.2083,"[2024, 2025, 2026]","['bpl', 'cpl', 'ipl', 'sat', 't20s']"
+137,Mayank Markande,Mumbai Indians,56,low,contextual-T20-model,a9fd84fb,explicit-identity,162,78.7,162,12.407,0.8024,"[2024, 2026]",['ipl']
+138,Mayank Rawat,Mumbai Indians,60,provisional,ability-based-prior,2b801189,explicit-identity,0,0,0,,,[],[]
+139,Mitchell Santner,Mumbai Indians,84,high,contextual-T20-model,e4a0deae,explicit-identity,1611,1008.3,375,7.605,-0.8038,"[2024, 2025, 2026]","['ipl', 'mlc', 'ntb', 'ssm', 't20s']"
+140,Mohammad Salahuddin Izhar,Mumbai Indians,59,provisional,ability-based-prior,,unresolved,0,0,0,,,[],[]
+141,Naman Dhir,Mumbai Indians,64,low,contextual-T20-model,fffa744b,explicit-identity,118,90.2,52,10.017,0.3588,"[2024, 2025, 2026]","['ipl', 't20s']"
+142,Quinton De Kock,Mumbai Indians,36,provisional,ability-based-prior,372455c4,explicit-identity,0,0,0,,,[],[]
+143,Raghu Sharma,Mumbai Indians,73,low,contextual-T20-model,5b615e7c,explicit-identity,90,76.2,90,8.667,-0.1812,[2026],['ipl']
+144,Raj Angad Bawa,Mumbai Indians,67,low,contextual-T20-model,ba6b2f91,explicit-identity,24,20.3,24,12.5,0.1514,[2026],['ipl']
+145,Robin Minz,Mumbai Indians,36,provisional,ability-based-prior,bafd0398,explicit-identity,0,0,0,,,[],[]
+146,Rohit Sharma,Mumbai Indians,57,provisional,ability-based-prior,740742ef,explicit-identity,0,0,0,,,[],[]
+147,Ryan Rickelton,Mumbai Indians,36,provisional,ability-based-prior,e66732f8,explicit-identity,0,0,0,,,[],[]
+148,Shardul Thakur,Mumbai Indians,59,medium,contextual-T20-model,1abb78f8,explicit-identity,526,308.4,526,10.882,0.6016,"[2024, 2025, 2026]",['ipl']
+149,Sherfane Rutherford,Mumbai Indians,61,low,contextual-T20-model,d014d5ac,explicit-identity,109,76.0,0,11.174,0.5113,"[2025, 2026]","['bbl', 'cpl', 'ilt', 'sat', 't20s']"
+150,Suryakumar Yadav,Mumbai Indians,71,low,contextual-T20-model,271f83cd,explicit-identity,6,2.7,0,5.0,-0.0614,[2024],['t20s']
+151,Tilak Varma,Mumbai Indians,71,low,contextual-T20-model,b0482a1d,explicit-identity,37,26.7,4,7.459,-0.0793,"[2024, 2025, 2026]","['ipl', 't20s']"
+152,Trent Boult,Mumbai Indians,78,high,contextual-T20-model,a818c1be,explicit-identity,2234,1293.5,763,8.479,-0.4529,"[2024, 2025, 2026]","['ilt', 'ipl', 'mlc', 'sat', 't20s']"
+153,Will Jacks,Mumbai Indians,81,high,contextual-T20-model,9caf69a1,explicit-identity,1095,702.5,191,7.929,-0.5871,"[2024, 2025, 2026]","['bpl', 'ipl', 'ntb', 'sat', 't20s']"
+154,Arshdeep Singh,Punjab Kings,72,high,contextual-T20-model,244048f6,explicit-identity,2094,1392.0,970,9.175,-0.1244,"[2024, 2025, 2026]","['ipl', 't20s']"
+155,Azmatullah Omarzai,Punjab Kings,66,medium,contextual-T20-model,8f6dd463,explicit-identity,954,551.3,354,9.409,0.2366,"[2024, 2025, 2026]","['bpl', 'ilt', 'ipl', 'lpl', 'sat']"
+156,Ben Dwarshuis,Punjab Kings,75,medium,contextual-T20-model,e1b9f3a9,explicit-identity,1657,1050.2,24,8.488,-0.2552,"[2024, 2025, 2026]","['bbl', 'ipl', 'mlc', 'ntb', 'psl', 't20s']"
+157,Cooper Connolly,Punjab Kings,77,medium,contextual-T20-model,fe366f34,explicit-identity,553,357.7,0,7.443,-0.3751,"[2024, 2025, 2026]","['bbl', 't20s']"
+158,Harnoor Singh,Punjab Kings,36,provisional,ability-based-prior,,unresolved,0,0,0,,,[],[]
+159,Harpreet Brar,Punjab Kings,81,low,contextual-T20-model,c05edf8e,explicit-identity,408,213.9,408,8.132,-0.6161,"[2024, 2025, 2026]",['ipl']
+160,Lockie Ferguson,Punjab Kings,80,high,contextual-T20-model,2f9d0389,explicit-identity,1455,852.7,278,7.88,-0.5667,"[2024, 2025, 2026]","['bbl', 'ilt', 'ipl', 'mlc', 'ssm', 't20s']"
+161,Marco Jansen,Punjab Kings,76,high,contextual-T20-model,81c36ee9,explicit-identity,2219,1365.1,627,8.574,-0.3187,"[2024, 2025, 2026]","['ipl', 'mlc', 'sat', 't20s']"
+162,Marcus Stoinis,Punjab Kings,69,high,contextual-T20-model,d9273ee7,explicit-identity,1558,936.5,216,8.915,0.077,"[2024, 2025, 2026]","['bbl', 'ipl', 'mlc', 'sat', 't20s']"
+163,Mitchell Owen,Punjab Kings,55,medium,contextual-T20-model,f2c936d7,explicit-identity,573,408.0,0,10.126,0.8299,"[2024, 2025, 2026]","['bbl', 'mlc', 'psl', 'sat', 't20s']"
+164,Musheer Khan,Punjab Kings,67,low,contextual-T20-model,d621b427,explicit-identity,12,7.3,12,13.5,0.1523,[2025],['ipl']
+165,Nehal Wadhera,Punjab Kings,71,low,contextual-T20-model,d1a60072,explicit-identity,17,8.0,17,7.765,-0.0437,"[2024, 2025]",['ipl']
+166,Prabhsimran Singh,Punjab Kings,36,provisional,ability-based-prior,9418198b,explicit-identity,0,0,0,,,[],[]
+167,Pravin Dubey,Punjab Kings,69,low,contextual-T20-model,ed5a5510,explicit-identity,12,7.3,12,10.0,0.0419,[2025],['ipl']
+168,Priyansh Arya,Punjab Kings,36,provisional,ability-based-prior,b5797845,explicit-identity,0,0,0,,,[],[]
+169,Pyla Avinash,Punjab Kings,52,provisional,ability-based-prior,,unresolved,0,0,0,,,[],[]
+170,Shashank Singh,Punjab Kings,76,low,contextual-T20-model,26989d80,explicit-identity,78,59.9,78,9.231,-0.3126,"[2024, 2025, 2026]",['ipl']
+171,Shreyas Iyer,Punjab Kings,56,provisional,ability-based-prior,85ec8e33,explicit-identity,0,0,0,,,[],[]
+172,Suryansh Shedge,Punjab Kings,60,low,contextual-T20-model,970ddd24,explicit-identity,60,48.4,18,11.9,0.5337,"[2025, 2026]","['ipl', 't20s']"
+173,Vijaykumar Vyshak,Punjab Kings,69,medium,contextual-T20-model,54e52590,explicit-identity,375,251.9,375,10.448,0.0407,"[2024, 2025, 2026]",['ipl']
+174,Vishal Nishad,Punjab Kings,59,provisional,ability-based-prior,,unresolved,0,0,0,,,[],[]
+175,Vishnu Vinod,Punjab Kings,36,provisional,ability-based-prior,0494fa6e,explicit-identity,0,0,0,,,[],[]
+176,Xavier Bartlett,Punjab Kings,71,high,contextual-T20-model,3b53243a,explicit-identity,1882,1223.4,261,8.946,-0.0795,"[2024, 2025, 2026]","['bbl', 'ipl', 'mlc', 'ntb', 't20s']"
+177,Yash Thakur,Punjab Kings,57,low,contextual-T20-model,4b31f3a3,explicit-identity,324,174.8,276,11.315,0.7091,"[2024, 2025, 2026]","['ipl', 't20s']"
+178,Yuzvendra Chahal,Punjab Kings,72,medium,contextual-T20-model,57ee1fde,explicit-identity,864,510.0,864,9.451,-0.1341,"[2024, 2025, 2026]",['ipl']
+179,Adam Milne,Rajasthan Royals,78,medium,contextual-T20-model,350bb1b1,explicit-identity,1130,704.1,20,8.496,-0.4572,"[2024, 2025, 2026]","['bbl', 'ilt', 'ipl', 'mlc', 'psl', 'sat', 'ssm', 't20s']"
+180,Aman Rao,Rajasthan Royals,67,low,contextual-T20-model,c57f5c4c,explicit-identity,30,18.3,0,10.6,0.1449,[2025],['ntb']
+181,Brijesh Sharma,Rajasthan Royals,74,low,contextual-T20-model,133bbd61,explicit-identity,273,229.9,273,9.89,-0.2444,[2026],['ipl']
+182,Dhruv Jurel,Rajasthan Royals,36,provisional,ability-based-prior,bcf325d2,explicit-identity,0,0,0,,,[],[]
+183,Donovan Ferreira,Rajasthan Royals,78,medium,contextual-T20-model,f0af99a7,explicit-identity,526,368.8,18,7.825,-0.424,"[2024, 2025, 2026]","['ipl', 'mlc', 'sat', 't20s']"
+184,Jofra Archer,Rajasthan Royals,76,high,contextual-T20-model,5574750c,explicit-identity,1432,972.5,633,8.925,-0.3258,"[2024, 2025, 2026]","['ipl', 'ntb', 't20s']"
+185,Kuldeep Sen,Rajasthan Royals,70,low,contextual-T20-model,2e78f685,explicit-identity,72,29.7,72,10.167,0.0225,[2024],['ipl']
+186,Kwena Maphaka,Rajasthan Royals,64,medium,contextual-T20-model,107c26fb,explicit-identity,804,524.3,66,9.657,0.3322,"[2024, 2025, 2026]","['ipl', 'sat', 't20s']"
+187,Lhuan-dre Pretorius,Rajasthan Royals,68,low,contextual-T20-model,60aa2db3,explicit-identity,4,3.1,0,16.5,0.1003,[2026],['sat']
+188,Nandre Burger,Rajasthan Royals,77,high,contextual-T20-model,465aa633,explicit-identity,1142,705.2,363,8.853,-0.3699,"[2024, 2025, 2026]","['ipl', 'mlc', 'sat', 't20s']"
+189,Ravi Bishnoi,Rajasthan Royals,66,high,contextual-T20-model,df064e1a,explicit-identity,1216,715.8,640,8.748,0.2256,"[2024, 2025, 2026]","['ipl', 't20s']"
+190,Ravi Singh,Rajasthan Royals,36,provisional,ability-based-prior,548516a6,explicit-identity,0,0,0,,,[],[]
+191,Ravindra Jadeja,Rajasthan Royals,80,medium,contextual-T20-model,fe93fd9d,explicit-identity,773,445.2,707,8.197,-0.5337,"[2024, 2025, 2026]","['ipl', 't20s']"
+192,Riyan Parag,Rajasthan Royals,77,low,contextual-T20-model,04a418e8,explicit-identity,236,132.3,162,8.085,-0.3815,"[2024, 2025, 2026]","['ipl', 't20s']"
+193,Sam Curran,Rajasthan Royals,66,high,contextual-T20-model,e94915e6,explicit-identity,1938,1125.9,318,9.378,0.2471,"[2024, 2025, 2026]","['bbl', 'ilt', 'ipl', 'ntb', 'sat', 't20s']"
+194,Sandeep Sharma,Rajasthan Royals,75,medium,contextual-T20-model,ce820073,explicit-identity,565,320.5,565,9.515,-0.2777,"[2024, 2025, 2026]",['ipl']
+195,Shimron Hetmyer,Rajasthan Royals,36,provisional,ability-based-prior,48a1d7b7,explicit-identity,0,0,0,,,[],[]
+196,Shubham Dubey,Rajasthan Royals,36,provisional,ability-based-prior,6b2ff18f,explicit-identity,0,0,0,,,[],[]
+197,Sushant Mishra,Rajasthan Royals,69,low,contextual-T20-model,92500ad5,explicit-identity,38,32.5,38,10.579,0.0579,[2026],['ipl']
+198,Tushar Deshpande,Rajasthan Royals,69,medium,contextual-T20-model,46a9bea1,explicit-identity,654,363.5,618,10.037,0.0417,"[2024, 2025, 2026]","['ipl', 't20s']"
+199,Vaibhav Suryavanshi,Rajasthan Royals,45,provisional,ability-based-prior,470f446b,explicit-identity,0,0,0,,,[],[]
+200,Vignesh Puthur,Rajasthan Royals,69,low,contextual-T20-model,1e030637,explicit-identity,72,41.5,72,9.083,0.0563,[2025],['ipl']
+201,Yash Raj Punja,Rajasthan Royals,73,low,contextual-T20-model,02dfebbe,explicit-identity,180,152.7,180,9.3,-0.1673,[2026],['ipl']
+202,Yashasvi Jaiswal,Rajasthan Royals,50,provisional,ability-based-prior,6c19c6e5,explicit-identity,0,0,0,,,[],[]
+203,Yudhvir Singh,Rajasthan Royals,62,low,contextual-T20-model,4885bbe6,explicit-identity,90,49.4,90,12.2,0.4346,"[2024, 2025]",['ipl']
+204,Abhinandan Singh,Royal Challengers Bengaluru,62,low,contextual-T20-model,82c10dac,explicit-identity,58,47.4,58,12.621,0.4422,[2026],['ipl']
+205,Bhuvneshwar Kumar,Royal Challengers Bengaluru,83,high,contextual-T20-model,2e81a32d,explicit-identity,1080,691.2,1032,8.978,-0.7431,"[2024, 2025, 2026]","['ipl', 't20s']"
+206,Devdutt Padikkal,Royal Challengers Bengaluru,36,provisional,ability-based-prior,2c25d4f5,explicit-identity,0,0,0,,,[],[]
+207,Jacob Bethell,Royal Challengers Bengaluru,69,low,contextual-T20-model,3c55c703,explicit-identity,248,136.0,0,7.96,0.0383,"[2024, 2025, 2026]","['bbl', 'ntb', 't20s']"
+208,Jacob Duffy,Royal Challengers Bengaluru,76,medium,contextual-T20-model,dadbdb68,explicit-identity,1381,873.8,144,8.398,-0.3057,"[2024, 2025, 2026]","['ipl', 'ntb', 'ssm', 't20s']"
+209,Jitesh Sharma,Royal Challengers Bengaluru,36,provisional,ability-based-prior,800d2d97,explicit-identity,0,0,0,,,[],[]
+210,Jordan Cox,Royal Challengers Bengaluru,36,provisional,ability-based-prior,ff154ecd,explicit-identity,0,0,0,,,[],[]
+211,Josh Hazlewood,Royal Challengers Bengaluru,82,high,contextual-T20-model,03806cf8,explicit-identity,975,626.3,573,8.246,-0.6503,"[2024, 2025, 2026]","['ipl', 't20s']"
+212,Kanishk Chouhan,Royal Challengers Bengaluru,60,provisional,ability-based-prior,,unresolved,0,0,0,,,[],[]
+213,Krunal Pandya,Royal Challengers Bengaluru,84,medium,contextual-T20-model,5b8c830e,explicit-identity,777,498.7,777,8.178,-0.7981,"[2024, 2025, 2026]",['ipl']
+214,Mangesh Yadav,Royal Challengers Bengaluru,64,provisional,ability-based-prior,,unresolved,0,0,0,,,[],[]
+215,Nuwan Thushara,Royal Challengers Bengaluru,70,high,contextual-T20-model,ee1b6c27,explicit-identity,1339,835.2,180,8.841,0.0068,"[2024, 2025, 2026]","['ilt', 'ipl', 'lpl', 'sat', 't20s']"
+216,Phil Salt,Royal Challengers Bengaluru,36,provisional,ability-based-prior,3d284ca3,explicit-identity,0,0,0,,,[],[]
+217,Rajat Patidar,Royal Challengers Bengaluru,49,provisional,ability-based-prior,c740ea83,explicit-identity,0,0,0,,,[],[]
+218,Rasikh Salam,Royal Challengers Bengaluru,74,medium,contextual-T20-model,b8527c3d,explicit-identity,440,298.9,440,10.145,-0.238,"[2024, 2025, 2026]",['ipl']
+219,Romario Shepherd,Royal Challengers Bengaluru,57,high,contextual-T20-model,c5aef772,explicit-identity,2411,1550.0,306,9.696,0.7285,"[2024, 2025, 2026]","['bpl', 'cpl', 'ilt', 'ipl', 'mlc', 'sat', 't20s']"
+220,Satvik Deswal,Royal Challengers Bengaluru,61,provisional,ability-based-prior,,unresolved,0,0,0,,,[],[]
+221,Suyash Sharma,Royal Challengers Bengaluru,70,medium,contextual-T20-model,9440ef41,explicit-identity,569,390.8,569,9.163,-0.0228,"[2024, 2025, 2026]",['ipl']
+222,Swapnil Singh,Royal Challengers Bengaluru,69,low,contextual-T20-model,983f2f61,explicit-identity,90,38.0,90,8.867,0.0347,[2024],['ipl']
+223,Tim David,Royal Challengers Bengaluru,66,low,contextual-T20-model,f1f99156,explicit-identity,90,45.2,6,8.867,0.204,"[2024, 2025, 2026]","['bbl', 'cpl', 'ilt', 'ipl']"
+224,Venkatesh Iyer,Royal Challengers Bengaluru,67,low,contextual-T20-model,a24be938,explicit-identity,6,2.5,6,28.0,0.1928,[2024],['ipl']
+225,Vicky Ostwal,Royal Challengers Bengaluru,62,provisional,ability-based-prior,,unresolved,0,0,0,,,[],[]
+226,Vihaan Malhotra,Royal Challengers Bengaluru,36,provisional,ability-based-prior,,unresolved,0,0,0,,,[],[]
+227,Virat Kohli,Royal Challengers Bengaluru,53,provisional,ability-based-prior,ba607b88,explicit-identity,0,0,0,,,[],[]
+228,Abhishek Sharma,Sunrisers Hyderabad,64,low,contextual-T20-model,f29185a1,explicit-identity,348,214.5,137,8.81,0.3143,"[2024, 2025, 2026]","['ipl', 't20s']"
+229,Amit Kumar,Sunrisers Hyderabad,57,provisional,ability-based-prior,,unresolved,0,0,0,,,[],[]
+230,Aniket Verma,Sunrisers Hyderabad,53,provisional,ability-based-prior,a3b0600d,explicit-identity,0,0,0,,,[],[]
+231,Brydon Carse,Sunrisers Hyderabad,69,low,contextual-T20-model,cad40f5e,explicit-identity,310,198.0,0,8.923,0.0516,"[2024, 2025, 2026]","['ntb', 't20s']"
+232,David Payne,Sunrisers Hyderabad,86,medium,contextual-T20-model,6c79c098,explicit-identity,1422,819.1,30,7.325,-0.9091,"[2024, 2025, 2026]","['bbl', 'ilt', 'ipl', 'ntb']"
+233,Eshan Malinga,Sunrisers Hyderabad,73,high,contextual-T20-model,5750bcb4,explicit-identity,1101,877.0,486,9.433,-0.1847,"[2024, 2025, 2026]","['ipl', 'lpl', 'sat', 't20s']"
+234,Harsh Dubey,Sunrisers Hyderabad,68,low,contextual-T20-model,25228673,explicit-identity,192,145.2,192,10.188,0.1215,"[2025, 2026]",['ipl']
+235,Harshal Patel,Sunrisers Hyderabad,71,medium,contextual-T20-model,f986ca1a,explicit-identity,639,345.0,639,9.906,-0.0783,"[2024, 2025, 2026]",['ipl']
+236,Heinrich Klaasen,Sunrisers Hyderabad,36,provisional,ability-based-prior,235c2bb6,explicit-identity,0,0,0,,,[],[]
+237,Ishan Kishan,Sunrisers Hyderabad,69,low,contextual-T20-model,752f7486,explicit-identity,1,0.6,1,24.0,0.0318,[2025],['ipl']
+238,Jack Edwards,Sunrisers Hyderabad,69,medium,contextual-T20-model,f787e0eb,explicit-identity,891,571.2,0,8.579,0.0384,"[2024, 2025, 2026]","['bbl', 'mlc', 't20s']"
+239,Jaydev Unadkat,Sunrisers Hyderabad,74,low,contextual-T20-model,1e66c162,explicit-identity,407,225.6,407,9.346,-0.2186,"[2024, 2025, 2026]",['ipl']
+240,Kamindu Mendis,Sunrisers Hyderabad,67,low,contextual-T20-model,08548b13,explicit-identity,318,191.1,42,8.736,0.1813,"[2024, 2025, 2026]","['ilt', 'ipl', 'lpl', 't20s']"
+241,Krains Fuletra,Sunrisers Hyderabad,58,provisional,ability-based-prior,,unresolved,0,0,0,,,[],[]
+242,Liam Livingstone,Sunrisers Hyderabad,68,medium,contextual-T20-model,50c6bc2b,explicit-identity,912,556.1,126,8.434,0.0839,"[2024, 2025, 2026]","['ilt', 'ipl', 'ntb', 'sat', 't20s']"
+243,Nitish Kumar Reddy,Sunrisers Hyderabad,63,medium,contextual-T20-model,aad0c365,explicit-identity,421,303.9,295,10.304,0.3812,"[2024, 2025, 2026]","['ipl', 't20s']"
+244,Onkar Tarmale,Sunrisers Hyderabad,59,provisional,ability-based-prior,,unresolved,0,0,0,,,[],[]
+245,Pat Cummins,Sunrisers Hyderabad,77,high,contextual-T20-model,ded9240e,explicit-identity,1126,608.7,856,9.123,-0.3722,"[2024, 2025, 2026]","['ipl', 'mlc', 't20s']"
+246,Praful Hinge,Sunrisers Hyderabad,62,low,contextual-T20-model,ece7b6b3,explicit-identity,156,131.0,156,11.731,0.468,[2026],['ipl']
+247,Sakib Hussain,Sunrisers Hyderabad,78,low,contextual-T20-model,280fff14,explicit-identity,252,212.1,252,9.452,-0.4657,[2026],['ipl']
+248,Salil Arora,Sunrisers Hyderabad,36,provisional,ability-based-prior,d7423da1,explicit-identity,0,0,0,,,[],[]
+249,Shivam Mavi,Sunrisers Hyderabad,65,provisional,ability-based-prior,c38d3503,explicit-identity,0,0,0,,,[],[]
+250,Shivang Kumar,Sunrisers Hyderabad,70,low,contextual-T20-model,7b44eb3e,explicit-identity,234,195.2,234,9.615,0.0244,[2026],['ipl']
+251,Smaran Ravichandran,Sunrisers Hyderabad,53,provisional,ability-based-prior,c1e53c3f,explicit-identity,0,0,0,,,[],[]
+252,Travis Head,Sunrisers Hyderabad,69,low,contextual-T20-model,12b610c2,explicit-identity,16,9.4,16,14.625,0.0334,"[2024, 2026]",['ipl']
+253,Zeeshan Ansari,Sunrisers Hyderabad,67,low,contextual-T20-model,36619795,explicit-identity,203,119.0,203,9.842,0.1835,[2025],['ipl']
+254,Ali Naseer,Free agent,73,low,contextual-T20-model,f5715b48,explicit-identity,438,208.8,0,7.521,-0.1761,"[2024, 2025]","['ilt', 't20s']"
+255,Alzarri Joseph,Free agent,65,medium,contextual-T20-model,b0946605,explicit-identity,1786,1085.1,58,9.208,0.268,"[2024, 2025, 2026]","['cpl', 'ilt', 'ipl', 'psl', 't20s']"
+256,Andile Simelane,Free agent,61,low,contextual-T20-model,ebb74564,explicit-identity,186,112.1,0,10.484,0.4849,"[2024, 2025, 2026]","['sat', 't20s']"
+257,Aneesh KV,Free agent,54,provisional,ability-based-prior,,unresolved,0,0,0,,,[],[]
+258,Aravelly Avanish,Free agent,36,provisional,ability-based-prior,,unresolved,0,0,0,,,[],[]
+259,Archie Vaughan,Free agent,63,provisional,ability-based-prior,,unresolved,0,0,0,,,[],[]
+260,Callum Vidler,Free agent,59,provisional,ability-based-prior,4332744d,explicit-identity,0,0,0,,,[],[]
+261,Chetan Sakariya,Free agent,68,low,contextual-T20-model,2cdce1be,explicit-identity,18,10.6,18,13.0,0.1079,[2025],['ipl']
+262,Connor Esterhuizen,Gujarat Titans,56,provisional,ability-based-prior,ef9acbcc,explicit-identity,0,0,0,,,[],[]
+263,Dan Lawrence,Free agent,78,medium,contextual-T20-model,4b685e2d,explicit-identity,606,378.2,0,7.287,-0.423,"[2024, 2025, 2026]","['bbl', 'ilt', 'ntb', 'sat']"
+264,Dan Mousley,Free agent,77,medium,contextual-T20-model,876dbe2d,explicit-identity,814,470.7,0,8.034,-0.3678,"[2024, 2025, 2026]","['ilt', 'ntb', 'psl', 't20s']"
+265,Daryl Mitchell,Free agent,60,low,contextual-T20-model,eade4650,explicit-identity,260,169.2,36,11.031,0.5766,"[2024, 2025, 2026]","['ipl', 'mlc', 'psl', 't20s']"
+266,Dasun Shanaka,Rajasthan Royals,64,medium,contextual-T20-model,3ff033bb,explicit-identity,1020,715.9,36,9.188,0.3531,"[2024, 2025, 2026]","['bpl', 'cpl', 'ilt', 'ipl', 'lpl', 'mlc', 't20s']"
+267,David Teeger,Free agent,58,provisional,ability-based-prior,,unresolved,0,0,0,,,[],[]
+268,Deepak Hooda,Free agent,69,low,contextual-T20-model,73ad96ed,explicit-identity,24,11.2,24,9.25,0.0587,"[2024, 2025]",['ipl']
+269,Devon Conway,Free agent,36,provisional,ability-based-prior,df5a6881,explicit-identity,0,0,0,,,[],[]
+270,Dian Forrester,Chennai Super Kings,73,low,contextual-T20-model,23393635,explicit-identity,154,133.0,0,8.143,-0.1393,"[2025, 2026]","['mlc', 'ntb', 'psl', 'sat', 't20s']"
+271,Dipjyoti Saikia,Free agent,62,provisional,ability-based-prior,,unresolved,0,0,0,,,[],[]
+272,Farhan Ahmed,Free agent,64,provisional,ability-based-prior,,unresolved,0,0,0,,,[],[]
+273,Fazalhaq Farooqi,Rajasthan Royals,80,medium,contextual-T20-model,e9c7f0d0,explicit-identity,1142,680.1,102,8.27,-0.5394,"[2024, 2025, 2026]","['bpl', 'cpl', 'ilt', 'ipl', 'lpl', 'ntb']"
+274,Gerald Coetzee,Sunrisers Hyderabad,69,medium,contextual-T20-model,3204c99f,explicit-identity,781,449.7,273,9.549,0.043,"[2024, 2025, 2026]","['ipl', 'mlc', 'sat', 't20s']"
+275,Gus Atkinson,Free agent,67,provisional,ability-based-prior,add6bd03,explicit-identity,0,0,0,,,[],[]
+276,Hamza Shaikh,Free agent,52,provisional,ability-based-prior,1917d713,explicit-identity,0,0,0,,,[],[]
+277,Harry Brook,Free agent,49,provisional,ability-based-prior,4ae1755b,explicit-identity,0,0,0,,,[],[]
+278,Harry Dixon,Free agent,56,provisional,ability-based-prior,ecbad6c6,explicit-identity,0,0,0,,,[],[]
+279,Hemchudeshan J,Free agent,59,provisional,ability-based-prior,,unresolved,0,0,0,,,[],[]
+280,Hugh Weibgen,Free agent,36,provisional,ability-based-prior,2535b30f,explicit-identity,0,0,0,,,[],[]
+281,Isai Thorne,Free agent,61,provisional,ability-based-prior,,unresolved,0,0,0,,,[],[]
+282,Jamie Smith,Free agent,36,provisional,ability-based-prior,c834c290,explicit-identity,0,0,0,,,[],[]
+283,Jewel Andrew,Free agent,52,provisional,ability-based-prior,6b0db726,explicit-identity,0,0,0,,,[],[]
+284,Jhye Richardson,Free agent,65,low,contextual-T20-model,1ee08e9a,explicit-identity,382,220.4,24,9.236,0.2989,"[2024, 2025, 2026]","['bbl', 'ipl']"
+285,Johann Layne,Free agent,63,low,contextual-T20-model,2f43ee81,explicit-identity,48,33.2,0,11.625,0.3657,"[2024, 2025, 2026]",['cpl']
+286,John Turner,Free agent,63,low,contextual-T20-model,cdd875d9,explicit-identity,356,173.7,0,9.742,0.3649,"[2024, 2025]","['ntb', 'sat', 't20s']"
+287,Jordan Johnson,Free agent,57,provisional,ability-based-prior,,unresolved,0,0,0,,,[],[]
+288,Josh Clarkson,Free agent,63,low,contextual-T20-model,bed90114,explicit-identity,171,114.5,0,9.719,0.4119,"[2024, 2025, 2026]","['cpl', 'ssm', 't20s']"
+289,Karim Janat,Free agent,60,low,contextual-T20-model,62175638,explicit-identity,54,31.1,6,14.222,0.579,"[2024, 2025, 2026]","['ilt', 'ipl', 'sat']"
+290,Karn Sharma,Free agent,64,low,contextual-T20-model,119678fd,explicit-identity,234,113.7,234,9.795,0.3221,"[2024, 2025]",['ipl']
+291,Kevin Wickham,Free agent,36,provisional,ability-based-prior,211aeb65,explicit-identity,0,0,0,,,[],[]
+292,Krish Bhagat,Mumbai Indians,70,low,contextual-T20-model,e48a4814,explicit-identity,36,30.0,36,10.5,-0.0162,[2026],['ipl']
+293,KS Bharat,Free agent,36,provisional,ability-based-prior,44a89551,explicit-identity,0,0,0,,,[],[]
+294,Kuldip Yadav,Chennai Super Kings,62,provisional,ability-based-prior,030f3089,explicit-identity,0,0,0,,,[],[]
+295,Kulwant Khejroliya,Gujarat Titans,66,low,contextual-T20-model,fa2f1dde,explicit-identity,30,20.8,30,12.0,0.2311,"[2025, 2026]",['ipl']
+296,Kumar Kartikeya,Free agent,69,low,contextual-T20-model,f6d8a7ab,explicit-identity,48,28.0,48,9.75,0.0488,[2025],['ipl']
+297,Kusal Mendis,Free agent,36,provisional,ability-based-prior,5d1e7582,explicit-identity,0,0,0,,,[],[]
+298,Lakshya Raichandani,Free agent,52,provisional,ability-based-prior,,unresolved,0,0,0,,,[],[]
+299,Macneil Noronha,Chennai Super Kings,61,provisional,ability-based-prior,,unresolved,0,0,0,,,[],[]
+300,Maheesh Theekshana,Free agent,85,high,contextual-T20-model,f24c6701,explicit-identity,2726,1686.0,372,7.745,-0.8322,"[2024, 2025, 2026]","['cpl', 'ilt', 'ipl', 'lpl', 'psl', 'sat', 't20s']"
+301,Mahipal Lomror,Mumbai Indians,69,low,contextual-T20-model,da934ee8,explicit-identity,6,2.5,6,18.0,0.0768,[2024],['ipl']
+302,Mahli Beardman,Free agent,70,low,contextual-T20-model,b5a12740,explicit-identity,270,197.4,0,8.0,-0.0021,"[2025, 2026]","['bbl', 't20s']"
+303,Matthew Boast,Free agent,66,low,contextual-T20-model,2f838fa4,explicit-identity,12,6.5,0,17.5,0.2296,[2025],['sat']
+304,Matthew Forde,Free agent,72,medium,contextual-T20-model,83d17bbc,explicit-identity,1025,690.3,0,8.535,-0.1026,"[2024, 2025, 2026]","['bpl', 'cpl', 'ilt', 'mlc', 'psl', 't20s']"
+305,Matthew Nandu,Free agent,62,provisional,ability-based-prior,64f5120c,explicit-identity,0,0,0,,,[],[]
+306,McKenny Clarke,Free agent,58,low,contextual-T20-model,a4ff3629,explicit-identity,30,23.0,0,15.0,0.6878,"[2025, 2026]",['cpl']
+307,Michael Bracewell,Free agent,61,medium,contextual-T20-model,e38bce7a,explicit-identity,1083,649.4,0,8.986,0.4791,"[2024, 2025, 2026]","['mlc', 'psl', 'ssm', 't20s']"
+308,Mujeeb Ur Rahman,Free agent,86,medium,contextual-T20-model,7d92277a,explicit-identity,991,715.5,12,7.653,-0.8921,"[2024, 2025, 2026]","['cpl', 'ilt', 'ipl', 'lpl', 'sat']"
+309,Nathan Edward,Free agent,56,low,contextual-T20-model,267468de,explicit-identity,136,92.7,0,11.338,0.7847,"[2024, 2025, 2026]",['cpl']
+310,Nitya J Pandya,Free agent,49,provisional,ability-based-prior,,unresolved,0,0,0,,,[],[]
+311,Nqaba Peter,Free agent,59,low,contextual-T20-model,212aeedd,explicit-identity,275,157.8,0,9.578,0.6003,"[2024, 2025, 2026]","['sat', 't20s']"
+312,Oliver Davies,Free agent,71,low,contextual-T20-model,0ea54eca,explicit-identity,19,7.3,0,7.579,-0.0598,[2024],['bbl']
+313,Ollie Peake,Free agent,54,provisional,ability-based-prior,9c8448ba,explicit-identity,0,0,0,,,[],[]
+314,P Vidyuth,Free agent,61,provisional,ability-based-prior,,unresolved,0,0,0,,,[],[]
+315,R Jashwanth Shreeram,Free agent,53,provisional,ability-based-prior,,unresolved,0,0,0,,,[],[]
+316,Rahmanullah Gurbaz,Free agent,36,provisional,ability-based-prior,0bacade8,explicit-identity,0,0,0,,,[],[]
+317,Raj Limbani,Free agent,61,provisional,ability-based-prior,,unresolved,0,0,0,,,[],[]
+318,Richard Gleeson,Royal Challengers Bengaluru,85,medium,contextual-T20-model,402f8494,explicit-identity,1267,788.7,68,7.809,-0.8358,"[2024, 2025, 2026]","['ilt', 'ipl', 'ntb', 'psl', 'sat']"
+319,Riley Meredith,Free agent,77,medium,contextual-T20-model,64775749,explicit-identity,1511,925.5,0,8.609,-0.3741,"[2024, 2025, 2026]","['bbl', 'ntb', 'psl', 't20s']"
+320,Romashan Pillay,Free agent,60,provisional,ability-based-prior,29bcd46c,explicit-identity,0,0,0,,,[],[]
+321,RS Ambrish,Sunrisers Hyderabad,64,provisional,ability-based-prior,,unresolved,0,0,0,,,[],[]
+322,Ruchit Ahir,Mumbai Indians,62,provisional,ability-based-prior,,unresolved,0,0,0,,,[],[]
+323,Sachin Dhas,Free agent,36,provisional,ability-based-prior,,unresolved,0,0,0,,,[],[]
+324,Sam Konstas,Free agent,36,provisional,ability-based-prior,3c34c9e1,explicit-identity,0,0,0,,,[],[]
+325,Saumy Pandey,Free agent,61,provisional,ability-based-prior,,unresolved,0,0,0,,,[],[]
+326,Saurabh Dubey,Kolkata Knight Riders,64,provisional,ability-based-prior,66317b81,explicit-identity,0,0,0,,,[],[]
+327,Spencer Johnson,Chennai Super Kings,77,medium,contextual-T20-model,83c3e8e3,explicit-identity,1041,519.4,230,8.138,-0.3995,"[2024, 2025, 2026]","['bbl', 'ipl', 'mlc', 'ntb', 't20s']"
+328,Steve Smith,Free agent,69,low,contextual-T20-model,30a45b23,explicit-identity,6,5.0,0,14.0,0.0705,[2026],['psl']
+329,Steve Stolk,Free agent,36,provisional,ability-based-prior,407563b0,explicit-identity,0,0,0,,,[],[]
+330,Swastik Chikara,Free agent,54,provisional,ability-based-prior,,unresolved,0,0,0,,,[],[]
+331,Taskin Ahmed,Free agent,73,medium,contextual-T20-model,ef18b66e,explicit-identity,1639,924.5,0,7.959,-0.1688,"[2024, 2025, 2026]","['bpl', 'ilt', 'lpl', 't20s']"
+332,Tazeem Ali,Free agent,60,provisional,ability-based-prior,,unresolved,0,0,0,,,[],[]
+333,Teddy Bishop,Free agent,56,provisional,ability-based-prior,c68554a6,explicit-identity,0,0,0,,,[],[]
+334,Thomas Rew,Free agent,36,provisional,ability-based-prior,a8ffcd4f,explicit-identity,0,0,0,,,[],[]
+335,Tom Prest,Free agent,58,provisional,ability-based-prior,0207ff32,explicit-identity,0,0,0,,,[],[]
+336,Tom Straker,Free agent,59,provisional,ability-based-prior,,unresolved,0,0,0,,,[],[]
+337,Tristan Luus,Free agent,67,low,contextual-T20-model,a0b76243,explicit-identity,156,106.7,0,9.077,0.1513,"[2025, 2026]","['mlc', 'sat']"
+338,Uday Saharan,Free agent,36,provisional,ability-based-prior,,unresolved,0,0,0,,,[],[]
+340,Vishnu Bhardwaj,Free agent,61,provisional,ability-based-prior,,unresolved,0,0,0,,,[],[]
+341,Wiaan Mulder,Free agent,57,medium,contextual-T20-model,c96f6ac5,explicit-identity,748,509.9,6,9.73,0.7469,"[2024, 2025, 2026]","['ipl', 'mlc', 'ntb', 'sat', 't20s']"
+342,Will Smeed,Free agent,52,provisional,ability-based-prior,4e18e961,explicit-identity,0,0,0,,,[],[]
+343,Yashvardhan Dalal,Free agent,36,provisional,ability-based-prior,,unresolved,0,0,0,,,[],[]
+344,Adam Zampa,Free agent,80,medium,contextual-T20-model,14f96089,explicit-identity,1706,1032.7,48,7.871,-0.5344,"[2024, 2025, 2026]","['bbl', 'ilt', 'ipl', 'ntb', 'psl', 't20s']"
+345,Ish Sodhi,Free agent,61,medium,contextual-T20-model,641ac5ff,explicit-identity,1027,605.5,0,8.571,0.5051,"[2024, 2025, 2026]","['ssm', 't20s']"
+346,Shai Hope,Free agent,36,provisional,ability-based-prior,1fc6ef83,explicit-identity,0,0,0,,,[],[]
+347,Charith Asalanka,Free agent,71,low,contextual-T20-model,732c038e,explicit-identity,334,235.4,0,8.335,-0.0552,"[2024, 2025, 2026]","['cpl', 'lpl', 'psl', 't20s']"
+348,Kusal Perera,Free agent,36,provisional,ability-based-prior,f21043a5,explicit-identity,0,0,0,,,[],[]
+349,George Linde,Lucknow Super Giants,80,medium,contextual-T20-model,e5437608,explicit-identity,1339,893.2,37,7.694,-0.5294,"[2024, 2025, 2026]","['cpl', 'ipl', 'mlc', 'ntb', 'psl', 'sat', 't20s']"

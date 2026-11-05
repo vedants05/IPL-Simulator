@@ -184,7 +184,7 @@ export default function TeamTacticsPlanner(props: Props) {
 
 
 
-  return <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden border border-border bg-background text-text-primary">
+  return <div className="team-tactics-page flex h-full min-h-0 flex-1 flex-col overflow-hidden border border-border bg-background text-text-primary">
 
     <header className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border bg-surface px-3 py-1">
 

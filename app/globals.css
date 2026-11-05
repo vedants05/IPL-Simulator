@@ -600,6 +600,17 @@ html.theme-changing *::after {
   transition-delay: 0ms !important;
 }
 
+/* The tactics grids contain hundreds of borders. Update the whole page in one
+   paint during a theme switch instead of animating each cell independently. */
+html.theme-changing:has(.team-tactics-page),
+html.theme-changing:has(.team-tactics-page) body,
+html.theme-changing:has(.team-tactics-page) *,
+html.theme-changing:has(.team-tactics-page) *::before,
+html.theme-changing:has(.team-tactics-page) *::after {
+  transition-duration: 0s !important;
+  transition-delay: 0s !important;
+}
+
 ::-webkit-scrollbar {
   width: 4px;
   height: 4px;

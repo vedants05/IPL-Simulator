@@ -1,0 +1,7410 @@
+{
+  "version": 1,
+  "cutoff": "2026-11-02",
+  "scale": "70 - 18 * penalised bowler runs-per-over effect; bounded 1..99",
+  "alpha": 40,
+  "validation": [
+    {
+      "alpha": 20,
+      "heldoutYear": 2025,
+      "trainingOvers": 103348,
+      "testOvers": 38899,
+      "modelMSE": 21.623260662350194,
+      "withoutBowlerMSE": 21.807926683859286
+    },
+    {
+      "alpha": 40,
+      "heldoutYear": 2025,
+      "trainingOvers": 103348,
+      "testOvers": 38899,
+      "modelMSE": 21.599388389027265,
+      "withoutBowlerMSE": 21.78746842908655
+    },
+    {
+      "alpha": 80,
+      "heldoutYear": 2025,
+      "trainingOvers": 103348,
+      "testOvers": 38899,
+      "modelMSE": 21.622169164795434,
+      "withoutBowlerMSE": 21.79016986421481
+    }
+  ],
+  "test": {
+    "year": 2026,
+    "overs": 35246,
+    "modelMSE": 22.192935807139822,
+    "withoutBowlerMSE": 22.329069970163694
+  },
+  "overs": 114428,
+  "players": [
+    {
+      "id": 1,
+      "name": "Akash Madhwal",
+      "team": "Chennai Super Kings",
+      "rating": 65,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "4bd09374",
+      "identityMethod": "explicit-identity",
+      "balls": 199,
+      "weightedBalls": 98.7,
+      "iplBalls": 199,
+      "economy": 11.186,
+      "adjustedEconomyEffect": 0.268,
+      "seasons": [
+        2024,
+        2025
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "Akeal Hosein",
+      "team": "Chennai Super Kings",
+      "rating": 81,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "4d7f517e",
+      "identityMethod": "explicit-identity",
+      "balls": 3203,
+      "weightedBalls": 1977.6,
+      "iplBalls": 148,
+      "economy": 7.549,
+      "adjustedEconomyEffect": -0.6146,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "bbl",
+        "cpl",
+        "ilt",
+        "ipl",
+        "mlc",
+        "psl",
+        "sat",
+        "t20s"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "Aman Hakim Khan",
+      "team": "Chennai Super Kings",
+      "rating": 61,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "378daa89",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 4,
+      "name": "Anshul Kamboj",
+      "team": "Chennai Super Kings",
+      "rating": 73,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "fcc21ace",
+      "identityMethod": "explicit-identity",
+      "balls": 491,
+      "weightedBalls": 354.0,
+      "iplBalls": 491,
+      "economy": 9.971,
+      "adjustedEconomyEffect": -0.1718,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 5,
+      "name": "Ayush Mhatre",
+      "team": "Chennai Super Kings",
+      "rating": 54,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "b2b4f545",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 6,
+      "name": "Dewald Brevis",
+      "team": "Chennai Super Kings",
+      "rating": 68,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "844e79d1",
+      "identityMethod": "explicit-identity",
+      "balls": 42,
+      "weightedBalls": 27.6,
+      "iplBalls": 0,
+      "economy": 8.714,
+      "adjustedEconomyEffect": 0.0857,
+      "seasons": [
+        2025,
+        2026
+      ],
+      "competitions": [
+        "sat",
+        "t20s"
+      ]
+    },
+    {
+      "id": 7,
+      "name": "Gurjapneet Singh",
+      "team": "Chennai Super Kings",
+      "rating": 73,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "cc61ee8f",
+      "identityMethod": "explicit-identity",
+      "balls": 150,
+      "weightedBalls": 125.6,
+      "iplBalls": 150,
+      "economy": 9.16,
+      "adjustedEconomyEffect": -0.174,
+      "seasons": [
+        2026
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 8,
+      "name": "Jamie Overton",
+      "team": "Chennai Super Kings",
+      "rating": 75,
+      "confidence": "high",
+      "source": "contextual-T20-model",
+      "cricsheetId": "59559bc2",
+      "identityMethod": "explicit-identity",
+      "balls": 1380,
+      "weightedBalls": 856.8,
+      "iplBalls": 204,
+      "economy": 8.517,
+      "adjustedEconomyEffect": -0.2781,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "bbl",
+        "ilt",
+        "ipl",
+        "ntb",
+        "t20s"
+      ]
+    },
+    {
+      "id": 9,
+      "name": "Kartik Sharma",
+      "team": "Chennai Super Kings",
+      "rating": 36,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "7b679de5",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 10,
+      "name": "Khaleel Ahmed",
+      "team": "Chennai Super Kings",
+      "rating": 73,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "a2f46292",
+      "identityMethod": "explicit-identity",
+      "balls": 766,
+      "weightedBalls": 409.5,
+      "iplBalls": 682,
+      "economy": 9.235,
+      "adjustedEconomyEffect": -0.1612,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl",
+        "t20s"
+      ]
+    },
+    {
+      "id": 11,
+      "name": "Matt Henry",
+      "team": "Chennai Super Kings",
+      "rating": 74,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "e84ac20c",
+      "identityMethod": "explicit-identity",
+      "balls": 1127,
+      "weightedBalls": 694.0,
+      "iplBalls": 132,
+      "economy": 8.47,
+      "adjustedEconomyEffect": -0.2379,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl",
+        "mlc",
+        "ntb",
+        "ssm",
+        "t20s"
+      ]
+    },
+    {
+      "id": 12,
+      "name": "Matthew Short",
+      "team": "Chennai Super Kings",
+      "rating": 76,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "a90e53ec",
+      "identityMethod": "explicit-identity",
+      "balls": 798,
+      "weightedBalls": 515.9,
+      "iplBalls": 19,
+      "economy": 7.962,
+      "adjustedEconomyEffect": -0.3501,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "bbl",
+        "ipl",
+        "mlc",
+        "t20s"
+      ]
+    },
+    {
+      "id": 13,
+      "name": "MS Dhoni",
+      "team": "Chennai Super Kings",
+      "rating": 36,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "4a8a2e3b",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 14,
+      "name": "Mukesh Choudhary",
+      "team": "Chennai Super Kings",
+      "rating": 73,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "765a4731",
+      "identityMethod": "explicit-identity",
+      "balls": 210,
+      "weightedBalls": 165.1,
+      "iplBalls": 210,
+      "economy": 9.914,
+      "adjustedEconomyEffect": -0.1941,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 15,
+      "name": "Nathan Ellis",
+      "team": "Chennai Super Kings",
+      "rating": 85,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "9eb1455b",
+      "identityMethod": "explicit-identity",
+      "balls": 1143,
+      "weightedBalls": 691.9,
+      "iplBalls": 48,
+      "economy": 7.885,
+      "adjustedEconomyEffect": -0.8524,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "bbl",
+        "ipl",
+        "t20s"
+      ]
+    },
+    {
+      "id": 16,
+      "name": "Noor Ahmad",
+      "team": "Chennai Super Kings",
+      "rating": 88,
+      "confidence": "high",
+      "source": "contextual-T20-model",
+      "cricsheetId": "efc04be7",
+      "identityMethod": "explicit-identity",
+      "balls": 2107,
+      "weightedBalls": 1254.7,
+      "iplBalls": 815,
+      "economy": 7.541,
+      "adjustedEconomyEffect": -1.0173,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "cpl",
+        "ilt",
+        "ipl",
+        "mlc",
+        "sat"
+      ]
+    },
+    {
+      "id": 17,
+      "name": "Prashant Veer",
+      "team": "Chennai Super Kings",
+      "rating": 68,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "e148e6bd",
+      "identityMethod": "explicit-identity",
+      "balls": 12,
+      "weightedBalls": 10.1,
+      "iplBalls": 12,
+      "economy": 12.5,
+      "adjustedEconomyEffect": 0.1352,
+      "seasons": [
+        2026
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 18,
+      "name": "Rahul Chahar",
+      "team": "Chennai Super Kings",
+      "rating": 70,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "2ed569a0",
+      "identityMethod": "explicit-identity",
+      "balls": 216,
+      "weightedBalls": 100.8,
+      "iplBalls": 216,
+      "economy": 9.278,
+      "adjustedEconomyEffect": 0.0219,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 19,
+      "name": "Ramakrishna Ghosh",
+      "team": "Chennai Super Kings",
+      "rating": 71,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "dee07622",
+      "identityMethod": "explicit-identity",
+      "balls": 18,
+      "weightedBalls": 15.1,
+      "iplBalls": 18,
+      "economy": 8.0,
+      "adjustedEconomyEffect": -0.0527,
+      "seasons": [
+        2026
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 20,
+      "name": "Ruturaj Gaikwad",
+      "team": "Chennai Super Kings",
+      "rating": 36,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "45a43fe2",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 21,
+      "name": "Sanju Samson",
+      "team": "Chennai Super Kings",
+      "rating": 36,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "a4cc73aa",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 22,
+      "name": "Sarfaraz Khan",
+      "team": "Chennai Super Kings",
+      "rating": 50,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "f088b960",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 23,
+      "name": "Shivam Dube",
+      "team": "Chennai Super Kings",
+      "rating": 53,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "a4e37e47",
+      "identityMethod": "explicit-identity",
+      "balls": 467,
+      "weightedBalls": 344.8,
+      "iplBalls": 48,
+      "economy": 10.188,
+      "adjustedEconomyEffect": 0.9292,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl",
+        "t20s"
+      ]
+    },
+    {
+      "id": 24,
+      "name": "Shreyas Gopal",
+      "team": "Chennai Super Kings",
+      "rating": 69,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "7a8bd078",
+      "identityMethod": "explicit-identity",
+      "balls": 42,
+      "weightedBalls": 17.3,
+      "iplBalls": 42,
+      "economy": 9.571,
+      "adjustedEconomyEffect": 0.0686,
+      "seasons": [
+        2024
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 25,
+      "name": "Urvil Patel",
+      "team": "Chennai Super Kings",
+      "rating": 36,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "cf59b3f0",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 26,
+      "name": "Zak Foulkes",
+      "team": "Chennai Super Kings",
+      "rating": 73,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "30f92334",
+      "identityMethod": "explicit-identity",
+      "balls": 1110,
+      "weightedBalls": 611.6,
+      "iplBalls": 0,
+      "economy": 8.249,
+      "adjustedEconomyEffect": -0.1455,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ntb",
+        "ssm",
+        "t20s"
+      ]
+    },
+    {
+      "id": 27,
+      "name": "Abishek Porel",
+      "team": "Delhi Capitals",
+      "rating": 36,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "ad3b6e95",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 28,
+      "name": "Ajay Mandal",
+      "team": "Delhi Capitals",
+      "rating": 65,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "31ee319e",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 29,
+      "name": "Ashutosh Sharma",
+      "team": "Delhi Capitals",
+      "rating": 62,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "84d9c311",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 30,
+      "name": "Auqib Nabi",
+      "team": "Delhi Capitals",
+      "rating": 66,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "7c3c0337",
+      "identityMethod": "explicit-identity",
+      "balls": 78,
+      "weightedBalls": 65.4,
+      "iplBalls": 78,
+      "economy": 11.462,
+      "adjustedEconomyEffect": 0.2215,
+      "seasons": [
+        2026
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 31,
+      "name": "Axar Patel",
+      "team": "Delhi Capitals",
+      "rating": 78,
+      "confidence": "high",
+      "source": "contextual-T20-model",
+      "cricsheetId": "2e171977",
+      "identityMethod": "explicit-identity",
+      "balls": 1750,
+      "weightedBalls": 1188.1,
+      "iplBalls": 744,
+      "economy": 8.218,
+      "adjustedEconomyEffect": -0.4545,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl",
+        "t20s"
+      ]
+    },
+    {
+      "id": 32,
+      "name": "Ben Duckett",
+      "team": "Delhi Capitals",
+      "rating": 36,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "5f26f677",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 33,
+      "name": "David Miller",
+      "team": "Delhi Capitals",
+      "rating": 36,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "d67d5f00",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 34,
+      "name": "Dushmantha Chameera",
+      "team": "Delhi Capitals",
+      "rating": 75,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "327b58d3",
+      "identityMethod": "explicit-identity",
+      "balls": 1437,
+      "weightedBalls": 935.4,
+      "iplBalls": 132,
+      "economy": 8.868,
+      "adjustedEconomyEffect": -0.2719,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ilt",
+        "ipl",
+        "lpl",
+        "t20s"
+      ]
+    },
+    {
+      "id": 35,
+      "name": "Karun Nair",
+      "team": "Delhi Capitals",
+      "rating": 36,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "944533a5",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 36,
+      "name": "KL Rahul",
+      "team": "Delhi Capitals",
+      "rating": 36,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "b17e2f24",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 37,
+      "name": "Kyle Jamieson",
+      "team": "Delhi Capitals",
+      "rating": 69,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "68c56d09",
+      "identityMethod": "explicit-identity",
+      "balls": 915,
+      "weightedBalls": 597.1,
+      "iplBalls": 132,
+      "economy": 8.597,
+      "adjustedEconomyEffect": 0.0391,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl",
+        "psl",
+        "ssm",
+        "t20s"
+      ]
+    },
+    {
+      "id": 38,
+      "name": "Lungi Ngidi",
+      "team": "Delhi Capitals",
+      "rating": 83,
+      "confidence": "high",
+      "source": "contextual-T20-model",
+      "cricsheetId": "f834dcfc",
+      "identityMethod": "explicit-identity",
+      "balls": 1351,
+      "weightedBalls": 887.5,
+      "iplBalls": 296,
+      "economy": 8.563,
+      "adjustedEconomyEffect": -0.714,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl",
+        "mlc",
+        "sat",
+        "t20s"
+      ]
+    },
+    {
+      "id": 39,
+      "name": "Madhav Tiwari",
+      "team": "Delhi Capitals",
+      "rating": 75,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "fb5f69e4",
+      "identityMethod": "explicit-identity",
+      "balls": 66,
+      "weightedBalls": 54.6,
+      "iplBalls": 66,
+      "economy": 9.182,
+      "adjustedEconomyEffect": -0.2518,
+      "seasons": [
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 40,
+      "name": "Mitchell Starc",
+      "team": "Delhi Capitals",
+      "rating": 68,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "3fb19989",
+      "identityMethod": "explicit-identity",
+      "balls": 881,
+      "weightedBalls": 504.7,
+      "iplBalls": 611,
+      "economy": 9.746,
+      "adjustedEconomyEffect": 0.1042,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "bbl",
+        "ipl",
+        "t20s"
+      ]
+    },
+    {
+      "id": 41,
+      "name": "Mukesh Kumar",
+      "team": "Delhi Capitals",
+      "rating": 68,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "2cffab74",
+      "identityMethod": "explicit-identity",
+      "balls": 699,
+      "weightedBalls": 411.2,
+      "iplBalls": 638,
+      "economy": 10.335,
+      "adjustedEconomyEffect": 0.1306,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl",
+        "t20s"
+      ]
+    },
+    {
+      "id": 42,
+      "name": "Nitish Rana",
+      "team": "Delhi Capitals",
+      "rating": 69,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "fb2d1dda",
+      "identityMethod": "explicit-identity",
+      "balls": 36,
+      "weightedBalls": 26.8,
+      "iplBalls": 36,
+      "economy": 12.167,
+      "adjustedEconomyEffect": 0.0783,
+      "seasons": [
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 43,
+      "name": "Pathum Nissanka",
+      "team": "Delhi Capitals",
+      "rating": 36,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "8ee36b18",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 44,
+      "name": "Prithvi Shaw",
+      "team": "Delhi Capitals",
+      "rating": 36,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "8b3e9c7c",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 45,
+      "name": "Rehan Ahmed",
+      "team": "Free agent",
+      "rating": 69,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "0ecb4de6",
+      "identityMethod": "explicit-identity",
+      "balls": 762,
+      "weightedBalls": 482.3,
+      "iplBalls": 0,
+      "economy": 8.488,
+      "adjustedEconomyEffect": 0.0626,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "bbl",
+        "ilt",
+        "ntb",
+        "t20s"
+      ]
+    },
+    {
+      "id": 46,
+      "name": "Rishabh Pant",
+      "team": "Delhi Capitals",
+      "rating": 36,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "919a3be2",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 47,
+      "name": "Sahil Parakh",
+      "team": "Delhi Capitals",
+      "rating": 36,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "926c7443",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 48,
+      "name": "Sameer Rizvi",
+      "team": "Delhi Capitals",
+      "rating": 54,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "f89d3b11",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 49,
+      "name": "T. Natarajan",
+      "team": "Delhi Capitals",
+      "rating": 72,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "ce794613",
+      "identityMethod": "explicit-identity",
+      "balls": 524,
+      "weightedBalls": 301.9,
+      "iplBalls": 524,
+      "economy": 10.008,
+      "adjustedEconomyEffect": -0.1373,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 50,
+      "name": "Tripurana Vijay",
+      "team": "Delhi Capitals",
+      "rating": 67,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "51ec3919",
+      "identityMethod": "explicit-identity",
+      "balls": 12,
+      "weightedBalls": 10.2,
+      "iplBalls": 12,
+      "economy": 14.5,
+      "adjustedEconomyEffect": 0.1406,
+      "seasons": [
+        2026
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 51,
+      "name": "Tristan Stubbs",
+      "team": "Delhi Capitals",
+      "rating": 68,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "85b3fab2",
+      "identityMethod": "explicit-identity",
+      "balls": 78,
+      "weightedBalls": 56.4,
+      "iplBalls": 24,
+      "economy": 10.385,
+      "adjustedEconomyEffect": 0.1197,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl",
+        "ntb",
+        "sat",
+        "t20s"
+      ]
+    },
+    {
+      "id": 52,
+      "name": "Vipraj Nigam",
+      "team": "Delhi Capitals",
+      "rating": 67,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "5ffc0565",
+      "identityMethod": "explicit-identity",
+      "balls": 288,
+      "weightedBalls": 182.7,
+      "iplBalls": 288,
+      "economy": 9.771,
+      "adjustedEconomyEffect": 0.1482,
+      "seasons": [
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 53,
+      "name": "Anuj Rawat",
+      "team": "Gujarat Titans",
+      "rating": 36,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "c8f5f961",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 54,
+      "name": "Ashok Sharma",
+      "team": "Gujarat Titans",
+      "rating": 68,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "50c09020",
+      "identityMethod": "explicit-identity",
+      "balls": 174,
+      "weightedBalls": 147.3,
+      "iplBalls": 126,
+      "economy": 9.552,
+      "adjustedEconomyEffect": 0.1105,
+      "seasons": [
+        2026
+      ],
+      "competitions": [
+        "ipl",
+        "t20s"
+      ]
+    },
+    {
+      "id": 55,
+      "name": "Glenn Phillips",
+      "team": "Gujarat Titans",
+      "rating": 60,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "9a46c4e5",
+      "identityMethod": "explicit-identity",
+      "balls": 370,
+      "weightedBalls": 231.6,
+      "iplBalls": 0,
+      "economy": 9.389,
+      "adjustedEconomyEffect": 0.5809,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "cpl",
+        "lpl",
+        "mlc",
+        "ssm",
+        "t20s"
+      ]
+    },
+    {
+      "id": 56,
+      "name": "Gurnoor Singh Brar",
+      "team": "Gujarat Titans",
+      "rating": 66,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "99258814",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 57,
+      "name": "Ishant Sharma",
+      "team": "Gujarat Titans",
+      "rating": 67,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "5bb1a1c4",
+      "identityMethod": "explicit-identity",
+      "balls": 276,
+      "weightedBalls": 133.9,
+      "iplBalls": 276,
+      "economy": 10.239,
+      "adjustedEconomyEffect": 0.1899,
+      "seasons": [
+        2024,
+        2025
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 58,
+      "name": "Jason Holder",
+      "team": "Gujarat Titans",
+      "rating": 79,
+      "confidence": "high",
+      "source": "contextual-T20-model",
+      "cricsheetId": "0f721006",
+      "identityMethod": "explicit-identity",
+      "balls": 2980,
+      "weightedBalls": 2009.2,
+      "iplBalls": 230,
+      "economy": 8.587,
+      "adjustedEconomyEffect": -0.4853,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "bpl",
+        "cpl",
+        "ilt",
+        "ipl",
+        "mlc",
+        "psl",
+        "t20s"
+      ]
+    },
+    {
+      "id": 59,
+      "name": "Jayant Yadav",
+      "team": "Gujarat Titans",
+      "rating": 65,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "81049310",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 60,
+      "name": "Jos Buttler",
+      "team": "Gujarat Titans",
+      "rating": 36,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "99b75528",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 61,
+      "name": "Kagiso Rabada",
+      "team": "Gujarat Titans",
+      "rating": 76,
+      "confidence": "high",
+      "source": "contextual-T20-model",
+      "cricsheetId": "e62dd25d",
+      "identityMethod": "explicit-identity",
+      "balls": 1733,
+      "weightedBalls": 1065.2,
+      "iplBalls": 724,
+      "economy": 8.739,
+      "adjustedEconomyEffect": -0.3257,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl",
+        "mlc",
+        "sat",
+        "t20s"
+      ]
+    },
+    {
+      "id": 62,
+      "name": "Kumar Kushagra",
+      "team": "Gujarat Titans",
+      "rating": 36,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "57ca01b3",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 63,
+      "name": "Luke Wood",
+      "team": "Gujarat Titans",
+      "rating": 72,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "65b6943c",
+      "identityMethod": "explicit-identity",
+      "balls": 1653,
+      "weightedBalls": 931.9,
+      "iplBalls": 36,
+      "economy": 8.534,
+      "adjustedEconomyEffect": -0.1208,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "bbl",
+        "bpl",
+        "ilt",
+        "ipl",
+        "ntb",
+        "psl",
+        "t20s"
+      ]
+    },
+    {
+      "id": 64,
+      "name": "Manav Suthar",
+      "team": "Gujarat Titans",
+      "rating": 66,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "025c4400",
+      "identityMethod": "explicit-identity",
+      "balls": 48,
+      "weightedBalls": 35.1,
+      "iplBalls": 48,
+      "economy": 11.75,
+      "adjustedEconomyEffect": 0.2147,
+      "seasons": [
+        2024,
+        2026
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 65,
+      "name": "Mohammed Siraj",
+      "team": "Gujarat Titans",
+      "rating": 81,
+      "confidence": "high",
+      "source": "contextual-T20-model",
+      "cricsheetId": "2f49c897",
+      "identityMethod": "explicit-identity",
+      "balls": 1182,
+      "weightedBalls": 720.5,
+      "iplBalls": 1038,
+      "economy": 8.792,
+      "adjustedEconomyEffect": -0.6015,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl",
+        "t20s"
+      ]
+    },
+    {
+      "id": 66,
+      "name": "Mohd. Arshad Khan",
+      "team": "Gujarat Titans",
+      "rating": 65,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "12314277",
+      "identityMethod": "explicit-identity",
+      "balls": 291,
+      "weightedBalls": 188.1,
+      "iplBalls": 291,
+      "economy": 10.371,
+      "adjustedEconomyEffect": 0.2829,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 67,
+      "name": "Nishant Sindhu",
+      "team": "Gujarat Titans",
+      "rating": 64,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "3cea23da",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 68,
+      "name": "Prasidh Krishna",
+      "team": "Gujarat Titans",
+      "rating": 75,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "85e0cf10",
+      "identityMethod": "explicit-identity",
+      "balls": 654,
+      "weightedBalls": 463.1,
+      "iplBalls": 588,
+      "economy": 9.321,
+      "adjustedEconomyEffect": -0.2704,
+      "seasons": [
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl",
+        "t20s"
+      ]
+    },
+    {
+      "id": 69,
+      "name": "R. Sai Kishore",
+      "team": "Gujarat Titans",
+      "rating": 71,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "c7a995d3",
+      "identityMethod": "explicit-identity",
+      "balls": 365,
+      "weightedBalls": 205.3,
+      "iplBalls": 365,
+      "economy": 9.452,
+      "adjustedEconomyEffect": -0.0778,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 70,
+      "name": "Rahul Tewatia",
+      "team": "Gujarat Titans",
+      "rating": 62,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "39a2dfa8",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 71,
+      "name": "Rashid Khan",
+      "team": "Gujarat Titans",
+      "rating": 82,
+      "confidence": "high",
+      "source": "contextual-T20-model",
+      "cricsheetId": "5f547c8b",
+      "identityMethod": "explicit-identity",
+      "balls": 1569,
+      "weightedBalls": 970.6,
+      "iplBalls": 933,
+      "economy": 8.203,
+      "adjustedEconomyEffect": -0.6766,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ilt",
+        "ipl",
+        "mlc",
+        "sat"
+      ]
+    },
+    {
+      "id": 72,
+      "name": "Sai Sudharsan",
+      "team": "Gujarat Titans",
+      "rating": 36,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "d5130a30",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 73,
+      "name": "Shahrukh Khan",
+      "team": "Gujarat Titans",
+      "rating": 70,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "7dcb9bc9",
+      "identityMethod": "explicit-identity",
+      "balls": 18,
+      "weightedBalls": 8.6,
+      "iplBalls": 18,
+      "economy": 9.333,
+      "adjustedEconomyEffect": 0.0277,
+      "seasons": [
+        2024,
+        2025
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 74,
+      "name": "Shubman Gill",
+      "team": "Gujarat Titans",
+      "rating": 50,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "b4b99816",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 75,
+      "name": "Tom Banton",
+      "team": "Gujarat Titans",
+      "rating": 36,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "25f7b7d6",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 76,
+      "name": "Washington Sundar",
+      "team": "Gujarat Titans",
+      "rating": 73,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "f19ccfad",
+      "identityMethod": "explicit-identity",
+      "balls": 452,
+      "weightedBalls": 288.7,
+      "iplBalls": 150,
+      "economy": 8.124,
+      "adjustedEconomyEffect": -0.1577,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl",
+        "t20s"
+      ]
+    },
+    {
+      "id": 77,
+      "name": "Yarra Prithvi Raj",
+      "team": "Gujarat Titans",
+      "rating": 61,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "cfa4bd2b",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 79,
+      "name": "Akash Deep",
+      "team": "Kolkata Knight Riders",
+      "rating": 58,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "0a67aec0",
+      "identityMethod": "explicit-identity",
+      "balls": 135,
+      "weightedBalls": 75.8,
+      "iplBalls": 135,
+      "economy": 12.622,
+      "adjustedEconomyEffect": 0.6672,
+      "seasons": [
+        2024,
+        2025
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 80,
+      "name": "Angkrish Raghuvanshi",
+      "team": "Kolkata Knight Riders",
+      "rating": 36,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "d7017798",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 81,
+      "name": "Anukul Roy",
+      "team": "Kolkata Knight Riders",
+      "rating": 72,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "e4cdf230",
+      "identityMethod": "explicit-identity",
+      "balls": 221,
+      "weightedBalls": 164.3,
+      "iplBalls": 221,
+      "economy": 9.448,
+      "adjustedEconomyEffect": -0.1084,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 82,
+      "name": "Blessing Muzarabani",
+      "team": "Kolkata Knight Riders",
+      "rating": 88,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "449f4e3c",
+      "identityMethod": "explicit-identity",
+      "balls": 1618,
+      "weightedBalls": 966.6,
+      "iplBalls": 42,
+      "economy": 7.231,
+      "adjustedEconomyEffect": -0.9997,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ilt",
+        "ipl",
+        "psl",
+        "t20s"
+      ]
+    },
+    {
+      "id": 83,
+      "name": "Cameron Green",
+      "team": "Kolkata Knight Riders",
+      "rating": 68,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "eaa76d3c",
+      "identityMethod": "explicit-identity",
+      "balls": 451,
+      "weightedBalls": 262.9,
+      "iplBalls": 343,
+      "economy": 9.419,
+      "adjustedEconomyEffect": 0.1371,
+      "seasons": [
+        2024,
+        2026
+      ],
+      "competitions": [
+        "ipl",
+        "t20s"
+      ]
+    },
+    {
+      "id": 84,
+      "name": "Daksh Kamra",
+      "team": "Kolkata Knight Riders",
+      "rating": 62,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": null,
+      "identityMethod": "unresolved",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 85,
+      "name": "Finn Allen",
+      "team": "Kolkata Knight Riders",
+      "rating": 36,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "bf74b130",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 86,
+      "name": "Harshit Rana",
+      "team": "Kolkata Knight Riders",
+      "rating": 66,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "77b1aa15",
+      "identityMethod": "explicit-identity",
+      "balls": 769,
+      "weightedBalls": 453.2,
+      "iplBalls": 517,
+      "economy": 9.667,
+      "adjustedEconomyEffect": 0.2181,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl",
+        "t20s"
+      ]
+    },
+    {
+      "id": 87,
+      "name": "Kartik Tyagi",
+      "team": "Kolkata Knight Riders",
+      "rating": 77,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "5d2eea49",
+      "identityMethod": "explicit-identity",
+      "balls": 330,
+      "weightedBalls": 266.0,
+      "iplBalls": 330,
+      "economy": 9.982,
+      "adjustedEconomyEffect": -0.3868,
+      "seasons": [
+        2024,
+        2026
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 88,
+      "name": "Manish Pandey",
+      "team": "Kolkata Knight Riders",
+      "rating": 36,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "93b4fc78",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 89,
+      "name": "Matheesha Pathirana",
+      "team": "Kolkata Knight Riders",
+      "rating": 73,
+      "confidence": "high",
+      "source": "contextual-T20-model",
+      "cricsheetId": "64839cb3",
+      "identityMethod": "explicit-identity",
+      "balls": 1374,
+      "weightedBalls": 729.0,
+      "iplBalls": 395,
+      "economy": 8.725,
+      "adjustedEconomyEffect": -0.1875,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ilt",
+        "ipl",
+        "lpl",
+        "sat",
+        "t20s"
+      ]
+    },
+    {
+      "id": 90,
+      "name": "Prashant Solanki",
+      "team": "Kolkata Knight Riders",
+      "rating": 64,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "c695b423",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 91,
+      "name": "Rachin Ravindra",
+      "team": "Kolkata Knight Riders",
+      "rating": 79,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "ba5e1069",
+      "identityMethod": "explicit-identity",
+      "balls": 507,
+      "weightedBalls": 330.8,
+      "iplBalls": 12,
+      "economy": 7.266,
+      "adjustedEconomyEffect": -0.5254,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl",
+        "mlc",
+        "ssm",
+        "t20s"
+      ]
+    },
+    {
+      "id": 92,
+      "name": "Rahul Tripathi",
+      "team": "Kolkata Knight Riders",
+      "rating": 50,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "77255a9e",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 93,
+      "name": "Ramandeep Singh",
+      "team": "Kolkata Knight Riders",
+      "rating": 66,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "be24ead0",
+      "identityMethod": "explicit-identity",
+      "balls": 40,
+      "weightedBalls": 25.1,
+      "iplBalls": 20,
+      "economy": 12.3,
+      "adjustedEconomyEffect": 0.2037,
+      "seasons": [
+        2024,
+        2026
+      ],
+      "competitions": [
+        "ipl",
+        "t20s"
+      ]
+    },
+    {
+      "id": 94,
+      "name": "Rinku Singh",
+      "team": "Kolkata Knight Riders",
+      "rating": 71,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "0a509d6b",
+      "identityMethod": "explicit-identity",
+      "balls": 16,
+      "weightedBalls": 10.5,
+      "iplBalls": 0,
+      "economy": 7.125,
+      "adjustedEconomyEffect": -0.0366,
+      "seasons": [
+        2024,
+        2026
+      ],
+      "competitions": [
+        "t20s"
+      ]
+    },
+    {
+      "id": 95,
+      "name": "Rovman Powell",
+      "team": "Kolkata Knight Riders",
+      "rating": 59,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "650d5e49",
+      "identityMethod": "explicit-identity",
+      "balls": 58,
+      "weightedBalls": 37.5,
+      "iplBalls": 0,
+      "economy": 13.655,
+      "adjustedEconomyEffect": 0.6005,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "cpl",
+        "mlc",
+        "t20s"
+      ]
+    },
+    {
+      "id": 96,
+      "name": "Sarthak Ranjan",
+      "team": "Kolkata Knight Riders",
+      "rating": 36,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "d7cdefa9",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 97,
+      "name": "Sunil Narine",
+      "team": "Kolkata Knight Riders",
+      "rating": 99,
+      "confidence": "high",
+      "source": "contextual-T20-model",
+      "cricsheetId": "9d430b40",
+      "identityMethod": "explicit-identity",
+      "balls": 3091,
+      "weightedBalls": 1965.8,
+      "iplBalls": 906,
+      "economy": 6.138,
+      "adjustedEconomyEffect": -2.4614,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "bpl",
+        "cpl",
+        "ilt",
+        "ipl",
+        "mlc",
+        "sat"
+      ]
+    },
+    {
+      "id": 98,
+      "name": "Tejasvi Singh Dahiya",
+      "team": "Kolkata Knight Riders",
+      "rating": 36,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "f12fe2a1",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 99,
+      "name": "Tim Seifert",
+      "team": "Kolkata Knight Riders",
+      "rating": 36,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "4663bd23",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 100,
+      "name": "Umran Malik",
+      "team": "Kolkata Knight Riders",
+      "rating": 69,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "81c08fa3",
+      "identityMethod": "explicit-identity",
+      "balls": 6,
+      "weightedBalls": 2.4,
+      "iplBalls": 6,
+      "economy": 15.0,
+      "adjustedEconomyEffect": 0.0651,
+      "seasons": [
+        2024
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 101,
+      "name": "Vaibhav Arora",
+      "team": "Kolkata Knight Riders",
+      "rating": 71,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "7c3b3b78",
+      "identityMethod": "explicit-identity",
+      "balls": 663,
+      "weightedBalls": 413.8,
+      "iplBalls": 663,
+      "economy": 9.919,
+      "adjustedEconomyEffect": -0.0746,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 102,
+      "name": "Varun Chakravarthy",
+      "team": "Kolkata Knight Riders",
+      "rating": 83,
+      "confidence": "high",
+      "source": "contextual-T20-model",
+      "cricsheetId": "5b7ab5a9",
+      "identityMethod": "explicit-identity",
+      "balls": 1716,
+      "weightedBalls": 1094.5,
+      "iplBalls": 846,
+      "economy": 8.035,
+      "adjustedEconomyEffect": -0.7273,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl",
+        "t20s"
+      ]
+    },
+    {
+      "id": 103,
+      "name": "Abdul Samad",
+      "team": "Lucknow Super Giants",
+      "rating": 68,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "8e514b4c",
+      "identityMethod": "explicit-identity",
+      "balls": 3,
+      "weightedBalls": 2.0,
+      "iplBalls": 3,
+      "economy": 24.0,
+      "adjustedEconomyEffect": 0.1169,
+      "seasons": [
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 104,
+      "name": "Aiden Markram",
+      "team": "Lucknow Super Giants",
+      "rating": 63,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "6a26221c",
+      "identityMethod": "explicit-identity",
+      "balls": 504,
+      "weightedBalls": 289.4,
+      "iplBalls": 114,
+      "economy": 9.024,
+      "adjustedEconomyEffect": 0.4098,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl",
+        "sat",
+        "t20s"
+      ]
+    },
+    {
+      "id": 105,
+      "name": "Akash Singh",
+      "team": "Lucknow Super Giants",
+      "rating": 65,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "b483905d",
+      "identityMethod": "explicit-identity",
+      "balls": 114,
+      "weightedBalls": 79.2,
+      "iplBalls": 114,
+      "economy": 10.474,
+      "adjustedEconomyEffect": 0.2927,
+      "seasons": [
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 106,
+      "name": "Akshat Raghuwanshi",
+      "team": "Lucknow Super Giants",
+      "rating": 36,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "d8d67045",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 107,
+      "name": "Anrich Nortje",
+      "team": "Lucknow Super Giants",
+      "rating": 72,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "acdc62f5",
+      "identityMethod": "explicit-identity",
+      "balls": 1032,
+      "weightedBalls": 584.9,
+      "iplBalls": 198,
+      "economy": 8.802,
+      "adjustedEconomyEffect": -0.1174,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "cpl",
+        "ipl",
+        "mlc",
+        "sat",
+        "t20s"
+      ]
+    },
+    {
+      "id": 108,
+      "name": "Arjun Tendulkar",
+      "team": "Lucknow Super Giants",
+      "rating": 70,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "44aac2f0",
+      "identityMethod": "explicit-identity",
+      "balls": 42,
+      "weightedBalls": 28.2,
+      "iplBalls": 42,
+      "economy": 10.714,
+      "adjustedEconomyEffect": 0.0185,
+      "seasons": [
+        2024,
+        2026
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 109,
+      "name": "Arshin Kulkarni",
+      "team": "Lucknow Super Giants",
+      "rating": 59,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "2d140b79",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 110,
+      "name": "Avesh Khan",
+      "team": "Lucknow Super Giants",
+      "rating": 71,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "eef2536f",
+      "identityMethod": "explicit-identity",
+      "balls": 857,
+      "weightedBalls": 470.9,
+      "iplBalls": 756,
+      "economy": 9.802,
+      "adjustedEconomyEffect": -0.0312,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl",
+        "t20s"
+      ]
+    },
+    {
+      "id": 111,
+      "name": "Ayush Badoni",
+      "team": "Lucknow Super Giants",
+      "rating": 69,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "872b03f7",
+      "identityMethod": "explicit-identity",
+      "balls": 28,
+      "weightedBalls": 16.0,
+      "iplBalls": 28,
+      "economy": 11.143,
+      "adjustedEconomyEffect": 0.0294,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 112,
+      "name": "Digvesh Rathi",
+      "team": "Lucknow Super Giants",
+      "rating": 75,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "13fc5c6d",
+      "identityMethod": "explicit-identity",
+      "balls": 546,
+      "weightedBalls": 378.3,
+      "iplBalls": 546,
+      "economy": 9.077,
+      "adjustedEconomyEffect": -0.2626,
+      "seasons": [
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 113,
+      "name": "Himmat Singh",
+      "team": "Lucknow Super Giants",
+      "rating": 36,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "ebcfef83",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 114,
+      "name": "Josh Inglis",
+      "team": "Lucknow Super Giants",
+      "rating": 36,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "989889ff",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 115,
+      "name": "Kuldeep Yadav",
+      "team": "Lucknow Super Giants",
+      "rating": 78,
+      "confidence": "high",
+      "source": "contextual-T20-model",
+      "cricsheetId": "8d2c70ad",
+      "identityMethod": "explicit-identity",
+      "balls": 1209,
+      "weightedBalls": 758.7,
+      "iplBalls": 798,
+      "economy": 8.293,
+      "adjustedEconomyEffect": -0.4521,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl",
+        "t20s"
+      ]
+    },
+    {
+      "id": 116,
+      "name": "Manimaran Siddharth",
+      "team": "Lucknow Super Giants",
+      "rating": 73,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "cf0ccafa",
+      "identityMethod": "explicit-identity",
+      "balls": 186,
+      "weightedBalls": 120.7,
+      "iplBalls": 186,
+      "economy": 9.129,
+      "adjustedEconomyEffect": -0.1863,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 117,
+      "name": "Matthew Breetzke",
+      "team": "Lucknow Super Giants",
+      "rating": 49,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "35f173a0",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 118,
+      "name": "Mayank Yadav",
+      "team": "Lucknow Super Giants",
+      "rating": 65,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "b1ad996b",
+      "identityMethod": "explicit-identity",
+      "balls": 474,
+      "weightedBalls": 348.6,
+      "iplBalls": 222,
+      "economy": 9.203,
+      "adjustedEconomyEffect": 0.253,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl",
+        "t20s"
+      ]
+    },
+    {
+      "id": 119,
+      "name": "Mitchell Marsh",
+      "team": "Lucknow Super Giants",
+      "rating": 68,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "3d8feaf8",
+      "identityMethod": "explicit-identity",
+      "balls": 84,
+      "weightedBalls": 33.6,
+      "iplBalls": 48,
+      "economy": 10.143,
+      "adjustedEconomyEffect": 0.1282,
+      "seasons": [
+        2024
+      ],
+      "competitions": [
+        "ipl",
+        "t20s"
+      ]
+    },
+    {
+      "id": 120,
+      "name": "Mohammed Shami",
+      "team": "Lucknow Super Giants",
+      "rating": 67,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "8cf9814c",
+      "identityMethod": "explicit-identity",
+      "balls": 519,
+      "weightedBalls": 377.7,
+      "iplBalls": 486,
+      "economy": 9.78,
+      "adjustedEconomyEffect": 0.14,
+      "seasons": [
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl",
+        "t20s"
+      ]
+    },
+    {
+      "id": 121,
+      "name": "Mohsin Khan",
+      "team": "Lucknow Super Giants",
+      "rating": 79,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "c33d8116",
+      "identityMethod": "explicit-identity",
+      "balls": 396,
+      "weightedBalls": 235.6,
+      "iplBalls": 396,
+      "economy": 9.288,
+      "adjustedEconomyEffect": -0.5173,
+      "seasons": [
+        2024,
+        2026
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 122,
+      "name": "Mukul Choudhary",
+      "team": "Lucknow Super Giants",
+      "rating": 36,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": null,
+      "identityMethod": "unresolved",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 123,
+      "name": "Naman Tiwari",
+      "team": "Lucknow Super Giants",
+      "rating": 73,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "97f44626",
+      "identityMethod": "explicit-identity",
+      "balls": 114,
+      "weightedBalls": 50.1,
+      "iplBalls": 0,
+      "economy": 6.421,
+      "adjustedEconomyEffect": -0.1426,
+      "seasons": [
+        2024
+      ],
+      "competitions": [
+        "t20s"
+      ]
+    },
+    {
+      "id": 124,
+      "name": "Nicholas Pooran",
+      "team": "Lucknow Super Giants",
+      "rating": 36,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "3241e3fd",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 125,
+      "name": "Prince Yadav",
+      "team": "Lucknow Super Giants",
+      "rating": 84,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "80b2fb19",
+      "identityMethod": "explicit-identity",
+      "balls": 647,
+      "weightedBalls": 524.6,
+      "iplBalls": 449,
+      "economy": 8.958,
+      "adjustedEconomyEffect": -0.7872,
+      "seasons": [
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl",
+        "t20s"
+      ]
+    },
+    {
+      "id": 126,
+      "name": "Shahbaz Ahmed",
+      "team": "Lucknow Super Giants",
+      "rating": 59,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "f9e6e7ef",
+      "identityMethod": "explicit-identity",
+      "balls": 283,
+      "weightedBalls": 156.1,
+      "iplBalls": 283,
+      "economy": 10.643,
+      "adjustedEconomyEffect": 0.5986,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 127,
+      "name": "Wanindu Hasaranga",
+      "team": "Lucknow Super Giants",
+      "rating": 83,
+      "confidence": "high",
+      "source": "contextual-T20-model",
+      "cricsheetId": "a97c8ec2",
+      "identityMethod": "explicit-identity",
+      "balls": 2210,
+      "weightedBalls": 1372.5,
+      "iplBalls": 246,
+      "economy": 7.575,
+      "adjustedEconomyEffect": -0.7177,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "cpl",
+        "ilt",
+        "ipl",
+        "lpl",
+        "t20s"
+      ]
+    },
+    {
+      "id": 128,
+      "name": "Allah Ghazanfar",
+      "team": "Mumbai Indians",
+      "rating": 82,
+      "confidence": "high",
+      "source": "contextual-T20-model",
+      "cricsheetId": "9ca68676",
+      "identityMethod": "explicit-identity",
+      "balls": 1012,
+      "weightedBalls": 737.4,
+      "iplBalls": 233,
+      "economy": 7.927,
+      "adjustedEconomyEffect": -0.6901,
+      "seasons": [
+        2025,
+        2026
+      ],
+      "competitions": [
+        "cpl",
+        "ilt",
+        "ipl",
+        "ntb"
+      ]
+    },
+    {
+      "id": 129,
+      "name": "Ashwani Kumar",
+      "team": "Mumbai Indians",
+      "rating": 64,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "d45c29b1",
+      "identityMethod": "explicit-identity",
+      "balls": 180,
+      "weightedBalls": 121.4,
+      "iplBalls": 180,
+      "economy": 11.133,
+      "adjustedEconomyEffect": 0.3305,
+      "seasons": [
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 130,
+      "name": "Atharva Ankolekar",
+      "team": "Mumbai Indians",
+      "rating": 61,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "d6cd318e",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 131,
+      "name": "Corbin Bosch",
+      "team": "Mumbai Indians",
+      "rating": 80,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "172dff15",
+      "identityMethod": "explicit-identity",
+      "balls": 1104,
+      "weightedBalls": 797.3,
+      "iplBalls": 163,
+      "economy": 8.332,
+      "adjustedEconomyEffect": -0.5707,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl",
+        "mlc",
+        "sat",
+        "t20s"
+      ]
+    },
+    {
+      "id": 132,
+      "name": "Danish Malewar",
+      "team": "Mumbai Indians",
+      "rating": 36,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "9e6032fa",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 133,
+      "name": "Deepak Chahar",
+      "team": "Mumbai Indians",
+      "rating": 72,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "23eeb873",
+      "identityMethod": "explicit-identity",
+      "balls": 544,
+      "weightedBalls": 332.9,
+      "iplBalls": 544,
+      "economy": 9.386,
+      "adjustedEconomyEffect": -0.1032,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 134,
+      "name": "Hardik Pandya",
+      "team": "Mumbai Indians",
+      "rating": 64,
+      "confidence": "high",
+      "source": "contextual-T20-model",
+      "cricsheetId": "dbe50b21",
+      "identityMethod": "explicit-identity",
+      "balls": 1342,
+      "weightedBalls": 812.5,
+      "iplBalls": 562,
+      "economy": 9.469,
+      "adjustedEconomyEffect": 0.3589,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl",
+        "t20s"
+      ]
+    },
+    {
+      "id": 135,
+      "name": "Jasprit Bumrah",
+      "team": "Mumbai Indians",
+      "rating": 99,
+      "confidence": "high",
+      "source": "contextual-T20-model",
+      "cricsheetId": "462411b3",
+      "identityMethod": "explicit-identity",
+      "balls": 1584,
+      "weightedBalls": 1020.2,
+      "iplBalls": 889,
+      "economy": 6.924,
+      "adjustedEconomyEffect": -1.9611,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl",
+        "t20s"
+      ]
+    },
+    {
+      "id": 136,
+      "name": "Keshav Maharaj",
+      "team": "Mumbai Indians",
+      "rating": 74,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "0b60eb09",
+      "identityMethod": "explicit-identity",
+      "balls": 1506,
+      "weightedBalls": 849.5,
+      "iplBalls": 36,
+      "economy": 7.633,
+      "adjustedEconomyEffect": -0.2068,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "bpl",
+        "cpl",
+        "ipl",
+        "sat",
+        "t20s"
+      ]
+    },
+    {
+      "id": 137,
+      "name": "Mayank Markande",
+      "team": "Mumbai Indians",
+      "rating": 56,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "a9fd84fb",
+      "identityMethod": "explicit-identity",
+      "balls": 162,
+      "weightedBalls": 78.7,
+      "iplBalls": 162,
+      "economy": 12.407,
+      "adjustedEconomyEffect": 0.8025,
+      "seasons": [
+        2024,
+        2026
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 138,
+      "name": "Mayank Rawat",
+      "team": "Mumbai Indians",
+      "rating": 60,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "2b801189",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 139,
+      "name": "Mitchell Santner",
+      "team": "Mumbai Indians",
+      "rating": 84,
+      "confidence": "high",
+      "source": "contextual-T20-model",
+      "cricsheetId": "e4a0deae",
+      "identityMethod": "explicit-identity",
+      "balls": 1611,
+      "weightedBalls": 1008.3,
+      "iplBalls": 375,
+      "economy": 7.605,
+      "adjustedEconomyEffect": -0.8037,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl",
+        "mlc",
+        "ntb",
+        "ssm",
+        "t20s"
+      ]
+    },
+    {
+      "id": 140,
+      "name": "Mohammad Salahuddin Izhar",
+      "team": "Mumbai Indians",
+      "rating": 59,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": null,
+      "identityMethod": "unresolved",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 141,
+      "name": "Naman Dhir",
+      "team": "Mumbai Indians",
+      "rating": 65,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "fffa744b",
+      "identityMethod": "explicit-identity",
+      "balls": 114,
+      "weightedBalls": 88.5,
+      "iplBalls": 48,
+      "economy": 9.474,
+      "adjustedEconomyEffect": 0.2847,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl",
+        "t20s"
+      ]
+    },
+    {
+      "id": 142,
+      "name": "Quinton De Kock",
+      "team": "Mumbai Indians",
+      "rating": 36,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "372455c4",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 143,
+      "name": "Raghu Sharma",
+      "team": "Mumbai Indians",
+      "rating": 73,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "5b615e7c",
+      "identityMethod": "explicit-identity",
+      "balls": 90,
+      "weightedBalls": 76.2,
+      "iplBalls": 90,
+      "economy": 8.667,
+      "adjustedEconomyEffect": -0.1807,
+      "seasons": [
+        2026
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 144,
+      "name": "Raj Angad Bawa",
+      "team": "Mumbai Indians",
+      "rating": 67,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "ba6b2f91",
+      "identityMethod": "explicit-identity",
+      "balls": 24,
+      "weightedBalls": 20.3,
+      "iplBalls": 24,
+      "economy": 12.5,
+      "adjustedEconomyEffect": 0.1517,
+      "seasons": [
+        2026
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 145,
+      "name": "Robin Minz",
+      "team": "Mumbai Indians",
+      "rating": 36,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "bafd0398",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 146,
+      "name": "Rohit Sharma",
+      "team": "Mumbai Indians",
+      "rating": 57,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "740742ef",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 147,
+      "name": "Ryan Rickelton",
+      "team": "Mumbai Indians",
+      "rating": 36,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "e66732f8",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 148,
+      "name": "Shardul Thakur",
+      "team": "Mumbai Indians",
+      "rating": 59,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "1abb78f8",
+      "identityMethod": "explicit-identity",
+      "balls": 522,
+      "weightedBalls": 306.7,
+      "iplBalls": 522,
+      "economy": 10.874,
+      "adjustedEconomyEffect": 0.5913,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 149,
+      "name": "Sherfane Rutherford",
+      "team": "Mumbai Indians",
+      "rating": 61,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "d014d5ac",
+      "identityMethod": "explicit-identity",
+      "balls": 109,
+      "weightedBalls": 76.0,
+      "iplBalls": 0,
+      "economy": 11.174,
+      "adjustedEconomyEffect": 0.5115,
+      "seasons": [
+        2025,
+        2026
+      ],
+      "competitions": [
+        "bbl",
+        "cpl",
+        "ilt",
+        "sat",
+        "t20s"
+      ]
+    },
+    {
+      "id": 150,
+      "name": "Suryakumar Yadav",
+      "team": "Mumbai Indians",
+      "rating": 71,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "271f83cd",
+      "identityMethod": "explicit-identity",
+      "balls": 6,
+      "weightedBalls": 2.7,
+      "iplBalls": 0,
+      "economy": 5.0,
+      "adjustedEconomyEffect": -0.0614,
+      "seasons": [
+        2024
+      ],
+      "competitions": [
+        "t20s"
+      ]
+    },
+    {
+      "id": 151,
+      "name": "Tilak Varma",
+      "team": "Mumbai Indians",
+      "rating": 71,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "b0482a1d",
+      "identityMethod": "explicit-identity",
+      "balls": 37,
+      "weightedBalls": 26.7,
+      "iplBalls": 4,
+      "economy": 7.459,
+      "adjustedEconomyEffect": -0.0792,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl",
+        "t20s"
+      ]
+    },
+    {
+      "id": 152,
+      "name": "Trent Boult",
+      "team": "Mumbai Indians",
+      "rating": 78,
+      "confidence": "high",
+      "source": "contextual-T20-model",
+      "cricsheetId": "a818c1be",
+      "identityMethod": "explicit-identity",
+      "balls": 2234,
+      "weightedBalls": 1293.5,
+      "iplBalls": 763,
+      "economy": 8.479,
+      "adjustedEconomyEffect": -0.4529,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ilt",
+        "ipl",
+        "mlc",
+        "sat",
+        "t20s"
+      ]
+    },
+    {
+      "id": 153,
+      "name": "Will Jacks",
+      "team": "Mumbai Indians",
+      "rating": 81,
+      "confidence": "high",
+      "source": "contextual-T20-model",
+      "cricsheetId": "9caf69a1",
+      "identityMethod": "explicit-identity",
+      "balls": 1095,
+      "weightedBalls": 702.5,
+      "iplBalls": 191,
+      "economy": 7.929,
+      "adjustedEconomyEffect": -0.5865,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "bpl",
+        "ipl",
+        "ntb",
+        "sat",
+        "t20s"
+      ]
+    },
+    {
+      "id": 154,
+      "name": "Arshdeep Singh",
+      "team": "Punjab Kings",
+      "rating": 72,
+      "confidence": "high",
+      "source": "contextual-T20-model",
+      "cricsheetId": "244048f6",
+      "identityMethod": "explicit-identity",
+      "balls": 2094,
+      "weightedBalls": 1392.0,
+      "iplBalls": 970,
+      "economy": 9.175,
+      "adjustedEconomyEffect": -0.1236,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl",
+        "t20s"
+      ]
+    },
+    {
+      "id": 155,
+      "name": "Azmatullah Omarzai",
+      "team": "Punjab Kings",
+      "rating": 66,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "8f6dd463",
+      "identityMethod": "explicit-identity",
+      "balls": 954,
+      "weightedBalls": 551.3,
+      "iplBalls": 354,
+      "economy": 9.409,
+      "adjustedEconomyEffect": 0.2362,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "bpl",
+        "ilt",
+        "ipl",
+        "lpl",
+        "sat"
+      ]
+    },
+    {
+      "id": 156,
+      "name": "Ben Dwarshuis",
+      "team": "Punjab Kings",
+      "rating": 75,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "e1b9f3a9",
+      "identityMethod": "explicit-identity",
+      "balls": 1657,
+      "weightedBalls": 1050.2,
+      "iplBalls": 24,
+      "economy": 8.488,
+      "adjustedEconomyEffect": -0.2561,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "bbl",
+        "ipl",
+        "mlc",
+        "ntb",
+        "psl",
+        "t20s"
+      ]
+    },
+    {
+      "id": 157,
+      "name": "Cooper Connolly",
+      "team": "Punjab Kings",
+      "rating": 77,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "fe366f34",
+      "identityMethod": "explicit-identity",
+      "balls": 553,
+      "weightedBalls": 357.7,
+      "iplBalls": 0,
+      "economy": 7.443,
+      "adjustedEconomyEffect": -0.3759,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "bbl",
+        "t20s"
+      ]
+    },
+    {
+      "id": 158,
+      "name": "Harnoor Singh",
+      "team": "Punjab Kings",
+      "rating": 36,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": null,
+      "identityMethod": "unresolved",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 159,
+      "name": "Harpreet Brar",
+      "team": "Punjab Kings",
+      "rating": 81,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "c05edf8e",
+      "identityMethod": "explicit-identity",
+      "balls": 408,
+      "weightedBalls": 213.9,
+      "iplBalls": 408,
+      "economy": 8.132,
+      "adjustedEconomyEffect": -0.6161,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 160,
+      "name": "Lockie Ferguson",
+      "team": "Punjab Kings",
+      "rating": 80,
+      "confidence": "high",
+      "source": "contextual-T20-model",
+      "cricsheetId": "2f9d0389",
+      "identityMethod": "explicit-identity",
+      "balls": 1467,
+      "weightedBalls": 859.6,
+      "iplBalls": 282,
+      "economy": 7.885,
+      "adjustedEconomyEffect": -0.5628,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "bbl",
+        "ilt",
+        "ipl",
+        "mlc",
+        "ssm",
+        "t20s"
+      ]
+    },
+    {
+      "id": 161,
+      "name": "Marco Jansen",
+      "team": "Punjab Kings",
+      "rating": 76,
+      "confidence": "high",
+      "source": "contextual-T20-model",
+      "cricsheetId": "81c36ee9",
+      "identityMethod": "explicit-identity",
+      "balls": 2219,
+      "weightedBalls": 1365.1,
+      "iplBalls": 627,
+      "economy": 8.574,
+      "adjustedEconomyEffect": -0.3175,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl",
+        "mlc",
+        "sat",
+        "t20s"
+      ]
+    },
+    {
+      "id": 162,
+      "name": "Marcus Stoinis",
+      "team": "Punjab Kings",
+      "rating": 69,
+      "confidence": "high",
+      "source": "contextual-T20-model",
+      "cricsheetId": "d9273ee7",
+      "identityMethod": "explicit-identity",
+      "balls": 1559,
+      "weightedBalls": 937.4,
+      "iplBalls": 212,
+      "economy": 8.902,
+      "adjustedEconomyEffect": 0.0678,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "bbl",
+        "ipl",
+        "mlc",
+        "sat",
+        "t20s"
+      ]
+    },
+    {
+      "id": 163,
+      "name": "Mitchell Owen",
+      "team": "Punjab Kings",
+      "rating": 56,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "f2c936d7",
+      "identityMethod": "explicit-identity",
+      "balls": 568,
+      "weightedBalls": 405.3,
+      "iplBalls": 0,
+      "economy": 9.993,
+      "adjustedEconomyEffect": 0.7664,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "bbl",
+        "mlc",
+        "psl",
+        "sat",
+        "t20s"
+      ]
+    },
+    {
+      "id": 164,
+      "name": "Musheer Khan",
+      "team": "Punjab Kings",
+      "rating": 67,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "d621b427",
+      "identityMethod": "explicit-identity",
+      "balls": 12,
+      "weightedBalls": 7.3,
+      "iplBalls": 12,
+      "economy": 13.5,
+      "adjustedEconomyEffect": 0.1523,
+      "seasons": [
+        2025
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 165,
+      "name": "Nehal Wadhera",
+      "team": "Punjab Kings",
+      "rating": 71,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "d1a60072",
+      "identityMethod": "explicit-identity",
+      "balls": 17,
+      "weightedBalls": 8.0,
+      "iplBalls": 17,
+      "economy": 7.765,
+      "adjustedEconomyEffect": -0.0437,
+      "seasons": [
+        2024,
+        2025
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 166,
+      "name": "Prabhsimran Singh",
+      "team": "Punjab Kings",
+      "rating": 36,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "9418198b",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 167,
+      "name": "Pravin Dubey",
+      "team": "Punjab Kings",
+      "rating": 69,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "ed5a5510",
+      "identityMethod": "explicit-identity",
+      "balls": 12,
+      "weightedBalls": 7.3,
+      "iplBalls": 12,
+      "economy": 10.0,
+      "adjustedEconomyEffect": 0.0419,
+      "seasons": [
+        2025
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 168,
+      "name": "Priyansh Arya",
+      "team": "Punjab Kings",
+      "rating": 36,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "b5797845",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 169,
+      "name": "Pyla Avinash",
+      "team": "Punjab Kings",
+      "rating": 52,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": null,
+      "identityMethod": "unresolved",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 170,
+      "name": "Shashank Singh",
+      "team": "Punjab Kings",
+      "rating": 76,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "26989d80",
+      "identityMethod": "explicit-identity",
+      "balls": 78,
+      "weightedBalls": 59.9,
+      "iplBalls": 78,
+      "economy": 9.231,
+      "adjustedEconomyEffect": -0.3124,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 171,
+      "name": "Shreyas Iyer",
+      "team": "Punjab Kings",
+      "rating": 56,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "85ec8e33",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 172,
+      "name": "Suryansh Shedge",
+      "team": "Punjab Kings",
+      "rating": 60,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "970ddd24",
+      "identityMethod": "explicit-identity",
+      "balls": 60,
+      "weightedBalls": 48.4,
+      "iplBalls": 18,
+      "economy": 11.9,
+      "adjustedEconomyEffect": 0.5352,
+      "seasons": [
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl",
+        "t20s"
+      ]
+    },
+    {
+      "id": 173,
+      "name": "Vijaykumar Vyshak",
+      "team": "Punjab Kings",
+      "rating": 69,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "54e52590",
+      "identityMethod": "explicit-identity",
+      "balls": 375,
+      "weightedBalls": 251.9,
+      "iplBalls": 375,
+      "economy": 10.448,
+      "adjustedEconomyEffect": 0.0407,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 174,
+      "name": "Vishal Nishad",
+      "team": "Punjab Kings",
+      "rating": 59,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": null,
+      "identityMethod": "unresolved",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 175,
+      "name": "Vishnu Vinod",
+      "team": "Punjab Kings",
+      "rating": 36,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "0494fa6e",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 176,
+      "name": "Xavier Bartlett",
+      "team": "Punjab Kings",
+      "rating": 71,
+      "confidence": "high",
+      "source": "contextual-T20-model",
+      "cricsheetId": "3b53243a",
+      "identityMethod": "explicit-identity",
+      "balls": 1884,
+      "weightedBalls": 1224.3,
+      "iplBalls": 261,
+      "economy": 8.939,
+      "adjustedEconomyEffect": -0.083,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "bbl",
+        "ipl",
+        "mlc",
+        "ntb",
+        "t20s"
+      ]
+    },
+    {
+      "id": 177,
+      "name": "Yash Thakur",
+      "team": "Punjab Kings",
+      "rating": 57,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "4b31f3a3",
+      "identityMethod": "explicit-identity",
+      "balls": 324,
+      "weightedBalls": 174.8,
+      "iplBalls": 276,
+      "economy": 11.315,
+      "adjustedEconomyEffect": 0.7111,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl",
+        "t20s"
+      ]
+    },
+    {
+      "id": 178,
+      "name": "Yuzvendra Chahal",
+      "team": "Punjab Kings",
+      "rating": 72,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "57ee1fde",
+      "identityMethod": "explicit-identity",
+      "balls": 864,
+      "weightedBalls": 510.0,
+      "iplBalls": 864,
+      "economy": 9.451,
+      "adjustedEconomyEffect": -0.1345,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 179,
+      "name": "Adam Milne",
+      "team": "Rajasthan Royals",
+      "rating": 79,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "350bb1b1",
+      "identityMethod": "explicit-identity",
+      "balls": 1133,
+      "weightedBalls": 706.4,
+      "iplBalls": 20,
+      "economy": 8.473,
+      "adjustedEconomyEffect": -0.4755,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "bbl",
+        "ilt",
+        "ipl",
+        "mlc",
+        "psl",
+        "sat",
+        "ssm",
+        "t20s"
+      ]
+    },
+    {
+      "id": 180,
+      "name": "Aman Rao",
+      "team": "Rajasthan Royals",
+      "rating": 67,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "c57f5c4c",
+      "identityMethod": "explicit-identity",
+      "balls": 30,
+      "weightedBalls": 18.3,
+      "iplBalls": 0,
+      "economy": 10.6,
+      "adjustedEconomyEffect": 0.145,
+      "seasons": [
+        2025
+      ],
+      "competitions": [
+        "ntb"
+      ]
+    },
+    {
+      "id": 181,
+      "name": "Brijesh Sharma",
+      "team": "Rajasthan Royals",
+      "rating": 74,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "133bbd61",
+      "identityMethod": "explicit-identity",
+      "balls": 273,
+      "weightedBalls": 229.9,
+      "iplBalls": 273,
+      "economy": 9.89,
+      "adjustedEconomyEffect": -0.2451,
+      "seasons": [
+        2026
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 182,
+      "name": "Dhruv Jurel",
+      "team": "Rajasthan Royals",
+      "rating": 36,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "bcf325d2",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 183,
+      "name": "Donovan Ferreira",
+      "team": "Rajasthan Royals",
+      "rating": 78,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "f0af99a7",
+      "identityMethod": "explicit-identity",
+      "balls": 523,
+      "weightedBalls": 366.7,
+      "iplBalls": 18,
+      "economy": 7.824,
+      "adjustedEconomyEffect": -0.4269,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl",
+        "mlc",
+        "sat",
+        "t20s"
+      ]
+    },
+    {
+      "id": 184,
+      "name": "Jofra Archer",
+      "team": "Rajasthan Royals",
+      "rating": 76,
+      "confidence": "high",
+      "source": "contextual-T20-model",
+      "cricsheetId": "5574750c",
+      "identityMethod": "explicit-identity",
+      "balls": 1432,
+      "weightedBalls": 972.5,
+      "iplBalls": 633,
+      "economy": 8.925,
+      "adjustedEconomyEffect": -0.3256,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl",
+        "ntb",
+        "t20s"
+      ]
+    },
+    {
+      "id": 185,
+      "name": "Kuldeep Sen",
+      "team": "Rajasthan Royals",
+      "rating": 70,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "2e78f685",
+      "identityMethod": "explicit-identity",
+      "balls": 72,
+      "weightedBalls": 29.7,
+      "iplBalls": 72,
+      "economy": 10.167,
+      "adjustedEconomyEffect": 0.0236,
+      "seasons": [
+        2024
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 186,
+      "name": "Kwena Maphaka",
+      "team": "Rajasthan Royals",
+      "rating": 64,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "107c26fb",
+      "identityMethod": "explicit-identity",
+      "balls": 804,
+      "weightedBalls": 524.3,
+      "iplBalls": 66,
+      "economy": 9.657,
+      "adjustedEconomyEffect": 0.3342,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl",
+        "sat",
+        "t20s"
+      ]
+    },
+    {
+      "id": 187,
+      "name": "Lhuan-dre Pretorius",
+      "team": "Rajasthan Royals",
+      "rating": 68,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "60aa2db3",
+      "identityMethod": "explicit-identity",
+      "balls": 4,
+      "weightedBalls": 3.1,
+      "iplBalls": 0,
+      "economy": 16.5,
+      "adjustedEconomyEffect": 0.1003,
+      "seasons": [
+        2026
+      ],
+      "competitions": [
+        "sat"
+      ]
+    },
+    {
+      "id": 188,
+      "name": "Nandre Burger",
+      "team": "Rajasthan Royals",
+      "rating": 77,
+      "confidence": "high",
+      "source": "contextual-T20-model",
+      "cricsheetId": "465aa633",
+      "identityMethod": "explicit-identity",
+      "balls": 1142,
+      "weightedBalls": 705.2,
+      "iplBalls": 363,
+      "economy": 8.853,
+      "adjustedEconomyEffect": -0.3692,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl",
+        "mlc",
+        "sat",
+        "t20s"
+      ]
+    },
+    {
+      "id": 189,
+      "name": "Ravi Bishnoi",
+      "team": "Rajasthan Royals",
+      "rating": 66,
+      "confidence": "high",
+      "source": "contextual-T20-model",
+      "cricsheetId": "df064e1a",
+      "identityMethod": "explicit-identity",
+      "balls": 1216,
+      "weightedBalls": 715.8,
+      "iplBalls": 640,
+      "economy": 8.748,
+      "adjustedEconomyEffect": 0.2284,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl",
+        "t20s"
+      ]
+    },
+    {
+      "id": 190,
+      "name": "Ravi Singh",
+      "team": "Rajasthan Royals",
+      "rating": 36,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "548516a6",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 191,
+      "name": "Ravindra Jadeja",
+      "team": "Rajasthan Royals",
+      "rating": 80,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "fe93fd9d",
+      "identityMethod": "explicit-identity",
+      "balls": 773,
+      "weightedBalls": 445.2,
+      "iplBalls": 707,
+      "economy": 8.197,
+      "adjustedEconomyEffect": -0.5344,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl",
+        "t20s"
+      ]
+    },
+    {
+      "id": 192,
+      "name": "Riyan Parag",
+      "team": "Rajasthan Royals",
+      "rating": 77,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "04a418e8",
+      "identityMethod": "explicit-identity",
+      "balls": 236,
+      "weightedBalls": 132.3,
+      "iplBalls": 162,
+      "economy": 8.085,
+      "adjustedEconomyEffect": -0.3817,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl",
+        "t20s"
+      ]
+    },
+    {
+      "id": 193,
+      "name": "Sam Curran",
+      "team": "Rajasthan Royals",
+      "rating": 66,
+      "confidence": "high",
+      "source": "contextual-T20-model",
+      "cricsheetId": "e94915e6",
+      "identityMethod": "explicit-identity",
+      "balls": 1938,
+      "weightedBalls": 1125.9,
+      "iplBalls": 318,
+      "economy": 9.378,
+      "adjustedEconomyEffect": 0.2473,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "bbl",
+        "ilt",
+        "ipl",
+        "ntb",
+        "sat",
+        "t20s"
+      ]
+    },
+    {
+      "id": 194,
+      "name": "Sandeep Sharma",
+      "team": "Rajasthan Royals",
+      "rating": 75,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "ce820073",
+      "identityMethod": "explicit-identity",
+      "balls": 565,
+      "weightedBalls": 320.5,
+      "iplBalls": 565,
+      "economy": 9.515,
+      "adjustedEconomyEffect": -0.2771,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 195,
+      "name": "Shimron Hetmyer",
+      "team": "Rajasthan Royals",
+      "rating": 36,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "48a1d7b7",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 196,
+      "name": "Shubham Dubey",
+      "team": "Rajasthan Royals",
+      "rating": 36,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "6b2ff18f",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 197,
+      "name": "Sushant Mishra",
+      "team": "Rajasthan Royals",
+      "rating": 69,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "92500ad5",
+      "identityMethod": "explicit-identity",
+      "balls": 38,
+      "weightedBalls": 32.5,
+      "iplBalls": 38,
+      "economy": 10.579,
+      "adjustedEconomyEffect": 0.0587,
+      "seasons": [
+        2026
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 198,
+      "name": "Tushar Deshpande",
+      "team": "Rajasthan Royals",
+      "rating": 69,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "46a9bea1",
+      "identityMethod": "explicit-identity",
+      "balls": 654,
+      "weightedBalls": 363.5,
+      "iplBalls": 618,
+      "economy": 10.037,
+      "adjustedEconomyEffect": 0.0429,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl",
+        "t20s"
+      ]
+    },
+    {
+      "id": 199,
+      "name": "Vaibhav Suryavanshi",
+      "team": "Rajasthan Royals",
+      "rating": 45,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "470f446b",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 200,
+      "name": "Vignesh Puthur",
+      "team": "Rajasthan Royals",
+      "rating": 69,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "1e030637",
+      "identityMethod": "explicit-identity",
+      "balls": 72,
+      "weightedBalls": 41.5,
+      "iplBalls": 72,
+      "economy": 9.083,
+      "adjustedEconomyEffect": 0.0568,
+      "seasons": [
+        2025
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 201,
+      "name": "Yash Raj Punja",
+      "team": "Rajasthan Royals",
+      "rating": 73,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "02dfebbe",
+      "identityMethod": "explicit-identity",
+      "balls": 180,
+      "weightedBalls": 152.7,
+      "iplBalls": 180,
+      "economy": 9.3,
+      "adjustedEconomyEffect": -0.1677,
+      "seasons": [
+        2026
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 202,
+      "name": "Yashasvi Jaiswal",
+      "team": "Rajasthan Royals",
+      "rating": 50,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "6c19c6e5",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 203,
+      "name": "Yudhvir Singh",
+      "team": "Rajasthan Royals",
+      "rating": 62,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "4885bbe6",
+      "identityMethod": "explicit-identity",
+      "balls": 90,
+      "weightedBalls": 49.4,
+      "iplBalls": 90,
+      "economy": 12.2,
+      "adjustedEconomyEffect": 0.4342,
+      "seasons": [
+        2024,
+        2025
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 204,
+      "name": "Abhinandan Singh",
+      "team": "Royal Challengers Bengaluru",
+      "rating": 62,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "82c10dac",
+      "identityMethod": "explicit-identity",
+      "balls": 58,
+      "weightedBalls": 47.4,
+      "iplBalls": 58,
+      "economy": 12.621,
+      "adjustedEconomyEffect": 0.4425,
+      "seasons": [
+        2026
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 205,
+      "name": "Bhuvneshwar Kumar",
+      "team": "Royal Challengers Bengaluru",
+      "rating": 83,
+      "confidence": "high",
+      "source": "contextual-T20-model",
+      "cricsheetId": "2e81a32d",
+      "identityMethod": "explicit-identity",
+      "balls": 1080,
+      "weightedBalls": 691.2,
+      "iplBalls": 1032,
+      "economy": 8.978,
+      "adjustedEconomyEffect": -0.7419,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl",
+        "t20s"
+      ]
+    },
+    {
+      "id": 206,
+      "name": "Devdutt Padikkal",
+      "team": "Royal Challengers Bengaluru",
+      "rating": 36,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "2c25d4f5",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 207,
+      "name": "Jacob Bethell",
+      "team": "Royal Challengers Bengaluru",
+      "rating": 69,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "3c55c703",
+      "identityMethod": "explicit-identity",
+      "balls": 248,
+      "weightedBalls": 136.0,
+      "iplBalls": 0,
+      "economy": 7.96,
+      "adjustedEconomyEffect": 0.0381,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "bbl",
+        "ntb",
+        "t20s"
+      ]
+    },
+    {
+      "id": 208,
+      "name": "Jacob Duffy",
+      "team": "Royal Challengers Bengaluru",
+      "rating": 76,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "dadbdb68",
+      "identityMethod": "explicit-identity",
+      "balls": 1381,
+      "weightedBalls": 873.8,
+      "iplBalls": 144,
+      "economy": 8.398,
+      "adjustedEconomyEffect": -0.3063,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl",
+        "ntb",
+        "ssm",
+        "t20s"
+      ]
+    },
+    {
+      "id": 209,
+      "name": "Jitesh Sharma",
+      "team": "Royal Challengers Bengaluru",
+      "rating": 36,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "800d2d97",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 210,
+      "name": "Jordan Cox",
+      "team": "Royal Challengers Bengaluru",
+      "rating": 36,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "ff154ecd",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 211,
+      "name": "Josh Hazlewood",
+      "team": "Royal Challengers Bengaluru",
+      "rating": 82,
+      "confidence": "high",
+      "source": "contextual-T20-model",
+      "cricsheetId": "03806cf8",
+      "identityMethod": "explicit-identity",
+      "balls": 975,
+      "weightedBalls": 626.3,
+      "iplBalls": 573,
+      "economy": 8.246,
+      "adjustedEconomyEffect": -0.6499,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl",
+        "t20s"
+      ]
+    },
+    {
+      "id": 212,
+      "name": "Kanishk Chouhan",
+      "team": "Royal Challengers Bengaluru",
+      "rating": 60,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": null,
+      "identityMethod": "unresolved",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 213,
+      "name": "Krunal Pandya",
+      "team": "Royal Challengers Bengaluru",
+      "rating": 84,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "5b8c830e",
+      "identityMethod": "explicit-identity",
+      "balls": 777,
+      "weightedBalls": 498.7,
+      "iplBalls": 777,
+      "economy": 8.178,
+      "adjustedEconomyEffect": -0.7964,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 214,
+      "name": "Mangesh Yadav",
+      "team": "Royal Challengers Bengaluru",
+      "rating": 64,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": null,
+      "identityMethod": "unresolved",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 215,
+      "name": "Nuwan Thushara",
+      "team": "Royal Challengers Bengaluru",
+      "rating": 70,
+      "confidence": "high",
+      "source": "contextual-T20-model",
+      "cricsheetId": "ee1b6c27",
+      "identityMethod": "explicit-identity",
+      "balls": 1339,
+      "weightedBalls": 835.2,
+      "iplBalls": 180,
+      "economy": 8.841,
+      "adjustedEconomyEffect": 0.0081,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ilt",
+        "ipl",
+        "lpl",
+        "sat",
+        "t20s"
+      ]
+    },
+    {
+      "id": 216,
+      "name": "Phil Salt",
+      "team": "Royal Challengers Bengaluru",
+      "rating": 36,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "3d284ca3",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 217,
+      "name": "Rajat Patidar",
+      "team": "Royal Challengers Bengaluru",
+      "rating": 49,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "c740ea83",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 218,
+      "name": "Rasikh Salam",
+      "team": "Royal Challengers Bengaluru",
+      "rating": 74,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "b8527c3d",
+      "identityMethod": "explicit-identity",
+      "balls": 441,
+      "weightedBalls": 299.7,
+      "iplBalls": 441,
+      "economy": 10.15,
+      "adjustedEconomyEffect": -0.2339,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 219,
+      "name": "Romario Shepherd",
+      "team": "Royal Challengers Bengaluru",
+      "rating": 57,
+      "confidence": "high",
+      "source": "contextual-T20-model",
+      "cricsheetId": "c5aef772",
+      "identityMethod": "explicit-identity",
+      "balls": 2408,
+      "weightedBalls": 1548.4,
+      "iplBalls": 305,
+      "economy": 9.688,
+      "adjustedEconomyEffect": 0.7245,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "bpl",
+        "cpl",
+        "ilt",
+        "ipl",
+        "mlc",
+        "sat",
+        "t20s"
+      ]
+    },
+    {
+      "id": 220,
+      "name": "Satvik Deswal",
+      "team": "Royal Challengers Bengaluru",
+      "rating": 61,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": null,
+      "identityMethod": "unresolved",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 221,
+      "name": "Suyash Sharma",
+      "team": "Royal Challengers Bengaluru",
+      "rating": 70,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "9440ef41",
+      "identityMethod": "explicit-identity",
+      "balls": 569,
+      "weightedBalls": 390.8,
+      "iplBalls": 569,
+      "economy": 9.163,
+      "adjustedEconomyEffect": -0.0216,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 222,
+      "name": "Swapnil Singh",
+      "team": "Royal Challengers Bengaluru",
+      "rating": 69,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "983f2f61",
+      "identityMethod": "explicit-identity",
+      "balls": 90,
+      "weightedBalls": 38.0,
+      "iplBalls": 90,
+      "economy": 8.867,
+      "adjustedEconomyEffect": 0.0344,
+      "seasons": [
+        2024
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 223,
+      "name": "Tim David",
+      "team": "Royal Challengers Bengaluru",
+      "rating": 66,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "f1f99156",
+      "identityMethod": "explicit-identity",
+      "balls": 90,
+      "weightedBalls": 45.2,
+      "iplBalls": 6,
+      "economy": 8.867,
+      "adjustedEconomyEffect": 0.2047,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "bbl",
+        "cpl",
+        "ilt",
+        "ipl"
+      ]
+    },
+    {
+      "id": 224,
+      "name": "Venkatesh Iyer",
+      "team": "Royal Challengers Bengaluru",
+      "rating": 67,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "a24be938",
+      "identityMethod": "explicit-identity",
+      "balls": 6,
+      "weightedBalls": 2.5,
+      "iplBalls": 6,
+      "economy": 28.0,
+      "adjustedEconomyEffect": 0.1928,
+      "seasons": [
+        2024
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 225,
+      "name": "Vicky Ostwal",
+      "team": "Royal Challengers Bengaluru",
+      "rating": 62,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": null,
+      "identityMethod": "unresolved",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 226,
+      "name": "Vihaan Malhotra",
+      "team": "Royal Challengers Bengaluru",
+      "rating": 36,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": null,
+      "identityMethod": "unresolved",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 227,
+      "name": "Virat Kohli",
+      "team": "Royal Challengers Bengaluru",
+      "rating": 53,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "ba607b88",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 228,
+      "name": "Abhishek Sharma",
+      "team": "Sunrisers Hyderabad",
+      "rating": 64,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "f29185a1",
+      "identityMethod": "explicit-identity",
+      "balls": 345,
+      "weightedBalls": 212.2,
+      "iplBalls": 137,
+      "economy": 8.835,
+      "adjustedEconomyEffect": 0.3391,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl",
+        "t20s"
+      ]
+    },
+    {
+      "id": 229,
+      "name": "Amit Kumar",
+      "team": "Sunrisers Hyderabad",
+      "rating": 57,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": null,
+      "identityMethod": "unresolved",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 230,
+      "name": "Aniket Verma",
+      "team": "Sunrisers Hyderabad",
+      "rating": 53,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "a3b0600d",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 231,
+      "name": "Brydon Carse",
+      "team": "Sunrisers Hyderabad",
+      "rating": 69,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "cad40f5e",
+      "identityMethod": "explicit-identity",
+      "balls": 310,
+      "weightedBalls": 198.0,
+      "iplBalls": 0,
+      "economy": 8.923,
+      "adjustedEconomyEffect": 0.0508,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ntb",
+        "t20s"
+      ]
+    },
+    {
+      "id": 232,
+      "name": "David Payne",
+      "team": "Sunrisers Hyderabad",
+      "rating": 86,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "6c79c098",
+      "identityMethod": "explicit-identity",
+      "balls": 1422,
+      "weightedBalls": 819.1,
+      "iplBalls": 30,
+      "economy": 7.325,
+      "adjustedEconomyEffect": -0.9087,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "bbl",
+        "ilt",
+        "ipl",
+        "ntb"
+      ]
+    },
+    {
+      "id": 233,
+      "name": "Eshan Malinga",
+      "team": "Sunrisers Hyderabad",
+      "rating": 73,
+      "confidence": "high",
+      "source": "contextual-T20-model",
+      "cricsheetId": "5750bcb4",
+      "identityMethod": "explicit-identity",
+      "balls": 1105,
+      "weightedBalls": 880.1,
+      "iplBalls": 486,
+      "economy": 9.453,
+      "adjustedEconomyEffect": -0.1621,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl",
+        "lpl",
+        "sat",
+        "t20s"
+      ]
+    },
+    {
+      "id": 234,
+      "name": "Harsh Dubey",
+      "team": "Sunrisers Hyderabad",
+      "rating": 68,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "25228673",
+      "identityMethod": "explicit-identity",
+      "balls": 192,
+      "weightedBalls": 145.2,
+      "iplBalls": 192,
+      "economy": 10.188,
+      "adjustedEconomyEffect": 0.1229,
+      "seasons": [
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 235,
+      "name": "Harshal Patel",
+      "team": "Sunrisers Hyderabad",
+      "rating": 71,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "f986ca1a",
+      "identityMethod": "explicit-identity",
+      "balls": 639,
+      "weightedBalls": 345.0,
+      "iplBalls": 639,
+      "economy": 9.906,
+      "adjustedEconomyEffect": -0.078,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 236,
+      "name": "Heinrich Klaasen",
+      "team": "Sunrisers Hyderabad",
+      "rating": 36,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "235c2bb6",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 237,
+      "name": "Ishan Kishan",
+      "team": "Sunrisers Hyderabad",
+      "rating": 69,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "752f7486",
+      "identityMethod": "explicit-identity",
+      "balls": 1,
+      "weightedBalls": 0.6,
+      "iplBalls": 1,
+      "economy": 24.0,
+      "adjustedEconomyEffect": 0.0318,
+      "seasons": [
+        2025
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 238,
+      "name": "Jack Edwards",
+      "team": "Sunrisers Hyderabad",
+      "rating": 69,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "f787e0eb",
+      "identityMethod": "explicit-identity",
+      "balls": 891,
+      "weightedBalls": 571.2,
+      "iplBalls": 0,
+      "economy": 8.579,
+      "adjustedEconomyEffect": 0.0372,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "bbl",
+        "mlc",
+        "t20s"
+      ]
+    },
+    {
+      "id": 239,
+      "name": "Jaydev Unadkat",
+      "team": "Sunrisers Hyderabad",
+      "rating": 74,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "1e66c162",
+      "identityMethod": "explicit-identity",
+      "balls": 407,
+      "weightedBalls": 225.6,
+      "iplBalls": 407,
+      "economy": 9.346,
+      "adjustedEconomyEffect": -0.2176,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 240,
+      "name": "Kamindu Mendis",
+      "team": "Sunrisers Hyderabad",
+      "rating": 67,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "08548b13",
+      "identityMethod": "explicit-identity",
+      "balls": 318,
+      "weightedBalls": 191.1,
+      "iplBalls": 42,
+      "economy": 8.736,
+      "adjustedEconomyEffect": 0.1804,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ilt",
+        "ipl",
+        "lpl",
+        "t20s"
+      ]
+    },
+    {
+      "id": 241,
+      "name": "Krains Fuletra",
+      "team": "Sunrisers Hyderabad",
+      "rating": 58,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": null,
+      "identityMethod": "unresolved",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 242,
+      "name": "Liam Livingstone",
+      "team": "Sunrisers Hyderabad",
+      "rating": 68,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "50c6bc2b",
+      "identityMethod": "explicit-identity",
+      "balls": 912,
+      "weightedBalls": 556.1,
+      "iplBalls": 126,
+      "economy": 8.434,
+      "adjustedEconomyEffect": 0.0848,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ilt",
+        "ipl",
+        "ntb",
+        "sat",
+        "t20s"
+      ]
+    },
+    {
+      "id": 243,
+      "name": "Nitish Kumar Reddy",
+      "team": "Sunrisers Hyderabad",
+      "rating": 63,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "aad0c365",
+      "identityMethod": "explicit-identity",
+      "balls": 421,
+      "weightedBalls": 303.9,
+      "iplBalls": 295,
+      "economy": 10.304,
+      "adjustedEconomyEffect": 0.3824,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl",
+        "t20s"
+      ]
+    },
+    {
+      "id": 244,
+      "name": "Onkar Tarmale",
+      "team": "Sunrisers Hyderabad",
+      "rating": 59,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": null,
+      "identityMethod": "unresolved",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 245,
+      "name": "Pat Cummins",
+      "team": "Sunrisers Hyderabad",
+      "rating": 77,
+      "confidence": "high",
+      "source": "contextual-T20-model",
+      "cricsheetId": "ded9240e",
+      "identityMethod": "explicit-identity",
+      "balls": 1126,
+      "weightedBalls": 608.7,
+      "iplBalls": 856,
+      "economy": 9.123,
+      "adjustedEconomyEffect": -0.3712,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl",
+        "mlc",
+        "t20s"
+      ]
+    },
+    {
+      "id": 246,
+      "name": "Praful Hinge",
+      "team": "Sunrisers Hyderabad",
+      "rating": 62,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "ece7b6b3",
+      "identityMethod": "explicit-identity",
+      "balls": 156,
+      "weightedBalls": 131.0,
+      "iplBalls": 156,
+      "economy": 11.731,
+      "adjustedEconomyEffect": 0.4688,
+      "seasons": [
+        2026
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 247,
+      "name": "Sakib Hussain",
+      "team": "Sunrisers Hyderabad",
+      "rating": 78,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "280fff14",
+      "identityMethod": "explicit-identity",
+      "balls": 252,
+      "weightedBalls": 212.1,
+      "iplBalls": 252,
+      "economy": 9.452,
+      "adjustedEconomyEffect": -0.4648,
+      "seasons": [
+        2026
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 248,
+      "name": "Salil Arora",
+      "team": "Sunrisers Hyderabad",
+      "rating": 36,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "d7423da1",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 249,
+      "name": "Shivam Mavi",
+      "team": "Sunrisers Hyderabad",
+      "rating": 65,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "c38d3503",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 250,
+      "name": "Shivang Kumar",
+      "team": "Sunrisers Hyderabad",
+      "rating": 70,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "7b44eb3e",
+      "identityMethod": "explicit-identity",
+      "balls": 234,
+      "weightedBalls": 195.2,
+      "iplBalls": 234,
+      "economy": 9.615,
+      "adjustedEconomyEffect": 0.026,
+      "seasons": [
+        2026
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 251,
+      "name": "Smaran Ravichandran",
+      "team": "Sunrisers Hyderabad",
+      "rating": 53,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "c1e53c3f",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 252,
+      "name": "Travis Head",
+      "team": "Sunrisers Hyderabad",
+      "rating": 69,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "12b610c2",
+      "identityMethod": "explicit-identity",
+      "balls": 16,
+      "weightedBalls": 9.4,
+      "iplBalls": 16,
+      "economy": 14.625,
+      "adjustedEconomyEffect": 0.0335,
+      "seasons": [
+        2024,
+        2026
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 253,
+      "name": "Zeeshan Ansari",
+      "team": "Sunrisers Hyderabad",
+      "rating": 67,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "36619795",
+      "identityMethod": "explicit-identity",
+      "balls": 203,
+      "weightedBalls": 119.0,
+      "iplBalls": 203,
+      "economy": 9.842,
+      "adjustedEconomyEffect": 0.1834,
+      "seasons": [
+        2025
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 254,
+      "name": "Ali Naseer",
+      "team": "Free agent",
+      "rating": 73,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "f5715b48",
+      "identityMethod": "explicit-identity",
+      "balls": 438,
+      "weightedBalls": 208.8,
+      "iplBalls": 0,
+      "economy": 7.521,
+      "adjustedEconomyEffect": -0.1758,
+      "seasons": [
+        2024,
+        2025
+      ],
+      "competitions": [
+        "ilt",
+        "t20s"
+      ]
+    },
+    {
+      "id": 255,
+      "name": "Alzarri Joseph",
+      "team": "Free agent",
+      "rating": 65,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "b0946605",
+      "identityMethod": "explicit-identity",
+      "balls": 1795,
+      "weightedBalls": 1090.9,
+      "iplBalls": 58,
+      "economy": 9.239,
+      "adjustedEconomyEffect": 0.2927,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "cpl",
+        "ilt",
+        "ipl",
+        "psl",
+        "t20s"
+      ]
+    },
+    {
+      "id": 256,
+      "name": "Andile Simelane",
+      "team": "Free agent",
+      "rating": 61,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "ebb74564",
+      "identityMethod": "explicit-identity",
+      "balls": 186,
+      "weightedBalls": 112.1,
+      "iplBalls": 0,
+      "economy": 10.484,
+      "adjustedEconomyEffect": 0.4846,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "sat",
+        "t20s"
+      ]
+    },
+    {
+      "id": 257,
+      "name": "Aneesh KV",
+      "team": "Free agent",
+      "rating": 54,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": null,
+      "identityMethod": "unresolved",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 258,
+      "name": "Aravelly Avanish",
+      "team": "Free agent",
+      "rating": 36,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": null,
+      "identityMethod": "unresolved",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 259,
+      "name": "Archie Vaughan",
+      "team": "Free agent",
+      "rating": 63,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": null,
+      "identityMethod": "unresolved",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 260,
+      "name": "Callum Vidler",
+      "team": "Free agent",
+      "rating": 59,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "4332744d",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 261,
+      "name": "Chetan Sakariya",
+      "team": "Free agent",
+      "rating": 68,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "2cdce1be",
+      "identityMethod": "explicit-identity",
+      "balls": 18,
+      "weightedBalls": 10.6,
+      "iplBalls": 18,
+      "economy": 13.0,
+      "adjustedEconomyEffect": 0.1082,
+      "seasons": [
+        2025
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 262,
+      "name": "Connor Esterhuizen",
+      "team": "Gujarat Titans",
+      "rating": 56,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "ef9acbcc",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 263,
+      "name": "Dan Lawrence",
+      "team": "Free agent",
+      "rating": 78,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "4b685e2d",
+      "identityMethod": "explicit-identity",
+      "balls": 606,
+      "weightedBalls": 378.2,
+      "iplBalls": 0,
+      "economy": 7.287,
+      "adjustedEconomyEffect": -0.4227,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "bbl",
+        "ilt",
+        "ntb",
+        "sat"
+      ]
+    },
+    {
+      "id": 264,
+      "name": "Dan Mousley",
+      "team": "Free agent",
+      "rating": 77,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "876dbe2d",
+      "identityMethod": "explicit-identity",
+      "balls": 814,
+      "weightedBalls": 470.7,
+      "iplBalls": 0,
+      "economy": 8.034,
+      "adjustedEconomyEffect": -0.3678,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ilt",
+        "ntb",
+        "psl",
+        "t20s"
+      ]
+    },
+    {
+      "id": 265,
+      "name": "Daryl Mitchell",
+      "team": "Free agent",
+      "rating": 60,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "eade4650",
+      "identityMethod": "explicit-identity",
+      "balls": 260,
+      "weightedBalls": 169.2,
+      "iplBalls": 36,
+      "economy": 11.031,
+      "adjustedEconomyEffect": 0.5764,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl",
+        "mlc",
+        "psl",
+        "t20s"
+      ]
+    },
+    {
+      "id": 266,
+      "name": "Dasun Shanaka",
+      "team": "Rajasthan Royals",
+      "rating": 64,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "3ff033bb",
+      "identityMethod": "explicit-identity",
+      "balls": 1017,
+      "weightedBalls": 713.5,
+      "iplBalls": 36,
+      "economy": 9.186,
+      "adjustedEconomyEffect": 0.3538,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "bpl",
+        "cpl",
+        "ilt",
+        "ipl",
+        "lpl",
+        "mlc",
+        "t20s"
+      ]
+    },
+    {
+      "id": 267,
+      "name": "David Teeger",
+      "team": "Free agent",
+      "rating": 58,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": null,
+      "identityMethod": "unresolved",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 268,
+      "name": "Deepak Hooda",
+      "team": "Free agent",
+      "rating": 69,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "73ad96ed",
+      "identityMethod": "explicit-identity",
+      "balls": 24,
+      "weightedBalls": 11.2,
+      "iplBalls": 24,
+      "economy": 9.25,
+      "adjustedEconomyEffect": 0.0595,
+      "seasons": [
+        2024,
+        2025
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 269,
+      "name": "Devon Conway",
+      "team": "Free agent",
+      "rating": 36,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "df5a6881",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 270,
+      "name": "Dian Forrester",
+      "team": "Chennai Super Kings",
+      "rating": 73,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "23393635",
+      "identityMethod": "explicit-identity",
+      "balls": 154,
+      "weightedBalls": 133.0,
+      "iplBalls": 0,
+      "economy": 8.143,
+      "adjustedEconomyEffect": -0.1399,
+      "seasons": [
+        2025,
+        2026
+      ],
+      "competitions": [
+        "mlc",
+        "ntb",
+        "psl",
+        "sat",
+        "t20s"
+      ]
+    },
+    {
+      "id": 271,
+      "name": "Dipjyoti Saikia",
+      "team": "Free agent",
+      "rating": 62,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": null,
+      "identityMethod": "unresolved",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 272,
+      "name": "Farhan Ahmed",
+      "team": "Free agent",
+      "rating": 64,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": null,
+      "identityMethod": "unresolved",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 273,
+      "name": "Fazalhaq Farooqi",
+      "team": "Rajasthan Royals",
+      "rating": 80,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "e9c7f0d0",
+      "identityMethod": "explicit-identity",
+      "balls": 1142,
+      "weightedBalls": 680.1,
+      "iplBalls": 102,
+      "economy": 8.27,
+      "adjustedEconomyEffect": -0.5378,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "bpl",
+        "cpl",
+        "ilt",
+        "ipl",
+        "lpl",
+        "ntb"
+      ]
+    },
+    {
+      "id": 274,
+      "name": "Gerald Coetzee",
+      "team": "Sunrisers Hyderabad",
+      "rating": 69,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "3204c99f",
+      "identityMethod": "explicit-identity",
+      "balls": 784,
+      "weightedBalls": 451.8,
+      "iplBalls": 273,
+      "economy": 9.543,
+      "adjustedEconomyEffect": 0.0433,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl",
+        "mlc",
+        "sat",
+        "t20s"
+      ]
+    },
+    {
+      "id": 275,
+      "name": "Gus Atkinson",
+      "team": "Free agent",
+      "rating": 67,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "add6bd03",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 276,
+      "name": "Hamza Shaikh",
+      "team": "Free agent",
+      "rating": 52,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "1917d713",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 277,
+      "name": "Harry Brook",
+      "team": "Free agent",
+      "rating": 49,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "4ae1755b",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 278,
+      "name": "Harry Dixon",
+      "team": "Free agent",
+      "rating": 56,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "ecbad6c6",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 279,
+      "name": "Hemchudeshan J",
+      "team": "Free agent",
+      "rating": 59,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": null,
+      "identityMethod": "unresolved",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 280,
+      "name": "Hugh Weibgen",
+      "team": "Free agent",
+      "rating": 36,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "2535b30f",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 281,
+      "name": "Isai Thorne",
+      "team": "Free agent",
+      "rating": 61,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": null,
+      "identityMethod": "unresolved",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 282,
+      "name": "Jamie Smith",
+      "team": "Free agent",
+      "rating": 36,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "c834c290",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 283,
+      "name": "Jewel Andrew",
+      "team": "Free agent",
+      "rating": 52,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "6b0db726",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 284,
+      "name": "Jhye Richardson",
+      "team": "Free agent",
+      "rating": 65,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "1ee08e9a",
+      "identityMethod": "explicit-identity",
+      "balls": 382,
+      "weightedBalls": 220.4,
+      "iplBalls": 24,
+      "economy": 9.236,
+      "adjustedEconomyEffect": 0.2982,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "bbl",
+        "ipl"
+      ]
+    },
+    {
+      "id": 285,
+      "name": "Johann Layne",
+      "team": "Free agent",
+      "rating": 63,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "2f43ee81",
+      "identityMethod": "explicit-identity",
+      "balls": 48,
+      "weightedBalls": 33.2,
+      "iplBalls": 0,
+      "economy": 11.625,
+      "adjustedEconomyEffect": 0.3658,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "cpl"
+      ]
+    },
+    {
+      "id": 286,
+      "name": "John Turner",
+      "team": "Free agent",
+      "rating": 63,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "cdd875d9",
+      "identityMethod": "explicit-identity",
+      "balls": 356,
+      "weightedBalls": 173.7,
+      "iplBalls": 0,
+      "economy": 9.742,
+      "adjustedEconomyEffect": 0.365,
+      "seasons": [
+        2024,
+        2025
+      ],
+      "competitions": [
+        "ntb",
+        "sat",
+        "t20s"
+      ]
+    },
+    {
+      "id": 287,
+      "name": "Jordan Johnson",
+      "team": "Free agent",
+      "rating": 57,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": null,
+      "identityMethod": "unresolved",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 288,
+      "name": "Josh Clarkson",
+      "team": "Free agent",
+      "rating": 63,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "bed90114",
+      "identityMethod": "explicit-identity",
+      "balls": 171,
+      "weightedBalls": 114.5,
+      "iplBalls": 0,
+      "economy": 9.719,
+      "adjustedEconomyEffect": 0.4116,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "cpl",
+        "ssm",
+        "t20s"
+      ]
+    },
+    {
+      "id": 289,
+      "name": "Karim Janat",
+      "team": "Free agent",
+      "rating": 60,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "62175638",
+      "identityMethod": "explicit-identity",
+      "balls": 54,
+      "weightedBalls": 31.1,
+      "iplBalls": 6,
+      "economy": 14.222,
+      "adjustedEconomyEffect": 0.5786,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ilt",
+        "ipl",
+        "sat"
+      ]
+    },
+    {
+      "id": 290,
+      "name": "Karn Sharma",
+      "team": "Free agent",
+      "rating": 64,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "119678fd",
+      "identityMethod": "explicit-identity",
+      "balls": 234,
+      "weightedBalls": 113.7,
+      "iplBalls": 234,
+      "economy": 9.795,
+      "adjustedEconomyEffect": 0.321,
+      "seasons": [
+        2024,
+        2025
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 291,
+      "name": "Kevin Wickham",
+      "team": "Free agent",
+      "rating": 36,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "211aeb65",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 292,
+      "name": "Krish Bhagat",
+      "team": "Mumbai Indians",
+      "rating": 70,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "e48a4814",
+      "identityMethod": "explicit-identity",
+      "balls": 36,
+      "weightedBalls": 30.0,
+      "iplBalls": 36,
+      "economy": 10.5,
+      "adjustedEconomyEffect": -0.0164,
+      "seasons": [
+        2026
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 293,
+      "name": "KS Bharat",
+      "team": "Free agent",
+      "rating": 36,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "44a89551",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 294,
+      "name": "Kuldip Yadav",
+      "team": "Chennai Super Kings",
+      "rating": 62,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "030f3089",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 295,
+      "name": "Kulwant Khejroliya",
+      "team": "Gujarat Titans",
+      "rating": 66,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "fa2f1dde",
+      "identityMethod": "explicit-identity",
+      "balls": 30,
+      "weightedBalls": 20.8,
+      "iplBalls": 30,
+      "economy": 12.0,
+      "adjustedEconomyEffect": 0.2312,
+      "seasons": [
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 296,
+      "name": "Kumar Kartikeya",
+      "team": "Free agent",
+      "rating": 69,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "f6d8a7ab",
+      "identityMethod": "explicit-identity",
+      "balls": 48,
+      "weightedBalls": 28.0,
+      "iplBalls": 48,
+      "economy": 9.75,
+      "adjustedEconomyEffect": 0.0489,
+      "seasons": [
+        2025
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 297,
+      "name": "Kusal Mendis",
+      "team": "Free agent",
+      "rating": 36,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "5d1e7582",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 298,
+      "name": "Lakshya Raichandani",
+      "team": "Free agent",
+      "rating": 52,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": null,
+      "identityMethod": "unresolved",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 299,
+      "name": "Macneil Noronha",
+      "team": "Chennai Super Kings",
+      "rating": 61,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": null,
+      "identityMethod": "unresolved",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 300,
+      "name": "Maheesh Theekshana",
+      "team": "Free agent",
+      "rating": 85,
+      "confidence": "high",
+      "source": "contextual-T20-model",
+      "cricsheetId": "f24c6701",
+      "identityMethod": "explicit-identity",
+      "balls": 2726,
+      "weightedBalls": 1686.0,
+      "iplBalls": 372,
+      "economy": 7.745,
+      "adjustedEconomyEffect": -0.8316,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "cpl",
+        "ilt",
+        "ipl",
+        "lpl",
+        "psl",
+        "sat",
+        "t20s"
+      ]
+    },
+    {
+      "id": 301,
+      "name": "Mahipal Lomror",
+      "team": "Mumbai Indians",
+      "rating": 69,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "da934ee8",
+      "identityMethod": "explicit-identity",
+      "balls": 6,
+      "weightedBalls": 2.5,
+      "iplBalls": 6,
+      "economy": 18.0,
+      "adjustedEconomyEffect": 0.0767,
+      "seasons": [
+        2024
+      ],
+      "competitions": [
+        "ipl"
+      ]
+    },
+    {
+      "id": 302,
+      "name": "Mahli Beardman",
+      "team": "Free agent",
+      "rating": 70,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "b5a12740",
+      "identityMethod": "explicit-identity",
+      "balls": 270,
+      "weightedBalls": 197.4,
+      "iplBalls": 0,
+      "economy": 8.0,
+      "adjustedEconomyEffect": -0.003,
+      "seasons": [
+        2025,
+        2026
+      ],
+      "competitions": [
+        "bbl",
+        "t20s"
+      ]
+    },
+    {
+      "id": 303,
+      "name": "Matthew Boast",
+      "team": "Free agent",
+      "rating": 66,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "2f838fa4",
+      "identityMethod": "explicit-identity",
+      "balls": 12,
+      "weightedBalls": 6.5,
+      "iplBalls": 0,
+      "economy": 17.5,
+      "adjustedEconomyEffect": 0.2296,
+      "seasons": [
+        2025
+      ],
+      "competitions": [
+        "sat"
+      ]
+    },
+    {
+      "id": 304,
+      "name": "Matthew Forde",
+      "team": "Free agent",
+      "rating": 72,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "83d17bbc",
+      "identityMethod": "explicit-identity",
+      "balls": 1025,
+      "weightedBalls": 690.3,
+      "iplBalls": 0,
+      "economy": 8.535,
+      "adjustedEconomyEffect": -0.1003,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "bpl",
+        "cpl",
+        "ilt",
+        "mlc",
+        "psl",
+        "t20s"
+      ]
+    },
+    {
+      "id": 305,
+      "name": "Matthew Nandu",
+      "team": "Free agent",
+      "rating": 62,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "64f5120c",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 306,
+      "name": "McKenny Clarke",
+      "team": "Free agent",
+      "rating": 58,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "a4ff3629",
+      "identityMethod": "explicit-identity",
+      "balls": 30,
+      "weightedBalls": 23.0,
+      "iplBalls": 0,
+      "economy": 15.0,
+      "adjustedEconomyEffect": 0.6882,
+      "seasons": [
+        2025,
+        2026
+      ],
+      "competitions": [
+        "cpl"
+      ]
+    },
+    {
+      "id": 307,
+      "name": "Michael Bracewell",
+      "team": "Free agent",
+      "rating": 61,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "e38bce7a",
+      "identityMethod": "explicit-identity",
+      "balls": 1083,
+      "weightedBalls": 649.4,
+      "iplBalls": 0,
+      "economy": 8.986,
+      "adjustedEconomyEffect": 0.4794,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "mlc",
+        "psl",
+        "ssm",
+        "t20s"
+      ]
+    },
+    {
+      "id": 308,
+      "name": "Mujeeb Ur Rahman",
+      "team": "Free agent",
+      "rating": 86,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "7d92277a",
+      "identityMethod": "explicit-identity",
+      "balls": 991,
+      "weightedBalls": 715.5,
+      "iplBalls": 12,
+      "economy": 7.653,
+      "adjustedEconomyEffect": -0.8927,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "cpl",
+        "ilt",
+        "ipl",
+        "lpl",
+        "sat"
+      ]
+    },
+    {
+      "id": 309,
+      "name": "Nathan Edward",
+      "team": "Free agent",
+      "rating": 57,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "267468de",
+      "identityMethod": "explicit-identity",
+      "balls": 135,
+      "weightedBalls": 92.3,
+      "iplBalls": 0,
+      "economy": 11.156,
+      "adjustedEconomyEffect": 0.7251,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "cpl"
+      ]
+    },
+    {
+      "id": 310,
+      "name": "Nitya J Pandya",
+      "team": "Free agent",
+      "rating": 49,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": null,
+      "identityMethod": "unresolved",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 311,
+      "name": "Nqaba Peter",
+      "team": "Free agent",
+      "rating": 59,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "212aeedd",
+      "identityMethod": "explicit-identity",
+      "balls": 275,
+      "weightedBalls": 157.8,
+      "iplBalls": 0,
+      "economy": 9.578,
+      "adjustedEconomyEffect": 0.5996,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "sat",
+        "t20s"
+      ]
+    },
+    {
+      "id": 312,
+      "name": "Oliver Davies",
+      "team": "Free agent",
+      "rating": 71,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "0ea54eca",
+      "identityMethod": "explicit-identity",
+      "balls": 18,
+      "weightedBalls": 6.8,
+      "iplBalls": 0,
+      "economy": 7.333,
+      "adjustedEconomyEffect": -0.0692,
+      "seasons": [
+        2024
+      ],
+      "competitions": [
+        "bbl"
+      ]
+    },
+    {
+      "id": 313,
+      "name": "Ollie Peake",
+      "team": "Free agent",
+      "rating": 54,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "9c8448ba",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 314,
+      "name": "P Vidyuth",
+      "team": "Free agent",
+      "rating": 61,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": null,
+      "identityMethod": "unresolved",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 315,
+      "name": "R Jashwanth Shreeram",
+      "team": "Free agent",
+      "rating": 53,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": null,
+      "identityMethod": "unresolved",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 316,
+      "name": "Rahmanullah Gurbaz",
+      "team": "Free agent",
+      "rating": 36,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "0bacade8",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 317,
+      "name": "Raj Limbani",
+      "team": "Free agent",
+      "rating": 61,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": null,
+      "identityMethod": "unresolved",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 318,
+      "name": "Richard Gleeson",
+      "team": "Royal Challengers Bengaluru",
+      "rating": 85,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "402f8494",
+      "identityMethod": "explicit-identity",
+      "balls": 1275,
+      "weightedBalls": 792.8,
+      "iplBalls": 71,
+      "economy": 7.812,
+      "adjustedEconomyEffect": -0.8441,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ilt",
+        "ipl",
+        "ntb",
+        "psl",
+        "sat"
+      ]
+    },
+    {
+      "id": 319,
+      "name": "Riley Meredith",
+      "team": "Free agent",
+      "rating": 77,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "64775749",
+      "identityMethod": "explicit-identity",
+      "balls": 1512,
+      "weightedBalls": 925.9,
+      "iplBalls": 0,
+      "economy": 8.607,
+      "adjustedEconomyEffect": -0.3748,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "bbl",
+        "ntb",
+        "psl",
+        "t20s"
+      ]
+    },
+    {
+      "id": 320,
+      "name": "Romashan Pillay",
+      "team": "Free agent",
+      "rating": 60,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "29bcd46c",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 321,
+      "name": "RS Ambrish",
+      "team": "Sunrisers Hyderabad",
+      "rating": 64,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": null,
+      "identityMethod": "unresolved",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 322,
+      "name": "Ruchit Ahir",
+      "team": "Mumbai Indians",
+      "rating": 62,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": null,
+      "identityMethod": "unresolved",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 323,
+      "name": "Sachin Dhas",
+      "team": "Free agent",
+      "rating": 36,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": null,
+      "identityMethod": "unresolved",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 324,
+      "name": "Sam Konstas",
+      "team": "Free agent",
+      "rating": 36,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "3c34c9e1",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 325,
+      "name": "Saumy Pandey",
+      "team": "Free agent",
+      "rating": 61,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": null,
+      "identityMethod": "unresolved",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 326,
+      "name": "Saurabh Dubey",
+      "team": "Kolkata Knight Riders",
+      "rating": 64,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "66317b81",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 327,
+      "name": "Spencer Johnson",
+      "team": "Chennai Super Kings",
+      "rating": 77,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "83c3e8e3",
+      "identityMethod": "explicit-identity",
+      "balls": 1041,
+      "weightedBalls": 519.4,
+      "iplBalls": 230,
+      "economy": 8.138,
+      "adjustedEconomyEffect": -0.3998,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "bbl",
+        "ipl",
+        "mlc",
+        "ntb",
+        "t20s"
+      ]
+    },
+    {
+      "id": 328,
+      "name": "Steve Smith",
+      "team": "Free agent",
+      "rating": 69,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "30a45b23",
+      "identityMethod": "explicit-identity",
+      "balls": 6,
+      "weightedBalls": 5.0,
+      "iplBalls": 0,
+      "economy": 14.0,
+      "adjustedEconomyEffect": 0.0705,
+      "seasons": [
+        2026
+      ],
+      "competitions": [
+        "psl"
+      ]
+    },
+    {
+      "id": 329,
+      "name": "Steve Stolk",
+      "team": "Free agent",
+      "rating": 36,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "407563b0",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 330,
+      "name": "Swastik Chikara",
+      "team": "Free agent",
+      "rating": 54,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": null,
+      "identityMethod": "unresolved",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 331,
+      "name": "Taskin Ahmed",
+      "team": "Free agent",
+      "rating": 73,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "ef18b66e",
+      "identityMethod": "explicit-identity",
+      "balls": 1639,
+      "weightedBalls": 924.5,
+      "iplBalls": 0,
+      "economy": 7.959,
+      "adjustedEconomyEffect": -0.1694,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "bpl",
+        "ilt",
+        "lpl",
+        "t20s"
+      ]
+    },
+    {
+      "id": 332,
+      "name": "Tazeem Ali",
+      "team": "Free agent",
+      "rating": 60,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": null,
+      "identityMethod": "unresolved",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 333,
+      "name": "Teddy Bishop",
+      "team": "Free agent",
+      "rating": 56,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "c68554a6",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 334,
+      "name": "Thomas Rew",
+      "team": "Free agent",
+      "rating": 36,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "a8ffcd4f",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 335,
+      "name": "Tom Prest",
+      "team": "Free agent",
+      "rating": 58,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "0207ff32",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 336,
+      "name": "Tom Straker",
+      "team": "Free agent",
+      "rating": 59,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": null,
+      "identityMethod": "unresolved",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 337,
+      "name": "Tristan Luus",
+      "team": "Free agent",
+      "rating": 67,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "a0b76243",
+      "identityMethod": "explicit-identity",
+      "balls": 156,
+      "weightedBalls": 106.7,
+      "iplBalls": 0,
+      "economy": 9.077,
+      "adjustedEconomyEffect": 0.1512,
+      "seasons": [
+        2025,
+        2026
+      ],
+      "competitions": [
+        "mlc",
+        "sat"
+      ]
+    },
+    {
+      "id": 338,
+      "name": "Uday Saharan",
+      "team": "Free agent",
+      "rating": 36,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": null,
+      "identityMethod": "unresolved",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 340,
+      "name": "Vishnu Bhardwaj",
+      "team": "Free agent",
+      "rating": 61,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": null,
+      "identityMethod": "unresolved",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 341,
+      "name": "Wiaan Mulder",
+      "team": "Free agent",
+      "rating": 57,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "c96f6ac5",
+      "identityMethod": "explicit-identity",
+      "balls": 742,
+      "weightedBalls": 505.6,
+      "iplBalls": 6,
+      "economy": 9.671,
+      "adjustedEconomyEffect": 0.703,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ipl",
+        "mlc",
+        "ntb",
+        "sat",
+        "t20s"
+      ]
+    },
+    {
+      "id": 342,
+      "name": "Will Smeed",
+      "team": "Free agent",
+      "rating": 52,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "4e18e961",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 343,
+      "name": "Yashvardhan Dalal",
+      "team": "Free agent",
+      "rating": 36,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": null,
+      "identityMethod": "unresolved",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 344,
+      "name": "Adam Zampa",
+      "team": "Free agent",
+      "rating": 80,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "14f96089",
+      "identityMethod": "explicit-identity",
+      "balls": 1704,
+      "weightedBalls": 1031.6,
+      "iplBalls": 48,
+      "economy": 7.88,
+      "adjustedEconomyEffect": -0.5282,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "bbl",
+        "ilt",
+        "ipl",
+        "ntb",
+        "psl",
+        "t20s"
+      ]
+    },
+    {
+      "id": 345,
+      "name": "Ish Sodhi",
+      "team": "Free agent",
+      "rating": 61,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "641ac5ff",
+      "identityMethod": "explicit-identity",
+      "balls": 1027,
+      "weightedBalls": 605.5,
+      "iplBalls": 0,
+      "economy": 8.571,
+      "adjustedEconomyEffect": 0.5033,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "ssm",
+        "t20s"
+      ]
+    },
+    {
+      "id": 346,
+      "name": "Shai Hope",
+      "team": "Free agent",
+      "rating": 36,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "1fc6ef83",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 347,
+      "name": "Charith Asalanka",
+      "team": "Free agent",
+      "rating": 71,
+      "confidence": "low",
+      "source": "contextual-T20-model",
+      "cricsheetId": "732c038e",
+      "identityMethod": "explicit-identity",
+      "balls": 334,
+      "weightedBalls": 235.4,
+      "iplBalls": 0,
+      "economy": 8.335,
+      "adjustedEconomyEffect": -0.0552,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "cpl",
+        "lpl",
+        "psl",
+        "t20s"
+      ]
+    },
+    {
+      "id": 348,
+      "name": "Kusal Perera",
+      "team": "Free agent",
+      "rating": 36,
+      "confidence": "provisional",
+      "source": "ability-based-prior",
+      "cricsheetId": "f21043a5",
+      "identityMethod": "explicit-identity",
+      "balls": 0,
+      "weightedBalls": 0,
+      "iplBalls": 0,
+      "economy": null,
+      "adjustedEconomyEffect": null,
+      "seasons": [],
+      "competitions": []
+    },
+    {
+      "id": 349,
+      "name": "George Linde",
+      "team": "Lucknow Super Giants",
+      "rating": 80,
+      "confidence": "medium",
+      "source": "contextual-T20-model",
+      "cricsheetId": "e5437608",
+      "identityMethod": "explicit-identity",
+      "balls": 1339,
+      "weightedBalls": 893.2,
+      "iplBalls": 37,
+      "economy": 7.694,
+      "adjustedEconomyEffect": -0.5286,
+      "seasons": [
+        2024,
+        2025,
+        2026
+      ],
+      "competitions": [
+        "cpl",
+        "ipl",
+        "mlc",
+        "ntb",
+        "psl",
+        "sat",
+        "t20s"
+      ]
+    }
+  ],
+  "ambiguous": []
+}

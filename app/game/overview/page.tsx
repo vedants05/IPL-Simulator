@@ -8682,7 +8682,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                       className="group flex min-h-0 flex-col justify-between overflow-hidden rounded-lg border-2 border-border bg-surface p-3 text-left transition-all hover:border-accent"
                       style={{ flex: "1.5 1 0%" }}
                     >
-                      <div>
+                      <div className="flex h-full min-h-0 w-full flex-col">
                         <div className="mb-2 flex items-center justify-between border-b border-[#16130f]/10 pb-2">
                           <div className="flex items-center gap-2">
                             <h4 className="font-anton text-[14px] uppercase text-text-primary">Team Tactics</h4>
@@ -8695,33 +8695,54 @@ This record has been officially verified and added to the IPL Minor Records arch
                           </span>
                         </div>
 
-                        <div className="space-y-1.5 font-space-mono text-[9px]">
-                          {/* Batting Strategy */}
-                          <div className="rounded border border-border/50 bg-black/[0.02] p-1.5 dark:bg-white/[0.02]">
-                            <div className="font-bold uppercase text-text-secondary text-[8.5px] mb-1 tracking-wider">Batting Approach</div>
-                            <div className="grid grid-cols-3 gap-1">
-                              <div>PP: <span className="font-bold text-text-primary capitalize">{teamTactics.batting.powerplay}</span></div>
-                              <div>MID: <span className="font-bold text-text-primary capitalize">{teamTactics.batting.middle}</span></div>
-                              <div>DEATH: <span className="font-bold text-text-primary capitalize">{teamTactics.batting.death}</span></div>
+                        {(() => {
+                          const plan = teamTactics.matchPlans?.battingFirst;
+                          const batting = { ...teamTactics.batting, ...plan?.response };
+                          const floaterIds = (plan?.floaters ?? (plan?.floater ? [plan.floater] : [])).map(rule => rule.playerId);
+                          const floaterNames = floaterIds.map(id => players[id]?.name).filter(Boolean);
+                          const teamRules = plan?.battingTeamRules?.length ?? 0;
+                          const phases = [
+                            { name: "Powerplay", overs: "1–6", range: [0, 6], bat: ({ cautious: "Cautious", balanced: "Balanced", attack: "Attack" } as const)[batting.powerplay], bowl: ({ "swing-attack": "Attack", contain: "Contain", matchups: "Matchups" } as const)[teamTactics.bowling.powerplay], colour: "text-amber-500", bar: "bg-amber-500" },
+                            { name: "Middle", overs: "7–15", range: [6, 15], bat: ({ rebuild: "Rebuild", rotate: "Rotate", dominate: "Dominate" } as const)[batting.middle], bowl: ({ pace: "Pace", balanced: "Mixed", "spin-choke": "Spin" } as const)[teamTactics.bowling.middle], colour: "text-sky-500", bar: "bg-sky-500" },
+                            { name: "Death", overs: "16–20", range: [15, 20], bat: ({ preserve: "Preserve", flexible: "Flexible", "all-out": "All-out" } as const)[batting.death], bowl: ({ defensive: "Defend", yorkers: "Execute", "wicket-hunt": "Attack" } as const)[teamTactics.bowling.death], colour: "text-violet-500", bar: "bg-violet-500" },
+                          ];
+                          return (
+                            <div className="flex min-h-0 flex-1 flex-col gap-1.5 font-space-mono">
+                              <div className="flex min-h-0 flex-1 flex-col rounded border border-border/60 bg-background/30 px-2 py-1.5">
+                                <div className="flex items-center justify-between gap-1 border-b border-border/40 pb-1">
+                                  <span className="text-[8px] font-bold uppercase tracking-wider text-text-secondary">Match plan</span>
+                                  <span className="text-[8px] font-bold uppercase text-accent">Bat first</span>
+                                </div>
+                                <div className="mt-1 grid min-h-0 flex-1 grid-cols-3 gap-1.5">
+                                  {phases.map(phase => {
+                                    const assignments = (plan?.overs ?? []).slice(phase.range[0], phase.range[1]);
+                                    const bowlerIds = Array.from(new Set(assignments.flatMap(over => over ? [over.playerId] : [])));
+                                    const bowlerNames = bowlerIds.map(id => players[id]?.name).filter(Boolean);
+                                    const assigned = assignments.filter(Boolean).length;
+                                    const phaseOvers = phase.range[1] - phase.range[0];
+                                    return (
+                                      <div key={phase.name} className="flex min-w-0 flex-col justify-between">
+                                        <div><div className={`mb-1 h-1 rounded-full ${phase.bar}`} /><div className={`truncate text-[8px] font-bold uppercase ${phase.colour}`}>{phase.name} <span className="font-normal text-text-secondary">{phase.overs}</span></div></div>
+                                        <div className="space-y-0.5 text-[8px] leading-tight text-text-secondary">
+                                          <div>Bat <b className="text-text-primary">{phase.bat}</b></div>
+                                          <div>Bowl <b className="text-text-primary">{phase.bowl}</b></div>
+                                        </div>
+                                        <div className="min-w-0 border-t border-border/40 pt-1 text-[7px] leading-tight text-text-secondary" title={bowlerNames.join(", ") || "Captain chooses the bowlers"}>
+                                          <div className="whitespace-nowrap font-bold text-text-primary">{bowlerIds.length ? `${bowlerIds.length} ${bowlerIds.length === 1 ? "bowler" : "bowlers"}` : "Auto"}</div>
+                                          <div className="whitespace-nowrap">{assigned}/{phaseOvers} overs set</div>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                              <div className="flex min-w-0 items-center justify-between gap-2 rounded border border-border/50 bg-background/30 px-2 py-1.5 text-[8px] text-text-secondary">
+                                <span className="min-w-0 truncate"><b className="uppercase text-accent">Floaters</b> · {floaterNames.length ? floaterNames.join(", ") : "None set"}</span>
+                                <span className="shrink-0"><b className="text-text-primary">{teamRules}</b> team rules</span>
+                              </div>
                             </div>
-                          </div>
-
-                          {/* Bowling Strategy */}
-                          <div className="rounded border border-border/50 bg-black/[0.02] p-1.5 dark:bg-white/[0.02]">
-                            <div className="font-bold uppercase text-text-secondary text-[8.5px] mb-1 tracking-wider">Bowling Approach</div>
-                            <div className="grid grid-cols-3 gap-1">
-                              <div>PP: <span className="font-bold text-text-primary capitalize">{teamTactics.bowling.powerplay}</span></div>
-                              <div>MID: <span className="font-bold text-text-primary capitalize">{teamTactics.bowling.middle}</span></div>
-                              <div>DEATH: <span className="font-bold text-text-primary capitalize">{teamTactics.bowling.death}</span></div>
-                            </div>
-                          </div>
-
-                          {/* Preferences summary */}
-                          <div className="flex items-center justify-between pt-0.5 text-[9.5px] text-text-secondary">
-                            <span>Toss: <strong className="text-text-primary capitalize">{teamTactics.tossPreference}</strong></span>
-                            <span>Impact: <strong className="text-text-primary capitalize">{teamTactics.impactPolicy.replace("-", " ")}</strong></span>
-                          </div>
-                        </div>
+                          );
+                        })()}
                       </div>
                     </button>
 
