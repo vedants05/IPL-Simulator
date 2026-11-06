@@ -813,3 +813,13 @@ html.theme-changing:has(.team-tactics-page) *::after {
   background-repeat: no-repeat;
   box-sizing: border-box;
 }
+
+/* Keep the opposition overview within the tactics viewport on desktop.
+   Smaller windows retain scrolling so every control stays reachable. */
+@media (min-width: 1280px) and (min-height: 768px) {
+  .opposition-tactics-content { overflow-y: hidden; }
+  .opposition-workspace { grid-template-rows: minmax(0, 1fr) 150px; }
+  .opposition-lineup { min-height: 0; }
+  .opposition-lineup-table { flex: 1 1 0%; min-height: 0; }
+  .opposition-lineup-row { flex: 1 1 0%; height: auto; min-height: 0; }
+}

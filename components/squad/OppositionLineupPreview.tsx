@@ -51,18 +51,18 @@ export default function OppositionLineupPreview({ defaultPlan, planChanges, onPl
     return { lineup: Array.from(new Set(ids)).map(id => players[id]).filter(Boolean), bowling: projectedOppositionBowlers(plan, players), excluded: squad.length - available.length };
   }, [team, players, injuries]);
 
-  return <div className="grid min-h-0 w-full flex-1 grid-cols-1 grid-rows-[auto_minmax(150px,1fr)] gap-2 xl:grid-cols-[720px_minmax(0,1fr)]"><section aria-label={`${team.name} predicted batting eleven`} className="flex w-full max-w-[720px] shrink-0 flex-col rounded-lg border border-border bg-surface">
+  return <div className="opposition-workspace grid min-h-0 w-full flex-1 grid-cols-1 grid-rows-[auto_minmax(150px,1fr)] gap-2 xl:grid-cols-[720px_minmax(0,1fr)]"><section aria-label={`${team.name} predicted batting eleven`} className="opposition-lineup flex w-full max-w-[720px] shrink-0 flex-col rounded-lg border border-border bg-surface">
     <header className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-2 py-0.5">
       <h3 className="font-anton text-xs uppercase leading-tight">{team.shortName} · Predicted batting XI</h3>
       <span className="font-space-mono text-[9px] text-text-secondary">{prediction.lineup.length} available picks{prediction.excluded > 0 ? ` · ${prediction.excluded} injured excluded` : ""}</span>
     </header>
-    <div className="flex flex-col overflow-x-auto">
+    <div className="opposition-lineup-table flex flex-col overflow-x-auto">
       <div className={`${rowGrid} min-w-[680px] shrink-0 border-b border-border px-2 py-0.5 font-space-mono text-[9px] uppercase text-text-secondary`}>
         <span>Batting order</span><span>Details</span><span className="-my-0.5 border-l border-dashed border-border/60 py-0.5 pl-2 text-emerald-500">Strengths</span><span className="-my-0.5 border-l border-dashed border-border/60 py-0.5 pl-2 text-red-500">Weaknesses</span><span className="-my-0.5 border-l border-dashed border-border/60 py-0.5 pl-2">Approach</span><span className="pl-1">Target bowler</span>
       </div>
       {prediction.lineup.map((player, index) => {
         const { strengths, weaknesses } = battingTraits(player);
-        return <div key={player.id} className={`${rowGrid} h-8 min-h-8 min-w-[680px] shrink-0 items-center border-b border-border/40 px-2 last:border-b-0`}>
+        return <div key={player.id} className={`${rowGrid} opposition-lineup-row h-8 min-h-8 min-w-[680px] shrink-0 items-center border-b border-border/40 px-2 last:border-b-0`}>
           <div className="flex min-w-0 items-center gap-1.5 pr-2">
             <span className="w-4 shrink-0 font-space-mono text-[10px] text-accent">{index + 1}</span>
             <div className="flex min-w-0 flex-1 items-center gap-1.5"><button type="button" onClick={() => onOpenPlayer(player.id)} className="rounded-sm text-left font-barlow text-xs font-semibold leading-tight hover:text-accent hover:underline focus-visible:outline focus-visible:outline-accent">{player.name}</button><span className="shrink-0 font-space-mono text-[9px] text-text-secondary">{roleLabel[player.role] ?? player.role}{player.nationality === "Overseas" ? " · OS" : ""}</span></div>

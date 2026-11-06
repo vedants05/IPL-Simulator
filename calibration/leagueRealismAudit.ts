@@ -75,7 +75,7 @@ async function main() {
   const count = Number(process.env.AUDIT_SEASONS ?? 5);
   if (!Number.isSafeInteger(count) || count < 1) throw new Error("AUDIT_SEASONS must be a positive integer");
   for (let run = 1; run <= count; run++) {
-    const year = 2027, iterationSeed = `${runSeed}:audit:${run}`;
+    const year = Number(process.env.AUDIT_YEAR ?? 2027), iterationSeed = `${runSeed}:audit:${run}`;
     const seasonStats: Record<string, {runs: number; matches: number}> = {};
     const batting: Record<string, any> = {}, bowling: Record<string, any> = {};
     const inningsRows: any[] = [], errors: string[] = [], dismissals: Record<string, number> = {};

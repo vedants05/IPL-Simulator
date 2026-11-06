@@ -1275,8 +1275,8 @@ export function PlayerProfileModal({
             )}
 
             {!isRetired && profileTab === "info" && (
-              <div className="col-start-1 row-start-3 flex h-full items-start">
-              <section className="flex h-full w-[260px] shrink-0 flex-col overflow-hidden rounded border border-border bg-bg p-2.5">
+              <div className="col-start-1 row-start-3 flex h-full min-h-0 items-start overflow-hidden">
+              <section className="flex h-full min-h-0 w-[260px] shrink-0 flex-col overflow-hidden rounded border border-border bg-bg p-2.5">
                 <h4 className="mb-2 shrink-0 border-b border-border pb-1 font-space-mono text-[10px] font-bold uppercase text-text-primary">Personnel Relationships</h4>
                 {profileRelationships.length === 0 && <p className="font-space-mono text-[9px] text-text-secondary">No personnel relationships recorded.</p>}
                 {profileRelationships.length > 0 && (

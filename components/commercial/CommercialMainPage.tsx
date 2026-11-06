@@ -76,7 +76,7 @@ export default function CommercialMainPage(props: CommercialMainPageProps) {
             }
             saveBusiness(props.saveId, result.state, latest.experience.revision);
             setState(result.state);
-            setNotice(result.message);
+            setNotice(result.message === "Contract signed. Its payments and expiry are now scheduled." ? "" : result.message);
             return true;
         }
         catch (e) {

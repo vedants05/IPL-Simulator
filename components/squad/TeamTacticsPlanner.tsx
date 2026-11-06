@@ -213,7 +213,7 @@ export default function TeamTacticsPlanner(props: Props) {
 
     </div>
 
-    <div className={tab === "bowling" ? "grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-y-auto p-3 xl:grid-cols-[minmax(0,1fr)_245px]" : "min-h-0 flex-1 overflow-y-auto p-3"}>
+    <div className={tab === "bowling" ? "grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-y-auto p-3 xl:grid-cols-[minmax(0,1fr)_245px]" : `${tab === "opposition" ? "opposition-tactics-content " : ""}min-h-0 flex-1 overflow-y-auto p-3`}>
 
       <main className={`flex min-w-0 flex-col gap-3 ${tab === "batting" ? "min-h-full" : tab === "opposition" ? "h-full min-h-0" : ""}`}>
 

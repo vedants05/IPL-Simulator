@@ -1578,13 +1578,6 @@ export default function StaffManagementPage({ teams, mode = "club", initialStaff
           </div>
         </header>
 
-        {delegateStaffToCeo && (
-          <div className="flex shrink-0 items-center justify-between rounded-lg border border-success/40 bg-success/[0.08] px-4 py-2 font-space-mono text-[7px] font-bold uppercase tracking-wider text-success">
-            <span>CEO delegation active · Staff hiring, releases, renewals and contracts are managed automatically</span>
-            <span>Use the button above to take back control</span>
-          </div>
-        )}
-
         <div className="grid min-h-0 flex-[0.88] grid-cols-[minmax(0,2fr)_minmax(17rem,0.72fr)] gap-3">
           <section className="flex min-h-0 flex-col overflow-hidden rounded-lg border-2 border-border bg-surface">
             <div className="flex shrink-0 items-center justify-between border-b border-border px-4 py-2.5">

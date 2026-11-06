@@ -213,7 +213,7 @@ import {
   saveMatchSimulations,
   waitForPendingMatchSimulationWrites,
 } from "@/lib/logic/matchSimulationStorage";
-import { careerSnapshotStorageKey, compactCareerSnapshot, parseCareerSnapshot, readCareerSnapshot, serializeCareerSnapshot, writeCareerSnapshot } from "@/lib/logic/careerSnapshotStorage";
+import { careerSnapshotStorageKey, compactCareerSnapshot, legacyCareerSnapshotStorageKey, parseCareerSnapshot, readCareerSnapshot, serializeCareerSnapshot, writeCareerSnapshot } from "@/lib/logic/careerSnapshotStorage";
 import BallByBallSummary from "@/components/match/BallByBallSummary";
 import PlayableMatchEngine, { type PlayableMatchSession } from "@/components/match/PlayableMatchEngine";
 import {
@@ -1946,14 +1946,21 @@ function OverviewPageContent() {
         if (shortlist.length === 0 && legacyShortlist.length > 0) {
           setShortlist(legacyShortlist);
         }
-        const savedSeason = Number.isFinite(Number(parsed.season))
-          ? Number(parsed.season)
-          : Number(String(parsed.fixtures?.[0]?.date ?? "").slice(0, 4));
+        const fixtureSeason = Number(String(parsed.fixtures?.[0]?.date ?? "").slice(0, 4));
+        const savedSeason = Number.isFinite(fixtureSeason) && fixtureSeason > 0
+          ? fixtureSeason
+          : Number.isFinite(Number(parsed.season))
+            ? Number(parsed.season)
+            : NaN;
 
         // Season statistics are deliberately isolated by year. A career save
         // left behind by the previous season must never seed the new cap race.
-        if (Number.isFinite(savedSeason) && savedSeason !== currentSeason) {
+        if (
+          (Number.isFinite(savedSeason) && savedSeason !== currentSeason)
+          || (Number.isFinite(Number(parsed.season)) && Number(parsed.season) !== currentSeason)
+        ) {
           localStorage.removeItem(careerStorageKey);
+          localStorage.removeItem(legacyCareerSnapshotStorageKey(userTeamId));
           initCareer();
           setIsCareerLoaded(true);
           return;
@@ -2037,20 +2044,23 @@ function OverviewPageContent() {
           fixturesRef.current = parsed.fixtures;
           setFixtures(parsed.fixtures);
           setStandings(calculateStandings(parsed.fixtures));
+          const derivedSeasonStats = deriveIplSeasonStatsRecord(parsed.fixtures, players);
+          parsed.playerStats = derivedSeasonStats;
+          playerStatsRef.current = derivedSeasonStats;
+          setPlayerStats(derivedSeasonStats);
         } else {
           // Regenerate only the schedule so lineup, tactics and season stats in
           // an existing career survive fixture-version migrations.
           const regeneratedFixtures = generateLeagueFixtures();
           parsed.fixtures = regeneratedFixtures;
           parsed.scheduleVersion = LEAGUE_FIXTURE_SCHEDULE_VERSION;
+          parsed.playerStats = {};
           fixturesRef.current = regeneratedFixtures;
+          playerStatsRef.current = {};
           setFixtures(regeneratedFixtures);
+          setPlayerStats({});
           setStandings(calculateStandings(regeneratedFixtures));
           writeCareerSnapshot(localStorage, careerStorageKey, parsed);
-        }
-        if (parsed.playerStats) {
-          playerStatsRef.current = parsed.playerStats;
-          setPlayerStats(parsed.playerStats);
         }
         const loadedSeasonStartBattingAbilities = parsed.seasonStartBattingAbilitiesSeason === currentSeason
           && parsed.seasonStartBattingAbilities
@@ -2291,6 +2301,7 @@ function OverviewPageContent() {
   }, [userTeamId, saveId]);
 
   const saveCareerState = useCallback((updatedData: any) => {
+    if (seasonRolloverInProgressRef.current) return;
     const storageKey = careerSnapshotStorageKey(saveId, userTeamId);
     let latestSavedState = careerSaveStateRef.current ?? {};
     if (careerSaveStateRef.current === null) {
@@ -3947,7 +3958,7 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}${replacementEligible
       conditions,
       battingFormAdjustments: getRecentFormAdjustments(match).batting,
       bowlingFormAdjustments: getRecentFormAdjustments(match).bowling,
-      seasonBattingStats: playerStats,
+      seasonBattingStats: deriveIplSeasonStatsRecord(fixturesRef.current, players),
       stage: match.stage,
       isKnockout: Boolean(match.stage),
       bigMatchIntensityByTeam: qualificationImportanceForFixture(match, fixtures, standings),
@@ -4008,7 +4019,7 @@ ${getInjuryReturnLabel(injury, getSeasonFinalDate())}${replacementEligible
       conditions,
       battingFormAdjustments: getRecentFormAdjustments(match).batting,
       bowlingFormAdjustments: getRecentFormAdjustments(match).bowling,
-      seasonBattingStats: playerStats,
+      seasonBattingStats: deriveIplSeasonStatsRecord(fixturesRef.current, players),
       stage: match.stage,
       isKnockout: Boolean(match.stage),
       bigMatchIntensityByTeam: qualificationImportanceForFixture(match, fixtures, standings),
@@ -4417,6 +4428,7 @@ This record has been officially verified and added to the IPL Minor Records arch
       nextFixtures = nextFixtures.map((fixture) => (
         fixture.id === match.id ? memoryMatch : fixture
       ));
+      fixturesRef.current = nextFixtures;
       if (simulatedMatch.scorecard) {
         accumulateStats(
           simulatedMatch.scorecard,
@@ -4773,6 +4785,14 @@ This record has been officially verified and added to the IPL Minor Records arch
       ])),
       [userTeamId]: teamLeadership.viceCaptainId ?? teams[userTeamId]?.viceCaptainContinuityId ?? null,
     };
+    // The completed totals are safely archived above; live totals now belong
+    // to the new season and must start from zero before advancing the season.
+    playerStatsRef.current = {};
+    setPlayerStats({});
+    careerSaveStateRef.current = null;
+    lastCareerSaveRef.current = null;
+    localStorage.removeItem(careerSnapshotStorageKey(saveId, userTeamId));
+    localStorage.removeItem(legacyCareerSnapshotStorageKey(userTeamId));
     setSeasonTransitionStage(`Transition 7/8 · Building season ${currentSeason + 1} retention pool and lifecycle state...`);
     await yieldToBrowser();
     const advanced = await beginNextSeasonRetention(
@@ -4788,10 +4808,8 @@ This record has been officially verified and added to the IPL Minor Records arch
     }
     setSeasonTransitionStage(`Transition 8/8 · Opening season ${currentSeason + 1} retention screen...`);
     await yieldToBrowser();
-    // The completed totals are safely archived above; live totals now belong
-    // to the new season and must start from zero.
-    playerStatsRef.current = {};
-    setPlayerStats({});
+    localStorage.removeItem(careerSnapshotStorageKey(saveId, userTeamId));
+    localStorage.removeItem(legacyCareerSnapshotStorageKey(userTeamId));
     const stateAfterRollover = useGameStore.getState();
     const persistedFastForwardTarget = stateAfterRollover.careerFastForwardTargetDate;
     // A target equal to the date we just reached is complete. Older code
@@ -4816,7 +4834,8 @@ This record has been officially verified and added to the IPL Minor Records arch
         return false;
       }
       localStorage.setItem(getSeasonAccessStorageKey(userTeamId, saveId), "true");
-      localStorage.removeItem(`ipl_career_${userTeamId}`);
+      localStorage.removeItem(careerSnapshotStorageKey(saveId, userTeamId));
+      localStorage.removeItem(legacyCareerSnapshotStorageKey(userTeamId));
       stopSimulating();
       // The large Zustand save can be at the browser quota during an auction.
       // Carry the small target in both session storage and the reload URL so
@@ -6435,7 +6454,7 @@ This record has been officially verified and added to the IPL Minor Records arch
   ]);
 
   useEffect(() => {
-    if (!isCareerLoaded || !userTeam) return;
+    if (seasonRolloverInProgressRef.current || !isCareerLoaded || !userTeam) return;
     const nextInbox = reconcileCareerEmails(inbox, careerEmailDrafts);
     if (nextInbox === inbox) return;
     setInbox(nextInbox);
@@ -7472,16 +7491,16 @@ This record has been officially verified and added to the IPL Minor Records arch
                             {inboxThreads.length} conversations
                           </p>
                         </div>
-                      </div>
-                      <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
                         <button
                           type="button"
                           onClick={markAllInboxRead}
                           disabled={!visibleInbox.some((message) => message.unread)}
-                          className="whitespace-nowrap rounded border border-border bg-surface px-1.5 py-1.5 font-space-mono text-[6px] font-bold uppercase tracking-normal text-text-secondary transition-colors enabled:hover:border-accent enabled:hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-40"
+                          className="ml-auto shrink-0 whitespace-nowrap rounded border border-border bg-surface px-1.5 py-1.5 font-space-mono text-[6px] font-bold uppercase tracking-normal text-text-secondary transition-colors enabled:hover:border-accent enabled:hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-40"
                         >
                           Mark all as read
                         </button>
+                      </div>
+                      <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
                         <span className={`whitespace-nowrap rounded-full px-1.5 py-1 font-space-mono text-[6px] font-bold uppercase tracking-normal ${visibleInbox.some((message) => message.unread) ? "bg-danger text-white shadow-sm" : "bg-success/10 text-success"}`}>
                           {visibleInbox.filter((message) => message.unread).length} unread
                         </span>

@@ -14,6 +14,8 @@ export type SeasonRankingEntry = {
   highestScore: number; notOuts: number; maidens: number; wides: number; noBalls: number;
   fourWicketHauls: number; fiveWicketHauls: number;
   catches: number; stumpings: number; runOuts: number; fieldingRecorded: boolean;
+  bestFigures?: { wickets: number; runs: number }; worstFigures?: { wickets: number; runs: number };
+  fastest50?: number; fastest100?: number;
 };
 export type SeasonRankingMetric = {
   key: string; label: string; section: string; discipline: StatsDiscipline;
@@ -53,6 +55,10 @@ const batted = (e: SeasonRankingEntry) => e.totals.innings > 0;
 const bowled = (e: SeasonRankingEntry) => e.totals.bowlBalls > 0;
 const fielded = (e: SeasonRankingEntry) => e.fieldingRecorded && e.totals.matches > 0;
 SEASON_RANKING_METRICS.push(
+  extra("fastest50", "Fastest 50", "batting", e => e.fastest50 ?? null, "Fifty with complete delivery record", e => e.fastest50 !== undefined, true),
+  extra("fastest100", "Fastest 100", "batting", e => e.fastest100 ?? null, "Hundred with complete delivery record", e => e.fastest100 !== undefined, true),
+  extra("bestFigures", "Best bowling figures", "bowling", e => e.bestFigures ? e.bestFigures.wickets * 1000000 - e.bestFigures.runs : null, "1 bowling innings", e => !!e.bestFigures),
+  extra("worstFigures", "Worst bowling figures", "bowling", e => e.worstFigures ? e.worstFigures.wickets * 1000000 - e.worstFigures.runs : null, "1 bowling innings", e => !!e.worstFigures, true),
   extra("highestScore", "Highest score", "batting", e => e.highestScore, "1 batting innings", batted),
   extra("ballsFaced", "Balls faced", "batting", e => e.totals.balls, "1 batting innings", batted),
   extra("notOuts", "Not outs", "batting", e => e.notOuts, "1 batting innings", batted),
@@ -76,6 +82,7 @@ SEASON_RANKING_METRICS.push(
   extra("dismissalsPerMatch", "Fielding dismissals per match", "fielding", e => ratio(e.catches + e.stumpings + e.runOuts, e.totals.matches), "4 matches with fielding records", e => fielded(e) && e.totals.matches >= 4),
 );
 SEASON_RANKING_METRICS.find(m => m.key === "boundaryRunShare")!.unit = "%";
+for (const key of ["fastest50", "fastest100"]) { const metric = SEASON_RANKING_METRICS.find(m => m.key === key)!; metric.unit = " balls"; metric.detail = true; }
 
 function emptyEntry(id: string, name: string, teamId: string): SeasonRankingEntry {
   return { id, name, teamId, totals: emptyPlayerAnalysisTotals(), highestScore: 0, notOuts: 0, maidens: 0, wides: 0, noBalls: 0, fourWicketHauls: 0, fiveWicketHauls: 0, catches: 0, stumpings: 0, runOuts: 0, fieldingRecorded: false };
@@ -129,9 +136,31 @@ export function buildSeasonRankingEntries(fixtures: readonly PlayerAnalysisFixtu
         }
       }
       if (batTeam) teams[batTeam].highestScore = Math.max(teams[batTeam].highestScore, inning.batting.reduce((sum, p) => sum + (p.runs ?? 0), 0));
+      const detailedInning = fixture.simulation?.innings[index];
+      if (detailedInning && detailedInning.oversDetail.flatMap(over => over.deliveries).filter(ball => ball.isLegal).length === detailedInning.legalBalls) {
+        const progress: Record<string, { runs: number; balls: number }> = {};
+        for (const ball of detailedInning.oversDetail.flatMap(over => over.deliveries)) {
+          const batter = progress[ball.strikerId] ??= { runs: 0, balls: 0 };
+          if (ball.extras.wides > 0) continue;
+          const before = batter.runs;
+          batter.balls++;
+          batter.runs += ball.runsOffBat;
+          const entry = individuals[ball.strikerId] ??= emptyEntry(ball.strikerId, players[ball.strikerId]?.name ?? ball.strikerName, batTeam ?? "");
+          for (const target of [entry, ...(batTeam ? [teams[batTeam]] : [])]) {
+            if (before < 50 && batter.runs >= 50) target.fastest50 = Math.min(target.fastest50 ?? Infinity, batter.balls);
+            if (before < 100 && batter.runs >= 100) target.fastest100 = Math.min(target.fastest100 ?? Infinity, batter.balls);
+          }
+        }
+      }
       for (const p of inning.bowling) {
         const entry = individuals[p.id] ??= emptyEntry(p.id, players[p.id]?.name ?? p.id, bowlTeam ?? "");
         for (const target of [entry, ...(bowlTeam ? [teams[bowlTeam]] : [])]) {
+          if ((p.balls ?? 0) > 0 || (p.overs ?? 0) > 0) {
+            const figures = { wickets: p.wickets ?? 0, runs: p.runsConceded ?? 0 };
+            const score = (f: typeof figures) => f.wickets * 1000000 - f.runs;
+            if (!target.bestFigures || score(figures) > score(target.bestFigures)) target.bestFigures = figures;
+            if (!target.worstFigures || score(figures) < score(target.worstFigures)) target.worstFigures = figures;
+          }
           target.maidens += "maidens" in p ? Number(p.maidens ?? 0) : 0;
           target.wides += "wides" in p ? Number(p.wides ?? 0) : 0;
           target.noBalls += "noBalls" in p ? Number(p.noBalls ?? 0) : 0;

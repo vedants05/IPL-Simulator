@@ -19,6 +19,7 @@ import { Lock, Target, X } from "lucide-react";
 import { formatPrice } from "@/lib/logic/auctionRules";
 import { wasPlayerAcquiredViaRtm } from "@/lib/logic/playerHistory";
 import { getAuctionEndSquadIds } from "@/lib/logic/auctionSquadSnapshot";
+import { careerSnapshotStorageKey, legacyCareerSnapshotStorageKey } from "@/lib/logic/careerSnapshotStorage";
 import type { Player } from "@/lib/types";
 import {
   getSeasonAccessStorageKey,
@@ -1898,7 +1899,8 @@ function AuctionComplete() {
   const handleContinue = () => {
     if (!SEASON_ACCESS_ENABLED) return;
     localStorage.setItem(getSeasonAccessStorageKey(userTeamId, saveId), "true");
-    localStorage.removeItem(`ipl_career_${userTeamId}`);
+    localStorage.removeItem(careerSnapshotStorageKey(saveId, userTeamId));
+    localStorage.removeItem(legacyCareerSnapshotStorageKey(userTeamId));
     setContinued(true);
     window.dispatchEvent(new Event(SEASON_ACCESS_CHANGED_EVENT));
     router.push("/game/overview?tab=home");

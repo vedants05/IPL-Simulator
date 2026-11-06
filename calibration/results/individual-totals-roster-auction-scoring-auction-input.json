@@ -1,0 +1,92 @@
+[
+  {
+    "team": "MI",
+    "top3": 83.33333333333333,
+    "top7": 84.14285714285714,
+    "bowlTop5": 83.2,
+    "eliteBat": 3,
+    "eliteBowl": 1,
+    "order": "Ryan Rickelton 84, Rohit Sharma 83, Aiden Markram 83, Rovman Powell 81, Hardik Pandya 86, Tilak Varma 87, Shivam Dube 85, Krunal Pandya 78, Jasprit Bumrah 40, Allah Ghazanfar 28, Nehal Wadhera 78"
+  },
+  {
+    "team": "CSK",
+    "top3": 85,
+    "top7": 81.14285714285714,
+    "bowlTop5": 83.4,
+    "eliteBat": 1,
+    "eliteBowl": 2,
+    "order": "Ruturaj Gaikwad 83, Sanju Samson 89, Ayush Mhatre 83, Dewald Brevis 83, Rachin Ravindra 82, Vipraj Nigam 75, Marco Jansen 73, Rahul Chahar 40, Noor Ahmad 35, T. Natarajan 28, Suyash Sharma 25"
+  },
+  {
+    "team": "KKR",
+    "top3": 82.66666666666667,
+    "top7": 82.14285714285714,
+    "bowlTop5": 84.6,
+    "eliteBat": 2,
+    "eliteBowl": 2,
+    "order": "Finn Allen 86, Kamlesh Dalal (R) 81, Angkrish Raghuvanshi 81, Glenn Phillips 81, Rinku Singh 86, Riyan Parag 80, Suryansh Shedge 80, Harshit Rana 61, Varun Chakravarthy 35, Matheesha Pathirana 35, Fazalhaq Farooqi 35"
+  },
+  {
+    "team": "RCB",
+    "top3": 85.33333333333333,
+    "top7": 83.71428571428571,
+    "bowlTop5": 82.8,
+    "eliteBat": 3,
+    "eliteBowl": 2,
+    "order": "Virat Kohli 89, Phil Salt 87, Cooper Connolly 80, Rajat Patidar 89, Ashutosh Sharma 78, Tim David 84, Washington Sundar 79, Anukul Roy 77, Josh Hazlewood 50, Bhuvneshwar Kumar 45, Prasidh Krishna 35"
+  },
+  {
+    "team": "DC",
+    "top3": 84.66666666666667,
+    "top7": 83.42857142857143,
+    "bowlTop5": 82.4,
+    "eliteBat": 2,
+    "eliteBowl": 1,
+    "order": "KL Rahul 88, Pathum Nissanka 84, Jacob Bethell 82, Axar Patel 83, Jitesh Sharma 80, Marcus Stoinis 82, Rishabh Pant 85, Prashant Veer 73, Mitchell Starc 64, Harshal Patel 45, R. Sai Kishore 35"
+  },
+  {
+    "team": "SRH",
+    "top3": 89.33333333333333,
+    "top7": 87,
+    "bowlTop5": 80.4,
+    "eliteBat": 5,
+    "eliteBowl": 1,
+    "order": "Travis Head 89, Abhishek Sharma 91, Ishan Kishan 88, Suryakumar Yadav 85, Heinrich Klaasen 91, Nitish Kumar Reddy 82, Romario Shepherd 83, Rahul Tewatia 78, Pat Cummins 71, Sakib Hussain 28, Venkatesh Iyer 81"
+  },
+  {
+    "team": "PBKS",
+    "top3": 85,
+    "top7": 84.14285714285714,
+    "bowlTop5": 83.8,
+    "eliteBat": 4,
+    "eliteBowl": 2,
+    "order": "Prabhsimran Singh 85, Priyansh Arya 87, Cameron Green 83, Shreyas Iyer 86, Tristan Stubbs 83, Will Jacks 85, David Miller 80, Avesh Khan 55, Arshdeep Singh 35, Yuzvendra Chahal 35, Khaleel Ahmed 10"
+  },
+  {
+    "team": "RR",
+    "top3": 84.66666666666667,
+    "top7": 82.85714285714286,
+    "bowlTop5": 85.2,
+    "eliteBat": 3,
+    "eliteBowl": 2,
+    "order": "Yashasvi Jaiswal 88, Vaibhav Suryavanshi 90, Sunil Narine 76, Harry Brook 80, Dhruv Jurel 86, Ravindra Jadeja 79, Sherfane Rutherford 81, Jofra Archer 50, Tushar Deshpande 50, Sandeep Sharma 45, Ravi Bishnoi 40"
+  },
+  {
+    "team": "GT",
+    "top3": 88.33333333333333,
+    "top7": 81.71428571428571,
+    "bowlTop5": 85.8,
+    "eliteBat": 3,
+    "eliteBowl": 2,
+    "order": "Shubman Gill 90, Sai Sudharsan 88, Jos Buttler 87, Mitchell Marsh 84, Abdul Samad 76, Harsh Dubey 70, Shahrukh Khan 77, Rashid Khan 74, Kagiso Rabada 50, Mohammed Siraj 45, Mohsin Khan 35"
+  },
+  {
+    "team": "LSG",
+    "top3": 81.33333333333333,
+    "top7": 81.42857142857143,
+    "bowlTop5": 83.8,
+    "eliteBat": 2,
+    "eliteBowl": 2,
+    "order": "Josh Inglis 85, Matthew Breetzke 76, Devdutt Padikkal 83, Naman Dhir 79, Nicholas Pooran 86, Shashank Singh 84, Sam Curran 77, Deepak Chahar 55, Kuldeep Yadav 45, Mohammed Shami 35, Mayank Yadav 28"
+  }
+]

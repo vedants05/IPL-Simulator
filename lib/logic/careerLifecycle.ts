@@ -453,6 +453,20 @@ export function initializePlayerCareerState(player: Player, baselineSeason: numb
   };
 }
 
+/** Independent seeded bowling-style choices keep existing regen attributes stable. */
+function generatedBowlingSubtype(player: Pick<Player, "id" | "bowlingStyle" | "bowlingHand">): Pick<Player, "paceSpeedBand" | "spinStyle"> {
+  const random = seededRandom(`regen-bowling-subtype:${player.id}`)();
+  if (player.bowlingStyle === "Pacer") {
+    return { paceSpeedBand: random < 0.05 ? "express" : random < 0.35 ? "fast" : random < 0.80 ? "fast_medium" : "medium" };
+  }
+  if (player.bowlingStyle === "Spinner" && player.bowlingHand) {
+    return { spinStyle: player.bowlingHand === "Left-hand"
+      ? random < 0.72 ? "left_arm_orthodox" : random < 0.94 ? "left_arm_wrist_spin" : "mystery_spin"
+      : random < 0.55 ? "off_spin" : random < 0.90 ? "leg_spin" : "mystery_spin" };
+  }
+  return {};
+}
+
 export function initializeCareerPlayers(
   players: Record<string, Player>,
   baselineSeason: number,
@@ -481,8 +495,11 @@ export function initializeCareerPlayers(
           ? undefined
           : existingBowlingConsistency
       ) ?? generated.bowlingConsistency;
+      const subtype = generatedBowlingSubtype(player);
       playerWithConsistency = {
         ...player,
+        paceSpeedBand: player.paceSpeedBand ?? subtype.paceSpeedBand,
+        spinStyle: player.spinStyle ?? subtype.spinStyle,
         stamina: battingConsistency,
         battingConsistency,
         consistency: bowlingConsistency,
@@ -3463,6 +3480,7 @@ function createGeneratedPlayer(input: {
           ? "regular"
           : "does_not_bowl",
   };
+  Object.assign(player, generatedBowlingSubtype(player));
   player.potential = potentialLabel(player);
   player.careerState = {
     ...initializePlayerCareerState(player, input.season),
