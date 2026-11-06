@@ -1179,14 +1179,14 @@ export function calculateBowlingSeasonPerformance(stats: CareerSeasonPerformance
   const fourOverWorkloads = Math.max(1, ballsBowled / 24);
   const wicketsPerFourOvers = stats.wickets / fourOverWorkloads;
   const economy = stats.runsConceded / (ballsBowled / 6);
-  const volumeScore = clamp(wicketsPerMatch / 0.9, 0, 1.65);
-  const efficiencyScore = clamp(wicketsPerFourOvers, 0, 1.65);
-  const economyScore = clamp(1 + (8.5 - economy) * 0.25, 0, 1.4);
+  const volumeScore = clamp(wicketsPerMatch / 1.05, 0, 1.45);
+  const efficiencyScore = clamp(wicketsPerFourOvers / 1.15, 0, 1.45);
+  const economyScore = clamp(1 + (8.3 - economy) * 0.25, 0, 1.35);
 
   return clamp(
     volumeScore * 0.5 + efficiencyScore * 0.25 + economyScore * 0.25,
     0,
-    1.65,
+    1.45,
   );
 }
 
@@ -1517,8 +1517,8 @@ function primeFormMovement(performance: number, variation: number): number {
 }
 
 function breakoutGrowth(skill: "batting" | "bowling", production: number, _current: number): number {
-  const baseline = skill === "batting" ? 300 : 10;
-  const fullBreakoutProduction = skill === "batting" ? 800 : 35;
+  const baseline = skill === "batting" ? 300 : 16;
+  const fullBreakoutProduction = skill === "batting" ? 800 : 32;
   const progress = clamp(
     (production - baseline) / (fullBreakoutProduction - baseline),
     0,
@@ -1586,8 +1586,8 @@ function lateCareerPerformanceGrowth(
   // small gain after the separate decline and protection curves are applied.
   const maximumReward = 1.2 * ageProgress ** 0.6;
   if (maximumReward <= 0) return 0;
-  const productionStart = skill === "batting" ? 400 : 15;
-  const productionMaximum = skill === "batting" ? 700 : 30;
+  const productionStart = skill === "batting" ? 400 : 18;
+  const productionMaximum = skill === "batting" ? 700 : 29;
   const productionProgress = clamp(
     (production - productionStart) / (productionMaximum - productionStart),
     0,
@@ -3920,5 +3920,11 @@ export function createHistoricalPlayerSnapshot(
     iplStats: player.iplStats,
     t20iStats: player.t20iStats,
     iplHistory: player.iplHistory,
+    iplTitleSeasons: player.iplTitleSeasons ? [...player.iplTitleSeasons] : undefined,
+    iplRunnerUpSeasons: player.iplRunnerUpSeasons ? [...player.iplRunnerUpSeasons] : undefined,
+    iplOrangeCapSeasons: player.iplOrangeCapSeasons ? [...player.iplOrangeCapSeasons] : undefined,
+    iplPurpleCapSeasons: player.iplPurpleCapSeasons ? [...player.iplPurpleCapSeasons] : undefined,
+    iplMvpSeasons: player.iplMvpSeasons ? [...player.iplMvpSeasons] : undefined,
+    iplEmergingPlayerSeasons: player.iplEmergingPlayerSeasons ? [...player.iplEmergingPlayerSeasons] : undefined,
   };
 }

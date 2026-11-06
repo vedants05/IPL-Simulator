@@ -30,6 +30,7 @@ interface InjuryHubPageProps {
   currentDate: string;
   currentSeason: number;
   teamFinalLeagueDate?: string;
+  onOpenPlayer?: (playerId: string) => void;
   onSignReplacement?: (injuryId: string, replacementPlayerId: string) => boolean;
 }
 
@@ -59,6 +60,7 @@ export default function InjuryHubPage({
   currentSeason,
   teamFinalLeagueDate,
   onSignReplacement,
+  onOpenPlayer,
 }: InjuryHubPageProps) {
   const [view, setView] = useState<HubView>("active");
   const [category, setCategory] = useState<"all" | InjuryCategory>("all");
@@ -133,10 +135,16 @@ export default function InjuryHubPage({
     currentSeason,
   ) >= getMaxInjuryReplacementsPerTeam();
 
+  const playerNameLink = (playerId: string, name: string) => onOpenPlayer ? (
+    <button type="button" onClick={() => onOpenPlayer(playerId)}
+      className="text-left font-semibold text-text-primary hover:text-accent hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+      aria-label={`Open ${name}'s player profile`}>{name}</button>
+  ) : name;
+
   const replacementName = (injury: PlayerInjury) => {
     const record = replacementForInjury(replacementRecords, injury.id)
       ?? replacementRecords.find((candidate) => candidate.season === injury.season && candidate.injuredPlayerId === injury.playerId);
-    return record ? players[record.replacementPlayerId]?.name ?? record.replacementPlayerName ?? record.replacementPlayerId : "—";
+    return record ? playerNameLink(record.replacementPlayerId, players[record.replacementPlayerId]?.name ?? record.replacementPlayerName ?? record.replacementPlayerId) : "—";
   };
 
   return (
@@ -192,7 +200,7 @@ export default function InjuryHubPage({
               <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
                 {replacementCandidates.map((candidate) => (
                   <div key={candidate.id} className="min-w-56 border border-border bg-surface p-3">
-                    <div className="truncate font-semibold text-text-primary">{candidate.name}</div>
+                    <div className="truncate font-semibold text-text-primary">{playerNameLink(candidate.id, candidate.name)}</div>
                     <div className="mt-1 font-space-mono text-[9px] uppercase text-text-secondary">
                       {candidate.role} · CA {Math.max(candidate.currentBatting, candidate.currentBowling)} · PA {Math.max(candidate.potentialBatting, candidate.potentialBowling)}
                     </div>
@@ -282,7 +290,7 @@ export default function InjuryHubPage({
                     return (
                       <tr key={injury.id} className="hover:bg-black/[0.025] dark:hover:bg-white/[0.025]">
                         <td className="px-5 py-3">
-                          <div className="line-clamp-2 font-semibold leading-4 text-text-primary">{players[injury.playerId]?.name ?? injury.playerName}</div>
+                          <div className="line-clamp-2 font-semibold leading-4 text-text-primary">{playerNameLink(injury.playerId, players[injury.playerId]?.name ?? injury.playerName)}</div>
                           <div className="mt-0.5 whitespace-nowrap font-space-mono text-[12px] uppercase text-text-secondary">Since {displayDate(injury.startedOn)}</div>
                         </td>
                         {mode === "league" && <td className="px-3 py-3 font-space-mono font-bold text-text-secondary">{teams[activeTeamId]?.shortName ?? activeTeamId}</td>}
@@ -331,7 +339,7 @@ export default function InjuryHubPage({
                   {history.map((injury) => (
                     <tr key={`${injury.id}:${injury.endedOn}`} className="hover:bg-black/[0.025] dark:hover:bg-white/[0.025]">
                       <td className="px-5 py-3">
-                        <div className="line-clamp-2 font-semibold leading-4 text-text-primary">{injury.playerName}</div>
+                        <div className="line-clamp-2 font-semibold leading-4 text-text-primary">{playerNameLink(injury.playerId, injury.playerName)}</div>
                         <div className="mt-0.5 font-space-mono text-[12px] uppercase text-text-secondary">{injury.season} season</div>
                       </td>
                       {mode === "league" && <td className="px-3 py-3 font-space-mono font-bold text-text-secondary">{teams[injury.teamId]?.shortName ?? injury.teamId}</td>}

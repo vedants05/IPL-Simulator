@@ -108,7 +108,8 @@ export interface MatchSimulationInput {
   formAdjustments?: Record<string, number>;
   battingFormAdjustments?: Record<string, number>;
   bowlingFormAdjustments?: Record<string, number>;
-  seasonBattingStats?: Record<string, { runs: number; matches: number }>;
+  seasonBattingStats?: Record<string, { runs: number; matches: number; wickets?: number }>;
+  seasonBowlingStats?: Record<string, { wickets: number; matches: number }>;
   recentScorecards?: Array<any>;
   stage?: string;
   isKnockout?: boolean;
@@ -490,7 +491,8 @@ interface InningsContext {
   matchScoringEnvironment: number;
   battingFormAdjustments: Record<string, number>;
   bowlingFormAdjustments: Record<string, number>;
-  seasonBattingStats?: Readonly<Record<string, { runs: number; matches: number }>>;
+  seasonBattingStats?: Readonly<Record<string, { runs: number; matches: number; wickets?: number }>>;
+  seasonBowlingStats?: Readonly<Record<string, { wickets: number; matches: number }>>;
   priorBattingBalls?: Readonly<Record<string, number>>;
   allowCollapseImpact: boolean;
   seed?: string;
@@ -2743,10 +2745,11 @@ export function expectedEliteSeasonRunsPerMatch(battingRating: number): number {
 export function lowRatedBattingAdjustment(
   battingRating: number,
 ): { scoringFactor: number; wicketIncrease: number } {
-  const deficit = Math.max(0, 75 - battingRating);
+  const scoringDeficit = Math.max(0, 75 - battingRating);
+  const wicketDeficit = Math.max(0, 68 - battingRating);
   return {
-    scoringFactor: clamp(1 - deficit * 0.12, 0.45, 1),
-    wicketIncrease: clamp(deficit * 0.007, 0, 0.04),
+    scoringFactor: clamp(1 - scoringDeficit * 0.12, 0.45, 1),
+    wicketIncrease: clamp(wicketDeficit * 0.0055, 0, 0.035),
   };
 }
 
@@ -2778,6 +2781,44 @@ export function seasonBattingRegressionAdjustment(
     productionRegression + qualificationRegression + extremeTailRegression,
     0,
     10,
+  );
+  return totalRegression === 0 ? 0 : -totalRegression;
+}
+
+export function expectedEliteSeasonWicketsPerMatch(bowlingRating: number): number {
+  if (bowlingRating < 65) return 0.40;
+  if (bowlingRating < 70) return 0.65;
+  if (bowlingRating < 75) return 0.95;
+  if (bowlingRating < 78) return 1.25;
+  if (bowlingRating < 82) return 1.50;
+  if (bowlingRating < 86) return 1.70;
+  if (bowlingRating < 90) return 1.90;
+  return 2.10;
+}
+
+export function seasonBowlingRegressionAdjustment(
+  bowlingRating: number,
+  stats?: { wickets: number; matches: number },
+): number {
+  if (!stats || stats.matches < 4) return 0;
+  const wicketsPerMatch = stats.wickets / Math.max(1, stats.matches);
+  const excess = wicketsPerMatch - expectedEliteSeasonWicketsPerMatch(bowlingRating);
+  const productionRegression = excess > 0
+    ? clamp(
+        excess * (bowlingRating < 75 ? 2.5 : 1.2),
+        0,
+        bowlingRating < 75 ? 5 : 2.5,
+      )
+    : 0;
+  const requiredRating = stats.wickets < 18
+    ? 0
+    : clamp(74 + (stats.wickets - 18) * 1.15, 74, 93);
+  const qualificationRegression = Math.max(0, requiredRating - bowlingRating) * 0.65;
+  const extremeTailRegression = Math.max(0, stats.wickets - 26) * 0.35;
+  const totalRegression = clamp(
+    productionRegression + qualificationRegression + extremeTailRegression,
+    0,
+    8,
   );
   return totalRegression === 0 ? 0 : -totalRegression;
 }
@@ -2817,8 +2858,9 @@ export function lowerRatedBowlingHaulMultiplier(
 ): number {
   if (creditedWickets < 4) return 1;
   const fullHaulCredibility = clamp((bowlingRating - 72) / 16, 0, 1);
-  const lowAbilityMultiplier = creditedWickets === 4 ? 0.62 : 0.48;
-  return lowAbilityMultiplier + (1 - lowAbilityMultiplier) * fullHaulCredibility;
+  const lowAbilityMultiplier = creditedWickets === 4 ? 0.12 : 0.05;
+  const eliteMultiplier = creditedWickets === 4 ? 0.25 : 0.10;
+  return lowAbilityMultiplier + (eliteMultiplier - lowAbilityMultiplier) * fullHaulCredibility;
 }
 
 function isPartTimeKeeper(player: Player | undefined): boolean {
@@ -3094,8 +3136,9 @@ function createPlayerLuck(
   formAdjustments: Record<string, number>,
   rng: SimulationRandom,
   discipline: "batting" | "bowling",
-  seasonBattingStats?: Readonly<Record<string, { runs: number; matches: number }>>,
+  seasonBattingStats?: Readonly<Record<string, { runs: number; matches: number; wickets?: number }>>,
   seed?: string,
+  seasonBowlingStats?: Readonly<Record<string, { wickets: number; matches: number }>>,
 ): Map<string, number> {
   const adjustedSeasonalForm = capSeasonalFormAverages(playerIds, playerGroups, seed, discipline);
   return new Map(playerIds.map((playerId) => {
@@ -3103,9 +3146,9 @@ function createPlayerLuck(
     if (!player) return [playerId, 0];
     const ageConsistency = player.age >= 25 && player.age <= 33 ? 0.85 : 1.15;
     
-    // Economy has its own season-long form below. Keep bowling ability's
-    // temporary adjustment focused on recent form and match luck.
-    const seasonalForm = discipline === "bowling" ? 0 : adjustedSeasonalForm.get(playerId) ?? 0;
+    // Seasonal form applies with zero mean; scaled slightly for bowling so economy form coexists cleanly.
+    const rawSeasonalForm = adjustedSeasonalForm.get(playerId) ?? 0;
+    const seasonalForm = discipline === "bowling" ? rawSeasonalForm * 0.65 : rawSeasonalForm;
     const baseRating = discipline === "batting" ? player.currentBatting : player.currentBowling;
     const recentForm = formAdjustments[playerId] ?? 0;
     const positivePersistence = player.age <= 33
@@ -3126,7 +3169,10 @@ function createPlayerLuck(
       : Math.max(-6, sustainedForm);
     const seasonRegression = discipline === "batting"
       ? seasonBattingRegressionAdjustment(baseRating, seasonBattingStats?.[playerId])
-      : 0;
+      : seasonBowlingRegressionAdjustment(
+          baseRating,
+          seasonBowlingStats?.[playerId] ?? (seasonBattingStats?.[playerId] as any),
+        );
 
     // Ratings should remain the strongest match-level signal. Luck supplies
     // believable variation without routinely erasing several rating points.
@@ -3919,6 +3965,7 @@ function simulateInnings(context: InningsContext): MatchInnings {
     "bowling",
     undefined,
     context.seed,
+    context.seasonBowlingStats ?? (context.seasonBattingStats as any),
   );
   const seasonEconomy = new Map(allParticipantIds.map(id => [id, seasonalEconomyMultiplier(
     id, context.seed, players[id]?.bowlingConsistency ?? players[id]?.consistency ?? 50,
@@ -5504,6 +5551,7 @@ function simulateMatchToCompletion(
     battingFormAdjustments: activeBattingFormAdjustments,
     bowlingFormAdjustments: activeBowlingFormAdjustments,
     seasonBattingStats: input.seasonBattingStats,
+    seasonBowlingStats: input.seasonBowlingStats ?? (input.seasonBattingStats as any),
     allowCollapseImpact: battingFirstTeam.id !== userTeamId,
     seed: input.seed,
     stage: input.stage,
@@ -5595,6 +5643,7 @@ function simulateMatchToCompletion(
     battingFormAdjustments: activeBattingFormAdjustments,
     bowlingFormAdjustments: activeBowlingFormAdjustments,
     seasonBattingStats: input.seasonBattingStats,
+    seasonBowlingStats: input.seasonBowlingStats ?? (input.seasonBattingStats as any),
     priorBattingBalls: Object.fromEntries(
       firstInnings.batting.map((entry) => [entry.id, entry.balls]),
     ),

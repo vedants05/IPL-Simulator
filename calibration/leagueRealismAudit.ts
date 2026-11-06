@@ -77,11 +77,13 @@ async function main() {
   for (let run = 1; run <= count; run++) {
     const year = Number(process.env.AUDIT_YEAR ?? 2027), iterationSeed = `${runSeed}:audit:${run}`;
     const seasonStats: Record<string, {runs: number; matches: number}> = {};
+    const seasonBowlingStats: Record<string, {wickets: number; matches: number}> = {};
     const batting: Record<string, any> = {}, bowling: Record<string, any> = {};
     const inningsRows: any[] = [], errors: string[] = [], dismissals: Record<string, number> = {};
     const diagnostics = { bowlingPhase: {} as Record<string, any>, battingInnings: [] as any[], venue: {} as Record<string, any> };
     const standings = Object.fromEntries(teams.map(t => [t.id, {points:0,wins:0,diff:0}]));
     let balls=0,runs=0,fours=0,sixes=0,dots=0,legal=0,extras=0,wickets=0,fifties=0,hundreds=0,maidens=0;
+    const wicketHauls: Record<string, number> = {};
     const phase: Record<string, any> = {powerplay:{runs:0,balls:0,wickets:0},middle:{runs:0,balls:0,wickets:0},death:{runs:0,balls:0,wickets:0}};
     const play = (fixture: any, stage?: string) => {
       const stadium = getHomeStadium(fixture.teamA)!;
@@ -113,6 +115,7 @@ async function main() {
           chasingScoringBonus: 0,
         },
         seasonBattingStats: seasonStats,
+        seasonBowlingStats,
       };
       const instant = simulateInstantMatch(input);
       const result = mode === "playable"
@@ -145,6 +148,9 @@ async function main() {
           if(b.dismissalKind)dismissals[b.dismissalKind]=(dismissals[b.dismissalKind]??0)+1;
         }
         for(const b of inn.bowling){
+          wicketHauls[b.wickets] = (wicketHauls[b.wickets] ?? 0) + 1;
+          const seasonBowling = seasonBowlingStats[b.id] ??= { wickets: 0, matches: 0 };
+          seasonBowling.wickets += b.wickets; seasonBowling.matches++;
           const a=bowling[b.id]??={id:b.id,name:b.name,team:inn.bowlingTeamId,ability:playerById[b.id]?.currentBowling,balls:0,runs:0,wickets:0,innings:0,maidens:0,dots:0};
           a.balls+=b.balls;a.runs+=b.runsConceded;a.wickets+=b.wickets;a.innings++;a.maidens+=b.maidens;maidens+=b.maidens;
         }
@@ -185,7 +191,7 @@ async function main() {
       { label: "80–89", min: 80, max: 89.999 }, { label: "90+", min: 90, max: 1000 },
     ], "ability");
     const summary={run,matches:74,firstInningsAverage:first.reduce((s,i)=>s+i.runs,0)/first.length,overallRR:runs*6/legal,batSR:(runs-extras)*100/balls,dotPct:dots*100/legal,fours,sixes,fifties,hundreds,maidens,extrasPerInnings:extras/148,wicketsPerInnings:wickets/148,first200:first.filter(i=>i.runs>=200).length,first250:first.filter(i=>i.runs>=250).length,firstUnder150:first.filter(i=>i.runs<150).length,allOuts:inningsRows.filter(i=>i.wickets===10).length,bestEconomy:w.filter(a=>a.balls>=180).sort((a,b)=>a.econ-b.econ).slice(0,5),topRuns:[...b].sort((a,b)=>b.runs-a.runs).slice(0,5),topWickets:[...w].sort((a,b)=>b.wickets-a.wickets).slice(0,5),qualifiedSR:b.filter(a=>a.balls>=200).map(a=>a.sr).sort((a,b)=>a-b),phase,dismissals,errors:errors.length,battingByAggression,bowlingByAbility};
-    seasons.push({summary,batting:b,bowling:w,innings:inningsRows,errors,...(detailed ? {diagnostics} : {})});
+    seasons.push({summary,wicketHauls,batting:b,bowling:w,innings:inningsRows,errors,...(detailed ? {diagnostics} : {})});
     console.log(JSON.stringify({variant,mode,run,rr:summary.overallRR,bestEcon:summary.bestEconomy[0]?.econ,first:summary.firstInningsAverage,wickets:summary.wicketsPerInnings,maidens:summary.maidens}));
     mkdirSync(dirname(outputPath),{recursive:true});
     writeFileSync(outputPath,JSON.stringify({seed:runSeed,count,completedSeasons:seasons.length,variant,mode,inputHash,snapshotPath,method:"Fixed input snapshot and AI XIs; Balanced tactics; default home venues; 70 league + 4 playoffs; no career progression. Playable mode uses automatic choices with the same toss decision as instant mode.",seasons},null,2));

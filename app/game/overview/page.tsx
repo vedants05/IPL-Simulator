@@ -3578,7 +3578,8 @@ function OverviewPageContent() {
         innings.bowling.forEach((entry) => {
           if (entry.balls === 0) return;
           const economy = entry.runsConceded / (entry.balls / 6);
-          matchBowling.set(entry.id, Math.min(5, Math.max(-5, entry.wickets * 1.3 + (8 - economy) * 0.4)));
+          const bowlingForm = (entry.wickets - 0.85) * 1.15 + (8.3 - economy) * 0.35;
+          matchBowling.set(entry.id, Math.min(5, Math.max(-5, bowlingForm)));
         });
       });
       Object.values(fixture.simulation?.lineups ?? {}).forEach((lineup) => {
@@ -9085,6 +9086,7 @@ This record has been officially verified and added to the IPL Minor Records arch
 
               {activeSubTab === "injuryhub" && (
                 <InjuryHubPage
+                  onOpenPlayer={setDetailedPlayerId}
                   mode="club"
                   userTeamId={userTeamId}
                   activeInjuries={activeInjuries}
@@ -10507,6 +10509,7 @@ This record has been officially verified and added to the IPL Minor Records arch
               })()}
               {activeSubTab === "injuries" && (
                 <InjuryHubPage
+                  onOpenPlayer={setDetailedPlayerId}
                   mode="league"
                   userTeamId={userTeamId}
                   activeInjuries={activeInjuries}

@@ -6,11 +6,11 @@ type HonourField = typeof honourFields[number];
 type HonoursPlayer = Pick<Player, "name" | "iplHistory" | HonourField>;
 
 /** Merge database honours with completed results belonging to this save. */
-export function playerHonours(player: HonoursPlayer, history: readonly LeagueHistorySeason[]): Record<HonourField, number[]> {
+export function playerHonours(player: HonoursPlayer, history: readonly LeagueHistorySeason[], includeHistorical = false): Record<HonourField, number[]> {
   const honours = Object.fromEntries(honourFields.map(field => [field, new Set(player[field] ?? [])])) as Record<HonourField, Set<number>>;
   const normalizedName = player.name.trim().toLocaleLowerCase();
   for (const season of history) {
-    if (season.source !== "career") continue;
+    if (season.source !== "career" && !includeHistorical) continue;
     const contracts = player.iplHistory.filter(entry => Number(entry.season) === season.season && entry.teamId !== "UNSOLD");
     if (contracts.some(entry => entry.teamId === season.championTeamId)) honours.iplTitleSeasons.add(season.season);
     if (contracts.some(entry => entry.teamId === season.runnerUpTeamId)) honours.iplRunnerUpSeasons.add(season.season);

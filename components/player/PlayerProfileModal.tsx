@@ -24,6 +24,7 @@ import { PlayerCompetitionTile } from "@/components/player/PlayerCompetitionTile
 import { isT20IRetiredOn, t20iRetirementDescription } from "@/lib/logic/internationalRetirements";
 import { getInternationalCareerStatus, type SelectionPerformance } from "@/lib/logic/internationalCareerStatus";
 import { getPlayerCareerStage } from "@/lib/logic/playerCareerStage";
+import { HISTORICAL_LEAGUE_HISTORY } from "@/lib/data/leagueHistory";
 import { playerHonours } from "@/lib/logic/playerHonours";
 import type { InternationalCareerState } from "@/lib/logic/international";
 import {
@@ -336,7 +337,7 @@ export function PlayerProfileModal({
 
   useEffect(() => {
     const viewport = infoViewportRef.current;
-    if (!viewport || retiredSnapshot || profileTab !== "info") return;
+    if (!viewport || retiredSnapshot) return;
     const updateScale = () => {
       if (!viewport.clientWidth || !viewport.clientHeight) return;
       const usableWidth = Math.max(1, viewport.clientWidth - 8);
@@ -371,8 +372,8 @@ export function PlayerProfileModal({
     ? activePlayer ?? (retiredSnapshot ? retiredSnapshotPlayer(retiredSnapshot) : null)
     : null;
   const detailedPlayer = useMemo(() => profilePlayer
-    ? { ...profilePlayer, ...playerHonours(profilePlayer, simulatedLeagueHistory) }
-    : null, [profilePlayer, simulatedLeagueHistory]);
+    ? { ...profilePlayer, ...playerHonours(profilePlayer, retiredSnapshot ? [...HISTORICAL_LEAGUE_HISTORY, ...simulatedLeagueHistory] : simulatedLeagueHistory, Boolean(retiredSnapshot)) }
+    : null, [profilePlayer, simulatedLeagueHistory, retiredSnapshot]);
   const savedRelationships: PlayerPersonnelRelationship[] = detailedPlayer
     ? relationshipsForPerson(careerRelationships, players, careerStaff, { kind: "player", id: detailedPlayer.id, name: detailedPlayer.name }).map(({ record, partner }, index) => ({
       dynamic_id: index,
@@ -1088,10 +1089,10 @@ export function PlayerProfileModal({
 
         {/* Content Body */}
         <div className="min-h-0 flex-1 overflow-x-auto overflow-y-hidden bg-surface p-3">
-          <div className={`grid h-full min-h-0 grid-cols-[minmax(0,2.8fr)_minmax(300px,0.95fr)] grid-rows-[minmax(0,1fr)] gap-2.5 ${isRetired ? "min-w-[1300px]" : profileTab === "info" ? "min-w-[1050px]" : "min-w-[900px]"}`}>
+          <div className={`grid h-full min-h-0 grid-cols-[minmax(0,2.8fr)_minmax(300px,0.95fr)] grid-rows-[minmax(0,1fr)] gap-2.5 ${isRetired ? "min-w-[1300px]" : "min-w-[1050px]"}`}>
             <div ref={infoViewportRef} className={`relative min-h-0 ${!isRetired && profileTab === "info" ? "overflow-hidden" : "overflow-y-auto overscroll-contain pr-1"}`}>
-              {!isRetired && profileTab === "stats" && <span aria-hidden="true" className="pointer-events-none absolute right-1 top-0 z-[1] h-[34px] w-[112px] rounded-bl-lg border-b border-l border-border bg-surface" />}
-              {!isRetired && <div className={`absolute top-1 z-10 flex rounded border border-border bg-surface/95 p-0.5 shadow-sm ${profileTab === "info" ? "right-0" : "right-3"}`} style={{ width: profileTab === "info" ? 212 * infoLayout.scale : 112 }} role="tablist" aria-label="Player profile view">
+              {!isRetired && profileTab === "stats" && <span aria-hidden="true" className="pointer-events-none absolute top-0 z-[1] h-[34px] rounded-bl-lg border-b border-l border-border bg-surface" style={{ left: (infoLayout.width - 212) * infoLayout.scale - 4, width: 212 * infoLayout.scale + 8 }} />}
+              {!isRetired && <div className="absolute top-1 z-10 flex rounded border border-border bg-surface/95 p-0.5 shadow-sm" style={{ width: 212 * infoLayout.scale, left: (infoLayout.width - 212) * infoLayout.scale }} role="tablist" aria-label="Player profile view">
                 {(["info", "stats"] as const).map((tab) => (
                   <button key={tab} type="button" role="tab" aria-selected={profileTab === tab}
                     onClick={() => setProfileTab(tab)}
@@ -1363,7 +1364,7 @@ export function PlayerProfileModal({
             {/* Current Season Stats */}
             {!isRetired && seasonStats && (
               <section className="self-start rounded border border-border bg-bg p-2.5">
-                <div className="mb-1.5 flex items-center border-b border-border pb-1">
+                <div className="mb-1.5 flex min-h-[26px] items-center border-b border-border pb-1" style={{ paddingRight: 212 * infoLayout.scale + 8 }}>
                   <h4 className="font-space-mono text-[10px] font-bold uppercase text-text-primary">Current Season Stats ('{rosterSeason.slice(-2)})</h4>
                 </div>
 
