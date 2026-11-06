@@ -345,6 +345,7 @@ export function ScoutNotesTile({ player }: { player: Player }) {
   const noteAreaRef = useRef<HTMLDivElement>(null);
   const noteTextRef = useRef<HTMLParagraphElement>(null);
   const [noteFontSize, setNoteFontSize] = useState(13);
+  const [notesOverflow, setNotesOverflow] = useState(false);
   const bats = player.role === "Batsman" || player.role === "WK-Batsman" || player.role === "All-Rounder";
   const bowls = player.role === "Pace Bowler" || player.role === "Spin Bowler" || player.role === "All-Rounder";
   const battingPhases = [player.powerplayBatting, player.middleOversBatting, player.deathBatting];
@@ -358,20 +359,22 @@ export function ScoutNotesTile({ player }: { player: Player }) {
   useEffect(() => {
     const area = noteAreaRef.current;
     const paragraph = noteTextRef.current;
-    if (!area || !paragraph) return;
+    if (!area || !paragraph) { setNotesOverflow(false); return; }
     const fit = () => {
-      if (area.clientHeight < 32 || area.clientWidth < 32) return;
+      if (!area.isConnected || area.clientHeight < 32 || area.clientWidth < 32) return;
       paragraph.style.fontSize = "13px";
       let size = 13;
-      while (size > 11.5 && paragraph.scrollHeight > area.clientHeight + 1) {
+      while (size > 11.5 && paragraph.scrollHeight > area.clientHeight - 2) {
         size = Math.max(11.5, Math.round((size - 0.1) * 10) / 10);
         paragraph.style.fontSize = `${size}px`;
       }
       setNoteFontSize(size);
+      setNotesOverflow(paragraph.scrollHeight > area.clientHeight);
     };
     fit();
     const observer = new ResizeObserver(fit);
     observer.observe(area);
+    void document.fonts.ready.then(fit);
     return () => observer.disconnect();
   }, [paragraphText]);
 
@@ -396,7 +399,7 @@ export function ScoutNotesTile({ player }: { player: Player }) {
       <div className="mb-1 flex shrink-0 items-center justify-between gap-1">
         <div className="font-space-mono text-[8px] uppercase tracking-wider text-text-secondary">Additional notes</div>
       </div>
-      <div ref={noteAreaRef} className="min-h-0 flex-1 overflow-y-auto">
+      <div ref={noteAreaRef} className="min-h-0 flex-1" style={{ overflowY: notesOverflow ? "auto" : "hidden" }}>
       {sentences.length > 0
         ? <p ref={noteTextRef} className="font-space-mono font-bold leading-[1.2] text-text-primary" style={{ fontSize: noteFontSize }}>{sentences.map((sentence) => <span key={sentence.topic}>{sentence.text} </span>)}</p>
         : <p className="font-space-mono text-[9px] leading-snug text-text-secondary">No pronounced secondary tendency stands out.</p>}

@@ -340,9 +340,13 @@ export function PlayerProfileModal({
     const updateScale = () => {
       if (!viewport.clientWidth || !viewport.clientHeight) return;
       const usableWidth = Math.max(1, viewport.clientWidth - 8);
-      const scale = Math.min(1, viewport.clientHeight / 686, usableWidth / 952);
-      const width = usableWidth / scale;
-      const height = viewport.clientHeight / scale;
+      // Keep the transformed canvas inside the viewport, including fractional
+      // pixel rounding at browser zoom levels. Its last border must not land
+      // directly on the overflow clip edge.
+      const usableHeight = Math.max(1, viewport.clientHeight - 8);
+      const scale = Math.min(1, usableHeight / 686, usableWidth / 952);
+      const width = Math.floor(usableWidth / scale);
+      const height = Math.floor(usableHeight / scale);
       setInfoLayout((previous) => previous.scale === scale && previous.width === width && previous.height === height
         ? previous : { scale, width, height });
     };
@@ -1275,7 +1279,7 @@ export function PlayerProfileModal({
             )}
 
             {!isRetired && profileTab === "info" && (
-              <div className="col-start-1 row-start-3 flex h-full min-h-0 items-start overflow-hidden">
+              <div className="col-start-1 row-start-3 flex h-full min-h-0 items-start overflow-hidden" style={{ width: "calc(100% + 88px)" }}>
               <section className="flex h-full min-h-0 w-[260px] shrink-0 flex-col overflow-hidden rounded border border-border bg-bg p-2.5">
                 <h4 className="mb-2 shrink-0 border-b border-border pb-1 font-space-mono text-[10px] font-bold uppercase text-text-primary">Personnel Relationships</h4>
                 {profileRelationships.length === 0 && <p className="font-space-mono text-[9px] text-text-secondary">No personnel relationships recorded.</p>}
@@ -1324,7 +1328,7 @@ export function PlayerProfileModal({
                   </div>
                 )}
               </section>
-              <div className="ml-2 flex h-full min-h-0 w-[300px] shrink-0 items-start">
+              <div className="ml-2 flex h-full min-h-0 min-w-0 flex-1 items-start">
                 <AuctionValueTile player={detailedPlayer} players={players} teams={teams} auction={auction} />
               </div>
               </div>

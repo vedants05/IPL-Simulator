@@ -3052,16 +3052,11 @@ export function getSeasonalPlayerForm(
   // Match seeds are `${season}:${save-specific fixture seed}:${fixture}`.
   // Keeping the first two components makes form stable within one season and
   // different across separate careers.
-  const seasonAndSaveKey = seed.split(":").slice(0, 2).join(":");
-  const hashStr = `${seasonAndSaveKey}:${playerId}:${discipline}:season_form_v4`;
-  let hash = 0;
-  for (let index = 0; index < hashStr.length; index += 1) {
-    hash = (hash << 5) - hash + hashStr.charCodeAt(index);
-    hash |= 0;
-  }
-  const u1 = Math.max(0.0001, (Math.abs(hash) % 10000) / 10000);
-  const u2 = Math.max(0.0001, (Math.abs(hash >> 3) % 10000) / 10000);
-  const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+  const [seasonKey = "", saveKey = ""] = seed.split(":");
+  const rng = new SimulationRandom(
+    `season_form_v5:${playerId}:${discipline}:${saveKey}:${seasonKey}`,
+  );
+  const z = rng.gaussian();
   // Season-long form should provide background variation, not outweigh the
   // stronger short-term recent-form adjustment or conceal a rating decline.
   return clamp(z * 1.15, -3, 3);
