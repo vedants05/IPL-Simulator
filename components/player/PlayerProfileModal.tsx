@@ -18,6 +18,7 @@ import { evaluateCareerHallOfFame } from "@/lib/logic/hallOfFame";
 import { getClubFigures, type ClubFigureTier } from "@/lib/data/clubFigures";
 import { RecentInjuriesTile } from "@/components/player/RecentInjuriesTile";
 import { SeasonMatchesTile } from "@/components/player/SeasonMatchesTile";
+import { developerPlayerRatings, useDeveloperToolsEnabled } from "@/lib/logic/developerTools";
 import { ScoutNotesTile } from "@/components/player/ScoutNotesTile";
 import { AuctionValueTile } from "@/components/player/AuctionValueTile";
 import { PlayerCompetitionTile } from "@/components/player/PlayerCompetitionTile";
@@ -137,6 +138,7 @@ export interface ProfileModalMatch {
   teamA?: string;
   teamB?: string;
   simulation?: {
+    playerOfTheMatchId?: string;
     lineups?: Record<string, { startingXI?: string[]; finalXI?: string[]; impactSubs?: string[] }>;
     impactDecisions?: Array<{ teamId: string; used: boolean; incomingPlayerId?: string }>;
     innings?: Array<{
@@ -268,6 +270,7 @@ export function PlayerProfileModal({
   isShortlisted: propsIsShortlisted,
   onToggleShortlist,
 }: PlayerProfileModalProps) {
+  const developerToolsEnabled = useDeveloperToolsEnabled();
   const [profileTab, setProfileTab] = useState<"info" | "stats">("info");
   const infoViewportRef = useRef<HTMLDivElement>(null);
   const [infoLayout, setInfoLayout] = useState({ scale: 1, width: 952, height: 686 });
@@ -913,7 +916,7 @@ export function PlayerProfileModal({
               })()}
             </div>
             <div className="flex min-w-0 items-center gap-x-3 overflow-x-auto py-1">
-              <h3 className="min-w-0 shrink truncate font-anton text-[32px] uppercase leading-none text-text-primary sm:text-[38px]" title={detailedPlayer.name}>{detailedPlayer.name}</h3>
+              <h3 className="min-w-0 shrink truncate font-anton text-[32px] uppercase leading-none text-text-primary sm:text-[38px]" title={developerToolsEnabled ? undefined : detailedPlayer.name} data-developer-tooltip={developerToolsEnabled ? developerPlayerRatings(detailedPlayer) : undefined} tabIndex={developerToolsEnabled ? 0 : undefined}>{detailedPlayer.name}</h3>
               <div className="grid min-h-10 shrink-0 grid-rows-2 self-center font-space-mono text-[12px] font-bold uppercase leading-none tracking-wider text-text-secondary sm:text-[13px]">
                 <span className="flex items-center gap-2 whitespace-nowrap">
                   {nationalityLabel}{detailedPlayer.state?.trim() ? ` (${detailedPlayer.state.trim()})` : ""}
@@ -932,7 +935,7 @@ export function PlayerProfileModal({
                     {detailedPlayer.isCapped ? "Capped" : "Uncapped"}
                   </span>
                 </span>
-                <span className="flex items-baseline gap-2 whitespace-nowrap">
+                <span className="flex h-[17px] items-baseline self-end gap-2 whitespace-nowrap pb-1">
                   <span>Age {detailedPlayer.age} · {formatDateOfBirth(detailedPlayer.dateOfBirth)}</span>
                   {detailedPlayer.isCapped && detailedPlayer.internationalDebutDate
                     && detailedPlayer.internationalDebutDate <= currentDate && (
@@ -1009,7 +1012,18 @@ export function PlayerProfileModal({
                   ...(doesNotBowl
                     ? [] : [["BOWL", detailedPlayer.currentBowling, detailedPlayer.potentialBowling]]),
                 ].map(([label, current, potential]) => (
-                  <div key={label} className="flex min-w-0 flex-1 flex-col justify-between border-r border-border/50 px-3 pt-2 pb-0.5 last:border-r-0" aria-label={`${label} current ability ${current}, potential ability ${potential}`}>
+                  <div key={label} className="relative flex min-w-0 flex-1 flex-col justify-between border-r border-border/50 px-3 pt-2 pb-0.5 last:border-r-0" aria-label={`${label} current ability ${current}, potential ability ${potential}`}>
+                    {developerToolsEnabled && (() => {
+                      const skill = label === "BAT" ? "batting" : "bowling";
+                      const history = [...(detailedPlayer.careerState?.ratingHistory ?? [])].sort((a, b) => a.season - b.season);
+                      const latest = history.at(-1);
+                      const previous = latest && Number(current) !== latest[skill] ? latest : history.at(-2);
+                      const change = previous ? Number(current) - previous[skill] : null;
+                      const bank = skill === "batting" ? detailedPlayer.careerState?.battingDevelopmentBank : detailedPlayer.careerState?.bowlingDevelopmentBank;
+                      const symbol = change == null ? "?" : change > 0 ? "↑" : change < 0 ? "↓" : "→";
+                      const description = change == null ? "No earlier rating available" : `Since ${previous!.season}: ${change > 0 ? "+" : ""}${change} CA (${previous![skill]} → ${current})`;
+                      return <button type="button" aria-label={`${label} development: ${description}`} data-developer-tooltip={`${label} development\n${description}\nCurrent ability: ${current} · Potential: ${potential}\nDevelopment bank: ${bank == null ? "Not available" : bank.toFixed(2)}\nPast changes and the bank do not guarantee the next change.`} className="absolute right-1 top-1 z-10 flex h-4 w-4 items-center justify-center rounded border border-accent bg-surface font-space-mono text-[10px] font-bold leading-none text-accent">{symbol}</button>;
+                    })()}
                     <div className="flex items-start gap-1.5">
                       <span className="font-anton text-[48px] leading-none text-text-primary">
                         {current}{frozenMark(label === "BAT" ? "currentBatting" : "currentBowling")}

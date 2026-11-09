@@ -65,6 +65,7 @@ export function SeasonMatchesTile({ player, teamId, season, fixtures, teams }: S
             {status}
             {status === "Injured" && <span className="flex h-3 w-3 shrink-0 items-center justify-center rounded-sm bg-red-600 text-[10px] font-bold leading-none text-white" aria-label="Medical injury">+</span>}
           </span>
+          {match.played && match.simulation?.playerOfTheMatchId === player.id && <span className="shrink-0 font-bold text-accent" title="Player of the Match" aria-label="Player of the Match">POTM</span>}
           {hasPlayed && <span className="flex w-[164px] shrink-0 items-center justify-between gap-4 border-l border-border pl-1 font-bold text-text-primary">
             <span className="w-[54px] whitespace-nowrap text-right">{played ? battingText : ""}</span>
             {showBowling && <span className="w-[84px] whitespace-nowrap text-right text-sky-500">{played ? bowlingText : ""}</span>}

@@ -1,6 +1,7 @@
 import type { Player } from "@/lib/types";
 
 import { buildAiMatchLineups, type AiLineupOptions } from "./aiLineupSelector";
+import { worldRules } from "./worldRules";
 import {
   buildRecommendedImpactSubs,
   type LineupCandidate,
@@ -66,6 +67,10 @@ export function buildAutomaticLineupSelection(
     candidates,
     "bowlingFirst",
   );
+  if (!worldRules().impactPlayerEnabled) {
+    batFirstBench.length = 0;
+    bowlFirstBench.length = 0;
+  }
   if (bowlFirstPrimarySubId) {
     const filtered = bowlFirstBench.filter((id) => id !== bowlFirstPrimarySubId);
     bowlFirstBench.splice(0, bowlFirstBench.length, bowlFirstPrimarySubId, ...filtered.slice(0, 4));

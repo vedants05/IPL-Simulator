@@ -16,7 +16,7 @@ import {
 
 import { HISTORICAL_LEAGUE_HISTORY } from "@/lib/data/leagueHistory";
 import { getClubFigures, type ClubFigureTier } from "@/lib/data/clubFigures";
-import { getHomeStadium } from "@/lib/data/pitchCurator";
+import { getCuratorPitch, getDefaultCuratorPitch, getHomeStadium } from "@/lib/data/pitchCurator";
 import { getTeamAuctionDescriptor } from "@/lib/constants/auctionDescriptors";
 import { formatPrice } from "@/lib/logic/auctionRules";
 import type { AiLineupPlan } from "@/lib/logic/aiLineupSelector";
@@ -29,6 +29,12 @@ import { deriveIplSeasonRosterStats } from "@/lib/logic/iplSeasonRosterStats";
 import { careerSnapshotStorageKey, parseCareerSnapshot, readCareerSnapshot, writeCareerSnapshot } from "@/lib/logic/careerSnapshotStorage";
 import { cacheTeamProfileCareer, getCachedTeamProfileCareer } from "@/lib/logic/teamProfileCareerCache";
 import { useGameStore } from "@/lib/store/gameStore";
+import { isPlayerMajorInjured } from "@/lib/logic/injuries";
+import { buildAutomaticLineupSelection } from "@/lib/logic/automaticLineupBuilder";
+import { tuneAiLineupForPitch } from "@/lib/logic/aiPitchLineup";
+import { worldRules } from "@/lib/logic/worldRules";
+import { selectPreferredKeeper } from "@/lib/logic/wicketkeeping";
+import { projectBatFirstImpact } from "@/lib/logic/battingImpactPlan";
 import type { Player, Team } from "@/lib/types";
 import TeamProfileLoading from "@/components/team/TeamProfileLoading";
 
@@ -100,6 +106,7 @@ interface TeamProfileFixture {
   teamA: string;
   teamB: string;
   played: boolean;
+  stage?: string;
   winner?: string;
   date?: string;
   time?: string;
@@ -275,10 +282,11 @@ function LineupColumn({
   const starters = plan.startingXI
     .map((playerId) => players[playerId])
     .filter((player): player is Player => Boolean(player));
+  const projectedKeeper = selectPreferredKeeper(starters);
   const startersOverseasCount = starters.filter((p) => p.nationality === "Overseas").length;
   const isImpactPlayerWithinOverseasLimit = (candidate: Player) => {
     if (candidate.nationality !== "Overseas") return true;
-    return startersOverseasCount < 4;
+    return startersOverseasCount < worldRules().maxOverseasInXI;
   };
 
   const startersSet = new Set(plan.startingXI);
@@ -286,10 +294,10 @@ function LineupColumn({
     .filter((player) => !startersSet.has(player.id) && isImpactPlayerWithinOverseasLimit(player));
 
   const rawImpactPlayer = plan.impactPlayerId ? players[plan.impactPlayerId] : undefined;
-  let effectiveImpactPlayer = (rawImpactPlayer && isImpactPlayerWithinOverseasLimit(rawImpactPlayer))
+  let effectiveImpactPlayer = (worldRules().impactPlayerEnabled && rawImpactPlayer && isImpactPlayerWithinOverseasLimit(rawImpactPlayer))
     ? rawImpactPlayer
     : undefined;
-  if (!effectiveImpactPlayer && squad && squad.length > 0) {
+  if (!effectiveImpactPlayer && isUserTeam && worldRules().impactPlayerEnabled && squad && squad.length > 0) {
     const isBowlFirstPlan = title.toLowerCase().includes("bowl");
     const legalBench = squad
       .filter((p) => !startersSet.has(p.id) && isImpactPlayerWithinOverseasLimit(p))
@@ -320,7 +328,7 @@ function LineupColumn({
 
   const rawOutgoingPlayer = plan.likelyOutgoingPlayerId ? players[plan.likelyOutgoingPlayerId] : undefined;
   let effectiveOutgoingPlayer = rawOutgoingPlayer;
-  if (!effectiveOutgoingPlayer && effectiveImpactPlayer && starters.length > 0) {
+  if (!effectiveOutgoingPlayer && isUserTeam && effectiveImpactPlayer && starters.length > 0) {
     const protectedIds = new Set<string>([
       ...(plan.captainId ? [plan.captainId] : []),
       ...(plan.viceCaptainId ? [plan.viceCaptainId] : []),
@@ -357,6 +365,7 @@ function LineupColumn({
           <p className="font-space-mono text-[8px] font-bold uppercase tracking-[0.16em] text-accent">Projected match plan</p>
           <h2 className="mt-1 font-anton text-[22px] uppercase leading-none text-text-primary">{title}</h2>
           <p className="mt-2 text-[11px] text-text-secondary">{description}</p>
+          {plan.validationIssues?.map(issue => <p key={issue} role="status" className="mt-1 text-[10px] text-danger">{issue}</p>)}
         </div>
         <div className="shrink-0 text-right font-space-mono text-[8px] font-bold uppercase text-text-secondary">
           <div>{starters.length} starters · {totalOverseasCount} OS incl. impact</div>
@@ -369,10 +378,7 @@ function LineupColumn({
         {starters.map((player, index) => {
           const isCaptain = player.id === plan.captainId;
           const isViceCaptain = player.id === plan.viceCaptainId;
-          const hasFullTimeKeeper = starters.some((p) => (p.role === "WK-Batsman" || p.isWicketkeeper) && !p.isPartTimeWk);
-          const isWicketkeeper = (player.role === "WK-Batsman" || player.isWicketkeeper) && !player.isPartTimeWk
-            ? true
-            : Boolean(player.isPartTimeWk) && !hasFullTimeKeeper;
+          const isWicketkeeper = player.id === projectedKeeper?.id;
           return (
           <div
             key={player.id}
@@ -491,6 +497,9 @@ function MountedTeamProfilePage() {
   const userTeamId = useGameStore((state) => state.userTeamId);
   const currentSeason = useGameStore((state) => state.currentSeason);
   const currentDate = useGameStore((state) => state.currentDate);
+  const activeInjuries = useGameStore((state) => state.activeInjuries);
+  const homePitchSelections = useGameStore((state) => state.homePitchSelections);
+  const customPitchesByTeam = useGameStore((state) => state.customPitchesByTeam);
   const auction = useGameStore((state) => state.auction);
   const simulatedLeagueHistory = useGameStore((state) => state.simulatedLeagueHistory);
   const careerStaff = useGameStore((state) => state.careerStaff);
@@ -690,13 +699,38 @@ function MountedTeamProfilePage() {
     const designatedViceCaptainId = isProfileUserTeam
       ? career.teamLeadership?.viceCaptainId
       : aiLeadership?.viceCaptainId;
-    const generated = buildAiMatchLineups(squad, {
+    const nextFixture = career.fixtures.filter(fixture => !fixture.played && (fixture.teamA === teamId || fixture.teamB === teamId) && (!fixture.date || fixture.date >= currentDate)).sort((a, b) => String(a.date ?? "9999").localeCompare(String(b.date ?? "9999")))[0];
+    const available = squad.filter(player => !isPlayerMajorInjured(activeInjuries, player.id));
+    const healthy = available.filter(player => !activeInjuries[player.id]);
+    const matchSquad = !nextFixture?.stage && healthy.length >= 16 ? healthy : available;
+    const generated = buildAiMatchLineups(isProfileUserTeam ? available : matchSquad, {
       captainId: designatedCaptainId,
       viceCaptainId: designatedViceCaptainId,
       useProvisionalCaptain: !designatedCaptainId,
     });
     if (!isProfileUserTeam) {
-      return generated;
+      const options = { captainId: designatedCaptainId, viceCaptainId: designatedViceCaptainId, useProvisionalCaptain: !designatedCaptainId };
+      const selection = buildAutomaticLineupSelection(matchSquad, options);
+      const stadium = nextFixture && !nextFixture.stage ? getHomeStadium(nextFixture.teamA) : undefined;
+      const pitchId = stadium ? homePitchSelections[stadium.teamId] ?? stadium.defaultPitchId : undefined;
+      const pitch = stadium && pitchId ? getCuratorPitch(pitchId) ?? (customPitchesByTeam[stadium.teamId] ?? []).find(item => item.id === pitchId) ?? getDefaultCuratorPitch(stadium.teamId) : undefined;
+      const protectedIds = new Set([generated.battingFirst.captainId, generated.battingFirst.viceCaptainId, generated.bowlingFirst.captainId, generated.bowlingFirst.viceCaptainId].filter((id): id is string => Boolean(id)));
+      const bat = tuneAiLineupForPitch({ startingXI: selection.battingFirstXI, impactSubs: selection.battingFirstImpactSubs, mode: "battingFirst", pitch, squad: matchSquad, protectedIds });
+      const bowl = tuneAiLineupForPitch({ startingXI: selection.bowlingFirstXI, impactSubs: selection.bowlingFirstImpactSubs, mode: "bowlingFirst", pitch, squad: matchSquad, protectedIds });
+      const bowlImpact = worldRules().impactPlayerEnabled ? aiLineupLogic.reconcileBowlingFirstImpactPlan(matchSquad, bowl.startingXI, bowl.impactSubs, protectedIds, {
+        impactPlayerId: generated.bowlingFirst.impactPlayerId, outgoingPlayerId: generated.bowlingFirst.likelyOutgoingPlayerId, battingPosition: generated.bowlingFirst.impactBattingPosition,
+      }) : { impactPlayerId: null, outgoingPlayerId: null, battingPosition: null };
+      const batImpact = projectBatFirstImpact(bat.startingXI, bat.startingXI, {
+        impactSubs: bat.impactSubs,
+        plannedImpactPlayerId: generated.battingFirst.impactPlayerId,
+        plannedOutgoingPlayerId: generated.battingFirst.likelyOutgoingPlayerId,
+        captainId: generated.battingFirst.captainId,
+        viceCaptainId: generated.battingFirst.viceCaptainId,
+      }, players);
+      return {
+        battingFirst: aiLineupLogic.finalizeAiLineupPlan({ ...generated.battingFirst, startingXI: bat.startingXI, impactPlayerId: batImpact?.incoming.id ?? null, likelyOutgoingPlayerId: batImpact?.outgoing.id ?? null }, matchSquad, "battingFirst"),
+        bowlingFirst: aiLineupLogic.finalizeAiLineupPlan({ ...generated.bowlingFirst, startingXI: bowl.startingXI, impactPlayerId: bowlImpact.impactPlayerId, likelyOutgoingPlayerId: bowlImpact.outgoingPlayerId, impactBattingPosition: bowlImpact.battingPosition }, matchSquad, "bowlingFirst"),
+      };
     }
 
     const squadIds = new Set(squad.map((player) => player.id));
@@ -796,7 +830,7 @@ function MountedTeamProfilePage() {
           );
         }
       }
-      if (isBowlingFirst && savedImpactPlayerId) {
+      if (isBowlingFirst && savedImpactPlayerId && savedImpactPlayerId !== userSelectedImpactId) {
         const impactRule = resolveBowlingFirstImpactPlayer(
           squad,
           startingPlayers,
@@ -919,7 +953,7 @@ function MountedTeamProfilePage() {
         true,
       ),
     };
-  }, [activeTab, aiLineupLogic, career, players, profileAiLeadership, squad, team, teamId, userTeamId]);
+  }, [activeTab, aiLineupLogic, career, players, profileAiLeadership, squad, team, teamId, userTeamId, currentDate, activeInjuries, homePitchSelections, customPitchesByTeam]);
 
   const handleSelectBowlingFirstImpactPlayer = (playerId: string) => {
     setCareer((prev) => {
@@ -1294,28 +1328,34 @@ function MountedTeamProfilePage() {
             </div>
 
             <div className="grid min-h-0 flex-1 grid-cols-[1.1fr_0.9fr_1fr] gap-3">
-              <section className="flex min-h-0 flex-col justify-between overflow-hidden border border-border bg-surface p-3">
+              <section className="flex min-h-0 flex-col overflow-y-auto border border-border bg-surface p-3">
                 <div>
                   <p className="font-space-mono text-[8px] font-bold uppercase tracking-[0.15em] text-accent">Club identity</p>
                   <h2 className="mt-0.5 font-anton text-[18px] uppercase leading-none text-text-primary">{team.shortName} details</h2>
-                  <dl className="mt-3 grid grid-cols-[5.5rem_minmax(0,1fr)] gap-y-2 text-[9px]">
+                  <dl className="mt-1.5 grid grid-cols-2 gap-x-2 gap-y-1 text-[9px] leading-tight">
+                    <div className="flex min-w-0 items-baseline gap-1">
                     <dt className="font-space-mono uppercase text-text-secondary">Home stadium</dt>
-                    <dd className="truncate font-semibold text-text-primary">{team.homeGround}</dd>
+                    <dd className="truncate font-semibold text-text-primary" title={team.homeGround}>{team.homeGround}</dd>
+                    </div>
                     {homeStadium && (
-                      <>
+                      <div className="flex min-w-0 items-baseline gap-1">
                         <dt className="font-space-mono uppercase text-text-secondary">Capacity</dt>
                         <dd className="truncate font-semibold text-text-primary">{homeStadium.capacity.toLocaleString("en-GB")} seats</dd>
-                      </>
+                      </div>
                     )}
+                    <div className="flex min-w-0 items-baseline gap-1">
                     <dt className="font-space-mono uppercase text-text-secondary">Approach</dt>
                     <dd className="truncate font-semibold text-text-primary">{team.aiPersonality}</dd>
+                    </div>
+                    <div className="flex min-w-0 items-baseline gap-1">
                     <dt className="font-space-mono uppercase text-text-secondary">Head Coach</dt>
                     <dd className="truncate font-semibold text-text-primary">{headCoach ? headCoach.fullName : "Unappointed"}</dd>
+                    </div>
                     {mentor && (
-                      <>
+                      <div className="flex min-w-0 items-baseline gap-1">
                         <dt className="font-space-mono uppercase text-text-secondary">Mentor</dt>
                         <dd className="truncate font-semibold text-text-primary">{mentor.fullName}</dd>
-                      </>
+                      </div>
                     )}
                   </dl>
                 </div>
@@ -1323,7 +1363,7 @@ function MountedTeamProfilePage() {
                   const descriptor = getTeamAuctionDescriptor(team.id);
                   if (!descriptor) return null;
                   return (
-                    <div className="mt-2.5 rounded border border-accent/40 bg-accent/[0.04] p-2.5">
+                    <div className="mt-2 rounded border border-accent/40 bg-accent/[0.04] p-2.5">
                       <p className="font-space-mono text-[7.5px] font-bold uppercase tracking-wider text-accent">
                         Auction Focus & Tendencies
                       </p>
@@ -1675,7 +1715,7 @@ function MountedTeamProfilePage() {
           <div className="grid h-full min-h-0 grid-cols-2 gap-5">
             <LineupColumn
               title="Bat first lineup"
-              description="The stronger batting XI, with the most likely bowling Impact option highlighted."
+              description={isUserTeam ? "Your batting-first XI and planned bowling Impact option." : "Projection using current availability and the next league venue; knockout conditions may differ."}
               plan={profileLineups.battingFirst}
               players={players}
               squad={squad}
@@ -1686,7 +1726,7 @@ function MountedTeamProfilePage() {
             />
             <LineupColumn
               title="Bowl first lineup"
-              description="The stronger bowling XI, with the most likely batting Impact option highlighted."
+              description={isUserTeam ? "Your bowling-first XI and planned batting Impact option." : "Projection using current availability and the next league venue; knockout conditions may differ."}
               plan={profileLineups.bowlingFirst}
               players={players}
               squad={squad}

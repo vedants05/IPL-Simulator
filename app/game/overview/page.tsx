@@ -1,5 +1,7 @@
 "use client";
 import { formatDisplayDate, formatLongDisplayDate } from "@/lib/logic/displayDate";
+import { splitScorecardBatters } from "@/lib/logic/scorecardBatting";
+import YetToBat from "@/components/match/YetToBat";
 import FittedInboxPreviews from "@/components/home/FittedInboxPreviews";
 import { useState, useEffect, useLayoutEffect, useMemo, useRef, Suspense, Fragment, useCallback, type CSSProperties, type ReactNode } from "react";
 import Link from "next/link";
@@ -25,13 +27,15 @@ import {
   TICKING_CALENDAR_OFFSETS,
 } from "@/lib/logic/careerCalendar";
 import { createDayTicker, type DayTickerController } from "@/lib/logic/dayTicker";
+import { tuneAiLineupForPitch } from "@/lib/logic/aiPitchLineup";
+import { addAiBowlingPlans } from "@/lib/logic/aiBowlingPlans";
 import {
   buildAiMatchLineups,
   findOptimalImpactBattingPosition,
   reconcileBowlingFirstImpactPlan,
   selectBattingFirstImpactBowler,
 } from "@/lib/logic/aiLineupSelector";
-import { type LineupPlan, validateLineup } from "@/lib/logic/lineupPlanner";
+import { isBowlingOption, type LineupPlan, validateLineup } from "@/lib/logic/lineupPlanner";
 import {
   buildAutomaticLineupSelection,
   playerToLineupCandidate,
@@ -329,6 +333,7 @@ interface ScorecardPlayer {
   runsConceded?: number;
   maidens?: number;
   dismissal?: string;
+  didNotBat?: boolean;
   wides?: number;
   noBalls?: number;
 }
@@ -3049,8 +3054,11 @@ function OverviewPageContent() {
       isPartTimeWicketkeeper: Boolean(player.isPartTimeWk),
       isOpener: player.isOpener,
       onlyOpensOrBenched: player.onlyOpensOrBenched,
-    })));
-    if (!validation.isValid) return availablePlayers.slice(0, 11);
+    })), batsFirst ? "battingFirst" : "bowlingFirst");
+    if (!validation.isValid) {
+      const fallback = buildAiMatchLineups(availablePlayers, { captainId: teamLeadership.captainId, viceCaptainId: teamLeadership.viceCaptainId });
+      return (batsFirst ? fallback.battingFirst.startingXI : fallback.bowlingFirst.startingXI).map(id => players[id]).filter((player): player is Player => Boolean(player));
+    }
 
     const configuredPlayers = configuredIds
       .map((id) => players[id])
@@ -3199,97 +3207,13 @@ function OverviewPageContent() {
     viceCaptainId: string | null | undefined,
   ): MatchLineupPlan => ({
     startingXI: [...startingXI],
-    impactSubs: [...impactSubs],
-    plannedImpactPlayerId: impactPlayerId,
-    plannedOutgoingPlayerId: outgoingPlayerId,
-    plannedImpactBattingPosition: impactBattingPosition,
+    impactSubs: worldRules().impactPlayerEnabled ? [...impactSubs] : [],
+    plannedImpactPlayerId: worldRules().impactPlayerEnabled ? impactPlayerId : null,
+    plannedOutgoingPlayerId: worldRules().impactPlayerEnabled ? outgoingPlayerId : null,
+    plannedImpactBattingPosition: worldRules().impactPlayerEnabled ? impactBattingPosition : null,
     captainId,
     viceCaptainId,
   });
-
-  const tuneAiPlanForPitch = (
-    startingXI: readonly string[],
-    impactSubs: readonly string[],
-    plan: LineupPlan,
-    pitch: MatchGroundConditions["pitch"] | undefined,
-    protectedIds: ReadonlySet<string>,
-  ) => {
-    if (!pitch) return { startingXI: [...startingXI], impactSubs: [...impactSubs] };
-    const favouredStyle = pitch.favours.includes("spin-bowlers")
-      ? "Spinner"
-      : (
-          pitch.favours.includes("pace-bowlers")
-          || pitch.favours.includes("high-rated-pace-bowlers")
-        )
-        ? "Pacer"
-        : null;
-    if (!favouredStyle) return { startingXI: [...startingXI], impactSubs: [...impactSubs] };
-
-    const targetOptions = favouredStyle === "Spinner" ? 2 : 3;
-    let nextXI = [...startingXI];
-    let nextSubs = [...impactSubs];
-    const squad = getSelectableTeamSquad(players[nextXI[0]]?.currentTeamId ?? "");
-    const candidates = squad.map(playerToLineupCandidate);
-    const isStyle = (player: Player | undefined) => Boolean(
-      player
-      && (
-        player.bowlingStyle === favouredStyle
-        || (favouredStyle === "Spinner" && player.role === "Spin Bowler")
-        || (favouredStyle === "Pacer" && player.role === "Pace Bowler")
-      )
-      && player.currentBowling >= 68
-    );
-    const countStyleOptions = () => nextXI
-      .map((id) => players[id])
-      .filter(isStyle)
-      .length;
-
-    while (countStyleOptions() < targetOptions) {
-      const incoming = squad
-        .filter((player) => !nextXI.includes(player.id) && isStyle(player))
-        .sort((left, right) => (
-          right.currentBowling - left.currentBowling
-          || getPlayerRating(right) - getPlayerRating(left)
-        ))[0];
-      if (!incoming) break;
-
-      const keepers = nextXI.filter((id) => {
-        const player = players[id];
-        return player?.role === "WK-Batsman" || player?.isWicketkeeper || player?.isPartTimeWk;
-      });
-      const outgoing = nextXI
-        .map((id, index) => ({ player: players[id], index }))
-        .filter(({ player, index }) => Boolean(
-          player
-          && index >= 4
-          && !protectedIds.has(player.id)
-          && (player.reputation ?? 0) < 10
-          && !isStyle(player)
-          && !(
-            (player.role === "WK-Batsman" || player.isWicketkeeper || player.isPartTimeWk)
-            && keepers.length <= 1
-          )
-          && player.currentBowling <= incoming.currentBowling + 2
-        ))
-        .sort((left, right) => (
-          Number(right.index >= 7) - Number(left.index >= 7)
-          || left.player.currentBowling - right.player.currentBowling
-          || getPlayerRating(left.player) - getPlayerRating(right.player)
-        ))[0];
-      if (!outgoing?.player) break;
-
-      const proposed = [...nextXI];
-      proposed[outgoing.index] = incoming.id;
-      if (!validateLineup(proposed, candidates, plan).isValid) break;
-      nextXI = proposed;
-      nextSubs = nextSubs
-        .filter((id) => id !== incoming.id)
-        .concat(outgoing.player.id)
-        .slice(0, 5);
-    }
-
-    return { startingXI: nextXI, impactSubs: nextSubs };
-  };
 
   const repairUserSelectionForMajorInjuries = (
     selection: {
@@ -3306,7 +3230,7 @@ function OverviewPageContent() {
     const candidates = available.map(playerToLineupCandidate);
     const replacePlan = (startingXI: string[], impactSubs: string[], plan: LineupPlan) => {
       const nextXI = [...startingXI];
-      const nextSubs = [...impactSubs];
+      const nextSubs = worldRules().impactPlayerEnabled ? [...impactSubs] : [];
       const selected = new Set(nextXI);
       const injuredIds = new Set(
         [...nextXI, ...nextSubs].filter((id) => isPlayerMajorInjured(liveInjuries, id)),
@@ -3316,7 +3240,7 @@ function OverviewPageContent() {
         return available
           .filter((candidate) => !excluded.has(candidate.id) && !injuredIds.has(candidate.id))
           .sort((left, right) => (
-            Number(left.role === injured?.role) - Number(right.role === injured?.role)
+            Number(right.role === injured?.role) - Number(left.role === injured?.role)
             || getPlayerRating(right) - getPlayerRating(left)
           ))[0];
       };
@@ -3389,14 +3313,13 @@ function OverviewPageContent() {
       const savedIds = [
         ...requestedSelection.battingFirstXI,
         ...requestedSelection.bowlingFirstXI,
-        ...requestedSelection.battingFirstImpactSubs,
-        ...requestedSelection.bowlingFirstImpactSubs,
+        ...(worldRules().impactPlayerEnabled ? requestedSelection.battingFirstImpactSubs : []),
+        ...(worldRules().impactPlayerEnabled ? requestedSelection.bowlingFirstImpactSubs : []),
       ];
       const requestedPlanIsCurrent = (
         requestedSelection.battingFirstXI.length === 11
         && requestedSelection.bowlingFirstXI.length === 11
-        && requestedSelection.battingFirstImpactSubs.length === 5
-        && requestedSelection.bowlingFirstImpactSubs.length === 5
+        && (!worldRules().impactPlayerEnabled || (requestedSelection.battingFirstImpactSubs.length === 5 && requestedSelection.bowlingFirstImpactSubs.length === 5))
         && savedIds.every((playerId) => currentSquadIds.has(playerId))
       );
       const selection = requestedPlanIsCurrent
@@ -3456,17 +3379,10 @@ function OverviewPageContent() {
     const selectableSquad = getSelectableTeamSquad(teamId);
     const liveInjuries = useGameStore.getState().activeInjuries;
     const healthySquad = selectableSquad.filter((player) => !liveInjuries[player.id]);
-    const isFacingUserTeam = Boolean(
-      match
-      && teamId !== userTeamId
-      && (match.teamA === userTeamId || match.teamB === userTeamId),
-    );
     // AI teams avoid playing through minor injuries in routine league matches
     // when they can still name both complete plans. Knockouts and depleted
     // squads may justify accepting the worsening risk.
-    const squad = isFacingUserTeam
-      ? selectableSquad
-      : (!match?.stage && healthySquad.length >= 16 ? healthySquad : selectableSquad);
+    const squad = !match?.stage && healthySquad.length >= 16 ? healthySquad : selectableSquad;
     const leadership = isUserControlled ? teamLeadership : aiTeamLeadership[teamId];
     const selection = buildAutomaticLineupSelection(squad, {
       captainId: leadership?.captainId,
@@ -3487,24 +3403,8 @@ function OverviewPageContent() {
       recommended.bowlingFirst.captainId,
       recommended.bowlingFirst.viceCaptainId,
     ].filter((id): id is string => Boolean(id)));
-    const tunedBattingFirst = isFacingUserTeam
-      ? { startingXI: selection.battingFirstXI, impactSubs: selection.battingFirstImpactSubs }
-      : tuneAiPlanForPitch(
-          selection.battingFirstXI,
-          selection.battingFirstImpactSubs,
-          "battingFirst",
-          pitch,
-          protectedIds,
-        );
-    const tunedBowlingFirst = isFacingUserTeam
-      ? { startingXI: selection.bowlingFirstXI, impactSubs: selection.bowlingFirstImpactSubs }
-      : tuneAiPlanForPitch(
-          selection.bowlingFirstXI,
-          selection.bowlingFirstImpactSubs,
-          "bowlingFirst",
-          pitch,
-          protectedIds,
-        );
+    const tunedBattingFirst = tuneAiLineupForPitch({ startingXI: selection.battingFirstXI, impactSubs: selection.battingFirstImpactSubs, mode: "battingFirst", pitch, squad, protectedIds });
+    const tunedBowlingFirst = tuneAiLineupForPitch({ startingXI: selection.bowlingFirstXI, impactSubs: selection.bowlingFirstImpactSubs, mode: "bowlingFirst", pitch, squad, protectedIds });
     const reconciledBowlingImpact = reconcileBowlingFirstImpactPlan(
       squad,
       tunedBowlingFirst.startingXI,
@@ -3516,7 +3416,7 @@ function OverviewPageContent() {
         battingPosition: recommended.bowlingFirst.impactBattingPosition,
       },
     );
-    return {
+    const aiPlans: MatchTeamPlans = {
       teamId,
       isUserControlled,
       tactics: pitch
@@ -3545,6 +3445,7 @@ function OverviewPageContent() {
         recommended.bowlingFirst.viceCaptainId,
       ),
     };
+    return addAiBowlingPlans(aiPlans, players);
   };
 
   const getRecentFormAdjustments = (match: Match): { batting: Record<string, number>; bowling: Record<string, number> } => {
@@ -3633,6 +3534,7 @@ function OverviewPageContent() {
         fours: entry.fours,
         sixes: entry.sixes,
         dismissal: entry.dismissal,
+        didNotBat: entry.didNotBat,
       })),
       bowling: innings.bowling.map((entry) => ({
         id: entry.id,
@@ -4221,17 +4123,18 @@ This record has been officially verified and added to the IPL Minor Records arch
       if (validation.playerCount !== 11) problems.push(`${label} must contain exactly 11 eligible squad players.`);
       if (validation.overseasCount > worldRules().maxOverseasInXI) problems.push(`${label} has ${validation.overseasCount} overseas players; the maximum is ${worldRules().maxOverseasInXI}.`);
       if (validation.wicketkeeperCount < 1) problems.push(`${label} needs a wicketkeeper.`);
-      const requiredBowlers = plan === "bowlingFirst" ? 5 : 4;
+      validation.openingOnlyOutOfPosition.forEach(id => problems.push(`${players[id]?.name ?? "An opening-only player"} must open or be on the bench.`));
+      const requiredBowlers = plan === "bowlingFirst" || !worldRules().impactPlayerEnabled ? 5 : 4;
       if (validation.bowlingOptionCount < requiredBowlers) {
         problems.push(`${label} needs at least ${requiredBowlers} recognised bowling options.`);
       }
-      if (subs.length !== 5 || new Set(subs).size !== subs.length) {
+      if (worldRules().impactPlayerEnabled && (subs.length !== 5 || new Set(subs).size !== subs.length)) {
         problems.push(`${label} must name five different Impact substitutes.`);
       }
-      if (subs.some((id) => ids.includes(id) || !candidates.some((candidate) => candidate.id === id))) {
+      if (worldRules().impactPlayerEnabled && subs.some((id) => ids.includes(id) || !candidates.some((candidate) => candidate.id === id))) {
         problems.push(`${label} has an ineligible Impact substitute.`);
       }
-      const majorInjuredIds = Array.from(new Set([...ids, ...subs].filter((id) => (
+      const majorInjuredIds = Array.from(new Set([...ids, ...(worldRules().impactPlayerEnabled ? subs : [])].filter((id) => (
         isPlayerMajorInjured(activeInjuries, id)
       ))));
       majorInjuredIds.forEach((playerId) => {
@@ -4239,14 +4142,24 @@ This record has been officially verified and added to the IPL Minor Records arch
         problems.push(`${players[playerId]?.name ?? injury.playerName} cannot be selected because of a major ${injury.conditionName.toLowerCase()}.`);
       });
       const selectedImpact = impactPlayerId ? players[impactPlayerId] : null;
-      const selectedOutgoing = outgoingPlayerId ? players[outgoingPlayerId] : null;
       const overseasStarters = ids.filter((id) => players[id]?.nationality === "Overseas").length;
       if (
+        worldRules().impactPlayerEnabled &&
         selectedImpact?.nationality === "Overseas"
-        && overseasStarters - Number(selectedOutgoing?.nationality === "Overseas") >= worldRules().maxOverseasInXI
+        && overseasStarters >= worldRules().maxOverseasInXI
       ) {
-        problems.push(`${label}'s selected Impact change would introduce a fifth overseas player.`);
+        problems.push(`${label}'s selected Impact change exceeds the overseas player limit.`);
       }
+      if (worldRules().impactPlayerEnabled && impactPlayerId && !subs.includes(impactPlayerId)) problems.push(`${label}'s selected Impact Player must be among its substitutes.`);
+      if (worldRules().impactPlayerEnabled && outgoingPlayerId && !ids.includes(outgoingPlayerId)) problems.push(`${label}'s outgoing Impact Player must be in the XI.`);
+      if (plan === "battingFirst" && worldRules().impactPlayerEnabled && validation.bowlingOptionCount === 4 && outgoingPlayerId) {
+        const outgoing = candidates.find(candidate => candidate.id === outgoingPlayerId);
+        if (outgoing && isBowlingOption(outgoing)) problems.push(`${label}'s outgoing Impact Player must not be one of its four bowling options.`);
+      }
+      if (plan === "battingFirst" && worldRules().impactPlayerEnabled && validation.bowlingOptionCount === 4 && !(impactPlayerId ? [impactPlayerId] : subs).some(id => {
+        const candidate = candidates.find(item => item.id === id);
+        return candidate && isBowlingOption(candidate) && (candidate.nationality !== "Overseas" || overseasStarters < worldRules().maxOverseasInXI);
+      })) problems.push(`${label} needs a legal bowling Impact substitute to provide a fifth bowling option.`);
       return problems;
     };
     return Array.from(new Set([
@@ -4892,7 +4805,7 @@ This record has been officially verified and added to the IPL Minor Records arch
           && closingFixtureDate <= skipTargetDate
         ) {
           try {
-            const simulatedMatch = buildSimulatedMatch(userFixture, undefined, true);
+            const simulatedMatch = buildSimulatedMatch(userFixture);
             commitSimulatedMatch(
               simulatedMatch,
               fixturesRef.current,
@@ -5050,7 +4963,7 @@ This record has been officially verified and added to the IPL Minor Records arch
         // the old rollover bug. These games were part of an automatic skip and
         // must not require the user to play months-old fixtures manually.
         try {
-          const simulatedMatch = buildSimulatedMatch(unresolvedUserFixture, undefined, true);
+          const simulatedMatch = buildSimulatedMatch(unresolvedUserFixture);
           commitSimulatedMatch(simulatedMatch, fixturesRef.current, playerStatsRef.current);
           if (dayTickerRef.current?.start()) setIsSimulatingDays(true);
         } catch (error) {
@@ -6912,7 +6825,7 @@ This record has been officially verified and added to the IPL Minor Records arch
             </div>
           </div>
 
-          <div className="app-season-actions flex shrink-0 items-center gap-2">
+          <div className="app-season-actions flex shrink-0 items-center gap-1">
             {!isSimulatingDays && (
               isTickerAtImpasse && pendingUserMatchdayFixture ? (
                 <>
@@ -6920,7 +6833,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                     type="button"
                     onClick={() => startPlayableMatch(pendingUserMatchdayFixture)}
                     disabled={!FIXTURE_SIMULATION_ENABLED}
-                    className="flex items-center gap-1.5 rounded border border-accent bg-surface px-3.5 py-1.5 font-space-mono text-[9px] font-bold uppercase tracking-wider text-accent shadow-sm transition-all hover:bg-accent/10 active:scale-95 disabled:opacity-45"
+                    className="app-fixture-action flex items-center gap-1 rounded border border-accent bg-surface px-2 py-1.5 font-space-mono text-[9px] font-bold uppercase tracking-normal text-accent shadow-sm transition-all hover:bg-accent/10 active:scale-95 disabled:opacity-45"
                   >
                     <Play className="size-3 fill-current" aria-hidden="true" />
                     Play fixture
@@ -6930,7 +6843,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                     type="button"
                     onClick={() => prepareUserFixtureSimulation(pendingUserMatchdayFixture)}
                     disabled={!FIXTURE_SIMULATION_ENABLED}
-                    className="flex items-center gap-1.5 rounded bg-accent px-3.5 py-1.5 font-space-mono text-[9px] font-bold uppercase tracking-wider text-white shadow-sm transition-all hover:bg-accent/85 active:scale-95 disabled:opacity-45"
+                    className="app-fixture-action flex items-center gap-1 rounded bg-accent px-2 py-1.5 font-space-mono text-[9px] font-bold uppercase tracking-normal text-white shadow-sm transition-all hover:bg-accent/85 active:scale-95 disabled:opacity-45"
                   >
                     <SkipForward className="size-3" aria-hidden="true" />
                     Simulate fixture
@@ -8665,7 +8578,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                                         <span className={`font-space-mono text-[7px] font-extrabold tabular-nums ${player ? plan.textClass : "text-text-secondary/45"}`}>
                                           {String(index + 1).padStart(2, "0")}
                                         </span>
-                                        <span className={`flex min-w-0 items-center gap-1 text-[9px] leading-none ${player ? "font-semibold text-text-primary" : "font-medium italic text-text-secondary/45"}`}>
+                                        <span className={`flex min-w-0 items-center gap-1 text-[9px] leading-[1.4] ${player ? "font-semibold text-text-primary" : "font-medium italic text-text-secondary/45"}`}>
                                           <span className="truncate">{player ? player.name : "Empty slot"}</span>
                                           {player && <InjuryStatusMarker injury={activeInjuries[player.id]} />}
                                         </span>
@@ -9061,6 +8974,10 @@ This record has been officially verified and added to the IPL Minor Records arch
               {activeSubTab === "tactics" && (
                 <TeamTacticsPage
                   fixtures={fixtures}
+                  getOppositionPlans={(teamId) => {
+                    const next = fixtures.filter(fixture => !fixture.played && (fixture.teamA === teamId || fixture.teamB === teamId) && (fixture.date ?? "") >= currentDate).sort((a, b) => (a.date ?? "").localeCompare(b.date ?? ""))[0];
+                    return buildTeamMatchPlans(teamId, undefined, next ? getMatchConditions(next) ?? undefined : undefined, next, false);
+                  }}
                   tactics={teamTactics}
                   players={players}
                   battingFirstXI={battingFirstXI}
@@ -11478,7 +11395,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                         </tr>
                       </thead>
                       <tbody>
-                        {activeScorecard.scorecard.inningsA.batting.filter(b=>(b.balls ?? 0) > 0).map(b => (
+                        {splitScorecardBatters(activeScorecard.scorecard.inningsA.batting, activeScorecard.simulation?.innings.find(i => i.battingTeamId === activeScorecard.teamA), activeScorecard.simulation).batted.map(b => (
                           <tr key={b.id} className="border-b border-[#16130f]/5">
                             <td className="px-4 py-2">
                               <div className="flex items-center gap-2 font-semibold">
@@ -11501,7 +11418,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                             <td className="px-4 py-2 text-center text-text-secondary font-space-mono">{b.fours}</td>
                             <td className="px-4 py-2 text-center text-text-secondary font-space-mono">{b.sixes}</td>
                             <td className="px-4 py-2 text-right text-text-secondary font-space-mono">
-                              {((b.runs ?? 0) / (b.balls ?? 1) * 100).toFixed(1)}
+                              {((b.runs ?? 0) / Math.max(1, b.balls ?? 0) * 100).toFixed(1)}
                             </td>
                           </tr>
                         ))}
@@ -11516,6 +11433,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                         </tr>
                       </tfoot>
                     </table>
+                    <YetToBat names={splitScorecardBatters(activeScorecard.scorecard.inningsA.batting, activeScorecard.simulation?.innings.find(i => i.battingTeamId === activeScorecard.teamA), activeScorecard.simulation).yetToBat.map(b => b.name)} />
                   </div>
 
                   {/* Innings 1 Bowling */}
@@ -11588,7 +11506,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                         </tr>
                       </thead>
                       <tbody>
-                        {activeScorecard.scorecard.inningsB.batting.filter(b=>(b.balls ?? 0) > 0).map(b => (
+                        {splitScorecardBatters(activeScorecard.scorecard.inningsB.batting, activeScorecard.simulation?.innings.find(i => i.battingTeamId === activeScorecard.teamB), activeScorecard.simulation).batted.map(b => (
                           <tr key={b.id} className="border-b border-[#16130f]/5">
                             <td className="px-4 py-2">
                               <div className="flex items-center gap-2 font-semibold">
@@ -11611,7 +11529,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                             <td className="px-4 py-2 text-center text-text-secondary font-space-mono">{b.fours}</td>
                             <td className="px-4 py-2 text-center text-text-secondary font-space-mono">{b.sixes}</td>
                             <td className="px-4 py-2 text-right text-text-secondary font-space-mono">
-                              {((b.runs ?? 0) / (b.balls ?? 1) * 100).toFixed(1)}
+                              {((b.runs ?? 0) / Math.max(1, b.balls ?? 0) * 100).toFixed(1)}
                             </td>
                           </tr>
                         ))}
@@ -11626,6 +11544,7 @@ This record has been officially verified and added to the IPL Minor Records arch
                         </tr>
                       </tfoot>
                     </table>
+                    <YetToBat names={splitScorecardBatters(activeScorecard.scorecard.inningsB.batting, activeScorecard.simulation?.innings.find(i => i.battingTeamId === activeScorecard.teamB), activeScorecard.simulation).yetToBat.map(b => b.name)} />
                   </div>
 
                   {/* Innings 2 Bowling */}

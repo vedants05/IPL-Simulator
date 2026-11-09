@@ -4,7 +4,7 @@
 
 import { useMemo, useState } from "react";
 
-import { ArrowRight, CheckCircle2, Shield, SlidersHorizontal, Sparkles, Swords, Target, TriangleAlert } from "lucide-react";
+import { ArrowRight, CheckCircle2, SlidersHorizontal, Sparkles, Target, TriangleAlert } from "lucide-react";
 
 import type { Player } from "@/lib/types";
 
@@ -26,8 +26,12 @@ import OppositionLineupPreview from "./OppositionLineupPreview";
 import { suggestBowlingOvers } from "@/lib/logic/suggestBowlingOvers";
 import { findOptimalImpactBattingPosition } from "@/lib/logic/aiLineupSelector";
 import { useGameStore } from "@/lib/store/gameStore";
+import { developerPlayerRatings, useDeveloperToolsEnabled } from "@/lib/logic/developerTools";
+import DeveloperOppositionTactics from "./DeveloperOppositionTactics";
+import type { MatchTeamPlans } from "@/lib/logic/matchSimulation";
 
 interface Props {
+  getOppositionPlans: (teamId: string) => MatchTeamPlans;
   fixtures: import("@/lib/logic/playerAnalysisMetrics").PlayerAnalysisFixture[];
   bowlingFirstImpactPlayerId?: string | null;
   bowlingFirstOutgoingPlayerId?: string | null;
@@ -60,13 +64,22 @@ interface Props {
 
 const buttonStyle = "rounded border border-border px-2 py-1 font-space-mono text-[10px] font-bold uppercase transition-colors hover:border-accent focus-visible:outline focus-visible:outline-accent";
 
+function CricketBatIcon({ size = 14 }: { size?: number }) {
+  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><g transform="rotate(40 12 12)"><path d="M11 8V2h2v6" /><path d="M11 8 8 9.5v10.8c0 1 1.8 1.7 4 1.7s4-.7 4-1.7V9.5L13 8" /><path d="M9.8 11v8" opacity=".6" /></g></svg>;
+}
+
+function CricketBallIcon({ size = 14 }: { size?: number }) {
+  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M5.7 5.7 18.3 18.3M8 4.3 19.7 16M4.3 8 16 19.7" strokeWidth="1.4" /><path d="m9 8 1-1m1 3 1-1m1 3 1-1m1 3 1-1" strokeWidth="1" /></svg>;
+}
+
 
 
 export default function TeamTacticsPlanner(props: Props) {
+  const developerToolsEnabled = useDeveloperToolsEnabled();
 
   const { tactics, players, onChange, onOpenPlayingXI, onOpenPlayer, coachRecommendation } = props;
 
-  const [tab, setTab] = useState<"batting" | "bowling" | "decisions" | "opposition">("bowling");
+  const [tab, setTab] = useState<"batting" | "bowling" | "decisions" | "opposition" | "oppositionTactics">("bowling");
 
   const [scenario, setScenario] = useState<"battingFirst" | "bowlingFirst">("battingFirst");
 
@@ -119,8 +132,6 @@ export default function TeamTacticsPlanner(props: Props) {
     const aStarter = xi.includes(a.id), bStarter = xi.includes(b.id);
 
     if (aStarter !== bStarter) return aStarter ? -1 : 1;
-
-    if (aStarter) return xi.indexOf(a.id) - xi.indexOf(b.id);
 
     return b.currentBowling - a.currentBowling || (b.bowlingEconomyControl ?? 0) - (a.bowlingEconomyControl ?? 0) || a.name.localeCompare(b.name);
 
@@ -182,6 +193,12 @@ export default function TeamTacticsPlanner(props: Props) {
     setSuggestionIncomplete(overs.some(slot => slot === null));
   }
 
+  function autocompleteOvers() {
+    const overs = suggestBowlingOvers(attack, plan.overs, tactics.bowling.middle, true);
+    updatePlan({ overs });
+    setSuggestionIncomplete(overs.some(slot => slot === null));
+  }
+
 
 
   return <div className="team-tactics-page flex h-full min-h-0 flex-1 flex-col overflow-hidden border border-border bg-background text-text-primary">
@@ -205,7 +222,7 @@ export default function TeamTacticsPlanner(props: Props) {
 
     <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border bg-surface px-3">
 
-      <div className="flex min-w-0 overflow-x-auto" role="tablist" aria-label="Tactics sections">{([{ id: "batting", label: "Batting plan", Icon: Swords }, { id: "bowling", label: "Bowling plan", Icon: Shield }, { id: "decisions", label: "Match decisions", Icon: SlidersHorizontal }, { id: "opposition", label: "Opposition instructions", Icon: Target }] as const).map(({ id, label, Icon }) => <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)} className={`flex shrink-0 items-center gap-2 border-b-2 px-4 py-3 font-space-mono text-xs font-bold uppercase ${tab === id ? "border-accent text-accent" : "border-transparent text-text-secondary hover:text-text-primary"}`}><Icon size={14} />{label}</button>)}</div>
+      <div className="flex min-w-0 overflow-x-auto" role="tablist" aria-label="Tactics sections">{([{ id: "batting", label: "Batting plan", Icon: CricketBatIcon }, { id: "bowling", label: "Bowling plan", Icon: CricketBallIcon }, { id: "decisions", label: "Match decisions", Icon: SlidersHorizontal }, { id: "opposition", label: "Opposition instructions", Icon: Target }, ...(developerToolsEnabled ? [{ id: "oppositionTactics" as const, label: "Opposition tactics", Icon: Sparkles }] : [])] as const).map(({ id, label, Icon }) => <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)} className={`flex shrink-0 items-center gap-2 border-b-2 px-4 py-3 font-space-mono text-xs font-bold uppercase ${tab === id ? "border-accent text-accent" : "border-transparent text-text-secondary hover:text-text-primary"}`}><Icon size={14} />{label}</button>)}</div>
 
       <span className="hidden font-space-mono text-[10px] text-text-secondary lg:block">
         {xi.length}/11 players{tab === "bowling" && ` · ${fixedCount} fixed · ${20 - fixedCount - preferredCount} auto overs`}
@@ -213,25 +230,29 @@ export default function TeamTacticsPlanner(props: Props) {
 
     </div>
 
-    <div className={tab === "bowling" ? "grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-y-auto p-3 xl:grid-cols-[minmax(0,1fr)_245px]" : `${tab === "opposition" ? "opposition-tactics-content " : ""}min-h-0 flex-1 overflow-y-auto p-3`}>
+    <div className={tab === "bowling" ? "bowling-plan-layout grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-y-auto p-3 xl:grid-cols-[minmax(0,1fr)_245px]" : `${tab === "opposition" ? "opposition-tactics-content " : ""}min-h-0 flex-1 overflow-y-auto p-3`}>
 
       <main className={`flex min-w-0 flex-col gap-3 ${tab === "batting" ? "min-h-full" : tab === "opposition" ? "h-full min-h-0" : ""}`}>
 
+        {tab === "oppositionTactics" && developerToolsEnabled && <DeveloperOppositionTactics teams={oppositionTeams} players={players} scenario={scenario} getPlans={props.getOppositionPlans} onOpenPlayer={onOpenPlayer} />}
+
         {tab === "bowling" && <>
 
-          <section className="rounded-lg border border-border bg-surface p-3">
+          <section className="bowling-planner rounded-lg border border-border bg-surface p-3">
 
-            <div className="mb-1 flex flex-wrap items-center justify-between gap-2"><div className="flex flex-wrap items-center gap-x-3 gap-y-1"><h3 className="font-anton text-sm uppercase" title="Click a cell to assign an over. Click it again to clear.">20-over bowling planner</h3><div className="flex flex-wrap items-center gap-3 text-[10px] text-text-secondary"><span className="inline-flex items-center gap-1"><i className="h-2 w-3 rounded-sm border border-emerald-500/35 bg-emerald-500/15" />Stronger phase</span><span className="inline-flex items-center gap-1"><i className="h-2 w-3 rounded-sm border border-emerald-500/60 bg-emerald-500/30" />Best phase</span><span>Relative to each bowler</span></div></div><div className="flex flex-wrap gap-2">
+            <div className="mb-1 flex flex-wrap items-center justify-between gap-2"><div className="flex flex-wrap items-center gap-x-3 gap-y-1"><h3 className="font-anton text-sm uppercase" title="Click a cell to assign an over. Click it again to clear.">20-over bowling planner</h3><div className="flex flex-wrap items-center gap-3 text-[10px] text-text-secondary"><span className="inline-flex items-center gap-1"><i className="h-2 w-3 rounded-sm border border-red-700/70 bg-red-500/40" />Poor</span><span className="inline-flex items-center gap-1"><i className="h-2 w-3 rounded-sm border border-yellow-600/60 bg-yellow-400/30" />Weak</span><span className="inline-flex items-center gap-1"><i className="h-2 w-3 rounded-sm border border-emerald-500/35 bg-emerald-500/15" />Stronger</span><span className="inline-flex items-center gap-1"><i className="h-2 w-3 rounded-sm border border-emerald-700 bg-emerald-600/55" />Best</span><span>Strengths relative to each bowler</span></div></div><div className="flex flex-wrap gap-2">
 
               <div className="flex rounded border border-border p-0.5">{(["fixed", "preferred"] as const).map(value => <button key={value} aria-pressed={mode === value} onClick={() => setMode(value)} className={`${buttonStyle} border-0 ${mode === value ? "bg-accent text-black" : "text-text-secondary"}`}>{value}</button>)}</div>
 
               <button className={buttonStyle} onClick={suggestOvers}><Sparkles size={12} className="mr-1 inline" />Suggest overs</button>
 
+              <button className={buttonStyle} onClick={autocompleteOvers} disabled={!plan.overs.some(Boolean) || plan.overs.every(Boolean)}>Autocomplete</button>
+
               <button className={buttonStyle} onClick={() => updatePlan({ overs: Array(20).fill(null) })}>Clear All</button>
 
             </div></div>
 
-            <div className="overflow-x-auto pb-1"><div className="min-w-[650px]">
+            <div className="bowling-planner-grid-wrap overflow-x-auto pb-1"><div className="bowling-planner-grid min-w-[650px]">
 
               <div className="grid grid-cols-[285px_repeat(20,minmax(0,1fr))_36px] gap-1 text-center font-space-mono text-[10px] font-bold"><span /><span className="col-span-6 rounded bg-amber-500/10 py-1 text-amber-500">POWERPLAY</span><span className="col-span-9 rounded bg-sky-500/10 py-1 text-sky-500">MIDDLE</span><span className="col-span-5 rounded bg-violet-500/10 py-1 text-violet-400">DEATH</span></div>
 
@@ -241,9 +262,9 @@ export default function TeamTacticsPlanner(props: Props) {
 
                 const count = plan.overs.filter(slot => slot?.playerId === player.id).length;
 
-                return <div key={player.id} className="mt-0.5 grid grid-cols-[285px_repeat(20,minmax(0,1fr))_36px] items-stretch gap-1 border-b border-border/30 py-0.5">
+                return <div key={player.id} className="bowling-planner-row mt-0.5 grid grid-cols-[285px_repeat(20,minmax(0,1fr))_36px] items-stretch gap-1 border-b border-border/30 py-0.5">
 
-                  <div className="flex min-w-0 items-center justify-between gap-2 pr-2"><div className="flex min-w-0 flex-1 items-center gap-2"><div className="whitespace-nowrap text-xs font-semibold leading-tight"><button type="button" onClick={() => onOpenPlayer(player.id)} className="rounded-sm text-left hover:text-accent hover:underline focus-visible:outline focus-visible:outline-accent">{player.name}</button>{!xi.includes(player.id) && (
+                  <div className="flex min-w-0 items-center justify-between gap-2 pr-2"><div className="flex min-w-0 flex-1 items-center gap-2"><div className="whitespace-nowrap text-xs font-semibold leading-tight"><button type="button" data-developer-tooltip={developerToolsEnabled ? developerPlayerRatings(player) : undefined} onClick={() => onOpenPlayer(player.id)} className="rounded-sm text-left hover:text-accent hover:underline focus-visible:outline focus-visible:outline-accent">{player.name}</button>{!xi.includes(player.id) && (
                     player.id === impact?.incoming.id
                       ? <small className="ml-1 rounded bg-sky-500/20 px-1 text-sky-400" title="Projected to bowl after the Bat First substitution">SELECTED</small>
                       : <small className="ml-1 text-accent">IMPACT</small>
@@ -257,13 +278,14 @@ export default function TeamTacticsPlanner(props: Props) {
 
                     const phaseRatings = [player.powerplayBowling, player.middleOversBowling, player.deathBowling].filter((value): value is number => typeof value === "number" && Number.isFinite(value));
                     const best = Math.max(...phaseRatings);
-                    const average = phaseRatings.reduce((sum, value) => sum + value, 0) / phaseRatings.length;
                     const distinctStrength = phaseRatings.length >= 2 && best - Math.min(...phaseRatings) >= 3;
-                    const isBestPhase = distinctStrength && rating === best;
-                    const isStrongerPhase = distinctStrength && rating != null && rating >= average + 2;
-                    const strengthClass = isBestPhase ? "bg-emerald-500/30 border-emerald-500/60" : isStrongerPhase ? "bg-emerald-500/15 border-emerald-500/35" : "border-[color:color-mix(in_srgb,var(--ink)_46%,var(--surface))]";
+                    const isBestPhase = distinctStrength && rating != null && rating > 50 && rating === best;
+                    const isStrongerPhase = distinctStrength && rating != null && rating > 50 && rating > Math.min(...phaseRatings) && rating < best;
+                    const isWeakPhase = rating != null && rating <= 45;
+                    const isWorstPhase = rating != null && rating <= 40;
+                    const strengthClass = isWorstPhase ? "bg-red-500/40 border-red-700/70" : isWeakPhase ? "bg-yellow-400/30 border-yellow-600/60" : isBestPhase ? "bg-emerald-600/55 border-emerald-700" : isStrongerPhase ? "bg-emerald-500/15 border-emerald-500/35" : "border-[color:color-mix(in_srgb,var(--ink)_46%,var(--surface))]";
 
-                    return <button key={i} aria-label={`Over ${i + 1}, ${player.name}${slot?.playerId === player.id ? `, ${slot.mode}` : ""}`} aria-pressed={slot?.playerId === player.id} onClick={() => assignOver(player.id, i)} className={`min-h-6 rounded-sm border text-[10px] font-bold transition-colors focus-visible:outline focus-visible:outline-accent ${slot?.playerId === player.id ? slot.mode === "fixed" ? "border-accent bg-accent text-black" : "border-accent border-dashed bg-accent/15 text-accent" : `${strengthClass} hover:border-accent hover:brightness-125`}`}>{slot?.playerId === player.id ? slot.mode === "fixed" ? "F" : "P" : ""}</button>; })}
+                    return <button key={i} data-developer-tooltip={developerToolsEnabled ? `${player.name} · ${phase} bowling: ${rating ?? "Not set"}\n${developerPlayerRatings(player)}` : undefined} aria-label={`Over ${i + 1}, ${player.name}${slot?.playerId === player.id ? `, ${slot.mode}` : ""}`} aria-pressed={slot?.playerId === player.id} onClick={() => assignOver(player.id, i)} className={`bowling-planner-cell min-h-6 rounded-sm border text-[10px] font-bold transition-colors focus-visible:outline focus-visible:outline-accent ${slot?.playerId === player.id ? slot.mode === "fixed" ? "border-accent bg-accent text-black" : "border-accent border-dashed bg-accent/15 text-accent" : `${strengthClass} hover:border-accent hover:brightness-125`}`}>{slot?.playerId === player.id ? slot.mode === "fixed" ? "F" : "P" : ""}</button>; })}
 
                 <span className={`self-center text-center font-space-mono text-[10px] ${count > 4 ? "text-red-500" : "text-text-secondary"}`}>{count}/4</span>
                 </div>;

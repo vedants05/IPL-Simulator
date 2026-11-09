@@ -29,6 +29,16 @@ function post(s: BusinessState, entry: Experience["ledger"][number]) {
     s.experience.ledger.push(entry);
     s.experience.cash += entry.amount;
 }
+export function chargeStaffTransfer(source: BusinessState, eventId: string, date: string, amount: number, staffName: string): BusinessState {
+    if (!Number.isSafeInteger(amount) || amount < 0) throw new Error("Invalid staff transfer compensation.");
+    const id = `staff-transfer-${eventId}`;
+    if (source.experience.ledger.some(entry => entry.id === id)) return source;
+    if (source.experience.cash < amount) throw new Error("The club does not have enough cash to pay the staff transfer compensation.");
+    const next = copy(source);
+    post(next, { id, date, amount: -amount, expense: amount, category: "operations", description: `Staff transfer compensation: ${staffName}`, sourceId: eventId });
+    next.experience.revision++;
+    return reconcile(next);
+}
 function payment(s: BusinessState, p: Omit<Payment, "status">) {
     if (!s.experience.payments.some(entry => entry.id === p.id))
         s.experience.payments.push({ ...p, status: "pending" });

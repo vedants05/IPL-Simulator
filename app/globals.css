@@ -639,6 +639,21 @@ html.theme-changing:has(.team-tactics-page) *::after {
   to { width: 0%; }
 }
 
+/* Fit the bowling matrix to the available desktop workspace. Smaller screens
+   retain scrolling so the controls remain reachable. */
+@media (min-width: 1280px) and (min-height: 650px) {
+  .season-page-content:has(.bowling-plan-layout) { overflow: hidden; }
+  .team-tactics-page:has(.bowling-plan-layout) { height: 100%; min-height: 0; }
+  .bowling-plan-layout { grid-template-rows: minmax(0, 1fr); overflow: hidden; padding: 8px; gap: 8px; }
+  .bowling-plan-layout > main { height: 100%; min-height: 0; gap: 8px; overflow: hidden; }
+  .bowling-planner { display: flex; flex: 1 1 0; min-height: 0; flex-direction: column; padding: 8px; }
+  .bowling-planner-grid-wrap { flex: 1 1 0; min-height: 0; overflow: hidden; }
+  .bowling-planner-grid { display: flex; height: 100%; min-height: 0; flex-direction: column; }
+  .bowling-planner-grid > :not(.bowling-planner-row) { flex-shrink: 0; }
+  .bowling-planner-row { flex: 1 1 0; min-height: 0; margin-top: 0; padding-block: 1px; }
+  .bowling-planner-cell { min-height: 0; }
+}
+
 @keyframes ticking-calendar-drop {
   from {
     opacity: 0;

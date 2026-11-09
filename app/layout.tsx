@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
 import ViewportScaler from "@/components/shared/ViewportScaler";
+import DeveloperTooltip from "@/components/shared/DeveloperTooltip";
 import { CUSTOM_THEME_INIT_SCRIPT } from "@/lib/theme/custom";
 import { UI_DESIGN_INIT_SCRIPT } from "@/lib/theme/uiDesign";
 import "./globals.css";
@@ -81,6 +82,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body className="readable-ui antialiased bg-bg text-text-primary font-barlow">
         <ViewportScaler>{children}</ViewportScaler>
+        <DeveloperTooltip />
       </body>
     </html>
   );

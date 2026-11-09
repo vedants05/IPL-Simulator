@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { Check } from "lucide-react";
 import BattingRuleMarkers from "./BattingRuleMarkers";
 import type { Player } from "@/lib/types";
+import { developerPlayerRatings, useDeveloperToolsEnabled } from "@/lib/logic/developerTools";
 import { battingFitPhases as columns, battingReviewCategories, prepareBattingRoleFit, reviewBattingPhasePlan, suggestLineupBattingCoverage, type BattingReviewCategory, type BattingRoleFit } from "@/lib/logic/battingRoleFit";
 import type { TeamTactics } from "@/lib/logic/teamTactics";
 import {
@@ -21,7 +22,7 @@ const coverageRanges = { powerplay: "1–6", earlyMiddle: "7–11", lateMiddle: 
 const phaseColors: Record<GridPhase, string> = {
   powerplay: "[--batting-phase:#f59e0b]",
   earlyMiddle: "[--batting-phase:#0ea5e9]",
-  lateMiddle: "[--batting-phase:#10b981]",
+  lateMiddle: "[--batting-phase:#d946a8]",
   death: "[--batting-phase:#a78bfa]",
 };
 const phaseTint = "bg-[color-mix(in_srgb,var(--batting-phase)_10%,var(--surface))]";
@@ -223,13 +224,15 @@ const roleWidthTitles = (() => {
   return Array.from(titles);
 })();
 
-export default function BattingPlanEditor({ plan, otherPlan, players, order, tactics, chasing, impact, onChange, onOpenPlayer }: {
+export default function BattingPlanEditor({ plan, otherPlan, players, order, tactics, chasing, impact, onChange, onOpenPlayer, readOnly = false }: {
   plan: TacticalMatchPlan; players: Player[]; order: string[];
   otherPlan?: TacticalMatchPlan;
   tactics: TeamTactics; chasing: boolean;
   impact?: { incoming: string; outgoing: string };
+  readOnly?: boolean;
   onChange: (update: Partial<TacticalMatchPlan>) => void; onOpenPlayer: (id: string) => void;
 }) {
+  const developerToolsEnabled = useDeveloperToolsEnabled();
   const [reviewCategory, setReviewCategory] = useState<BattingReviewCategory>("Overview");
   const normalizedPlan = normalizeTacticalMatchPlan(plan);
   const battingCoverage = normalizedPlan.battingCoverage ?? {};
@@ -298,9 +301,10 @@ export default function BattingPlanEditor({ plan, otherPlan, players, order, tac
         {/* The toolbar copy can wrap within the table without widening its columns. */}
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 xl:relative xl:col-span-8 xl:pr-52 xl:[contain:inline-size]">
           <h3 className="font-anton text-sm uppercase">Player batting plan</h3>
-          <p className="text-xs text-text-secondary">Select a phase instruction. Select it again to follow the team plan.</p>
+          <p className="text-xs text-text-secondary">{readOnly ? "Read-only opposition instructions. Unselected phases follow the team plan." : "Select a phase instruction. Select it again to follow the team plan."}</p>
           <p className="text-xs text-text-secondary"><strong className="text-text-primary">!</strong> Better fit for this phase</p>
-          <div className="flex items-center gap-1 xl:absolute xl:right-1 xl:top-1/2 xl:-translate-y-1/2">
+          <p className="inline-flex items-center gap-1 text-xs text-text-secondary" title="From weakest to strongest: red means 40 or below; yellow means 41–45; light green is stronger and dark green is best"><span className="inline-block h-2 w-3 rounded-sm border border-red-700/70 bg-red-500/40" /><span className="inline-block h-2 w-3 rounded-sm border border-yellow-600/60 bg-yellow-400/30" /><span className="inline-block h-2 w-3 rounded-sm border border-emerald-500/35 bg-emerald-500/15" /><span className="inline-block h-2 w-3 rounded-sm border border-emerald-500/60 bg-emerald-500/30" /> Phase ratings</p>
+          {!readOnly && <div className="flex items-center gap-1 xl:absolute xl:right-1 xl:top-1/2 xl:-translate-y-1/2">
             <button type="button" onClick={clearAll} disabled={!clearableRows.length}
               title="Clear batting phase selections for this XI"
               className="whitespace-nowrap rounded border border-accent/50 bg-accent/10 px-1.5 py-0.5 font-space-mono text-[10px] font-bold text-text-primary enabled:hover:bg-accent/20 focus-visible:outline focus-visible:outline-accent disabled:opacity-40">
@@ -311,12 +315,12 @@ export default function BattingPlanEditor({ plan, otherPlan, players, order, tac
               className="whitespace-nowrap rounded border border-accent/50 bg-accent/10 px-1.5 py-0.5 font-space-mono text-[10px] font-bold text-text-primary enabled:hover:bg-accent/20 focus-visible:outline focus-visible:outline-accent disabled:opacity-40">
               Copy Other Plan
             </button>
-          </div>
+          </div>}
         </div>
-        <button type="button" onClick={autoSelectAll} disabled={!rows.length}
+        {!readOnly && <button type="button" onClick={autoSelectAll} disabled={!rows.length}
           className="justify-self-end whitespace-nowrap rounded border border-accent/50 bg-accent/10 px-1.5 py-0.5 font-space-mono text-[10px] font-bold text-text-primary enabled:hover:bg-accent/20 focus-visible:outline focus-visible:outline-accent disabled:opacity-40 xl:mr-2">
           Auto Select All
-        </button>
+        </button>}
       </div>
       <div className={`hidden items-end text-center text-[10px] uppercase leading-3 text-text-secondary xl:grid ${rowGrid}`}>
         <span className="text-left font-space-mono">Batter</span>
@@ -351,7 +355,7 @@ export default function BattingPlanEditor({ plan, otherPlan, players, order, tac
             <span className="w-4 shrink-0 font-space-mono text-xs text-accent">{position || "IP"}</span>
             <div className={`flex min-w-0 items-center gap-1 ${playerText}`}>
               <button type="button" className="min-w-0 text-left hover:text-accent hover:underline"
-                aria-label={`Open ${player.name} profile`} onClick={() => onOpenPlayer(player.id)}>{player.name}</button>
+                data-developer-tooltip={developerToolsEnabled ? developerPlayerRatings(player) : undefined} aria-label={`Open ${player.name} profile`} onClick={() => onOpenPlayer(player.id)}>{player.name}</button>
               {impact?.incoming === player.id && (
                 <span title={`Replaces ${impact.outgoing}`}
                   className="shrink-0 rounded-sm bg-accent/15 px-1 py-px font-space-mono text-[8px] font-bold leading-none text-accent">
@@ -365,6 +369,14 @@ export default function BattingPlanEditor({ plan, otherPlan, players, order, tac
           </span>
           {columns.map(column => {
             const activeChoice = coverage[column];
+            const phaseRating = column === "powerplay" ? player.powerplayBatting : column === "death" ? player.deathBatting : player.middleOversBatting;
+            const ratings = [player.powerplayBatting, player.middleOversBatting, player.deathBatting].filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+            const hasDistinctStrength = ratings.length >= 2 && Math.max(...ratings) - Math.min(...ratings) >= 3;
+            const bestPhase = hasDistinctStrength && phaseRating != null && phaseRating > 50 && phaseRating === Math.max(...ratings);
+            const strongerPhase = hasDistinctStrength && phaseRating != null && phaseRating > 50 && phaseRating > Math.min(...ratings) && phaseRating < Math.max(...ratings);
+            const weakPhase = phaseRating != null && phaseRating <= 45;
+            const worstPhase = phaseRating != null && phaseRating <= 40;
+            const phaseStrengthClass = worstPhase ? "bg-red-500/40" : weakPhase ? "bg-yellow-400/30" : bestPhase ? "bg-emerald-500/30" : strongerPhase ? "bg-emerald-500/15" : phaseTint;
             const setChoice = (value?: BattingCoverageIntent) => {
               const next = { ...coverage };
               if (value) next[column] = value;
@@ -374,7 +386,7 @@ export default function BattingPlanEditor({ plan, otherPlan, players, order, tac
             return (
             <div key={column} className={`flex min-w-0 flex-col xl:border-l ${gridBorder} ${phaseColors[column]}`}>
               <span className={`mb-0.5 block rounded px-1 text-[10px] font-bold uppercase xl:hidden ${phaseHeading}`}>{coverageLabels[column]}</span>
-                <fieldset className={`${choiceGrid} min-w-0 flex-1 rounded-sm border xl:rounded-none xl:border-0 ${gridBorder} ${phaseTint}`}
+                <fieldset disabled={readOnly} className={`${choiceGrid} min-w-0 flex-1 rounded-sm border xl:rounded-none xl:border-0 ${gridBorder} ${phaseStrengthClass}`}
                   aria-label={coverageLabels[column] + " approach for " + player.name}>
                   {coverageChoices.map(({ value, label, fullLabel }) => {
                     const selected = value === activeChoice;
@@ -382,7 +394,7 @@ export default function BattingPlanEditor({ plan, otherPlan, players, order, tac
                     const description = recommended ? `${fullLabel} · Better fit for this phase` : fullLabel;
                     return (
                       <button key={value} type="button" aria-label={description} aria-pressed={selected}
-                        title={description} onClick={() => setChoice(selected ? undefined : value)}
+                        title={developerToolsEnabled ? undefined : description} data-developer-tooltip={developerToolsEnabled ? `${description}\n${developerPlayerRatings(player)}` : undefined} onClick={() => setChoice(selected ? undefined : value)}
                         className={`flex min-h-[22px] cursor-pointer items-center justify-center whitespace-nowrap border-r px-0.5 font-barlow-condensed text-[9px] font-semibold last:border-r-0 focus-visible:outline focus-visible:outline-accent xl:min-h-[19px] ${gridBorder} ${selected ? "bg-accent text-black" : "text-text-secondary hover:bg-accent/10"}`}>
                         <span className="xl:hidden">{label}</span>
                         {selected && <Check size={10} aria-hidden="true" className="hidden xl:block" />}
@@ -406,7 +418,7 @@ export default function BattingPlanEditor({ plan, otherPlan, players, order, tac
           <div className={`flex items-center gap-2 px-2 ${playerText}`}>
             <span className="text-text-secondary xl:hidden">Role fit</span>
             <RoleFitMeter playerName={player.name} roleName={roleName} fit={fit} />
-            <button type="button" onClick={autoSelectRole}
+            {!readOnly && <><button type="button" onClick={autoSelectRole}
               aria-label={`Auto-select role for ${player.name}`}
               title="Choose the best fitting instruction in each batting phase"
               className="rounded px-1.5 text-[10px] leading-4 text-text-secondary ring-1 ring-inset ring-border hover:bg-accent/10 hover:text-text-primary focus-visible:outline focus-visible:outline-accent">
@@ -421,7 +433,7 @@ export default function BattingPlanEditor({ plan, otherPlan, players, order, tac
               title={`Clear ${player.name}'s phase selections`}
               className="rounded px-1 text-[12px] leading-4 text-text-secondary ring-1 ring-inset ring-border enabled:hover:bg-accent/10 enabled:hover:text-text-primary focus-visible:outline focus-visible:outline-accent disabled:opacity-40">
               ×
-            </button>
+            </button></>}
           </div>
         </div>;
       })}

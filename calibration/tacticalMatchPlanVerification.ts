@@ -322,6 +322,15 @@ for (const bowlers of [attack, attack.filter(p => p.id !== "3")]) {
   assert.ok(suggested.every((slot, i) => ![2, 4, 6].every(offset => suggested[i + offset]?.playerId === slot?.playerId)));
 }
 const spinPlan = suggestBowlingOvers(attack, existing, "spin-choke");
+const partial = emptyTacticalMatchPlan().overs;
+partial[0] = { playerId: "0", mode: "preferred" };
+partial[2] = { playerId: "1", mode: "fixed", suggested: true };
+const completed = suggestBowlingOvers(attack, partial, "balanced", true);
+assert.deepEqual(completed[0], partial[0]);
+assert.deepEqual(completed[2], partial[2]);
+assert.ok(completed.every(Boolean));
+assert.ok(attack.every(p => completed.filter(slot => slot?.playerId === p.id).length <= 4));
+assert.ok(completed.every((slot, i) => slot?.playerId !== completed[i + 1]?.playerId));
 assert.ok(spinPlan.slice(6, 15).filter(slot => slot?.playerId === "2" || slot?.playerId === "3").length >= 5);
 console.log("Bowling suggestions passed: complete schedules, fixed overs, workload, spells and middle-overs spin.");
 

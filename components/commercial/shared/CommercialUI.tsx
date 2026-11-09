@@ -14,6 +14,7 @@ export type PageProps = {
     s: BusinessState;
     context: BusinessContext;
     send: (cmd: Command) => boolean;
+    sendMany?: (commands: Command[]) => boolean;
     navigate: (page: string, source?: string) => void;
     draftId: string;
     source?: string;

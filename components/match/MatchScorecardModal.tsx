@@ -1,5 +1,7 @@
 "use client";
 import { formatDisplayDate } from "@/lib/logic/displayDate";
+import { splitScorecardBatters } from "@/lib/logic/scorecardBatting";
+import YetToBat from "@/components/match/YetToBat";
 
 import { useState } from "react";
 import { X, Award, MapPin, Calendar, Clock, Shield } from "lucide-react";
@@ -79,6 +81,7 @@ export default function MatchScorecardModal({
     runs: number;
     wickets: number;
     overs: number;
+    yetToBat: string[];
     batting: Array<{
       playerId: string;
       name: string;
@@ -108,7 +111,8 @@ export default function MatchScorecardModal({
       runs: safeNum(inn.runs),
       wickets: safeNum(inn.wickets),
       overs: safeNum(inn.overs),
-      batting: (inn.batting ?? []).map((b) => ({
+      yetToBat: splitScorecardBatters(inn.batting ?? [], inn, sim).yetToBat.map(b => b.name),
+      batting: splitScorecardBatters(inn.batting ?? [], inn, sim).batted.map((b) => ({
         playerId: b.id ?? b.name,
         name: b.name,
         dismissal: b.dismissal,
@@ -138,7 +142,8 @@ export default function MatchScorecardModal({
         runs: safeNum(match.scoreA?.runs),
         wickets: safeNum(match.scoreA?.wickets),
         overs: safeNum(match.scoreA?.overs),
-        batting: (sc.inningsA.batting ?? []).map((b) => ({
+        yetToBat: splitScorecardBatters(sc.inningsA.batting ?? []).yetToBat.map(b => b.name),
+        batting: splitScorecardBatters(sc.inningsA.batting ?? []).batted.map((b) => ({
           playerId: b.id ?? b.name,
           name: b.name,
           dismissal: b.dismissal ?? (b.notOut ? "not out" : "out"),
@@ -167,7 +172,8 @@ export default function MatchScorecardModal({
         runs: safeNum(match.scoreB?.runs),
         wickets: safeNum(match.scoreB?.wickets),
         overs: safeNum(match.scoreB?.overs),
-        batting: (sc.inningsB.batting ?? []).map((b) => ({
+        yetToBat: splitScorecardBatters(sc.inningsB.batting ?? []).yetToBat.map(b => b.name),
+        batting: splitScorecardBatters(sc.inningsB.batting ?? []).batted.map((b) => ({
           playerId: b.id ?? b.name,
           name: b.name,
           dismissal: b.dismissal ?? (b.notOut ? "not out" : "out"),
@@ -377,6 +383,7 @@ export default function MatchScorecardModal({
                             </tbody>
                           </table>
                         </div>
+                        <YetToBat names={currentInnings.yetToBat} />
                       </div>
 
                       {/* Bowling Card */}

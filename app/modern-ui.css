@@ -96,6 +96,7 @@ html:is([data-ui-design="modern"], [data-ui-design="sidebar"]) .app-subnav > div
   line-height: 18px;
   letter-spacing: .01em;
 }
+html:is([data-ui-design="modern"], [data-ui-design="sidebar"]) .app-subnav > div:last-child > button.app-fixture-action { padding-inline: 6px; }
 html:is([data-ui-design="modern"], [data-ui-design="sidebar"]) .app-auction-subnav { border-bottom-width: 1px !important; }
 html:is([data-ui-design="modern"], [data-ui-design="sidebar"]) .app-auction-subnav > div:first-child { gap: 10px; }
 html:is([data-ui-design="modern"], [data-ui-design="sidebar"]) .app-auction-subnav > div:first-child > div { padding: 2px 6px; }

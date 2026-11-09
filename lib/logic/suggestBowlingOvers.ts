@@ -7,8 +7,9 @@ export function suggestBowlingOvers(
   bowlers: Player[],
   existing: (OverAssignment | null)[],
   middle: BowlingMiddlePlan,
+  preserveAll = false,
 ): (OverAssignment | null)[] {
-  const fixed = existing.map(slot => slot?.mode === "fixed" && !slot.suggested ? slot : null);
+  const fixed = existing.map(slot => slot && (preserveAll || (slot.mode === "fixed" && !slot.suggested)) ? slot : null);
   const phaseAt = (index: number) => index < 6 ? "powerplay" : index < 15 ? "middle" : "death";
   const spin = bowlers.map(player => getBowlingFamily(player) === "spin");
   const openingRank = bowlers.map((player, index) => ({

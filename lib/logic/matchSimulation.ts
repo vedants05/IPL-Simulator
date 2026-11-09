@@ -12,13 +12,17 @@ import {
 } from "@/lib/logic/teamTactics";
 import {
   findOptimalImpactBattingPosition,
-  selectBattingFirstOutgoingBatter,
+  isAiBowlingOption,
 } from "@/lib/logic/aiLineupSelector";
 import type { CareerStaffState } from "@/lib/logic/staffContracts";
 import { calculateCoachingStaffModifiers, deriveAITeamTactics } from "@/lib/logic/coachingStrategyImpact";
 import { appendRainAffectedResultLabel, hasRainReducedOvers } from "@/lib/logic/matchWeather";
 import type { Player, Team } from "@/lib/types";
 import { worldRules } from "./worldRules";
+import { projectBatFirstImpact } from "./battingImpactPlan";
+export { projectBatFirstImpact } from "./battingImpactPlan";
+import { effectiveWicketkeepingRating, selectPreferredKeeper } from "./wicketkeeping";
+export { effectiveWicketkeepingRating } from "./wicketkeeping";
 import { BATTING_COVERAGE_INTENTS, activeBattingTarget, applyBattingTarget, applyBowlerOverTargetModes, applySpecialBattingRuleIntent, battingCoveragePhase, canCompleteAssignedOvers, chooseFloater, matchOverAssignments, normalizeTacticalMatchPlan, resolveBattingRule, selectSpecialBattingRule, shapeSpecialBattingRuleRuns, type OverAssignment } from "./tacticalMatchPlan";
 import { getFloaterRules } from "./tacticalMatchPlan";
 
@@ -1154,18 +1158,7 @@ export function selectInningsWicketkeeper(
   const fielders = fieldingIds
     .map((playerId) => players[playerId])
     .filter((player): player is Player => Boolean(player));
-  const primaryKeepers = fielders.filter((player) => (
-    player.role === "WK-Batsman" || Boolean(player.isWicketkeeper)
-  ));
-  const partTimeKeepers = fielders.filter((player) => (
-    Boolean(player.isPartTimeWk)
-    && player.role !== "WK-Batsman"
-    && !player.isWicketkeeper
-  ));
-  const bestKeeper = (candidates: Player[]) => candidates.sort((left, right) => (
-    effectiveWicketkeepingRating(right) - effectiveWicketkeepingRating(left)
-  ))[0];
-  return bestKeeper(primaryKeepers) ?? bestKeeper(partTimeKeepers);
+  return selectPreferredKeeper(fielders);
 }
 
 const isOverseas = (player: Player | undefined) => player?.nationality === "Overseas";
@@ -1176,12 +1169,11 @@ function isLegalImpactSwap(
   outgoing: Player,
   players: Record<string, Player>,
 ): boolean {
-  const remainingOverseas = teamState.finalXI
-    .filter((playerId) => playerId !== outgoing.id)
+  const remainingOverseas = teamState.startingXI
     .map((playerId) => players[playerId])
     .filter(isOverseas)
     .length;
-  return remainingOverseas + Number(isOverseas(incoming)) <= 4;
+  return remainingOverseas + Number(isOverseas(incoming)) <= worldRules().maxOverseasInXI;
 }
 
 const isBowlingOption = (player: Player | undefined) => Boolean(
@@ -2224,40 +2216,6 @@ export function effectiveFieldingRating(player: Player): number {
     54 + generalAbility * 0.24 + (player.reputation ?? 5) * 0.8 + ageAdjustment,
     55,
     91,
-  );
-}
-
-export function effectiveWicketkeepingRating(player: Player | undefined): number {
-  if (!player) return 48;
-
-  if (Number.isFinite(player.wicketkeepingRating)) {
-    return clamp(player.wicketkeepingRating!, 0, 100);
-  }
-
-  // Specific elite keeper ratings based on real-life keeping reputation & stumping speed
-  const name = player.name;
-  if (name.includes("Dhoni")) return 94;
-  if (name.includes("Pant")) return 88;
-  if (name.includes("Samson")) return 86;
-  if (name.includes("Klaasen")) return 85;
-  if (name.includes("Pooran")) return 85;
-  if (name.includes("Ishan Kishan")) return 82;
-  if (name.includes("KL Rahul")) return 82;
-  if (name.includes("Jurel")) return 80;
-  if (name.includes("Porel")) return 78;
-  if (name.includes("Prabhsimran")) return 76;
-
-  const isPrimaryKeeper = player.role === "WK-Batsman" || Boolean(player.isWicketkeeper);
-  const isPartTime = Boolean(player.isPartTimeWk) && !isPrimaryKeeper;
-
-  const base = isPrimaryKeeper ? 78 : isPartTime ? 68 : 50;
-  const reputationBonus = (player.reputation ?? 5) * 1.2;
-  const ageExperienceBonus = Math.min(6, Math.max(0, (player.age - 20) * 0.4));
-
-  return clamp(
-    Math.round(base + reputationBonus + ageExperienceBonus),
-    50,
-    95,
   );
 }
 
@@ -3370,6 +3328,8 @@ function activateCollapseImpact(
       incoming,
       outgoing: outgoingCandidates.find((outgoing) => (
         isLegalImpactSwap(teamState, incoming, outgoing, players)
+        && [...teamState.finalXI.filter(id => id !== outgoing.id).map(id => players[id]), incoming]
+          .filter((player): player is Player => player != null && isAiBowlingOption(player)).length >= 5
       )),
     }))
     .find((candidate) => candidate.outgoing);
@@ -3396,72 +3356,6 @@ function activateCollapseImpact(
     explanation: `${incoming.name} was introduced after a batting collapse, replacing the dismissed ${outgoing.name} without removing a bowler from the remaining lineup.`,
   };
   return { incomingId: incoming.id, outgoingId: outgoing.id };
-}
-
-export function projectBatFirstImpact(
-  startingXI: readonly string[],
-  finalXI: readonly string[],
-  plan: { impactSubs: readonly string[]; plannedImpactPlayerId?: string | null; plannedOutgoingPlayerId?: string | null; captainId?: string | null; viceCaptainId?: string | null },
-  players: Record<string, Player>,
-) {
-  const legalSwap = (incoming: Player, outgoing: Player) =>
-    finalXI.filter(id => id !== outgoing.id && isOverseas(players[id])).length + Number(isOverseas(incoming)) <= 4;
-  const startingSet = new Set(startingXI);
-  const candidates = plan.impactSubs
-    .map((playerId) => players[playerId])
-    .filter((player): player is Player => Boolean(
-      player
-      && !startingSet.has(player.id)
-      && isBowlingOption(player),
-    ));
-  const planned = candidates.find((player) => player.id === plan.plannedImpactPlayerId);
-  const rankedIncoming = [
-    ...(planned ? [planned] : []),
-    ...[...candidates]
-      .filter((player) => player.id !== planned?.id)
-      .sort((left, right) => (
-    right.currentBowling - left.currentBowling
-    || right.currentBatting - left.currentBatting
-      )),
-  ];
-  if (rankedIncoming.length === 0) return null;
-
-  const plannedOutgoing = plan.plannedOutgoingPlayerId
-    ? players[plan.plannedOutgoingPlayerId]
-    : undefined;
-  const outgoingCandidates = finalXI
-    .map((playerId) => players[playerId])
-    .filter((player): player is Player => Boolean(player));
-  const preferredOutgoing = plannedOutgoing && finalXI.includes(plannedOutgoing.id)
-    ? plannedOutgoing
-    : selectBattingFirstOutgoingBatter(
-        outgoingCandidates,
-        new Set([
-          plan.captainId,
-          plan.viceCaptainId,
-        ].filter((playerId): playerId is string => Boolean(playerId))),
-      );
-  const pairing = rankedIncoming
-    .map((incoming) => ({
-      incoming,
-      outgoing: preferredOutgoing && legalSwap(incoming, preferredOutgoing)
-        ? preferredOutgoing
-        : selectBattingFirstOutgoingBatter(
-            outgoingCandidates,
-            new Set([
-              plan.captainId,
-              plan.viceCaptainId,
-              ...outgoingCandidates
-                .filter((outgoing) => !legalSwap(incoming, outgoing))
-                .map((outgoing) => outgoing.id),
-            ].filter((playerId): playerId is string => Boolean(playerId))),
-          ),
-    }))
-    .find((candidate) => candidate.outgoing);
-  const incoming = pairing?.incoming;
-  const outgoing = pairing?.outgoing;
-  return incoming && outgoing ? { incoming, outgoing, planned } : null;
-
 }
 
 function activateStandardBatFirstImpact(teamState: ActiveTeamState, players: Record<string, Player>): void {
@@ -3583,16 +3477,17 @@ function activateBowlFirstImpact(
     outgoing,
     true,
   );
-  if (outgoingPosition >= 0) teamState.battingOrder.splice(outgoingPosition, 1);
   // Pitch tuning can change the best available incoming player after the
   // original plan was generated. A stored slot only belongs to that planned
   // player; replacements must calculate their own position.
   const requestedPosition = incoming.id === planned?.id
     ? teamState.plan.plannedImpactBattingPosition
     : null;
-  const insertionIndex = typeof requestedPosition === "number"
-    ? clamp(Math.round(requestedPosition) - 1, 0, teamState.battingOrder.length)
-    : clamp(automaticPosition - 1, 0, teamState.battingOrder.length);
+  const chosenPosition = typeof requestedPosition === "number" && requestedPosition >= 1 && requestedPosition <= 11
+    && (!incoming.onlyOpensOrBenched || requestedPosition <= 2) ? requestedPosition : automaticPosition;
+  if (chosenPosition == null) return;
+  if (outgoingPosition >= 0) teamState.battingOrder.splice(outgoingPosition, 1);
+  const insertionIndex = clamp(Math.round(chosenPosition) - 1, 0, teamState.battingOrder.length);
   teamState.battingOrder.splice(insertionIndex, 0, incoming.id);
   teamState.finalXI = teamState.finalXI.filter((playerId) => playerId !== outgoing.id);
   teamState.finalXI.push(incoming.id);
@@ -4229,6 +4124,9 @@ function simulateInnings(context: InningsContext): MatchInnings {
       const strikerEntry = ensureBattingEntry(striker.id);
       strikerEntry.didNotBat = false;
       strikerEntry.dismissal = "not out";
+      const nonStrikerEntry = ensureBattingEntry(nonStriker.id);
+      nonStrikerEntry.didNotBat = false;
+      nonStrikerEntry.dismissal = "not out";
       const extrasForBall = emptyExtras();
       const displayLegalBall = legalBallsThisOver + 1;
       const displayBall = `${overNumber - 1}.${displayLegalBall}`;

@@ -86,6 +86,7 @@ export function ChoiceControl<T extends string>({
   onChange,
   descriptionInHeader = false,
   compact = false,
+  readOnly = false,
 }: {
   title: string;
   value: T;
@@ -93,6 +94,7 @@ export function ChoiceControl<T extends string>({
   onChange: (value: T) => void;
   descriptionInHeader?: boolean;
   compact?: boolean;
+  readOnly?: boolean;
 }) {
   const selected = options.find((option) => option.value === value) ?? options[0];
 
@@ -115,8 +117,10 @@ export function ChoiceControl<T extends string>({
             <button
               key={option.value}
               type="button"
+              disabled={readOnly}
+              aria-pressed={active}
               onClick={() => onChange(option.value)}
-              className={`min-h-6 border px-1.5 py-0.5 font-space-mono text-[10px] font-bold uppercase leading-tight transition-colors ${compact ? "lg:whitespace-nowrap lg:px-0.5 lg:text-[9px]" : ""} ${active ? "border-accent bg-accent/[0.11] text-text-primary" : "border-border/70 text-text-secondary hover:border-accent/60 hover:text-text-primary"}`}
+              className={`min-h-6 border px-1.5 py-0.5 font-space-mono text-[10px] font-bold uppercase leading-tight transition-colors ${compact ? "lg:whitespace-nowrap lg:px-0.5 lg:text-[9px]" : ""} ${active ? "border-accent bg-accent/[0.11] text-text-primary" : `border-border/70 text-text-secondary ${readOnly ? "" : "hover:border-accent/60 hover:text-text-primary"}`}`}
               title={option.description}
             >
               {option.label}

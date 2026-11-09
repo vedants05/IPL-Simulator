@@ -175,6 +175,8 @@ export default function TacticsLineupBuilder({
   const battingValidation = validateLineup(battingFirstXI, candidates, "battingFirst");
   const bowlingValidation = validateLineup(bowlingFirstXI, candidates, "bowlingFirst");
   const maxOverseasInXI = useGameStore((state) => state.worldRules.maxOverseasInXI);
+  const impactEnabled = useGameStore((state) => state.worldRules.impactPlayerEnabled);
+  const requiredBowlers = activePlan === "bowlingFirst" || !impactEnabled ? 5 : 4;
   const activePlayers = activeXI.map((id) => playerById.get(id)).filter((player): player is Player => Boolean(player));
   const activeImpactPlayers = activeImpactSubs.map((id) => playerById.get(id)).filter((player): player is Player => Boolean(player));
   const autoBattingFirstOutgoingPlayer = useMemo(() => (
@@ -673,11 +675,12 @@ export default function TacticsLineupBuilder({
             <p className="font-space-mono text-[10px] font-bold uppercase leading-none tracking-[0.12em] text-text-secondary [@media(max-height:650px)]:text-[8px]">Plan checks</p>
             <div className="mt-1 grid grid-cols-3 gap-x-1.5 gap-y-1 text-[9px] font-medium leading-none [@media(max-height:650px)]:mt-0.5 [@media(max-height:650px)]:gap-y-0.5 [@media(max-height:650px)]:text-[8px]">
               {[
-                [activeValidation.playerCount === 11, `XI (${activeValidation.playerCount}/11)`],
-                [activeImpactSubs.length === 5, `Impact (${activeImpactSubs.length}/5)`],
+                [activeValidation.isComplete, `XI (${activeValidation.playerCount}/11)`],
+                [!impactEnabled || activeImpactSubs.length === 5, impactEnabled ? `Impact (${activeImpactSubs.length}/5)` : "Impact off"],
                 [activeValidation.overseasCount <= maxOverseasInXI, `Overseas (${activeValidation.overseasCount}/${maxOverseasInXI})`],
                 [activeValidation.wicketkeeperCount >= 1, fullTimeKeepers.length > 0 ? `Keeper (${fullTimeKeepers.length})` : partTimeKeepers.length > 0 ? `PT keeper (${partTimeKeepers.length})` : "Keeper (0)"],
-                [activeValidation.bowlingOptionCount >= 5, `Bowling (${activeValidation.bowlingOptionCount}/5)`],
+                [activeValidation.openingOnlyOutOfPosition.length === 0, "Opening-only positions"],
+                [activeValidation.bowlingOptionCount >= requiredBowlers, `Bowling (${activeValidation.bowlingOptionCount}/${requiredBowlers})`],
               ].map(([valid, label]) => (
                 <div key={String(label)} className="flex min-w-0 items-center gap-1"><span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full [@media(max-height:650px)]:h-3 [@media(max-height:650px)]:w-3 ${valid ? "bg-success/[0.12] text-success" : "bg-danger/[0.12] text-danger"}`}>{valid ? <Check size={10} /> : <X size={10} />}</span><span className={`truncate ${valid ? "text-text-secondary" : "text-danger"}`}>{label}</span></div>
               ))}

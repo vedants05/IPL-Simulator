@@ -12,7 +12,7 @@ import Office from "./pages/Office";
 import Operations from "./pages/Operations";
 import Partnerships from "./pages/Partnerships";
 import Retail from "./pages/Retail";
-import { date, names, Panel, Modal, type PageProps } from "./shared/CommercialUI";
+import { names, Panel, Modal, type PageProps } from "./shared/CommercialUI";
 export interface CommercialMainPageProps {
     saveId: string;
     teamId: string;
@@ -76,7 +76,7 @@ export default function CommercialMainPage(props: CommercialMainPageProps) {
             }
             saveBusiness(props.saveId, result.state, latest.experience.revision);
             setState(result.state);
-            setNotice(result.message === "Contract signed. Its payments and expiry are now scheduled." ? "" : result.message);
+            setNotice("");
             return true;
         }
         catch (e) {
@@ -84,8 +84,32 @@ export default function CommercialMainPage(props: CommercialMainPageProps) {
             return false;
         }
     };
+    const sendMany = (commands: Command[]) => {
+        if (!s || !commands.length) return false;
+        try {
+            const latest = loadBusiness(props.saveId, props.teamId, props.season, capacity, props.squadPlayers, currentDate);
+            if (latest.experience.revision !== s.experience.revision) {
+                setNotice("The business changed while you were editing. Refresh the preview and try again.");
+                setState(latest);
+                return false;
+            }
+            let next = latest;
+            for (const command of commands) {
+                const result = executeCommand(next, command, context, next.experience.revision);
+                if (!result.ok) { setNotice(result.message); return false; }
+                next = result.state;
+            }
+            saveBusiness(props.saveId, next, latest.experience.revision);
+            setState(next);
+            setNotice("");
+            return true;
+        } catch (e) {
+            setNotice(e instanceof Error ? e.message : "The decision could not be saved; try again.");
+            return false;
+        }
+    };
     if (!s)
         return <div className="commercial-experience"><Panel title={error ? "Commercial save needs attention" : "Loading commercial office"}><p role="alert">{error || "Preparing your business records…"}</p>{error && <p>Existing data has been retained. Reload the career to retry.</p>}</Panel></div>;
-    const p: PageProps = { s, context, send, navigate, draftId: `${key}:${page}`, source };
-    return <div className="commercial-experience"><header className="commercial-heading"><div><Wallet size={18}/><div><small>{props.stadiumName ?? "Home stadium"} · Season {props.season} · {date(s.experience.date)}</small><h2>{names[page] ?? "Commercial office"}</h2></div></div><div className="commercial-heading-actions">{s.experience.migration && <button onClick={() => setInformation(true)}>Save history</button>}<button aria-expanded={delegating} onClick={() => setDelegating(true)}><Settings2 size={12}/>Delegation</button></div></header>{notice && <div className="commercial-notice" role="status"><span>{notice}</span><button aria-label="Dismiss message" onClick={() => setNotice("")}>×</button></div>}{error && <p className="commercial-error" role="alert">{error}</p>}<div className="commercial-workspace" key={`${key}:${page}`}>{page === "overview" ? <Office {...p}/> : page === "matchday" ? <Matchday {...p}/> : page === "partnerships" ? <Partnerships {...p}/> : page === "retail" ? <Retail {...p}/> : page === "operations" ? <Operations {...p}/> : <Finance {...p}/>}</div>{delegating && <Modal title="Commercial preferences" onClose={() => setDelegating(false)}><DelegationPanel {...p}/></Modal>}{information && <Modal title="Previous commercial records" onClose={() => setInformation(false)}><p>{s.experience.migration}</p></Modal>}</div>;
+    const p: PageProps = { s, context, send, sendMany, navigate, draftId: `${key}:${page}`, source };
+    return <div className="commercial-experience"><header className="commercial-heading"><div><Wallet size={18}/><div><small>{props.stadiumName ?? "Home stadium"} · Season {props.season}</small><h2>{names[page] ?? "Commercial office"}</h2></div></div><div className="commercial-heading-actions">{s.experience.migration && <button onClick={() => setInformation(true)}>Save history</button>}<button aria-expanded={delegating} onClick={() => setDelegating(true)}><Settings2 size={12}/>Delegation</button></div></header>{notice && <p className="commercial-error" role="alert">{notice}</p>}{error && <p className="commercial-error" role="alert">{error}</p>}<div className="commercial-workspace" key={`${key}:${page}`}>{page === "overview" ? <Office {...p}/> : page === "matchday" ? <Matchday {...p}/> : page === "partnerships" ? <Partnerships {...p}/> : page === "retail" ? <Retail {...p}/> : page === "operations" ? <Operations {...p}/> : <Finance {...p}/>}</div>{delegating && <Modal title="Commercial preferences" onClose={() => setDelegating(false)}><DelegationPanel {...p}/></Modal>}{information && <Modal title="Previous commercial records" onClose={() => setInformation(false)}><p>{s.experience.migration}</p></Modal>}</div>;
 }

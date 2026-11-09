@@ -26,6 +26,7 @@ export interface LineupValidation {
   overseasCount: number;
   wicketkeeperCount: number;
   bowlingOptionCount: number;
+  openingOnlyOutOfPosition: string[];
   isComplete: boolean;
   isValid: boolean;
 }
@@ -153,16 +154,18 @@ export function validateLineup(
   const overseasCount = selected.filter(isOverseas).length;
   const wicketkeeperCount = selected.filter((player) => player.isWicketkeeper).length;
   const bowlingOptionCount = selected.filter(isBowlingOption).length;
-  const isComplete = selected.length === 11;
-  const minBowlers = mode === "bowlingFirst" ? 5 : 4;
+  const openingOnlyOutOfPosition = ids.slice(2).filter(id => candidateById.get(id)?.onlyOpensOrBenched);
+  const isComplete = selected.length === 11 && new Set(ids).size === 11 && ids.length === 11;
+  const minBowlers = mode === "bowlingFirst" || !worldRules().impactPlayerEnabled ? 5 : 4;
 
   return {
     playerCount: selected.length,
     overseasCount,
     wicketkeeperCount,
     bowlingOptionCount,
+    openingOnlyOutOfPosition,
     isComplete,
-    isValid: isComplete && overseasCount <= worldRules().maxOverseasInXI && wicketkeeperCount >= 1 && bowlingOptionCount >= minBowlers,
+    isValid: isComplete && openingOnlyOutOfPosition.length === 0 && overseasCount <= worldRules().maxOverseasInXI && wicketkeeperCount >= 1 && bowlingOptionCount >= minBowlers,
   };
 }
 
@@ -292,10 +295,11 @@ export function buildRecommendedImpactSubs(
   plan: LineupPlan,
 ): string[] {
   const starters = candidates.filter((candidate) => lineup.includes(candidate.id));
-  const overseasStarters = Math.min(4, starters.filter(isOverseas).length);
+  const overseasLimit = worldRules().maxOverseasInXI;
+  const overseasStarters = starters.filter(isOverseas).length;
   const available = candidates.filter((candidate) => (
     !lineup.includes(candidate.id)
-    && (!isOverseas(candidate) || overseasStarters < 4)
+    && (!isOverseas(candidate) || overseasStarters < overseasLimit)
   ));
   const preferred = available.filter((candidate) => (
     plan === "battingFirst" ? isBowlingOption(candidate) : (

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Player } from "@/lib/types";
 import { classifyBowlingUsage } from "@/lib/logic/playerBowlingUsage";
+import { useDeveloperToolsEnabled } from "@/lib/logic/developerTools";
 
 type Note = { score: number; title: string; stats: string[]; wording?: NoteWording };
 
@@ -69,7 +70,7 @@ function stableIndex(value: string, size: number): number {
   return (hash >>> 0) % size;
 }
 
-function noteParagraph(player: Player, notes: Note[]): Array<{ topic: NoteTopic; text: string }> {
+function noteParagraph(player: Player, notes: Note[]): Array<{ topic: string; text: string; parts: Array<{ text: string; stats?: string[] }> }> {
   const topics: NoteTopic[] = ["batting", "bowling", "temperament", "fielding"];
   const openings = ["He", "From a scouting view, he", "His game shows that he", "On the field, he"];
   return topics.flatMap((topic) => {
@@ -78,9 +79,12 @@ function noteParagraph(player: Player, notes: Note[]): Array<{ topic: NoteTopic;
     const opening = openings[stableIndex(`${player.id}:${topic}`, openings.length)];
     const clauses = related.map((note) => {
       const wording = note.wording ?? noteWording[note.title];
-      return wording.clauses[stableIndex(`${player.id}:${note.title}`, wording.clauses.length)];
+      return { text: wording.clauses[stableIndex(`${player.id}:${note.title}`, wording.clauses.length)], stats: note.stats };
     });
-    return [{ topic, text: `${opening} ${clauses.length === 1 ? clauses[0] : `${clauses.slice(0, -1).join(", ")} and ${clauses.at(-1)}`}.` }];
+    const parts = [{ text: `${opening} ` }, ...clauses.flatMap((clause, index) => [
+      ...(index ? [{ text: index === clauses.length - 1 ? " and " : ", " }] : []), clause,
+    ]), { text: "." }];
+    return [{ topic, text: parts.map(part => part.text).join(""), parts }];
   });
 }
 
@@ -342,6 +346,7 @@ function PhaseRow({ title, values }: { title: string; values: Array<{ label: str
 }
 
 export function ScoutNotesTile({ player }: { player: Player }) {
+  const developerToolsEnabled = useDeveloperToolsEnabled();
   const noteAreaRef = useRef<HTMLDivElement>(null);
   const noteTextRef = useRef<HTMLParagraphElement>(null);
   const [noteFontSize, setNoteFontSize] = useState(13);
@@ -353,8 +358,8 @@ export function ScoutNotesTile({ player }: { player: Player }) {
   const headline = impression(player);
   const notes = additionalNotes(player);
   const economy = economyNote(player);
-  const sentences: Array<{ topic: string; text: string }> = noteParagraph(player, economy ? notes.slice(0, 4) : notes);
-  if (economy) sentences.push({ topic: "economy", text: economy });
+  const sentences = noteParagraph(player, economy ? notes.slice(0, 4) : notes);
+  if (economy) sentences.push({ topic: "economy", text: economy, parts: [{ text: economy, stats: [`Bowling economy control: ${player.bowlingEconomyControl}`] }] });
   const paragraphText = sentences.map((sentence) => sentence.text).join(" ");
   useEffect(() => {
     const area = noteAreaRef.current;
@@ -401,7 +406,7 @@ export function ScoutNotesTile({ player }: { player: Player }) {
       </div>
       <div ref={noteAreaRef} className="min-h-0 flex-1" style={{ overflowY: notesOverflow ? "auto" : "hidden" }}>
       {sentences.length > 0
-        ? <p ref={noteTextRef} className="font-space-mono font-bold leading-[1.2] text-text-primary" style={{ fontSize: noteFontSize }}>{sentences.map((sentence) => <span key={sentence.topic}>{sentence.text} </span>)}</p>
+        ? <p ref={noteTextRef} className="font-space-mono font-bold leading-[1.2] text-text-primary" style={{ fontSize: noteFontSize }}>{sentences.map((sentence) => <span key={sentence.topic}>{sentence.parts.map((part, index) => <span key={index} data-developer-tooltip={developerToolsEnabled && part.stats ? part.stats.join("\n") : undefined} tabIndex={developerToolsEnabled && part.stats ? 0 : undefined} className={developerToolsEnabled && part.stats ? "cursor-help underline decoration-dotted underline-offset-2" : undefined}>{part.text}</span>)} </span>)}</p>
         : <p className="font-space-mono text-[9px] leading-snug text-text-secondary">No pronounced secondary tendency stands out.</p>}
       </div>
     </div>

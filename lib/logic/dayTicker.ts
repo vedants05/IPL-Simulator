@@ -25,6 +25,7 @@ export function createDayTicker({
   cancel = clearTimeout,
 }: DayTickerOptions): DayTickerController {
   let running = false;
+  let generation = 0;
   let timer: ReturnType<typeof setTimeout> | null = null;
 
   const clearPendingTimer = () => {
@@ -33,18 +34,19 @@ export function createDayTicker({
     timer = null;
   };
 
-  const queueNextTick = () => {
+  const queueNextTick = (run: number) => {
     const nextIntervalMs = typeof intervalMs === "function" ? intervalMs() : intervalMs;
     timer = schedule(() => {
       timer = null;
-      if (!running) return;
+      if (!running || run !== generation) return;
 
       try {
         const tickResult = onTick();
         if (tickResult instanceof Promise) {
           void tickResult.then(() => {
-            if (running && timer === null) queueNextTick();
+            if (running && run === generation && timer === null) queueNextTick(run);
           }).catch((error) => {
+            if (run !== generation) return;
             running = false;
             clearPendingTimer();
             onError?.(error);
@@ -52,14 +54,15 @@ export function createDayTicker({
           return;
         }
       } catch (error) {
+        if (run !== generation) return;
         running = false;
         clearPendingTimer();
         onError?.(error);
         return;
       }
 
-      if (running && timer === null) {
-        queueNextTick();
+      if (running && run === generation && timer === null) {
+        queueNextTick(run);
       }
     }, nextIntervalMs);
   };
@@ -69,16 +72,19 @@ export function createDayTicker({
     start: () => {
       if (running) return false;
       running = true;
+      generation += 1;
       clearPendingTimer();
-      queueNextTick();
+      queueNextTick(generation);
       return true;
     },
     stop: () => {
       running = false;
+      generation += 1;
       clearPendingTimer();
     },
     dispose: () => {
       running = false;
+      generation += 1;
       clearPendingTimer();
     },
   };

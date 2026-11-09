@@ -329,9 +329,8 @@ export function staffContractOfferIssue(state: CareerStaffState, input: StaffNeg
   const budget = finance?.annualBudget ?? 100_000_000;
   const committed = finance?.committedSalary ?? (input.action === "renew" ? contract.annualSalary : 0);
   const available = Math.max(0, budget - committed + (input.action === "renew" ? contract.annualSalary : 0));
-  const compensation = input.action === "poach" ? staffPoachingCompensation(contract, input.season) : 0;
   const money = (amount: number) => `₹${Math.round(amount).toLocaleString("en-IN")}`;
-  if (input.annualSalary + compensation > available) return `Salary ${money(input.annualSalary)} + transfer compensation ${money(compensation)} = ${money(input.annualSalary + compensation)}. Available staff budget: ${money(available)}. Reduce the salary or free up budget.`;
+  if (input.annualSalary > available) return `Salary ${money(input.annualSalary)} exceeds the available staff budget of ${money(available)}. Reduce the salary or free up budget.`;
   if (checkSalaryFloor && input.annualSalary < minimumCredibleSalary(contract, roles, primaryRole, input.season, input.endSeason, input.action)) return "The salary is below the minimum for these responsibilities. Improve the salary or reduce the proposed roles.";
   return null;
 }
@@ -1001,7 +1000,7 @@ export function poachCareerStaff(
   const destinationFinance = state.financesByTeam[input.teamId];
   const availableForMove = Math.max(0, (destinationFinance?.annualBudget ?? 100_000_000)
     - (destinationFinance?.committedSalary ?? 0));
-  if (Math.max(0, input.annualSalary) + compensation > availableForMove) return state;
+  if (Math.max(0, input.annualSalary) > availableForMove) return state;
   const offeredRating = existing.roleRatings?.[input.primaryRole] ?? existing.currentAbility;
   const moveInterest = calculateStaffMoveInterest({
     loyalty: existing.loyalty, ambition: existing.ambition, adaptability: existing.adaptability,

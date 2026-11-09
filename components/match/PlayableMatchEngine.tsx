@@ -1,5 +1,6 @@
 "use client";
 import { formatDisplayDate } from "@/lib/logic/displayDate";
+import YetToBat from "@/components/match/YetToBat";
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { Activity, ChevronDown, Gauge, Pause, Play, Shield, SkipForward, Target, UserPlus, Users, X, Zap } from "lucide-react";
@@ -1477,6 +1478,7 @@ export default function PlayableMatchEngine({ input, userTeamId, session, onSess
                   <tfoot className="font-space-mono text-[9px] font-bold"><tr className="border-t border-border"><td className="px-4 py-2 uppercase">Extras</td><td className="px-4 py-2 text-center">{scoreboardExtras}</td><td colSpan={4} className="px-4 py-2 text-right uppercase">Total {scoreboardInnings?.runs ?? 0}/{scoreboardInnings?.wickets ?? 0}</td></tr></tfoot>
                 </table>
               </div>
+              <YetToBat names={scoreboardBattingPlayers.filter(player => !scoreboardBattingRows.some(row => row.player.id === player.id)).map(player => player.name)} />
             </div>
 
             <div>

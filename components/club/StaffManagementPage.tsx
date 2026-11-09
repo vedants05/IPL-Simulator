@@ -4,7 +4,7 @@ import { formatDisplayDate } from "@/lib/logic/displayDate";
 import { Children, cloneElement, isValidElement, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import dynamic from "next/dynamic";
-import { ArrowDown, ArrowUp, ArrowUpDown, Bot, BriefcaseBusiness, Lock, Pencil, RefreshCw, UserMinus, UserPlus, UsersRound, X } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, Bot, BriefcaseBusiness, Lock, Pencil, RefreshCw, Settings2, UserMinus, UserPlus, UsersRound, X } from "lucide-react";
 
 import { StaffEditorModal } from "@/components/club/StaffEditorModal";
 import { useEditorAccess } from "@/lib/store/editorAccessStore";
@@ -78,8 +78,10 @@ const STAFF_COLUMNS: StaffMarketSortKey[] = ["staff_member", "role_fit", "ca", "
 const DEFAULT_STAFF_COLUMN_ORDER: StaffMarketSortKey[] = ["staff_member", "status", "role_fit", "ca", "pa", "club_link", "interest", "demand", "budget"];
 const STAFF_COLUMN_WIDTHS = ["minmax(0,1fr)", "minmax(0,1fr)", "2.25rem", "2.25rem", "minmax(0,1fr)", "minmax(0,.85fr)", "minmax(0,.75fr)", "minmax(0,.5fr)", "minmax(0,.7fr)"];
 const STAFF_COLUMN_STORAGE = "ipl-staff-market-column-order";
+const STAFF_COLUMN_VISIBILITY_STORAGE = "ipl-staff-market-hidden-columns";
+const STAFF_COLUMN_LABELS: Record<StaffMarketSortKey, string> = { staff_member: "Staff member", status: "Status", role_fit: "Role / fit", ca: "CA", pa: "PA", club_link: "Club link", interest: "Interest", demand: "Demand", budget: "Budget" };
 function StaffMarketCells({ order, children }: { order: StaffMarketSortKey[]; children: ReactNode }) {
-  return Children.toArray(children).map((child, index) => isValidElement<{ style?: CSSProperties }>(child)
+  return Children.toArray(children).map((child, index) => !order.includes(STAFF_COLUMNS[index]) ? null : isValidElement<{ style?: CSSProperties }>(child)
     ? cloneElement(child, { key: STAFF_COLUMNS[index], style: { ...child.props.style, gridColumn: order.indexOf(STAFF_COLUMNS[index]) + 1, gridRow: 1 } })
     : child);
 }
@@ -520,7 +522,7 @@ function StaffProfileModal({
         });
     setContractMessage(completed
       ? contractAction === "renew" ? "Contract renewal accepted." : "Contract accepted. The staff member has joined your club."
-      : "The contract could not be completed because its role or budget constraints are no longer valid.");
+      : "The contract could not be completed. Check the role, staff budget and available club cash.");
     if (completed) setContractAction(null);
     if (completed) setStaffCounterOffer(null);
     if (completed) setStaffNegotiationSession(member.id, null);
@@ -1035,10 +1037,10 @@ function StaffProfileModal({
                 <div className="rounded border border-border bg-bg p-3"><p className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Offer type</p><p className="mt-1 font-anton text-sm uppercase text-text-primary">{contractAction === "poach" ? (careerContract?.nationalTeamId ? "National team approach" : "Club approach") : contractAction === "renew" ? "Renewal" : "Free-agent offer"}</p></div>
                 <div className="rounded border border-border bg-bg p-3"><p className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Proposed roles</p><p className="mt-1 font-anton text-sm uppercase text-text-primary">{normalizedOfferRoles.map(roleLabel).join(" + ")}</p></div>
                 <div className={`rounded border p-3 ${staffCounterOffer ? "border-gold/50 bg-gold/10" : "border-accent/40 bg-accent/5"}`}><p className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">{staffCounterOffer ? "Proposed package" : "Market position"}</p><p className="mt-1 font-anton text-sm uppercase text-text-primary">{staffCounterOffer ? `${formatSalary(staffCounterOffer)} · ${roleLabel(persistedNegotiation?.latestCounter?.primaryRole ?? offerPrimaryRole)}` : salaryDemand >= maximumNegotiationSalary * 0.85 ? "Premium terms likely" : "Competitive terms likely"}</p></div>
-                <div className="rounded border border-border bg-bg p-3"><p className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Remaining budget</p><p className="mt-1 font-anton text-sm uppercase text-text-primary">{formatSalary(maximumNegotiationSalary)}</p>{transferCompensation > 0 && <p className="mt-1 text-[10px] text-text-secondary">Salary limit after compensation: {formatSalary(Math.max(0, maximumNegotiationSalary - transferCompensation))}</p>}</div>
+                <div className="rounded border border-border bg-bg p-3"><p className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">Remaining staff budget</p><p className="mt-1 font-anton text-sm uppercase text-text-primary">{formatSalary(maximumNegotiationSalary)}</p></div>
               </div>
 
-              {transferCompensation > 0 && <p className={`mx-5 mt-3 rounded border px-3 py-2 text-[11px] ${offeredSalaryRupees + transferCompensation > maximumNegotiationSalary ? "border-danger/30 bg-danger/5 text-danger" : "border-border/20 text-text-secondary"}`}>Annual salary {formatSalary(offeredSalaryRupees)} + transfer compensation {formatSalary(transferCompensation)} = {formatSalary(offeredSalaryRupees + transferCompensation)} required from the available {formatSalary(maximumNegotiationSalary)} staff budget.</p>}
+              {transferCompensation > 0 && <p className="mx-5 mt-3 rounded border border-border/20 px-3 py-2 text-[11px] text-text-secondary">Annual salary {formatSalary(offeredSalaryRupees)} comes from the staff budget. Transfer compensation of {formatSalary(transferCompensation)} is a one-off payment from club cash.</p>}
               {contractMessage && <p className="mx-5 mt-4 rounded border border-accent/30 bg-accent/5 px-3 py-2.5 font-space-mono text-[8px] font-bold uppercase leading-relaxed text-text-primary">{contractMessage}</p>}
 
               <div className="flex items-center justify-end gap-3 px-5 py-5">
@@ -1162,6 +1164,8 @@ export default function StaffManagementPage({ teams, mode = "club", initialStaff
   const [marketScope, setMarketScope] = useState<"free_agents" | "contracted">("free_agents");
   const [staffSearch, setStaffSearch] = useState("");
   const [staffColumnOrder, setStaffColumnOrder] = useState(DEFAULT_STAFF_COLUMN_ORDER);
+  const [hiddenStaffColumns, setHiddenStaffColumns] = useState<StaffMarketSortKey[]>([]);
+  const [columnSettingsOpen, setColumnSettingsOpen] = useState(false);
   const [movingStaffColumn, setMovingStaffColumn] = useState<StaffMarketSortKey | null>(null);
   const columnOrderRef = useRef(staffColumnOrder);
   const columnHold = useRef<{ timer: ReturnType<typeof setTimeout>; key: StaffMarketSortKey; x: number; y: number; original: StaffMarketSortKey[]; active: boolean } | null>(null);
@@ -1170,10 +1174,12 @@ export default function StaffManagementPage({ teams, mode = "club", initialStaff
     try {
       const saved: unknown = JSON.parse(localStorage.getItem(STAFF_COLUMN_STORAGE) ?? "null");
       if (Array.isArray(saved) && saved.length === STAFF_COLUMNS.length && new Set(saved).size === STAFF_COLUMNS.length && saved.every(key => STAFF_COLUMNS.includes(key))) {
-        const order = saved.join() === STAFF_COLUMNS.join() ? DEFAULT_STAFF_COLUMN_ORDER : saved;
+        const order = saved;
         columnOrderRef.current = order;
         setStaffColumnOrder(order);
       }
+      const hidden: unknown = JSON.parse(localStorage.getItem(STAFF_COLUMN_VISIBILITY_STORAGE) ?? "[]");
+      if (Array.isArray(hidden) && hidden.length < STAFF_COLUMNS.length && hidden.every(key => STAFF_COLUMNS.includes(key))) setHiddenStaffColumns(hidden);
     } catch { /* Keep the default order if browser storage is unavailable. */ }
     return () => { if (columnHold.current) clearTimeout(columnHold.current.timer); };
   }, []);
@@ -1468,11 +1474,13 @@ export default function StaffManagementPage({ teams, mode = "club", initialStaff
         ? "affordable_first"
         : "column";
 
+  const visibleStaffColumns = staffColumnOrder.filter(key => !hiddenStaffColumns.includes(key));
   const StaffMarketSortHeader = ({ sortKey, label, align = "left" }: {
     sortKey: StaffMarketSortKey;
     label: string;
     align?: "left" | "center" | "right";
   }) => {
+    if (hiddenStaffColumns.includes(sortKey)) return null;
     const active = staffMarketSort.key === sortKey;
     const Icon = active ? staffMarketSort.direction === "asc" ? ArrowUp : ArrowDown : ArrowUpDown;
     return (
@@ -1480,7 +1488,7 @@ export default function StaffManagementPage({ teams, mode = "club", initialStaff
         type="button"
         onClick={() => { if (suppressColumnClick.current) { suppressColumnClick.current = false; return; } toggleStaffMarketSort(sortKey); }}
         data-staff-column={sortKey}
-        style={{ gridColumn: staffColumnOrder.indexOf(sortKey) + 1, gridRow: 1 }}
+        style={{ gridColumn: visibleStaffColumns.indexOf(sortKey) + 1, gridRow: 1 }}
         title="Click to sort. Hold for 2 seconds, then drag to move this column. Press Escape to cancel."
         className={`flex min-w-0 select-none touch-none items-center gap-1 hover:text-accent ${movingStaffColumn === sortKey ? "cursor-grabbing rounded bg-accent/15 ring-2 ring-inset ring-accent" : "cursor-pointer"} ${align === "center" ? "justify-center" : align === "right" ? "justify-end" : "justify-start"} ${active ? "text-accent" : ""}`}
         aria-label={`Sort by ${label} ${active ? staffMarketSort.direction === "asc" ? "descending" : "ascending" : ""}`.trim()}
@@ -1490,7 +1498,7 @@ export default function StaffManagementPage({ teams, mode = "club", initialStaff
     );
   };
   const recruitmentMarketColumns = "";
-  const recruitmentGridStyle = { gridTemplateColumns: staffColumnOrder.map(key => STAFF_COLUMN_WIDTHS[STAFF_COLUMNS.indexOf(key)]).join(" ") };
+  const recruitmentGridStyle = { gridTemplateColumns: visibleStaffColumns.map(key => STAFF_COLUMN_WIDTHS[STAFF_COLUMNS.indexOf(key)]).join(" ") };
 
   const selectedMember = selectedStaffId ? memberById.get(selectedStaffId) : undefined;
   const selectedAssignment = displayData?.assignments.find((assignment) => (
@@ -1552,9 +1560,10 @@ export default function StaffManagementPage({ teams, mode = "club", initialStaff
     const budgetUsedPct = Math.min(100, ((userFinance?.committedSalary ?? 0) / Math.max(1, userFinance?.annualBudget ?? 1)) * 100);
     return (
       <div className="flex h-full min-h-0 flex-col gap-3 overflow-hidden p-4">
-        <header className="flex shrink-0 items-center justify-between rounded-lg border-2 border-border bg-surface px-5 py-3">
+        <div className="h-[44px] shrink-0">
+        <header className="flex items-center justify-between rounded-lg border-2 border-border bg-surface px-5 py-1">
           <div className="flex items-center gap-3">
-            <div className="flex size-10 items-center justify-center rounded bg-[var(--ink)] text-bg"><BriefcaseBusiness className="size-5" /></div>
+            <div className="flex size-8 items-center justify-center rounded bg-[var(--ink)] text-bg"><BriefcaseBusiness className="size-5" /></div>
             <div>
               <p className="font-space-mono text-[7px] font-bold uppercase tracking-[0.22em] text-text-secondary">{userTeam?.name ?? userTeamId} · cricket operations</p>
               <h2 className="font-anton text-xl uppercase leading-none text-text-primary">Staff Management</h2>
@@ -1570,15 +1579,16 @@ export default function StaffManagementPage({ teams, mode = "club", initialStaff
               type="button"
               aria-pressed={delegateStaffToCeo}
               onClick={() => setDelegateStaffToCeo(!delegateStaffToCeo)}
-              className={`flex items-center gap-2 rounded border px-3 py-2 font-space-mono text-[7px] font-bold uppercase tracking-wider transition-colors ${delegateStaffToCeo ? "border-success/50 bg-success/10 text-success" : "border-border bg-bg text-text-primary hover:border-accent"}`}
+              className={`flex items-center gap-2 rounded border px-3 py-1 font-space-mono text-[7px] font-bold uppercase tracking-wider transition-colors ${delegateStaffToCeo ? "border-success/50 bg-success/10 text-success" : "border-border bg-bg text-text-primary hover:border-accent"}`}
             >
               <Bot className="size-3.5" />
               {delegateStaffToCeo ? "CEO in control" : "Delegate to CEO"}
             </button>
           </div>
         </header>
+        </div>
 
-        <div className="grid min-h-0 flex-[0.88] grid-cols-[minmax(0,2fr)_minmax(17rem,0.72fr)] gap-3">
+        <div className="grid min-h-0 flex-[0.88] basis-[24px] grid-cols-[minmax(0,2fr)_minmax(17rem,0.72fr)] gap-3">
           <section className="flex min-h-0 flex-col overflow-hidden rounded-lg border-2 border-border bg-surface">
             <div className="flex shrink-0 items-center justify-between border-b border-border px-4 py-2.5">
               <div><p className="font-space-mono text-[7px] font-bold uppercase tracking-[0.18em] text-accent">Current contracts</p><h3 className="font-anton text-base uppercase text-text-primary">Your Staff</h3></div>
@@ -1617,8 +1627,8 @@ export default function StaffManagementPage({ teams, mode = "club", initialStaff
         </div>
 
         <section className="flex min-h-0 min-w-0 flex-[1.12] flex-col overflow-hidden rounded-lg border-2 border-border bg-surface">
-          <div className="flex min-w-0 shrink-0 flex-nowrap items-center justify-between gap-2 border-b-2 border-border px-4 py-2.5">
-            <div className="shrink-0"><p className="font-space-mono text-[7px] font-bold uppercase tracking-[0.18em] text-accent">Recruitment workspace</p><h3 className="font-anton text-base uppercase text-text-primary">Staff Market</h3></div>
+          <div className="relative z-20 flex min-w-0 shrink-0 flex-nowrap items-center justify-between gap-2 border-b-2 border-border px-3 py-2">
+            <div className="shrink-0"><h3 className="font-anton text-sm uppercase text-text-primary">Staff Market</h3></div>
             <div className="staff-market-filters flex min-w-0 flex-1 flex-nowrap items-center justify-end gap-1">
               <div className="flex shrink-0 overflow-hidden rounded border border-border bg-bg p-0.5">
                 <button type="button" onClick={() => setMarketScope("free_agents")} className={`whitespace-nowrap px-1.5 py-1 font-space-mono text-[6.5px] font-bold uppercase ${marketScope === "free_agents" ? "bg-accent text-white" : "text-text-secondary"}`}>Free agents · {freeAgents.length}</button>
@@ -1628,7 +1638,7 @@ export default function StaffManagementPage({ teams, mode = "club", initialStaff
               <select value={roleFilter} onChange={(event) => setRoleFilter(event.target.value)} className="w-[7.75rem] min-w-0 shrink rounded border border-border bg-bg px-1.5 py-1.5 font-space-mono text-[7px] text-text-primary"><option value="all">All roles</option>{ROLE_ORDER.map((role) => <option key={role} value={role}>{roleLabel(role)}</option>)}</select>
               <select value={minimumCA} onChange={(event) => setMinimumCA(Number(event.target.value))} className="w-[4.75rem] shrink rounded border border-border bg-bg px-1.5 py-1.5 font-space-mono text-[7px] text-text-primary">{[0, 60, 65, 70, 75, 80, 85].map((value) => <option key={value} value={value}>CA {value ? `${value}+` : "Any"}</option>)}</select>
               <select value={minimumPA} onChange={(event) => setMinimumPA(Number(event.target.value))} className="w-[4.75rem] shrink rounded border border-border bg-bg px-1.5 py-1.5 font-space-mono text-[7px] text-text-primary">{[0, 60, 65, 70, 75, 80, 85].map((value) => <option key={value} value={value}>PA {value ? `${value}+` : "Any"}</option>)}</select>
-              <select value={clubLinkFilter} onChange={(event) => setClubLinkFilter(event.target.value)} className="w-[6.75rem] min-w-0 shrink rounded border border-border bg-bg px-1.5 py-1.5 font-space-mono text-[7px] text-text-primary"><option value="all">Any club link</option>{orderedTeams.map((team) => <option key={team.id} value={team.id}>Linked {team.shortName}</option>)}</select>
+              <select value={clubLinkFilter} onChange={(event) => setClubLinkFilter(event.target.value)} className="w-[7.75rem] min-w-[7.75rem] shrink-0 rounded border border-border bg-bg px-1.5 py-1.5 font-space-mono text-[7px] text-text-primary"><option value="all">Any club link</option>{orderedTeams.map((team) => <option key={team.id} value={team.id}>Linked {team.shortName}</option>)}</select>
               <select value={interestFilter} onChange={(event) => setInterestFilter(event.target.value as typeof interestFilter)} className="w-[7.25rem] min-w-0 shrink rounded border border-border bg-bg px-1.5 py-1.5 font-space-mono text-[7px] text-text-primary"><option value="all">Any interest</option><option value="open_plus">Open+</option><option value="interested_plus">Interested+</option><option value="very_interested">Very interested</option></select>
               <label className="flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded border border-border bg-bg px-2 py-1.5 font-space-mono text-[7px] font-bold uppercase text-text-secondary">
                 <input type="checkbox" checked={interestedOnly} onChange={(event) => setInterestedOnly(event.target.checked)} className="size-3 accent-[var(--accent)]" /> Interested only
@@ -1641,7 +1651,25 @@ export default function StaffManagementPage({ teams, mode = "club", initialStaff
                 if (preset === "affordable_first") setStaffMarketSort({ key: "budget", direction: "desc" });
               }} className="w-[7rem] min-w-0 shrink rounded border border-border bg-bg px-1.5 py-1.5 font-space-mono text-[7px] text-text-primary"><option value="column" disabled>Sort: Column</option><option value="rating">Best fit</option><option value="demand_low">Demand ↑</option><option value="demand_high">Demand ↓</option><option value="affordable_first">Affordable first</option></select>
               <select value={budgetFilter} onChange={(event) => setBudgetFilter(event.target.value as typeof budgetFilter)} className="w-[6.75rem] min-w-0 shrink rounded border border-border bg-bg px-1.5 py-1.5 font-space-mono text-[7px] text-text-primary"><option value="all">Any budget</option><option value="within">Within budget</option><option value="over">Over budget</option></select>
+              <button type="button" aria-label="Configure staff market columns" aria-expanded={columnSettingsOpen} onClick={() => setColumnSettingsOpen(open => !open)} className="shrink-0 rounded border border-border bg-bg p-1.5 text-text-primary hover:border-accent"><Settings2 size={14} /></button>
             </div>
+            {columnSettingsOpen && <div role="dialog" aria-label="Staff market columns" className="absolute right-2 top-full z-30 w-56 rounded border border-border bg-surface p-2 shadow-xl">
+              <div className="mb-1 flex items-center justify-between"><strong className="font-space-mono text-[9px] uppercase">Columns</strong><button type="button" aria-label="Close column settings" onClick={() => setColumnSettingsOpen(false)}><X size={14}/></button></div>
+              {staffColumnOrder.map((key, index) => <div key={key} className="flex items-center gap-1 py-0.5 text-xs">
+                <label className="flex min-w-0 flex-1 items-center gap-2"><input type="checkbox" checked={!hiddenStaffColumns.includes(key)} disabled={!hiddenStaffColumns.includes(key) && visibleStaffColumns.length === 1} onChange={event => {
+                  const next = event.target.checked ? hiddenStaffColumns.filter(item => item !== key) : [...hiddenStaffColumns, key];
+                  setHiddenStaffColumns(next);
+                  try { localStorage.setItem(STAFF_COLUMN_VISIBILITY_STORAGE, JSON.stringify(next)); } catch { /* Keep the session preference. */ }
+                }}/><span className="truncate">{STAFF_COLUMN_LABELS[key]}</span></label>
+                {([-1, 1] as const).map(direction => <button key={direction} type="button" aria-label={`Move ${STAFF_COLUMN_LABELS[key]} ${direction === -1 ? "up" : "down"}`} disabled={index + direction < 0 || index + direction >= staffColumnOrder.length} onClick={() => {
+                  const next = [...staffColumnOrder];
+                  [next[index], next[index + direction]] = [next[index + direction], next[index]];
+                  columnOrderRef.current = next;
+                  setStaffColumnOrder(next);
+                  try { localStorage.setItem(STAFF_COLUMN_STORAGE, JSON.stringify(next)); } catch { /* Keep the session preference. */ }
+                }} className="rounded border border-border p-1 disabled:opacity-30">{direction === -1 ? <ArrowUp size={11}/> : <ArrowDown size={11}/>}</button>)}
+              </div>)}
+            </div>}
           </div>
           <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
           <div style={recruitmentGridStyle} tabIndex={-1}
@@ -1709,7 +1737,7 @@ export default function StaffManagementPage({ teams, mode = "club", initialStaff
               const cooldownUntil = careerStaff.negotiationCooldowns[member.id];
               return (
                 <button type="button" key={member.id} style={recruitmentGridStyle} onClick={() => setSelectedStaffId(member.id)} className={`grid w-full min-w-0 ${recruitmentMarketColumns} items-center gap-1.5 border-b border-hairline px-3 py-2 text-left hover:bg-accent/[0.04]`}>
-                  <StaffMarketCells order={staffColumnOrder}>
+                  <StaffMarketCells order={visibleStaffColumns}>
                   <span className="min-w-0"><span className="block truncate text-xs font-bold text-text-primary">{member.full_name}</span><span className="block truncate font-space-mono text-[6px] uppercase text-text-secondary">{String(member.country ?? "Unknown")} · Age {ageFromDateOfBirth(member.date_of_birth) ?? "–"}</span></span>
                   <span className="min-w-0 truncate font-space-mono text-[7px] font-bold uppercase text-text-primary">{roleLabel(displayRole)} <strong className="text-accent">{ratingForRole(member, displayRole) ?? "–"}</strong></span>
                   <span className="text-center font-anton text-sm text-text-primary">{member.current_ability ?? "–"}</span><span className="text-center font-anton text-sm text-text-primary">{member.potential_ability ?? "–"}</span>
@@ -1995,7 +2023,7 @@ export default function StaffManagementPage({ teams, mode = "club", initialStaff
             <div className="h-full bg-accent" style={{ width: `${Math.min(100, ((userFinance?.committedSalary ?? 0) / Math.max(1, userFinance?.annualBudget ?? 1)) * 100)}%` }} />
           </div>
           <p className="mt-2 font-space-mono text-[8px] font-bold uppercase text-text-secondary">
-            {formatSalary(userFinance?.committedSalary ?? 0)} committed · {formatSalary(userFinance?.compensationPaid ?? 0)} compensation
+            {formatSalary(userFinance?.committedSalary ?? 0)} committed to salaries
           </p>
         </section>
         <section className="border-2 border-border bg-surface p-4">

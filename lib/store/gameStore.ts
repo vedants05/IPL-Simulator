@@ -6,7 +6,7 @@ import { hasEditorAccess, refreshEditorAccess } from "@/lib/store/editorAccessSt
 import { normalizeEditorUsage, recordEditorUsage } from "@/lib/logic/editorUsage";
 import { persist } from "zustand/middleware";
 import { gameStatePersistStorage } from "@/lib/storage/gameStateStorage";
-import { loadBusiness, serviceEffects } from "@/lib/logic/commercial/engine";
+import { chargeStaffTransfer, loadBusiness, saveBusiness, serviceEffects } from "@/lib/logic/commercial/engine";
 import { v4 as uuidv4 } from "uuid";
 import {
   GameState,
@@ -264,7 +264,8 @@ export function getSeasonDates(activeSeason: number) {
 }
 
 export function getActiveSeasonYear(): string {
-  return String(useGameStore.getState().currentSeason);
+  const state = useGameStore.getState();
+  return String(state.auction?.season ?? state.currentSeason);
 }
 
 // ---------------------------------------------------------------------------
@@ -4922,6 +4923,17 @@ export const useGameStore = create<Store>()(
             effectiveOn: input.effectiveOn ?? state.currentDate,
           });
           poached = next !== state.careerStaff;
+          if (poached && input.teamId === state.userTeamId) {
+            const event = next.employmentHistory[next.employmentHistory.length - 1];
+            try {
+              const business = loadBusiness(state.saveId, input.teamId, state.currentSeason, undefined, undefined, state.currentDate);
+              const charged = chargeStaffTransfer(business, event.id, event.effectiveOn, event.compensation, next.contracts[input.staffId].fullName);
+              if (charged !== business) saveBusiness(state.saveId, charged, business.experience.revision);
+            } catch {
+              poached = false;
+              return state;
+            }
+          }
           return poached ? { careerStaff: next } : state;
         });
         return poached;
