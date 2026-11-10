@@ -29,6 +29,7 @@ import {
 import { createDayTicker, type DayTickerController } from "@/lib/logic/dayTicker";
 import { tuneAiLineupForPitch } from "@/lib/logic/aiPitchLineup";
 import { addAiBowlingPlans } from "@/lib/logic/aiBowlingPlans";
+import { applyPitchPreparation } from "@/lib/logic/pitchPreparation";
 import {
   buildAiMatchLineups,
   findOptimalImpactBattingPosition,
@@ -115,6 +116,7 @@ import {
 } from "@/lib/logic/injuryReplacements";
 import { getTeamColorStyle } from "@/lib/theme/teamColors";
 import { cacheTeamProfileCareer } from "@/lib/logic/teamProfileCareerCache";
+import { gameProfileHref, getGameSubTabs, getSubTabLabel, PLAYER_PROFILE_PARAM } from "@/lib/logic/gameNavigation";
 import { loadStaffDirectory } from "@/lib/logic/staffDirectoryClient";
 import {
   captureSeasonStartBattingAbilities,
@@ -1111,6 +1113,8 @@ function OverviewPageContent() {
     outfieldProjectsByTeam,
     customPitchesByTeam,
     pitchProjectsByTeam,
+    pitchPreparations,
+    prepareHomePitch,
     setHomePitchSelection,
     setHomeBoundaryDimensions,
     saveBoundaryPreset,
@@ -1172,6 +1176,8 @@ function OverviewPageContent() {
     outfieldProjectsByTeam: state.outfieldProjectsByTeam,
     customPitchesByTeam: state.customPitchesByTeam,
     pitchProjectsByTeam: state.pitchProjectsByTeam,
+    pitchPreparations: state.pitchPreparations,
+    prepareHomePitch: state.prepareHomePitch,
     setHomePitchSelection: state.setHomePitchSelection,
     setHomeBoundaryDimensions: state.setHomeBoundaryDimensions,
     saveBoundaryPreset: state.saveBoundaryPreset,
@@ -1232,11 +1238,12 @@ function OverviewPageContent() {
   const userCustomPitches = userHomeStadium
     ? customPitchesByTeam[userHomeStadium.teamId] ?? []
     : [];
-  const userSelectedPitch = getCuratorPitch(
+  const userSelectedBasePitch = getCuratorPitch(
     userHomeStadium ? homePitchSelections[userHomeStadium.teamId] : "",
   ) ?? userCustomPitches.find((pitch) => (
     pitch.id === (userHomeStadium ? homePitchSelections[userHomeStadium.teamId] : "")
   )) ?? userDefaultPitch;
+  const userSelectedPitch = userSelectedBasePitch ? applyPitchPreparation(userSelectedBasePitch, pitchPreparations[userSelectedBasePitch.id], currentDate) : undefined;
   const userPitchProject = userHomeStadium
     ? pitchProjectsByTeam[userHomeStadium.teamId] ?? null
     : null;
@@ -3147,14 +3154,15 @@ function OverviewPageContent() {
     const selectedPitchId = pitchId
       ?? homePitchSelections[stadium.teamId]
       ?? stadium.defaultPitchId;
-    const pitch = getCuratorPitch(selectedPitchId)
+    const basePitch = getCuratorPitch(selectedPitchId)
       ?? (customPitchesByTeam[stadium.teamId] ?? []).find((candidate) => candidate.id === selectedPitchId)
       ?? getDefaultCuratorPitch(stadium.teamId);
     const boundaries = homeBoundaryDimensions[stadium.teamId]
       ?? stadium.defaultBoundaryDimensions;
     const outfield = homeOutfieldSettings[stadium.teamId]
       ?? getDefaultOutfieldSettings(stadium.teamId);
-    if (!pitch || !outfield) return null;
+    if (!basePitch || !outfield) return null;
+    const pitch = applyPitchPreparation(basePitch, pitchPreparations[basePitch.id], match.date ?? currentDate);
     const groundImpact = calculateGroundScoringImpact(
       stadium.teamId,
       boundaries,
@@ -5495,7 +5503,9 @@ This record has been officially verified and added to the IPL Minor Records arch
   // --------------------------------------------------------------------------
   // Roster details selection helper
   // --------------------------------------------------------------------------
-  const [detailedPlayerId, setDetailedPlayerId] = useState<string | null>(null);
+  const [selectedPlayerId, setDetailedPlayerId] = useState<string | null>(null);
+  const searchPlayerProfileId = searchParams.get(PLAYER_PROFILE_PARAM);
+  const detailedPlayerId = searchPlayerProfileId ?? selectedPlayerId;
   const [rosterView, setRosterView] = useState<RosterView>("general");
   const [rosterSort, setRosterSort] = useState<{ key: RosterSortKey; direction: SortDirection }>({
     key: "name",
@@ -5814,111 +5824,7 @@ This record has been officially verified and added to the IPL Minor Records arch
   // --------------------------------------------------------------------------
   // Navigation mapping
   // --------------------------------------------------------------------------
-  const mainTabConfig = {
-    home: {
-      label: "Home",
-      icon: InboxIcon,
-      subtabs: ["overview", "inbox", "social", "news", "calendar", "smat", "international", ...(editorEnabled ? ["rules"] : [])]
-    },
-    squad: {
-      label: "Squad",
-      icon: Users,
-      subtabs: ["overview", "roster", "analysis", "playingxi", "captaincy", "tactics", "injuryhub"]
-    },
-    club: {
-      label: "Club",
-      icon: ShieldCheck,
-      subtabs: ["overview", "supporters", "board", "office", "staffmanagement", "pitchcurator", "stadiummanagement", "stadiumbuilder"]
-    },
-    commercial: {
-      label: "Commercial",
-      icon: DollarSign,
-      subtabs: ["overview", "matchday", "partnerships", "retail", "operations", "finance"]
-    },
-    scouting: {
-      label: "Scouting",
-      icon: Search,
-      subtabs: ["overview", "assignments", "search", "playeranalysis", "leaguescouting", "planner"]
-    },
-    season: {
-      label: "Season",
-      icon: Trophy,
-      subtabs: ["overview", "fixtures", "standings", "stats", "playerstats"]
-    },
-    league: {
-      label: "League",
-      icon: Table,
-      subtabs: ["overview", "legacy", "staff", "trades", "injuries", "seasonanalysis", "minorrecords"]
-    },
-    history: {
-      label: "History",
-      icon: HistoryIcon,
-      subtabs: ["overview", "records", "clubhistory", "clubfigures", "leaguehistory", "leaguehalloffame"]
-    }
-  };
-
-  // Format tab label for rendering
-  const getSubTabLabel = (subtab: string): string => {
-    if (subtab === "overview") return "Overview";
-    if (subtab === "board") return "Board & Ownership";
-    if (subtab === "supporters") return "Supporters";
-    if (subtab === "roster") return "Roster Overview";
-    if (subtab === "analysis") return "Squad Analysis";
-    if (subtab === "playingxi") return "Playing XIs";
-    if (subtab === "captaincy") return "Captaincy";
-    if (subtab === "tactics") return "Team Tactics";
-    if (subtab === "injuryhub") return "Injury Hub";
-    if (subtab === "search") return "Player Search";
-    if (subtab === "assignments") return "Scouting Assignments";
-    if (subtab === "playeranalysis") return "Player Analysis";
-    if (subtab === "leaguescouting") return "League Scouting";
-    if (subtab === "seasonanalysis") return "Season Data Analysis";
-    if (subtab === "legacy") return "Legacy";
-    if (subtab === "reports") return "Scout Reports";
-    if (subtab === "planner") return "Auction Planner";
-    if (subtab === "trades") return "Trade Hub";
-    if (subtab === "injuries") return "Injuries";
-    if (subtab === "fixtures") return "Fixtures & Results";
-    if (subtab === "standings") return "Standings";
-    if (subtab === "stats") return "Season Player Awards";
-    if (subtab === "playerstats") return "Player Stats";
-    if (subtab === "office") return "Manager Office";
-    if (subtab === "staffmanagement") return "Staff Management";
-    if (subtab === "staff") return "Staff";
-    if (subtab === "pitchcurator") return "Pitch Curator";
-    if (subtab === "stadiummanagement") return "Stadium Management";
-    if (subtab === "stadiumbuilder") return "Stadium Builder";
-    if (subtab === "ticketing") return "Ticketing";
-    if (subtab === "matchdayops") return "Matchday Ops";
-    if (subtab === "hospitality") return "Hospitality";
-    if (subtab === "sponsorships") return "Sponsors";
-    if (subtab === "merchandising") return "Retail";
-    if (subtab === "marketing") return "Marketing";
-    if (subtab === "facilities") return "High-Performance";
-    if (subtab === "broadcast") return "Broadcast";
-    if (subtab === "operatingcosts") return "Costs";
-    if (subtab === "finance") return "Finance";
-    if (subtab === "matchday") return "Matchday Revenue";
-    if (subtab === "partnerships") return "Partnerships";
-    if (subtab === "retail") return "Retail & Marketing";
-    if (subtab === "operations") return "Club Operations";
-    if (subtab === "calendar") return "Season Calendar";
-    if (subtab === "smat") return "SMAT";
-    if (subtab === "rules") return "World Rules";
-    if (subtab === "international") return "International";
-    if (subtab === "social") return "Social Media";
-    if (subtab === "news") return "News";
-    if (subtab === "records") return "Records";
-    if (subtab === "minorrecords") return "Minor Records";
-    if (subtab === "clubhistory") return "Club History";
-    if (subtab === "clubfigures") return "Club Figures";
-    if (subtab === "leaguehistory") return "League History";
-    if (subtab === "leaguehalloffame") return "League Hall of Fame";
-    return subtab.toUpperCase();
-  };
-
-  // Derive subtabs based on active main tab
-  const activeSubTabs = mainTabConfig[activeTab].subtabs;
+  const activeSubTabs = getGameSubTabs(activeTab, editorEnabled);
 
   // Filtered player search calculations
   const filteredSearchList = useMemo(() => {
@@ -8284,6 +8190,9 @@ This record has been officially verified and added to the IPL Minor Records arch
                   }
                   customPitches={userCustomPitches}
                   project={userPitchProject}
+                  preparations={pitchPreparations}
+                  nextHomeMatchDate={fixtures.filter(fixture => !fixture.played && fixture.teamA === userTeamId && fixture.date && fixture.date >= currentDate).map(fixture => fixture.date!).sort()[0]}
+                  onPrepare={(pitchId, plan, matchDate) => prepareHomePitch(userTeamId, pitchId, plan, currentDate, matchDate)}
                   onSelectPitch={(pitchId) => setHomePitchSelection(userTeamId, pitchId)}
                   onCreatePitch={(soil, sliders) => startPitchCreation(userTeamId, soil, sliders)}
                   onDestroyPitch={(pitchId) => startPitchDestruction(userTeamId, pitchId)}
@@ -11011,8 +10920,19 @@ This record has been officially verified and added to the IPL Minor Records arch
           ================================================================== */}
       <PlayerProfileModal
         playerId={detailedPlayerId}
-        onOpenPlayer={setDetailedPlayerId}
-        onClose={() => setDetailedPlayerId(null)}
+        onOpenPlayer={id => {
+          if (searchPlayerProfileId) {
+            router.replace(gameProfileHref("/game/overview", searchParams.toString(), { kind: "player", id }), { scroll: false });
+          } else {
+            setDetailedPlayerId(id);
+          }
+        }}
+        onClose={() => {
+          setDetailedPlayerId(null);
+          if (searchPlayerProfileId) {
+            router.replace(gameProfileHref("/game/overview", searchParams.toString()), { scroll: false });
+          }
+        }}
         customFixtures={fixtures}
         additionalCareerT20Stats={detailedPlayerId ? smatCareerT20ByFullPlayerId[`full:${detailedPlayerId}`] : undefined}
         internationalStats={detailedPlayerId && internationalCareer ? internationalCareerStatsForPlayer(internationalCareer, detailedPlayerId) : undefined}

@@ -23,7 +23,7 @@ export default function BattingFloaterCard({ players, order, rules, chasing, onC
   const candidates = players.flatMap(player => {
     const slot = order.indexOf(player.id) + 1;
     return slot > 3 ? [{ player, slot }] : [];
-  });
+  }).sort((a, b) => Number(b.player.canFloat === true) - Number(a.player.canFloat === true) || a.slot - b.slot);
   const selected = candidates.find(({ player }) => player.id === rule?.playerId);
   const hasThreshold = rule?.trigger === "wickets" || rule?.trigger === "required-rate";
   const maxSlot = selected ? selected.slot - 1 : 3;
@@ -91,7 +91,7 @@ export default function BattingFloaterCard({ players, order, rules, chasing, onC
           }}>
             <option value="">No floater</option>
             {rule && !selected && <option value={rule.playerId}>Unavailable in this batting order</option>}
-            {candidates.map(({ player, slot }) => <option key={player.id} value={player.id} disabled={rules.some((other, index) => index !== active && other.playerId === player.id)}>No. {slot} · {player.name}</option>)}
+            {candidates.map(({ player, slot }) => <option key={player.id} value={player.id} disabled={rules.some((other, index) => index !== active && other.playerId === player.id)}>No. {slot} · {player.name}{player.canFloat ? " · Floater" : ""}</option>)}
           </select>
         </label>
         {rule && selected && <>

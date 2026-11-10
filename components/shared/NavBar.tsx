@@ -9,6 +9,7 @@ import { switchColorMode } from "./TeamThemeProvider";
 import ThemeSelector from "./ThemeSelector";
 import UIDesignSelector from "./UIDesignSelector";
 import EditorAccessSettings from "./EditorAccessSettings";
+import GameSearch from "./GameSearch";
 import {
   getStoredAppearanceTheme,
   type AppearanceTheme,
@@ -268,10 +269,11 @@ export default function NavBar() {
       </div>
 
       {userTeam ? (
-        <div className="app-navbar-identity flex items-center gap-2.5 mr-5 shrink-0" title={userTeam.name}>
+        <div className="app-navbar-identity flex items-center gap-2.5 mr-5 shrink-0">
           <div
             className="app-navbar-initials h-7 min-w-[28px] px-2 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 transition-all duration-200 shadow-sm"
             aria-label={userTeam.name}
+            title={userTeam.name}
             style={{ backgroundColor: userTeam.primaryColor, color: userTeam.secondaryColor }}
           >
             {userTeam.shortName}
@@ -281,12 +283,7 @@ export default function NavBar() {
               {formatDisplayDate(currentDate).replace(/-/g, "/")}
             </span>
           )}
-          <span
-            className="app-navbar-team-name font-space-mono font-bold text-[11px] tracking-widest uppercase transition-colors duration-200"
-            style={{ color: "var(--chrome-nav-active, var(--ink))" }}
-          >
-            {userTeam.name}
-          </span>
+          <GameSearch seasonAvailable={seasonPagesUnlocked} />
         </div>
       ) : (
         <div className="app-navbar-brand flex items-center gap-2.5 mr-5 shrink-0">
@@ -690,7 +687,7 @@ export default function NavBar() {
                   <ThemeSelector value={appearanceTheme} onChange={handleThemeChange} />
                 </div>
                 <UIDesignSelector />
-                <EditorAccessSettings />
+                <EditorAccessSettings teamId={userTeamId} currentDate={currentDate} />
                 {(isAuctionPage || isTradeHubPage) && <div className="flex flex-col gap-2 border-t border-[var(--ink)]/15 pt-2">
                   <span className="text-[9px] font-bold text-text-secondary uppercase tracking-wider">
                     Guides

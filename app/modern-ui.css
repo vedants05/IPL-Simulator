@@ -15,7 +15,7 @@ html:is([data-ui-design="modern"], [data-ui-design="sidebar"]) .app-navbar {
 }
 
 html:is([data-ui-design="modern"], [data-ui-design="sidebar"]) .app-navbar-identity { margin-right: 8px; gap: 0; }
-html:is([data-ui-design="modern"], [data-ui-design="sidebar"]) .app-navbar-team-name { display: none; }
+html[data-ui-design="modern"] .app-game-search { margin-left: 8px; }
 html:is([data-ui-design="modern"], [data-ui-design="sidebar"]) .app-navbar-initials { height: 25px; min-width: 28px; padding-inline: 6px; }
 html:is([data-ui-design="modern"], [data-ui-design="sidebar"]) .app-navbar-links { min-width: 0; flex-shrink: 0; }
 html:is([data-ui-design="modern"], [data-ui-design="sidebar"]) .app-navbar-link {

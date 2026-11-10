@@ -1,7 +1,27 @@
 import type { Player } from "@/lib/types";
 import type { TeamTactics } from "./teamTactics";
-import { BATTING_COVERAGE_INTENTS, battingCoveragePhase, type BattingCoverage, type BattingSpecialRule, type BattingTargets } from "./tacticalMatchPlan";
+import { BATTING_COVERAGE_INTENTS, battingCoveragePhase, type BattingCoverage, type BattingSpecialRule, type BattingTargets, type FloaterRule } from "./tacticalMatchPlan";
 import { battingIntent } from "./matchSimulation";
+
+/** Only explicitly marked batters may be picked automatically as floaters. */
+export function generateAiFloaterRules(players: readonly Player[]): FloaterRule[] {
+  const eligible = players.flatMap((player, index) => {
+    const position = index + 1;
+    if (player.canFloat !== true || player.onlyOpensOrBenched || position < 5 || position > 8 || player.currentBatting < 65) return [];
+    const pace = player.paceRating;
+    const spin = player.spinRating;
+    const matchup: "spin" | "pace" | null = typeof pace === "number" && typeof spin === "number" && Math.abs(pace - spin) >= 10 && Math.max(pace, spin) >= 65
+      ? spin > pace ? "spin" : "pace" : null;
+    const aggression = player.battingAggression ?? player.aggression ?? 65;
+    if (!matchup && aggression < 75 && !player.isFinisher) return [];
+    return [{ player, position, matchup, aggression, score: player.currentBatting + (matchup ? Math.abs(spin! - pace!) * 0.5 : 0) + (player.isFinisher ? 3 : 0) }];
+  }).sort((a, b) => b.score - a.score || a.position - b.position);
+  const candidate = eligible[0];
+  if (!candidate) return [];
+  return [{ playerId: candidate.player.id, earliestPosition: 4, latestPosition: Math.min(6, candidate.position - 1),
+    fromOver: candidate.matchup ? 7 : 12, untilOver: candidate.matchup ? 15 : 20,
+    trigger: candidate.matchup ?? "over", requiredRate: 10, protectCollapse: true }];
+}
 
 /** Add targeted instructions only when there is evidence of a clear matchup. */
 export function generateAiBattingTargets(players: readonly Player[], tactics: TeamTactics, coverage: Readonly<Record<string, BattingCoverage>> = {}): Record<string, BattingTargets> {

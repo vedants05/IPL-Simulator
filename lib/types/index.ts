@@ -273,6 +273,8 @@ export interface Player {
   isPartTimeWk?: boolean;
   isOpener?: boolean;
   isFinisher?: boolean;
+  /** Whether the database marks this player as suitable for tactical batting promotion. */
+  canFloat?: boolean;
   isCoreBatter?: boolean;
   hasBattedAt3?: boolean;
   hasBattedAt4?: boolean;

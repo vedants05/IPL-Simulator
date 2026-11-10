@@ -4,7 +4,7 @@ import { projectBatFirstImpact } from "./battingImpactPlan";
 import { emptyTacticalMatchPlan, type BattingCoverageIntent } from "./tacticalMatchPlan";
 import { suggestBowlingOvers } from "./suggestBowlingOvers";
 import { suggestLineupBattingCoverage } from "./battingRoleFit";
-import { generateAiBattingTargets, generateAiBattingTeamRules } from "./aiBattingRules";
+import { generateAiBattingTargets, generateAiBattingTeamRules, generateAiFloaterRules } from "./aiBattingRules";
 
 const mindsets: BattingCoverageIntent[] = ["survive", "protect", "steady", "attack", "all-out"];
 const phases = ["powerplay", "earlyMiddle", "lateMiddle", "death"] as const;
@@ -63,7 +63,8 @@ export function addAiBowlingPlans(plans: MatchTeamPlans, players: Record<string,
     const generatedTargets = generateAiBattingTargets(battingPlayers, effectiveTactics, generated);
     for (const [id, targets] of Object.entries(existing.battingTargets ?? {})) generatedTargets[id] = { ...generatedTargets[id], ...targets };
     const battingTeamRules = existing.battingTeamRules ?? generateAiBattingTeamRules(battingPlayers, effectiveTactics, scenario === "bowlingFirst");
-    matchPlans[scenario] = { ...existing, overs, battingCoverage: generated, battingTargets: generatedTargets, battingTeamRules };
+    const floaters = existing.floaters ?? (existing.floater ? [existing.floater] : generateAiFloaterRules(battingPlayers));
+    matchPlans[scenario] = { ...existing, overs, battingCoverage: generated, battingTargets: generatedTargets, battingTeamRules, floaters, floater: floaters[0] ?? null };
   }
   return { ...plans, tactics: { ...plans.tactics, matchPlans } };
 }

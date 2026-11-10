@@ -1,11 +1,15 @@
 "use client";
+import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, Images } from "lucide-react";
+import { getHomeStadium, HOME_STADIUMS } from "@/lib/data/pitchCurator";
 import { enableEditor, lockEditor, unlockEditor, useEditorAccess } from "@/lib/store/editorAccessStore";
 import { setDeveloperToolsEnabled } from "@/lib/logic/developerTools";
 
-export default function EditorAccessSettings() {
+const PitchTypeGallery = dynamic(() => import("@/components/club/PitchTypeGallery"));
+
+export default function EditorAccessSettings({ teamId, currentDate }: { teamId: string; currentDate: string }) {
   const { enabled, configured, granted } = useEditorAccess();
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -13,7 +17,8 @@ export default function EditorAccessSettings() {
   const [error, setError] = useState("");
   const [developerUnlocked, setDeveloperUnlocked] = useState(false);
   const [developerEnabled, setDeveloperEnabled] = useState(false);
-  const [developerPanelOpen, setDeveloperPanelOpen] = useState(false);
+  const [developerPanel, setDeveloperPanel] = useState<"tools" | "pitch-gallery" | null>(null);
+  const showingPitchGallery = developerPanel === "pitch-gallery";
   useEffect(() => {
     try {
       const unlocked = sessionStorage.getItem("ipl-developer-tools-unlocked") === "1";
@@ -28,7 +33,7 @@ export default function EditorAccessSettings() {
       setError("");
       setDeveloperUnlocked(true);
       setDeveloperEnabled(true);
-      setDeveloperPanelOpen(true);
+      setDeveloperPanel("tools");
       try {
         sessionStorage.setItem("ipl-developer-tools-unlocked", "1");
       } catch { /* Continue without session persistence. */ }
@@ -74,16 +79,28 @@ export default function EditorAccessSettings() {
         <button type="button" aria-pressed={developerEnabled} onClick={() => {
           const next = !developerEnabled;
           setDeveloperEnabled(next);
-          if (!next) setDeveloperPanelOpen(false);
+          if (!next) setDeveloperPanel(null);
           setDeveloperToolsEnabled(next);
         }} className="rounded border border-border bg-bg px-2 py-2 text-[9px] font-bold uppercase text-text-primary hover:border-accent">Turn developer tools {developerEnabled ? "off" : "on"}</button>
-        {developerEnabled && <button type="button" onClick={() => setDeveloperPanelOpen(true)} className="rounded border border-border bg-bg px-2 py-2 text-[9px] font-bold uppercase text-text-primary hover:border-accent">Open developer tools</button>}
+        {developerEnabled && <button type="button" onClick={() => setDeveloperPanel("tools")} className="rounded border border-border bg-bg px-2 py-2 text-[9px] font-bold uppercase text-text-primary hover:border-accent">Open developer tools</button>}
       </div>}
       {error && <p role="alert" className="text-[9px] text-red-500">{error}</p>}
-      {developerEnabled && developerPanelOpen && typeof document !== "undefined" && createPortal(<div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 p-4" onClick={() => setDeveloperPanelOpen(false)}>
-        <section role="dialog" aria-modal="true" aria-labelledby="developer-tools-title" className="w-full max-w-md rounded-lg border-2 border-border bg-surface p-5 text-text-primary shadow-xl" onClick={event => event.stopPropagation()}>
-          <div className="flex items-center justify-between gap-4"><h2 id="developer-tools-title" className="font-anton text-xl uppercase">Developer tools</h2><button type="button" onClick={() => setDeveloperPanelOpen(false)} className="rounded border border-border px-2 py-1 text-xs" aria-label="Close developer tools">Close</button></div>
-          <p className="mt-3 text-sm text-text-secondary">Developer tools are enabled. New tools can be added here as the game develops.</p>
+      {developerEnabled && developerPanel && typeof document !== "undefined" && createPortal(<div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 p-4" onClick={() => setDeveloperPanel(null)}>
+        <section role="dialog" aria-modal="true" aria-labelledby="developer-tools-title" className={`flex w-full flex-col gap-3 rounded-lg border-2 border-border bg-surface p-5 text-text-primary shadow-xl ${showingPitchGallery ? "h-[85dvh] max-w-5xl" : "max-w-md"}`} onClick={event => event.stopPropagation()}>
+          <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
+            <h2 id="developer-tools-title" className="font-anton text-xl uppercase">Developer tools</h2>
+            <div className="flex items-center gap-2">
+              {showingPitchGallery && <button type="button" onClick={() => setDeveloperPanel("tools")} className="rounded border border-border px-2 py-1 text-xs">Back to tools</button>}
+              <button type="button" onClick={() => setDeveloperPanel(null)} className="rounded border border-border px-2 py-1 text-xs" aria-label="Close developer tools">Close</button>
+            </div>
+          </div>
+          {showingPitchGallery ? (
+            <PitchTypeGallery stadium={getHomeStadium(teamId) ?? HOME_STADIUMS[0]} date={currentDate} />
+          ) : (
+            <button type="button" onClick={() => setDeveloperPanel("pitch-gallery")} className="flex items-center gap-2 rounded border border-border bg-bg p-3 text-left text-sm font-bold hover:border-accent">
+              <Images size={16} aria-hidden="true" /> Pitch gallery
+            </button>
+          )}
         </section>
       </div>, document.body)}
     </form>

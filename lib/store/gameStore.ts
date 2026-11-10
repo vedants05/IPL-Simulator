@@ -1,4 +1,5 @@
 "use client";
+import { type PitchPreparationPlan, type PitchPreparations } from "@/lib/logic/pitchPreparation";
 import { staffRolesAreCompatible } from "@/lib/logic/staffRoleRules";
 import { create } from "zustand";
 import { mergeT20IRetirement } from '@/lib/logic/internationalRetirements';
@@ -322,6 +323,7 @@ interface GameStateAdditions {
   outfieldProjectsByTeam: Partial<Record<IplTeamId, OutfieldPreparationProject>>;
   customPitchesByTeam: Partial<Record<IplTeamId, CustomCuratorPitch[]>>;
   pitchProjectsByTeam: Partial<Record<IplTeamId, PitchProject>>;
+  pitchPreparations: PitchPreparations;
   activeInjuries: Record<string, PlayerInjury>;
   injuryHistory: PlayerInjury[];
   processedInjuryMatchIds: string[];
@@ -462,6 +464,7 @@ interface GameActions {
   setCareerFastForwardTarget: (targetDate: string | null) => void;
   completeOffseasonAutomatically: () => Promise<boolean>;
   setHomePitchSelection: (teamId: string, pitchId: string) => void;
+  prepareHomePitch: (teamId: string, pitchId: string, plan: PitchPreparationPlan, date: string, matchDate?: string) => boolean;
   setHomeBoundaryDimensions: (
     teamId: string,
     dimensions: Partial<BoundaryDimensions>,
@@ -663,7 +666,7 @@ const DATABASE_RESETTABLE_PLAYER_FIELDS: Array<keyof Player> = [
   "bowlingUsage", "paceSpeedBand", "spinStyle",
   "isCapped", "potential", "currentBatting", "potentialBatting", "currentBowling", "potentialBowling", "captaincy", "reputation",
   "isIplCaptaincyUnavailable", "setForRelease",
-  "isWicketkeeper", "isPartTimeWk", "isOpener", "isFinisher", "isCoreBatter", "onlyOpensOrBenched",
+  "isWicketkeeper", "isPartTimeWk", "isOpener", "isFinisher", "isCoreBatter", "canFloat", "onlyOpensOrBenched",
   "hasBattedAt3", "hasBattedAt4", "hasBattedAt5", "hasBattedAt6", "hasBattedAt7",
   "powerplayBatting", "middleOversBatting", "deathBatting", "powerplayBowling", "middleOversBowling", "deathBowling",
   "stamina", "consistency", "battingConsistency", "bowlingConsistency", "battingAggression", "aggression",
@@ -1499,6 +1502,7 @@ export const useGameStore = create<Store>()(
       outfieldProjectsByTeam: {},
       customPitchesByTeam: {},
       pitchProjectsByTeam: {},
+      pitchPreparations: {},
       activeInjuries: {},
       injuryHistory: [],
       processedInjuryMatchIds: [],
@@ -1698,6 +1702,7 @@ export const useGameStore = create<Store>()(
           outfieldProjectsByTeam: {},
           customPitchesByTeam: {},
           pitchProjectsByTeam: {},
+          pitchPreparations: {},
           activeInjuries: {},
           injuryHistory: [],
           processedInjuryMatchIds: [],
@@ -4161,6 +4166,14 @@ export const useGameStore = create<Store>()(
         }));
       },
 
+      prepareHomePitch: (teamId, pitchId, plan, date, matchDate) => {
+        const state = get();
+        const stadium = getHomeStadium(teamId);
+        if (!stadium || teamId !== state.userTeamId || (!isPitchRegisteredForTeam(teamId, pitchId) && !(state.customPitchesByTeam[stadium.teamId] ?? []).some(pitch => pitch.id === pitchId))) return false;
+        const next = { ...state.pitchPreparations[pitchId], plan, startedOn: date, matchDate };
+        set(current => ({ pitchPreparations: { ...current.pitchPreparations, [pitchId]: next } }));
+        return true;
+      },
       setHomePitchSelection: (teamId, pitchId) => {
         const stadium = getHomeStadium(teamId);
         if (!stadium) return;
@@ -6123,6 +6136,7 @@ export const useGameStore = create<Store>()(
           outfieldProjectsByTeam: {},
           customPitchesByTeam: {},
           pitchProjectsByTeam: {},
+          pitchPreparations: {},
           activeInjuries: {},
           injuryHistory: [],
           processedInjuryMatchIds: [],
@@ -6199,6 +6213,7 @@ export const useGameStore = create<Store>()(
         outfieldProjectsByTeam: state.outfieldProjectsByTeam,
         customPitchesByTeam: state.customPitchesByTeam,
         pitchProjectsByTeam: state.pitchProjectsByTeam,
+        pitchPreparations: state.pitchPreparations,
         activeInjuries: state.activeInjuries,
         injuryHistory: state.injuryHistory,
         processedInjuryMatchIds: state.processedInjuryMatchIds,
@@ -6479,6 +6494,7 @@ export const useGameStore = create<Store>()(
           outfieldProjectsByTeam: normalizeOutfieldProjectsByTeam(p.outfieldProjectsByTeam),
           customPitchesByTeam,
           pitchProjectsByTeam,
+          pitchPreparations: p.pitchPreparations ?? {},
         };
       },
     }

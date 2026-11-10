@@ -289,6 +289,7 @@ export function mapRowsToPlayers(data: any[]): Player[] {
         isPartTimeWk,
         isOpener,
         isFinisher,
+        canFloat: typeof row.can_float === "boolean" ? row.can_float : undefined,
         isCoreBatter,
         onlyOpensOrBenched,
         hasBattedAt3,

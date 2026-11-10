@@ -1125,8 +1125,10 @@ export function LinkedStaffProfile({ staffId, customFixtures, onClose }: { staff
   const careerStaff = useGameStore((state) => state.careerStaff);
   const teams = useGameStore((state) => state.teams);
   const initializeCareerStaff = useGameStore((state) => state.initializeCareerStaff);
+  const generatedMember = careerStaff.generatedProfiles[staffId];
 
   useEffect(() => {
+    if (generatedMember) return;
     let active = true;
     loadStaffDirectory().then((result) => {
       if (!active) return;
@@ -1135,9 +1137,11 @@ export function LinkedStaffProfile({ staffId, customFixtures, onClose }: { staff
       setDirectory(data);
     }).catch(() => { if (active) setError(true); });
     return () => { active = false; };
-  }, [initializeCareerStaff]);
+  }, [generatedMember, initializeCareerStaff]);
 
-  const member = directory?.members.find((entry) => entry.id === staffId);
+  const member = generatedMember
+    ? { ...generatedMember, current_ability: generatedMember.current_ability ?? null, potential_ability: generatedMember.potential_ability ?? null }
+    : directory?.members.find((entry) => entry.id === staffId);
   const contract = careerStaff.contracts[staffId];
   const assignment = directory?.assignments.find((entry) => entry.staff_id === staffId && entry.role === member?.primary_role)
     ?? directory?.assignments.find((entry) => entry.staff_id === staffId)

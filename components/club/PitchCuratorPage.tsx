@@ -2,16 +2,20 @@
 import { formatDisplayDate } from "@/lib/logic/displayDate";
 
 import { useMemo, useState } from "react";
+import { flushSync } from "react-dom";
 import {
   AlertTriangle,
   Check,
   Clock3,
+  Droplets,
   Eye,
   Gauge,
   Hammer,
   Layers3,
   MapPin,
   Plus,
+  RotateCw,
+  Scissors,
   SlidersHorizontal,
   Trash2,
   X,
@@ -26,6 +30,7 @@ import { addDaysToDateKey, dateKeyToLocalDate } from "@/lib/logic/careerCalendar
 import {
   DEFAULT_PITCH_SLIDERS,
   deriveCustomPitch,
+  derivePitchMetrics,
   isCustomCuratorPitch,
   MAX_PITCHES_PER_STADIUM,
   type CustomCuratorPitch,
@@ -33,6 +38,8 @@ import {
   type PitchSliderSettings,
   type PitchSoil,
 } from "@/lib/logic/pitchCreator";
+import { applyPitchPreparation, pitchCondition, PREPARATION_PRESETS, type PitchPreparationPlan, type PitchPreparations, type PreparationPreset, type PreparationLevel, type GrassSetting } from "@/lib/logic/pitchPreparation";
+import PitchSurfaceVisual from "./PitchSurfaceVisual";
 
 interface PitchCuratorPageProps {
   teamId: string;
@@ -42,6 +49,9 @@ interface PitchCuratorPageProps {
   boundaryDimensions: BoundaryDimensions;
   customPitches: readonly CustomCuratorPitch[];
   project?: PitchProject | null;
+  preparations: PitchPreparations;
+  nextHomeMatchDate?: string;
+  onPrepare: (pitchId: string, plan: PitchPreparationPlan, matchDate?: string) => boolean;
   onSelectPitch: (pitchId: string) => void;
   onCreatePitch: (soil: PitchSoil, sliders: PitchSliderSettings) => boolean;
   onDestroyPitch: (pitchId: string) => boolean;
@@ -117,6 +127,38 @@ function PreferenceTags({
   );
 }
 
+function PitchAnalysis({ pitch, current, date, matchDate, onSave }: { pitch: CuratorPitch; current?: PitchPreparations[string]; date: string; matchDate?: string; onSave: (plan: PitchPreparationPlan, matchDate?: string) => boolean }) {
+  const [draft, setDraft] = useState<PitchPreparationPlan>(current?.plan ?? PREPARATION_PRESETS.balanced);
+  const [saved, setSaved] = useState(false);
+  const [showProjectedSurface, setShowProjectedSurface] = useState(false);
+  const forecastDate = matchDate ?? date;
+  const previewState = { ...current, plan: draft, startedOn: date, matchDate };
+  const condition = pitchCondition(pitch, previewState, forecastDate);
+  const forecast = applyPitchPreparation(pitch, previewState, forecastDate);
+  const currentPitch = applyPitchPreparation(pitch, current, date);
+  const active = pitchCondition(pitch, current, date);
+  const currentMetrics = derivePitchMetrics(active.soil, active.sliders);
+  const forecastMetrics = derivePitchMetrics(condition.soil, condition.sliders);
+  const update = (patch: Partial<PitchPreparationPlan>) => { setDraft(previous => ({ ...previous, ...patch, preset: 'manual' })); setSaved(false); };
+  return <div style={{ viewTransitionName: 'pitch-analysis-tile' }} className="grid min-h-0 flex-1 grid-cols-1 content-start gap-3 rounded-lg bg-surface p-3 lg:grid-cols-2">
+    <div className="space-y-3">
+      <div><p className="font-space-mono text-[8px] font-bold uppercase tracking-wider text-accent">Pitch analysis</p><h2 className="font-anton text-xl uppercase text-text-primary">{pitch.name}</h2><p className="font-space-mono text-[9px] uppercase text-text-secondary">{pitch.type}</p></div>
+      <section className="min-h-[260px] self-start rounded-lg border-2 border-border bg-surface p-3"><div className="flex items-center justify-between border-b border-border pb-3"><h3 className="font-anton text-lg uppercase">Surface characteristics</h3><div className="text-right"><span className="block font-space-mono text-[8px] uppercase text-text-secondary">Expected first innings</span><strong className="font-anton text-xl">{currentPitch.expectedFirstInningsScore.min}–{currentPitch.expectedFirstInningsScore.max}</strong></div></div><ul className="mt-2 space-y-1 text-sm text-text-primary">{pitch.characteristics.map(item => <li key={item} className="flex gap-2"><span className="text-accent">•</span>{item}</li>)}</ul><div className="mt-3 grid gap-4 sm:grid-cols-2"><div><h4 className="mb-2 font-space-mono text-[9px] font-bold uppercase text-success">Favours</h4><PreferenceTags values={currentPitch.favours} tone="positive" /></div><div><h4 className="mb-2 font-space-mono text-[9px] font-bold uppercase text-danger">Less suited</h4><PreferenceTags values={currentPitch.doesNotFavour} tone="negative" /></div></div></section>
+    </div>
+    <section className="self-start rounded-lg border-2 border-border bg-surface p-4 pb-5"><div className="flex items-center justify-between gap-2 leading-none"><h3 className="font-anton text-lg uppercase leading-none">Prepare pitch</h3><div className="flex flex-wrap items-center justify-end gap-x-2 font-space-mono text-[9px] uppercase text-text-secondary">{matchDate ? <><span>Next home match · {formatDate(matchDate)}</span><span className="font-bold text-accent">{daysRemaining(date, matchDate) === 0 ? 'Matchday' : `${daysRemaining(date, matchDate)} days to go`}</span></> : <span>No upcoming home match</span>}</div></div>
+    <div className="mt-3 grid grid-cols-4 gap-2">{([['balanced', 'Balanced'], ['batting', 'Batting'], ['seam', 'Seam'], ['spin', 'Spin']] as const).map(([key, label]) => <button key={key} type="button" aria-pressed={draft.preset === key} onClick={() => { setDraft(PREPARATION_PRESETS[key]); setSaved(false); }} className={`rounded border px-2 py-2 font-space-mono text-[9px] font-bold uppercase ${draft.preset === key ? 'border-accent bg-accent/15 text-accent' : 'border-border text-text-secondary hover:border-accent'}`}>{label}</button>)}</div>
+    <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">{([['rolling', 'Rolling', ['none', 'light', 'standard', 'heavy']], ['watering', 'Watering', ['none', 'light', 'standard', 'heavy']], ['grass', 'Grass length', ['short', 'medium', 'long']]] as const).map(([key, label, options]) => <label key={key} className="grid gap-1 font-space-mono text-[9px] font-bold uppercase text-text-secondary">{label}<select value={draft[key]} onChange={event => update({ [key]: event.target.value } as Partial<PitchPreparationPlan>)} className="rounded border border-border bg-surface px-2 py-2 text-xs uppercase text-text-primary">{options.map(value => <option key={value} value={value}>{value.toUpperCase()}</option>)}</select></label>)}</div>
+    <div className="mt-1 rounded border border-border bg-bg/30 px-3 py-1"><div className="flex items-baseline justify-between"><h4 className="font-anton uppercase leading-none">Curator forecast</h4><span className="font-space-mono text-[8px] uppercase text-text-secondary">Estimate · weather unknown</span></div><div className="mt-1 flex items-center justify-between gap-3 border-b border-border pb-1"><div><span className="block font-space-mono text-[8px] font-bold uppercase text-text-secondary">Projected first innings</span><strong className="font-anton text-2xl leading-none text-text-primary">{forecast.expectedFirstInningsScore.min}–{forecast.expectedFirstInningsScore.max}</strong></div><p className="max-w-44 text-right text-[10px] leading-tight text-text-secondary">{matchDate && matchDate <= date ? 'Limited preparation time.' : `${condition.soil === 'black' ? 'Black' : 'Red'} soil · assumes normal drying.`}</p></div><div className="mt-1 grid grid-cols-4 gap-1">{([['Seam', currentMetrics.seamMovement, forecastMetrics.seamMovement], ['Spin', currentMetrics.spinGrip, forecastMetrics.spinGrip], ['Bounce', currentMetrics.bounce, forecastMetrics.bounce], ['Consistency', currentMetrics.consistency, forecastMetrics.consistency]] as const).map(([label, now, projected]) => <div key={label} className="min-w-0 px-1"><span className="block font-space-mono text-[8px] uppercase text-text-secondary">{label}</span><strong className="font-space-mono text-[10px]">{now.toFixed(1)} → {projected.toFixed(1)}</strong></div>)}</div></div>
+    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+      <button type="button" onClick={() => setSaved(onSave(draft, matchDate))} className="rounded border border-accent bg-accent px-4 py-1 font-space-mono text-[9px] font-bold uppercase text-white">Save preparation plan</button>
+      <button type="button" aria-pressed={showProjectedSurface} onClick={() => setShowProjectedSurface(value => !value)} className={`rounded border px-2 py-1 font-space-mono text-[9px] font-bold uppercase ${showProjectedSurface ? 'border-accent bg-accent/15 text-accent' : 'border-border text-text-secondary hover:border-accent'}`}>Preview prepared surface</button>
+      {saved && <span role="status" className="text-xs text-success">Preparation plan saved.</span>}
+    </div>
+    </section>
+    <PitchSurfaceVisual pitch={pitch} preparation={showProjectedSurface ? previewState : current} date={showProjectedSurface ? forecastDate : date} projected={showProjectedSurface} />
+  </div>;
+}
+
 export default function PitchCuratorPage({
   teamId,
   teamName,
@@ -125,6 +167,9 @@ export default function PitchCuratorPage({
   boundaryDimensions,
   customPitches,
   project,
+  preparations,
+  nextHomeMatchDate,
+  onPrepare,
   onSelectPitch,
   onCreatePitch,
   onDestroyPitch,
@@ -135,6 +180,8 @@ export default function PitchCuratorPage({
   const [sliders, setSliders] = useState<PitchSliderSettings>({ ...DEFAULT_PITCH_SLIDERS });
   const [destroyPitch, setDestroyPitch] = useState<CustomCuratorPitch | null>(null);
   const [projectDetailsOpen, setProjectDetailsOpen] = useState(false);
+  const [preparingPitchId, setPreparingPitchId] = useState<string | null>(null);
+  const [lastAnalysisPitchId, setLastAnalysisPitchId] = useState<string | null>(null);
 
   const preview = useMemo(() => {
     if (!stadium) return null;
@@ -185,55 +232,37 @@ export default function PitchCuratorPage({
     setDestroyPitch(null);
   };
 
+  const changeAnalysis = (pitchId: string | null) => {
+    const update = () => { if (pitchId) setLastAnalysisPitchId(pitchId); setPreparingPitchId(pitchId); };
+    const doc = document as Document & { startViewTransition?: (callback: () => void) => unknown };
+    if (doc.startViewTransition && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) doc.startViewTransition(() => flushSync(update));
+    else update();
+  };
+
+  const stadiumBar = (analysis: boolean) => <header className="flex shrink-0 items-center justify-between gap-2 rounded-lg border-2 border-border bg-surface px-3 py-1">
+    <div className="flex min-w-0 items-center gap-2"><span className="flex size-6 shrink-0 items-center justify-center rounded bg-accent/15 text-accent"><MapPin size={13} aria-hidden="true" /></span><div className="flex min-w-0 flex-wrap items-baseline gap-x-2"><h2 className="truncate font-anton text-[16px] uppercase leading-none text-text-primary">{stadium.name}</h2><p className="truncate font-space-mono text-[8px] font-bold uppercase text-text-secondary">{stadium.location} · {teamName}</p><span className="whitespace-nowrap font-space-mono text-[8px] font-bold uppercase text-text-secondary">{allPitches.length}/{MAX_PITCHES_PER_STADIUM} pitches</span><span className="whitespace-nowrap font-space-mono text-[8px] text-text-secondary">In use: {selectedPitch?.name}</span></div></div>
+    {analysis ? (
+      <button type="button" onClick={() => changeAnalysis(null)} aria-label="Close pitch analysis" title="Close pitch analysis" className="flex size-7 shrink-0 items-center justify-center rounded border border-border text-text-secondary hover:border-accent hover:text-text-primary">
+        <X size={14} aria-hidden="true" />
+      </button>
+    ) : (
+      <button type="button" onClick={() => setCreatorOpen(true)} disabled={capacityReached || Boolean(project)} title={capacityReached ? "This stadium already has five pitches" : project ? "Complete the current grounds project first" : undefined} className="inline-flex h-7 shrink-0 items-center gap-1 rounded border border-accent bg-accent px-2 font-space-mono text-[8px] font-bold uppercase tracking-wider text-white disabled:cursor-not-allowed disabled:opacity-40">
+        <Plus size={14} aria-hidden="true" /> Create pitch
+      </button>
+    )}
+  </header>;
+
+  const analysisBase = allPitches.find(pitch => pitch.id === preparingPitchId);
+  if (analysisBase) {
+    return <div className="flex h-full min-h-0 flex-col gap-3 overflow-y-auto">
+      {stadiumBar(true)}
+      <PitchAnalysis key={analysisBase.id} pitch={analysisBase} current={preparations[analysisBase.id]} date={currentDate} matchDate={nextHomeMatchDate} onSave={(plan, matchDate) => onPrepare(analysisBase.id, plan, matchDate)} />
+    </div>;
+  }
+
   return (
     <div className="flex h-full min-h-0 flex-col gap-3 overflow-hidden">
-      <header className="flex shrink-0 items-center justify-between rounded-lg border-2 border-border bg-surface px-5 py-3">
-        <div className="flex min-w-0 items-center gap-3">
-          <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-accent/15 text-accent">
-            <MapPin size={18} aria-hidden="true" />
-          </span>
-          <div className="min-w-0">
-            <p className="font-space-mono text-[8px] font-bold uppercase tracking-[0.18em] text-accent">Home stadium</p>
-            <h2 className="mt-1 truncate font-anton text-[22px] uppercase leading-none text-text-primary">{stadium.name}</h2>
-            <p className="mt-1 font-space-mono text-[8px] font-bold uppercase text-text-secondary">{stadium.location} · {teamName}</p>
-          </div>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <div className="grid grid-cols-[auto_auto_auto_auto_minmax(8rem,1fr)] divide-x divide-border overflow-hidden rounded-md border border-border bg-bg/40 text-center">
-            <div className="px-3 py-2">
-              <div className="font-anton text-[18px] leading-none text-text-primary">{stadium.capacity.toLocaleString("en-GB")}</div>
-              <div className="mt-1 font-space-mono text-[7px] font-bold uppercase text-text-secondary">Fixed capacity</div>
-            </div>
-            <div className="px-3 py-2">
-              <div className="font-anton text-[18px] leading-none text-text-primary">{boundaryDimensions.straightMetres}m</div>
-              <div className="mt-1 font-space-mono text-[7px] font-bold uppercase text-text-secondary">Straight boundary</div>
-              <div className="mt-0.5 font-space-mono text-[6px] font-bold uppercase text-accent">Default {stadium.defaultBoundaryDimensions.straightMetres}m</div>
-            </div>
-            <div className="px-3 py-2">
-              <div className="font-anton text-[18px] leading-none text-text-primary">{boundaryDimensions.wideMetres}m</div>
-              <div className="mt-1 font-space-mono text-[7px] font-bold uppercase text-text-secondary">Wide boundary</div>
-              <div className="mt-0.5 font-space-mono text-[6px] font-bold uppercase text-accent">Default {stadium.defaultBoundaryDimensions.wideMetres}m</div>
-            </div>
-            <div className="px-4 py-2">
-              <div className="font-anton text-[18px] leading-none text-text-primary">{allPitches.length}/{MAX_PITCHES_PER_STADIUM}</div>
-              <div className="mt-1 font-space-mono text-[7px] font-bold uppercase text-text-secondary">Pitch capacity</div>
-            </div>
-            <div className="max-w-44 px-4 py-2">
-              <div className="truncate text-[10px] font-bold leading-none text-text-primary">{selectedPitch?.name}</div>
-              <div className="mt-1 font-space-mono text-[7px] font-bold uppercase text-text-secondary">Currently in use</div>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={() => setCreatorOpen(true)}
-            disabled={capacityReached || Boolean(project)}
-            title={capacityReached ? "This stadium already has five pitches" : project ? "Complete the current grounds project first" : undefined}
-            className="inline-flex h-12 items-center gap-2 rounded-md border border-accent bg-accent px-4 font-space-mono text-[8px] font-bold uppercase tracking-wider text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            <Plus size={14} aria-hidden="true" /> Create pitch
-          </button>
-        </div>
-      </header>
+      {stadiumBar(false)}
 
       {project && (
         <div className="flex shrink-0 items-center justify-between rounded-lg border border-accent/35 bg-accent/[0.07] px-4 py-2.5">
@@ -271,14 +300,16 @@ export default function PitchCuratorPage({
       )}
 
       <div className="grid min-h-0 flex-1 auto-rows-[minmax(23rem,1fr)] grid-cols-1 gap-3 overflow-y-auto pr-1 md:grid-cols-2 xl:grid-cols-3">
-        {allPitches.map((pitch) => {
-          const custom = isCustomCuratorPitch(pitch);
+        {allPitches.map((basePitch) => {
+          const pitch = applyPitchPreparation(basePitch, preparations[basePitch.id], currentDate);
+          const custom = isCustomCuratorPitch(basePitch);
           const isDefault = pitch.id === stadium.defaultPitchId;
           const isSelected = pitch.id === selectedPitch?.id;
           const isBeingDestroyed = projectPitchId === pitch.id;
           return (
             <article
               key={pitch.id}
+              style={pitch.id === lastAnalysisPitchId ? { viewTransitionName: 'pitch-analysis-tile' } : undefined}
               className={`flex min-h-0 flex-col overflow-hidden rounded-lg border-2 bg-surface ${
                 isSelected ? "border-accent shadow-[0_0_0_1px_var(--accent)]" : "border-border"
               } ${isBeingDestroyed ? "opacity-55" : ""}`}
@@ -305,7 +336,7 @@ export default function PitchCuratorPage({
                 </div>
               </div>
 
-              <div className="grid shrink-0 grid-cols-[auto_1fr] items-center gap-3 border-b border-border px-4 py-2.5">
+              <div className="grid shrink-0 grid-cols-[auto_1fr_auto] items-center gap-3 border-b border-border px-4 py-2.5">
                 <span className="flex size-8 items-center justify-center rounded-full bg-success/10 text-success">
                   <Gauge size={15} aria-hidden="true" />
                 </span>
@@ -315,6 +346,7 @@ export default function PitchCuratorPage({
                     {pitch.expectedFirstInningsScore.min}–{pitch.expectedFirstInningsScore.max}
                   </p>
                 </div>
+                <button type="button" disabled={isBeingDestroyed} onClick={event => { const card = event.currentTarget.closest('article'); card?.parentElement?.querySelectorAll('article').forEach(item => { item.style.viewTransitionName = ''; }); if (card) card.style.viewTransitionName = 'pitch-analysis-tile'; changeAnalysis(pitch.id); }} className="rounded border border-accent px-3 py-2 font-space-mono text-[8px] font-bold uppercase text-accent hover:bg-accent/10 disabled:opacity-40">Prepare pitch</button>
               </div>
 
               <div className="min-h-0 flex-1 space-y-2.5 overflow-hidden p-4">
@@ -341,7 +373,7 @@ export default function PitchCuratorPage({
                 </section>
                 {custom && (
                   <p className="font-space-mono text-[7px] font-bold uppercase text-text-secondary">
-                    {pitch.soil} soil · {pitch.upkeepDifficulty} upkeep · {pitch.recoveryDays}-day recovery
+                    {basePitch.soil} soil · {basePitch.upkeepDifficulty} upkeep · {basePitch.recoveryDays}-day recovery
                   </p>
                 )}
               </div>
@@ -362,7 +394,7 @@ export default function PitchCuratorPage({
                 {custom && (
                   <button
                     type="button"
-                    onClick={() => setDestroyPitch(pitch)}
+                    onClick={() => setDestroyPitch(basePitch)}
                     disabled={isSelected || Boolean(project)}
                     title={isSelected ? "Select another pitch before removing this one" : project ? "Complete the current grounds project first" : "Remove this custom pitch"}
                     className="flex size-9 shrink-0 items-center justify-center rounded border border-danger/35 bg-surface text-danger transition-colors hover:bg-danger/10 disabled:cursor-not-allowed disabled:opacity-35"

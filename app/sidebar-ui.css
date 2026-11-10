@@ -95,12 +95,14 @@ html[data-ui-design="sidebar"] .app-theme-shell .app-navbar .app-history-navigat
 html[data-ui-design="sidebar"] .app-history-navigation > button:last-child { border-right: 0; }
 html[data-ui-design="sidebar"] .app-history-navigation svg { height: 16px; width: 16px; }
 html[data-ui-design="sidebar"] .app-navbar-identity {
+  flex-wrap: wrap;
   justify-content: center;
   gap: 6px;
   margin: 0;
   padding: 8px 0 12px;
   border-bottom: 1px solid var(--hairline);
 }
+html[data-ui-design="sidebar"] .app-game-search { width: 100%; }
 html[data-ui-design="sidebar"] .app-navbar-initials { height: 32px; min-width: 36px; flex-shrink: 0; }
 html[data-ui-design="sidebar"] .app-sidebar-date {
   display: inline;

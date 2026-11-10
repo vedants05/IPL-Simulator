@@ -33,6 +33,7 @@ create table if not exists players (
   part_time_wicketkeeper boolean,
   core_batter boolean,
   finisher boolean,
+  can_float boolean,
   captaincy integer,
   opener boolean,
   only_opener boolean,
